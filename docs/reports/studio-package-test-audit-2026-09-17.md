@@ -26,9 +26,9 @@ Les tests de workflow évaluent les conditions de publication pour plusieurs com
 
 ## Ce qui reste à qualifier après le correctif urgent
 
-- Exécuter les installateurs Linux DEB/AppImage et macOS DMG dans des machines vierges ; tester la désinstallation et la conservation des données sur toutes les plateformes. Windows NSIS a maintenant été réellement installé et son application a passé les vérifications scientifiques et UI, voir le suivi de livraison.
+- Tester la désinstallation et la conservation des données sur toutes les plateformes. Windows NSIS, Linux DEB et macOS Apple Silicon DMG ont désormais passé une installation réelle, les contrôles scientifiques et l'UI ; l'AppImage a passé un lancement FUSE réel. macOS Intel est encore en qualification. Voir le [suivi multiplateforme](studio-multiplatform-delivery-0.11.5-2026-09-17.md).
 - Compléter la migration **de la précédente version publique vers la nouvelle** avec préférences et workspace utilisateur existants. La nouvelle qualification N−1 utilise les versions et les octets réels ; son profil vierge ne prouve pas encore la conservation d’un workspace existant.
-- Étendre le parcours UI réel à macOS. Il a désormais passé setup, activation du mode développeur, sauvegarde, reload et redémarrage sur Linux et Windows installé. Les E2E navigateur génériques ne remplacent pas cette preuve.
+- Terminer la qualification du parcours UI macOS Intel. Setup, activation du mode développeur, sauvegarde, reload et redémarrage ont réussi sur Windows installé, Linux DEB et macOS Apple Silicon installé. Les E2E navigateur génériques ne remplacent pas cette preuve.
 - Étendre la qualification des paquets Windows/macOS aux PR pertinentes. Les builds réels multiplateformes restent effectués à la release.
 - Protéger la branche principale avec des checks obligatoires. Vérification GitHub en lecture seule le 17 septembre : `branches/main/protection` renvoie « Branch not protected » et `rules/branches/main` renvoie une liste vide. Aucun réglage distant n’a été modifié pendant cet audit.
 
@@ -60,3 +60,35 @@ On the A3 packaged product constrained to one CPU, opening Advanced Settings que
 - Le constructeur Windows crée le ZIP sous un répertoire parent unique, relit ses membres et vérifie leur intégrité avant de remplacer atomiquement le livrable précédent. Les tests utilisent de vrais ZIP, conservent les fichiers cachés et rejettent un ZIP plat ou corrompu.
 - L’exception initial-release n’est applicable qu’après un véritable HTTP 404 pour la dernière version publique. Un lancement manuel exige une version source explicite ; une release existante sans archive/checksum Windows ne permet pas de sauter la migration.
 - Cette protection supplémentaire vise les versions stables. Les prereleases conservent leur traitement antérieur et ne revendiquent pas cette qualification automatique complète.
+
+## Livraison Docker indépendante après Windows
+
+L’image du job Docker Runtime initial F314 avait passé le smoke et Chromium, mais portait la version `ci` et n’avait pas été conservée. Le publisher normal avait été skipped. Cette qualification ne prouvait donc aucune livraison Docker 0.11.5. Un workflow dédié a reconstruit F314 avec la version interne correcte, passé les tests natifs et Chromium, puis conservé et publié exactement cette image. Le contrôle public sans authentification confirme `0.11.5` et `latest` sur le même manifeste ; `0.11.4` est inchangée. Les dates, empreintes et preuves sont dans le [suivi multiplateforme](studio-multiplatform-delivery-0.11.5-2026-09-17.md).
+
+La revue du nouveau workflow a aussi retrouvé un défaut du harnais : sans `pipefail`, `smoke | tee` pouvait réussir malgré un smoke en échec. Le shell Bash CI est maintenant explicite. Une régression exécute réellement le bloc avec un smoke qui quitte avec le code 17 et vérifie que la sonde navigateur suivante n’est pas exécutée. Le run de livraison a ensuite passé les contrôles réels avec cette protection.
+
+La compatibilité macOS Intel reste une qualification distincte : une fermeture Python disponible sous Linux ou Windows ne garantit pas l’existence de toutes les roues macOS x64. Les adaptations de contraintes doivent repasser l’installation, la fermeture scientifique et les tests du paquet sur la cible avant toute revendication de livraison macOS Intel.
+
+### Observation de performance macOS installé
+
+Le parcours UI du paquet installé macOS Apple Silicon a enregistré **33 812 ms** entre le début de l'action sur le contrôle et l'observation de la préférence persistée ; Linux DEB a enregistré **34 753 ms**. Ce délai comprend l'attente Playwright, les échanges nécessaires à l'action et la vérification par GET : il ne mesure pas la seule durée du PUT. Les tests ont ensuite confirmé la sauvegarde sans workspace, sa conservation après rechargement et le redémarrage de l'application. Preuve : `installed-ui.log` du [run de qualification 35227750924](https://github.com/GBeurier/nirs4all-studio/actions/runs/35227750924). La performance reste à analyser séparément de la réussite fonctionnelle.
+
+## Revue des scripts de livraison multiplateformes
+
+Les tests Node des scripts d'installation et de publication sont maintenant exécutés dans la CI habituelle, en plus de Vitest et pytest. Ils couvrent les commandes compatibles avec Bash macOS 3.2, la sélection exacte du binaire DEB, l'extraction des archives macOS, les gates de publication et le refus de remplacer des fichiers publiés par des octets différents.
+
+La revue indépendante de l'AppImage a trouvé deux preuves trop faibles : un montage FUSE sans attribution au processus testé, et un résultat réussi écrit avant confirmation de l'arrêt. Le harnais corrigé relie le binaire descendant, son montage et le fichier AppImage exact, puis attend l'arrêt du groupe de processus avant de produire la preuve. Les régressions incluent de vrais processus résistant à SIGTERM et un échec d'arrêt qui ne doit laisser aucun résultat réussi.
+
+Un autre défaut concernait les releases manuelles visant un tag ancien : les installateurs indiquaient le commit du workflow plutôt que celui du produit checkouté. Les quatre fichiers de version utilisent désormais le SHA résolu du produit. La régression exécute les blocs shell avec deux SHA différents ; elle échouait avant cette correction.
+
+## Lenteur des réglages : correctif préparé pour une version ultérieure
+
+La cause a été reproduite : chaque préselection de capacités relançait l'attestation du convertisseur historique sous le mutex global. Son sous-processus Python importe DuckDB/PyArrow et vérifie Parquet ; une attestation isolée prenait environ 930 ms sur la référence locale. L'ouverture des réglages multipliait ces appels, bloquant les requêtes de santé et de préférence et remplissant aussi la file de connexions Chromium.
+
+Le [correctif `09d74709`](https://github.com/GBeurier/nirs4all-studio/commit/09d74709a35cfae5529dfd980b36a94bfa28b7d4) atteste la disponibilité au bootstrap et utilise cet état pour la découverte. Une conversion conserve sa validation complète avant exécution. L'inspection explicite d'une transition de workspace réatteste hors mutex global ; les erreurs de lancement invalident l'annonce et les échecs de confinement la bloquent, même face à une ancienne attestation concurrente. Un runtime réparé peut être réattesté. La revue indépendante a vérifié ces chemins et les paramètres query refusés.
+
+Validation locale : **291 tests Rust réussis, 3 ignorés**, clippy, format et compilation release réussis. Un test sur quatre connexions TCP exige que capacités, santé et préférence persistée terminent en moins de 300 ms pendant une attestation d'une seconde ; le résultat observé est **19,7 ms**.
+
+La mesure UI instrumentée utilise deux CPU et une référence locale prépublication identifiée par empreintes, sans revendiquer son SHA source ni une qualification F314/macOS. L'action de préférence passe de **28 718 à 343 ms** ; le PUT de **5 755 à 13 ms**, dont l'attente avant connexion passe de **5 734 à 0,7 ms**. La comparaison SHA256 de **11 571 fichiers** confirme seulement deux différences : le sidecar et son identité dans le contrat ; renderer, Python et Methods restent identiques. Cette mesure couvre le premier setup et la préférence instrumentée, pas une nouvelle qualification complète des installeurs. Les identités sont conservées dans les [preuves structurées](studio-multiplatform-delivery-0.11.5-evidence.json).
+
+**Ce correctif supplémentaire n'est pas inclus dans les paquets 0.11.5 publiés.** Ceux-ci conservent leurs octets et leur qualification ; une nouvelle version sera nécessaire pour distribuer l'amélioration de performance.
