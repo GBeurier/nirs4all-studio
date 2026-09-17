@@ -199,9 +199,11 @@ requireText(dockerSmoke, 'Object.hasOwn(exposedPorts, "8001/tcp")', "sidecar Doc
 requireText(ciWorkflow, "npm run test:docker-runtime-contract", "CI static Docker contract gate");
 requireText(ciWorkflow, "--build-context methods-runtime=", "CI Methods build context");
 requireText(releaseWorkflow, "STUDIO_VERSION=${{ needs.prepare.outputs.version }}", "release image version");
-requireText(releaseWorkflow, "STUDIO_REVISION=${{ github.sha }}", "release image revision");
+requireText(releaseWorkflow, "STUDIO_REVISION=${{ needs.prepare.outputs.checkout_ref }}", "release image revision");
 requireText(releaseWorkflow, "scripts/smoke-docker-native-runtime.sh", "release live Docker smoke");
-requireText(releaseWorkflow, "methods-runtime=${{ env.NIRS4ALL_BUILD_METHODS_DIRECTORY }}", "release Methods build context");
+requireText(releaseWorkflow, '--build-context methods-runtime="$(dirname "${NIRS4ALL_BUILD_METHODS_LIBRARY}")"', "release Methods build context");
+requireText(releaseWorkflow, 'docker tag nirs4all-studio:native-release-candidate "$IMAGE:$RELEASE_VERSION"', "tested image promotion");
+forbid(releaseWorkflow, /uses:\s*docker\/build-push-action/, "untested image rebuild during publication");
 forbid(releaseWorkflow, /variant:\s*gpu-cuda|tag_suffix:\s*['"]?-gpu-cuda/im, "legacy GPU/Python image variant");
 
 if (errors.length > 0) {
