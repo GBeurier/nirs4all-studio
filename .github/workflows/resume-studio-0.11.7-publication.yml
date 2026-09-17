@@ -1,0 +1,141 @@
+name: Resume qualified Studio 0.11.7 publication
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: studio-0.11.7-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish the existing qualified 0.11.7 artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Verify the immutable product, all qualifications, and exact artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const assert = require('node:assert/strict');
+            const plan = JSON.parse(fs.readFileSync('docs/reports/studio-0.11.7-publication-recovery-input.json', 'utf8'));
+            assert.equal(plan.version, '0.11.7');
+            assert.equal(plan.product_sha, 'bf6d7b13fda815b7f8153350e36907910829c4c6');
+            assert.equal(plan.source_run, 35247378499);
+            assert.equal(plan.draft_release_id, 390944704);
+            const repo = context.repo;
+            const run = (await github.rest.actions.getWorkflowRun({ ...repo, run_id: plan.source_run })).data;
+            assert.equal(run.head_sha, plan.product_sha);
+            assert.equal(run.head_branch, plan.version);
+            assert.equal(run.event, 'push');
+            assert.equal(run.path, '.github/workflows/release-unified.yml');
+            assert.equal(run.status, 'completed');
+            const tag = (await github.rest.repos.getCommit({ ...repo, ref: plan.version })).data;
+            assert.equal(tag.sha, plan.product_sha);
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              ...repo, run_id: plan.source_run, filter: 'latest', per_page: 100,
+            });
+            assert.equal(plan.required_successful_jobs.length, 21);
+            assert.equal(jobs.length, 22);
+            assert.equal(new Set(jobs.map(job => job.name)).size, 22);
+            for (const name of plan.required_successful_jobs) {
+              const job = jobs.find(candidate => candidate.name === name);
+              assert.ok(job, `Missing required qualification: ${name}`);
+              assert.equal(job.head_sha, plan.product_sha, name);
+              assert.equal(job.status, 'completed', name);
+              assert.equal(job.conclusion, 'success', name);
+            }
+            const publisher = jobs.find(job => job.name === 'Create Release');
+            assert.ok(publisher);
+            assert.equal(publisher.status, 'completed');
+            assert.ok(['failure', 'success'].includes(publisher.conclusion));
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+              ...repo, run_id: plan.source_run, per_page: 100,
+            });
+            assert.equal(plan.artifacts.length, 8);
+            for (const expected of plan.artifacts) {
+              const matching = artifacts.filter(artifact => artifact.name === expected.name);
+              assert.equal(matching.length, 1, expected.name);
+              const artifact = matching[0];
+              for (const key of ['id', 'name', 'digest', 'size_in_bytes']) {
+                assert.equal(artifact[key], expected[key], `${expected.name}: ${key}`);
+              }
+              assert.equal(artifact.expired, false);
+              assert.equal(artifact.workflow_run.id, plan.source_run);
+              assert.equal(artifact.workflow_run.head_sha, plan.product_sha);
+            }
+            const release = (await github.rest.repos.getRelease({ ...repo, release_id: plan.draft_release_id })).data;
+            assert.equal(release.tag_name, plan.version);
+            assert.equal(release.prerelease, false);
+            fs.writeFileSync('release_notes.md', release.body || `nirs4all Studio ${plan.version}`);
+            fs.writeFileSync('recovery-source-proof.json', JSON.stringify({
+              product_sha: plan.product_sha, source_run: plan.source_run,
+              publication_workflow_sha: context.sha, publication_run: context.runId,
+              qualifications: jobs.map(({ id, name, conclusion }) => ({ id, name, conclusion })),
+              artifacts: plan.artifacts,
+            }, null, 2));
+
+      - name: Download only the existing eight producer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 35247378499
+          path: producers
+          pattern: '{installer-linux-x64,installer-windows-x64,installer-macos-x64,installer-macos-arm64,archive-windows-x64,archive-linux-x64,archive-macos-x64,archive-macos-arm64}'
+
+      - name: Verify checksums and the exact installed product identities
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          destination = Path('release')
+          destination.mkdir()
+          for source in Path('producers').rglob('*'):
+              if source.is_file() and source.name.endswith(('.AppImage', '.deb', '.exe', '.dmg', '.zip', '.tar.gz', '.sha256')):
+                  target = destination / source.name
+                  assert not target.exists(), source.name
+                  shutil.copyfile(source, target)
+          PY
+          node scripts/finalize-release-assets.cjs release 0.11.7 true
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          plan = json.loads(Path('docs/reports/studio-0.11.7-publication-recovery-input.json').read_text())
+          assert len(plan['qualified_hashes']) == 8
+          for name, expected in plan['qualified_hashes'].items():
+              digest = hashlib.sha256()
+              with (Path('release') / name).open('rb') as stream:
+                  while block := stream.read(4 * 1024 * 1024):
+                      digest.update(block)
+              assert digest.hexdigest() == expected, name
+          PY
+
+      - name: Upload sequentially and publish only the complete verified release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: '0.11.7'
+          RELEASE_SHA: bf6d7b13fda815b7f8153350e36907910829c4c6
+          RELEASE_PRERELEASE: 'false'
+          RELEASE_NOTES_PATH: release_notes.md
+        run: node scripts/publish-qualified-release.cjs release 0.11.7 true
+
+      - name: Preserve recovery provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-0.11.7-publication-recovery-proof
+          path: recovery-source-proof.json
+          if-no-files-found: warn
+          retention-days: 30
