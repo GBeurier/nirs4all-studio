@@ -160,7 +160,8 @@ describe("CI release protection graph", () => {
         }
       }
       const skippedArchives = Object.fromEntries(Object.keys(release.jobs).filter((name) => name.startsWith("archive-")).map((name) => [name, "skipped"]));
-      expect(releaseGate(publisher, skippedArchives, { skip_all_in_one: "true" })).toBe(true);
+      expect(releaseGate(publisher, skippedArchives, { skip_all_in_one: "true" })).toBe(false);
+      expect(releaseGate(publisher, skippedArchives, { skip_all_in_one: "true", prerelease: "true" })).toBe(true);
       expect(releaseGate(publisher, { ...skippedArchives, quality: "failure" }, { skip_all_in_one: "true" })).toBe(false);
     }
     expect(releaseGate("docker", {}, { skip_docker: "true" })).toBe(false);

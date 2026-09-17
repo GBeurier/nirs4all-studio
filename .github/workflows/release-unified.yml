@@ -73,6 +73,7 @@ jobs:
       # identical source even if a tag is moved while jobs are queued.
       checkout_ref: ${{ steps.checkout_ref.outputs.checkout_ref }}
       previous_version: ${{ steps.previous_release.outputs.previous_version }}
+      unix_migration_matrix: ${{ steps.previous_unix_releases.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
 
@@ -150,6 +151,25 @@ jobs:
             });
             core.setOutput('previous_version', plan.previousVersion);
             await core.summary.addRaw(plan.note).write();
+
+      - name: Resolve the last public migration release for each Unix platform
+        if: steps.version.outputs.prerelease != 'true'
+        id: previous_unix_releases
+        uses: actions/github-script@v7
+        env:
+          TARGET_VERSION: ${{ steps.version.outputs.version }}
+          ARCHIVE_ENABLED: ${{ !inputs.skip_all_in_one }}
+        with:
+          script: |
+            const { previousUnixReleasePlan } = require('./scripts/unix-release-gate-plan.cjs');
+            const releases = await github.paginate(github.rest.repos.listReleases, { ...context.repo, per_page: 100 });
+            const include = previousUnixReleasePlan(releases, process.env.TARGET_VERSION, {
+              archiveEnabled: process.env.ARCHIVE_ENABLED === 'true',
+            });
+            core.setOutput('matrix', JSON.stringify({ include }));
+            await core.summary.addRaw(include.map(platform =>
+              `${platform.label}: public ${platform.from_version} -> candidate ${process.env.TARGET_VERSION}.`
+            ).join('\n')).write();
 
       - name: Validate pinned runtime dependency refs
         shell: bash
@@ -246,6 +266,30 @@ jobs:
       from_version: ${{ needs.prepare.outputs.previous_version }}
       to_version: ${{ needs.prepare.outputs.version }}
       archive_enabled: ${{ needs.prepare.outputs.skip_all_in_one != 'true' }}
+
+  unix-product:
+    name: Qualify stable Unix installation and platform migration
+    needs: [prepare, installer-linux, installer-macos-x64, installer-macos-arm64, archive-linux, archive-macos-x64, archive-macos-arm64]
+    if: >-
+      always() &&
+      needs.prepare.outputs.prerelease != 'true' &&
+      needs.prepare.result == 'success' &&
+      needs.prepare.outputs.skip_all_in_one != 'true' &&
+      needs.installer-linux.result == 'success' &&
+      needs.installer-macos-x64.result == 'success' &&
+      needs.installer-macos-arm64.result == 'success' &&
+      needs.archive-linux.result == 'success' &&
+      needs.archive-macos-x64.result == 'success' &&
+      needs.archive-macos-arm64.result == 'success'
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/unix-product-qualification.yml
+    with:
+      release_run_id: ${{ format('{0}', github.run_id) }}
+      checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
+      to_version: ${{ needs.prepare.outputs.version }}
+      platform_matrix: ${{ needs.prepare.outputs.unix_migration_matrix }}
 
   # Acquire the published universal nirs4all wheel once on Linux and build the
   # pinned conversion-tools wheel once. Every distributable consumes these exact
@@ -1749,6 +1793,7 @@ jobs:
       - prepare
       - quality
       - windows-product
+      - unix-product
       - installer-linux
       - installer-windows
       - installer-macos-x64
@@ -1762,6 +1807,7 @@ jobs:
       needs.prepare.result == 'success' &&
       needs.quality.result == 'success' &&
       (needs.prepare.outputs.prerelease == 'true' || needs.windows-product.result == 'success') &&
+      (needs.prepare.outputs.prerelease == 'true' || (needs.prepare.outputs.skip_all_in_one != 'true' && needs.unix-product.result == 'success')) &&
       needs.prepare.outputs.skip_docker != 'true' &&
       needs.installer-linux.result == 'success' &&
       needs.installer-windows.result == 'success' &&
@@ -1860,6 +1906,7 @@ jobs:
       - prepare
       - quality
       - windows-product
+      - unix-product
       - installer-linux
       - installer-windows
       - installer-macos-x64
@@ -1875,6 +1922,7 @@ jobs:
       needs.prepare.result == 'success' &&
       needs.quality.result == 'success' &&
       (needs.prepare.outputs.prerelease == 'true' || needs.windows-product.result == 'success') &&
+      (needs.prepare.outputs.prerelease == 'true' || (needs.prepare.outputs.skip_all_in_one != 'true' && needs.unix-product.result == 'success')) &&
       needs.installer-linux.result == 'success' &&
       needs.installer-windows.result == 'success' &&
       needs.installer-macos-x64.result == 'success' &&
