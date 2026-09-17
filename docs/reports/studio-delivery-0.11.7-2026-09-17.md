@@ -49,6 +49,26 @@ plateforme, vérifie les identités des fichiers avant et après la migration,
 et lie les résultats aux SHA256 source et cible. Tout échec, annulation ou gate
 ignoré bloque la publication stable GitHub et Docker.
 
+## Vérifications du commit final
+
+La CI complète et les E2E ont réussi sur le SHA exact du tag, `bf6d7b13` :
+
+- Frontend : **4 179 réussis, 1 ignoré**, 586 fichiers de tests.
+- Scripts de packaging : **38 réussis**.
+- Backend : **2 491 réussis, 17 ignorés**.
+- Rust Windows : **313 réussis, 5 ignorés**, 14 exécutables de tests.
+- Chromium : **63 réussis**, 9,8 minutes ; run `35247375954`, job
+  `105290894166`, artefact `playwright-report` `10508471477`.
+
+L'archive Linux a passé son contrôle CPU isolé le 17 septembre à 16:50:46 UTC :
+**414 ELF**, calculs SHAP et réduction parallèle Numba avec le moteur `workqueue`.
+Les modes forcés TBB/OpenMP/safe ne sont pas garantis par cette qualification.
+[Preuve JSON exacte](studio-linux-archive-cpu-closure-0.11.7-2026-09-17.json),
+[artefact source](https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10509051147).
+Cette preuve ne remplace pas l'installation DEB ni un lancement AppImage par FUSE.
+Le runtime de l'installateur a passé le même contrôle à 16:54:53 UTC, également
+sur **414 ELF** : [preuve exacte de l'installateur](studio-linux-installer-cpu-closure-0.11.7-2026-09-17.json).
+
 ## Vérifications locales de la reprise
 
 - `npm run lint:parallel` : réussi, 21 avertissements ESLint préexistants.
