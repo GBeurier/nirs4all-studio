@@ -58,6 +58,35 @@ def test_real_elf_missing_or_runner_only_dependency_fails(tmp_path, keep_externa
         closure.scan_runtime(runtime)
 
 
+@pytest.mark.skipif(sys.platform != "linux" or not shutil.which("gcc"), reason="real ELF regression requires Linux GCC")
+@pytest.mark.parametrize("bundled", [True, False])
+def test_absolute_elf_dependency_with_spaces_must_still_be_bundled(tmp_path, bundled):
+    runtime = tmp_path / "nirs4all Studio" / "python"
+    runtime.mkdir(parents=True)
+    dependency_root = runtime / "lib" if bundled else tmp_path / "host libraries"
+    dependency_root.mkdir()
+    library = dependency_root / "libclosure_absolute.so"
+    subprocess.run(
+        ["gcc", "-shared", "-fPIC", "-x", "c", "-o", str(library), "-"],
+        input="int required(void) { return 42; }", text=True, check=True, capture_output=True,
+    )
+    # No SONAME: the linker records the absolute library path as DT_NEEDED,
+    # reproducing PBS libpython3.so's ldd output without a "name =>" prefix.
+    consumer = runtime / "consumer.so"
+    subprocess.run(
+        ["gcc", "-shared", "-fPIC", "-o", str(consumer), "-Wl,--no-as-needed", str(library), "-x", "c", "-"],
+        input="extern int required(void); int consumer(void) { return required(); }",
+        text=True, check=True, capture_output=True,
+    )
+    output = subprocess.check_output(["ldd", str(consumer)], text=True)
+    assert any(line.strip().startswith(f"{library} (0x") for line in output.splitlines())
+    if bundled:
+        assert closure.scan_runtime(runtime) == {"elf_files_checked": 2, "optional_numba_backends_unavailable": {}}
+    else:
+        with pytest.raises(ValueError, match="Unbundled scientific dependency"):
+            closure.scan_runtime(runtime)
+
+
 def test_linux_release_gates_run_clean_qualification_before_publication():
     import yaml
 

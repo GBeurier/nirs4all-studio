@@ -52,7 +52,9 @@ def validate_dependencies(relative: str, output: str, runtime_root: Path) -> lis
             optional.append(name)
             continue
         resolved = re.fullmatch(r"(\S+) => (/.*?) \(0x[0-9a-f]+\)", line)
-        loader = re.fullmatch(r"(/\S+) \(0x[0-9a-f]+\)", line)
+        # ldd omits "name =>" for absolute DT_NEEDED paths as well as the
+        # loader itself. Packaged application directories may contain spaces.
+        loader = re.fullmatch(r"(/.+) \(0x[0-9a-f]+\)", line)
         if resolved:
             name, filename = resolved[1], resolved[2]
         elif loader:
