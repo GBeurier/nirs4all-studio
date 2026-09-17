@@ -1,0 +1,125 @@
+{
+  "elf_files_checked": 414,
+  "optional_numba_backends_unavailable": {
+    "lib/python3.11/site-packages/numba/np/ufunc/omppool.cpython-311-x86_64-linux-gnu.so": [
+      "libgomp.so.1.0.0"
+    ],
+    "lib/python3.11/site-packages/numba/np/ufunc/tbbpool.cpython-311-x86_64-linux-gnu.so": [
+      "libtbb.so.12"
+    ]
+  },
+  "runs": [
+    {
+      "layer": "default",
+      "mode": "shap",
+      "result": {
+        "kernel_additivity_error": 0.0,
+        "linear_additivity_error": 0.0,
+        "numba_version": "0.67.0",
+        "priority": [
+          "tbb",
+          "omp",
+          "workqueue"
+        ],
+        "requested_layer": "default",
+        "selected_layer": "not initialized (no parallel execution)",
+        "system_libraries": {
+          "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+          "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+          "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+        },
+        "tree_additivity_error": 4.440892098500626e-16
+      }
+    },
+    {
+      "layer": "default",
+      "mode": "parallel",
+      "result": {
+        "numba_version": "0.67.0",
+        "priority": [
+          "tbb",
+          "omp",
+          "workqueue"
+        ],
+        "requested_layer": "default",
+        "selected_layer": "workqueue",
+        "success": true,
+        "sum_squares": 333283335000.0,
+        "system_libraries": {
+          "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+          "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+          "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+        }
+      }
+    },
+    {
+      "layer": "tbb",
+      "mode": "parallel",
+      "result": {
+        "error": "No threading layer could be loaded.\nHINT:\nIntel TBB is required, try:\n$ conda/pip install tbb",
+        "numba_version": "0.67.0",
+        "priority": [
+          "tbb",
+          "omp",
+          "workqueue"
+        ],
+        "requested_layer": "tbb",
+        "success": false,
+        "system_libraries": {
+          "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+          "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+          "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+        }
+      }
+    },
+    {
+      "layer": "omp",
+      "mode": "parallel",
+      "result": {
+        "error": "No threading layer could be loaded.\n",
+        "numba_version": "0.67.0",
+        "priority": [
+          "tbb",
+          "omp",
+          "workqueue"
+        ],
+        "requested_layer": "omp",
+        "success": false,
+        "system_libraries": {
+          "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+          "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+          "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+        }
+      }
+    },
+    {
+      "layer": "safe",
+      "mode": "parallel",
+      "result": {
+        "error": "No threading layer could be loaded.\nHINT:\nIntel TBB is required, try:\n$ conda/pip install tbb",
+        "numba_version": "0.67.0",
+        "priority": [
+          "tbb",
+          "omp",
+          "workqueue"
+        ],
+        "requested_layer": "safe",
+        "success": false,
+        "system_libraries": {
+          "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+          "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+          "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+        }
+      }
+    }
+  ],
+  "success": true,
+  "platform": "linux-x64",
+  "runtime_root": "/home/runner/work/nirs4all-studio/nirs4all-studio/release/linux-unpacked/resources/backend/python-runtime/python",
+  "network_namespace_isolated": true,
+  "masked_system_library_files": [
+    "/usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0"
+  ],
+  "verified_at": "2026-09-17T16:54:53.885127+00:00",
+  "contract": "Studio CPU calculations and default workqueue; explicit Numba tbb/omp/safe backends are optional and not guaranteed"
+}
