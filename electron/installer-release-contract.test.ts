@@ -25,6 +25,7 @@ const contract = require(contractModulePath) as {
       requireBundledMethods: boolean;
     }): { sidecarPath: string };
     smokeSidecar?(sidecarPath: string): void;
+    smokeProduct?(output: { artifactBoundaryRoot: string; platform: string }): void | Promise<void>;
   }): Promise<{
     producedNames: string[];
     outputs: Array<{ backendRoot: string }>;
@@ -126,6 +127,25 @@ afterEach(() => {
 });
 
 describe("installer release post-package contract", () => {
+  it("keeps previous release artifacts when the installed-product smoke fails", async () => {
+    const root = temporaryRoot();
+    const releaseRoot = path.join(root, "release");
+    writeLinuxOutputs(releaseRoot);
+    const before = fs.readFileSync(path.join(releaseRoot, "nirs4all Studio-0.10.3-linux-x64.AppImage"));
+    const smokeProduct = vi.fn().mockRejectedValue(new Error("installed package import failed"));
+    await expect(contract.packageAndVerifyInstallerOutputs({
+      releaseRoot,
+      requestedPlatform: "linux",
+      hostPlatform: "linux",
+      runBuilder: async (stagingRoot) => { writeLinuxOutputs(stagingRoot); },
+      verifyRuntimeContract: verifier,
+      smokeSidecar: () => undefined,
+      smokeProduct,
+    })).rejects.toThrow("installed package import failed");
+    expect(smokeProduct).toHaveBeenCalledWith(expect.objectContaining({ platform: "linux" }));
+    expect(fs.readFileSync(path.join(releaseRoot, "nirs4all Studio-0.10.3-linux-x64.AppImage"))).toEqual(before);
+  });
+
   it("publishes only the fresh, unambiguous invocation after two-stage verification", async () => {
     const root = temporaryRoot();
     const releaseRoot = path.join(root, "release");
@@ -140,6 +160,7 @@ describe("installer release post-package contract", () => {
         writeLinuxOutputs(stagingRoot);
       },
       verifyRuntimeContract: verify,
+      smokeProduct: () => undefined,
       smokeSidecar: smoke,
     });
 
@@ -166,6 +187,7 @@ describe("installer release post-package contract", () => {
           fs.writeFileSync(path.join(stagingRoot, "builder-debug.yml"), "ok");
         },
         verifyRuntimeContract: verifier,
+        smokeProduct: () => undefined,
         smokeSidecar: () => undefined,
       }),
     ).rejects.toThrow("Linux unpacked application must resolve to exactly one");
@@ -183,6 +205,7 @@ describe("installer release post-package contract", () => {
         hostPlatform: "linux",
         runBuilder: async () => undefined,
         verifyRuntimeContract: verifier,
+        smokeProduct: () => undefined,
         smokeSidecar: () => undefined,
       }),
     ).rejects.toThrow("stale release artifacts are not accepted");
@@ -204,6 +227,7 @@ describe("installer release post-package contract", () => {
           );
         },
         verifyRuntimeContract: verifier,
+        smokeProduct: () => undefined,
         smokeSidecar: () => undefined,
       }),
     ).rejects.toThrow("Linux unpacked application must resolve to exactly one");
@@ -221,6 +245,7 @@ describe("installer release post-package contract", () => {
           fs.rmSync(backendRoot, { recursive: true });
         },
         verifyRuntimeContract: verifier,
+        smokeProduct: () => undefined,
         smokeSidecar: () => undefined,
       }),
     ).rejects.toThrow("linux packaged backend component 'backend' is missing");
@@ -238,6 +263,7 @@ describe("installer release post-package contract", () => {
           fs.writeFileSync(path.join(backendRoot, "contract.ok"), "tampered");
         },
         verifyRuntimeContract: verifier,
+        smokeProduct: () => undefined,
         smokeSidecar: () => undefined,
       }),
     ).rejects.toThrow("packaged backend contract was mutated");
@@ -263,6 +289,7 @@ describe("installer release post-package contract", () => {
         fs.writeFileSync(path.join(stagingRoot, "fake.deb"), "fake");
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     })).rejects.toThrow(/component 'resources' must be a real directory/);
   });
@@ -285,6 +312,7 @@ describe("installer release post-package contract", () => {
         fs.writeFileSync(path.join(stagingRoot, "fake.deb"), "fake");
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     })).rejects.toThrow(/component 'linux-unpacked' must be a real directory/);
   });
@@ -305,6 +333,7 @@ describe("installer release post-package contract", () => {
           throw new Error("builder must not start");
         },
         verifyRuntimeContract: verifier,
+        smokeProduct: () => undefined,
         smokeSidecar: () => undefined,
       })).rejects.toThrow(/must be a real directory/);
       expect(fs.readdirSync(external)).toEqual([]);
@@ -327,6 +356,7 @@ describe("installer release post-package contract", () => {
         fs.symlinkSync(external, releaseRoot);
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     })).rejects.toThrow(/release root.*must be a real directory/i);
     expect(fs.readdirSync(external)).toEqual([]);
@@ -357,6 +387,7 @@ describe("installer release post-package contract", () => {
         fs.symlinkSync(external, buildRoot);
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     })).rejects.toThrow(/staging root.*must be a real directory/i);
     expect(fs.readFileSync(externalSentinel, "utf8")).toBe("outside");
@@ -400,6 +431,7 @@ describe("installer release post-package contract", () => {
         }
         return result;
       },
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     })).rejects.toThrow(/rollback refused and recovery backup retained/);
 
@@ -437,6 +469,7 @@ describe("installer release post-package contract", () => {
         if (made.status !== 0) throw new Error("mkfifo unavailable for special-file test");
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     })).rejects.toThrow(/installer artifact must be a real regular file/i);
   });
@@ -452,6 +485,7 @@ describe("installer release post-package contract", () => {
         fs.writeFileSync(path.join(stagingRoot, "unexpected.payload"), "unverified");
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     })).rejects.toThrow("Unexpected fresh electron-builder output");
   });
@@ -471,6 +505,7 @@ describe("installer release post-package contract", () => {
         writeLinuxOutputs(stagingRoot);
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => {
         smokeCount += 1;
         if (smokeCount === 2) {
@@ -498,6 +533,7 @@ describe("installer release post-package contract", () => {
         writeLinuxOutputs(stagingRoot);
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => {
         fs.appendFileSync(
           path.join(staging, "nirs4all Studio-0.10.3-linux-x64.AppImage"),
@@ -519,6 +555,7 @@ describe("installer release post-package contract", () => {
         fs.writeFileSync(path.join(stagingRoot, "latest-linux.yml"), "version: 0.10.3\n");
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     });
 
@@ -540,6 +577,7 @@ describe("installer release post-package contract", () => {
         fs.writeFileSync(path.join(stagingRoot, "latest-linux.yml"), "version: 0.10.3\n");
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => {
         fs.appendFileSync(path.join(staging, "latest-linux.yml"), "tampered: true\n");
       },
@@ -569,6 +607,7 @@ describe("installer release post-package contract", () => {
         }
         return result;
       },
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     })).rejects.toThrow("installer artifact identity mismatch");
   });
@@ -592,6 +631,7 @@ describe("installer release post-package contract", () => {
         writeLinuxOutputs(stagingRoot);
       },
       verifyRuntimeContract: verifier,
+      smokeProduct: () => undefined,
       smokeSidecar: () => {
         smokeCount += 1;
         if (smokeCount === 2) {
@@ -628,6 +668,7 @@ describe("installer release post-package contract", () => {
         }
         return result;
       },
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     })).rejects.toThrow("installer artifact identity mismatch");
     expect(fs.readFileSync(appImage, "utf8")).toBe("old-post-check");
@@ -668,6 +709,7 @@ describe("installer release post-package contract", () => {
         }
       },
       verifyRuntimeContract: verify,
+      smokeProduct: () => undefined,
       smokeSidecar: () => undefined,
     });
 
@@ -688,6 +730,7 @@ contract.packageAndVerifyInstallerOutputs({
   hostPlatform: "linux",
   runBuilder: async () => undefined,
   verifyRuntimeContract: () => ({ sidecarPath: "unused" }),
+  smokeProduct: () => undefined,
   smokeSidecar: () => undefined,
 }).catch((error) => { console.error(error.message); process.exit(7); });
 `;

@@ -60,3 +60,16 @@ export function toLegacyDetectedParsingOptions(
     has_header: result.has_header ?? defaults.has_header,
   };
 }
+
+/** Options shared by inspection, preview and persistence. */
+export function effectiveFileParsing(
+  role: string,
+  global: Partial<ParsingOptions>,
+  overrides: Partial<ParsingOptions> = {},
+): Partial<ParsingOptions> {
+  const effective = { ...global, ...overrides };
+  if (role === "metadata" && (!effective.na_policy || effective.na_policy === "auto")) {
+    effective.na_policy = "ignore";
+  }
+  return effective;
+}

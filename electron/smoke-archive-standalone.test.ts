@@ -45,6 +45,7 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     keepSandbox: boolean;
     help: boolean;
   };
+  verifyInstalledProduct(port: number, sessionToken: string): Promise<unknown>;
   pluginPreflightTimeoutMs(remainingMs: number): number;
   pushOutput(buffer: string[], label: string, chunk: Buffer): void;
   resolveLaunchLayout(extractedRoot: string, platformId: string, appName: string): {
@@ -277,6 +278,59 @@ describe("smoke-archive-standalone", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("requires installed CPU packages before accepting a release", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ is_aligned: false, missing_count: 2, misaligned_count: 0 }),
+    }));
+    try {
+      await expect(smokeModule.verifyInstalledProduct(43123, "test-session"))
+        .rejects.toThrow("Installed CPU packages are incomplete");
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("exercises metadata with missing cells through the installed wizard routes", async () => {
+    let fixture = "";
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
+      calls.push(url);
+      expect(options.headers).toMatchObject({ "X-Nirs4all-Session": "test-session" });
+      const body = typeof options.body === "string" ? JSON.parse(options.body) : {};
+      let value: unknown;
+      if (url.includes("/config/diff")) {
+        value = { is_aligned: true, missing_count: 0, misaligned_count: 0 };
+      } else if (url.endsWith("/updates/dependencies")) {
+        value = { nirs4all_installed: true, categories: [{ packages: ["shap", "matplotlib"].map(name => ({
+          name, is_installed: true, installed_version: "1.0",
+        })) }] };
+      } else if (url.endsWith("/datasets/detect-unified")) {
+        fixture = body.path;
+        expect(fs.readFileSync(path.join(fixture, "Mtrain.csv"), "utf8")).toContain("sample-a;\n");
+        value = { metadata_columns: ["sample_id", "nirs_Remarque"], files: [{ path: "Mtrain.csv", type: "metadata" }] };
+      } else if (url.endsWith("/datasets/validate-files")) {
+        expect(body.files[0].overrides).toMatchObject({ has_header: true, delimiter: ";" });
+        value = { shapes: { "Mtrain.csv": { num_rows: 2, num_columns: 2, column_names: ["sample_id", "nirs_Remarque"] } } };
+      } else if (url.endsWith("/datasets/link")) {
+        expect(body.config.aggregation).toEqual({ enabled: true, column: "sample_id", method: "mean" });
+        value = { success: true, dataset: { id: "saved" } };
+      } else if (url.endsWith("/datasets/saved")) {
+        value = { dataset: { config: { aggregation: { column: "sample_id" } } } };
+      } else if (url.includes("/datasets/saved/preview")) {
+        value = { success: true, summary: { num_samples: 2, metadata_columns: ["sample_id"] } };
+      } else if (url.endsWith("/datasets/saved/refresh")) {
+        value = { success: true, dataset: { num_samples: 2 } };
+      } else {
+        expect(url).toContain("/datasets/preview");
+        value = { success: true };
+      }
+      return { ok: true, json: async () => value };
+    }));
+    try {
+      await smokeModule.verifyInstalledProduct(43123, "test-session");
+      expect(calls).toHaveLength(9);
+      expect(fs.existsSync(fixture)).toBe(false);
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it("bounds captured process diagnostics by line count and byte length", () => {

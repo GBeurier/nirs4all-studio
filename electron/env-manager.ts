@@ -53,7 +53,8 @@ import {
 } from "./env/runtime-paths";
 import type { BundledRuntimeInfo } from "./env/runtime-paths";
 import { checkPythonEnv, detectExistingEnvs } from "./env/env-detection";
-import { computeEnvFingerprint, readVerifyCache, writeVerifyCache } from "./env/verify-cache";
+import { clearVerifyCache, computeEnvFingerprint, readVerifyCache, writeVerifyCache } from "./env/verify-cache";
+import { validatePythonRuntime } from "./env/runtime-validation";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
@@ -466,20 +467,16 @@ export class EnvManager {
 
     const timeout = envTimeoutMs("NIRS4ALL_PLUGIN_PACKAGE_VERIFY_TIMEOUT_MS", 30000);
     const start = Date.now();
-    const result = await new Promise<boolean>((resolve) => {
-      execFile(
-        pythonPath,
-        [
-          "-c",
-          "from importlib import metadata as m; "
-          + "assert m.version('nirs4all') == '1.0.1'; "
-          + "from nirs4all import studio_scientific_job_v1; "
-          + "assert callable(studio_scientific_job_v1)",
-        ],
-        { timeout },
-        (error) => resolve(!error),
-      );
-    });
+    let result = false;
+    try {
+      await validatePythonRuntime(pythonPath, {
+        timeoutMs: timeout,
+        checkDependencies: !this.isBundled(),
+      });
+      result = true;
+    } catch (error) {
+      console.warn(`verifyBackendPackages: ${error instanceof Error ? error.message : String(error)}`);
+    }
     console.log(`verifyBackendPackages: ${result ? "ok" : "fail"} in ${Date.now() - start}ms`);
     return result;
   }
@@ -513,8 +510,8 @@ export class EnvManager {
     try {
       let repaired = false;
 
-      // Fast path: persistent verify cache. Skips spawning Python entirely
-      // when the env fingerprint matches a previously FULLY verified state.
+      // Directory mtimes cannot detect changes inside installed packages.
+      // A matching cache is diagnostic only; always recheck imports and deps.
       const fingerprint = computeEnvFingerprint(this.envDir, pythonPath);
       const currentVersion = app.getVersion();
       if (fingerprint) {
@@ -525,10 +522,7 @@ export class EnvManager {
           && cached.appVersion === currentVersion
           && cached.fingerprint === fingerprint
         ) {
-          console.log("ensureBackendPackages: verify-cache hit");
-          this.lastError = null;
-          this.status = "ready";
-          return false;
+          console.log("ensureBackendPackages: verify-cache matched; revalidating packages");
         }
       } else {
         console.log("ensureBackendPackages: verify-cache disabled (no fingerprint)");
@@ -615,6 +609,7 @@ export class EnvManager {
       this.status = "ready";
       return repaired;
     } catch (error) {
+      clearVerifyCache(app.getPath("userData"));
       this.status = "error";
       this.lastError = error instanceof Error ? error.message : String(error);
       throw error;
@@ -754,6 +749,16 @@ export class EnvManager {
           info,
         };
       }
+    }
+
+    try {
+      await validatePythonRuntime(pythonPath);
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "Python runtime verification failed",
+        info,
+      };
     }
 
     this.pythonPath = pythonPath;

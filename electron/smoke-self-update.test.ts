@@ -355,7 +355,7 @@ function startFakeBackend(opts: {
       if (url === "/api/system/readiness") {
         readinessPolls += 1;
         const ready = scientificReadiness === "ready-after-poll" && readinessPolls >= 2;
-        return send({ core_ready: true, native_training_ready: ready });
+        return send({ core_ready: true, native_training_ready: ready, ml_ready: ready });
       }
       if (url === "/api/playground/execute" && req.method === "POST") {
         return send({ success: true, processed: { shape: [2, 2] } });

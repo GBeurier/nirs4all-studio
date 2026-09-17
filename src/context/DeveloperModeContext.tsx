@@ -14,7 +14,8 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/workspace";
+import { getAppSettings, updateAppSettings } from "@/api/appSettings";
+import { getWorkspaceSettings } from "@/api/workspace";
 import {
   DeveloperModeContext,
   type DeveloperModeContextType,
@@ -32,10 +33,13 @@ export function DeveloperModeProvider({ children }: DeveloperModeProviderProps) 
   const loadDeveloperMode = useCallback(async () => {
     try {
       setIsLoading(true);
-      const settings = await getWorkspaceSettings();
-      setIsDeveloperMode(settings.developer_mode);
-    } catch (error) {
-      // Workspace may not be selected, default to false
+      const settings = await getAppSettings();
+      const enabled = settings.ui_preferences.developer_mode
+        ?? (await getWorkspaceSettings().catch(() => null))?.developer_mode
+        ?? false;
+      setIsDeveloperMode(enabled);
+    } catch {
+      // Settings may not be available during backend startup.
       setIsDeveloperMode(false);
     } finally {
       setIsLoading(false);
@@ -49,16 +53,17 @@ export function DeveloperModeProvider({ children }: DeveloperModeProviderProps) 
 
   // Set developer mode and persist to backend
   const setDeveloperModeValue = useCallback(async (enabled: boolean) => {
+    const previous = isDeveloperMode;
     try {
       setIsDeveloperMode(enabled);
-      await updateWorkspaceSettings({ developer_mode: enabled });
+      await updateAppSettings({ ui_preferences: { developer_mode: enabled } });
     } catch (error) {
       // Revert on error
-      setIsDeveloperMode(!enabled);
+      setIsDeveloperMode(previous);
       console.error("Failed to update developer mode:", error);
       throw error;
     }
-  }, []);
+  }, [isDeveloperMode]);
 
   // Toggle developer mode
   const toggleDeveloperMode = useCallback(async () => {

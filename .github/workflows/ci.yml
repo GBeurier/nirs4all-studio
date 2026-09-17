@@ -3,6 +3,25 @@
 name: CI
 
 on:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: Immutable Studio commit to qualify for release
+        type: string
+        required: false
+        default: ''
+      nirs4all_library_ref:
+        type: string
+        required: false
+        default: ''
+      dag_ml_ref:
+        type: string
+        required: false
+        default: ''
+      dag_ml_data_ref:
+        type: string
+        required: false
+        default: ''
   push:
     branches: [main, develop, 'rc/**']
   pull_request:
@@ -11,9 +30,9 @@ on:
 env:
   NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
-  NIRS4ALL_LIBRARY_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor-python' || 'main' }}
-  DAG_ML_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor' || 'main' }}
-  DAG_ML_DATA_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor' || 'main' }}
+  NIRS4ALL_LIBRARY_REF: ${{ inputs.nirs4all_library_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor-python' || 'main') }}
+  DAG_ML_REF: ${{ inputs.dag_ml_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor' || 'main') }}
+  DAG_ML_DATA_REF: ${{ inputs.dag_ml_data_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor' || 'main') }}
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -24,6 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -75,6 +96,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -118,6 +141,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -228,6 +253,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -310,6 +337,10 @@ jobs:
           release/linux-unpacked/resources/backend/native/studio-sidecar --smoke-readiness
           echo "Electron build test passed"
 
+      - name: Verify packaged Studio with fresh offline user state
+        timeout-minutes: 15
+        run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root release/linux-unpacked --platform linux
+
   # Windows is the authoritative runtime gate for the converter Job Object.
   sidecar-windows:
     name: Native Sidecar Windows Containment
@@ -318,6 +349,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -351,7 +384,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   summary:
     name: CI Summary
-    needs: [frontend, backend, electron-build, sidecar-windows]
+    needs: [frontend, backend, electron-build, sidecar-windows, docker-native-runtime]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -361,6 +394,7 @@ jobs:
           BACKEND="${{ needs.backend.result }}"
           ELECTRON="${{ needs.electron-build.result }}"
           WINDOWS="${{ needs.sidecar-windows.result }}"
+          DOCKER="${{ needs.docker-native-runtime.result }}"
 
           echo "## CI Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -370,7 +404,8 @@ jobs:
           echo "| Backend | $([[ $BACKEND == 'success' ]] && echo '✅' || echo '❌') $BACKEND |" >> $GITHUB_STEP_SUMMARY
           echo "| Electron Build | $([[ $ELECTRON == 'success' ]] && echo '✅' || echo '❌') $ELECTRON |" >> $GITHUB_STEP_SUMMARY
           echo "| Windows Sidecar | $([[ $WINDOWS == 'success' ]] && echo '✅' || echo '❌') $WINDOWS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Native Docker Runtime | $([[ $DOCKER == 'success' ]] && echo '✅' || echo '❌') $DOCKER |" >> $GITHUB_STEP_SUMMARY
 
-          if [[ "$FRONTEND" != "success" || "$BACKEND" != "success" || "$ELECTRON" != "success" || "$WINDOWS" != "success" ]]; then
+          if [[ "$FRONTEND" != "success" || "$BACKEND" != "success" || "$ELECTRON" != "success" || "$WINDOWS" != "success" || "$DOCKER" != "success" ]]; then
             exit 1
           fi

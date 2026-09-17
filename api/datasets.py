@@ -963,6 +963,8 @@ class ValidateFilesRequest(BaseModel):
 class FileShapeInfo(BaseModel):
     """Shape info for a validated file."""
 
+    column_names: list[str] | None = None
+
     path: str
     num_rows: int | None = None
     num_columns: int | None = None
@@ -1011,27 +1013,32 @@ async def validate_files(request: ValidateFilesRequest):
 
         # Merge global parsing with per-file overrides
         effective_parsing = {**parsing}
-        file_overrides = per_file_overrides.get(file_config.path, {})
+        file_overrides = per_file_overrides.get(file_config.path, file_config.overrides or {})
         if file_overrides:
             effective_parsing.update(file_overrides)
 
         # Map file type to data_type for the loader
         data_type_map = {"X": "x", "Y": "y", "metadata": "metadata"}
         data_type = data_type_map.get(file_config.type, "x")
+        na_policy = effective_parsing.get("na_policy", "auto")
+        if data_type == "metadata" and na_policy in (None, "auto"):
+            na_policy = "ignore"
 
         try:
-            data, _, _, _, _ = get_cached("load_file")(
+            data, _, _, headers, _ = get_cached("load_file")(
                 str(file_path),
                 delimiter=effective_parsing.get("delimiter", ";"),
                 decimal_separator=effective_parsing.get("decimal_separator", "."),
                 has_header=effective_parsing.get("has_header", True),
                 data_type=data_type,
-                na_policy="ignore",  # Only need shapes, don't abort on NAs
+                na_policy=na_policy,
+                **{key: effective_parsing[key] for key in ("encoding", "na_fill_config") if effective_parsing.get(key)},
             )
 
             if data is not None:
                 shapes[file_key] = FileShapeInfo(
                     path=file_key,
+                    column_names=[str(column) for column in data.columns] if hasattr(data, "columns") else headers,
                     num_rows=len(data),
                     num_columns=len(data.columns) if hasattr(data, 'columns') else (data.shape[1] if len(data.shape) > 1 else 1),
                 )

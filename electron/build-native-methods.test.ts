@@ -3,10 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
 const methodsBuild = require("../scripts/build-native-methods.cjs") as {
+  assertPortableLinuxMethods(library: string, inspect?: (...args: unknown[]) => {
+    status: number | null; stdout?: string; stderr?: string; error?: Error;
+  }): string[];
   appendGitHubEnvironment(
     environmentPath: string,
     library: { libraryPath: string; sha256: string },
@@ -38,6 +41,30 @@ const methodsBuild = require("../scripts/build-native-methods.cjs") as {
 };
 
 describe("native Methods product build", () => {
+  it("accepts only the Linux base ABI, independently of libraries installed on the builder", () => {
+    const names = ["libc.so.6", "libm.so.6", "libgcc_s.so.1", "libstdc++.so.6", "ld-linux-x86-64.so.2", "libpthread.so.0", "libdl.so.2", "librt.so.1"];
+    const inspect = vi.fn(() => ({ status: 0, stdout: names.map((name) => ` 0x01 (NEEDED) Shared library: [${name}]`).join("\n") }));
+    expect(methodsBuild.assertPortableLinuxMethods("/tmp/library.so", inspect)).toEqual(names);
+    expect(inspect).toHaveBeenCalledWith("readelf", ["--dynamic", "--wide", "/tmp/library.so"], expect.objectContaining({ timeout: 15000 }));
+  });
+
+  it.each(["libgfortran-93980b03.so.5.0.0", "libgfortran.so.5", "libquadmath.so.0", "libopenblas.so.0", "/build/libc.so.6"])(
+    "refuses unbundled dependency %s even if it loads on the build machine", (dependency) => {
+      expect(() => methodsBuild.assertPortableLinuxMethods("/tmp/library.so", () => ({
+        status: 0, stdout: `0x01 (NEEDED) Shared library: [${dependency}]`,
+      }))).toThrow("non-system runtime libraries");
+    },
+  );
+
+  it("fails closed when ELF dependency inspection is unavailable or malformed", () => {
+    for (const result of [
+      { status: null, error: new Error("readelf absent") },
+      { status: 1, stderr: "not an ELF file" },
+      { status: 0, stdout: "" },
+      { status: 0, stdout: "0x01 (NEEDED) malformed" },
+    ]) expect(() => methodsBuild.assertPortableLinuxMethods("/tmp/library.so", () => result)).toThrow();
+  });
+
   it("maps every release platform to the native upstream preset", () => {
     expect(methodsBuild.targetConfig("linux", "x64")).toMatchObject({
       preset: "ci-linux-gcc12-release",

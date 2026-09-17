@@ -14,13 +14,27 @@ use nirs4all_io::{
         conventions::{match_items, resolve_profiles},
         infer::describe::describe_text,
         materialize::frame::Cell,
-        spec::{dataset_spec::LoadingParams, normalize::normalize_to_spec_dict},
+        spec::dataset_spec::LoadingParams,
     },
     materialize::{loaders::read_table_with_limits, LoadLimits},
 };
 use serde_json::{json, Value};
 
 use crate::scientific_request_resolver::ScientificRequestResolver;
+
+fn inspection_loading_params(params: &Value) -> Result<LoadingParams, String> {
+    // Studio's public fields are flat; IO's LoadingParams owns the nested NA
+    // contract. Legacy dataset normalization does not translate these fields.
+    let mut canonical = params.clone();
+    if params.get("na_policy").is_some() || params.get("na_fill_config").is_some() {
+        canonical["na"] =
+            json!({"policy":params.get("na_policy").cloned().unwrap_or_else(|| json!("auto"))});
+        if let Some(fill) = params.get("na_fill_config") {
+            canonical["na"]["fill"] = fill.clone();
+        }
+    }
+    LoadingParams::from_value(Some(&canonical)).map_err(|error| error.to_string())
+}
 
 mod discovery;
 
@@ -113,11 +127,7 @@ impl DatasetInspection {
         for (key, value) in params.as_object().ok_or("Invalid table params")? {
             detected[key] = value.clone();
         }
-        // Shared dataset aliases (NA/header/decimal etc.) are normalized by IO.
-        let canonical = normalize_to_spec_dict(&json!({"train_x":path,"global_params":detected}));
-        let effective = canonical.get("params").unwrap_or(&detected);
-        let loading =
-            LoadingParams::from_value(Some(effective)).map_err(|error| error.to_string())?;
+        let loading = inspection_loading_params(&detected)?;
         let frame = read_table_with_limits(&path, &loading, self.limits)
             .map_err(|error| error.to_string())?;
         let samples = sample_rows.min(frame.n_rows);
@@ -301,7 +311,12 @@ impl DatasetInspection {
             if file_format(path) == "unknown" {
                 continue;
             }
-            let info = match self.inspect_file(path, &json!({}), 0, adapt) {
+            let params = if role == "metadata" {
+                json!({"na_policy":"ignore"})
+            } else {
+                json!({})
+            };
+            let info = match self.inspect_file(path, &params, 0, adapt) {
                 Ok(info) => info,
                 Err(error) => {
                     warnings.push(format!("{name}: {error}"));
@@ -315,12 +330,20 @@ impl DatasetInspection {
                     }
                 }
             }
+            let mut overrides = info["parsing_options"].clone();
+            if role == "metadata" {
+                // Missing metadata is allowed for inspection, but this is a
+                // role default, not a user-selected per-file policy.
+                if let Some(options) = overrides.as_object_mut() {
+                    options.remove("na_policy");
+                }
+            }
             files.push(json!({"path":path,"filename":name,"type":role,
                 "split":assignment.map_or("unknown", |assignment| assignment.partition.map_or("train", |partition| partition.value())),
                 "source":assignment.map(|assignment| assignment.source_index),
                 "format":presentation_format(path),"size_bytes":size,"confidence":if assignment.is_some(){0.9}else{0.0},"detected":assignment.is_some(),
                 "num_rows":info["num_rows"],"num_columns":info["num_columns"],
-                "overrides":info["parsing_options"],"reader":info["reader"],"detection_confidence":info["confidence"]}));
+                "overrides":overrides,"reader":info["reader"],"detection_confidence":info["confidence"]}));
         }
         let standard = files
             .iter()
@@ -561,6 +584,57 @@ mod tests {
             0
         );
         assert!(inspector.statistics(&config, "typo", &no_python).is_err());
+    }
+
+    #[test]
+    fn inspection_applies_flat_na_policies_and_fill_configuration() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("Xcal.csv");
+        fs::write(&path, "1000;1001\n1;2\n3;\n5;6\n").unwrap();
+        let inspector = DatasetInspection::new(root.path(), LoadLimits::default()).unwrap();
+        for (policy, rows, columns) in [
+            ("ignore", 3, 2),
+            ("remove_sample", 2, 2),
+            ("remove_feature", 3, 1),
+            ("replace", 3, 2),
+        ] {
+            let mut params = json!({"has_header":true,"na_policy":policy});
+            if policy == "replace" {
+                params["na_fill_config"] = json!({"method":"value","fill_value":7});
+            }
+            let info = inspector
+                .inspect_file(&path, &params, 3, &no_python)
+                .unwrap();
+            assert_eq!(info["num_rows"], rows, "{policy}");
+            assert_eq!(info["num_columns"], columns, "{policy}");
+            if policy == "replace" {
+                assert_eq!(info["sample_data"][1][1], "7.0");
+            }
+        }
+    }
+
+    #[test]
+    fn metadata_detection_keeps_missing_cells_and_exposes_repetition_columns() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("Xcal.csv"), "1000;1001\n1;2\n3;4\n5;6\n").unwrap();
+        fs::write(
+            root.path().join("Mcal.csv"),
+            "sample_id;batch\n101;A\n102;\n103;B\n",
+        )
+        .unwrap();
+        let inspector = DatasetInspection::new(root.path(), LoadLimits::default()).unwrap();
+        let result = inspector.detect_files(false, &no_python).unwrap();
+        assert_eq!(result["warnings"], json!([]));
+        assert_eq!(result["metadata_columns"], json!(["sample_id", "batch"]));
+        let metadata = result["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|file| file["type"] == "metadata")
+            .unwrap();
+        assert_eq!(metadata["num_rows"], 3);
+        assert_eq!(metadata["num_columns"], 2);
+        assert!(metadata["overrides"].get("na_policy").is_none());
     }
 
     #[test]

@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const childProcessMocks = vi.hoisted(() => ({
   execFile: vi.fn(),
@@ -40,6 +40,13 @@ function makeUserDataDir(): string {
   return dir;
 }
 
+beforeEach(() => {
+  childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
+    const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
+    callback(null, "", "");
+  });
+});
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
@@ -65,6 +72,65 @@ afterEach(() => {
 });
 
 describe("EnvManager", () => {
+  it("revalidates a matching cache and clears it when a required module is missing", async () => {
+    const userDataDir = makeUserDataDir();
+    const root = path.join(userDataDir, "runtime");
+    const pythonPath = path.join(root, process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+    const sitePackages = path.join(root, process.platform === "win32" ? "Lib/site-packages" : "lib/python3.11/site-packages");
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.mkdirSync(path.join(sitePackages, "shap"), { recursive: true });
+    fs.writeFileSync(pythonPath, "");
+    fs.writeFileSync(path.join(sitePackages, "shap", "__init__.py"), "");
+    fs.writeFileSync(path.join(userDataDir, "env-settings.json"), JSON.stringify({ pythonPath }));
+    const network = await import("./env/network-probe");
+    vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(false);
+    childProcessMocks.execFile.mockImplementation((_command: string, args: string[], _options: unknown, callback: (error: Error | null) => void) => {
+      const importProbe = args.some((arg) => arg.includes("importlib.import_module"));
+      callback(importProbe && !fs.existsSync(path.join(sitePackages, "shap", "__init__.py")) ? new Error("missing shap") : null);
+    });
+    const { EnvManager } = await import("./env-manager");
+    const { computeEnvFingerprint } = await import("./env/verify-cache");
+    const manager = new EnvManager();
+    await expect(manager.ensureBackendPackages()).resolves.toBe(false);
+    const cachePath = path.join(userDataDir, "verify-cache.json");
+    expect(fs.existsSync(cachePath)).toBe(true);
+    const before = computeEnvFingerprint(manager.getEnvDir(), pythonPath);
+    fs.rmSync(path.join(sitePackages, "shap", "__init__.py"));
+    expect(computeEnvFingerprint(manager.getEnvDir(), pythonPath)).toBe(before);
+    await expect(manager.ensureBackendPackages()).rejects.toThrow("not importable");
+    expect(manager.getStatus()).toBe("error");
+    expect(fs.existsSync(cachePath)).toBe(false);
+    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  });
+
+  it("does not persist readiness after pip install succeeds but dependency verification fails", async () => {
+    const userDataDir = makeUserDataDir();
+    const pythonPath = path.join(userDataDir, "runtime", "python.exe");
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.writeFileSync(pythonPath, "");
+    fs.writeFileSync(path.join(userDataDir, "env-settings.json"), JSON.stringify({ pythonPath }));
+    const network = await import("./env/network-probe");
+    vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(true);
+    let imports = 0;
+    childProcessMocks.execFile.mockImplementation((_command: string, args: string[], _options: unknown, callback: (error: Error | null, stdout?: string) => void) => {
+      if (args.some((arg) => arg.includes("importlib.import_module"))) {
+        imports += 1;
+        callback(imports === 1 ? new Error("missing shap") : null);
+      } else if (args.includes("check")) callback(new Error("pip check failed"), "shap requires a compatible numpy");
+      else callback(null);
+    });
+    childProcessMocks.spawn.mockImplementation(() => {
+      const child = Object.assign(new EventEmitter(), { pid: 1234, stderr: new EventEmitter(), stdout: new EventEmitter() });
+      process.nextTick(() => child.emit("close", 0));
+      return child;
+    });
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+    await expect(manager.ensureBackendPackages()).rejects.toThrow("compatible numpy");
+    expect(manager.getStatus()).toBe("error");
+    expect(fs.existsSync(path.join(userDataDir, "verify-cache.json"))).toBe(false);
+  });
+
   it("clears a stale saved custom python path instead of treating it as ready", async () => {
     const userDataDir = makeUserDataDir();
     const settingsPath = path.join(userDataDir, "env-settings.json");
@@ -290,6 +356,10 @@ describe("EnvManager", () => {
           ? { nirs4all: "0.9.3" }
           : {
               nirs4all: "1.0.1",
+              duckdb: "1.5.5",
+              pyarrow: "25.0.1",
+              shap: "0.47.1",
+              matplotlib: "3.10.1",
               fastapi: "0.111.0",
               uvicorn: "0.30.0",
               pydantic: "2.10.0",
@@ -369,6 +439,10 @@ describe("EnvManager", () => {
           version: "3.11.8",
           installed: {
             nirs4all: "1.0.1",
+            duckdb: "1.5.5",
+            pyarrow: "25.0.1",
+            shap: "0.47.1",
+            matplotlib: "3.10.1",
             fastapi: "0.111.0",
             uvicorn: "0.30.0",
             pydantic: "2.10.0",
@@ -431,6 +505,10 @@ describe("EnvManager", () => {
           version: "3.11.7",
           installed: {
             nirs4all: "1.0.1",
+            duckdb: "1.5.5",
+            pyarrow: "25.0.1",
+            shap: "0.47.1",
+            matplotlib: "3.10.1",
             fastapi: "0.111.0",
             uvicorn: "0.30.0",
             pydantic: "2.10.0",

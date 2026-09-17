@@ -33,9 +33,12 @@ const fs = require("fs");
 const path = require("path");
 const https = require("https");
 const http = require("http");
+const { pipeline } = require("node:stream/promises");
+const { randomUUID } = require("node:crypto");
 const {
   assertProfileSupportedOnPlatform,
   PYTHON_VERSION,
+  PLUGIN_SUPPORT_PACKAGES,
   PBS_TAG,
   getArchiveFilename,
   getDownloadUrl,
@@ -73,7 +76,6 @@ const WHEEL_BUILD_TOOLCHAIN = Object.freeze([
   "packaging==26.3",
 ]);
 const PLUGIN_PIP_NETWORK_ARGS = Object.freeze(["--timeout", "60", "--retries", "3"]);
-const TOOLS_READER_PACKAGES = Object.freeze(["duckdb==1.5.5", "pyarrow==25.0.1"]);
 
 function buildDeterministicWheelEnv(sourceEpoch, baseEnv = process.env) {
   return {
@@ -302,6 +304,10 @@ function buildPipInstallArgs(packageSpecs, options = {}) {
     ...(options.constraintsFile ? ["-c", options.constraintsFile] : []),
     ...packageSpecs,
   ];
+}
+
+async function verifyInstalledDependencies(runtimePython, isolated = false, execute = runCommand) {
+  await execute(runtimePython, [...(isolated ? ["-I"] : []), "-m", "pip", "check"]);
 }
 
 function buildPluginToolchainInstallArgs() {
@@ -616,56 +622,70 @@ function getCompileTargets(options) {
  * Download a file from a URL, following redirects.
  * Shows progress during download.
  */
-function downloadFile(url, destPath) {
-  return new Promise((resolve, reject) => {
-    const makeRequest = (requestUrl) => {
-      const protocol = requestUrl.startsWith("https") ? https : http;
-      protocol.get(requestUrl, (response) => {
-        // Follow redirects (GitHub returns 302)
-        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          return makeRequest(response.headers.location);
+async function downloadFile(url, destPath, options = {}) {
+  let lastProgressLog = 0;
+  const onProgress = (percent) => {
+    if (percent >= lastProgressLog + 10) {
+      lastProgressLog = percent - percent % 10;
+      console.log(`  Download progress: ${percent}%`);
+    }
+  };
+  const { timeoutMs = 30_000, maxDurationMs = 15 * 60_000, retries = 2, retryDelayMs = 250, maxRedirects = 5 } = options;
+  for (let attempt = 0; ; attempt += 1) {
+    const partial = `${destPath}.${randomUUID()}.partial`;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(new Error("Download exceeded its time limit")), maxDurationMs);
+    let response;
+    try {
+      let currentUrl = new URL(url);
+      for (let redirects = 0; ; redirects += 1) {
+        if (!["http:", "https:"].includes(currentUrl.protocol)) throw new Error("Unsupported download URL protocol");
+        const protocol = currentUrl.protocol === "https:" ? https : http;
+        response = await new Promise((resolve, reject) => {
+          const request = protocol.get(currentUrl, { signal: controller.signal }, resolve);
+          request.setTimeout(timeoutMs, () => request.destroy(new Error("Download timed out waiting for data")));
+          request.once("error", reject);
+        });
+        if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          const location = response.headers.location;
+          response.destroy();
+          if (redirects >= maxRedirects) throw new Error("Too many download redirects");
+          currentUrl = new URL(location, currentUrl);
+          continue;
         }
-
-        if (response.statusCode !== 200) {
-          reject(new Error(`Download failed with status ${response.statusCode}`));
-          return;
-        }
-
-        const totalBytes = parseInt(response.headers["content-length"] || "0", 10);
-        let receivedBytes = 0;
-        let lastProgressLog = 0;
-
-        const file = fs.createWriteStream(destPath);
-        response.pipe(file);
-
-        response.on("data", (chunk) => {
-          receivedBytes += chunk.length;
-          if (totalBytes > 0) {
-            const percent = Math.floor((receivedBytes / totalBytes) * 100);
-            // Log every 10%
-            if (percent >= lastProgressLog + 10) {
-              lastProgressLog = percent - (percent % 10);
-              process.stdout.write(`  Download progress: ${percent}% (${formatSize(receivedBytes)} / ${formatSize(totalBytes)})\n`);
-            }
+        break;
+      }
+      if (response.statusCode !== 200) throw new Error(`Download failed with status ${response.statusCode}`);
+      const length = response.headers["content-length"];
+      const totalBytes = length === undefined ? null : Number(length);
+      let receivedBytes = 0;
+      let lastReportedPercent = -1;
+      response.on("data", (chunk) => {
+        receivedBytes += chunk.length;
+        if (totalBytes && onProgress) {
+          const percent = Math.min(100, Math.floor(receivedBytes / totalBytes * 100));
+          if (percent > lastReportedPercent) {
+            lastReportedPercent = percent;
+            try { onProgress(percent); } catch (error) { controller.abort(error); }
           }
-        });
-
-        file.on("finish", () => {
-          file.close();
-          console.log(`  Download complete: ${formatSize(receivedBytes)}`);
-          resolve();
-        });
-
-        file.on("error", (err) => {
-          fs.unlinkSync(destPath);
-          reject(err);
-        });
-      }).on("error", reject);
-    };
-
-    makeRequest(url);
-  });
+        }
+      });
+      await pipeline(response, fs.createWriteStream(partial, { flags: "wx" }), { signal: controller.signal });
+      if (totalBytes !== null && receivedBytes !== totalBytes) throw new Error("Incomplete download: response size does not match Content-Length");
+      await fs.promises.rename(partial, destPath);
+      return;
+    } catch (error) {
+      response?.destroy();
+      await fs.promises.rm(partial, { force: true });
+      if (attempt >= retries) throw error;
+    } finally {
+      clearTimeout(deadline);
+      controller.abort();
+    }
+    await new Promise(resolve => setTimeout(resolve, retryDelayMs * (attempt + 1)));
+  }
 }
+
 
 // --- Main ---
 async function main() {
@@ -754,7 +774,13 @@ async function main() {
   // GNU tar (from Git) interprets drive letters as remote hosts and needs --force-local.
   // Windows built-in bsdtar doesn't support --force-local but handles paths natively.
   if (isWindows && await isGnuTar()) tarArgs.push("--force-local");
-  await runCommand("tar", tarArgs);
+  try {
+    await runCommand("tar", tarArgs);
+  } catch (error) {
+    fs.rmSync(cachedTarball, { force: true });
+    fs.rmSync(pythonDir, { recursive: true, force: true });
+    throw error;
+  }
 
   // Verify extraction
   const embeddedPython = isWindows
@@ -918,14 +944,14 @@ async function main() {
       retries: isWindows ? 3 : 1,
       label: "install pinned nirs4all plugin wheel",
     });
-    await runCommandWithRetries(runtimePython, buildPipInstallArgs(TOOLS_READER_PACKAGES, {
+    await runCommandWithRetries(runtimePython, buildPipInstallArgs(PLUGIN_SUPPORT_PACKAGES, {
       constraintsFile,
       isolated: true,
       noCompile: true,
       upgrade: true,
     }), {}, {
       retries: isWindows ? 3 : 1,
-      label: "install exact legacy converter readers",
+      label: "install exact converter, explainability and plotting packages",
     });
     const toolsWheelDir = path.join(cacheDir, "studio-python-tools-wheel");
     fs.mkdirSync(toolsWheelDir, { recursive: true });
@@ -1004,6 +1030,12 @@ async function main() {
     });
   }
   console.log("");
+
+  // A successful resolver exit does not guarantee consistency across install
+  // phases (including the tools wheel installed with --no-deps). Verify before
+  // pruning pip so an incomplete environment can never receive a ready marker.
+  console.log("=== Verify installed dependency compatibility ===");
+  await verifyInstalledDependencies(runtimePython, pluginOnly);
 
   if (!runtimeOnly) {
     // 8. Copy backend source
@@ -1170,10 +1202,12 @@ if (require.main === module) {
 }
 
 module.exports = {
+  downloadFile,
   getCompileTargets,
   isStandaloneBundledRuntimeMode,
   buildPipInstallArgs,
   buildPluginToolchainInstallArgs,
+  verifyInstalledDependencies,
   buildDeterministicWheelEnv,
   getLocalNirs4allCandidates,
   resolveLocalNirs4allPath,

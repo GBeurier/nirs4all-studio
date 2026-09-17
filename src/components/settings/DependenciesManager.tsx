@@ -69,8 +69,14 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await refreshDependencies();
-    await loadDependencies(true);
+    try {
+      await refreshDependencies();
+      await loadDependencies(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh dependencies");
+    } finally {
+      setIsRefreshing(false);
+    }
   }, [loadDependencies]);
 
   const handleInstall = useCallback(async (packageName: string) => {
@@ -233,12 +239,12 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
 
   const outdatedCount = countOutdatedPackages(dependencies);
   const runtimeDisplay = getPythonRuntimeDisplayState(runtimeSummary);
-  const isReadOnlyRuntime = runtimeDisplay.isReadOnly;
+  const isReadOnlyRuntime = dependencies.read_only === true || runtimeDisplay.isReadOnly;
 
   return (
     <DependenciesManagerShell
       dependencies={dependencies}
-      runtimeDisplay={runtimeDisplay}
+      runtimeDisplay={{ ...runtimeDisplay, isReadOnly: isReadOnlyRuntime }}
       outdatedCount={outdatedCount}
       isRefreshing={isRefreshing}
       isRefreshDisabled={isRefreshing || !!processingPackage}

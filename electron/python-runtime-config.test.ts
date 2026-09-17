@@ -28,7 +28,9 @@ describe("python-runtime-config", () => {
     ]);
     expect(transitionalHttpConfig.BACKEND_COMMON_PACKAGES).toContain("fastapi>=0.115.0");
     expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("1.0.1");
-    expect(runtimeConfig.PLUGIN_HOST_PACKAGES).toEqual(["nirs4all==1.0.1"]);
+    expect(runtimeConfig.PLUGIN_HOST_PACKAGES).toEqual([
+      "nirs4all==1.0.1", "duckdb==1.5.5", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1",
+    ]);
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toEqual(runtimeConfig.PLUGIN_HOST_PACKAGES);
 
     const packagedSpecs = runtimeConfig.MANAGED_RUNTIME_PACKAGES.join(" ").toLowerCase();

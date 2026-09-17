@@ -344,7 +344,7 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
       case "targets":
         return true; // Targets are optional
       case "preview":
-        return state.preview !== null && !state.preview.error;
+        return state.preview?.success === true && !state.preview.error;
       default:
         return false;
     }

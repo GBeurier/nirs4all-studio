@@ -69,11 +69,8 @@ jobs:
       # via needs.prepare.outputs.* (reliable, unlike the old per-step env probe).
       has_windows_signing: ${{ steps.signing.outputs.has_windows_signing }}
       has_macos_signing: ${{ steps.signing.outputs.has_macos_signing }}
-      # The git ref every build job checks out. Tag push -> the triggering tag;
-      # workflow_dispatch -> inputs.tag when it already exists as a ref, else the
-      # triggering commit SHA (so a smoke-test tag that does not exist yet still
-      # checks out a valid, buildable ref instead of failing or silently building
-      # the wrong branch).
+      # Resolve once to an immutable commit; every platform checks out the
+      # identical source even if a tag is moved while jobs are queued.
       checkout_ref: ${{ steps.checkout_ref.outputs.checkout_ref }}
     steps:
       - uses: actions/checkout@v4
@@ -109,13 +106,11 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           if [[ "${{ github.event_name }}" == "push" ]]; then
-            # Tag push: GITHUB_REF already points at the tag.
-            REF="$GITHUB_REF"
-            echo "Tag push: build jobs check out triggering ref $REF"
+            # The default checkout is the event's commit, not a later tag value.
+            REF="$(git rev-parse 'HEAD^{commit}')"
           elif git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
-            # workflow_dispatch against an existing tag: build that tag.
-            REF="refs/tags/${TAG}"
-            echo "Dispatch: tag '${TAG}' exists; build jobs check out $REF"
+            git fetch --no-tags --depth=1 origin "refs/tags/${TAG}"
+            REF="$(git rev-parse 'FETCH_HEAD^{commit}')"
           else
             # workflow_dispatch against a tag that does not exist yet (smoke test):
             # fall back to the triggering commit so checkout always succeeds and
@@ -123,8 +118,12 @@ jobs:
             REF="$GITHUB_SHA"
             echo "::warning::Dispatch tag '${TAG}' does not exist as a ref; build jobs will use the triggering commit $GITHUB_SHA (version is still stamped as ${{ steps.version.outputs.version }})."
           fi
+          if [[ ! "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Release source must resolve to an immutable commit SHA"
+            exit 1
+          fi
           echo "checkout_ref=$REF" >> "$GITHUB_OUTPUT"
-          echo "Resolved checkout SHA: $(git rev-parse "$REF" 2>/dev/null || echo '(resolves in build jobs)')"
+          echo "Resolved checkout SHA: $REF"
           echo "- **Checkout ref**: \`$REF\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Validate pinned runtime dependency refs
@@ -187,6 +186,18 @@ jobs:
         run: |
           echo "skip_all_in_one=${{ inputs.skip_all_in_one || 'false' }}" >> $GITHUB_OUTPUT
           echo "skip_docker=${{ inputs.skip_docker || 'false' }}" >> $GITHUB_OUTPUT
+
+  # Run the required checks on the exact Studio commit and pinned library refs.
+  # A tag or manual dispatch must not bypass the PR quality gate.
+  quality:
+    name: Qualify release commit
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    with:
+      checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
+      nirs4all_library_ref: bf21c552b9d0929daf2dcc2ac7b220c9631ffa07
+      dag_ml_ref: 233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27
+      dag_ml_data_ref: ffe533704a1a0b0c7bb7d97a997caade3f4ba36e
 
   # Acquire the published universal nirs4all wheel once on Linux and build the
   # pinned conversion-tools wheel once. Every distributable consumes these exact
@@ -273,6 +284,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            xvfb \
             libgirepository1.0-dev \
             libcairo2-dev \
             gir1.2-gtk-3.0 \
@@ -339,6 +351,7 @@ jobs:
           ARTIFACT_BOUNDARY="$(dirname "$(dirname "$BACKEND_ROOT")")"
           node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
           "$SIDECAR" --smoke-readiness
+          xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform linux
 
       - name: Generate checksums
         run: |
@@ -475,6 +488,8 @@ jobs:
           node scripts/native-runtime-contract.cjs --backend-root $backendRoot --artifact-boundary-root $artifactBoundary --platform win32 --arch x64 --require-bundled-python-plugin --require-bundled-methods
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar.FullName --smoke-readiness
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/smoke-archive-standalone.cjs --extracted-root $artifactBoundary --platform win32
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify Authenticode signature
@@ -645,6 +660,7 @@ jobs:
           node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch x64 --require-bundled-python-plugin --require-bundled-methods
           if [ "$(uname -m)" = "x86_64" ]; then
             "$SIDECAR" --smoke-readiness
+            node scripts/smoke-archive-standalone.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform darwin
           else
             echo "Skipping packaged x86_64 sidecar execution on $(uname -m)."
           fi
@@ -848,6 +864,7 @@ jobs:
           node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch arm64 --require-bundled-python-plugin --require-bundled-methods
           if [ "$(uname -m)" = "arm64" ]; then
             "$SIDECAR" --smoke-readiness
+            node scripts/smoke-archive-standalone.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform darwin
           else
             echo "Skipping packaged arm64 sidecar execution on $(uname -m)."
           fi
@@ -1645,8 +1662,35 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   docker:
     name: Native Docker Image
-    needs: prepare
-    if: needs.prepare.outputs.skip_docker != 'true'
+    needs:
+      - prepare
+      - quality
+      - installer-linux
+      - installer-windows
+      - installer-macos-x64
+      - installer-macos-arm64
+      - archive-windows
+      - archive-linux
+      - archive-macos-x64
+      - archive-macos-arm64
+    if: >-
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.quality.result == 'success' &&
+      needs.prepare.outputs.skip_docker != 'true' &&
+      needs.installer-linux.result == 'success' &&
+      needs.installer-windows.result == 'success' &&
+      needs.installer-macos-x64.result == 'success' &&
+      needs.installer-macos-arm64.result == 'success' &&
+      (
+        needs.prepare.outputs.skip_all_in_one == 'true' ||
+        (
+          needs.archive-windows.result == 'success' &&
+          needs.archive-linux.result == 'success' &&
+          needs.archive-macos-x64.result == 'success' &&
+          needs.archive-macos-arm64.result == 'success'
+        )
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1684,9 +1728,13 @@ jobs:
         run: |
           docker build \
             --build-arg STUDIO_VERSION=${{ needs.prepare.outputs.version }} \
-            --build-arg STUDIO_REVISION=${{ github.sha }} \
+            --build-arg STUDIO_REVISION=${{ needs.prepare.outputs.checkout_ref }} \
             --build-arg NIRS4ALL_METHODS_SHA256=${NIRS4ALL_BUILD_METHODS_SHA256} \
             --build-context methods-runtime="$(dirname "${NIRS4ALL_BUILD_METHODS_LIBRARY}")" \
+            --label "org.opencontainers.image.title=nirs4all Studio" \
+            --label "org.opencontainers.image.version=${{ needs.prepare.outputs.version }}" \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ needs.prepare.outputs.checkout_ref }}" \
             --tag nirs4all-studio:native-release-candidate \
             .
           bash scripts/smoke-docker-native-runtime.sh nirs4all-studio:native-release-candidate
@@ -1700,29 +1748,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Publish the tested Docker image
         if: needs.prepare.outputs.is_tag_release == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          tags: |
-            ghcr.io/gbeurier/nirs4all-studio:${{ needs.prepare.outputs.version }}
-            ghcr.io/gbeurier/nirs4all-studio:latest
-          build-args: |
-            STUDIO_VERSION=${{ needs.prepare.outputs.version }}
-            STUDIO_REVISION=${{ github.sha }}
-            NIRS4ALL_METHODS_SHA256=${{ env.NIRS4ALL_BUILD_METHODS_SHA256 }}
-          build-contexts: |
-            methods-runtime=${{ env.NIRS4ALL_BUILD_METHODS_DIRECTORY }}
-          cache-from: type=gha,scope=native-container
-          cache-to: type=gha,mode=max,scope=native-container
-          labels: |
-            org.opencontainers.image.title=nirs4all Studio
-            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          IS_PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          # Promote the image that passed the smoke. Rebuilding here would
+          # publish bytes that have never been tested.
+          IMAGE=ghcr.io/gbeurier/nirs4all-studio
+          docker tag nirs4all-studio:native-release-candidate "$IMAGE:$RELEASE_VERSION"
+          docker push "$IMAGE:$RELEASE_VERSION"
+          if [ "$IS_PRERELEASE" != 'true' ]; then
+            docker tag nirs4all-studio:native-release-candidate "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Release: Consolidate all artifacts into GitHub Release
@@ -1731,6 +1771,7 @@ jobs:
     name: Create Release
     needs:
       - prepare
+      - quality
       - installer-linux
       - installer-windows
       - installer-macos-x64
@@ -1743,6 +1784,7 @@ jobs:
     if: >-
       always() &&
       needs.prepare.result == 'success' &&
+      needs.quality.result == 'success' &&
       needs.installer-linux.result == 'success' &&
       needs.installer-windows.result == 'success' &&
       needs.installer-macos-x64.result == 'success' &&

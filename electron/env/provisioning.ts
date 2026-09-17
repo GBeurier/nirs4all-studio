@@ -16,6 +16,7 @@ import { runCommand, rmWithRetry } from "./process-utils";
 import { downloadFile, extractTarball, removeQuarantine } from "./python-runtime-installer";
 import { MANAGED_RUNTIME_PACKAGES } from "./env-inspection";
 import { loadPythonRuntimeConfig } from "./external-config";
+import { validatePythonRuntime } from "./runtime-validation";
 
 interface PythonRuntimeConfigModule {
   PBS_TAG: string;
@@ -81,6 +82,7 @@ export async function installCorePackages(
     retries: 2,
     timeoutMs,
   });
+  await validatePythonRuntime(pythonPath, { timeoutMs: Math.min(timeoutMs, ENSUREPIP_TIMEOUT_MS) });
 }
 
 /**
@@ -131,7 +133,13 @@ export async function provisionManagedRuntime(
     fs.mkdirSync(extractDir, { recursive: true });
 
     try {
-      await extractTarball(cachedTarball, extractDir);
+      try {
+        await extractTarball(cachedTarball, extractDir);
+      } catch (error) {
+        // A corrupt cached archive must not poison every subsequent retry.
+        fs.rmSync(cachedTarball, { force: true });
+        throw error;
+      }
 
       const extractedPythonDir = path.join(extractDir, "python");
       const extractedPython = isWindows
@@ -217,7 +225,9 @@ export async function provisionManagedRuntime(
       });
     }
 
-    report(90, "installing", "All packages installed");
+    report(90, "installing", "Verifying installed packages...");
+    await validatePythonRuntime(venvPython, { timeoutMs: ENSUREPIP_TIMEOUT_MS });
+    report(91, "installing", "All packages verified");
 
     // 6. Pre-compile bytecode
     report(92, "installing", "Optimizing startup time...");

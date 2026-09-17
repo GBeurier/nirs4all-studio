@@ -119,10 +119,26 @@ describe("DatasetWizardConfig", () => {
         split: "train",
         source: 2,
         overrides: {
+          ...state.parsing,
           delimiter: ",",
         },
       },
     ]);
+  });
+
+  it("uses metadata NA defaults without changing explicit choices or resurrecting disabled overrides", () => {
+    const state = createWizardState({
+      files: [{
+        path: "Mcal.csv", filename: "Mcal.csv", type: "metadata", split: "train",
+        source: null, format: "csv", size_bytes: 10, confidence: 0.9, detected: true,
+        overrides: { delimiter: ",", encoding: "latin-1", na_policy: "abort" },
+      }],
+    });
+    expect(buildDatasetWizardFiles(state)[0].overrides).toEqual({ ...state.parsing, na_policy: "ignore" });
+    state.parsing.na_policy = "abort";
+    expect(buildDatasetWizardFiles(state)[0].overrides?.na_policy).toBe("abort");
+    state.perFileOverrides["Mcal.csv"] = { na_policy: "ignore", delimiter: "," };
+    expect(buildDatasetWizardFiles(state)[0].overrides).toEqual({ ...state.parsing, delimiter: ",", na_policy: "ignore" });
   });
 
   it("persists explicit target selection and per-target task types", () => {

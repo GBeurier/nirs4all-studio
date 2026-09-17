@@ -19,6 +19,7 @@ const {
   writeRuntimeContract,
 } = require("./native-runtime-contract.cjs");
 const { assertStaticWindowsRuntime } = require("./windows-pe-runtime.cjs");
+const { assertPortableLinuxMethods } = require("./build-native-methods.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 const METHODS_BUILD_SOURCE_ENV = "NIRS4ALL_BUILD_METHODS_LIBRARY";
@@ -121,6 +122,7 @@ function stagePackagedMethodsLibrary({
   platform,
   sourcePath = process.env[METHODS_BUILD_SOURCE_ENV]?.trim() || null,
   expectedSha256 = process.env[METHODS_BUILD_SHA256_ENV]?.trim() || null,
+  inspectLinuxLibrary = assertPortableLinuxMethods,
 }) {
   if (sourcePath === null && expectedSha256 === null) return null;
   if (sourcePath === null || expectedSha256 === null) {
@@ -145,6 +147,7 @@ function stagePackagedMethodsLibrary({
   if (sha256File(normalizedSource) !== expectedSha256) {
     throw new Error("Native Methods build source SHA-256 mismatch");
   }
+  if (platform === "linux") inspectLinuxLibrary(normalizedSource);
   const stagedPath = path.join(backendRoot, bundledMethodsRelativePath(platform));
   fs.mkdirSync(path.dirname(stagedPath), { recursive: true });
   if (fs.realpathSync.native(path.dirname(stagedPath)) !== path.resolve(path.dirname(stagedPath))) {

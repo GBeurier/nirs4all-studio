@@ -8,7 +8,7 @@
  * 4. Completion
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "@/lib/motion";
@@ -43,8 +43,10 @@ import {
   useCompleteSetup,
   useSkipSetup,
 } from "@/hooks/useRecommendedConfig";
-import { alignConfig } from "@/api/config";
+import { alignConfig, getConfigDiff } from "@/api/config";
 import { getDependencies } from "@/api/dependencies";
+import { getRuntimeSummary } from "@/api/system";
+import { api } from "@/api/transport";
 import type { ProfileInfo, OptionalPackageInfo } from "@/api/config";
 import {
   filterOptionalPackagesForProfile,
@@ -66,6 +68,86 @@ const stepVariants = {
 };
 
 export default function SetupWizard() {
+  const navigate = useNavigate();
+  const completeSetupMutation = useCompleteSetup();
+  const [mode, setMode] = useState<"checking" | "writable" | "packaged">("checking");
+  const [checking, setChecking] = useState(true);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const verifyRuntime = useCallback(async () => {
+    setChecking(true);
+    setReady(false);
+    setError(null);
+    try {
+      const inventory = await getDependencies(true);
+      if (inventory.read_only !== true) {
+        setMode("writable");
+        return false;
+      }
+      setMode("packaged");
+      const [diff, runtime, readiness] = await Promise.all([
+        getConfigDiff("cpu", false, false),
+        getRuntimeSummary(),
+        api.get<{ ml_ready?: boolean; ml_error?: string | null }>("/system/readiness"),
+      ]);
+      if (!inventory.runtime_valid || !runtime.core_ready || !runtime.coherent) {
+        throw new Error("The included Python runtime is not ready. Repair or reinstall Studio, then retry verification.");
+      }
+      if (readiness.ml_ready !== true) {
+        throw new Error(readiness.ml_error || "The scientific runtime is not ready. Repair or reinstall Studio, then retry verification.");
+      }
+      if (!diff.is_aligned) {
+        const packages = diff.packages.filter((pkg) => pkg.status === "missing" || pkg.status === "outdated");
+        throw new Error(`Required packages are missing or incompatible: ${packages.map((pkg) => pkg.name).join(", ")}. Repair or reinstall Studio, then retry verification.`);
+      }
+      setReady(true);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to verify the installed runtime");
+      return false;
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  useEffect(() => { void verifyRuntime(); }, [verifyRuntime]);
+
+  const finishPackagedSetup = async () => {
+    // Recheck the selected interpreter immediately before persisting completion.
+    if (!await verifyRuntime()) return;
+    try {
+      await completeSetupMutation.mutateAsync({ profile: "cpu" });
+      navigate("/datasets", { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save setup completion");
+    }
+  };
+
+  if (mode === "writable") return <WritableSetupWizard />;
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-2xl">
+        <CardHeader>
+          <CardTitle>Verify Studio installation</CardTitle>
+          <CardDescription>Studio includes its Python runtime and CPU packages. Verify the installation before opening your datasets.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {checking && <p role="status">Checking the installed runtime and required packages…</p>}
+          {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+          {ready && !checking && <p role="status">The included CPU runtime and required packages are ready.</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => void verifyRuntime()} disabled={checking || completeSetupMutation.isPending}>Retry verification</Button>
+            <Button onClick={() => void finishPackagedSetup()} disabled={!ready || checking || completeSetupMutation.isPending}>Open Studio</Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function WritableSetupWizard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
 

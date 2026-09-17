@@ -1,3 +1,4 @@
+import { effectiveFileParsing } from "./ParsingStepLogic";
 import type {
   DatasetConfig,
   DatasetFile,
@@ -21,7 +22,7 @@ type WizardConfigState = Pick<
 >;
 
 export function buildDatasetWizardFiles(
-  state: Pick<WizardState, "files" | "perFileOverrides">,
+  state: Pick<WizardState, "files" | "perFileOverrides" | "parsing">,
 ): DatasetFile[] {
   return state.files
     .filter((file) => file.type !== "unknown")
@@ -30,7 +31,7 @@ export function buildDatasetWizardFiles(
       type: file.type as DatasetFile["type"],
       split: file.split === "unknown" ? "train" : file.split,
       source: file.source ?? null,
-      overrides: state.perFileOverrides[file.path],
+      overrides: effectiveFileParsing(file.type, state.parsing, state.perFileOverrides[file.path]),
     }));
 }
 

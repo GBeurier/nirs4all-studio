@@ -4,6 +4,7 @@ const { spawnSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 const { installAdapters, verifyAdapters } = require("./studio-document-adapters.cjs");
 
 const projectRoot = path.join(__dirname, "..");
@@ -16,7 +17,7 @@ const PLUGIN_DISTRIBUTION_VERSION = "1.0.1";
 const PLUGIN_INSTALLED_MANIFEST_SHA256 = "768e65e0ca900f1a50a88a01f6c09cc7870ce033383cac5c968bfac8fee25bbe";
 const PLUGIN_CONSTRAINTS_RELATIVE_PATH = "build/constraints/plugin-runtime-cpython311.txt";
 const PLUGIN_CONSTRAINTS_PATH = path.join(projectRoot, ...PLUGIN_CONSTRAINTS_RELATIVE_PATH.split("/"));
-const PLUGIN_CONSTRAINTS_SHA256 = "0b11bc09f82a7806055b18fc478ece69554e00932f7d0138656804a57d36ccb1";
+const PLUGIN_CONSTRAINTS_SHA256 = "e96dd6da1c76e3d0f1c6f04331d2bf19a68e7f02875cd17940bff1ea94eba647";
 const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
 const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
 const TOOLS_DISTRIBUTION_VERSION = "0.0.7";
@@ -57,7 +58,7 @@ const PREFLIGHT = String.raw`import base64,csv,hashlib,importlib.metadata,io,jso
 platform.machine()
 def deny(event,args):
     if event == "socket.bind": raise RuntimeError("listener denied")
-    if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}: raise RuntimeError("spawn denied")
+    if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}: raise PermissionError("spawn denied")
 sys.addaudithook(deny)
 sys.path.insert(0,sys.argv[1])
 bind_denied=spawn_denied=spawnv_denied=False
@@ -66,12 +67,25 @@ try: s.bind(("127.0.0.1",0))
 except RuntimeError: bind_denied=True
 finally: s.close()
 try: subprocess.Popen([sys.executable,"-c","pass"])
-except RuntimeError: spawn_denied=True
+except PermissionError: spawn_denied=True
 if os.name == "posix":
     try: os.spawnv(os.P_WAIT,"/bin/true",["true"])
-    except RuntimeError: spawnv_denied=True
+    except PermissionError: spawnv_denied=True
 else: spawnv_denied=True
 import nirs4all,nirs4all_tools,duckdb,pyarrow,pyarrow.parquet as parquet
+import numpy as np, shap
+from sklearn.linear_model import LinearRegression
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+sample=np.array([[0.,1.],[1.,0.],[2.,1.],[3.,2.]])
+model=LinearRegression().fit(sample,np.array([0.,1.,2.,3.]))
+explanation=shap.LinearExplainer(model,sample)(sample)
+if explanation.values.shape != sample.shape or not np.isfinite(explanation.values).all():
+    raise RuntimeError("SHAP functional preflight failed")
+figure=Figure(); FigureCanvasAgg(figure); figure.add_subplot().plot([0,1],[0,1])
+png=io.BytesIO(); figure.savefig(png,format="png")
+if not png.getvalue().startswith(b"\x89PNG"):
+    raise RuntimeError("Matplotlib functional preflight failed")
 from studio_document_adapters.api.library_documents import adapt_document
 if not callable(getattr(nirs4all,"studio_scientific_job_v2",None)):
     raise RuntimeError("general scientific callable unavailable")
@@ -334,11 +348,20 @@ function runPreflight(runtimeRoot, sitePackages, platform = process.platform) {
   if (!fs.existsSync(python) || fs.lstatSync(python).isSymbolicLink()) {
     throw new Error(`Plugin runtime interpreter is absent or linked: ${python}`);
   }
-  const result = spawnSync(python, ["-I", "-S", "-B", "-c", PREFLIGHT, sitePackages], {
-    encoding: "utf8",
-    timeout: 120_000,
-    windowsHide: true,
-  });
+  // Always qualify a first launch. A warm developer font cache can hide
+  // Matplotlib subprocess discovery failures inside the bounded plugin host.
+  const plottingCache = fs.mkdtempSync(path.join(os.tmpdir(), "studio-plugin-preflight-"));
+  let result;
+  try {
+    result = spawnSync(python, ["-I", "-S", "-B", "-c", PREFLIGHT, sitePackages], {
+      encoding: "utf8",
+      timeout: 120_000,
+      windowsHide: true,
+      env: { ...process.env, MPLCONFIGDIR: plottingCache, MPLBACKEND: "Agg" },
+    });
+  } finally {
+    fs.rmSync(plottingCache, { recursive: true, force: true });
+  }
   if (result.status !== 0) {
     throw new Error(`Plugin runtime preflight failed: ${(result.stderr || "").trim()}`);
   }
@@ -412,6 +435,12 @@ function expectedMarker(platform = process.platform, arch = process.arch) {
 }
 
 function verifyPluginRuntime({ backendRoot, platform = process.platform, arch = process.arch, writeMarker = false }) {
+  const readyPath = markerPath(backendRoot);
+  if (writeMarker) {
+    // Requalification must revoke a previous success before touching the staged
+    // runtime. A failed import or inventory check must never leave it marked ready.
+    fs.rmSync(readyPath, { force: true });
+  }
   const runtimeRoot = path.join(backendRoot, "python-runtime", "python");
   const sitePackages = findSitePackages(runtimeRoot);
   if (writeMarker) {
@@ -430,7 +459,6 @@ function verifyPluginRuntime({ backendRoot, platform = process.platform, arch = 
   );
   const preflight = runPreflight(runtimeRoot, sitePackages, platform);
   const expected = expectedMarker(platform, arch);
-  const readyPath = markerPath(backendRoot);
   if (writeMarker) {
     fs.rmSync(path.join(backendRoot, "python-runtime", "RUNTIME_READY.json"), { force: true });
     fs.writeFileSync(readyPath, `${JSON.stringify(expected, null, 2)}\n`);
@@ -471,7 +499,7 @@ function runSetup(options) {
   fs.rmSync(options.backendRoot, { recursive: true, force: true });
   const args = [
     path.join(__dirname, "setup-python-env.cjs"),
-    "--profile", "cpu-lite",
+    "--profile", "cpu",
     "--output-dir", path.join(options.backendRoot, "python-runtime"),
     "--cache-dir", options.cacheDir,
     "--runtime-only",

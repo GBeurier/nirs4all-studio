@@ -156,6 +156,7 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
         operation,
         "pipeline.normalize"
             | "config.compare"
+            | "config.dependencies"
             | "pipeline.import"
             | "pipeline.render"
             | "dataset.configure"
@@ -304,6 +305,7 @@ mod tests {
     #[test]
     fn document_protocol_refuses_unknown_operations_and_open_response_shapes() {
         assert!(request("pipeline.normalize", &json!({"steps": []})).is_ok());
+        assert!(request("config.dependencies", &json!({"config": {}})).is_ok());
         assert!(request("run", &json!({})).is_err());
         assert!(request(
             "documents.batch",

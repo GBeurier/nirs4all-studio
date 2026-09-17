@@ -11,7 +11,7 @@
  * sibling modules (`ParsingStepForm`, `ParsingStepFileOverride`,
  * `ParsingStepAdvancedOptions`).
  */
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Settings2, RotateCcw, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWizard, DEFAULT_PARSING } from "./useWizard";
 import { detectDelimiterFromContent } from "./parsingDetection";
 import {
+  effectiveFileParsing,
   toAutoDetectedParsingOptions,
   toClientDetectedParsingOptions,
   toLegacyDetectedParsingOptions,
@@ -32,7 +33,6 @@ export function ParsingStep() {
   const { state, dispatch } = useWizard();
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [detectingFiles, setDetectingFiles] = useState<Record<string, boolean>>({});
-  const hasAutoDetectedOnMount = useRef(false);
 
   // Check if we're in web mode (no filesystem access, files are in fileBlobs)
   const isWebMode = !state.basePath && state.fileBlobs.size > 0;
@@ -68,7 +68,7 @@ export function ParsingStep() {
       }
 
       // Desktop mode: use backend API for full detection
-      const result = await autoDetectFile(firstXFile.path, true);
+      const result = await autoDetectFile(firstXFile.path, false);
 
       if (result.success) {
         // Update parsing options with all detected values
@@ -111,14 +111,6 @@ export function ParsingStep() {
     }
   }, [state.files, state.fileBlobs, isWebMode, dispatch]);
 
-  // Auto-detect on mount (first time only)
-  useEffect(() => {
-    if (!hasAutoDetectedOnMount.current && state.files.length > 0) {
-      hasAutoDetectedOnMount.current = true;
-      handleAutoDetect();
-    }
-  }, [state.files.length, handleAutoDetect]);
-
   // Per-file auto-detect for parsing options using nirs4all's AutoDetector
   const handlePerFileAutoDetect = useCallback(async (path: string) => {
     setDetectingFiles((prev) => ({ ...prev, [path]: true }));
@@ -145,7 +137,7 @@ export function ParsingStep() {
       }
 
       // Desktop mode: use backend API
-      const result = await autoDetectFile(path, true);
+      const result = await autoDetectFile(path, false);
 
       if (result.success) {
         dispatch({
@@ -264,7 +256,7 @@ export function ParsingStep() {
                   filename={file.filename}
                   path={file.path}
                   hasOverride={!!state.perFileOverrides[file.path]}
-                  overrides={state.perFileOverrides[file.path] || {}}
+                  overrides={effectiveFileParsing(file.type, state.parsing, state.perFileOverrides[file.path])}
                   onToggle={() => handleFileOverrideToggle(file.path)}
                   onChange={(updates) =>
                     dispatch({

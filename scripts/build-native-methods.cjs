@@ -18,6 +18,40 @@ const MAX_SOURCE_STATUS_BYTES = 1024 * 1024;
 const MAX_BUILD_ENTRIES = 50_000;
 const MAX_LIBRARY_BYTES = 64 * 1024 * 1024;
 
+const LINUX_SYSTEM_LIBRARIES = new Set([
+  "libgcc_s.so.1", "libstdc++.so.6", "libm.so.6", "libc.so.6", "ld-linux-x86-64.so.2",
+  "libpthread.so.0", "libdl.so.2", "librt.so.1",
+]);
+
+function assertPortableLinuxMethods(libraryPath, inspect = spawnSync) {
+  // Inspect ELF metadata without executing an unqualified library. A build
+  // runner may have Fortran/BLAS installed even when the user's machine does not.
+  const result = inspect("readelf", ["--dynamic", "--wide", libraryPath], {
+    encoding: "utf8",
+    timeout: 15_000,
+    maxBuffer: 1024 * 1024,
+    windowsHide: true,
+    env: { ...process.env, LC_ALL: "C" },
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`Cannot inspect Linux Methods dependencies: ${result.error?.message || String(result.stderr || "readelf failed").trim()}`);
+  }
+  const lines = String(result.stdout || "").split(/\r?\n/).filter((line) => line.includes("(NEEDED)"));
+  if (lines.length === 0 || lines.length > 64) {
+    throw new Error("Linux Methods dependency inventory is missing or invalid");
+  }
+  const dependencies = lines.map((line) => {
+    const match = /\(NEEDED\)\s+Shared library: \[([^\]]+)\]\s*$/.exec(line);
+    if (!match) throw new Error("Linux Methods dependency entry is invalid");
+    return match[1];
+  });
+  const unsupported = dependencies.filter((name) => !LINUX_SYSTEM_LIBRARIES.has(name));
+  if (unsupported.length) {
+    throw new Error(`Linux Methods requires non-system runtime libraries: ${unsupported.join(", ")}. Build the standalone native library; do not copy a library out of a Python wheel.`);
+  }
+  return dependencies;
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
@@ -227,6 +261,8 @@ function buildAndAttest({
   const library = resolveBuiltLibrary(source.sourceRoot, config);
   if (platform === "win32") {
     assertStaticWindowsRuntime(library.libraryPath);
+  } else if (platform === "linux") {
+    assertPortableLinuxMethods(library.libraryPath);
   }
   const cliEnv = platform === "win32"
     ? withPrependedSearchPath(process.env, path.dirname(library.libraryPath), platform)
@@ -311,6 +347,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertPortableLinuxMethods,
   appendGitHubEnvironment,
   appendGitHubSearchPath,
   assertSourceIdentity,

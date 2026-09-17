@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
 const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
@@ -17,6 +17,7 @@ const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
     },
   ): string[];
   buildPluginToolchainInstallArgs(): string[];
+  verifyInstalledDependencies(python: string, isolated: boolean, execute: (command: string, args: string[]) => Promise<void>): Promise<void>;
   buildDeterministicWheelEnv(
     sourceEpoch: string,
     baseEnv?: Record<string, string | undefined>,
@@ -60,6 +61,19 @@ afterEach(() => {
 });
 
 describe("setup-python-env", () => {
+  it("rejects incompatible installed dependencies before the runtime can be pruned or marked ready", async () => {
+    const execute = vi.fn().mockRejectedValue(new Error("missing runtime dependency"));
+    await expect(setupPythonEnvModule.verifyInstalledDependencies("/runtime/python", true, execute))
+      .rejects.toThrow("missing runtime dependency");
+    expect(execute).toHaveBeenCalledWith("/runtime/python", ["-I", "-m", "pip", "check"]);
+    const source = fs.readFileSync(path.join(process.cwd(), "scripts", "setup-python-env.cjs"), "utf8");
+    const verification = source.indexOf("await verifyInstalledDependencies(runtimePython, pluginOnly)");
+    const pruning = source.indexOf("const runtimeStats = pruneStandaloneRuntimeArtifacts");
+    expect(verification).toBeGreaterThanOrEqual(0);
+    expect(pruning).toBeGreaterThanOrEqual(0);
+    expect(verification).toBeLessThan(pruning);
+  });
+
   it("keeps the plugin wheel toolchain exact while bounding network retries", () => {
     expect(setupPythonEnvModule.buildPluginToolchainInstallArgs()).toEqual([
       "-I",

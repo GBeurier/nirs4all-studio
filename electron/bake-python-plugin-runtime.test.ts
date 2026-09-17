@@ -27,9 +27,87 @@ const pluginRuntime = require("../scripts/bake-python-plugin-runtime.cjs") as {
   materializeInternalRuntimeLinks(runtimeRoot: string): void;
   removeEmptyDirectories(runtimeRoot: string): void;
   constrainedDistributionVersions(platform?: string, arch?: string): Map<string, string>;
+  verifyPluginRuntime(options: { backendRoot: string; writeMarker: boolean }): unknown;
 };
 
+function stagedRuntimeFixture(root: string) {
+  const runtimeRoot = path.join(root, "python-runtime", "python");
+  const sitePackages = process.platform === "win32"
+    ? path.join(runtimeRoot, "Lib", "site-packages")
+    : path.join(runtimeRoot, "lib", "python3.11", "site-packages");
+  fs.mkdirSync(sitePackages, { recursive: true });
+  for (const [name, version] of pluginRuntime.constrainedDistributionVersions()) {
+    const directory = path.join(sitePackages, `${name}-${version}.dist-info`);
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, "METADATA"), `Name: ${name}\nVersion: ${version}\n`);
+  }
+  const marker = path.join(root, "python-runtime", "PLUGIN_RUNTIME_READY.json");
+  fs.writeFileSync(marker, JSON.stringify(pluginRuntime.expectedMarker()));
+  return { runtimeRoot, sitePackages, marker };
+}
+
 describe("plugin-only CPython runtime", () => {
+  it.each(["missing", "wrong-version", "duplicate"])(
+    "revokes readiness when actual staged package metadata is %s",
+    (failure) => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-plugin-finalize-"));
+      try {
+        const { sitePackages, marker } = stagedRuntimeFixture(root);
+        const version = pluginRuntime.constrainedDistributionVersions().get("shap");
+        const distribution = path.join(sitePackages, `shap-${version}.dist-info`);
+        if (failure === "missing") fs.rmSync(distribution, { recursive: true });
+        else if (failure === "wrong-version") {
+          fs.writeFileSync(path.join(distribution, "METADATA"), "Name: shap\nVersion: 0.0.0\n");
+        } else {
+          const duplicate = path.join(sitePackages, "shap-0.0.0.dist-info");
+          fs.mkdirSync(duplicate);
+          fs.writeFileSync(path.join(duplicate, "METADATA"), "Name: shap\nVersion: 0.0.0\n");
+        }
+        expect(() => pluginRuntime.verifyPluginRuntime({ backendRoot: root, writeMarker: true }))
+          .toThrow(/closure drift|Duplicate installed distribution/);
+        expect(fs.existsSync(marker)).toBe(false);
+      } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    },
+  );
+
+  it("refuses stale installed adapters without leaving a ready marker", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-plugin-adapter-refusal-"));
+    try {
+      const { sitePackages, marker } = stagedRuntimeFixture(root);
+      const { installAdapters } = require("../scripts/studio-document-adapters.cjs");
+      installAdapters(process.cwd(), sitePackages);
+      fs.appendFileSync(path.join(sitePackages, "studio_document_adapters", "api", "library_documents.py"), "\n# changed\n");
+      expect(() => pluginRuntime.verifyPluginRuntime({ backendRoot: root, writeMarker: true }))
+        .toThrow(/Adapter member differs/);
+      expect(fs.existsSync(marker)).toBe(false);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it.skipIf(process.platform === "win32")("executes an isolated cold-cache probe and revokes readiness on process failure", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-plugin-probe-refusal-"));
+    try {
+      const { runtimeRoot, marker } = stagedRuntimeFixture(root);
+      const executable = path.join(runtimeRoot, "bin", "python3");
+      const evidence = path.join(root, "probe.json");
+      fs.mkdirSync(path.dirname(executable));
+      fs.writeFileSync(executable, `#!${process.execPath}\n` + [
+        'const fs = require("node:fs");',
+        `fs.writeFileSync(${JSON.stringify(evidence)}, JSON.stringify({ args: process.argv.slice(2),`,
+        'cache: process.env.MPLCONFIGDIR, backend: process.env.MPLBACKEND,',
+        'files: fs.readdirSync(process.env.MPLCONFIGDIR) }));',
+        'process.stderr.write("fixture import failed"); process.exit(23);',
+      ].join("\n"), { mode: 0o755 });
+      expect(() => pluginRuntime.verifyPluginRuntime({ backendRoot: root, writeMarker: true }))
+        .toThrow(/preflight failed: fixture import failed/);
+      const probe = JSON.parse(fs.readFileSync(evidence, "utf8"));
+      expect(probe.args.slice(0, 4)).toEqual(["-I", "-S", "-B", "-c"]);
+      expect(probe.backend).toBe("Agg");
+      expect(probe.files).toEqual([]);
+      expect(fs.existsSync(probe.cache)).toBe(false);
+      expect(fs.existsSync(marker)).toBe(false);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("warms only the trusted Windows platform probe before enforcing the spawn audit hook", () => {
     const platformProbe = pluginRuntime.PREFLIGHT.indexOf("platform.machine()\n");
     const auditHook = pluginRuntime.PREFLIGHT.indexOf("sys.addaudithook(deny)\n");
@@ -39,7 +117,7 @@ describe("plugin-only CPython runtime", () => {
     expect(platformProbe).toBeLessThan(auditHook);
     expect(auditHook).toBeLessThan(pluginImport);
     expect(pluginRuntime.PREFLIGHT).toContain(
-      'if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}: raise RuntimeError("spawn denied")',
+      'if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}: raise PermissionError("spawn denied")',
     );
   });
 
@@ -58,7 +136,7 @@ describe("plugin-only CPython runtime", () => {
         "768e65e0ca900f1a50a88a01f6c09cc7870ce033383cac5c968bfac8fee25bbe",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "0b11bc09f82a7806055b18fc478ece69554e00932f7d0138656804a57d36ccb1",
+        sha256: "e96dd6da1c76e3d0f1c6f04331d2bf19a68e7f02875cd17940bff1ea94eba647",
       },
       platform: "linux",
       arch: "x64",
@@ -88,7 +166,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "0b11bc09f82a7806055b18fc478ece69554e00932f7d0138656804a57d36ccb1",
+      "e96dd6da1c76e3d0f1c6f04331d2bf19a68e7f02875cd17940bff1ea94eba647",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -97,6 +175,15 @@ describe("plugin-only CPython runtime", () => {
     const linuxArm = pluginRuntime.constrainedDistributionVersions("linux", "arm64");
     const macArm = pluginRuntime.constrainedDistributionVersions("darwin", "arm64");
     const windows = pluginRuntime.constrainedDistributionVersions("win32", "x64");
+    const { PLUGIN_HOST_PACKAGES } = require("../scripts/python-runtime-config.cjs") as {
+      PLUGIN_HOST_PACKAGES: string[];
+    };
+    for (const spec of PLUGIN_HOST_PACKAGES) {
+      const [name, version] = spec.split("==");
+      for (const target of [linux, linuxArm, macArm, windows]) {
+        expect(target.get(name), `${name} must be installed in every packaged host`).toBe(version);
+      }
+    }
     expect(linux.get("nirs4all")).toBe("1.0.1");
     expect(linux.get("nirs4all-core")).toBe("0.3.30");
     expect(linux.get("scikit-learn")).toBe("1.9.0");

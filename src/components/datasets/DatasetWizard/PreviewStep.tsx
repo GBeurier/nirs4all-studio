@@ -7,7 +7,7 @@
  * - Target distribution
  * - Final confirmation
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   CheckCircle2,
   AlertCircle,
@@ -35,13 +35,15 @@ import { previewDataset, previewDatasetWithUploads } from "@/api/datasets";
 import { PartitionToggle } from "../PartitionToggle";
 import { SpectraChart, TargetHistogram } from "../charts";
 import { getPartitionTheme } from "../partitionTheme";
-import type { DatasetFile, PartitionKey } from "@/types/datasets";
+import { buildDatasetWizardFiles } from "./DatasetWizardConfig";
+import type { PartitionKey } from "@/types/datasets";
 
 // Alias for backward compatibility in this file
 const Histogram = TargetHistogram;
 
 export function PreviewStep() {
   const { state, dispatch } = useWizard();
+  const requestRevision = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<number>(0);
@@ -51,20 +53,17 @@ export function PreviewStep() {
   const loadPreview = useCallback(async () => {
     if (state.files.length === 0) return;
 
+    const revision = ++requestRevision.current;
     setLoading(true);
     setError(null);
+    dispatch({ type: "SET_PREVIEW", payload: null });
 
     try {
-      // Convert DetectedFile to DatasetFile for API
-      const fileConfigs: DatasetFile[] = state.files
-        .filter((f) => f.type !== "unknown")
-        .map((f) => ({
-          path: f.path,
-          type: f.type as "X" | "Y" | "metadata",
-          split: f.split === "unknown" ? "train" : f.split,
-          source: f.source,
-          overrides: state.perFileOverrides[f.path],
-        }));
+      const fileConfigs = buildDatasetWizardFiles({
+        files: state.files,
+        parsing: state.parsing,
+        perFileOverrides: state.perFileOverrides,
+      });
 
       let result;
 
@@ -101,26 +100,27 @@ export function PreviewStep() {
         });
       }
 
+      if (revision !== requestRevision.current) return;
       dispatch({ type: "SET_PREVIEW", payload: result });
 
-      if (result.error) {
-        setError(result.error);
+      if (result.error || !result.success) {
+        setError(result.error || "Some files could not be loaded. Check their parsing options.");
       }
     } catch (e) {
+      if (revision !== requestRevision.current) return;
       const message = e instanceof Error ? e.message : "Failed to load preview";
       setError(message);
       dispatch({ type: "SET_PREVIEW", payload: null });
     } finally {
-      setLoading(false);
+      if (revision === requestRevision.current) setLoading(false);
     }
   }, [state.files, state.basePath, state.parsing, state.perFileOverrides, state.fileBlobs, dispatch]);
 
-  // Load preview on mount
+  // Failed requests stay visible until Refresh or a configuration change.
   useEffect(() => {
-    if (!state.preview && !loading) {
-      loadPreview();
-    }
-  }, [loadPreview, state.preview, loading]);
+    void loadPreview();
+    return () => { requestRevision.current += 1; };
+  }, [loadPreview]);
 
   const preview = state.preview;
   const partitionMap = preview?.spectra_preview_by_partition;

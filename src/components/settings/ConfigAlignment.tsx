@@ -55,7 +55,7 @@ export function ConfigAlignment() {
   const { data: diff, isLoading: diffLoading, refetch: refetchDiff } = useConfigDiff(undefined, false);
   const { data: config } = useRecommendedConfig();
   const alignMutation = useAlignConfig();
-  const isReadOnlyRuntime = runtimeMode === "bundled" || runtimeMode === "pyinstaller";
+  const isReadOnlyRuntime = diff?.package_management_available === false || runtimeMode === "bundled" || runtimeMode === "pyinstaller";
 
   // Reload after backend restart (e.g., env change in PythonEnvPicker)
   useEffect(() => {
@@ -73,7 +73,7 @@ export function ConfigAlignment() {
   }, []);
 
   const handleAlign = async () => {
-    if (!diff?.profile) return;
+    if (!diff?.profile || isReadOnlyRuntime) return;
 
     setLastAction(null);
     alignMutation.mutate(
@@ -163,7 +163,7 @@ export function ConfigAlignment() {
                 <AlertDescription>
                   {runtimeMode === "bundled"
                     ? "This all-in-one bundle uses an embedded Python runtime. Config alignment is disabled because the environment is read-only."
-                    : "This packaged backend runtime is read-only. Config alignment is disabled in this mode."}
+                    : "Package management is unavailable for this runtime. Install an updated Studio release to update its included packages."}
                 </AlertDescription>
               </Alert>
             )}

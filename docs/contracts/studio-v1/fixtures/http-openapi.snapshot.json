@@ -4132,6 +4132,20 @@
           "FileShapeInfo": {
             "description": "Shape info for a validated file.",
             "properties": {
+              "column_names": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Column Names"
+              },
               "error": {
                 "anyOf": [
                   {
@@ -31003,6 +31017,20 @@
           "FileShapeInfo": {
             "description": "Shape info for a validated file.",
             "properties": {
+              "column_names": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Column Names"
+              },
               "error": {
                 "anyOf": [
                   {

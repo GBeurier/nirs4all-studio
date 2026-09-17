@@ -12,6 +12,8 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import https from "node:https";
 import http from "node:http";
+import { pipeline } from "node:stream/promises";
+import { randomUUID } from "node:crypto";
 
 import { runCommand } from "./process-utils";
 
@@ -36,54 +38,70 @@ export function removeQuarantine(dirPath: string): Promise<void> {
   });
 }
 
-/** Download a file with redirect support and progress reporting */
-export function downloadFile(url: string, destPath: string, onProgress?: (percent: number) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const makeRequest = (requestUrl: string) => {
-      const protocol = requestUrl.startsWith("https") ? https : http;
-      protocol.get(requestUrl, (response) => {
-        // Follow redirects (GitHub returns 302)
+export interface DownloadOptions {
+  timeoutMs?: number;
+  maxDurationMs?: number;
+  retries?: number;
+  retryDelayMs?: number;
+  maxRedirects?: number;
+}
+
+/** Publish only a complete download; interrupted attempts never poison the cache. */
+export async function downloadFile(url: string, destPath: string, onProgress?: (percent: number) => void, options: DownloadOptions = {}): Promise<void> {
+  const { timeoutMs = 30_000, maxDurationMs = 15 * 60_000, retries = 2, retryDelayMs = 250, maxRedirects = 5 } = options;
+  for (let attempt = 0; ; attempt += 1) {
+    const partial = `${destPath}.${randomUUID()}.partial`;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(new Error("Download exceeded its time limit")), maxDurationMs);
+    let response: http.IncomingMessage | undefined;
+    try {
+      let currentUrl = new URL(url);
+      for (let redirects = 0; ; redirects += 1) {
+        if (!["http:", "https:"].includes(currentUrl.protocol)) throw new Error("Unsupported download URL protocol");
+        const protocol = currentUrl.protocol === "https:" ? https : http;
+        response = await new Promise<http.IncomingMessage>((resolve, reject) => {
+          const request = protocol.get(currentUrl, { signal: controller.signal }, resolve);
+          request.setTimeout(timeoutMs, () => request.destroy(new Error("Download timed out waiting for data")));
+          request.once("error", reject);
+        });
         if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          return makeRequest(response.headers.location);
+          const location = response.headers.location;
+          response.destroy();
+          if (redirects >= maxRedirects) throw new Error("Too many download redirects");
+          currentUrl = new URL(location, currentUrl);
+          continue;
         }
-
-        if (response.statusCode !== 200) {
-          reject(new Error(`Download failed with status ${response.statusCode}`));
-          return;
-        }
-
-        const totalBytes = parseInt(response.headers["content-length"] || "0", 10);
-        let receivedBytes = 0;
-        let lastReportedPercent = -1;
-
-        const file = fs.createWriteStream(destPath);
-        response.pipe(file);
-
-        response.on("data", (chunk: Buffer) => {
-          receivedBytes += chunk.length;
-          if (totalBytes > 0 && onProgress) {
-            const percent = Math.floor((receivedBytes / totalBytes) * 100);
-            if (percent > lastReportedPercent) {
-              lastReportedPercent = percent;
-              onProgress(percent);
-            }
+        break;
+      }
+      if (response.statusCode !== 200) throw new Error(`Download failed with status ${response.statusCode}`);
+      const length = response.headers["content-length"];
+      const totalBytes = length === undefined ? null : Number(length);
+      let receivedBytes = 0;
+      let lastReportedPercent = -1;
+      response.on("data", (chunk: Buffer) => {
+        receivedBytes += chunk.length;
+        if (totalBytes && onProgress) {
+          const percent = Math.min(100, Math.floor(receivedBytes / totalBytes * 100));
+          if (percent > lastReportedPercent) {
+            lastReportedPercent = percent;
+            try { onProgress(percent); } catch (error) { controller.abort(error); }
           }
-        });
-
-        file.on("finish", () => {
-          file.close();
-          resolve();
-        });
-
-        file.on("error", (err) => {
-          try { fs.unlinkSync(destPath); } catch { /* ignore */ }
-          reject(err);
-        });
-      }).on("error", reject);
-    };
-
-    makeRequest(url);
-  });
+        }
+      });
+      await pipeline(response, fs.createWriteStream(partial, { flags: "wx" }), { signal: controller.signal });
+      if (totalBytes !== null && receivedBytes !== totalBytes) throw new Error("Incomplete download: response size does not match Content-Length");
+      await fs.promises.rename(partial, destPath);
+      return;
+    } catch (error) {
+      response?.destroy();
+      await fs.promises.rm(partial, { force: true });
+      if (attempt >= retries) throw error;
+    } finally {
+      clearTimeout(deadline);
+      controller.abort();
+    }
+    await new Promise(resolve => setTimeout(resolve, retryDelayMs * (attempt + 1)));
+  }
 }
 
 /** Check if the system tar is GNU tar (vs Windows built-in bsdtar) */
