@@ -9,12 +9,16 @@ on:
         type: string
         default: a3f503587d1d6bf9a43ff3ec291966ae59b80657
       release_run_id:
-        description: Release run providing all eight qualified desktop artifacts
+        description: Release run providing seven qualified desktop artifacts and pinned wheels
         required: true
         type: string
         default: '35212938007'
       windows_validation_run_id:
         description: Successful real Windows installation and N-1 update run
+        required: true
+        type: string
+      electron_validation_run_id:
+        description: Successful exact-source Linux installer build and packaged Electron qualification
         required: true
         type: string
 
@@ -37,6 +41,7 @@ jobs:
       SOURCE_SHA: ${{ inputs.source_sha }}
       RELEASE_RUN_ID: ${{ inputs.release_run_id }}
       WINDOWS_RUN_ID: ${{ inputs.windows_validation_run_id }}
+      ELECTRON_RUN_ID: ${{ inputs.electron_validation_run_id }}
       RELEASE_VERSION: '0.11.5'
     steps:
       - uses: actions/checkout@v4
@@ -50,8 +55,8 @@ jobs:
         run: |
           node <<'NODE'
           const {execFileSync}=require('node:child_process');
-          const {SOURCE_SHA,RELEASE_RUN_ID,WINDOWS_RUN_ID,GH_REPO,RELEASE_VERSION}=process.env;
-          if(!/^[a-f0-9]{40}$/.test(SOURCE_SHA)||!/^\d+$/.test(RELEASE_RUN_ID)||!/^\d+$/.test(WINDOWS_RUN_ID)) throw Error('Invalid immutable candidate inputs');
+          const {SOURCE_SHA,RELEASE_RUN_ID,WINDOWS_RUN_ID,ELECTRON_RUN_ID,GH_REPO,RELEASE_VERSION}=process.env;
+          if(!/^[a-f0-9]{40}$/.test(SOURCE_SHA)||![RELEASE_RUN_ID,WINDOWS_RUN_ID,ELECTRON_RUN_ID].every(id=>/^\d+$/.test(id))) throw Error('Invalid immutable candidate inputs');
           const api=p=>JSON.parse(execFileSync('gh',['api',`repos/${GH_REPO}/${p}`],{encoding:'utf8'}));
           const run=api(`actions/runs/${RELEASE_RUN_ID}`);
           if(run.head_sha!==SOURCE_SHA||run.event!=='push'||run.path!=='.github/workflows/release-unified.yml'||run.head_branch!==RELEASE_VERSION) throw Error('Release run identity differs');
@@ -94,15 +99,15 @@ jobs:
         run: |
           node <<'NODE'
           const {execFileSync}=require('node:child_process');
-          const {GH_REPO,RELEASE_RUN_ID,WINDOWS_RUN_ID,SOURCE_SHA,RELEASE_VERSION}=process.env;
+          const {GH_REPO,RELEASE_RUN_ID,WINDOWS_RUN_ID,ELECTRON_RUN_ID,SOURCE_SHA,RELEASE_VERSION}=process.env;
           const api=p=>JSON.parse(execFileSync('gh',['api',`repos/${GH_REPO}/${p}`],{encoding:'utf8'}));
           const required=[
             'Prepare','Acquire pinned plugin wheels',
             'Qualify release commit / Frontend','Qualify release commit / Backend',
             'Qualify release commit / Native Docker Runtime',
             'Qualify release commit / Native Sidecar Windows Containment',
-            'Qualify release commit / Electron Build Test',
-            ...['Installer','All-in-one'].flatMap(kind=>['Linux x64','Windows x64','macOS x64','macOS arm64'].map(platform=>`${kind} — ${platform}`)),
+            ...['Windows x64','macOS x64','macOS arm64'].map(platform=>`Installer — ${platform}`),
+            ...['Linux x64','Windows x64','macOS x64','macOS arm64'].map(platform=>`All-in-one — ${platform}`),
           ];
           const deadline=Date.now()+60*60*1000;
           (async()=>{
@@ -120,17 +125,26 @@ jobs:
               const windows=api(`actions/runs/${WINDOWS_RUN_ID}`);
               if(windows.event!=='workflow_dispatch'||windows.path!=='.github/workflows/windows-real-install-update.yml') throw Error('Unexpected Windows validation workflow');
               if(windows.status==='completed'&&windows.conclusion!=='success') throw Error(`Windows real install/update failed: ${windows.conclusion}`);
-              if(selected.every(job=>job?.conclusion==='success')&&windows.conclusion==='success'){
+              // The original Linux runners lacked root/4755 permissions on chrome-sandbox.
+              // Require exact-source Linux installers, full packaged smoke, and first-launch UI again.
+              const electron=api(`actions/runs/${ELECTRON_RUN_ID}`);
+              if(electron.event!=='workflow_dispatch'||electron.path!=='.github/workflows/qualify-hotfix-electron.yml') throw Error('Unexpected Electron validation workflow');
+              if(electron.status==='completed'&&electron.conclusion!=='success') throw Error(`Packaged Electron validation failed: ${electron.conclusion}`);
+              if(selected.every(job=>job?.conclusion==='success')&&windows.conclusion==='success'&&electron.conclusion==='success'){
                 const windowsJobs=api(`actions/runs/${WINDOWS_RUN_ID}/jobs?per_page=100`).jobs;
                 if(windowsJobs.length!==1||windowsJobs[0].conclusion!=='success') throw Error('Windows validation jobs differ');
                 const log=execFileSync('gh',['api',`repos/${GH_REPO}/actions/jobs/${windowsJobs[0].id}/logs`],{encoding:'utf8',maxBuffer:32*1024*1024});
                 if(!log.includes(`RELEASE_RUN_ID: ${RELEASE_RUN_ID}`)||!log.includes(`TARGET_VERSION: ${RELEASE_VERSION}`)) throw Error('Windows validation did not use this release candidate');
-                console.log(`All ${required.length} required jobs and real Windows installation/update passed for ${SOURCE_SHA}`);
+                const electronJobs=api(`actions/runs/${ELECTRON_RUN_ID}/jobs?per_page=100`).jobs;
+                if(electronJobs.length!==1||electronJobs[0].conclusion!=='success') throw Error('Electron validation jobs differ');
+                const electronLog=execFileSync('gh',['api',`repos/${GH_REPO}/actions/jobs/${electronJobs[0].id}/logs`],{encoding:'utf8',maxBuffer:32*1024*1024});
+                if(!electronLog.includes(`RELEASE_RUN_ID: ${RELEASE_RUN_ID}`)||!electronLog.includes(`SOURCE_SHA: ${SOURCE_SHA}`)) throw Error('Electron validation did not use this exact release candidate');
+                console.log(`All ${required.length} required jobs, packaged Electron, and real Windows installation/update passed for ${SOURCE_SHA}`);
                 break;
               }
               if(run.status==='completed'&&!selected.every(job=>job?.conclusion==='success')) throw Error('Source run completed before all required gates succeeded');
               if(Date.now()>=deadline) throw Error('Timed out awaiting qualified artifacts');
-              console.log(`Waiting: ${selected.filter(job=>job?.conclusion==='success').length}/${required.length} release jobs; Windows ${windows.status}`);
+              console.log(`Waiting: ${selected.filter(job=>job?.conclusion==='success').length}/${required.length} release jobs; Windows ${windows.status}; Electron ${electron.status}`);
               await new Promise(resolve=>setTimeout(resolve,30000));
             }
           })().catch(error=>{console.error(error);process.exitCode=1;});
@@ -141,8 +155,15 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.release_run_id }}
           path: artifacts
-          pattern: '{installer,archive}-*'
+          pattern: '{archive-*,installer-windows-*,installer-macos-*}'
           merge-multiple: false
+      - name: Download exact-source Linux installers qualified with corrected runner sandbox
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.electron_validation_run_id }}
+          name: installer-linux-x64
+          path: artifacts/installer-linux-x64
       - name: Verify complete asset set and producer checksums
         run: |
           node <<'NODE'
@@ -223,11 +244,13 @@ jobs:
 
           Qualified installers and all-in-one archives are included for Windows x64, Linux x64, macOS Intel, and macOS Apple Silicon. Windows additionally passed a real NSIS installation and migration from 0.11.4 to this exact candidate. macOS distributions are unsigned unless signing credentials were available during their build.
 
+          Linux installers and packaged Electron checks were rerun from the same immutable product commit after correcting Chromium sandbox permissions on the CI runner. Both the full offline smoke and the first-launch UI checks remain mandatory.
+
           SHA256 sidecars accompany every download. Verify with `sha256sum -c <download>.sha256`, or `Get-FileHash <download> -Algorithm SHA256` on Windows.
 
           Docker: `ghcr.io/gbeurier/nirs4all-studio:0.11.5` is the exact image that passed native runtime and browser access checks.
           NOTES
-          printf '\nQualified commit: `%s`\n\nRelease qualification run: https://github.com/%s/actions/runs/%s\n\nWindows installation/update proof: https://github.com/%s/actions/runs/%s\n' "$SOURCE_SHA" "$GH_REPO" "$RELEASE_RUN_ID" "$GH_REPO" "$WINDOWS_RUN_ID" >> release_notes.md
+          printf '\nQualified commit: `%s`\n\nRelease qualification run: https://github.com/%s/actions/runs/%s\n\nWindows installation/update proof: https://github.com/%s/actions/runs/%s\n\nPackaged Electron qualification: https://github.com/%s/actions/runs/%s\n' "$SOURCE_SHA" "$GH_REPO" "$RELEASE_RUN_ID" "$GH_REPO" "$WINDOWS_RUN_ID" "$GH_REPO" "$ELECTRON_RUN_ID" >> release_notes.md
       - name: Create stable release without overwriting any prior release
         run: |
           gh release create "$RELEASE_VERSION" --verify-tag --latest --title "nirs4all Studio $RELEASE_VERSION" --notes-file release_notes.md release/*

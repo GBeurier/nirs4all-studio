@@ -339,6 +339,13 @@ jobs:
           release/linux-unpacked/resources/backend/native/studio-sidecar --smoke-readiness
           echo "Electron build test passed"
 
+      - name: Configure packaged Chromium sandbox for the Linux runner
+        run: |
+          test -f release/linux-unpacked/chrome-sandbox
+          sudo chown root:root release/linux-unpacked/chrome-sandbox
+          sudo chmod 4755 release/linux-unpacked/chrome-sandbox
+          test "$(stat -c '%u:%g:%a' release/linux-unpacked/chrome-sandbox)" = '0:0:4755'
+
       - name: Verify packaged Studio with fresh offline user state
         timeout-minutes: 15
         run: |

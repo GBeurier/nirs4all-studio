@@ -351,6 +351,10 @@ jobs:
           ARTIFACT_BOUNDARY="$(dirname "$(dirname "$BACKEND_ROOT")")"
           node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
           "$SIDECAR" --smoke-readiness
+          test -f "$ARTIFACT_BOUNDARY/chrome-sandbox"
+          sudo chown root:root "$ARTIFACT_BOUNDARY/chrome-sandbox"
+          sudo chmod 4755 "$ARTIFACT_BOUNDARY/chrome-sandbox"
+          test "$(stat -c '%u:%g:%a' "$ARTIFACT_BOUNDARY/chrome-sandbox")" = '0:0:4755'
           xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform linux
           xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform linux
 
