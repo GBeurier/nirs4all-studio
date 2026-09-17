@@ -29,11 +29,11 @@ acceptée, une bibliothèque extérieure est refusée. Le tag 0.11.6 reste immua
 
 Le [diagnostic Intel de l'ancien paquet](studio-macintel-first-launch-diagnostic-2026-09-17.json)
 prouve des `python_host_timed_out` sur la comparaison de paquets et l'aperçu
-dataset. La correction a été reproduite dans les tests comportementaux avec
-des workers volontairement ralentis ; seul le nouveau paquet pourra confirmer
-sa résolution dans le produit distribué.
+dataset. Les tests comportementaux avec des workers volontairement ralentis,
+puis les contrôles du DMG et de l'archive Intel 0.11.7, confirment la résolution
+sur les nouveaux paquets qualifiés.
 
-## Qualifications requises avant publication
+## Qualifications des paquets
 
 | Plateforme | Migration publique requise | Contrôle du produit |
 | --- | --- | --- |
@@ -48,6 +48,27 @@ Le nouveau gate Unix sélectionne la dernière archive publique complète par
 plateforme, vérifie les identités des fichiers avant et après la migration,
 et lie les résultats aux SHA256 source et cible. Tout échec, annulation ou gate
 ignoré bloque la publication stable GitHub et Docker.
+
+Windows a terminé sa qualification à **17:28:38 UTC** : installation NSIS réelle,
+calculs hors ligne, premier setup sans contournement, mode développeur sans
+workspace conservé après rechargement et redémarrage, puis migration réelle
+**0.11.5 → 0.11.7** et démarrage à froid hors ligne. La persistance de la préférence
+a été constatée en **995 ms**. Les empreintes du NSIS et des deux archives sont
+conservées dans les [preuves Windows](studio-windows-0.11.7-qualification-2026-09-17.json).
+
+Linux et Apple Silicon ont également réussi l'installation DEB/DMG, le premier
+setup, la préférence sans workspace, le rechargement et le redémarrage, puis
+la migration **0.11.5 → 0.11.7** et le démarrage hors ligne. La persistance a été
+observée en **424 ms** sur Linux et **349 ms** sur Apple Silicon. Ces durées
+mesurent le parcours UI jusqu'à observation de la valeur sauvegardée, pas le
+seul appel HTTP. [Preuves Linux](studio-linux-x64-0.11.7-qualification-2026-09-17.json)
+et [preuves Apple Silicon](studio-macos-arm64-0.11.7-qualification-2026-09-17.json).
+
+Intel a terminé à **17:53:59 UTC** : premier setup automatique sans retry manuel,
+préférence persistée en **427 ms** après action UI et conservée après reload et
+redémarrage, parcours dataset complet, puis migration publique **0.11.4 → 0.11.7**
+et démarrage hors ligne. [Preuves Intel](studio-macos-x64-0.11.7-qualification-2026-09-17.json).
+La disponibilité d'entraînement est vérifiée ; ces smokes n'entraînent pas de modèle.
 
 ## Vérifications du commit final
 

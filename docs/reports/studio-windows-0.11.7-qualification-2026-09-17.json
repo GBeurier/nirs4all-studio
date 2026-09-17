@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-09-17T17:33:46.350853+00:00",
+  "scope": "Windows x64 installed NSIS product, first setup and developer preference persistence, exact candidate archive N-1 migration and offline cold boot",
+  "release_candidate": {
+    "version": "0.11.7",
+    "commit": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+    "run_id": 35247378499,
+    "run_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499",
+    "event": "push",
+    "workflow_path": ".github/workflows/release-unified.yml",
+    "publication_status": "not assessed by this evidence collection"
+  },
+  "qualification_job": {
+    "id": 105304150013,
+    "name": "Qualify stable Windows installation and N-1 migration / real-install-update",
+    "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105304150013",
+    "conclusion": "success",
+    "started_at": "2026-09-17T17:12:51Z",
+    "completed_at": "2026-09-17T17:28:38Z",
+    "duration_seconds": 947.0
+  },
+  "proof_artifact": {
+    "id": 10511630598,
+    "name": "windows-real-install-update-proof",
+    "size_in_bytes": 1284,
+    "digest": "sha256:ef2b34a2166c9ea6b9620412c0da23dc16888f9760eec958c3236eb7a62446db",
+    "archive_download_url": "https://api.github.com/repos/GBeurier/nirs4all-studio/actions/artifacts/10511630598/zip",
+    "workflow_run": {
+      "id": 35247378499,
+      "head_branch": "0.11.7",
+      "head_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+    },
+    "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10511630598",
+    "download_sha256_verified": true,
+    "local_zip": "/tmp/studio-0.11.7-proof/windows-real-install-update/proof.zip"
+  },
+  "installer": {
+    "candidate_artifact_id": 10509301244,
+    "candidate_artifact_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10509301244",
+    "candidate_artifact_digest": "sha256:bc8365469295ce51eaeca147f804792caf11171f36176f39d3c30b6f27f1ffa3",
+    "file_name": "nirs4all Studio-0.11.7-win-x64.exe",
+    "file_sha256": "752c71ebcd71df2b609c084816f226ae76042148c3f39dd31f401bf6fc67af32",
+    "actual_nsis_install": {
+      "name": "Verify hashes and actually install NSIS silently",
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:13:39Z",
+      "completed_at": "2026-09-17T17:15:04Z",
+      "duration_seconds": 85.0
+    },
+    "offline_installed_scientific_probe": {
+      "name": "Prove installed NSIS application works offline",
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:15:04Z",
+      "completed_at": "2026-09-17T17:18:09Z",
+      "duration_seconds": 185.0,
+      "native_training_ready": true,
+      "inline_playground_executed": true
+    }
+  },
+  "installed_first_launch_ui": {
+    "name": "Prove actual first setup and developer preference in installed Windows UI",
+    "conclusion": "success",
+    "started_at": "2026-09-17T17:18:36Z",
+    "completed_at": "2026-09-17T17:20:48Z",
+    "duration_seconds": 132.0,
+    "setup_completed_without_skip": true,
+    "developer_mode_saved_without_workspace": true,
+    "persisted_after_renderer_reload": true,
+    "persisted_after_application_restart": true,
+    "developer_preference_persistence_ms": 995,
+    "events": {
+      "setup_verified": {
+        "timestamp": "2026-09-17T17:20:03.9839664Z",
+        "message": "First setup verified bundled packages and opened datasets without skipping setup.",
+        "log_line": 334
+      },
+      "preference_persisted": {
+        "timestamp": "2026-09-17T17:20:05.2715828Z",
+        "message": "Developer preference persisted after 995ms.",
+        "log_line": 335
+      },
+      "renderer_reload": {
+        "timestamp": "2026-09-17T17:20:06.2670854Z",
+        "message": "Developer mode saved without a workspace and survived renderer reload.",
+        "log_line": 336
+      },
+      "app_restart": {
+        "timestamp": "2026-09-17T17:20:42.4829263Z",
+        "message": "First-launch UI smoke passed: installed runtime, setup, Settings, saved preference, reload and app restart.",
+        "log_line": 337
+      }
+    }
+  },
+  "migration": {
+    "name": "Migrate actual previous release to exact candidate and cold boot offline",
+    "conclusion": "success",
+    "started_at": "2026-09-17T17:21:08Z",
+    "completed_at": "2026-09-17T17:28:30Z",
+    "duration_seconds": 442.0,
+    "candidate_archive_artifact_id": 10508489569,
+    "candidate_archive_artifact_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10508489569",
+    "candidate_archive_artifact_digest": "sha256:0793a05b3499e07a4e4ee84659fdf8f0e6efa848ddaec77f16364f3d2d26360c",
+    "candidate_archive_size_bytes": 461621963,
+    "result": {
+      "success": true,
+      "from": "0.11.5",
+      "to": "0.11.7",
+      "source": "qualified-candidate-fixture",
+      "target_archive_sha256": "5aff6021dd1f8d9ca92fafba7a942797e661223fe2aa0e45e874cfb23e510c39",
+      "old_archive_sha256": "053112186b48c46084ffd71a620df33566a42f453fc08c5058ee2a82f076417e",
+      "target_asset": "nirs4all.Studio-0.11.7-all-in-one-win-x64.zip",
+      "apply_result": {
+        "status": "success",
+        "from_version": "0.11.5",
+        "to_version": "0.11.7",
+        "current_version": "0.11.7",
+        "reconciled_at": "2026-09-17T17:22:50.990Z",
+        "relaunch_pid": 7972,
+        "backup_path": "\\\\?\\D:\\a\\_temp\\studio-real-update-uYOiCc\\installed\\.nirs4all Studio.nirs4all-backup-7712"
+      },
+      "offline_cold_boot": true
+    },
+    "result_file": "/tmp/studio-0.11.7-proof/windows-real-install-update/artifact/studio-real-update-uYOiCc/result.json",
+    "cold_boot_scientific_probe": {
+      "native_training_ready": true,
+      "inline_playground_executed": true,
+      "python_http_fallback_selected": false
+    }
+  },
+  "skips": {
+    "substantive_qualification_steps_skipped": false,
+    "informational_not_applicable_step_skipped": true,
+    "reason": "Actual N-1 migration executed successfully, so the mutually exclusive not-applicable message was skipped."
+  },
+  "provenance": {
+    "job_metadata_file": "/tmp/studio-0.11.7-proof/windows-real-install-update/job.json",
+    "run_metadata_file": "/tmp/studio-0.11.7-proof/windows-real-install-update/run.json",
+    "job_log_file": "/tmp/studio-0.11.7-proof/windows-real-install-update/job.log",
+    "artifact_metadata_file": "/tmp/studio-0.11.7-proof/windows-real-install-update/artifact.json",
+    "application_log_file": "/tmp/studio-0.11.7-proof/windows-real-install-update/artifact/studio-real-update-uYOiCc/application.log",
+    "job_log_sha256": "cd96213311df2c968e7fffc9e85923fe058b3776c2917d53a614f3e7c4527d44",
+    "evidence_note": "NSIS and UI evidence comes from the completed job log and step conclusions. Downloaded artifact contains migration result.json and application.log. Artifact ZIP digest verified locally; installer/archive file hashes were checked by the successful runner steps and preserved in its log. Product binaries were not downloaded again."
+  }
+}

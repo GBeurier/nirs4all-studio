@@ -1,0 +1,96 @@
+{
+  "schema": "studio.macos-intel-installed-product-qualification.v1",
+  "recorded_at": "2026-09-17T17:59:02Z",
+  "product_version": "0.11.7",
+  "product_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+  "source_run_id": 35247378499,
+  "job": {
+    "id": 105312911699,
+    "head_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+    "conclusion": "success",
+    "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105312911699",
+    "completed_at": "2026-09-17T17:53:59Z"
+  },
+  "artifact": {
+    "id": 10511894623,
+    "name": "unix-product-proof-macos-x64",
+    "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10511894623",
+    "sha256": "511508cd7ac849c0d1b4758f6a5744a4803e5f33cc00fd69ee6981493027cdf5"
+  },
+  "provenance": {
+    "job_head_matches_candidate_product_sha": true,
+    "candidate_source_run_matches_job_run": true,
+    "same_run_producer_gate_passed": true,
+    "payload_sha256_matches_sidecar_checked_by_ci": true,
+    "local_payloads_downloaded_and_rehashed": false,
+    "migration_target_hash_matches_candidate_archive": true,
+    "migration_source_hash_matches_baseline": true
+  },
+  "qualified_hashes": {
+    "nirs4all.Studio-0.11.7-mac-x64.dmg": "6cd73743fd4ab24cdea1df62f215314e7522fcb6d7ec442c28177141100077b7",
+    "nirs4all.Studio-0.11.7-all-in-one-mac-x64.zip": "ada82cbfefe51deb8f9fb0ab7bc4ab5dcc3eb7742d86041032fc4aef109954b2"
+  },
+  "installed_application": {
+    "source": "actual DMG mounted and application copied out",
+    "offline_smoke_passed": true,
+    "offline_smoke_step_seconds": 136,
+    "setup_automatic_first_attempt_passed": true,
+    "setup_skipped": false,
+    "manual_retry_clicked": false,
+    "setup_reverified_before_completion": true,
+    "datasets_page_opened": true,
+    "developer_mode_stored_backend_value_confirmed": true,
+    "developer_mode_persistence_ms": 427,
+    "developer_mode_survived_renderer_reload": true,
+    "developer_mode_survived_process_restart": true,
+    "ui_step_seconds": 136
+  },
+  "effective_scientific_checks": {
+    "cpu_config_aligned_zero_missing_or_misaligned_packages": true,
+    "inventory_nirs4all_shap_matplotlib_present": true,
+    "dataset_detection_and_local_header_delimiter_validation": true,
+    "metadata_identifier_sample_id_recovered": true,
+    "dataset_preview_executed": true,
+    "dataset_registered_and_repetition_column_config_persisted": true,
+    "saved_dataset_preview_reloaded_two_samples_and_metadata": true,
+    "saved_dataset_refresh_executed": true,
+    "inline_playground_facade_executed": true,
+    "inline_playground_input_shape": [
+      2,
+      2
+    ],
+    "inline_playground_steps": [],
+    "native_training_readiness_checked": true,
+    "model_training_executed": false,
+    "model_prediction_executed": false,
+    "shap_explanation_computed": false,
+    "python_http_fallback_selected": false
+  },
+  "migration": {
+    "from": "0.11.4",
+    "to": "0.11.7",
+    "source": "qualified-candidate-fixture",
+    "success": true,
+    "offline_cold_boot": true,
+    "step_seconds": 475,
+    "target_asset": "nirs4all.Studio-0.11.7-all-in-one-mac-x64.zip",
+    "target_archive_sha256": "ada82cbfefe51deb8f9fb0ab7bc4ab5dcc3eb7742d86041032fc4aef109954b2",
+    "old_archive_sha256": "0186425375394fcd1c0da4352d378f82e0c1b6d2d92f4cc10cef1c67947255d0",
+    "apply_status": "success",
+    "current_version_after_apply": "0.11.7"
+  },
+  "evidence_files": [
+    "candidate-proof.json",
+    "installed-ui.log",
+    "installed-smoke.log",
+    "migration.log",
+    "studio-real-update-glMgAO/result.json"
+  ],
+  "claim_limits": [
+    "The successful UI harness clicks no manual retry; Open Studio rechecks the runtime before completing setup.",
+    "Per-route setup HTTP timings were not emitted on success. The 136-second duration covers the full UI step.",
+    "Model training readiness is checked; no model is trained or used for prediction by this smoke.",
+    "The inline Playground facade executes with an empty step list; this does not prove PCA or another transform.",
+    "Payload hashes were verified against sidecars in CI; the products were not downloaded again for local hashing."
+  ]
+}

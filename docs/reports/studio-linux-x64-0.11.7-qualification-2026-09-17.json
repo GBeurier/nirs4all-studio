@@ -1,0 +1,150 @@
+{
+  "schema": "studio.unix-delivery-evidence.v1",
+  "checked_at": "2026-09-17T17:51:54.514567+00:00",
+  "version": "0.11.7",
+  "platform": "linux-x64",
+  "source_commit": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+  "run_id": 35247378499,
+  "run_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499",
+  "job": {
+    "id": 105312911809,
+    "name": "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 Linux x64",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-09-17T17:38:37Z",
+    "completed_at": "2026-09-17T17:49:33Z",
+    "html_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105312911809"
+  },
+  "proof_artifact": {
+    "id": 10511069551,
+    "name": "unix-product-proof-linux-x64",
+    "digest": "sha256:140bdf4a4657d0f6d0eaed91ce8f1ca0be4b240045dda7d41da039611b7e0a07",
+    "size_in_bytes": 4190,
+    "expired": false,
+    "workflow_run": {
+      "head_branch": "0.11.7",
+      "head_repository_id": 1129999985,
+      "head_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+      "id": 35247378499,
+      "repository_id": 1129999985
+    }
+  },
+  "candidate": {
+    "product_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+    "source_run": "35247378499",
+    "version": "0.11.7",
+    "platform": {
+      "label": "Linux x64",
+      "runner": "ubuntu-22.04",
+      "artifact": "linux-x64",
+      "platform": "linux",
+      "arch": "x64",
+      "archive_suffix": "linux-x64.tar.gz",
+      "installer_suffix": "linux-amd64.deb",
+      "from_version": "0.11.5",
+      "source_release_id": 390685191,
+      "source_archive_id": 570355126,
+      "source_checksum_id": 570355032
+    },
+    "previous_archive_sha256": "c870a4d2248e9ae7ded017b14017df189f5feea70f45ed6935d5205f7e8639bf",
+    "installer": {
+      "name": "nirs4all Studio-0.11.7-linux-amd64.deb",
+      "sha256": "aba4f500e2c7b29db0742d7c42b73e619983fd4f4067e90d2e1bd3e28bd20c31"
+    },
+    "archive": {
+      "name": "nirs4all Studio-0.11.7-all-in-one-linux-x64.tar.gz",
+      "sha256": "784ffca1d284f73b8ec45eb5f1c3555db86fa2c945fe7bb51a15a18d103a9966"
+    }
+  },
+  "installed_ui": {
+    "first_setup_and_bundled_runtime": true,
+    "developer_preference_persisted_ms": 424,
+    "saved_without_workspace": true,
+    "renderer_reload_passed": true,
+    "application_restart_passed": true,
+    "timing_scope": "Full UI action through stored-preference observation; not PUT-only latency"
+  },
+  "installed_offline_runtime": {
+    "passed": true,
+    "native_training_readiness": true,
+    "inline_playground_executed": true
+  },
+  "migration": {
+    "success": true,
+    "from": "0.11.5",
+    "to": "0.11.7",
+    "source": "qualified-candidate-fixture",
+    "target_archive_sha256": "784ffca1d284f73b8ec45eb5f1c3555db86fa2c945fe7bb51a15a18d103a9966",
+    "old_archive_sha256": "c870a4d2248e9ae7ded017b14017df189f5feea70f45ed6935d5205f7e8639bf",
+    "target_asset": "nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz",
+    "apply_result": {
+      "status": "success",
+      "from_version": "0.11.5",
+      "to_version": "0.11.7",
+      "current_version": "0.11.7",
+      "reconciled_at": "2026-09-17T17:46:18.316Z",
+      "relaunch_pid": 5118,
+      "backup_path": "/home/runner/work/_temp/studio-real-update-4Khc0T/installed/.nirs4all Studio.nirs4all-backup-5114"
+    },
+    "offline_cold_boot": true
+  },
+  "required_successful_steps": {
+    "Install the actual DEB package": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:40:00Z",
+      "completed_at": "2026-09-17T17:40:49Z"
+    },
+    "Verify same-run producers and acquire their exact artifacts": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:38:42Z",
+      "completed_at": "2026-09-17T17:39:59Z"
+    },
+    "Bind candidate filenames and hashes to the product and producer run": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:39:59Z",
+      "completed_at": "2026-09-17T17:40:00Z"
+    },
+    "Prove the installed application works offline": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:40:49Z",
+      "completed_at": "2026-09-17T17:42:35Z"
+    },
+    "Prove first setup, saved preference, reload and restart in installed UI": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:42:53Z",
+      "completed_at": "2026-09-17T17:44:38Z"
+    },
+    "Migrate the actual previous platform release and cold boot offline": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:44:38Z",
+      "completed_at": "2026-09-17T17:49:28Z"
+    },
+    "Verify migration proof is bound to the exact candidate archive": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:49:28Z",
+      "completed_at": "2026-09-17T17:49:28Z"
+    },
+    "Preserve installation and actual platform migration evidence": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:49:28Z",
+      "completed_at": "2026-09-17T17:49:30Z"
+    }
+  },
+  "qualified_hashes": {
+    "nirs4all.Studio-0.11.7-linux-amd64.deb": "aba4f500e2c7b29db0742d7c42b73e619983fd4f4067e90d2e1bd3e28bd20c31",
+    "nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz": "784ffca1d284f73b8ec45eb5f1c3555db86fa2c945fe7bb51a15a18d103a9966"
+  },
+  "proof_file_sha256": {
+    "candidate-proof.json": "d1ef0c099a552505615cb67e80216683060f75f18e1925ee9c11d992e586d9c3",
+    "installed-smoke.log": "421a0fd30bf012b14a3d56df80d0ff46c324f6679c0b732949d76783959a79fc",
+    "installed-ui.log": "4eb3f6c2ae1be20c64a3076c3faacdd2a4da370e9b28e0844fbaa46e0630c974",
+    "migration.log": "46ad308ee1f834880202c4faaa7394a0d3b0442d74fa0302bb07f8597591b9a7",
+    "studio-real-update-4Khc0T/application.log": "cb6893aa7ffd1e1da568f93a106c9db27297bbdd5ce8f9ddd32d326b889c0eb7",
+    "studio-real-update-4Khc0T/result.json": "42d7d961d1b545f88dd6fffcb4e505745c97035549e0c53ad52954f595aae549"
+  },
+  "limits": [
+    "Package payload hashes are from CI qualified candidate evidence; large package binaries were not downloaded again for this evidence collection.",
+    "Linux DEB or macOS DMG installed path and archive migration were exercised; this collection does not independently repeat AppImage FUSE qualification.",
+    "Scientific smoke proves training readiness and Playground execution, not a completed training fit."
+  ]
+}
