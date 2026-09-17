@@ -1,22 +1,18 @@
-# Livraison corrective Studio 0.11.6 — 17 septembre 2026
+# Livraison corrective Studio 0.11.7 — 17 septembre 2026
 
-**État : candidate non publiée. La qualification Linux a bloqué la livraison ; le run a ensuite été annulé.**
+**État : construction et qualification en cours. Aucune publication 0.11.7
+n'est encore attestée dans ce rapport.**
 
-- Produit et tag : `244382e10f8576b7cd1d05ea50466d237cc60a9f` / `0.11.6`.
-- [Workflow de release 35245572991](https://github.com/GBeurier/nirs4all-studio/actions/runs/35245572991).
-- [CI du même commit](https://github.com/GBeurier/nirs4all-studio/actions/runs/35245571964).
-- [E2E du même commit](https://github.com/GBeurier/nirs4all-studio/actions/runs/35245572149).
+- Produit et tag : `bf6d7b13fda815b7f8153350e36907910829c4c6` / `0.11.7`.
+- [Workflow de release 35247378499](https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499).
+- [CI du même commit](https://github.com/GBeurier/nirs4all-studio/actions/runs/35247375971).
+- [E2E du même commit](https://github.com/GBeurier/nirs4all-studio/actions/runs/35247375954).
 
-## Blocage de la candidate
-
-Le job d'archive Linux `105285379506` a construit et extrait le paquet, puis
-réussi le smoke d'extraction. Le 17 septembre à **16:30:07 UTC**, le contrôle
-de fermeture CPU a refusé une ligne `ldd` valide : une dépendance absolue
-`libpython` était située dans le répertoire `nirs4all Studio`, dont l'espace
-n'était pas accepté par le parseur du harnais. Aucun fichier 0.11.6 n'a été
-publié. Le tag est conservé ; le correctif de ce contrôle et les correctifs
-produit ci-dessous sont qualifiés par la candidate 0.11.7.
-[Suivi 0.11.7](studio-delivery-0.11.7-2026-09-17.md).
+La [candidate 0.11.6](studio-delivery-0.11.6-2026-09-17.md) n'a pas été publiée :
+son contrôle Linux refusait un chemin de bibliothèque valide contenant un espace.
+Le correctif conserve le confinement des dépendances. Neuf tests ciblés passent,
+dont deux nouveaux cas avec de véritables ELF : une bibliothèque embarquée est
+acceptée, une bibliothèque extérieure est refusée. Le tag 0.11.6 reste immuable.
 
 ## Correctifs
 
@@ -41,10 +37,10 @@ sa résolution dans le produit distribué.
 
 | Plateforme | Migration publique requise | Contrôle du produit |
 | --- | --- | --- |
-| Windows x64 | 0.11.5 → 0.11.6 | Installation NSIS, setup/UI, migration et redémarrage hors ligne |
-| Linux x64 | 0.11.5 → 0.11.6 | Installation DEB, setup/UI, migration et redémarrage hors ligne |
-| macOS Apple Silicon | 0.11.5 → 0.11.6 | Installation DMG, setup/UI, migration et redémarrage hors ligne |
-| macOS Intel | 0.11.4 → 0.11.6 | Installation DMG, setup/UI, migration et redémarrage hors ligne |
+| Windows x64 | 0.11.5 → 0.11.7 | Installation NSIS, setup/UI, migration et redémarrage hors ligne |
+| Linux x64 | 0.11.5 → 0.11.7 | Installation DEB, setup/UI, migration et redémarrage hors ligne |
+| macOS Apple Silicon | 0.11.5 → 0.11.7 | Installation DMG, setup/UI, migration et redémarrage hors ligne |
+| macOS Intel | 0.11.4 → 0.11.7 | Installation DMG, setup/UI, migration et redémarrage hors ligne |
 | Docker Linux amd64 CPU | Image construite et testée une seule fois | Smoke API/WebSocket/Chromium puis promotion de l'image qualifiée |
 
 La baseline Intel diffère parce qu'aucun fichier Intel 0.11.5 n'a été publié.
@@ -53,10 +49,10 @@ plateforme, vérifie les identités des fichiers avant et après la migration,
 et lie les résultats aux SHA256 source et cible. Tout échec, annulation ou gate
 ignoré bloque la publication stable GitHub et Docker.
 
-## Vérifications locales avant le tag
+## Vérifications locales de la reprise
 
 - `npm run lint:parallel` : réussi, 21 avertissements ESLint préexistants.
-- `npm run test:parallel` : **4 180 tests frontend**, **2 505 backend**, 1 ignoré.
+- `npm run test:parallel` : **4 180 tests frontend**, **2 505 backend**, 1 ignoré (avant les deux nouveaux tests ELF mentionnés ci-dessus).
 - `npm run test:e2e` : **63 tests navigateur** (avant l'élargissement du délai
   documentaire ; les E2E du commit final sont relancés dans Actions).
 - Cargo : **344 tests réussis, 5 ignorés**, avec le runtime Methods explicitement
@@ -65,3 +61,8 @@ ignoré bloque la publication stable GitHub et Docker.
 
 Les résultats locaux ne remplacent pas les qualifications des paquets réels.
 Les fichiers publics 0.11.5 ne sont ni remplacés ni reconstruits.
+
+Le smoke du produit installé exerce aussi le parcours dataset d'origine :
+métadonnée vide, correction locale du séparateur et de l'en-tête, présence de
+`sample_id` parmi les identifiants, conservation de l'agrégation après
+enregistrement, puis aperçu et rafraîchissement du dataset sauvegardé.
