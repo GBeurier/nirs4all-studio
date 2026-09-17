@@ -78,6 +78,9 @@ jobs:
       - name: Run tests
         run: npm run test:frontend
 
+      - name: Test installer and release scripts
+        run: node --test scripts/tests/*.test.cjs scripts/tests/linux-installer-cycle.contract.cjs
+
       - name: Build frontend
         run: npm run build
 

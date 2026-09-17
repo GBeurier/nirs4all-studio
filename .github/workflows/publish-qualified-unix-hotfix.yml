@@ -1,0 +1,140 @@
+name: Publish one qualified Unix hotfix platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      qualification_run_id:
+        description: Exact 47fddff8 Unix installation and N-1 qualification run
+        required: true
+        type: string
+      platform:
+        description: Publish only this successful platform
+        required: true
+        type: choice
+        options: [linux-x64, macos-arm64]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-unix-hotfix-0.11.5-${{ inputs.platform }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      QUALIFICATION_RUN: ${{ inputs.qualification_run_id }}
+      TARGET_PLATFORM: ${{ inputs.platform }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Require exact source tests, selected installation and real migration
+        run: |
+          cat > "$RUNNER_TEMP/check-unix-release.cjs" <<'NODE'
+          const assert = require('node:assert/strict');
+          const path = require('node:path');
+          const { execFileSync } = require('node:child_process');
+          const contract = require(path.resolve('scripts/qualified-unix-release-contract.cjs'));
+          const { GH_REPO, QUALIFICATION_RUN, TARGET_PLATFORM } = process.env;
+          assert.match(QUALIFICATION_RUN, /^\d+$/);
+          const api = route => JSON.parse(execFileSync('gh', ['api', `repos/${GH_REPO}/${route}`], { encoding: 'utf8' }));
+          async function check() {
+            contract.assertSource(api(`actions/runs/${contract.SOURCE_RUN}`), api(`actions/runs/${contract.SOURCE_RUN}/jobs?per_page=100`).jobs, api(`actions/runs/${contract.E2E_RUN}`), TARGET_PLATFORM);
+            const deadline = Date.now() + 45 * 60 * 1000;
+            for (;;) {
+              const run = api(`actions/runs/${QUALIFICATION_RUN}`);
+              const jobs = api(`actions/runs/${QUALIFICATION_RUN}/jobs?per_page=100`).jobs;
+              if (contract.qualificationStatus(run, jobs, TARGET_PLATFORM)) break;
+              assert(Date.now() < deadline, 'Timed out awaiting selected platform qualification');
+              console.log(`Waiting for real installation and migration: ${TARGET_PLATFORM}`);
+              await new Promise(resolve => setTimeout(resolve, 60000));
+            }
+            let tag = api('git/ref/tags/0.11.5').object;
+            while (tag.type === 'tag') tag = api(`git/tags/${tag.sha}`).object;
+            contract.assertPublicRelease(api('releases/tags/0.11.5'), api('releases/latest'), tag);
+          }
+          check().catch(error => { console.error(error); process.exitCode = 1; });
+          NODE
+          node "$RUNNER_TEMP/check-unix-release.cjs"
+      - name: Download only original selected-platform artifacts and qualification proof
+        run: |
+          set -euo pipefail
+          gh run download 35216053291 -n "installer-$TARGET_PLATFORM" -D candidate-installer
+          gh run download 35216053291 -n "archive-$TARGET_PLATFORM" -D candidate-archive
+          gh run download "$QUALIFICATION_RUN" -n "unix-real-update-proof-$TARGET_PLATFORM" -D proof
+      - name: Bind exact publication bytes to installation and N-1 evidence
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+          const contract = require('./scripts/qualified-unix-release-contract.cjs');
+          const { finalizeReleaseAssets } = require('./scripts/finalize-release-assets.cjs');
+          const config = contract.platformConfig(process.env.TARGET_PLATFORM);
+          const expected = [config.installer, config.archive, ...config.extra];
+          fs.mkdirSync('release');
+          for (const name of expected) {
+            const original = name.replace('nirs4all.Studio', 'nirs4all Studio');
+            const dir = name === config.archive ? 'candidate-archive' : 'candidate-installer';
+            for (const suffix of ['', '.sha256']) fs.copyFileSync(path.join(dir, original + suffix), path.join('release', original + suffix), fs.constants.COPYFILE_EXCL);
+          }
+          const records = finalizeReleaseAssets(path.resolve('release'), expected);
+          const files = [];
+          function walk(root) {
+            for (const item of fs.readdirSync(root, { withFileTypes: true })) {
+              const file = path.join(root, item.name);
+              if (item.isDirectory()) walk(file); else files.push(file);
+            }
+          }
+          walk('proof');
+          function read(name) {
+            const found = files.filter(file => path.basename(file) === name);
+            assert.equal(found.length, 1, name);
+            return JSON.parse(fs.readFileSync(found[0], 'utf8'));
+          }
+          contract.assertEvidence(read('candidate-proof.json'), read('result.json'), records, process.env.TARGET_PLATFORM);
+          fs.writeFileSync('publication-proof.json', JSON.stringify({ platform: process.env.TARGET_PLATFORM, qualification_run: process.env.QUALIFICATION_RUN, product_sha: contract.PRODUCT_SHA, source_run: contract.SOURCE_RUN, records }, null, 2));
+          NODE
+      - name: Add only verified new assets without replacing existing release files
+        run: |
+          set -euo pipefail
+          node "$RUNNER_TEMP/check-unix-release.cjs"
+          node <<'NODE'
+          const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          const { sha256File } = require('./scripts/finalize-release-assets.cjs');
+          const api = () => JSON.parse(execFileSync('gh', ['api', `repos/${process.env.GH_REPO}/releases/tags/0.11.5`], { encoding: 'utf8' }));
+          // Make each checksum available before its payload becomes discoverable.
+          const names = fs.readdirSync('release').sort((a, b) => Number(b.endsWith('.sha256')) - Number(a.endsWith('.sha256')) || a.localeCompare(b));
+          for (const name of names) {
+            const file = path.join('release', name);
+            const digest = `sha256:${sha256File(file)}`;
+            const existing = api().assets.filter(asset => asset.name === name);
+            assert(existing.length <= 1);
+            if (existing.length) {
+              assert.equal(existing[0].state, 'uploaded');
+              assert.equal(existing[0].digest, digest, `Refusing to replace existing asset ${name}`);
+            } else {
+              execFileSync('gh', ['release', 'upload', '0.11.5', file], { stdio: 'inherit' });
+            }
+            const published = api().assets.filter(asset => asset.name === name);
+            assert.equal(published.length, 1);
+            assert.equal(published[0].state, 'uploaded');
+            assert.equal(published[0].digest, digest);
+          }
+          NODE
+          node "$RUNNER_TEMP/check-unix-release.cjs"
+      - name: Preserve publication provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-unix-proof-${{ inputs.platform }}
+          path: publication-proof.json
+          if-no-files-found: error
+          retention-days: 30
