@@ -66,6 +66,16 @@ function ghFailureDiagnostic(error) {
   return result.length > 1200 ? `${result.slice(0, 1186)} [truncated]` : result;
 }
 
+function ghFailureHttpStatus(error) {
+  const stderr = typeof error?.stderr === "string" ? error.stderr.slice(0, 65536)
+    : Buffer.isBuffer(error?.stderr) ? error.stderr.subarray(0, 65536).toString("utf8") : "";
+  // Require an explicit gh error status, not a debug response header, exit code,
+  // timeout or status mentioned inside a URL. Ambiguous responses fail closed.
+  const statuses = [...stripVTControlCharacters(stderr).matchAll(/^(?:gh:\s*)?HTTP ([45]\d{2}):|^gh: [^\r\n]*\(HTTP ([45]\d{2})\)\s*$/gm)]
+    .map((match) => Number(match[1] || match[2]));
+  return new Set(statuses).size === 1 ? statuses[0] : null;
+}
+
 function releaseManifest(root, version, includeAllInOne) {
   const stat = fs.lstatSync(root);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
@@ -186,9 +196,15 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   pinnedReleaseId = releaseId;
   const wasDraft = release.draft;
   const identities = new Map();
+  const cleanedStarters = [];
   const expected = new Map(manifest.map((entry) => [entry.name, entry]));
 
-  const inspect = async (requireComplete = false, expectedDraft = wasDraft) => {
+  const isCurrentStarter = (asset, entry) => asset &&
+    Number.isSafeInteger(asset.id) && asset.id > 0 && asset.name === entry.name &&
+    asset.state === "starter" && asset.digest === null && asset.size === entry.size &&
+    !identities.has(entry.name) && ![...identities.values()].includes(asset.id);
+
+  const inspect = async (requireComplete = false, expectedDraft = wasDraft, currentAttempt = null) => {
     const current = await lookupRelease();
     assertRelease(current, releaseId);
     if (current.draft !== expectedDraft) throw new Error("Release visibility changed during upload");
@@ -196,11 +212,14 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
       throw new Error("Malformed release asset inventory");
     }
-    const present = new Set();
+    const present = new Map();
+    const assetIds = new Set();
     for (const asset of pages.flat()) {
       const entry = expected.get(asset.name);
-      if (!entry || present.has(asset.name)) throw new Error(`Unexpected or duplicate release asset: ${asset.name}`);
-      present.add(asset.name);
+      if (!entry || present.has(asset.name) || assetIds.has(asset.id)) throw new Error(`Unexpected or duplicate release asset: ${asset.name}`);
+      present.set(asset.name, asset);
+      assetIds.add(asset.id);
+      if (currentAttempt && asset.name === currentAttempt.name && isCurrentStarter(asset, currentAttempt)) continue;
       if (!Number.isSafeInteger(asset.id) || asset.id <= 0 ||
         asset.state !== "uploaded" || asset.size !== entry.size ||
         asset.digest !== `sha256:${entry.sha256}`) {
@@ -220,23 +239,70 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     return present;
   };
 
+  const removeCurrentStarter = async (entry, starter, attempt, httpStatus) => {
+    // GitHub documents incomplete starter remnants after upstream upload errors:
+    // https://docs.github.com/en/rest/releases/assets#upload-a-release-asset
+    // This exception never applies to an asset present before our failed attempt.
+    await assertTag();
+    const reread = await api(`releases/assets/${starter.id}`);
+    if (reread.id !== starter.id || !isCurrentStarter(reread, entry)) {
+      throw new Error(`Starter changed before cleanup; deletion refused: ${entry.name}`);
+    }
+    const current = (await inspect(false, true, entry)).get(entry.name);
+    if (!current || current.id !== starter.id || !isCurrentStarter(current, entry)) {
+      throw new Error(`Starter changed before cleanup; deletion refused: ${entry.name}`);
+    }
+    const beforeDelete = await lookupRelease();
+    assertRelease(beforeDelete, releaseId);
+    if (!beforeDelete.draft) throw new Error("Release became public; starter deletion refused");
+    const proof = {
+      release_id: releaseId, asset_id: starter.id, name: entry.name, size: entry.size,
+      state: "starter", digest: null, http_status: httpStatus, attempt,
+      source_sha: sha, absent_before_upload: true,
+    };
+    log(`Removing current failed-upload starter: ${JSON.stringify(proof)}`);
+    try {
+      // DELETE returns 204 with no JSON body. Never use gh release delete-asset,
+      // which resolves by name and could delete a replacement with another ID.
+      await gh(["api", `${apiRoot}/releases/assets/${starter.id}`, "--method", "DELETE"]);
+    } catch (error) {
+      log(`Starter cleanup did not return success (${ghFailureDiagnostic(error)}).`);
+      throw new Error(`Could not verify starter cleanup: ${entry.name}`);
+    }
+    cleanedStarters.push(proof);
+    log(`Removed current failed-upload starter: ${JSON.stringify(proof)}`);
+    return inspect();
+  };
+
   // Check every existing asset before making any upload. Public releases are read-only.
   let present = await inspect(!wasDraft);
   if (wasDraft) {
     for (const entry of manifest) {
       if (present.has(entry.name)) continue;
       for (let attempt = 1; attempt <= 3; attempt++) {
+        // Renew the absence proof after any backoff; a preexisting starter is
+        // rejected here, before this attempt has authority to remove anything.
+        present = await inspect();
+        if (present.has(entry.name)) break;
+        const absentBeforeUpload = !identities.has(entry.name);
         if (sha256File(entry.file) !== entry.sha256) {
           throw new Error(`Local qualified asset changed: ${entry.name}`);
         }
         log(`Uploading ${entry.name} (attempt ${attempt}/3)`);
+        let httpStatus = null;
         try {
           await gh(["release", "upload", tag, entry.file, "--repo", repo]);
         } catch (error) {
+          httpStatus = ghFailureHttpStatus(error);
           // A failed response may still have stored the complete asset. Never clobber it.
           log(`Upload did not return success for ${entry.name} (${ghFailureDiagnostic(error)}); verifying remote state.`);
         }
-        present = await inspect();
+        const mayRemoveStarter = absentBeforeUpload && httpStatus >= 500 && httpStatus <= 599;
+        present = await inspect(false, true, mayRemoveStarter ? entry : null);
+        const starter = present.get(entry.name);
+        if (mayRemoveStarter && starter?.state === "starter") {
+          present = await removeCurrentStarter(entry, starter, attempt, httpStatus);
+        }
         if (present.has(entry.name)) break;
         if (attempt === 3) throw new Error(`Upload failed after 3 attempts: ${entry.name}`);
         await wait(attempt * 5000);
@@ -247,7 +313,7 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   await assertTag();
   await inspect(true);
   if (wasDraft) {
-    // This must be the final mutation: no payload is ever replaced or deleted.
+    // This must be the final mutation: no verified payload is ever replaced or deleted.
     try {
       await api(`releases/${releaseId}`, ["--method", "PATCH", "--field", "draft=false"]);
     } catch (error) {
@@ -260,7 +326,7 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     await inspect(true, false);
   }
   log(`Verified published release ${tag}: ${manifest.length} assets, source ${sha}`);
-  return { releaseId, tag, sha, assets: manifest.length, published: true };
+  return { releaseId, tag, sha, assets: manifest.length, published: true, cleanedStarters };
 }
 
 async function main(argv = process.argv.slice(2), env = process.env) {

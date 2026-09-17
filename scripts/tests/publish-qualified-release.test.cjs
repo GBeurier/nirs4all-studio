@@ -29,7 +29,7 @@ function github(options, behavior = {}) {
   const state = {
     release: behavior.absent ? null : { id: 99, tag_name: options.tag, draft: true,
       prerelease: options.prerelease, target_commitish: "main" },
-    assets: [], calls: [], mutations: [], waits: [], attempts: new Map(), active: 0, maxActive: 0,
+    assets: [], calls: [], mutations: [], waits: [], attempts: new Map(), active: 0, maxActive: 0, deletedAssets: [],
   };
   state.asset = (entry) => ({ id: nextId++, name: entry.name, size: entry.size,
     state: "uploaded", digest: `sha256:${entry.sha256}` });
@@ -59,8 +59,24 @@ function github(options, behavior = {}) {
       }
       if (endpoint === "releases/99/assets?per_page=100") {
         assert.deepEqual(args.slice(2), ["--paginate", "--slurp"]);
+        behavior.beforeList?.(state);
         // Exercise actual pagination, not only one embedded release.assets page.
         return JSON.stringify([state.assets.slice(0, 7), state.assets.slice(7)]);
+      }
+      if (/^releases\/assets\/\d+$/.test(endpoint)) {
+        const id = Number(endpoint.split("/").at(-1));
+        const asset = state.assets.find((entry) => entry.id === id);
+        assert(asset, `requested unknown asset ID ${id}`);
+        if (args.length === 2) {
+          behavior.beforeAssetRead?.(state, asset);
+          return JSON.stringify(asset);
+        }
+        assert.deepEqual(args.slice(2), ["--method", "DELETE"]);
+        state.mutations.push(`delete:${id}`);
+        if (behavior.deleteFails) throw Object.assign(new Error("delete failed"), { stderr: "gh: Forbidden (HTTP 403)" });
+        state.deletedAssets.push({ ...asset });
+        if (!behavior.deleteNoEffect) state.assets = state.assets.filter((entry) => entry.id !== id);
+        return "";
       }
       if (endpoint === "releases/99") {
         if (args.length === 2) return JSON.stringify(state.release);
@@ -368,3 +384,168 @@ for (const operation of ["create", "upload", "publish"]) {
     for (const value of ["message-secret", "cmd-secret", "query-secret", "header-secret", "example.test", "Authorization"]) assert(!logs.includes(value));
   });
 }
+
+function failedStarterFixture(t, overrides = {}) {
+  const options = fixture(t);
+  const failure = Object.assign(new Error("upload failed"), { stderr: "HTTP 500: Error saving asset (https://uploads.example.test/assets?name=private)" });
+  const behavior = { afterUpload: (state, asset) => {
+    asset.state = "starter";
+    asset.digest = null;
+    throw failure;
+  }, ...overrides };
+  const remote = github(options, behavior);
+  const target = remote.manifest.find((entry) => entry.name.endsWith("-linux-x64.tar.gz"));
+  remote.state.assets.push(...remote.manifest.filter((entry) => entry !== target).map(remote.state.asset));
+  const messages = [];
+  remote.dependencies.log = (message) => messages.push(message);
+  return { options, remote, behavior, target, failure, messages };
+}
+
+test("a current HTTP 500 starter is reread by ID, deleted alone and retried successfully", async (t) => {
+  const { options, remote, behavior, target, failure, messages } = failedStarterFixture(t);
+  behavior.afterUpload = (state, asset) => {
+    if (state.attempts.get(asset.name) === 1) {
+      asset.state = "starter";
+      asset.digest = null;
+      throw failure;
+    }
+  };
+  const verifiedBefore = remote.state.assets.map((asset) => ({ ...asset }));
+  const result = await publishQualifiedRelease(options, remote.dependencies);
+  assert.equal(remote.state.deletedAssets.length, 1);
+  const removed = remote.state.deletedAssets[0];
+  assert.equal(removed.name, target.name);
+  assert.equal(removed.state, "starter");
+  assert.equal(removed.digest, null);
+  assert.deepEqual(remote.state.mutations, [`upload:${target.name}`, `delete:${removed.id}`, `upload:${target.name}`, "publish"]);
+  assert.deepEqual(remote.state.waits, [5000]);
+  assert.deepEqual(remote.state.assets.filter((asset) => asset.name !== target.name), verifiedBefore);
+  assert.deepEqual(result.cleanedStarters, [{ release_id: 99, asset_id: removed.id, name: target.name, size: target.size,
+    state: "starter", digest: null, http_status: 500, attempt: 1, source_sha: options.sha, absent_before_upload: true }]);
+  assert(remote.state.calls.some((args) => args.length === 2 && args[1].endsWith(`/releases/assets/${removed.id}`)));
+  assert(messages.some((message) => message.startsWith("Removed current failed-upload starter:") && message.includes(`"asset_id":${removed.id}`)));
+});
+
+test("three upstream starter failures stay bounded and never publish", async (t) => {
+  const { options, remote, target } = failedStarterFixture(t);
+  await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /after 3 attempts/);
+  assert.equal(remote.state.attempts.get(target.name), 3);
+  assert.equal(remote.state.deletedAssets.length, 3);
+  assert.equal(new Set(remote.state.deletedAssets.map((asset) => asset.id)).size, 3);
+  assert.deepEqual(remote.state.waits, [5000, 10000]);
+  assert.equal(remote.state.release.draft, true);
+  assert(!remote.state.mutations.includes("publish"));
+});
+
+test("a preexisting starter is never uploaded over or deleted", async (t) => {
+  const { options, remote, target } = failedStarterFixture(t);
+  remote.state.assets.push({ ...remote.state.asset(target), state: "starter", digest: null });
+  await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /Refusing to replace/);
+  assert.deepEqual(remote.state.mutations, []);
+});
+
+test("a starter appearing during backoff is preexisting for the next attempt and cannot be deleted", async (t) => {
+  const { options, remote, target } = failedStarterFixture(t);
+  remote.dependencies.sleep = async () => remote.state.assets.push({ ...remote.state.asset(target), state: "starter", digest: null });
+  await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /Refusing to replace/);
+  assert.equal(remote.state.attempts.get(target.name), 1);
+  assert.equal(remote.state.deletedAssets.length, 1);
+  assert.equal(remote.state.mutations.length, 2);
+});
+
+for (const stderr of ["HTTP 403: Forbidden", "gh: Validation Failed (HTTP 422)", "unexpected EOF", "HTTP/2.0 500 Bad Gateway", "X-Upstream: failed (HTTP 500)\nunexpected EOF",
+  "Post https://example.test/?error=HTTP500: unexpected EOF", "HTTP 500: older error\ngh: Forbidden (HTTP 403)"]) {
+  test(`a starter without an unambiguous upstream 5xx is protected: ${stderr.split("\n")[0]}`, async (t) => {
+    const { options, remote, failure } = failedStarterFixture(t);
+    failure.stderr = stderr;
+    await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /Refusing to replace/);
+    assert.equal(remote.state.mutations.length, 1);
+    assert.deepEqual(remote.state.deletedAssets, []);
+  });
+}
+
+for (const field of ["name", "size", "digest", "state", "id"]) {
+  test(`an upstream failure cannot authorize deletion with a different ${field}`, async (t) => {
+    const { options, remote, behavior, failure } = failedStarterFixture(t);
+    behavior.afterUpload = (_state, asset) => {
+      asset.state = "starter";
+      asset.digest = null;
+      asset[field] = { name: "foreign.zip", size: asset.size + 1, digest: "sha256:" + "c".repeat(64), state: "uploaded", id: -1 }[field];
+      throw failure;
+    };
+    await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /Refusing to replace|Unexpected/);
+    assert.equal(remote.state.mutations.length, 1);
+    assert.deepEqual(remote.state.deletedAssets, []);
+  });
+}
+
+for (const field of ["id", "draft", "tag_name", "prerelease"]) {
+  test(`cleanup refuses a release whose ${field} changed after upload`, async (t) => {
+    const { options, remote, behavior } = failedStarterFixture(t);
+    const failUpload = behavior.afterUpload;
+    behavior.afterUpload = (state, asset) => {
+      state.release[field] = { id: 101, draft: false, tag_name: "0.11.8", prerelease: true }[field];
+      failUpload(state, asset);
+    };
+    await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /Release identity|visibility changed/);
+    assert.equal(remote.state.mutations.length, 1);
+    assert.deepEqual(remote.state.deletedAssets, []);
+  });
+}
+
+for (const change of ["disappeared", "replaced", "modified", "starter"]) {
+  test(`cleanup refuses when a previously verified asset is ${change}`, async (t) => {
+    const { options, remote, behavior } = failedStarterFixture(t);
+    const failUpload = behavior.afterUpload;
+    behavior.afterUpload = (state, asset) => {
+      if (change === "disappeared") state.assets.shift();
+      if (change === "replaced") state.assets[0].id = 10000;
+      if (change === "modified") state.assets[0].digest = "sha256:" + "c".repeat(64);
+      if (change === "starter") { state.assets[0].state = "starter"; state.assets[0].digest = null; }
+      failUpload(state, asset);
+    };
+    await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /disappeared|identity changed|Refusing to replace/);
+    assert.equal(remote.state.mutations.length, 1);
+    assert.deepEqual(remote.state.deletedAssets, []);
+  });
+}
+
+for (const field of ["name", "size", "digest", "state", "id"]) {
+  test(`cleanup rereads the asset ID and refuses a changed ${field}`, async (t) => {
+    const { options, remote, behavior } = failedStarterFixture(t);
+    behavior.beforeAssetRead = (_state, asset) => {
+      asset[field] = { name: "foreign.zip", size: asset.size + 1, digest: "sha256:" + "c".repeat(64), state: "uploaded", id: 10000 }[field];
+    };
+    await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /Starter changed/);
+    assert.equal(remote.state.mutations.length, 1);
+    assert.deepEqual(remote.state.deletedAssets, []);
+  });
+}
+
+test("cleanup rechecks release visibility after rereading the starter ID", async (t) => {
+  const { options, remote, behavior } = failedStarterFixture(t);
+  behavior.beforeAssetRead = (state) => { state.release.draft = false; };
+  await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /visibility changed/);
+  assert.equal(remote.state.mutations.length, 1);
+  assert.deepEqual(remote.state.deletedAssets, []);
+});
+
+for (const behavior of [{ deleteFails: true }, { deleteNoEffect: true }]) {
+  test(`failed starter cleanup stops retries: ${JSON.stringify(behavior)}`, async (t) => {
+    const { options, remote, target } = failedStarterFixture(t, behavior);
+    await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /Could not verify starter cleanup|Refusing to replace/);
+    assert.equal(remote.state.attempts.get(target.name), 1);
+    assert.equal(remote.state.mutations.length, 2);
+    assert.equal(remote.state.release.draft, true);
+    assert.deepEqual(remote.state.waits, []);
+  });
+}
+
+test("an uploaded payload with its qualified SHA survives an upstream error without deletion", async (t) => {
+  const { options, remote, behavior, failure } = failedStarterFixture(t);
+  behavior.afterUpload = () => { throw failure; };
+  await publishQualifiedRelease(options, remote.dependencies);
+  assert.deepEqual(remote.state.deletedAssets, []);
+  assert.equal(remote.state.mutations.length, 2);
+  assert.equal(remote.state.mutations.at(-1), "publish");
+});
