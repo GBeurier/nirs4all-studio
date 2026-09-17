@@ -189,7 +189,9 @@ function getElectronBuilderArgs(config) {
   ];
 
   if (config.platform === "win32") {
-    args.push("--win");
+    // electron-builder's ZIP is flat, but the updater requires one app directory.
+    // Package that directory ourselves and validate the actual resulting ZIP.
+    args.push("--win", "--dir");
   } else if (config.platform === "darwin") {
     args.push("--mac");
     // Build the unpacked .app bundle and zip it with `ditto` ourselves.
@@ -237,6 +239,24 @@ function getLinuxTarPath(config) {
 
 function getLinuxCompressProgram() {
   return (process.env.NIRS4ALL_TAR_GZIP_PROGRAM || "").trim();
+}
+
+async function createWindowsZip(config, options = {}) {
+  const releaseDir = options.releaseDir || path.join(projectRoot, "release");
+  const appDir = config.arch === "x64" ? "win-unpacked" : `win-${config.arch}-unpacked`;
+  const appPath = path.join(releaseDir, appDir);
+  const zipPath = path.join(releaseDir, `${PRODUCT_NAME}-${getPackageVersion()}-all-in-one-win-${config.arch}.zip`);
+  const pythonPath = options.pythonPath || path.join(projectRoot, "backend-dist", "python-runtime", "python", "python.exe");
+  if (!fs.existsSync(appPath)) {
+    throw new Error(`Expected packaged Windows app directory was not found: ${appPath}`);
+  }
+  console.log("=== Step 4: Create and verify Windows ZIP archive ===");
+  await runCommand(pythonPath, [
+    "-B", "-I", "-S", path.join(__dirname, "create-windows-update-archive.py"),
+    appPath, zipPath,
+  ]);
+  console.log("");
+  return zipPath;
 }
 
 async function createMacZip(config) {
@@ -463,7 +483,9 @@ async function buildArchiveStandalone(config) {
   await runCommand(getNodeCommand(), getElectronBuilderArgs(config));
   console.log("");
 
-  if (config.platform === "darwin") {
+  if (config.platform === "win32") {
+    await createWindowsZip(config);
+  } else if (config.platform === "darwin") {
     await createMacZip(config);
   } else if (config.platform === "linux") {
     await createLinuxTarball(config);
@@ -507,6 +529,7 @@ if (require.main === module) {
 
 module.exports = {
   buildArchiveStandalone,
+  createWindowsZip,
   getElectronBuilderArgs,
   parseArgs,
   resolveBuildConfig,

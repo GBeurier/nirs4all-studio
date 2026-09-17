@@ -26,9 +26,9 @@ Les tests de workflow évaluent les conditions de publication pour plusieurs com
 
 ## Ce qui reste à qualifier après le correctif urgent
 
-- Exécuter les installateurs Windows NSIS, Linux DEB/AppImage et macOS DMG dans des machines vierges, puis désinstaller et vérifier la conservation des données. Le smoke actuel démarre l’application dépaquetée ; il ne remplace pas cette preuve.
-- Tester la migration **de la précédente version publique vers la nouvelle** avec préférences et workspace existants. Le self-update actuel prouve download/apply/relaunch, mais utilise une copie du candidat modifiée comme cible.
-- Étendre le nouveau parcours UI du paquet Linux aux plateformes Windows/macOS. Les tests React du setup utilisent des réponses simulées ; les E2E navigateur génériques appellent `skip-setup`.
+- Exécuter les installateurs Linux DEB/AppImage et macOS DMG dans des machines vierges ; tester la désinstallation et la conservation des données sur toutes les plateformes. Windows NSIS a maintenant été réellement installé et son application a passé les vérifications scientifiques et UI, voir le suivi de livraison.
+- Compléter la migration **de la précédente version publique vers la nouvelle** avec préférences et workspace utilisateur existants. La nouvelle qualification N−1 utilise les versions et les octets réels ; son profil vierge ne prouve pas encore la conservation d’un workspace existant.
+- Étendre le parcours UI réel à macOS. Il a désormais passé setup, activation du mode développeur, sauvegarde, reload et redémarrage sur Linux et Windows installé. Les E2E navigateur génériques ne remplacent pas cette preuve.
 - Étendre la qualification des paquets Windows/macOS aux PR pertinentes. Les builds réels multiplateformes restent effectués à la release.
 - Protéger la branche principale avec des checks obligatoires. Vérification GitHub en lecture seule le 17 septembre : `branches/main/protection` renvoie « Branch not protected » et `rules/branches/main` renvoie une liste vide. Aucun réglage distant n’a été modifié pendant cet audit.
 
@@ -48,8 +48,15 @@ La qualification Windows réelle a reproduit un autre défaut absent des tests L
 
 La priorité de publication est Windows. La qualification macOS Intel a également révélé une absence de roue compatible pour la fermeture Numba/llvmlite ; cette distribution ne doit pas être publiée avant correction et nouvelle qualification.
 
-La dernière version publique constatée est **0.11.4**. Le correctif préparé est **0.11.5**, avec priorité aux installateurs Windows et à l’archive utilisée pour la mise à jour. La publication doit suivre les contrôles du paquet Windows et du self-update ; les résultats de build et l’URL de la release sont consignés dans le suivi de livraison.
+Les installateurs Windows **0.11.5** ont été publiés en préversion à **14:16:17 Paris**. Le premier test N−1 a bloqué l’archive plate produite par electron-builder : le smoke de self-update construisait sa propre fixture enveloppée et masquait le défaut du livrable. L’archive est reconditionnée avec une racine unique et comparaison SHA de chaque fichier. La promotion stable dépend de la nouvelle migration réelle. Le [suivi de livraison](studio-delivery-0.11.5-2026-09-17.md) consigne le résultat final et ses limites.
 
 ### Remaining performance observation (2026-09-17)
 
 On the A3 packaged product constrained to one CPU, opening Advanced Settings queued several runtime diagnostics. The actual developer-preference PUT completed after 14.848 seconds, and the preference survived renderer reload. This demonstrates delayed persistence under load, rather than a lost preference; responsiveness remains an audit item. The packaged UI smoke uses its configured runtime timeout for persistence and navigation, logs the elapsed save time and bounded transport diagnostics, and still requires actual persisted data, renderer reload, and application restart.
+
+## Contrôles durables ajoutés après la qualification Windows
+
+- Les releases stables suivantes doivent passer le workflow réutilisable NSIS + premier setup UI + migration N−1 avant publication GitHub et Docker. Les états failure/cancelled/skipped bloquent la publication ; les tests évaluent les conditions et le graphe de dépendances.
+- Le constructeur Windows crée le ZIP sous un répertoire parent unique, relit ses membres et vérifie leur intégrité avant de remplacer atomiquement le livrable précédent. Les tests utilisent de vrais ZIP, conservent les fichiers cachés et rejettent un ZIP plat ou corrompu.
+- L’exception initial-release n’est applicable qu’après un véritable HTTP 404 pour la dernière version publique. Un lancement manuel exige une version source explicite ; une release existante sans archive/checksum Windows ne permet pas de sauter la migration.
+- Cette protection supplémentaire vise les versions stables. Les prereleases conservent leur traitement antérieur et ne revendiquent pas cette qualification automatique complète.
