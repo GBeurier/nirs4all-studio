@@ -1,4 +1,14 @@
-# Reprise après crash WSL — 17 septembre 2026
+# Reprise après crash WSL — 17–18 septembre 2026
+
+**La reprise a abouti à la publication de Studio 0.11.7 sur les quatre
+plateformes desktop et de Docker Linux amd64 CPU.** La
+[release stable](https://github.com/GBeurier/nirs4all-studio/releases/tag/0.11.7)
+a été publiée le **18 septembre à 00:01:15, heure de Paris**
+(**17 septembre 2026 à 22:01:15 UTC**). Les dix binaires publics ont ensuite
+été intégralement retéléchargés et leurs empreintes vérifiées : **4,42 Go**,
+contrôle terminé à **00:07:35, heure de Paris**. La
+[preuve finale](studio-0.11.7-public-verification-2026-09-18.json) conserve
+les identités, SHA256 et résultats exacts.
 
 La session interrompue est **« Corriger les bugs de nirs4all-studio »**, identifiant
 `01a0aeab-f117-7872-987a-a04a8deefa54`, commencée à 11:21 heure de Paris.
@@ -57,7 +67,7 @@ de vérification. La publication Intel a été bloquée par le gate correspondan
   cette carte sont ignorées. Onze régressions couvrent ces comportements.
 - Le workflow stable doit désormais qualifier les trois produits Unix installés,
   puis migrer la précédente version réellement disponible sur chaque plateforme.
-  Pour 0.11.6, Linux et Apple Silicon partent de 0.11.5, Intel de 0.11.4. Les
+  Pour 0.11.7, Linux et Apple Silicon partent de 0.11.5, Intel de 0.11.4. Les
   résultats sont liés aux empreintes des archives source et cible ; un échec,
   une annulation ou un gate ignoré bloque la publication stable.
 
@@ -76,11 +86,37 @@ de vérification. La publication Intel a été bloquée par le gate correspondan
   puis sélectionné le lien symbolique du venv, refusé par le contrôle de l'hôte.
 - `cargo fmt --check` et `cargo clippy --all-targets -- -D warnings` : réussis.
 - Le diagnostic Mac Intel est terminé. La candidate 0.11.6 a été arrêtée après
-  un faux refus du contrôle ELF Linux ; le correctif est livré dans la candidate
+  un faux refus du contrôle ELF Linux ; le correctif est livré dans la version
   0.11.7, dont les quatre installations réelles et migrations ont réussi.
-- Docker 0.11.7 est publié et vérifié anonymement. La publication desktop reste
-  bloquée sur les transferts GitHub ; voir le [rapport final de livraison](studio-delivery-0.11.7-2026-09-17.md),
-  avec les preuves de chaque plateforme et les erreurs de transfert GitHub.
+- Après correction de la publication : **99 tests de scripts** et
+  **21 tests de contrats CI/Unix réussis**.
+- Docker 0.11.7 est publié et vérifié anonymement. La publication desktop a
+  également réussi ; voir le [rapport final de livraison](studio-delivery-0.11.7-2026-09-17.md)
+  et les preuves de chaque plateforme.
+
+## Publication terminée
+
+Les **21 jobs de production et qualification** du run source `35247378499`
+sont verts. Son statut global reste `failure` parce que seul `Create Release`
+a échoué lors des transferts. Les erreurs HTTP et délais dépassés rencontrés
+ensuite ont également précédé la publication ; ils ne décrivent plus l'état
+courant de la release.
+
+La [tentative 2 de la reprise 35262110398](https://github.com/GBeurier/nirs4all-studio/actions/runs/35262110398/attempts/2)
+a réussi avec le commit d'infrastructure `9226313c1d3311bc1d305e8ccd9c9de4d9428e86`,
+après revérification des qualifications et artefacts existants. Le produit et
+le tag `0.11.7` restent `bf6d7b13fda815b7f8153350e36907910829c4c6`, sans
+reconstruction ni déplacement. Les dix binaires et dix checksums figurent dans
+la release publique. La [preuve de publication](studio-0.11.7-publication-success-2026-09-18.json)
+est complétée par la vérification intégrale des dix téléchargements publics et
+de leurs fichiers SHA256, désormais réussie.
+
+Les limites restent explicites : Docker est qualifié pour Linux amd64 CPU ;
+les paquets Windows sont non signés et les paquets macOS sans signature de
+distribution Developer ID ni notarisation (distinctes d'une signature ad hoc).
+Les smokes desktop ne font pas d'entraînement ou de prédiction de modèle.
+Le contrôle CPU Linux et l'installation DEB ne prouvent pas un nouveau lancement
+FUSE de l'AppImage 0.11.7.
 
 Les fichiers publics 0.11.5 restent inchangés. L'amélioration de réactivité
 déjà présente sur `main` avant le crash est incluse dans les paquets 0.11.7

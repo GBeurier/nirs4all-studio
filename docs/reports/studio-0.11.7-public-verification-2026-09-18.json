@@ -1,0 +1,162 @@
+{
+  "version": "0.11.7",
+  "product_source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+  "release_run": 35247378499,
+  "release_run_conclusion": "failure",
+  "publication_run": 35262110398,
+  "publication_workflow_sha": "9226313c1d3311bc1d305e8ccd9c9de4d9428e86",
+  "release_url": "https://github.com/GBeurier/nirs4all-studio/releases/tag/0.11.7",
+  "started_at": "2026-09-17T22:04:15.977208+00:00",
+  "verified_at": "2026-09-17T22:07:35.451841+00:00",
+  "assets": [
+    {
+      "name": "nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz",
+      "id": 571226411,
+      "size": 560052761,
+      "sha256": "784ffca1d284f73b8ec45eb5f1c3555db86fa2c945fe7bb51a15a18d103a9966",
+      "url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.7/nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz",
+      "full_payload_downloaded_and_hashed": true,
+      "public_sidecar_verified": true,
+      "checksum_asset_id": 570813954,
+      "checksum_asset_digest": "sha256:38140bfa7f58676b18a09659c06ab7aa6c575495ecf473834691a63ee731721d",
+      "verified_at": "2026-09-17T22:05:19.508931+00:00"
+    },
+    {
+      "name": "nirs4all.Studio-0.11.7-all-in-one-mac-arm64.zip",
+      "id": 571227028,
+      "size": 397237051,
+      "sha256": "17aacd052e76a0634b828734366eed4486b9001b72a13d6b028525e7afed53b1",
+      "url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.7/nirs4all.Studio-0.11.7-all-in-one-mac-arm64.zip",
+      "full_payload_downloaded_and_hashed": true,
+      "public_sidecar_verified": true,
+      "checksum_asset_id": 570813959,
+      "checksum_asset_digest": "sha256:950d21b07e01bf6a7fabb70a23bd42e644c9c25a27ab6801aafa416246922cbc",
+      "verified_at": "2026-09-17T22:04:41.513110+00:00"
+    },
+    {
+      "name": "nirs4all.Studio-0.11.7-all-in-one-mac-x64.zip",
+      "id": 571227460,
+      "size": 421976545,
+      "sha256": "ada82cbfefe51deb8f9fb0ab7bc4ab5dcc3eb7742d86041032fc4aef109954b2",
+      "url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.7/nirs4all.Studio-0.11.7-all-in-one-mac-x64.zip",
+      "full_payload_downloaded_and_hashed": true,
+      "public_sidecar_verified": true,
+      "checksum_asset_id": 570813950,
+      "checksum_asset_digest": "sha256:4558359ee10fade005508f50351a99857851695541c61a8c3a9d305c39a08bed",
+      "verified_at": "2026-09-17T22:05:03.524994+00:00"
+    },
+    {
+      "name": "nirs4all.Studio-0.11.7-all-in-one-win-x64.zip",
+      "id": 571232470,
+      "size": 461621963,
+      "sha256": "5aff6021dd1f8d9ca92fafba7a942797e661223fe2aa0e45e874cfb23e510c39",
+      "url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.7/nirs4all.Studio-0.11.7-all-in-one-win-x64.zip",
+      "full_payload_downloaded_and_hashed": true,
+      "public_sidecar_verified": true,
+      "checksum_asset_id": 570813958,
+      "checksum_asset_digest": "sha256:ecd25492a8e5e3d0ecd911690cd7766b9b3f5b24d5cc45b1671ebcabd3cd32d0",
+      "verified_at": "2026-09-17T22:05:51.544783+00:00"
+    },
+    {
+      "name": "nirs4all.Studio-0.11.7-linux-amd64.deb",
+      "id": 571233143,
+      "size": 445720300,
+      "sha256": "aba4f500e2c7b29db0742d7c42b73e619983fd4f4067e90d2e1bd3e28bd20c31",
+      "url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.7/nirs4all.Studio-0.11.7-linux-amd64.deb",
+      "full_payload_downloaded_and_hashed": true,
+      "public_sidecar_verified": true,
+      "checksum_asset_id": 570813960,
+      "checksum_asset_digest": "sha256:8510580295593622d8b3c74d4ba6801aa698966c4845e6ff93761d17e641576e",
+      "verified_at": "2026-09-17T22:05:53.774214+00:00"
+    },
+    {
+      "name": "nirs4all.Studio-0.11.7-linux-x86_64.AppImage",
+      "id": 571233784,
+      "size": 556926840,
+      "sha256": "645a96b22cdd456c6e1cf6175757bdda60a3469df69217193cc26895420110ae",
+      "url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.7/nirs4all.Studio-0.11.7-linux-x86_64.AppImage",
+      "full_payload_downloaded_and_hashed": true,
+      "public_sidecar_verified": true,
+      "checksum_asset_id": 570813955,
+      "checksum_asset_digest": "sha256:13b97327675cdfa33c7af61e104636fce14953fda305f2874eab8b42988f8d1e",
+      "verified_at": "2026-09-17T22:06:26.913707+00:00"
+    },
+    {
+      "name": "nirs4all.Studio-0.11.7-mac-arm64.dmg",
+      "id": 571234416,
+      "size": 428145939,
+      "sha256": "5d8ec00f8fa3aab4da9a2bea6e2239e10f372fe62e51ac6e669416d5ef26e559",
+      "url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.7/nirs4all.Studio-0.11.7-mac-arm64.dmg",
+      "full_payload_downloaded_and_hashed": true,
+      "public_sidecar_verified": true,
+      "checksum_asset_id": 570813951,
+      "checksum_asset_digest": "sha256:daccfe78033d2b088abe7c78251dddb3f5bf189586b7b364e7cacd6cd7f90b85",
+      "verified_at": "2026-09-17T22:06:49.724607+00:00"
+    },
+    {
+      "name": "nirs4all.Studio-0.11.7-mac-x64.dmg",
+      "id": 571235078,
+      "size": 452196285,
+      "sha256": "6cd73743fd4ab24cdea1df62f215314e7522fcb6d7ec442c28177141100077b7",
+      "url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.7/nirs4all.Studio-0.11.7-mac-x64.dmg",
+      "full_payload_downloaded_and_hashed": true,
+      "public_sidecar_verified": true,
+      "checksum_asset_id": 570813957,
+      "checksum_asset_digest": "sha256:b2744edabcc837183b8eaa3127c95e7ec8abb0f92d35e16bcdbacd1d5512bbb8",
+      "verified_at": "2026-09-17T22:07:09.231782+00:00"
+    },
+    {
+      "name": "nirs4all.Studio-0.11.7-win-x64-portable.exe",
+      "id": 571235793,
+      "size": 350136461,
+      "sha256": "7f1e1e4c0cbed9c27ad457c6cd6ba561d9421e8ee04b7c9d632040db74bd787e",
+      "url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.7/nirs4all.Studio-0.11.7-win-x64-portable.exe",
+      "full_payload_downloaded_and_hashed": true,
+      "public_sidecar_verified": true,
+      "checksum_asset_id": 570813952,
+      "checksum_asset_digest": "sha256:ff5e49211b2fa60f58e68cf68a043fb8a3f942ac79ccd2a3ba9a48acc5893d9f",
+      "verified_at": "2026-09-17T22:07:05.627036+00:00"
+    },
+    {
+      "name": "nirs4all.Studio-0.11.7-win-x64.exe",
+      "id": 570867725,
+      "size": 350382030,
+      "sha256": "752c71ebcd71df2b609c084816f226ae76042148c3f39dd31f401bf6fc67af32",
+      "url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.7/nirs4all.Studio-0.11.7-win-x64.exe",
+      "full_payload_downloaded_and_hashed": true,
+      "public_sidecar_verified": true,
+      "checksum_asset_id": 570813945,
+      "checksum_asset_digest": "sha256:21f0203703227a4aaa0a3a6118fb2d929cb17c4a03884d43063bbf3656692196",
+      "verified_at": "2026-09-17T22:07:27.400923+00:00"
+    }
+  ],
+  "installed_product_qualification_hashes": {
+    "nirs4all.Studio-0.11.7-win-x64.exe": "752c71ebcd71df2b609c084816f226ae76042148c3f39dd31f401bf6fc67af32",
+    "nirs4all.Studio-0.11.7-all-in-one-win-x64.zip": "5aff6021dd1f8d9ca92fafba7a942797e661223fe2aa0e45e874cfb23e510c39",
+    "nirs4all.Studio-0.11.7-linux-amd64.deb": "aba4f500e2c7b29db0742d7c42b73e619983fd4f4067e90d2e1bd3e28bd20c31",
+    "nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz": "784ffca1d284f73b8ec45eb5f1c3555db86fa2c945fe7bb51a15a18d103a9966",
+    "nirs4all.Studio-0.11.7-mac-arm64.dmg": "5d8ec00f8fa3aab4da9a2bea6e2239e10f372fe62e51ac6e669416d5ef26e559",
+    "nirs4all.Studio-0.11.7-all-in-one-mac-arm64.zip": "17aacd052e76a0634b828734366eed4486b9001b72a13d6b028525e7afed53b1",
+    "nirs4all.Studio-0.11.7-mac-x64.dmg": "6cd73743fd4ab24cdea1df62f215314e7522fcb6d7ec442c28177141100077b7",
+    "nirs4all.Studio-0.11.7-all-in-one-mac-x64.zip": "ada82cbfefe51deb8f9fb0ab7bc4ab5dcc3eb7742d86041032fc4aef109954b2"
+  },
+  "previous_release_0_11_5_assets_unchanged": true,
+  "docker": {
+    "public_anonymous_access": true,
+    "version_and_latest_manifest_digest": "sha256:2488299c649800f9ed0b98636252cadd350eeedec21351f4779eeff0ca335497",
+    "image_config_digest": "sha256:163a6a2c9e83d50a0c1a13bef8f58d22c65aab928a84c896e081e26deff839e5",
+    "matches_image_built_and_tested_in_release_job": true,
+    "qualification_job_id": 105318077384,
+    "previous_version_0_11_5_manifest_digest_unchanged": "sha256:6c6e4629ee30cafc0bcac97a1e26800ff93a2e23b701aae2431510cead6305aa",
+    "architecture": "amd64",
+    "os": "linux",
+    "labels": {
+      "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>",
+      "org.opencontainers.image.revision": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+      "org.opencontainers.image.source": "https://github.com/GBeurier/nirs4all-studio",
+      "org.opencontainers.image.title": "nirs4all Studio",
+      "org.opencontainers.image.version": "0.11.7"
+    },
+    "scope": "Manifest/configuration verification; runtime qualification is performed by the release workflow."
+  }
+}
