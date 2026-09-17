@@ -390,7 +390,6 @@ export interface AdvancedSettingsTabProps {
   isDeveloperMode: boolean;
   handleDeveloperModeChange: (enabled: boolean) => void;
   isLoadingDevMode: boolean;
-  workspacePath: string | null;
   backendUrl: string;
   isRestarting: boolean;
   handleRestartBackend: () => void;
@@ -402,7 +401,6 @@ export function AdvancedSettingsTab({
   isDeveloperMode,
   handleDeveloperModeChange,
   isLoadingDevMode,
-  workspacePath,
   backendUrl,
   isRestarting,
   handleRestartBackend,
@@ -440,7 +438,7 @@ export function AdvancedSettingsTab({
             <Switch
               checked={isDeveloperMode}
               onCheckedChange={handleDeveloperModeChange}
-              disabled={isLoadingDevMode || !workspacePath}
+              disabled={isLoadingDevMode}
             />
           </div>
         </CardContent>

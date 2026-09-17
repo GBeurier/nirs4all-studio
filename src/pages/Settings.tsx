@@ -281,7 +281,6 @@ export default function Settings() {
               isDeveloperMode={isDeveloperMode}
               handleDeveloperModeChange={handleDeveloperModeChange}
               isLoadingDevMode={isLoadingDevMode}
-              workspacePath={workspacePath}
               backendUrl={backendUrl}
               isRestarting={isRestarting}
               handleRestartBackend={handleRestartBackend}
