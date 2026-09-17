@@ -1,0 +1,22 @@
+{
+  "release_id": 390944704,
+  "release_url": "https://github.com/GBeurier/nirs4all-studio/releases/tag/0.11.7",
+  "published_at": "2026-09-17T22:01:15Z",
+  "tag": "0.11.7",
+  "product_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+  "publication_run": 35262110398,
+  "publication_run_attempt": 2,
+  "publication_workflow_sha": "9226313c1d3311bc1d305e8ccd9c9de4d9428e86",
+  "job_id": 105397224404,
+  "conclusion": "success",
+  "draft": false,
+  "prerelease": false,
+  "asset_count": 20,
+  "automatic_cleanup_proofs": [],
+  "upload_failure_diagnostics": [],
+  "log_sha256": "68b5f24def4b5fd0a661127d5beb89dc26e59e2eb61c6ed13d85070fe0458f45",
+  "public_full_payload_verification_status": "success",
+  "public_full_payload_verification_report": "studio-0.11.7-public-verification-2026-09-18.json",
+  "public_full_payload_verified_at": "2026-09-17T22:07:35.451841+00:00",
+  "full_payload_bytes_verified": 4424396175
+}

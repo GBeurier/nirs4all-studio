@@ -546,10 +546,19 @@
     "infrastructure_source_sha": "9226313c1d3311bc1d305e8ccd9c9de4d9428e86",
     "product_source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
     "qualified_artifact_source_run_id": 35247378499,
-    "status": "blocked_on_asset_upload",
+    "status": "published_and_publicly_verified",
     "scope": "Separate publication recovery run reusing the already qualified product artifacts. The infrastructure commit is distinct from the immutable product source.",
     "launch_provenance": "Run head SHA verified against the pushed infrastructure commit; qualified source tag and artifacts remain unchanged.",
-    "public_asset_verification": null,
+    "public_asset_verification": {
+      "status": "success",
+      "report": "studio-0.11.7-public-verification-2026-09-18.json",
+      "verified_at": "2026-09-17T22:07:35.451841+00:00",
+      "full_payloads_downloaded_and_hashed": 10,
+      "bytes_verified": 4424396175,
+      "sidecars_verified": 10,
+      "qualified_installed_product_bindings_verified": 8,
+      "previous_release_0_11_5_assets_unchanged": true
+    },
     "draft_cleanup_proof": "studio-0.11.7-incomplete-upload-cleanup.json",
     "local_linux_gh_upload": {
       "http_status": 500,
@@ -585,21 +594,25 @@
       },
       "source_verification_proof": "studio-0.11.7-recovery-source-proof.json"
     },
-    "job_id": 105340149983,
+    "job_id": 105397224404,
     "local_http_1_1_probe": "studio-0.11.7-direct-upload-probe.json",
-    "conclusion": "failure",
-    "final_state_report": "studio-0.11.7-publication-blocker-2026-09-17.json",
-    "last_attempt": {
-      "upload_attempt": 1,
-      "duration_seconds": 600,
-      "http_status_observed": null,
-      "result": "Command ended at its timeout; the unverified starter blocked promotion and automatic cleanup."
+    "conclusion": "success",
+    "required_remaining_work": [],
+    "failed_attempt_before_retry": {
+      "run_attempt": 1,
+      "conclusion": "failure",
+      "job_id": 105340149983,
+      "last_attempt": {
+        "upload_attempt": 1,
+        "duration_seconds": 600,
+        "http_status_observed": null,
+        "result": "Command ended at its timeout; the unverified starter blocked promotion and automatic cleanup."
+      },
+      "historical_blocker_report": "studio-0.11.7-publication-blocker-2026-09-17.json"
     },
-    "required_remaining_work": [
-      "Finish uploading the unchanged qualified desktop assets.",
-      "Publish only the complete verified draft.",
-      "Download and hash all ten public payloads and verify their sidecars."
-    ]
+    "run_attempt": 2,
+    "published_at": "2026-09-17T22:01:15Z",
+    "publication_success_report": "studio-0.11.7-publication-success-2026-09-18.json"
   },
   "evidence_provenance": {
     "preparation": "Initial offline consolidation of existing evidence, followed by recorded remote checks of recovery runs, draft inventory, and public Docker identity.",

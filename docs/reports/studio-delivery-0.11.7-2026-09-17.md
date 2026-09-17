@@ -1,8 +1,18 @@
-# Livraison corrective Studio 0.11.7 — 17 septembre 2026
+# Livraison corrective Studio 0.11.7 — 17–18 septembre 2026
 
-**État : les quatre produits desktop sont qualifiés ; Docker 0.11.7 est publié
-et vérifié. La publication desktop reste bloquée sur les transferts GitHub :
-erreur HTTP 500, puis envoi interrompu après 600 secondes. Le brouillon reste privé.**
+**Studio 0.11.7 est publié pour Windows x64, Linux x64, macOS Apple Silicon
+et macOS Intel. Docker Linux amd64 CPU est également publié et vérifié.**
+La [release stable GitHub](https://github.com/GBeurier/nirs4all-studio/releases/tag/0.11.7)
+a été publiée le **18 septembre 2026 à 00:01:15, heure de Paris**
+(**17 septembre à 22:01:15 UTC**). Son inventaire contient les dix binaires
+et leurs dix fichiers SHA256.
+
+La publication et la vérification sont terminées. Les **dix binaires publics**
+ont été intégralement retéléchargés (**4 424 396 175 octets**) et leurs SHA256
+comparés aux dix fichiers de contrôle et aux identités GitHub. Les huit empreintes
+des produits installés et migrés correspondent exactement. La
+[vérification publique finale](studio-0.11.7-public-verification-2026-09-18.json)
+a réussi le **18 septembre à 00:07:35, heure de Paris** (17 septembre 22:07:35 UTC).
 
 - Produit et tag : `bf6d7b13fda815b7f8153350e36907910829c4c6` / `0.11.7`.
 - [Workflow de release 35247378499](https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499).
@@ -110,32 +120,46 @@ métadonnée vide, correction locale du séparateur et de l'en-tête, présence 
 `sample_id` parmi les identifiants, conservation de l'agrégation après
 enregistrement, puis aperçu et rafraîchissement du dataset sauvegardé.
 
-## Publication et reprise des transferts
+## Publication réussie et provenance
 
-Les 21 jobs de qualification et de production du run source ont réussi. Seul
-`Create Release` a échoué, deux fois, avec `Error saving asset` lors des envois
-concurrents. Le brouillon `390944704` contenait les dix checksums mais aucun
-binaire public. Dix enregistrements d’envoi incomplets restaient au statut
-`starter`, sans digest. Le statut global de ce run reste donc **failure**.
+La [tentative 2 du run de reprise 35262110398](https://github.com/GBeurier/nirs4all-studio/actions/runs/35262110398/attempts/2)
+est **réussie** ; [job de publication 105397224404](https://github.com/GBeurier/nirs4all-studio/actions/runs/35262110398/job/105397224404).
+Elle utilise le commit d'infrastructure
+`9226313c1d3311bc1d305e8ccd9c9de4d9428e86`. Le produit et le tag restent
+`bf6d7b13fda815b7f8153350e36907910829c4c6` : aucun paquet n'a été reconstruit,
+aucun tag déplacé et aucune qualification contournée.
 
-La [reprise de publication](https://github.com/GBeurier/nirs4all-studio/actions/runs/35259219167)
-utilise le commit d'infrastructure `7c7c8355dfd8f7a7774727a046f90326c1f27365`.
-Elle ne reconstruit aucun produit et ne déplace aucun tag : elle vérifie les
-21 jobs verts, les identités et digests des huit artefacts producteurs, puis
-les huit empreintes des produits installés et migrés. Le
-[manifeste de reprise](studio-0.11.7-publication-recovery-input.json) conserve
-ces valeurs exactes.
+Le run source `35247378499` conserve son statut global **failure** : ses
+**21 jobs de production et qualification ont réussi**, et seul `Create Release`
+a échoué lors des transferts. La reprise verte est distincte de ce run source.
+Avant publication, elle a revérifié les 21 jobs, les identités et digests des
+huit artefacts producteurs, les huit empreintes des produits installés et migrés,
+puis l'inventaire complet des dix binaires et dix checksums. Le
+[manifeste de reprise](studio-0.11.7-publication-recovery-input.json) et la
+[preuve de publication réussie](studio-0.11.7-publication-success-2026-09-18.json)
+conservent ces identités et les résultats exacts.
 
-La première tentative de reprise a refusé les dix entrées `starter`. Le
-[nettoyage ciblé](studio-0.11.7-incomplete-upload-cleanup.json) a supprimé
-uniquement ces entrées incomplètes du brouillon privé, après vérification
-individuelle de leur identité, état et absence de digest. Les dix checksums
-valides ont conservé leurs identités. Le même workflow a ensuite été relancé.
+Les erreurs de transfert précédentes sont résolues : `Error saving asset`,
+HTTP 500 attesté et dépassement de 600 secondes appartiennent aux tentatives
+antérieures. Le [rapport de blocage](studio-0.11.7-publication-blocker-2026-09-17.json)
+et le [nettoyage ciblé](studio-0.11.7-incomplete-upload-cleanup.json) décrivent
+ces états historiques, désormais dépassés. Le run victorieux a réutilisé le
+NSIS Windows déjà vérifié ; chacun des neuf autres envois a réussi à la première
+tentative du helper. Aucune suppression d'entrée `starter` par le helper n'a
+été observée pendant cette tentative victorieuse.
 
-Le nouvel envoi séquentiel réutilise uniquement les fichiers déjà vérifiés,
-refuse tout fichier divergent et publie le brouillon seulement après contrôle
-des dix binaires et dix checksums. Il remplace également l'envoi concurrent
-pour les prochaines releases.
+Le helper publie uniquement l'inventaire complet et vérifié, refuse les fichiers
+divergents et conserve des diagnostics expurgés. Ses protections et retries,
+y compris le nettoyage strict d'un résidu appartenant à un envoi courant après
+HTTP 5xx explicite, sont couverts par les **99 tests de scripts** et
+**21 tests de contrats CI/Unix**. Leur présence ne signifie pas qu'ils ont été
+nécessaires pendant la publication réussie.
+
+Le [rapport agrégé](studio-source-0.11.7-qualification-2026-09-17.json)
+sépare les qualifications produit, les tentatives de publication et la
+vérification publique complète des téléchargements, désormais réussie.
+
+## Docker et portée des validations
 
 Docker a réussi les contrôles du runtime natif et les interactions réelles
 Chromium authentifiées (navigation, fetch, mutation JSON et WebSocket), puis
@@ -151,61 +175,10 @@ a confirmé l'accès anonyme, l'identité des tags `0.11.7` et `latest`, les lab
 source/version et l'identité exacte de l'image testée. L'inventaire public GitHub
 0.11.5 et le manifeste Docker 0.11.5 sont inchangés.
 
-La reprise séquentielle a ensuite rencontré la même erreur sur un seul fichier.
-L'envoi direct de l'archive Linux depuis WSL a permis d'obtenir la réponse exacte :
-**HTTP 500 `Error saving asset`** sur `uploads.github.com`. La concurrence n'est
-donc pas une explication suffisante. Les nouveaux diagnostics du helper conservent
-le statut HTTP et le message expurgé ; les fichiers incomplets restent bloquants.
-
-Le NSIS Windows a ensuite été accepté depuis le poste local et son SHA256 a été
-revérifié (`asset_id=570867725`). Un essai HTTP/1.1 brut de l'archive Linux a été
-[arrêté pendant l'envoi](studio-0.11.7-direct-upload-probe.json) en raison de son
-faible débit ; il n'a pas produit de réponse HTTP et n'est pas un nouvel échec
-serveur attesté.
-
-Le helper du commit `9226313c1d3311bc1d305e8ccd9c9de4d9428e86` permet désormais
-trois tentatives après erreurs serveur. Il peut supprimer uniquement le résidu
-`starter` créé par sa tentative courante après une erreur HTTP 5xx explicite :
-absence avant l'envoi, identité de release inchangée et toujours privée, digest
-null, taille attendue et relecture par identifiant sont obligatoires. Tous les
-fichiers précédemment vérifiés sont revérifiés avant suppression, puis le
-nettoyage est tracé. Un résidu préexistant ou un fichier public reste refusé.
-Ce comportement est couvert par les tests et suit la
-[documentation des résidus starter](https://docs.github.com/en/rest/releases/assets#upload-a-release-asset).
-
-Cette version est exécutée par le
-[nouveau run de reprise](https://github.com/GBeurier/nirs4all-studio/actions/runs/35262110398),
-lié au commit d'infrastructure exact ci-dessus. Le
-[rapport agrégé](studio-source-0.11.7-qualification-2026-09-17.json) sépare les
-qualifications produit, les tentatives de publication et les vérifications publiques.
-
-## État final et reprise nécessaire
-
-Le run `35262110398` a échoué : sa première tentative d'envoi de l'archive Linux
-est restée sans résultat pendant les 600 secondes permises à la commande `gh`.
-Aucune réponse HTTP 5xx exploitable n'a été observée sur cette tentative ; le
-helper a donc refusé de supprimer automatiquement le résidu ou de réessayer.
-Les deux reprises de publication n'ont publié aucun fichier desktop.
-
-L'[état final vérifié](studio-0.11.7-publication-blocker-2026-09-17.json)
-conserve un brouillon privé avec dix checksums et le NSIS Windows dont l'empreinte
-est correcte. Le dernier résidu Linux incomplet a été retiré après confirmation
-de la fin du run ; aucun envoi n'est laissé actif. L'inventaire public 0.11.5 a
-été comparé à nouveau et demeure identique. Docker 0.11.7 reste disponible.
-
-Les changements, qualifications et preuves sont conservés sur `main`.
-Il reste à terminer les transferts GitHub, publier le brouillon complet et
-vérifier les dix téléchargements publics. La qualification des produits et
-les tags ne doivent pas être reconstruits ou déplacés pour cette reprise.
-La commande de reprise est :
-
-```sh
-gh workflow run .github/workflows/resume-studio-0.11.7-publication.yml \
-  --ref main --repo GBeurier/nirs4all-studio
-```
-
-Le workflow revérifie les 21 qualifications, les huit artefacts producteurs,
-les huit SHA256 des produits installés et tous les checksums avant publication.
-Il réutilise les fichiers valides du brouillon et refuse une publication partielle.
-Le dernier échec relève des transferts ; aucun défaut supplémentaire du produit
-n'a été établi par ces tentatives de publication.
+Les paquets Windows sont non signés ; les paquets macOS sont sans signature
+de distribution Developer ID ni notarisation. Une signature ad hoc du runtime
+arm64 ne constitue pas une signature de distribution.
+Les contrôles CPU Linux isolés et l'installation DEB ne prouvent pas un nouveau
+lancement FUSE de l'AppImage 0.11.7. Les smokes desktop exécutent les parcours
+dataset et la façade Playground, mais vérifient seulement la disponibilité de
+l'entraînement : ils n'entraînent ni n'utilisent un modèle pour prédire.
