@@ -28,6 +28,8 @@ on:
     branches: [main, develop, 'rc/**']
 
 env:
+  SENTRY_DSN: ""
+  VITE_SENTRY_DSN: ""
   NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
   NIRS4ALL_LIBRARY_REF: ${{ inputs.nirs4all_library_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor-python' || 'main') }}

@@ -2,11 +2,31 @@
 
 import os
 
+import pytest
+
 from api.shared.sentry import backend_before_send
 
 
 def test_pytest_disables_backend_sentry():
     assert os.environ["SENTRY_DSN"] == ""
+
+
+@pytest.mark.parametrize("url", ["http://testserver/api/runs", "http://testserver:8000/api/updates/dependencies/install", "https://TESTSERVER/api/datasets"])
+def test_backend_before_send_drops_test_client_errors(url):
+    event = {
+        "request": {"url": url},
+        "exception": {"values": [{"type": "ModuleNotFoundError", "value": "No module named 'nirs4all'"}]},
+    }
+    assert backend_before_send(event, {}) is None
+
+
+@pytest.mark.parametrize("url", ["http://localhost:8000/api/runs", "http://127.0.0.1:8000/api/runs", "https://testserver.example/api/runs", "http://[invalid"])
+def test_backend_before_send_keeps_real_import_errors(url):
+    event = {
+        "request": {"url": url},
+        "exception": {"values": [{"type": "ModuleNotFoundError", "value": "No module named 'nirs4all'"}]},
+    }
+    assert backend_before_send(event, {}) == event
 
 
 def test_backend_before_send_drops_keyboard_interrupt():

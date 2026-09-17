@@ -9,6 +9,8 @@ on:
     branches: [main, develop, 'rc/**']
 
 env:
+  SENTRY_DSN: ""
+  VITE_SENTRY_DSN: ""
   # Node 22 = the locally-validated toolchain (engines: >=20). On node 24 the
   # playwright browser download repeatedly hung right after the chrome zip hit
   # 100% (3 bounded attempts, identical signature), never reaching the tests.

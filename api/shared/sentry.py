@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from urllib.parse import urlsplit
 
 _SENSITIVE_KEY_PARTS = (
     "dataset",
@@ -138,7 +139,18 @@ def backend_before_send(
     event: dict[str, Any],
     hint: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Drop benign shutdown events before they reach Sentry."""
+    """Drop test traffic and benign events before they reach Sentry."""
+    request = event.get("request")
+    url = request.get("url") if isinstance(request, dict) else None
+    if isinstance(url, str):
+        try:
+            # Starlette's TestClient uses this host. Localhost and 127.0.0.1
+            # also serve real desktop sessions, so their errors must survive.
+            if urlsplit(url).hostname == "testserver":
+                return None
+        except ValueError:
+            pass  # Malformed request metadata must not hide a real error.
+
     hint = hint or {}
     exc_info = hint.get("exc_info")
     if exc_info:
