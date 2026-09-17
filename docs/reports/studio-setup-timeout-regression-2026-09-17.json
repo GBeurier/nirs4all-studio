@@ -1,0 +1,144 @@
+{
+  "schema": "studio-setup-document-budget-diagnostic.v1",
+  "platform": "linux",
+  "harness": "/tmp/studio-repro-document-budget.py",
+  "method": "Pause the owned CPython child for 17 seconds with SIGSTOP/SIGCONT, first during scientific preflight, then during a real /api/updates/dependencies?force_refresh=true request. Keep the packaged runtime closure unchanged.",
+  "scope": "Controlled local process-starvation regression. This does not identify the macOS first-launch failure or qualify a published package.",
+  "runtime_closure_sha256": "51a00ed3cf8b01b721f9dfe114ca65112a93de6d71697063e6dee47501caa9f6",
+  "before": {
+    "sidecar_sha256": "5ef519adff243ea65380fbc019f0247ed989dfb86934b899c0d8324013fa0a85",
+    "setup_worker_timeout_seconds": 15,
+    "observations": [
+      {
+        "phase": "preflight_paused_17_seconds",
+        "path": "/api/system/readiness",
+        "status": 200,
+        "elapsed_seconds": 24.911,
+        "body": {
+          "ml_ready": true,
+          "ml_error": null
+        }
+      },
+      {
+        "phase": "control_before",
+        "path": "/api/updates/dependencies?force_refresh=true",
+        "status": 200,
+        "elapsed_seconds": 4.422,
+        "body": {
+          "runtime_valid": true
+        }
+      },
+      {
+        "phase": "worker_paused_17_seconds",
+        "path": "/api/updates/dependencies?force_refresh=true",
+        "status": 503,
+        "elapsed_seconds": 15.122,
+        "body": {
+          "detail": "python_host_timed_out"
+        }
+      },
+      {
+        "phase": "control_after",
+        "path": "/api/updates/dependencies?force_refresh=true",
+        "status": 200,
+        "elapsed_seconds": 4.269,
+        "body": {
+          "runtime_valid": true
+        }
+      }
+    ]
+  },
+  "after": {
+    "sidecar_sha256": "7e19f7d953f642319ece3e50671cd83fc4c8ffdd9d3b7f19bf6a528c88a2b32e",
+    "setup_worker_timeout_seconds": 45,
+    "observations": [
+      {
+        "phase": "preflight_paused_17_seconds",
+        "path": "/api/system/readiness",
+        "status": 200,
+        "elapsed_seconds": 23.353,
+        "body": {
+          "ml_ready": true,
+          "ml_error": null
+        }
+      },
+      {
+        "phase": "control_before",
+        "path": "/api/updates/dependencies?force_refresh=true",
+        "status": 200,
+        "elapsed_seconds": 4.462,
+        "body": {
+          "runtime_valid": true
+        }
+      },
+      {
+        "phase": "worker_paused_17_seconds",
+        "path": "/api/updates/dependencies?force_refresh=true",
+        "status": 200,
+        "elapsed_seconds": 21.259,
+        "body": {
+          "runtime_valid": true
+        }
+      },
+      {
+        "phase": "control_after",
+        "path": "/api/updates/dependencies?force_refresh=true",
+        "status": 200,
+        "elapsed_seconds": 4.402,
+        "body": {
+          "runtime_valid": true
+        }
+      }
+    ]
+  },
+  "recording": "Observations transcribed from the executed local harness output; not a raw HTTP trace or a package qualification.",
+  "initial_setup_regression": {
+    "test": "scientific_cpython::tests::setup_inspection_survives_slow_workers_without_extending_other_document_budgets",
+    "method": "Invoke adapt_document concurrently for config.dependencies, config.compare and pipeline.render using confined shell workers that return valid document envelopes after 16 seconds. The executor has a real runtime closure and source adapter hashes matching the compiled manifest.",
+    "before": {
+      "result": "failed",
+      "elapsed_seconds": 15.07,
+      "error": "python_host_timed_out"
+    },
+    "after": {
+      "result": "passed",
+      "elapsed_seconds": 16.09,
+      "setup_operations": "succeeded",
+      "pipeline_render": "python_host_timed_out"
+    },
+    "scientific_cpython_suite": {
+      "passed": 19,
+      "elapsed_seconds": 16.1
+    }
+  },
+  "final_document_regression": {
+    "schema": "studio-document-cold-import-regression.v1",
+    "scope": "Behavioral Rust regression using controlled Unix workers, actual adapter-manifest verification and a real temporary runtime closure. This is not a rebuilt macOS package qualification.",
+    "test": "scientific_cpython::tests::document_adapters_survive_slow_cold_imports",
+    "operations": [
+      "config.dependencies",
+      "config.compare",
+      "dataset.preview",
+      "pipeline.render"
+    ],
+    "worker_delay_seconds": 16,
+    "before": {
+      "setup_timeout_seconds": 45,
+      "other_document_timeout_seconds": 15,
+      "result": "failed",
+      "failed_operation": "dataset.preview",
+      "error": "python_host_timed_out",
+      "elapsed_seconds": 16.09,
+      "log": "/home/delete/.local/share/rtk/tee/1789661516_cargo_test.log"
+    },
+    "after": {
+      "document_timeout_seconds": 45,
+      "timeout_source": "SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT",
+      "prediction_execution_timeout_seconds": 120,
+      "all_operations": "passed",
+      "scientific_cpython_suite_passed": 19,
+      "suite_elapsed_seconds": 16.1,
+      "attestation_changed": false
+    }
+  }
+}
