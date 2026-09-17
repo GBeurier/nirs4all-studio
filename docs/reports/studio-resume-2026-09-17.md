@@ -79,7 +79,7 @@ de vérification. La publication Intel a été bloquée par le gate correspondan
   un faux refus du contrôle ELF Linux ; le correctif est livré dans la candidate
   0.11.7, dont les quatre installations réelles et migrations ont réussi.
 - Docker 0.11.7 est publié et vérifié anonymement. La publication desktop reste
-  suivie dans le [rapport final de livraison](studio-delivery-0.11.7-2026-09-17.md),
+  bloquée sur les transferts GitHub ; voir le [rapport final de livraison](studio-delivery-0.11.7-2026-09-17.md),
   avec les preuves de chaque plateforme et les erreurs de transfert GitHub.
 
 Les fichiers publics 0.11.5 restent inchangés. L'amélioration de réactivité

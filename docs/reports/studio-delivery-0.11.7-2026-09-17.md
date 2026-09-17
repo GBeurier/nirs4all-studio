@@ -1,7 +1,8 @@
 # Livraison corrective Studio 0.11.7 — 17 septembre 2026
 
-**État : les quatre produits desktop et Docker ont réussi leurs qualifications.
-La publication GitHub est reprise après deux échecs de transfert des fichiers.**
+**État : les quatre produits desktop sont qualifiés ; Docker 0.11.7 est publié
+et vérifié. La publication desktop reste bloquée sur les transferts GitHub :
+erreur HTTP 500, puis envoi interrompu après 600 secondes. Le brouillon reste privé.**
 
 - Produit et tag : `bf6d7b13fda815b7f8153350e36907910829c4c6` / `0.11.7`.
 - [Workflow de release 35247378499](https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499).
@@ -177,3 +178,34 @@ Cette version est exécutée par le
 lié au commit d'infrastructure exact ci-dessus. Le
 [rapport agrégé](studio-source-0.11.7-qualification-2026-09-17.json) sépare les
 qualifications produit, les tentatives de publication et les vérifications publiques.
+
+## État final et reprise nécessaire
+
+Le run `35262110398` a échoué : sa première tentative d'envoi de l'archive Linux
+est restée sans résultat pendant les 600 secondes permises à la commande `gh`.
+Aucune réponse HTTP 5xx exploitable n'a été observée sur cette tentative ; le
+helper a donc refusé de supprimer automatiquement le résidu ou de réessayer.
+Les deux reprises de publication n'ont publié aucun fichier desktop.
+
+L'[état final vérifié](studio-0.11.7-publication-blocker-2026-09-17.json)
+conserve un brouillon privé avec dix checksums et le NSIS Windows dont l'empreinte
+est correcte. Le dernier résidu Linux incomplet a été retiré après confirmation
+de la fin du run ; aucun envoi n'est laissé actif. L'inventaire public 0.11.5 a
+été comparé à nouveau et demeure identique. Docker 0.11.7 reste disponible.
+
+Les changements, qualifications et preuves sont conservés sur `main`.
+Il reste à terminer les transferts GitHub, publier le brouillon complet et
+vérifier les dix téléchargements publics. La qualification des produits et
+les tags ne doivent pas être reconstruits ou déplacés pour cette reprise.
+La commande de reprise est :
+
+```sh
+gh workflow run .github/workflows/resume-studio-0.11.7-publication.yml \
+  --ref main --repo GBeurier/nirs4all-studio
+```
+
+Le workflow revérifie les 21 qualifications, les huit artefacts producteurs,
+les huit SHA256 des produits installés et tous les checksums avant publication.
+Il réutilise les fichiers valides du brouillon et refuse une publication partielle.
+Le dernier échec relève des transferts ; aucun défaut supplémentaire du produit
+n'a été établi par ces tentatives de publication.

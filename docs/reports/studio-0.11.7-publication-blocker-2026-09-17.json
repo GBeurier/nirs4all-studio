@@ -1,0 +1,99 @@
+{
+  "checked_at": "2026-09-17T19:15:00.273735+00:00",
+  "release_id": 390944704,
+  "tag": "0.11.7",
+  "product_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+  "draft": true,
+  "desktop_publication_completed": false,
+  "qualified_source_run": 35247378499,
+  "last_publication_run": 35262110398,
+  "last_publication_run_conclusion": "failure",
+  "last_publication_workflow_sha": "9226313c1d3311bc1d305e8ccd9c9de4d9428e86",
+  "last_attempt_observed_duration_seconds": 600,
+  "last_attempt_http_status_observed": null,
+  "earlier_local_linux_upload_http_status": 500,
+  "earlier_local_linux_upload_message": "Error saving asset",
+  "assets": [
+    {
+      "id": 570813954,
+      "name": "nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz.sha256",
+      "size": 117,
+      "digest": "sha256:38140bfa7f58676b18a09659c06ab7aa6c575495ecf473834691a63ee731721d",
+      "state": "uploaded"
+    },
+    {
+      "id": 570813959,
+      "name": "nirs4all.Studio-0.11.7-all-in-one-mac-arm64.zip.sha256",
+      "size": 114,
+      "digest": "sha256:950d21b07e01bf6a7fabb70a23bd42e644c9c25a27ab6801aafa416246922cbc",
+      "state": "uploaded"
+    },
+    {
+      "id": 570813950,
+      "name": "nirs4all.Studio-0.11.7-all-in-one-mac-x64.zip.sha256",
+      "size": 112,
+      "digest": "sha256:4558359ee10fade005508f50351a99857851695541c61a8c3a9d305c39a08bed",
+      "state": "uploaded"
+    },
+    {
+      "id": 570813958,
+      "name": "nirs4all.Studio-0.11.7-all-in-one-win-x64.zip.sha256",
+      "size": 112,
+      "digest": "sha256:ecd25492a8e5e3d0ecd911690cd7766b9b3f5b24d5cc45b1671ebcabd3cd32d0",
+      "state": "uploaded"
+    },
+    {
+      "id": 570813960,
+      "name": "nirs4all.Studio-0.11.7-linux-amd64.deb.sha256",
+      "size": 105,
+      "digest": "sha256:8510580295593622d8b3c74d4ba6801aa698966c4845e6ff93761d17e641576e",
+      "state": "uploaded"
+    },
+    {
+      "id": 570813955,
+      "name": "nirs4all.Studio-0.11.7-linux-x86_64.AppImage.sha256",
+      "size": 111,
+      "digest": "sha256:13b97327675cdfa33c7af61e104636fce14953fda305f2874eab8b42988f8d1e",
+      "state": "uploaded"
+    },
+    {
+      "id": 570813951,
+      "name": "nirs4all.Studio-0.11.7-mac-arm64.dmg.sha256",
+      "size": 103,
+      "digest": "sha256:daccfe78033d2b088abe7c78251dddb3f5bf189586b7b364e7cacd6cd7f90b85",
+      "state": "uploaded"
+    },
+    {
+      "id": 570813957,
+      "name": "nirs4all.Studio-0.11.7-mac-x64.dmg.sha256",
+      "size": 101,
+      "digest": "sha256:b2744edabcc837183b8eaa3127c95e7ec8abb0f92d35e16bcdbacd1d5512bbb8",
+      "state": "uploaded"
+    },
+    {
+      "id": 570813952,
+      "name": "nirs4all.Studio-0.11.7-win-x64-portable.exe.sha256",
+      "size": 110,
+      "digest": "sha256:ff5e49211b2fa60f58e68cf68a043fb8a3f942ac79ccd2a3ba9a48acc5893d9f",
+      "state": "uploaded"
+    },
+    {
+      "id": 570867725,
+      "name": "nirs4all.Studio-0.11.7-win-x64.exe",
+      "size": 350382030,
+      "digest": "sha256:752c71ebcd71df2b609c084816f226ae76042148c3f39dd31f401bf6fc67af32",
+      "state": "uploaded"
+    },
+    {
+      "id": 570813945,
+      "name": "nirs4all.Studio-0.11.7-win-x64.exe.sha256",
+      "size": 101,
+      "digest": "sha256:21f0203703227a4aaa0a3a6118fb2d929cb17c4a03884d43063bbf3656692196",
+      "state": "uploaded"
+    }
+  ],
+  "incomplete_starters_remaining": 0,
+  "previous_release_0_11_5_assets_unchanged": true,
+  "docker_public_verification": "studio-docker-0.11.7-public-verification-2026-09-17.json",
+  "failure_log_sha256": "358f8b3fd263033886315574d61b140343929007c4aa578efae849b65c86d14a"
+}
