@@ -251,6 +251,7 @@ export interface LinkedWorkspaceDiscoveredTemplates {
 }
 
 export interface UIPreferences {
+  developer_mode?: boolean;
   theme: "light" | "dark" | "system";
   density: "compact" | "comfortable" | "spacious";
   language: string;

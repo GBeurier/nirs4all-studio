@@ -1,8 +1,9 @@
 /**
  * Persistent verify-cache primitives for the managed Python environment.
  *
- * The on-disk cache lets ensureBackendPackages() skip spawning Python entirely
- * when the env fingerprint matches a previously fully-verified state. These
+ * The on-disk cache records the most recently verified environment identity.
+ * Directory metadata is only a hint: callers must recheck imports/dependencies
+ * before declaring readiness, even when the fingerprint matches. These
  * helpers are pure filesystem IO + fingerprinting; EnvManager owns when to read,
  * write, and trust the entry.
  */
@@ -89,5 +90,14 @@ export function writeVerifyCache(userDataDir: string, entry: VerifyCacheEntry): 
     fs.writeFileSync(p, JSON.stringify(entry, null, 2));
   } catch (error) {
     console.warn(`[EnvManager] Failed to write verify cache: ${error}`);
+  }
+}
+
+/** Drop a failed verification so it cannot remain advertised as a valid cache. */
+export function clearVerifyCache(userDataDir: string): void {
+  try {
+    fs.rmSync(path.join(userDataDir, VERIFY_CACHE_FILE), { force: true });
+  } catch (error) {
+    console.warn(`[EnvManager] Failed to clear verify cache: ${error}`);
   }
 }

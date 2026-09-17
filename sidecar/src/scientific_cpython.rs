@@ -62,7 +62,7 @@ def deny_product_network(event,args):
     if event == "socket.bind":
         raise RuntimeError("CPython library host cannot own a listening socket")
     if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}:
-        raise RuntimeError("CPython library host cannot spawn child processes")
+        raise PermissionError("CPython library host cannot spawn child processes")
 if sys.platform == "win32":
     platform.machine()
 sys.addaudithook(deny_product_network)
@@ -119,7 +119,7 @@ def deny_product_network(event,args):
     if event == "socket.bind":
         raise RuntimeError("CPython library host cannot own a listening socket")
     if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}:
-        raise RuntimeError("CPython library host cannot spawn child processes")
+        raise PermissionError("CPython library host cannot spawn child processes")
 if sys.platform == "win32":
     platform.machine()
 sys.addaudithook(deny_product_network)
@@ -2855,6 +2855,56 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn first_launch_library_readiness_does_not_require_a_saved_dataset_catalogue() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = directory.path().join("python-runtime");
+        let python_root = runtime.join("python");
+        let site_packages = python_root.join("lib/python3.11/site-packages");
+        fs::create_dir_all(&site_packages).unwrap();
+        let host = shell_host(&python_root.join("bin"), "python3", "exit 0");
+        let callable = site_packages.join("studio_scientific.py");
+        fs::write(&callable, "def studio_scientific_job_v1(request): pass\n").unwrap();
+        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
+        write_runtime_closure(&python_root, &site_packages, &closure);
+        let config = directory.path().join("fresh-config");
+        // Model a successfully attested host on the very first launch. The
+        // saved-run resolver is deliberately absent: inline library features
+        // and setup must be usable before the user registers any datasets.
+        let scientific_host = Arc::new(CpythonScientificJobExecutor {
+            identity: Some(host_identity(&host).unwrap()),
+            callable_identity: Some(host_identity(&callable).unwrap()),
+            packaged_runtime: Some(
+                packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap(),
+            ),
+            acquisition: ScientificCpythonUnavailable::RequestResolverUnavailable,
+            resolver: ScientificRequestResolver::new(config.clone()),
+            running: Arc::new(Mutex::new(BTreeMap::new())),
+            terminal_callback_failed: Arc::new(AtomicBool::new(false)),
+        });
+        assert!(!scientific_host.resolver.is_configured());
+        assert!(!scientific_host.is_selected());
+        assert!(scientific_host.library_facades_available());
+        let executor: Arc<dyn ScientificJobExecutor> = scientific_host.clone();
+        let native_jobs = Arc::new(crate::NativeJobRuntime::with_executor(executor));
+        let mut state =
+            crate::SidecarState::with_native_jobs_and_app_settings_dir(native_jobs, config);
+        state.scientific_host = Some(scientific_host);
+
+        let readiness: Value = serde_json::from_str(&state.legacy_readiness_json()).unwrap();
+        assert_eq!(readiness["ml_ready"], true);
+        assert_eq!(readiness["ml_error"], Value::Null);
+        let capabilities: Value = serde_json::from_str(&state.capabilities_json()).unwrap();
+        assert_eq!(capabilities["features"]["scientific_execution"], false);
+
+        // A real runtime refusal must still block setup and inline features.
+        fs::write(&closure, "tampered closure").unwrap();
+        let refused: Value = serde_json::from_str(&state.legacy_readiness_json()).unwrap();
+        assert_eq!(refused["ml_ready"], false);
+        assert!(!refused["ml_error"].is_null());
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn cached_runtime_snapshot_rejects_add_remove_and_inode_replacement() {
         fn packaged(label: &str) -> (PathBuf, PathBuf, PackagedRuntimeIdentity) {
             let root = test_directory(label);
@@ -3215,6 +3265,20 @@ mod tests {
             serde_json::from_slice::<Value>(&output).unwrap(),
             serde_json::json!({"http_listener_denied": true})
         );
+
+        // Exercise the actual production hook. Optional font discovery catches
+        // OSError and falls back to bundled fonts; no subprocess is permitted.
+        for source in [PREFLIGHT_SCRIPT, EXECUTION_SCRIPT] {
+            let hook = source.split("if sys.argv[1]:").next().unwrap();
+            let script = format!(
+                "{hook}\nimport subprocess\ndenied=False\ntry: subprocess.check_output(['fc-list'])\nexcept OSError: denied=True\nprint(json.dumps({{'spawn_denied':denied}}))\n"
+            );
+            let output = run_process(&python, &script, Duration::from_secs(2), 1024, 1024).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<Value>(&output).unwrap(),
+                serde_json::json!({"spawn_denied": true})
+            );
+        }
 
         let spawn_script = "import json,os,sys\n\
             def deny(event,args):\n if event in {'subprocess.Popen','os.system','os.spawn','os.posix_spawn','os.fork','os.forkpty','os.exec','pty.spawn'}: raise RuntimeError('denied')\n\

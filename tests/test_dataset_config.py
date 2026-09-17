@@ -9,6 +9,8 @@ These tests are regression coverage for issues #1 and #7.
 import importlib
 from pathlib import Path
 
+import pytest
+
 # Import the dataset_config module directly (avoiding the shared/__init__.py
 # which pulls in api-specific dependencies via pipeline_service)
 _module_path = Path(__file__).parent.parent / "api" / "shared" / "dataset_config.py"
@@ -56,6 +58,27 @@ class TestNormalizeFileType:
 
 class TestBuildNirs4allConfig:
     """Tests for the canonical translator function."""
+
+    @pytest.mark.parametrize("global_policy", [None, "auto"])
+    def test_metadata_allows_missing_values_by_default(self, global_policy):
+        files = [
+            {"path": "Xcal.csv", "type": "X", "split": "train"},
+            {"path": "Mcal.csv", "type": "metadata", "split": "train"},
+            {"path": "Mval.csv", "type": "metadata", "split": "test"},
+        ]
+        config = build_nirs4all_config(files, {"na_policy": global_policy})
+        assert config["train_group_params"]["na_policy"] == "ignore"
+        assert config["test_group_params"]["na_policy"] == "ignore"
+        assert config["global_params"].get("na_policy") == global_policy
+
+    @pytest.mark.parametrize("policy", ["abort", "remove_sample", "ignore"])
+    def test_metadata_respects_explicit_global_and_file_policy(self, policy):
+        files = [{"path": "Mcal.csv", "type": "metadata", "overrides": {"has_header": True}}]
+        config = build_nirs4all_config(files, {"na_policy": policy})
+        assert config["train_group_params"].get("na_policy", config["global_params"]["na_policy"]) == policy
+        files[0]["overrides"]["na_policy"] = policy
+        config = build_nirs4all_config(files, {"na_policy": "auto"})
+        assert config["train_group_params"]["na_policy"] == policy
 
     def test_basic_x_y_mapping(self):
         files = [
@@ -188,6 +211,7 @@ class TestBuildNirs4allConfig:
         assert gp["encoding"] == "latin-1"
         assert gp["na_policy"] == "remove_sample"
         assert gp["na_fill_config"]["method"] == "mean"
+        assert gp["na"] == {"policy": "remove_sample", "fill": {"method": "mean"}}
 
     def test_aggregation_enabled(self):
         """Aggregation config translates to aggregate/aggregate_method/repetition."""
@@ -582,10 +606,12 @@ class TestNaPolicyPassThrough:
                 parsing={"delimiter": ";", "na_policy": policy},
             )
             assert config["global_params"]["na_policy"] == policy
+            assert config["global_params"]["na"]["policy"] == policy
 
     def test_absent_na_policy_is_not_injected(self):
         config = build_nirs4all_config(files=self._files(), parsing={"delimiter": ";"})
         assert "na_policy" not in config["global_params"]
+        assert "na" not in config["global_params"]
 
     def test_per_file_override_na_policy_pass_through(self):
         files = [
@@ -598,3 +624,4 @@ class TestNaPolicyPassThrough:
         ]
         config = build_nirs4all_config(files=files, parsing={"delimiter": ";"})
         assert config["train_x_params"]["na_policy"] == "remove_sample"
+        assert config["train_x_params"]["na"] == {"policy": "remove_sample"}

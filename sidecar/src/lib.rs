@@ -767,12 +767,18 @@ impl SidecarState {
     /// the optional general scientific host being available.
     #[must_use]
     pub fn legacy_readiness_json(&self) -> String {
+        // Playground and initial setup do not require a saved dataset catalogue.
+        // Keep the stricter request resolver requirement on saved job execution.
+        let ml_ready = self.scientific_host.as_deref().map_or_else(
+            || self.native_jobs.execution_selected(),
+            scientific_cpython::CpythonScientificJobExecutor::library_facades_available,
+        );
         json!({
             "core_ready": true,
             "elapsed_seconds": self.started_at.elapsed().as_secs_f64(),
-            "ml_error": null,
+            "ml_error": if ml_ready { None } else { self.native_jobs.execution_unavailability_reason() },
             "ml_loading": false,
-            "ml_ready": self.native_jobs.execution_selected(),
+            "ml_ready": ml_ready,
             "workspace_ready": self.app_settings.active_linked_workspace_response().is_ok(),
             "native_prediction_ready": self.archive_v2_prediction.is_selected(),
             "native_training_ready": self.native_archive_training.is_some(),
@@ -8136,6 +8142,9 @@ mod tests {
         assert_eq!(readiness["native_prediction_ready"], true);
         assert_eq!(readiness["native_training_ready"], true);
         assert_eq!(readiness["ml_ready"], false);
+        assert!(readiness["ml_error"]
+            .as_str()
+            .is_some_and(|reason| !reason.is_empty()));
         let request = json!({
             "schema_version":1,
             "operation":"native_dataset_train_archive_v2",

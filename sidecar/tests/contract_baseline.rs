@@ -215,7 +215,7 @@ fn bootstrap_readiness_preserves_legacy_fields_and_adds_native_capabilities() {
         ],
     );
     assert_eq!(readiness["core_ready"], true);
-    assert_eq!(readiness["ml_error"], Value::Null);
+    assert_eq!(readiness["ml_error"], "executor_not_selected");
     assert_eq!(readiness["ml_loading"], false);
     assert_eq!(readiness["ml_ready"], false);
     // An empty workspace catalogue is restored, not perpetually loading.

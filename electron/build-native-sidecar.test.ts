@@ -27,6 +27,7 @@ const buildNativeSidecar = require("../scripts/build-native-sidecar.cjs") as {
     packagedBinaryPath: string;
   };
   stagePackagedMethodsLibrary(options: {
+    inspectLinuxLibrary?(library: string): void;
     backendRoot: string;
     platform: NodeJS.Platform;
     sourcePath: string | null;
@@ -329,6 +330,23 @@ describe("build-native-sidecar", () => {
     }
   });
 
+  it("refuses a nonportable Methods dependency before writing the packaged library", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-methods-dependency-"));
+    try {
+      const sourcePath = path.join(root, "library.so");
+      fs.writeFileSync(sourcePath, "wheel-library");
+      const backendRoot = path.join(root, "backend");
+      expect(() => buildNativeSidecar.stagePackagedMethodsLibrary({
+        backendRoot, platform: "linux", sourcePath,
+        expectedSha256: createHash("sha256").update("wheel-library").digest("hex"),
+        inspectLinuxLibrary: () => { throw new Error("unbundled libgfortran"); },
+      })).toThrow("unbundled libgfortran");
+      expect(fs.existsSync(path.join(backendRoot, "native", "libn4m.so"))).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("stages native Methods only from an explicit build-time SHA identity", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-methods-stage-"));
     try {
@@ -340,6 +358,7 @@ describe("build-native-sidecar", () => {
 
       expect(
         buildNativeSidecar.stagePackagedMethodsLibrary({
+          inspectLinuxLibrary: () => undefined,
           backendRoot,
           platform: "linux",
           sourcePath,
@@ -348,6 +367,7 @@ describe("build-native-sidecar", () => {
       ).toBe(path.join(backendRoot, "native", "libn4m.so"));
       expect(() =>
         buildNativeSidecar.stagePackagedMethodsLibrary({
+          inspectLinuxLibrary: () => undefined,
           backendRoot,
           platform: "linux",
           sourcePath,
@@ -376,6 +396,7 @@ describe("build-native-sidecar", () => {
 
       expect(() =>
         buildNativeSidecar.stagePackagedMethodsLibrary({
+          inspectLinuxLibrary: () => undefined,
           backendRoot,
           platform: "linux",
           sourcePath,

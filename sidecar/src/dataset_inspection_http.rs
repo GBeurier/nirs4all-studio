@@ -15,6 +15,30 @@ use std::{
 
 const PREFIX: &str = "/api/datasets/";
 
+fn validation_params(
+    parsing: &Value,
+    file: &Value,
+    overrides: &Value,
+    path: &str,
+) -> Result<Value, String> {
+    let mut params = parsing.clone();
+    // A current wizard entry replaces the detection proposal, including an
+    // empty entry after the user disables a detected override.
+    if let Some(extra) = overrides
+        .get(path)
+        .or_else(|| file.get("overrides"))
+        .filter(|value| !value.is_null())
+    {
+        for (key, value) in extra.as_object().ok_or("Invalid file parsing overrides")? {
+            params[key] = value.clone();
+        }
+    }
+    if file["type"] == "metadata" && matches!(params["na_policy"].as_str(), None | Some("auto")) {
+        params["na_policy"] = json!("ignore");
+    }
+    Ok(params)
+}
+
 fn matches_route(request: &HttpRequest) -> bool {
     let Some(tail) = request.path.strip_prefix(PREFIX) else {
         return false;
@@ -345,21 +369,10 @@ fn handle(
                         continue;
                     }
                     let path = text(file, "path")?;
-                    let mut params = parsing.clone();
-                    for extra in [file.get("overrides"), overrides.get(path)]
-                        .into_iter()
-                        .flatten()
-                        .filter(|value| !value.is_null())
-                    {
-                        for (key, value) in
-                            extra.as_object().ok_or("Invalid file parsing overrides")?
-                        {
-                            params[key] = value.clone();
-                        }
-                    }
+                    let params = validation_params(&parsing, file, &overrides, path)?;
                     shapes[path] = match service.inspect_file(Path::new(path), &params, 0, adapt) {
                         Ok(info) => {
-                            json!({"path":path,"num_rows":info["num_rows"],"num_columns":info["num_columns"]})
+                            json!({"path":path,"num_rows":info["num_rows"],"num_columns":info["num_columns"],"column_names":info["column_names"]})
                         }
                         Err(error) => json!({"path":path,"error":error}),
                     };
@@ -441,6 +454,67 @@ mod tests {
         let body: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(body["shapes"]["Ycal.csv"]["num_rows"], 3);
     }
+    #[test]
+    fn metadata_validation_allows_missing_cells_by_default_and_returns_columns() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path().join("config"));
+        std::fs::write(
+            root.path().join("Mcal.csv"),
+            "sample_id;batch\n101;A\n102;\n103;B\n",
+        )
+        .unwrap();
+        for policy in ["auto", "abort", "ignore"] {
+            let response = handle(
+                &settings,
+                &request(
+                    "validate-files",
+                    &json!({
+                        "path":root.path(), "files":[{"path":"Mcal.csv","type":"metadata"}],
+                        "parsing":{"has_header":true,"na_policy":"auto"},
+                        "per_file_overrides":{"Mcal.csv":{"na_policy":policy}}
+                    }),
+                ),
+                &|_, _| panic!("Native CSV only"),
+            );
+            assert_eq!(response.status, 200);
+            let body: Value = serde_json::from_str(&response.body).unwrap();
+            let shape = &body["shapes"]["Mcal.csv"];
+            if policy == "abort" {
+                assert!(shape["error"].is_string());
+            } else {
+                assert!(shape["error"].is_null(), "{shape}");
+                assert_eq!(shape["num_rows"], 3);
+                assert_eq!(shape["column_names"], json!(["sample_id", "batch"]));
+            }
+        }
+    }
+
+    #[test]
+    fn validation_does_not_reapply_disabled_detected_overrides() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path().join("config"));
+        std::fs::write(root.path().join("Ycal.csv"), "target\n1\n2\n").unwrap();
+        let response = handle(
+            &settings,
+            &request(
+                "validate-files",
+                &json!({
+                    "path":root.path(),
+                    "files":[{"path":"Ycal.csv","type":"Y","overrides":{"has_header":false}}],
+                    "parsing":{"has_header":true}, "per_file_overrides":{"Ycal.csv":{}}
+                }),
+            ),
+            &|_, _| panic!("Native CSV only"),
+        );
+        assert_eq!(response.status, 200);
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(body["shapes"]["Ycal.csv"]["num_rows"], 2);
+        assert_eq!(
+            body["shapes"]["Ycal.csv"]["column_names"],
+            json!(["target"])
+        );
+    }
+
     #[test]
     fn preview_escape_is_rejected_before_attested_adapter() {
         let root = tempfile::tempdir().unwrap();

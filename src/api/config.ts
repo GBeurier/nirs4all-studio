@@ -54,6 +54,7 @@ export interface PackageDiff {
 }
 
 export interface ConfigComparisonResponse {
+  package_management_available?: boolean;
   profile: string | null;
   profile_label: string | null;
   packages: PackageDiff[];

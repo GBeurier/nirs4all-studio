@@ -14,6 +14,7 @@ from typing import Any
 
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 
 def compare_configuration(document: dict[str, Any]) -> dict[str, Any]:
@@ -57,4 +58,41 @@ def compare_configuration(document: dict[str, Any]) -> dict[str, Any]:
     return {"profile": profile_id, "profile_label": profile.get("label", profile_id), "packages": differences,
             "aligned_count": counts["aligned"], "misaligned_count": counts["outdated"], "missing_count": counts["missing"],
             "is_aligned": not counts["outdated"] and not counts["missing"], "checked_at": datetime.now(UTC).isoformat(),
+            "package_management_available": False,
             "version_source": "installed_runtime_and_bundled_requirements", "latest_lookup_performed": False}
+
+
+def dependency_inventory(document: dict[str, Any]) -> dict[str, Any]:
+    """Project the actual bundled interpreter inventory without invoking pip."""
+    if set(document) != {"config"}:
+        raise ValueError("Unexpected dependency inventory fields")
+    config = document["config"]
+    installed = {canonicalize_name(dist.metadata["Name"]): dist.version
+                 for dist in importlib.metadata.distributions() if dist.metadata.get("Name")}
+    categories = []
+    for category_id, category in config.get("categories", {}).items():
+        packages = []
+        for name, spec in config.get("optional", {}).items():
+            if spec.get("category") != category_id:
+                continue
+            actual = installed.get(canonicalize_name(name))
+            minimum = spec.get("min", "")
+            below = actual is not None and not SpecifierSet(minimum).contains(actual, prereleases=True)
+            recommended = spec.get("recommended")
+            below_recommended = actual is not None and recommended is not None and Version(actual) < Version(recommended)
+            above_recommended = actual is not None and recommended is not None and Version(actual) > Version(recommended)
+            packages.append({"name": name, "category": category_id, "category_name": category["name"],
+                             "description": spec.get("description", ""), "min_version": minimum,
+                             "recommended_version": spec.get("recommended"), "installed_version": actual,
+                             "latest_version": None, "is_installed": actual is not None,
+                             "is_outdated": below, "is_below_recommended": below_recommended, "is_above_recommended": above_recommended,
+                             "can_update": False, "default_install": spec.get("default_install", False)})
+        categories.append({"id": category_id, "name": category["name"], "description": category.get("description", ""),
+                           "packages": packages, "installed_count": sum(p["is_installed"] for p in packages),
+                           "total_count": len(packages)})
+    version = installed.get("nirs4all")
+    return {"categories": categories, "read_only": True, "runtime_valid": version is not None,
+            "runtime_path": sys.executable, "venv_valid": version is not None, "venv_path": sys.prefix,
+            "nirs4all_installed": version is not None, "nirs4all_version": version,
+            "total_installed": sum(c["installed_count"] for c in categories),
+            "total_packages": sum(c["total_count"] for c in categories), "cached_at": None}

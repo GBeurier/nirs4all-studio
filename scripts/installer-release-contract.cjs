@@ -431,6 +431,23 @@ function smokePackagedSidecar(sidecarPath) {
   }
 }
 
+function smokePackagedProduct(output) {
+  const args = [
+    path.join(__dirname, "smoke-archive-standalone.cjs"),
+    "--extracted-root", output.artifactBoundaryRoot,
+    "--platform", output.platform,
+    "--timeout-ms", "180000",
+  ];
+  const headlessLinux = output.platform === "linux" && !process.env.DISPLAY;
+  execFileSync(headlessLinux ? "xvfb-run" : process.execPath,
+    headlessLinux ? ["-a", process.execPath, ...args] : args, {
+      stdio: "inherit",
+      // Cover both readiness phases, inventory/dataset probes and cleanup.
+      timeout: 12 * 60_000,
+      windowsHide: true,
+    });
+}
+
 function verifyDiscoveredOutputs({
   outputs,
   verifyRuntimeContract,
@@ -563,6 +580,7 @@ async function packageAndVerifyInstallerOutputs({
   runBuilder,
   verifyRuntimeContract,
   smokeSidecar = smokePackagedSidecar,
+  smokeProduct = smokePackagedProduct,
   hostPlatform = process.platform,
 }) {
   const invocationBoundary = path.dirname(releaseRoot);
@@ -629,7 +647,10 @@ async function packageAndVerifyInstallerOutputs({
       smokeSidecar,
       hostPlatform,
     });
+    // Exercise the actual Electron/sidecar/plugin path with fresh user state,
+    // before replacing any previously qualified release artifacts.
     for (const output of outputs) {
+      if (output.platform === hostPlatform) await smokeProduct(output);
       assertDiscoveredOutput(output);
     }
     const revalidatedNames = validateProducedEntries(stagingRoot, producedNames, outputs);
@@ -693,6 +714,7 @@ module.exports = {
   newlyProducedNames,
   packageAndVerifyInstallerOutputs,
   smokePackagedSidecar,
+  smokePackagedProduct,
   snapshotTopLevel,
   targetPlatforms,
   verifyDiscoveredOutputs,

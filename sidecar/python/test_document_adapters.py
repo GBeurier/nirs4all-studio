@@ -165,7 +165,28 @@ class DocumentAdapterTests(unittest.TestCase):
         self.assertTrue(compared["ok"], compared)
         self.assertTrue(compared["value"]["is_aligned"])
         self.assertFalse(compared["value"]["latest_lookup_performed"])
+        self.assertFalse(compared["value"]["package_management_available"])
         refused = self.invoke("config.compare", {"config": config, "profile": "cpu", "install": True})
+        self.assertFalse(refused["ok"], refused)
+
+    def test_dependency_inventory_reports_present_and_missing_packages_without_installation(self):
+        config = {"categories": {"tools": {"name": "Tools"}}, "optional": {
+            "packaging": {"min": ">=20", "recommended": "9999", "category": "tools"},
+            "studio-test-missing-package": {"min": ">=1", "category": "tools"},
+        }}
+        result = self.invoke("config.dependencies", {"config": config})
+        self.assertTrue(result["ok"], result)
+        inventory = result["value"]
+        self.assertTrue(inventory["read_only"])
+        self.assertEqual(inventory["total_installed"], 1)
+        self.assertEqual(inventory["total_packages"], 2)
+        present, missing = inventory["categories"][0]["packages"]
+        self.assertTrue(present["is_installed"])
+        self.assertTrue(present["is_below_recommended"])
+        self.assertFalse(present["is_outdated"])
+        self.assertFalse(present["can_update"])
+        self.assertFalse(missing["is_installed"])
+        refused = self.invoke("config.dependencies", {"config": config, "install": True})
         self.assertFalse(refused["ok"], refused)
 
 

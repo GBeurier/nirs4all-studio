@@ -145,7 +145,7 @@ export function DependenciesManagerShell({
 
         {children}
 
-        {!compact && <DependenciesHelpText />}
+        {!compact && !runtimeDisplay.isReadOnly && <DependenciesHelpText />}
       </CardContent>
     </Card>
   );
@@ -229,12 +229,12 @@ function RuntimeAlerts({
           <AlertDescription>
             {runtimeDisplay.isBundledEmbedded
               ? "This bundled build is using its embedded Python runtime. Package management is disabled because the embedded runtime is read-only."
-              : "This packaged backend runtime is read-only. Package management is disabled in this mode."}
+              : "Package management is unavailable for this runtime. Install an updated Studio release to update its included packages."}
           </AlertDescription>
         </Alert>
       )}
 
-      {runtimeDisplay.isBundledExternal && (
+      {runtimeDisplay.isBundledExternal && !runtimeDisplay.isReadOnly && (
         <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
           <AlertCircle className="h-4 w-4 text-amber-600" />
           <AlertDescription>

@@ -263,6 +263,10 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
       (pathname === "/config/diff" && validQuery({ profile: isValidIdentifier, include_optional: bool, include_latest: bool })))) {
     return { name: "runtime-config", capability: "recommended_config_routes", requiresPythonHost: true };
   }
+  if ((method === "GET" && pathname === "/updates/dependencies" && validQuery({ force_refresh: bool })) ||
+      (method === "POST" && pathname === "/updates/dependencies/refresh" && !query)) {
+    return { name: "runtime-dependencies", capability: "recommended_config_routes", requiresPythonHost: true };
+  }
   const inspection = ["detect-files", "detect-unified", "detect-files-list", "scan-folder", "detect-format", "auto-detect", "validate-files", "preview"];
   if (method === "POST" && !query && inspection.some((operation) => pathname === `/datasets/${operation}`)) {
     return { name: "dataset-inspection", capability: "dataset_inspection_routes" };

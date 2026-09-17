@@ -22,8 +22,15 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
 // package list exact and intentionally small: Python HTTP/control-plane
 // dependencies live in python-http-runtime-config.cjs, which is source/dev only.
 const PLUGIN_DISTRIBUTION_VERSION = "1.0.1";
+const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
+  "duckdb==1.5.5",
+  "pyarrow==25.0.1",
+  "shap==0.47.1",
+  "matplotlib==3.10.1",
+]);
 const PLUGIN_HOST_PACKAGES = Object.freeze([
   `nirs4all==${PLUGIN_DISTRIBUTION_VERSION}`,
+  ...PLUGIN_SUPPORT_PACKAGES,
 ]);
 
 const LEGACY_FLAVOR_TO_PROFILE = Object.freeze({
@@ -317,6 +324,7 @@ module.exports = {
   PYTHON_VERSION_MM,
   PLUGIN_DISTRIBUTION_VERSION,
   PLUGIN_HOST_PACKAGES,
+  PLUGIN_SUPPORT_PACKAGES,
   STANDALONE_V1_PROFILE,
   getArchiveFilename,
   getDownloadUrl,

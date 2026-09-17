@@ -33,6 +33,7 @@ export interface DependencyCategory {
 }
 
 export interface DependenciesResponse {
+  read_only?: boolean;
   categories: DependencyCategory[];
   runtime_valid: boolean;
   runtime_path: string;

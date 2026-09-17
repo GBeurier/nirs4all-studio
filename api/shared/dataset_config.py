@@ -34,6 +34,43 @@ def _file_type_to_key_suffix(file_type: str) -> str | None:
     return mapping.get(file_type)
 
 
+def _with_native_na_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Keep oracle NA fields and expose the equivalent native IO contract."""
+    if "na_policy" not in params and "na_fill_config" not in params:
+        return params
+    native_na = {"policy": params.get("na_policy") or "auto"}
+    if params.get("na_fill_config"):
+        native_na["fill"] = params["na_fill_config"]
+    return {**params, "na": native_na}
+
+
+def _na_policy(params: dict[str, Any], default: str | None = "auto") -> str | None:
+    native_na = params.get("na", {})
+    return params.get("na_policy", native_na.get("policy", default) if isinstance(native_na, dict) else default)
+
+
+def _normalize_library_loading_params(config: dict[str, Any]) -> dict[str, Any]:
+    """Bridge NA fields without dropping library-owned dataset settings."""
+    result = dict(config)
+    for key, value in config.items():
+        if key.endswith("_params") and isinstance(value, dict):
+            result[key] = _with_native_na_params(value)
+    for split in ("train", "test"):
+        if not result.get(f"{split}_group"):
+            continue
+        effective_policy = "auto"
+        for key in ("global_params", "group_params", f"{split}_params", f"{split}_group_params"):
+            params = result.get(key, {})
+            if isinstance(params, dict):
+                policy = _na_policy(params, None)
+                if policy is not None:
+                    effective_policy = policy
+        if effective_policy == "auto":
+            key = f"{split}_group_params"
+            result[key] = _with_native_na_params({**result.get(key, {}), "na_policy": "ignore"})
+    return result
+
+
 def build_nirs4all_config(
     files: list[dict[str, Any]],
     parsing: dict[str, Any],
@@ -76,7 +113,7 @@ def build_nirs4all_config(
     if encoding:
         global_params["encoding"] = encoding
 
-    na_policy = parsing.get("na_policy")
+    na_policy = _na_policy(parsing, None)
     if na_policy:
         global_params["na_policy"] = na_policy
         na_fill_config = parsing.get("na_fill_config")
@@ -92,7 +129,7 @@ def build_nirs4all_config(
     if signal_type and signal_type != "auto":
         x_specific_params["signal_type"] = signal_type
 
-    config: dict[str, Any] = {"global_params": global_params}
+    config: dict[str, Any] = {"global_params": _with_native_na_params(global_params)}
     resolve_base = Path(base_path) if base_path else None
 
     # Map files to nirs4all keys
@@ -139,8 +176,15 @@ def build_nirs4all_config(
                 config[params_key] = {**x_specific_params, **overrides}
             else:
                 config[params_key] = x_specific_params.copy()
+        elif norm_type == "metadata":
+            params = dict(overrides or {})
+            if _na_policy(params, _na_policy(parsing)) in (None, "auto"):
+                params["na_policy"] = "ignore"
+            config[params_key] = params
         elif overrides:
             config[params_key] = overrides
+        if params_key in config:
+            config[params_key] = _with_native_na_params(config[params_key])
 
     # Aggregation → aggregate / aggregate_method / repetition
     if aggregation and aggregation.get("enabled") and aggregation.get("column"):
@@ -187,21 +231,16 @@ def build_nirs4all_config_from_stored(dataset_record: dict[str, Any]) -> dict[st
     dataset_path = dataset_record.get("path", "")
     stored_config = dataset_record.get("config", {})
 
-    # Extract parsing from stored config
-    parsing = {
-        "delimiter": stored_config.get("delimiter", ";"),
-        "decimal_separator": stored_config.get("decimal_separator", "."),
-        "has_header": stored_config.get("has_header", True),
-        "header_unit": stored_config.get("header_unit", "cm-1"),
-        "signal_type": stored_config.get("signal_type", "auto"),
-    }
-
-    # Also check global_params for additional settings
+    # Top-level wizard settings override shared settings, including False.
     stored_global = stored_config.get("global_params", {})
-    for key in ("encoding", "na_policy", "na_fill_config"):
-        value = stored_config.get(key) or stored_global.get(key)
-        if value is not None:
-            parsing[key] = value
+    parsing = {
+        "delimiter": ";", "decimal_separator": ".", "has_header": True,
+        "header_unit": "cm-1", "signal_type": "auto",
+        **stored_global,
+    }
+    for key in ("delimiter", "decimal_separator", "has_header", "header_unit", "signal_type", "encoding", "na_policy", "na_fill_config"):
+        if key in stored_config:
+            parsing[key] = stored_config[key]
 
     files = stored_config.get("files", [])
 
@@ -216,33 +255,37 @@ def build_nirs4all_config_from_stored(dataset_record: dict[str, Any]) -> dict[st
             dataset_name=dataset_record.get("name"),
         )
 
-    # Fallback: old-format configs (train_x/train_y without files array)
+    # Existing library configs remain complete: source parameters, selections,
+    # repetitions, folds and future library-owned fields must survive reloads.
     x_specific_params: dict[str, Any] = {}
     header_unit = parsing.get("header_unit")
-    if header_unit:
+    if header_unit and ("global_params" not in stored_config or "header_unit" in stored_config):
         x_specific_params["header_unit"] = header_unit
     signal_type = parsing.get("signal_type")
     if signal_type and signal_type != "auto":
         x_specific_params["signal_type"] = signal_type
 
     config: dict[str, Any] = {
+        **stored_config,
         "global_params": {
-            "delimiter": parsing["delimiter"],
-            "decimal_separator": parsing["decimal_separator"],
-            "has_header": parsing["has_header"],
+            **({key: parsing[key] for key in ("delimiter", "decimal_separator", "has_header")}
+               if "global_params" not in stored_config else {}),
+            **stored_global,
+            **{key: parsing[key] for key in ("delimiter", "decimal_separator", "has_header", "encoding", "na_policy", "na_fill_config")
+               if key in stored_config},
         }
     }
 
     if stored_config.get("train_x"):
         config["train_x"] = stored_config["train_x"]
         if x_specific_params:
-            config["train_x_params"] = x_specific_params.copy()
+            config["train_x_params"] = {**x_specific_params, **stored_config.get("train_x_params", {})}
     if stored_config.get("train_y"):
         config["train_y"] = stored_config["train_y"]
     if stored_config.get("test_x"):
         config["test_x"] = stored_config["test_x"]
         if x_specific_params:
-            config["test_x_params"] = x_specific_params.copy()
+            config["test_x_params"] = {**x_specific_params, **stored_config.get("test_x_params", {})}
     if stored_config.get("test_y"):
         config["test_y"] = stored_config["test_y"]
     if stored_config.get("train_group"):
@@ -267,7 +310,7 @@ def build_nirs4all_config_from_stored(dataset_record: dict[str, Any]) -> dict[st
     if dataset_name:
         config["name"] = dataset_name
 
-    return config
+    return _normalize_library_loading_params(config)
 
 
 def _detect_standard_folder_structure(

@@ -24,7 +24,7 @@ import { FileMappingStep } from "./FileMappingStep";
 import { ParsingStep } from "./ParsingStep";
 import { TargetsStep } from "./TargetsStep";
 import { PreviewStep } from "./PreviewStep";
-import { buildDatasetWizardConfig } from "./DatasetWizardConfig";
+import { buildDatasetWizardConfig, buildDatasetWizardFiles } from "./DatasetWizardConfig";
 import type { WizardStep, DatasetConfig } from "@/types/datasets";
 
 const STEP_CONFIG: Record<
@@ -109,9 +109,8 @@ function StepIndicator() {
   );
 }
 
-function DataStats() {
+export function DataStats() {
   const { state, dispatch } = useWizard();
-  const validationTriggeredRef = useRef(false);
 
   const xTrainFiles = state.files.filter(f => f.type === "X" && f.split === "train");
   const xTestFiles = state.files.filter(f => f.type === "X" && f.split === "test");
@@ -125,56 +124,47 @@ function DataStats() {
 
   const isWebMode = !state.basePath && state.fileBlobs.size > 0;
 
-  const runValidation = useCallback(async () => {
-    if (isWebMode) {
-      const shapes: Record<string, { num_rows?: number; num_columns?: number }> = {};
-      for (const f of state.files.filter(f => f.type === "X" || f.type === "Y" || f.type === "metadata")) {
-        if (f.num_rows && f.num_columns) {
-          shapes[f.path] = { num_rows: f.num_rows, num_columns: f.num_columns };
-        }
-      }
-      if (Object.keys(shapes).length > 0) {
-        dispatch({ type: "SET_VALIDATED_SHAPES", payload: shapes });
-      }
+  useEffect(() => {
+    let cancelled = false;
+    const files = state.files.filter(f => f.type === "X" || f.type === "Y" || f.type === "metadata");
+    if (!files.length) {
+      dispatch({ type: "SET_VALIDATED_SHAPES", payload: {} });
+      dispatch({ type: "SET_DETECTION_RESULTS", payload: { metadataColumns: [] } });
       return;
     }
-
-    if (!state.basePath || state.files.length === 0 || state.isValidating) return;
-
-    const filesToValidate = state.files.filter(f => f.type === "X" || f.type === "Y" || f.type === "metadata");
-    if (filesToValidate.length === 0) return;
-
+    if (isWebMode) {
+      const shapes = Object.fromEntries(files.map(f => [f.path, {
+        num_rows: f.num_rows, num_columns: f.num_columns,
+      }]));
+      dispatch({ type: "SET_VALIDATED_SHAPES", payload: shapes });
+      return;
+    }
+    if (!state.basePath) {
+      dispatch({ type: "SET_VALIDATING", payload: false });
+      return;
+    }
     dispatch({ type: "SET_VALIDATING", payload: true });
-
-    try {
-      const result = await validateFiles(state.basePath, filesToValidate, state.parsing, state.perFileOverrides);
-
-      if (result.error) {
-        dispatch({ type: "SET_VALIDATION_ERROR", payload: result.error });
-      } else {
-        dispatch({ type: "SET_VALIDATED_SHAPES", payload: result.shapes });
+    const timer = setTimeout(async () => {
+      try {
+        const configured = buildDatasetWizardFiles({ files: state.files, parsing: state.parsing, perFileOverrides: state.perFileOverrides });
+        const overrides = Object.fromEntries(configured.map(f => [f.path, f.overrides ?? {}]));
+        const result = await validateFiles(state.basePath, files, state.parsing, overrides);
+        if (cancelled) return;
+        if (result.error || !result.success) {
+          dispatch({ type: "SET_VALIDATION_ERROR", payload: result.error || "Failed to validate files" });
+        } else {
+          dispatch({ type: "SET_VALIDATED_SHAPES", payload: result.shapes });
+          const metadataColumns = [...new Set(files.filter(f => f.type === "metadata")
+            .flatMap(f => result.shapes[f.path]?.column_names ?? []))];
+          dispatch({ type: "SET_DETECTION_RESULTS", payload: { metadataColumns } });
+        }
+      } catch (error) {
+        if (!cancelled) dispatch({ type: "SET_VALIDATION_ERROR", payload:
+          error instanceof Error ? error.message : "Failed to validate files" });
       }
-    } catch (error) {
-      dispatch({
-        type: "SET_VALIDATION_ERROR",
-        payload: error instanceof Error ? error.message : "Failed to validate files",
-      });
-    }
-  }, [state.basePath, state.files, state.parsing, state.perFileOverrides, state.isValidating, isWebMode, dispatch]);
-
-  useEffect(() => {
-    const hasXFiles = state.files.some(f => f.type === "X");
-    const hasValidatedShapes = Object.keys(state.validatedShapes).length > 0;
-
-    if (hasXFiles && !hasValidatedShapes && !state.isValidating && !state.validationError && !validationTriggeredRef.current) {
-      validationTriggeredRef.current = true;
-      runValidation();
-    }
-  }, [state.files, state.validatedShapes, state.isValidating, state.validationError, runValidation]);
-
-  useEffect(() => {
-    validationTriggeredRef.current = false;
-  }, [state.files]);
+    }, 200);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [state.basePath, state.files, state.parsing, state.perFileOverrides, isWebMode, dispatch]);
 
   const getShape = (filePath: string) => {
     return state.validatedShapes[filePath];

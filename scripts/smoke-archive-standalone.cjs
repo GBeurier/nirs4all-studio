@@ -525,7 +525,8 @@ async function waitForNativeScientificReady(port, timeoutMs, child, outputBuffer
       lastReadiness = await readinessResponse.json();
       if (
         (lastHealth.core_ready === true || lastHealth.ready === true) &&
-        lastReadiness.native_training_ready === true
+        lastReadiness.native_training_ready === true &&
+        lastReadiness.ml_ready === true
       ) {
         const playgroundResponse = await fetch(playgroundUrl, {
           method: "POST",
@@ -729,6 +730,8 @@ async function smokeArchiveStandalone(rawConfig) {
       env[ARCHIVE_SMOKE_SESSION_TOKEN_ENV],
     );
 
+    await verifyInstalledProduct(port, env[ARCHIVE_SMOKE_SESSION_TOKEN_ENV]);
+
     console.log("Smoke check passed.");
     console.log(`  product backend: Rust sidecar (${healthPayload.protocol_version})`);
     console.log(`  Python role:     explicit library/plugin host (${pluginPayload.bridge})`);
@@ -739,6 +742,89 @@ async function smokeArchiveStandalone(rawConfig) {
     if (!config.keepSandbox && !config.sandboxRoot) {
       await cleanupSandboxRoot(sandboxRoot);
     }
+  }
+}
+
+/** Verify the installed package inventory and the exact dataset wizard path. */
+async function verifyInstalledProduct(port, sessionToken) {
+  const headers = { "Content-Type": "application/json", "X-Nirs4all-Session": sessionToken };
+  const request = async (route, body) => {
+    const response = await fetch(`http://127.0.0.1:${port}/api${route}`, {
+      headers, method: body === undefined ? "GET" : "POST",
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!response.ok) throw new Error(`Installed product ${route}: HTTP ${response.status}: ${await response.text()}`);
+    return response.json();
+  };
+  const diff = await request("/config/diff?profile=cpu&include_optional=false");
+  if (diff.is_aligned !== true || diff.missing_count !== 0 || diff.misaligned_count !== 0) {
+    throw new Error(`Installed CPU packages are incomplete: ${JSON.stringify(diff)}`);
+  }
+  const inventory = await request("/updates/dependencies");
+  const installed = new Set((inventory.categories ?? []).flatMap(category => category.packages)
+    .filter(pkg => pkg.is_installed && pkg.installed_version).map(pkg => pkg.name));
+  if (!inventory.nirs4all_installed || !installed.has("shap") || !installed.has("matplotlib")) {
+    throw new Error(`Installed dependency inventory is incomplete: ${JSON.stringify(inventory)}`);
+  }
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "studio-wizard-smoke-"));
+  try {
+    fs.writeFileSync(path.join(fixture, "Xtrain.csv"), "1000;1100\n1;2\n3;4\n");
+    fs.writeFileSync(path.join(fixture, "Ytrain.csv"), "target\n1\n2\n");
+    fs.writeFileSync(path.join(fixture, "Mtrain.csv"), "sample_id;nirs_Remarque\nsample-a;\nsample-a;ok\n");
+    const detected = await request("/datasets/detect-unified", { path: fixture });
+    const parsing = { delimiter: ";", decimal_separator: ".", has_header: true, na_policy: "auto" };
+    // Header detection is ambiguous for tiny all-text metadata. Exercise the
+    // user's local correction and ensure validation recovers identifier names.
+    const files = detected.files.map(file => ({
+      ...file, overrides: { ...file.overrides, has_header: true, delimiter: ";" },
+    }));
+    const validation = await request("/datasets/validate-files", {
+      path: fixture, files, parsing,
+    });
+    for (const file of files) {
+      if (validation.shapes?.[file.path]?.num_rows !== 2 || validation.shapes[file.path].error) {
+        throw new Error(`Dataset wizard validation failed: ${JSON.stringify(validation)}`);
+      }
+      if (file.type === "metadata" && !validation.shapes[file.path].column_names?.includes("sample_id")) {
+        throw new Error(`Metadata identifiers unavailable after local parsing: ${JSON.stringify(validation)}`);
+      }
+    }
+    const preview = await request("/datasets/preview", {
+      path: fixture, files, parsing, max_samples: 2,
+    });
+    if (preview.success !== true || preview.error) {
+      throw new Error(`Dataset wizard preview failed: ${JSON.stringify(preview)}`);
+    }
+    const linked = await request("/datasets/link", {
+      path: fixture,
+      config: {
+        name: "Metadata repetitions smoke",
+        files,
+        global_params: parsing,
+        aggregation: { enabled: true, column: "sample_id", method: "mean" },
+      },
+    });
+    const id = linked.dataset?.id;
+    if (linked.success !== true || !id) {
+      throw new Error(`Dataset registration failed: ${JSON.stringify(linked)}`);
+    }
+    const saved = await request(`/datasets/${encodeURIComponent(id)}`);
+    if (saved.dataset?.config?.aggregation?.column !== "sample_id") {
+      throw new Error(`Dataset repetition identifier was lost: ${JSON.stringify(saved)}`);
+    }
+    const reloaded = await request(`/datasets/${encodeURIComponent(id)}/preview?max_samples=2`);
+    if (reloaded.success !== true || reloaded.summary?.num_samples !== 2
+        || !reloaded.summary?.metadata_columns?.includes("sample_id")) {
+      throw new Error(`Saved dataset reload failed: ${JSON.stringify(reloaded)}`);
+    }
+    const refreshed = await request(`/datasets/${encodeURIComponent(id)}/refresh`, {});
+    if (refreshed.success !== true || refreshed.dataset?.num_samples !== 2) {
+      throw new Error(`Saved dataset refresh failed: ${JSON.stringify(refreshed)}`);
+    }
+    return { packages: diff, inventory, preview };
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
   }
 }
 
@@ -775,4 +861,5 @@ module.exports = {
   smokeArchiveStandalone,
   waitForChildExit,
   waitForNativeScientificReady,
+  verifyInstalledProduct,
 };

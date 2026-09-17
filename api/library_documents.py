@@ -121,7 +121,9 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
             normalized = normalize_dataset_document(root)
             normalized["name"] = record.get("name") or normalized["name"]
             return normalized
-        if config.get("files") or config.get("train_x"):
+        # Translation preserves library-owned fields and idempotently bridges
+        # legacy flat NA policies for both new wizard and existing records.
+        if config.get("files") or config.get("train_x") or config.get("test_x"):
             config = build_nirs4all_config_from_stored(record)
         return normalize_dataset_document(config, base_dir=record.get("path"))
     config = build_nirs4all_config(
@@ -140,6 +142,10 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
     """Dispatch a bounded library adapter; never own HTTP or schedule jobs."""
     if not isinstance(document, dict):
         raise ValueError("Document must be a JSON object")
+    if operation == "config.dependencies":
+        from .library_runtime_config import dependency_inventory
+
+        return dependency_inventory(document)
     if operation == "config.compare":
         from .library_runtime_config import compare_configuration
 

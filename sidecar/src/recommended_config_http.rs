@@ -16,8 +16,14 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
         (request.method.as_str(), request.path.as_str()),
         (
             "GET",
-            "/api/config/recommended" | "/api/config/detect-gpu" | "/api/config/diff"
-        ) | ("POST", "/api/config/complete-setup")
+            "/api/config/recommended"
+                | "/api/config/detect-gpu"
+                | "/api/config/diff"
+                | "/api/updates/dependencies"
+        ) | (
+            "POST",
+            "/api/config/complete-setup" | "/api/updates/dependencies/refresh"
+        )
     ) {
         return None;
     }
@@ -64,6 +70,10 @@ fn handle(
             }
         }
         match request.path.as_str() {
+            "/api/updates/dependencies" | "/api/updates/dependencies/refresh" => {
+                dependency_inventory_response(request, &query, &config, adapt)
+            }
+
             "/api/config/recommended" => {
                 if query.keys().any(|key| key != "force_refresh") {
                     return Err((400, "Unknown recommended configuration query".into()));
@@ -120,8 +130,14 @@ fn handle(
                     return Err((400, "Setup completion takes no query fields".into()));
                 }
                 let profile = setup_profile(&config, &request.body)?;
-                // This marks the user's profile choice; it never claims to
-                // have installed the listed optional packages.
+                let comparison = adapt(
+                    "config.compare",
+                    &json!({"config":config,"profile":profile,"include_optional":false,"include_latest":false}),
+                ).map_err(|error| (503, error))?;
+                if comparison["is_aligned"] != true {
+                    return Err((409, "Required runtime packages are missing or incompatible. Repair the Studio installation before completing setup.".into()));
+                }
+                // Only persist a profile verified against this runtime.
                 settings
                     .complete_setup(&profile)
                     .map_err(|error| (500, error))
@@ -132,6 +148,29 @@ fn handle(
     match result {
         Ok(value) => HttpResponse::json(200, value.to_string()),
         Err((status, detail)) => HttpResponse::json(status, json!({"detail":detail}).to_string()),
+    }
+}
+
+fn dependency_inventory_response(
+    request: &HttpRequest,
+    query: &BTreeMap<String, String>,
+    config: &Value,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+) -> Result<Value, (u16, String)> {
+    if (request.method == "POST" && !query.is_empty())
+        || query.keys().any(|key| key != "force_refresh")
+        || query
+            .get("force_refresh")
+            .is_some_and(|value| value.parse::<bool>().is_err())
+    {
+        return Err((400, "Invalid dependency inventory query".into()));
+    }
+    let inventory =
+        adapt("config.dependencies", &json!({"config":config})).map_err(|error| (503, error))?;
+    if request.method == "POST" {
+        Ok(json!({"success":true,"message":"Dependency inventory refreshed"}))
+    } else {
+        Ok(inventory)
     }
 }
 
@@ -167,6 +206,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn inventory_and_refresh_use_read_only_adapter_and_validate_queries() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path());
+        let probe = || panic!("inventory invoked GPU probe");
+        let adapt = |operation: &str, payload: &Value| {
+            assert_eq!(operation, "config.dependencies");
+            assert!(payload["config"]["optional"].is_object());
+            Ok(json!({"read_only":true,"categories":[]}))
+        };
+        let mut request = HttpRequest {
+            method: "GET".into(),
+            path: "/api/updates/dependencies".into(),
+            query: Some("force_refresh=true".into()),
+            headers: BTreeMap::new(),
+            body: Vec::new(),
+        };
+        assert_eq!(handle(&settings, &request, &probe, &adapt).status, 200);
+        for query in [
+            "force_refresh=1",
+            "install=true",
+            "force_refresh=true&force_refresh=false",
+        ] {
+            request.query = Some(query.into());
+            assert_eq!(handle(&settings, &request, &probe, &adapt).status, 400);
+        }
+        request.method = "POST".into();
+        request.path = "/api/updates/dependencies/refresh".into();
+        request.query = None;
+        assert_eq!(handle(&settings, &request, &probe, &adapt).status, 200);
+        let unavailable = |_: &str, _: &Value| Err("No attested runtime is configured".into());
+        assert_eq!(
+            handle(&settings, &request, &probe, &unavailable).status,
+            503
+        );
+        request.query = Some("force_refresh=true".into());
+        assert_eq!(handle(&settings, &request, &probe, &adapt).status, 400);
+    }
+
+    #[test]
     fn invalid_setup_does_not_persist_and_diff_reuses_confirmed_profile() {
         let root = tempfile::tempdir().unwrap();
         let settings = AppSettingsStore::new(root.path());
@@ -178,10 +256,16 @@ mod tests {
             body: br#"{"profile":"not-a-profile"}"#.to_vec(),
         };
         let probe = || panic!("setup invoked GPU probe");
-        let adapt = |_: &str, _: &Value| panic!("setup invoked package comparison");
+        let adapt = |operation: &str, _: &Value| {
+            assert_eq!(operation, "config.compare");
+            Ok(json!({"is_aligned":true}))
+        };
         assert_eq!(handle(&settings, &request, &probe, &adapt).status, 400);
         assert_eq!(settings.setup_status().unwrap()["setup_completed"], false);
         request.body = br#"{"profile":"cpu-lite"}"#.to_vec();
+        let incomplete = |_: &str, _: &Value| Ok(json!({"is_aligned":false}));
+        assert_eq!(handle(&settings, &request, &probe, &incomplete).status, 409);
+        assert_eq!(settings.setup_status().unwrap()["setup_completed"], false);
         assert_eq!(handle(&settings, &request, &probe, &adapt).status, 200);
         request.method = "GET".into();
         request.path = "/api/config/diff".into();
