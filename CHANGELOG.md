@@ -10,6 +10,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.11.6] — 2026-09-17
+
+### Fixed
+
+- Allow package checks and dataset/document operations the same bounded cold
+  Python import time as startup verification, instead of rejecting a valid
+  runtime after 15 seconds.
+- Show the server's runtime verification and setup completion errors in the
+  installation screen, including after an unsuccessful manual retry.
+- Keep scientific capability discovery and settings responsive while Python
+  runtime attestation is running.
+- Use compatible pinned NumPy, Numba and llvmlite wheels on Intel macOS.
+
+### Tests
+
+- Stop packaged first-launch qualification promptly when setup displays an error,
+  and preserve bounded, redacted HTTP diagnostics.
+- Preserve Linux CPU closure evidence and verify the packaged scientific runtime
+  without relying on optional TBB/OpenMP libraries installed on the build machine.
+- Require installed-product setup and real update migration on Linux, Apple
+  Silicon and Intel macOS before publishing a stable release. Select the previous
+  public update archive separately for each platform.
+
+---
+
 ## [0.11.1] — 2026-09-05
 
 ### Fixed
