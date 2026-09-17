@@ -10,7 +10,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [0.11.6] — 2026-09-17
+## [0.11.7] — 2026-09-17
+
+Version 0.11.6 was an unpublished candidate, blocked by its Linux qualification.
 
 ### Fixed
 
@@ -25,6 +27,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ### Tests
 
+- Accept absolute ELF dependency paths containing spaces during Linux CPU
+  closure checks, while still rejecting scientific libraries outside the bundle.
 - Stop packaged first-launch qualification promptly when setup displays an error,
   and preserve bounded, redacted HTTP diagnostics.
 - Preserve Linux CPU closure evidence and verify the packaged scientific runtime
