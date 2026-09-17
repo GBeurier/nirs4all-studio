@@ -2115,7 +2115,8 @@ fn route_workspace_workflows_without_global_lock(
     state: &std::sync::Arc<std::sync::Mutex<SidecarState>>,
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
-    recommended_config_http::route(state, request)
+    route_runtime_diagnostics_without_global_lock(state, request)
+        .or_else(|| recommended_config_http::route(state, request))
         .or_else(|| dataset_synthesis::route(state, request))
         .or_else(|| playground::route(state, request))
         .or_else(|| dataset_scores::route(state, request))
@@ -3244,12 +3245,37 @@ fn runtime_directory_size(runtime_path: &Path) -> u64 {
     total
 }
 
+/// Immutable runtime facts used while diagnostics run outside the route mutex.
+struct RuntimeDiagnosticsSnapshot {
+    python_plugin_host: Option<PathBuf>,
+    runtime_mode: String,
+    runtime_kind: String,
+    python_plugin_host_bundled: bool,
+    build_info: Value,
+}
+
+impl RuntimeDiagnosticsSnapshot {
+    fn from_state(state: &SidecarState) -> Self {
+        Self {
+            python_plugin_host: state.python_plugin_host.clone(),
+            runtime_mode: state.runtime_mode.clone(),
+            runtime_kind: state.runtime_kind.clone(),
+            python_plugin_host_bundled: state.python_plugin_host_bundled,
+            build_info: native_build_info(state),
+        }
+    }
+}
+
 /// Return build metadata from the Rust-owned launch configuration and a
 /// bounded Python-library probe for optional GPU runtime facts.  The sidecar
 /// owns the HTTP route and response assembly; the configured interpreter is
 /// only a library host for `torch` inspection and never serves HTTP or starts
 /// scientific execution.
 fn python_system_build_response(state: &SidecarState) -> HttpResponse {
+    python_system_build_response_from_snapshot(&RuntimeDiagnosticsSnapshot::from_state(state))
+}
+
+fn python_system_build_response_from_snapshot(state: &RuntimeDiagnosticsSnapshot) -> HttpResponse {
     let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
         return error_response(
             503,
@@ -3269,7 +3295,7 @@ fn python_system_build_response(state: &SidecarState) -> HttpResponse {
     }
 }
 
-fn native_system_build_json(state: &SidecarState, probe: &Value) -> String {
+fn native_system_build_json(state: &RuntimeDiagnosticsSnapshot, probe: &Value) -> String {
     let gpu = probe
         .get("gpu")
         .cloned()
@@ -3292,7 +3318,7 @@ fn native_system_build_json(state: &SidecarState, probe: &Value) -> String {
         Value::Null
     };
     let gpu_device = gpu.get("device_name").cloned().unwrap_or(Value::Null);
-    let build = native_build_info(state);
+    let build = state.build_info.clone();
     let flavor = build
         .get("flavor")
         .cloned()
@@ -3353,6 +3379,10 @@ fn native_build_info(state: &SidecarState) -> Value {
 /// own interpreter facts and verifies that the library host can import
 /// `nirs4all`.
 fn python_env_coherence_response(state: &SidecarState) -> HttpResponse {
+    python_env_coherence_response_from_snapshot(&RuntimeDiagnosticsSnapshot::from_state(state))
+}
+
+fn python_env_coherence_response_from_snapshot(state: &RuntimeDiagnosticsSnapshot) -> HttpResponse {
     let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
         return error_response(
             503,
@@ -3617,7 +3647,7 @@ fn read_python_system_build(python_plugin_host: &Path) -> Result<Value, PythonPl
 
 fn read_python_env_coherence(
     python_plugin_host: &Path,
-    state: &SidecarState,
+    state: &RuntimeDiagnosticsSnapshot,
 ) -> Result<String, PythonPluginBridgeFailure> {
     let script = "import json,sys\ntry:\n import nirs4all; nirs4all_import=True\nexcept Exception:\n nirs4all_import=False\nprint(json.dumps({'python':sys.executable,'prefix':sys.prefix,'version':f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}','nirs4all_import':nirs4all_import}, separators=(',',':'), sort_keys=True))";
     let output =
@@ -4278,6 +4308,33 @@ fn route_documents_without_global_lock(
     )
     .or_else(|| {
         workspace_documents::route(&settings, &request.method, &request.path, &request.body)
+    })
+}
+
+fn route_runtime_diagnostics_without_global_lock(
+    state: &Arc<Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    if request.method != "GET"
+        || !matches!(
+            request.path.as_str(),
+            "/api/system/build" | "/api/system/env-coherence"
+        )
+    {
+        return None;
+    }
+    // Settings mounts both probes together. Their cold imports must not block
+    // capabilities, preference writes or health behind the global route lock.
+    let snapshot = {
+        let state = state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        RuntimeDiagnosticsSnapshot::from_state(&state)
+    };
+    Some(if request.path == "/api/system/build" {
+        python_system_build_response_from_snapshot(&snapshot)
+    } else {
+        python_env_coherence_response_from_snapshot(&snapshot)
     })
 }
 
@@ -5783,6 +5840,8 @@ mod tests {
         for route in [
             "/api/system/capabilities",
             "/api/system/info",
+            "/api/system/build",
+            "/api/system/env-coherence",
             "/api/updates/version",
             "/api/updates/runtime/status",
         ] {

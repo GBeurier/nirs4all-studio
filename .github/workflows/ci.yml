@@ -341,7 +341,9 @@ jobs:
 
       - name: Verify packaged Studio with fresh offline user state
         timeout-minutes: 15
-        run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root release/linux-unpacked --platform linux
+        run: |
+          xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root release/linux-unpacked --platform linux
+          xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root release/linux-unpacked --platform linux
 
   # Windows is the authoritative runtime gate for the converter Job Object.
   sidecar-windows:

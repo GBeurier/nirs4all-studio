@@ -352,6 +352,7 @@ jobs:
           node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
           "$SIDECAR" --smoke-readiness
           xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform linux
+          xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform linux
 
       - name: Generate checksums
         run: |

@@ -31,8 +31,10 @@ requireText(dockerfile, "FROM ${RUST_IMAGE} AS sidecar", "Rust sidecar build sta
 requireText(dockerfile, "FROM ${NODE_IMAGE} AS python-plugin-runtime", "bounded CPython plugin build stage");
 requireText(dockerfile, "FROM ${NGINX_IMAGE} AS runtime", "minimal web runtime stage");
 const runtimeStage = dockerfile.split("FROM ${NGINX_IMAGE} AS runtime")[1] || "";
-if (!/apt-get install[^\n]*\blibtbb12\b/.test(runtimeStage)) {
-  errors.push("missing runtime libtbb12 dependency for Numba/SHAP native extensions");
+for (const dependency of ["libtbb12", "libgomp1"]) {
+  if (!new RegExp(`apt-get install[^\\n]*\\b${dependency}\\b`).test(runtimeStage)) {
+    errors.push(`missing runtime ${dependency} dependency for Numba/SHAP native extensions`);
+  }
 }
 requireText(dockerfile, "FROM scratch AS studio-document-adapter-sources", "closed document adapter source stage");
 requireText(
