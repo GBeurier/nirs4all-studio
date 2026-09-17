@@ -306,6 +306,17 @@ function buildPipInstallArgs(packageSpecs, options = {}) {
   ];
 }
 
+function buildPluginRuntimeInstallArgs(packageSpecs, options = {}) {
+  return buildPipInstallArgs(packageSpecs, {
+    ...options,
+    isolated: true,
+    noCompile: true,
+    // LLVM source builds are not part of the shipped runtime contract. Fail
+    // immediately if these scientific pins stop providing compatible wheels.
+    extraPipArgs: [...(options.extraPipArgs || []), "--only-binary=numpy,numba,llvmlite"],
+  });
+}
+
 async function verifyInstalledDependencies(runtimePython, isolated = false, execute = runCommand) {
   await execute(runtimePython, [...(isolated ? ["-I"] : []), "-m", "pip", "check"]);
 }
@@ -936,7 +947,7 @@ async function main() {
         `Pinned plugin wheel identity mismatch: expected ${PLUGIN_WHEEL_SHA256}, got ${actualWheelSha256}`,
       );
     }
-    await runCommandWithRetries(runtimePython, buildPipInstallArgs([selectedPluginWheel], {
+    await runCommandWithRetries(runtimePython, buildPluginRuntimeInstallArgs([selectedPluginWheel], {
       constraintsFile,
       isolated: true,
       noCompile: true,
@@ -944,7 +955,7 @@ async function main() {
       retries: isWindows ? 3 : 1,
       label: "install pinned nirs4all plugin wheel",
     });
-    await runCommandWithRetries(runtimePython, buildPipInstallArgs(PLUGIN_SUPPORT_PACKAGES, {
+    await runCommandWithRetries(runtimePython, buildPluginRuntimeInstallArgs(PLUGIN_SUPPORT_PACKAGES, {
       constraintsFile,
       isolated: true,
       noCompile: true,
@@ -1206,6 +1217,7 @@ module.exports = {
   getCompileTargets,
   isStandaloneBundledRuntimeMode,
   buildPipInstallArgs,
+  buildPluginRuntimeInstallArgs,
   buildPluginToolchainInstallArgs,
   verifyInstalledDependencies,
   buildDeterministicWheelEnv,

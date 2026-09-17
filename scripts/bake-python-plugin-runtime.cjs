@@ -17,7 +17,7 @@ const PLUGIN_DISTRIBUTION_VERSION = "1.0.1";
 const PLUGIN_INSTALLED_MANIFEST_SHA256 = "768e65e0ca900f1a50a88a01f6c09cc7870ce033383cac5c968bfac8fee25bbe";
 const PLUGIN_CONSTRAINTS_RELATIVE_PATH = "build/constraints/plugin-runtime-cpython311.txt";
 const PLUGIN_CONSTRAINTS_PATH = path.join(projectRoot, ...PLUGIN_CONSTRAINTS_RELATIVE_PATH.split("/"));
-const PLUGIN_CONSTRAINTS_SHA256 = "e96dd6da1c76e3d0f1c6f04331d2bf19a68e7f02875cd17940bff1ea94eba647";
+const PLUGIN_CONSTRAINTS_SHA256 = "8a9430806d2fb316ba5a415cd03982bb5a4ea71535cd828fe1b9bdbb40348619";
 const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
 const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
 const TOOLS_DISTRIBUTION_VERSION = "0.0.7";
@@ -25,6 +25,8 @@ const TOOLS_INSTALLED_MANIFEST_SHA256 = "cd0311a57c4be4cd99f84b8ae750eb2f97d4edf
 const DUCKDB_VERSION = "1.5.5";
 const PYARROW_VERSION = "25.0.1";
 const WINDOWS_CONSTRAINT_MARKER = 'sys_platform == "win32"';
+const MAC_INTEL_CONSTRAINT_MARKER = 'sys_platform == "darwin" and platform_machine == "x86_64"';
+const NON_MAC_INTEL_CONSTRAINT_MARKER = 'sys_platform != "darwin" or platform_machine != "x86_64"';
 const GREENLET_PLATFORM_MARKER = 'platform_machine == "aarch64" or (platform_machine == "ppc64le" or (platform_machine == "x86_64" or (platform_machine == "amd64" or (platform_machine == "AMD64" or (platform_machine == "win32" or platform_machine == "WIN32")))))';
 const FORBIDDEN_DISTRIBUTIONS = Object.freeze([
   "fastapi",
@@ -137,6 +139,8 @@ function assertConstraintsIdentity(
 function constraintMarkerApplies(marker, platform, arch) {
   if (!marker) return true;
   if (marker === WINDOWS_CONSTRAINT_MARKER) return platform === "win32";
+  if (marker === MAC_INTEL_CONSTRAINT_MARKER) return platform === "darwin" && arch === "x64";
+  if (marker === NON_MAC_INTEL_CONSTRAINT_MARKER) return platform !== "darwin" || arch !== "x64";
   if (marker === GREENLET_PLATFORM_MARKER) {
     return arch === "x64" || arch === "ppc64" || (platform === "linux" && arch === "arm64");
   }

@@ -17,6 +17,7 @@ const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
     },
   ): string[];
   buildPluginToolchainInstallArgs(): string[];
+  buildPluginRuntimeInstallArgs(packageSpecs: string[], options?: { constraintsFile?: string; upgrade?: boolean }): string[];
   verifyInstalledDependencies(python: string, isolated: boolean, execute: (command: string, args: string[]) => Promise<void>): Promise<void>;
   buildDeterministicWheelEnv(
     sourceEpoch: string,
@@ -146,6 +147,15 @@ describe("setup-python-env", () => {
       "-c",
       "build/constraints.txt",
       "nirs4all==0.1.0",
+    ]);
+  });
+
+  it("requires binary scientific wheels while allowing pinned source-only ecosystem packages", () => {
+    expect(setupPythonEnvModule.buildPluginRuntimeInstallArgs(["shap==0.47.1"], {
+      constraintsFile: "locked.txt", upgrade: true,
+    })).toEqual([
+      "-I", "-m", "pip", "install", "--prefer-binary", "--no-compile", "--upgrade",
+      "--only-binary=numpy,numba,llvmlite", "-c", "locked.txt", "shap==0.47.1",
     ]);
   });
 

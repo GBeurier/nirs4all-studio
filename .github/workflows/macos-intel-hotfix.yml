@@ -1,0 +1,571 @@
+# Product tag stays F314. Only the attested three-file manufacturing overlay is applied.
+name: Qualify macOS Intel hotfix manufacturing
+'on':
+  workflow_dispatch: {}
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: macos-intel-hotfix-0.11.5
+  cancel-in-progress: false
+env:
+  APP_NAME: nirs4all Studio
+  APP_ID: com.nirs4all.webapp
+  NODE_VERSION: '24'
+  PYTHON_VERSION: '3.11'
+  NIRS4ALL_LIBRARY_REF: bf21c552b9d0929daf2dcc2ac7b220c9631ffa07
+  DAG_ML_REF: 233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27
+  DAG_ML_DATA_REF: ffe533704a1a0b0c7bb7d97a997caade3f4ba36e
+  NIRS4ALL_TOOLS_REF: 88c2bc1e29603049cdbf1a1080a35845edf2f3c9
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/bf21c552b9d0929daf2dcc2ac7b220c9631ffa07.tar.gz
+  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/53/dc/1240b0db9095277cea050fd5d8044ffc7bdba303fd8242c8bd1b6eab4e15/nirs4all-1.0.1-py3-none-any.whl
+  NIRS4ALL_WHEEL_SHA256: d6f696580d4e52aeb6d39ecce47d30b3e10dc0b867f88f89f39dc1205cf93103
+  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27.tar.gz
+  DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/ffe533704a1a0b0c7bb7d97a997caade3f4ba36e.tar.gz
+  NIRS4ALL_TOOLS_SOURCE_URL: https://github.com/GBeurier/nirs4all-tools/archive/88c2bc1e29603049cdbf1a1080a35845edf2f3c9.tar.gz
+  PRODUCT_SHA: f314cdb223cd77ce1a3fb6d336cca82206cd02a4
+  SOURCE_RELEASE_RUN_ID: '35216053291'
+jobs:
+  prepare:
+    name: Verify immutable product and manufacturing source
+    runs-on: ubuntu-latest
+    outputs:
+      version: 0.11.5
+      checkout_ref: f314cdb223cd77ce1a3fb6d336cca82206cd02a4
+      is_tag_release: 'true'
+      has_macos_signing: ${{ steps.signing.outputs.has_macos_signing }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: f314cdb223cd77ce1a3fb6d336cca82206cd02a4
+        persist-credentials: false
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+    - name: Verify stable release tag and original source gates
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        node <<'NODE'
+        const assert=require('node:assert/strict'),{execFileSync}=require('node:child_process');
+        const {GH_REPO,PRODUCT_SHA,SOURCE_RELEASE_RUN_ID}=process.env;
+        assert.equal(GH_REPO,'GBeurier/nirs4all-studio');
+        const api=p=>JSON.parse(execFileSync('gh',['api',`repos/${GH_REPO}/${p}`],{encoding:'utf8'}));
+        let tag=api('git/ref/tags/0.11.5').object;
+        while(tag.type==='tag')tag=api(`git/tags/${tag.sha}`).object;
+        assert.equal(tag.type,'commit');assert.equal(tag.sha,PRODUCT_SHA);
+        assert.equal(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),PRODUCT_SHA);
+        assert.equal(require('./package.json').version,'0.11.5');
+        const release=api('releases/tags/0.11.5');
+        assert.equal(release.id,390685191);assert.equal(release.draft,false);assert.equal(release.prerelease,false);
+        const source=api(`actions/runs/${SOURCE_RELEASE_RUN_ID}`);
+        assert.equal(source.head_sha,PRODUCT_SHA);assert.equal(source.path,'.github/workflows/release-unified.yml');
+        assert.equal(source.event,'push');assert.equal(source.head_branch,'0.11.5');
+        const jobs=api(`actions/runs/${SOURCE_RELEASE_RUN_ID}/jobs?per_page=100`).jobs;
+        for(const name of ['Prepare','Acquire pinned plugin wheels','Qualify release commit / Frontend','Qualify release commit / Backend']){
+         const found=jobs.filter(job=>job.name===name);assert.equal(found.length,1);assert.equal(found[0].conclusion,'success',name);
+        }
+        console.log(JSON.stringify({product_sha:PRODUCT_SHA,manufacturing_sha:process.env.GITHUB_SHA,source_release_run:SOURCE_RELEASE_RUN_ID,version:'0.11.5'}));
+        NODE
+    - name: Detect signing secrets
+      id: signing
+      env:
+        WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+        WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+        APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      run: |
+        if [ -n "$WINDOWS_CERT_BASE64" ] && [ -n "$WINDOWS_CERT_PASSWORD" ]; then
+          echo "has_windows_signing=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_windows_signing=false" >> "$GITHUB_OUTPUT"
+          echo "Windows signing secrets incomplete (WINDOWS_CERT_BASE64 / WINDOWS_CERT_PASSWORD)."
+        fi
+
+        macos_missing=()
+        for secret_name in APPLE_CERT_BASE64 APPLE_CERT_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+          if [ -z "${!secret_name}" ]; then
+            macos_missing+=("$secret_name")
+          fi
+        done
+        if [ ${#macos_missing[@]} -eq 0 ]; then
+          echo "has_macos_signing=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_macos_signing=false" >> "$GITHUB_OUTPUT"
+          echo "macOS signing/notarization secrets missing: ${macos_missing[*]}"
+        fi
+  installer-macos-x64:
+    name: Installer — macOS x64
+    needs:
+    - prepare
+    runs-on: macos-15-intel
+    steps:
+    - name: Check out immutable F314 product
+      uses: actions/checkout@v4
+      with:
+        ref: f314cdb223cd77ce1a3fb6d336cca82206cd02a4
+        persist-credentials: false
+    - name: Check out separately identified manufacturing tools
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        path: manufacturing
+        persist-credentials: false
+    - name: Note — building an unsigned macOS DMG (no Apple signing secrets)
+      if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
+      run: |
+        echo "::warning::No Apple signing/notarization secrets set — publishing an UNSIGNED, un-notarized DMG. Users must right-click > Open on first launch (Gatekeeper). This is fine for this project; add APPLE_* secrets to sign + notarize."
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+    - name: Apply only the three content-addressed manufacturing files
+      run: |
+        node <<'NODE'
+        const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict'),{execFileSync}=require('node:child_process');
+        assert.equal(process.platform,'darwin');assert.equal(process.arch,'x64');
+        const files={
+         'build/constraints/plugin-runtime-cpython311.txt':'8a9430806d2fb316ba5a415cd03982bb5a4ea71535cd828fe1b9bdbb40348619',
+         'scripts/bake-python-plugin-runtime.cjs':'8bff0fa0505efe43983894089075ccbcdf83faf1adabfc183772353aff34152e',
+         'scripts/setup-python-env.cjs':'b6e28b737e4281e050a59ebbd96a50a80d1376a4fbf6e4fa0380cf3773a69559',
+        };
+        const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
+        assert.equal(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),process.env.PRODUCT_SHA);
+        assert.equal(execFileSync('git',['-C','manufacturing','rev-parse','HEAD'],{encoding:'utf8'}).trim(),process.env.GITHUB_SHA);
+        for(const [file,expected]of Object.entries(files)){
+         const bytes=fs.readFileSync(path.join('manufacturing',file));assert.equal(hash(bytes),expected,file);
+         fs.writeFileSync(file,bytes);assert.equal(hash(fs.readFileSync(file)),expected,file);
+        }
+        const changed=execFileSync('git',['diff','--name-only'],{encoding:'utf8'}).trim().split('\n').filter(Boolean).sort();
+        assert.deepEqual(changed,Object.keys(files).sort(),'Unexpected product source overlay');
+        const attestation={schema:'nirs4all.manufacturing-overlay.v1',version:'0.11.5',product_sha:process.env.PRODUCT_SHA,manufacturing_sha:process.env.GITHUB_SHA,source_release_run:process.env.SOURCE_RELEASE_RUN_ID,platform:'darwin',arch:'x64',files,scientific_versions:{numpy:'2.3.5',numba:'0.62.1',llvmlite:'0.45.1'}};
+        fs.writeFileSync('manufacturing-attestation.json',JSON.stringify(attestation,null,2)+'\n');
+        console.log(JSON.stringify(attestation,null,2));
+        NODE
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: x86_64-apple-darwin
+    - name: Install npm dependencies
+      run: npm ci
+    - name: Download canonical plugin wheels
+      uses: actions/download-artifact@v4
+      with:
+        name: pinned-plugin-wheels
+        path: _deps/pinned-plugin-wheels
+        github-token: ${{ github.token }}
+        run-id: ${{ env.SOURCE_RELEASE_RUN_ID }}
+    - name: Build exact native Methods runtime
+      uses: ./.github/actions/build-native-methods
+      with:
+        platform: darwin
+        arch: x64
+    - name: Qualify native Archive V2 replay
+      run: npm run test:native-archive-v2
+    - name: Verify exact nirs4all-ui package
+      run: npm run check:ui-package
+    - name: Build frontend (Electron mode)
+      run: npm run build:electron
+    - name: Write explicit product and manufacturing identity
+      run: |
+        node <<'NODE'
+        const fs=require('node:fs'),assert=require('node:assert/strict');
+        assert.equal(require('./package.json').version,'0.11.5');
+        const overlay=JSON.parse(fs.readFileSync('manufacturing-attestation.json','utf8'));
+        fs.writeFileSync('version.json',JSON.stringify({version:'0.11.5',build_date:new Date().toISOString(),commit:process.env.PRODUCT_SHA,manufacturing_commit:process.env.GITHUB_SHA,manufacturing_overlay:overlay},null,2)+'\n');
+        NODE
+    - name: Build pinned plugin-only CPython runtime
+      run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.1-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
+    - name: Build and smoke native sidecar
+      run: |
+        node scripts/build-native-sidecar.cjs --target x86_64-apple-darwin
+        test -x backend-dist/native/studio-sidecar
+        node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch x64 --require-bundled-python-plugin --require-bundled-methods
+        if [ "$(uname -m)" = "x86_64" ]; then
+          backend-dist/native/studio-sidecar --smoke-readiness
+        else
+          echo "Skipping x86_64 sidecar execution on $(uname -m); packaging checks still apply."
+        fi
+    - name: Import Apple Developer certificate
+      if: needs.prepare.outputs.has_macos_signing == 'true'
+      env:
+        APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+        APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      run: |
+        # Create temporary keychain
+        KEYCHAIN_PATH=${{ runner.temp }}/build.keychain
+        KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+        # Import certificate
+        echo "$APPLE_CERT_BASE64" | base64 --decode > ${{ runner.temp }}/cert.p12
+        security import ${{ runner.temp }}/cert.p12 -k "$KEYCHAIN_PATH" \
+          -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+        security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
+
+        # Export for electron-builder (keychain-based signing, no file reference needed)
+        echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> $GITHUB_ENV
+    - name: Package with electron-builder
+      run: npx electron-builder --config electron-builder.installer.yml --mac --x64 --publish never
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    - name: Verify packaged native sidecar
+      run: |
+        SIDECAR="$(find release -type f -path '*/Contents/Resources/backend/native/studio-sidecar' -print -quit)"
+        test -n "$SIDECAR"
+        test -x "$SIDECAR"
+        BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
+        ARTIFACT_BOUNDARY="$(dirname "$(dirname "$(dirname "$BACKEND_ROOT")")")"
+        node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch x64 --require-bundled-python-plugin --require-bundled-methods
+        if [ "$(uname -m)" = "x86_64" ]; then
+          "$SIDECAR" --smoke-readiness
+          node scripts/smoke-archive-standalone.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform darwin
+        else
+          echo "Skipping packaged x86_64 sidecar execution on $(uname -m)."
+        fi
+    - name: Notarize macOS DMG
+      if: needs.prepare.outputs.has_macos_signing == 'true'
+      env:
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      run: |
+        DMG=$(ls release/*.dmg 2>/dev/null | head -1)
+        if [ -z "$DMG" ]; then
+          echo "::error::No DMG found to notarize."
+          exit 1
+        fi
+        echo "Notarizing $DMG..."
+        xcrun notarytool submit "$DMG" \
+          --apple-id "$APPLE_ID" \
+          --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+          --team-id "$APPLE_TEAM_ID" \
+          --wait --timeout 600
+
+        echo "Stapling notarization ticket..."
+        xcrun stapler staple "$DMG"
+        echo "Notarization complete."
+    - name: Verify signature and notarization
+      if: needs.prepare.outputs.has_macos_signing == 'true'
+      run: |
+        DMG=$(ls release/*.dmg 2>/dev/null | head -1)
+        if [ -z "$DMG" ]; then
+          echo "::error::No DMG found to verify."
+          exit 1
+        fi
+        echo "Validating stapled ticket on $DMG..."
+        xcrun stapler validate "$DMG"
+        echo "Gatekeeper assessment of the disk image..."
+        spctl --assess --type open --context context:primary-signature -vv "$DMG"
+
+        echo "Mounting DMG to verify the app bundle..."
+        MOUNT_DIR="$(mktemp -d)"
+        hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_DIR"
+        APP=$(ls -d "$MOUNT_DIR"/*.app 2>/dev/null | head -1)
+        if [ -z "$APP" ]; then
+          hdiutil detach "$MOUNT_DIR" || true
+          echo "::error::No .app found inside the mounted DMG."
+          exit 1
+        fi
+        codesign --verify --deep --strict --verbose=2 "$APP"
+        # The notarization ticket is stapled to the DMG (above), not to the
+        # inner .app, so `stapler validate "$APP"` would always fail here.
+        # spctl assesses the app against the notary record (online) instead.
+        spctl --assess --type exec -vv "$APP"
+        hdiutil detach "$MOUNT_DIR"
+        echo "Signature + notarization verified."
+    - name: Cleanup keychain
+      if: always()
+      run: |
+        KEYCHAIN_PATH=${{ runner.temp }}/build.keychain
+        security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+    - name: Prove first setup and developer preference in the actual DMG application
+      timeout-minutes: 20
+      run: |
+        MOUNT_DIR="$(mktemp -d)"
+        INSTALL_DIR="${RUNNER_TEMP}/macintel-installed"
+        mkdir -p "$INSTALL_DIR"
+        DMG="$(find release -maxdepth 1 -name '*.dmg' -print -quit)"
+        test -n "$DMG"
+        hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_DIR"
+        trap 'hdiutil detach "$MOUNT_DIR" >/dev/null 2>&1 || true' EXIT
+        ditto "$MOUNT_DIR/nirs4all Studio.app" "$INSTALL_DIR/nirs4all Studio.app"
+        hdiutil detach "$MOUNT_DIR"
+        trap - EXIT
+        node scripts/smoke-archive-standalone.cjs --extracted-root "$INSTALL_DIR" --platform darwin | tee "$RUNNER_TEMP/macintel-installed-smoke.log"
+        node manufacturing/scripts/smoke-first-launch-ui.cjs --extracted-root "$INSTALL_DIR" --platform darwin --timeout-ms 600000 | tee "$RUNNER_TEMP/macintel-first-launch-ui.log"
+    - name: Generate checksums
+      run: |
+        cd release
+        for f in *.dmg; do
+          [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
+        done
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: installer-macos-x64
+        path: |
+          release/*.dmg
+          release/*.dmg.sha256
+        retention-days: 14
+        if-no-files-found: error
+    - name: Upload manufacturing and qualification evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: installer-macos-x64-manufacturing-proof
+        path: |
+          manufacturing-attestation.json
+          version.json
+          ${{ runner.temp }}/macintel-*.log
+          ${{ runner.temp }}/studio-real-update-*/result.json
+          ${{ runner.temp }}/studio-real-update-*/application.log
+        if-no-files-found: warn
+        retention-days: 14
+    timeout-minutes: 120
+  archive-macos-x64:
+    name: All-in-one — macOS x64
+    needs:
+    - prepare
+    runs-on: macos-15-intel
+    steps:
+    - name: Check out immutable F314 product
+      uses: actions/checkout@v4
+      with:
+        ref: f314cdb223cd77ce1a3fb6d336cca82206cd02a4
+        persist-credentials: false
+    - name: Check out separately identified manufacturing tools
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        path: manufacturing
+        persist-credentials: false
+    - name: Note — building an unsigned macOS archive (no Apple signing secrets)
+      if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
+      run: |
+        echo "::warning::No Apple signing/notarization secrets set — publishing an UNSIGNED, un-notarized all-in-one archive. Users must right-click > Open on first launch (Gatekeeper). This is fine for this project; add APPLE_* secrets to sign + notarize."
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+    - name: Apply only the three content-addressed manufacturing files
+      run: |
+        node <<'NODE'
+        const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict'),{execFileSync}=require('node:child_process');
+        assert.equal(process.platform,'darwin');assert.equal(process.arch,'x64');
+        const files={
+         'build/constraints/plugin-runtime-cpython311.txt':'8a9430806d2fb316ba5a415cd03982bb5a4ea71535cd828fe1b9bdbb40348619',
+         'scripts/bake-python-plugin-runtime.cjs':'8bff0fa0505efe43983894089075ccbcdf83faf1adabfc183772353aff34152e',
+         'scripts/setup-python-env.cjs':'b6e28b737e4281e050a59ebbd96a50a80d1376a4fbf6e4fa0380cf3773a69559',
+        };
+        const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
+        assert.equal(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),process.env.PRODUCT_SHA);
+        assert.equal(execFileSync('git',['-C','manufacturing','rev-parse','HEAD'],{encoding:'utf8'}).trim(),process.env.GITHUB_SHA);
+        for(const [file,expected]of Object.entries(files)){
+         const bytes=fs.readFileSync(path.join('manufacturing',file));assert.equal(hash(bytes),expected,file);
+         fs.writeFileSync(file,bytes);assert.equal(hash(fs.readFileSync(file)),expected,file);
+        }
+        const changed=execFileSync('git',['diff','--name-only'],{encoding:'utf8'}).trim().split('\n').filter(Boolean).sort();
+        assert.deepEqual(changed,Object.keys(files).sort(),'Unexpected product source overlay');
+        const attestation={schema:'nirs4all.manufacturing-overlay.v1',version:'0.11.5',product_sha:process.env.PRODUCT_SHA,manufacturing_sha:process.env.GITHUB_SHA,source_release_run:process.env.SOURCE_RELEASE_RUN_ID,platform:'darwin',arch:'x64',files,scientific_versions:{numpy:'2.3.5',numba:'0.62.1',llvmlite:'0.45.1'}};
+        fs.writeFileSync('manufacturing-attestation.json',JSON.stringify(attestation,null,2)+'\n');
+        console.log(JSON.stringify(attestation,null,2));
+        NODE
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    - name: Download canonical plugin wheels
+      uses: actions/download-artifact@v4
+      with:
+        name: pinned-plugin-wheels
+        path: _deps/pinned-plugin-wheels
+        github-token: ${{ github.token }}
+        run-id: ${{ env.SOURCE_RELEASE_RUN_ID }}
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Build exact native Methods runtime
+      uses: ./.github/actions/build-native-methods
+      with:
+        platform: darwin
+        arch: x64
+    - name: Qualify native Archive V2 replay
+      run: npm run test:native-archive-v2
+    - name: Cache all-in-one runtime downloads
+      uses: actions/cache@v4
+      with:
+        path: build/.python-cache
+        key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
+    - name: Install npm dependencies
+      run: npm ci
+    - name: Verify exact nirs4all-ui package
+      run: npm run check:ui-package
+    - name: Detect notarization secrets
+      id: notarization
+      env:
+        APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+        APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      run: |
+        missing=()
+        for secret_name in APPLE_CERT_BASE64 APPLE_CERT_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+          if [ -z "${!secret_name}" ]; then
+            missing+=("$secret_name")
+          fi
+        done
+
+        if [ ${#missing[@]} -eq 0 ]; then
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "Using notarized packaging for the macOS all-in-one archive."
+        else
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::Building an unsigned macOS all-in-one archive because these notarization secrets are missing: ${missing[*]}"
+        fi
+    - name: Import Apple Developer certificate
+      if: steps.notarization.outputs.enabled == 'true'
+      env:
+        APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+        APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      run: |
+        KEYCHAIN_PATH=${{ runner.temp }}/build.keychain
+        KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+        echo "$APPLE_CERT_BASE64" | base64 --decode > ${{ runner.temp }}/cert.p12
+        security import ${{ runner.temp }}/cert.p12 -k "$KEYCHAIN_PATH" \
+          -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+        security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
+
+        echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> $GITHUB_ENV
+    - name: Write explicit product and manufacturing identity
+      run: |
+        node <<'NODE'
+        const fs=require('node:fs'),assert=require('node:assert/strict');
+        assert.equal(require('./package.json').version,'0.11.5');
+        const overlay=JSON.parse(fs.readFileSync('manufacturing-attestation.json','utf8'));
+        fs.writeFileSync('version.json',JSON.stringify({version:'0.11.5',build_date:new Date().toISOString(),commit:process.env.PRODUCT_SHA,manufacturing_commit:process.env.GITHUB_SHA,manufacturing_overlay:overlay},null,2)+'\n');
+        NODE
+    - name: Build all-in-one archive
+      run: |
+        HARD_LIMIT="$(ulimit -Hn 2>/dev/null || echo '')"
+        TARGET_LIMIT=65536
+        if [[ "$HARD_LIMIT" =~ ^[0-9]+$ ]] && (( HARD_LIMIT < TARGET_LIMIT )); then
+          TARGET_LIMIT="$HARD_LIMIT"
+        fi
+        ulimit -n "$TARGET_LIMIT" || true
+        echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
+        node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.1-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
+        node scripts/build-native-sidecar.cjs --target x86_64-apple-darwin
+        node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch x64 --require-bundled-python-plugin --require-bundled-methods
+        npm run build:electron
+        npx electron-builder --config electron-builder.archive.yml --mac --dir --x64 --publish never
+        ditto -c -k --sequesterRsrc --keepParent "release/mac/nirs4all Studio.app" "release/nirs4all Studio-0.11.5-all-in-one-mac-x64.zip"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        NIRS4ALL_REQUIRE_CONSTRAINTS: '1'
+    - name: Notarize, staple, and rebuild final ZIP
+      if: steps.notarization.outputs.enabled == 'true'
+      env:
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      run: |
+        APP_PATH="release/mac/nirs4all Studio.app"
+        ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-mac-x64.zip"
+        NOTARY_ZIP="${RUNNER_TEMP}/notary-mac-x64.zip"
+        EXTRACT_ROOT="${RUNNER_TEMP}/archive-smoke"
+
+        ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$NOTARY_ZIP"
+        xcrun notarytool submit "$NOTARY_ZIP" \
+          --apple-id "$APPLE_ID" \
+          --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+          --team-id "$APPLE_TEAM_ID" \
+          --wait --timeout 600
+        xcrun stapler staple "$APP_PATH"
+        xcrun stapler validate "$APP_PATH"
+
+        rm -f "$ZIP_PATH"
+        ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+
+        rm -rf "$EXTRACT_ROOT"
+        mkdir -p "$EXTRACT_ROOT"
+        ditto -x -k "$ZIP_PATH" "$EXTRACT_ROOT"
+    - name: Extract archive for smoke test
+      id: archive
+      run: |
+        ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-mac-x64.zip"
+        EXTRACT_ROOT="${RUNNER_TEMP}/archive-smoke"
+        rm -rf "$EXTRACT_ROOT"
+        mkdir -p "$EXTRACT_ROOT"
+        ditto -x -k "$ZIP_PATH" "$EXTRACT_ROOT"
+        echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+        echo "extract_root=$EXTRACT_ROOT" >> "$GITHUB_OUTPUT"
+    - name: Smoke test update ZIP permissions
+      run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.zip_path }}" --platform darwin
+    - name: Smoke test offline all-in-one launch
+      run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
+    - name: Smoke test self-update (download -> apply -> relaunch)
+      timeout-minutes: 10
+      run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
+    - name: Cleanup keychain
+      if: always()
+      run: |
+        KEYCHAIN_PATH=${{ runner.temp }}/build.keychain
+        security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+    - name: Generate checksum
+      run: |
+        FILE="${{ steps.archive.outputs.zip_path }}"
+        (cd "$(dirname "$FILE")" && shasum -a 256 "$(basename "$FILE")" > "$(basename "$FILE").sha256")
+    - name: Migrate actual public 0.11.4 and cold boot the Mac Intel candidate
+      timeout-minutes: 25
+      env:
+        CANDIDATE_ARCHIVE: ${{ steps.archive.outputs.zip_path }}
+      run: |
+        node manufacturing/scripts/verify-real-release-update.cjs . 0.11.4 0.11.5 "$CANDIDATE_ARCHIVE" | tee "$RUNNER_TEMP/macintel-real-update.log"
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: archive-macos-x64
+        path: |
+          ${{ steps.archive.outputs.zip_path }}
+          ${{ steps.archive.outputs.zip_path }}.sha256
+        retention-days: 14
+        if-no-files-found: error
+    - name: Upload manufacturing and qualification evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: archive-macos-x64-manufacturing-proof
+        path: |
+          manufacturing-attestation.json
+          version.json
+          ${{ runner.temp }}/macintel-*.log
+          ${{ runner.temp }}/studio-real-update-*/result.json
+          ${{ runner.temp }}/studio-real-update-*/application.log
+        if-no-files-found: warn
+        retention-days: 14
+    timeout-minutes: 120
