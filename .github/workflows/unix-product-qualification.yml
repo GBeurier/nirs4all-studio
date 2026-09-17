@@ -1,0 +1,233 @@
+name: Unix product installation and platform migration
+
+on:
+  workflow_call:
+    inputs:
+      release_run_id:
+        required: true
+        type: string
+      checkout_ref:
+        required: true
+        type: string
+      to_version:
+        required: true
+        type: string
+      platform_matrix:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  install-and-migrate:
+    name: Real install and platform migration — ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.platform_matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      PRODUCT_SHA: ${{ inputs.checkout_ref }}
+      TARGET_VERSION: ${{ inputs.to_version }}
+      SOURCE_RUN: ${{ inputs.release_run_id }}
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Verify same-run producers and acquire their exact artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CURRENT_RUN: ${{ github.run_id }}
+          PLATFORM_PLAN: ${{ toJSON(matrix) }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { assertUnixCandidateProvenance, assertUnixBaseline, UNIX_PLATFORMS } = require('./scripts/unix-release-gate-plan.cjs');
+          const { SOURCE_RUN, CURRENT_RUN, GH_REPO, PRODUCT_SHA, TARGET_VERSION } = process.env;
+          const plan = JSON.parse(process.env.PLATFORM_PLAN);
+          const expected = UNIX_PLATFORMS.find(value => value.artifact === plan.artifact);
+          assert(expected, 'Unknown matrix platform');
+          for (const [key, value] of Object.entries(expected)) assert.equal(plan[key], value);
+          assert.equal(process.platform, plan.platform);
+          assert.equal(process.arch, plan.arch);
+          assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), PRODUCT_SHA);
+          const api = route => JSON.parse(execFileSync('gh', ['api', `repos/${GH_REPO}/${route}`], { encoding: 'utf8' }));
+          const list = (route, field) => execFileSync('gh', ['api', '--paginate', `repos/${GH_REPO}/${route}`,
+            '--jq', `.${field}[] | @json`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+          const run = api(`actions/runs/${SOURCE_RUN}`);
+          const jobs = list(`actions/runs/${SOURCE_RUN}/jobs?per_page=100`, 'jobs');
+          assertUnixCandidateProvenance(run, jobs, { runId: SOURCE_RUN, currentRunId: CURRENT_RUN,
+            checkoutRef: PRODUCT_SHA, targetVersion: TARGET_VERSION, platformLabel: plan.label });
+          const baseline = api(`releases/tags/${plan.from_version}`);
+          assertUnixBaseline(baseline, plan);
+          const oldName = `nirs4all.Studio-${plan.from_version}-all-in-one-${plan.archive_suffix}`;
+          const checksum = execFileSync('gh', ['api', `repos/${GH_REPO}/releases/assets/${plan.source_checksum_id}`,
+            '-H', 'Accept: application/octet-stream'], { encoding: 'utf8' }).trim().match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
+          assert(checksum && checksum[2] === oldName, 'Public checksum must bind the previous archive filename');
+          const previousSha = checksum[1].toLowerCase();
+          const previousAsset = baseline.assets.find(asset => asset.id === plan.source_archive_id);
+          if (previousAsset.digest) assert.equal(previousAsset.digest, `sha256:${previousSha}`);
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'previous-archive.sha256'), previousSha);
+          const artifacts = list(`actions/runs/${SOURCE_RUN}/artifacts?per_page=100`, 'artifacts');
+          for (const kind of ['installer', 'archive']) {
+            const name = `${kind}-${plan.artifact}`;
+            const selected = artifacts.filter(artifact => artifact.name === name);
+            assert.equal(selected.length, 1, `Missing or ambiguous artifact ${name}`);
+            assert.equal(selected[0].expired, false, `Expired artifact ${name}`);
+            execFileSync('gh', ['run', 'download', SOURCE_RUN, '-n', name, '-D', path.join(process.env.RUNNER_TEMP, `candidate-${kind}`)], { stdio: 'inherit' });
+          }
+          NODE
+
+      - name: Bind candidate filenames and hashes to the product and producer run
+        id: candidate
+        env:
+          PLATFORM_PLAN: ${{ toJSON(matrix) }}
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { sha256File, parseChecksumSidecar } = require('./scripts/finalize-release-assets.cjs');
+          const plan = JSON.parse(process.env.PLATFORM_PLAN);
+          const files = {};
+          for (const kind of ['installer', 'archive']) {
+            const suffix = kind === 'archive' ? `all-in-one-${plan.archive_suffix}` : plan.installer_suffix;
+            const name = `nirs4all Studio-${process.env.TARGET_VERSION}-${suffix}`;
+            const filename = path.join(process.env.RUNNER_TEMP, `candidate-${kind}`, name);
+            const sha256 = sha256File(filename);
+            assert.equal(parseChecksumSidecar(`${filename}.sha256`, name), sha256);
+            files[kind] = { name, sha256 };
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `${kind}=${filename}\n`);
+          }
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'candidate-proof.json'), JSON.stringify({
+            product_sha: process.env.PRODUCT_SHA, source_run: process.env.SOURCE_RUN,
+            version: process.env.TARGET_VERSION, platform: plan,
+            previous_archive_sha256: fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'previous-archive.sha256'), 'utf8'), ...files,
+          }, null, 2));
+          NODE
+
+      - name: Install the actual DEB package
+        if: matrix.platform == 'linux'
+        env:
+          INSTALLER: ${{ steps.candidate.outputs.installer }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb "$INSTALLER"
+          PACKAGE_NAME="$(dpkg-deb -f "$INSTALLER" Package)"
+          test "$(dpkg-query -W -f='${Version}' "$PACKAGE_NAME")" = "$TARGET_VERSION"
+          APP_EXECUTABLE="$(dpkg -L "$PACKAGE_NAME" | awk '/^\/opt\/.*\/nirs4all-webapp$/ { print }')"
+          test -x "$APP_EXECUTABLE"
+          echo "INSTALLED_ROOT=$(dirname "$APP_EXECUTABLE")" >> "$GITHUB_ENV"
+
+      - name: Install the application from the actual DMG
+        if: matrix.platform == 'darwin'
+        env:
+          INSTALLER: ${{ steps.candidate.outputs.installer }}
+        run: |
+          set -euo pipefail
+          MOUNT_DIR="$RUNNER_TEMP/studio-dmg"
+          mkdir -p "$MOUNT_DIR"
+          hdiutil attach "$INSTALLER" -nobrowse -readonly -mountpoint "$MOUNT_DIR"
+          trap 'hdiutil detach "$MOUNT_DIR" || true' EXIT
+          INSTALLED_ROOT="$RUNNER_TEMP/studio-dmg-installed/nirs4all Studio.app"
+          mkdir -p "$(dirname "$INSTALLED_ROOT")"
+          ditto "$MOUNT_DIR/nirs4all Studio.app" "$INSTALLED_ROOT"
+          test -x "$INSTALLED_ROOT/Contents/MacOS/nirs4all Studio"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INSTALLED_ROOT/Contents/Info.plist")" = "$TARGET_VERSION"
+          echo "INSTALLED_ROOT=$INSTALLED_ROOT" >> "$GITHUB_ENV"
+
+      - name: Prove the installed application works offline
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          LAUNCH=(node)
+          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a node); fi
+          "${LAUNCH[@]}" scripts/smoke-archive-standalone.cjs --extracted-root "$INSTALLED_ROOT" --platform "$PLATFORM" --timeout-ms 360000 2>&1 | tee "$RUNNER_TEMP/installed-smoke.log"
+
+      - name: Install only the real renderer test driver
+        run: npm ci --ignore-scripts
+
+      - name: Prove first setup, saved preference, reload and restart in installed UI
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          LAUNCH=(node)
+          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a node); fi
+          "${LAUNCH[@]}" scripts/smoke-first-launch-ui.cjs --extracted-root "$INSTALLED_ROOT" --platform "$PLATFORM" --timeout-ms 360000 2>&1 | tee "$RUNNER_TEMP/installed-ui.log"
+
+      - name: Migrate the actual previous platform release and cold boot offline
+        timeout-minutes: 20
+        env:
+          FROM_VERSION: ${{ matrix.from_version }}
+          CANDIDATE_ARCHIVE: ${{ steps.candidate.outputs.archive }}
+        run: |
+          set -euo pipefail
+          LAUNCH=(node)
+          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a node); fi
+          "${LAUNCH[@]}" scripts/verify-real-release-update.cjs . "$FROM_VERSION" "$TARGET_VERSION" "$CANDIDATE_ARCHIVE" 2>&1 | tee "$RUNNER_TEMP/migration.log"
+
+      - name: Verify migration proof is bound to the exact candidate archive
+        env:
+          FROM_VERSION: ${{ matrix.from_version }}
+          ARCHIVE_SUFFIX: ${{ matrix.archive_suffix }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PLATFORM_PLAN: ${{ toJSON(matrix) }}
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
+          const { execFileSync } = require('node:child_process');
+          const { assertUnixBaseline } = require('./scripts/unix-release-gate-plan.cjs');
+          const root = process.env.RUNNER_TEMP;
+          const candidates = fs.readdirSync(root).filter(name => name.startsWith('studio-real-update-'))
+            .map(name => path.join(root, name, 'result.json')).filter(name => fs.existsSync(name));
+          assert.equal(candidates.length, 1, 'Expected one successful real migration proof');
+          const result = JSON.parse(fs.readFileSync(candidates[0], 'utf8'));
+          const candidate = JSON.parse(fs.readFileSync(path.join(root, 'candidate-proof.json'), 'utf8'));
+          assert.equal(result.success, true);
+          assert.equal(result.offline_cold_boot, true);
+          assert.equal(result.source, 'qualified-candidate-fixture');
+          assert.equal(result.from, process.env.FROM_VERSION);
+          assert.equal(result.to, process.env.TARGET_VERSION);
+          assert.equal(result.target_asset, `nirs4all.Studio-${process.env.TARGET_VERSION}-all-in-one-${process.env.ARCHIVE_SUFFIX}`);
+          assert.equal(result.target_archive_sha256, candidate.archive.sha256);
+          assert.match(result.old_archive_sha256, /^[0-9a-f]{64}$/);
+          assert.equal(result.old_archive_sha256, candidate.previous_archive_sha256);
+          for (const [key, value] of Object.entries({ status: 'success', from_version: result.from, to_version: result.to, current_version: result.to })) {
+            assert.equal(result.apply_result[key], value);
+          }
+          const baseline = JSON.parse(execFileSync('gh', ['api', `repos/${process.env.GH_REPO}/releases/tags/${process.env.FROM_VERSION}`], { encoding: 'utf8' }));
+          assertUnixBaseline(baseline, JSON.parse(process.env.PLATFORM_PLAN));
+          NODE
+
+      - name: Preserve installation and actual platform migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unix-product-proof-${{ matrix.artifact }}
+          path: |
+            ${{ runner.temp }}/candidate-proof.json
+            ${{ runner.temp }}/installed-smoke.log
+            ${{ runner.temp }}/installed-ui.log
+            ${{ runner.temp }}/migration.log
+            ${{ runner.temp }}/studio-real-update-*/result.json
+            ${{ runner.temp }}/studio-real-update-*/application.log
+          if-no-files-found: warn
+          retention-days: 14
