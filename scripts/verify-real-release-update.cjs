@@ -1,4 +1,4 @@
-/** Disposable Windows/Linux runner: real N-1 -> N archives, no rebuild. */
+/** Disposable desktop runner: real N-1 -> N archives, no rebuild. */
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -16,7 +16,18 @@ const to = process.argv[4] || '0.11.5';
 const candidate = process.argv[5] ? path.resolve(process.argv[5]) : null;
 const oldLocal = process.argv[6] ? path.resolve(process.argv[6]) : null;
 const platform = process.platform;
-const platformSuffix = platform === 'win32' ? 'win-x64.zip' : 'linux-x64.tar.gz';
+function platformArchiveSuffix(targetPlatform, targetArch) {
+  const suffixes = { 'win32:x64': 'win-x64.zip', 'linux:x64': 'linux-x64.tar.gz', 'darwin:arm64': 'mac-arm64.zip', 'darwin:x64': 'mac-x64.zip' };
+  const suffix = suffixes[`${targetPlatform}:${targetArch}`];
+  assert(suffix, `Unsupported real-update platform: ${targetPlatform}/${targetArch}`);
+  return suffix;
+}
+function extractOldArchive(targetPlatform, downloaded, extracted, execute = execFileSync) {
+  // ditto preserves framework symlinks and resource forks in signed app bundles.
+  const command = targetPlatform === 'darwin' ? 'ditto' : targetPlatform === 'win32' ? 'tar.exe' : 'tar';
+  const args = targetPlatform === 'darwin' ? ['-x', '-k', downloaded, extracted] : ['-xf', downloaded, '-C', extracted];
+  execute(command, args, { stdio: 'inherit' });
+}
 const timeout = 360000;
 const project = 'GBeurier/nirs4all-studio';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -94,7 +105,7 @@ function forceStop(pid) {
   try { if (platform === 'win32') execFileSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }); else process.kill(pid, 'SIGKILL'); } catch {}
 }
 async function main() {
-  assert(['win32', 'linux'].includes(platform) && process.arch === 'x64', 'Run on disposable Windows/Linux x64');
+  const platformSuffix = platformArchiveSuffix(platform, process.arch);
   assert.match(from, /^\d+\.\d+\.\d+$/);
   assert.match(to, /^\d+\.\d+\.\d+$/);
   const archive = require(path.join(repo, 'scripts/smoke-archive-standalone.cjs'));
@@ -120,7 +131,7 @@ async function main() {
   const oldName = `nirs4all.Studio-${from}-all-in-one-${platformSuffix}`;
   const oldAsset = old.assets.find(asset => asset.name === oldName);
   const checksum = old.assets.find(asset => asset.name === `${oldName}.sha256`);
-  assert(oldAsset && checksum, 'Old Windows release archive and checksum must exist');
+  assert(oldAsset && checksum, 'Old platform release archive and checksum must exist');
   const checksumResponse = await fetch(checksum.browser_download_url, { signal: AbortSignal.timeout(30000) });
   assert(checksumResponse.ok, `Old checksum HTTP ${checksumResponse.status}`);
   const record = (await checksumResponse.text()).trim().match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
@@ -142,7 +153,7 @@ async function main() {
   }
   const extracted = path.join(root, 'installed');
   fs.mkdirSync(extracted);
-  execFileSync(platform === 'win32' ? 'tar.exe' : 'tar', ['-xf', downloaded, '-C', extracted], { stdio: 'inherit' });
+  extractOldArchive(platform, downloaded, extracted);
   const layout = archive.resolveLaunchLayout(extracted, platform, 'nirs4all Studio');
   const server = createServer();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
@@ -213,7 +224,8 @@ async function main() {
   fs.writeFileSync(path.join(root, 'result.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 }
-main().catch(error => { console.error(error.stack); process.exitCode = 1; }).finally(() => {
+module.exports = { platformArchiveSuffix, extractOldArchive };
+if (require.main === module) main().catch(error => { console.error(error.stack); process.exitCode = 1; }).finally(() => {
   forceStop(child?.pid);
   forceStop(relaunchPid);
   fixture?.close();
