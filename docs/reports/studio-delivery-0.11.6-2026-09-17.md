@@ -1,6 +1,6 @@
 # Livraison corrective Studio 0.11.6 — 17 septembre 2026
 
-**État : candidate non publiée. La qualification Linux a bloqué la livraison.**
+**État : candidate non publiée. La qualification Linux a bloqué la livraison ; le run a ensuite été annulé.**
 
 - Produit et tag : `244382e10f8576b7cd1d05ea50466d237cc60a9f` / `0.11.6`.
 - [Workflow de release 35245572991](https://github.com/GBeurier/nirs4all-studio/actions/runs/35245572991).
@@ -15,7 +15,8 @@ de fermeture CPU a refusé une ligne `ldd` valide : une dépendance absolue
 `libpython` était située dans le répertoire `nirs4all Studio`, dont l'espace
 n'était pas accepté par le parseur du harnais. Aucun fichier 0.11.6 n'a été
 publié. Le tag est conservé ; le correctif de ce contrôle et les correctifs
-produit ci-dessous seront qualifiés sous une nouvelle version.
+produit ci-dessous sont qualifiés par la candidate 0.11.7.
+[Suivi 0.11.7](studio-delivery-0.11.7-2026-09-17.md).
 
 ## Correctifs
 
