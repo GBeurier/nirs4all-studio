@@ -56,7 +56,7 @@ jobs:
           const nsis=api('actions/jobs/105195060850');
           assert.equal(nsis.run_id,35219251646); assert.equal(nsis.name,'nsis-install-ui'); assert.equal(nsis.conclusion,'success');
           for(const name of ['Verify hashes and actually install NSIS silently','Prove installed NSIS application works offline','Prove actual first setup and developer preference in installed Windows UI']) assert(nsis.steps.some(step=>step.name===name&&step.conclusion==='success'),name);
-          const log=execFileSync('gh',['api',`repos/${GH_REPO}/actions/jobs/105195060850/logs`],{encoding:'utf8',maxBuffer:32*1024*1024});
+          const log=execFileSync('gh',['api','--allow-escape-sequences',`repos/${GH_REPO}/actions/jobs/105195060850/logs`],{encoding:'utf8',maxBuffer:32*1024*1024});
           assert(log.includes('RELEASE_RUN_ID: 35216053291')&&log.includes('TARGET_VERSION: 0.11.5')&&log.includes(sha));
           const release=api('releases/tags/0.11.5');
           assert.equal(release.id,390685191); assert.equal(release.draft,false); assert.equal(release.prerelease,true);
