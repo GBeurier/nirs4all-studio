@@ -1,0 +1,134 @@
+name: Diagnose macOS Intel first launch
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: diagnose-macintel-first-launch-0.11.5
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  diagnose:
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Require the exact reviewed archive qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/macintel-diagnostic"
+          node <<'NODE'
+          const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          const api = route => JSON.parse(execFileSync('gh', ['api', `repos/${process.env.GH_REPO}/${route}`], { encoding: 'utf8' }));
+          assert.equal(process.env.GH_REPO, 'GBeurier/nirs4all-studio');
+          const run = api('actions/runs/35228169611');
+          assert.equal(run.head_sha, '721c7eca0ff2c882ef5779ed9d1b2b54480a6568');
+          assert.equal(run.path, '.github/workflows/macos-intel-hotfix.yml');
+          assert.equal(run.event, 'workflow_dispatch');
+          assert.equal(run.status, 'completed');
+          // The installer failed its UI gate; only the successful archive is reused for diagnosis.
+          const jobs = api('actions/runs/35228169611/jobs?per_page=100').jobs;
+          const archive = jobs.filter(job => job.name === 'All-in-one — macOS x64');
+          assert.equal(archive.length, 1);
+          assert.equal(archive[0].id, 105225069240);
+          assert.equal(archive[0].conclusion, 'success');
+          for (const name of ['Smoke test offline all-in-one launch', 'Migrate actual public 0.11.4 and cold boot the Mac Intel candidate', 'Bind final payload hashes to the manufacturing identity', 'Upload artifacts']) {
+            assert(archive[0].steps.some(step => step.name === name && step.conclusion === 'success'), name);
+          }
+          const artifacts = api('actions/runs/35228169611/artifacts?per_page=100').artifacts;
+          for (const [name, id] of [['archive-macos-x64', 10503473264], ['archive-macos-x64-manufacturing-proof', 10503574053]]) {
+            const found = artifacts.filter(artifact => artifact.name === name);
+            assert.equal(found.length, 1); assert.equal(found[0].id, id); assert.equal(found[0].expired, false);
+          }
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'macintel-diagnostic', 'source-run.json'), JSON.stringify({
+            diagnostic_only: true, source_run: run.id, manufacturing_sha: run.head_sha,
+            product_sha: 'f314cdb223cd77ce1a3fb6d336cca82206cd02a4', archive_job: archive[0].id,
+            diagnostic_sha: process.env.GITHUB_SHA,
+          }, null, 2));
+          NODE
+          gh run download 35228169611 -n archive-macos-x64 -D "$RUNNER_TEMP/macintel-archive"
+          gh run download 35228169611 -n archive-macos-x64-manufacturing-proof -D "$RUNNER_TEMP/macintel-source-proof"
+      - name: Verify archive hash and manufacturing evidence before extraction
+        id: archive
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+          const contract = require('./scripts/qualified-macintel-release-contract.cjs');
+          const { sha256File, parseChecksumSidecar } = require('./scripts/finalize-release-assets.cjs');
+          const name = 'nirs4all Studio-0.11.5-all-in-one-mac-x64.zip';
+          const expected = '30eaa04c95618897f30c4ebfeff6424e0560a02bf5dbaead7e61645e5e36180c';
+          const file = path.join(process.env.RUNNER_TEMP, 'macintel-archive', name);
+          assert.equal(sha256File(file), expected);
+          assert.equal(parseChecksumSidecar(file + '.sha256', name), expected);
+          const files = [];
+          function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const item = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(item); else files.push(item);
+            }
+          }
+          walk(path.join(process.env.RUNNER_TEMP, 'macintel-source-proof'));
+          const read = name => {
+            const found = files.filter(file => path.basename(file) === name);
+            assert.equal(found.length, 1, name); return JSON.parse(fs.readFileSync(found[0], 'utf8'));
+          };
+          contract.assertManufacturingEvidence(read('manufacturing-attestation.json'), read('version.json'), read('artifact-checksums.json'),
+            contract.ZIP, [{ publishedName: contract.ZIP, digest: expected }]);
+          const migration = read('result.json');
+          assert.equal(migration.success, true); assert.equal(migration.offline_cold_boot, true);
+          assert.equal(migration.from, '0.11.4'); assert.equal(migration.to, '0.11.5');
+          assert.equal(migration.target_archive_sha256, expected);
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'macintel-diagnostic', 'archive-identity.json'), JSON.stringify({
+            diagnostic_only: true, file: name, sha256: expected, source_run: 35228169611,
+            source_artifact: 10503473264, manufacturing: read('manufacturing-attestation.json'),
+          }, null, 2));
+          NODE
+          mkdir -p "$RUNNER_TEMP/macintel-extracted"
+          ditto -x -k "$RUNNER_TEMP/macintel-archive/nirs4all Studio-0.11.5-all-in-one-mac-x64.zip" "$RUNNER_TEMP/macintel-extracted"
+      - name: Install diagnostic dependencies without downloading Electron
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Observe automatic setup and one explicit manual retry on the unchanged product
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          node scripts/diagnose-first-launch-ui.cjs \
+            --extracted-root "$RUNNER_TEMP/macintel-extracted" --platform darwin \
+            --timeout-ms 600000 --output-root "$RUNNER_TEMP/macintel-diagnostic" \
+            2>&1 | tee "$RUNNER_TEMP/macintel-diagnostic/harness.log"
+      - name: Verify scientific runtime after the cold UI diagnostic
+        if: ${{ !cancelled() && steps.archive.outcome == 'success' }}
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          node scripts/smoke-archive-standalone.cjs \
+            --extracted-root "$RUNNER_TEMP/macintel-extracted" --platform darwin --timeout-ms 600000 \
+            2>&1 | tee "$RUNNER_TEMP/macintel-diagnostic/scientific-smoke.log"
+      - name: Preserve diagnostic evidence including automatic failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macintel-first-launch-diagnostic
+          path: ${{ runner.temp }}/macintel-diagnostic
+          if-no-files-found: warn
+          retention-days: 14
