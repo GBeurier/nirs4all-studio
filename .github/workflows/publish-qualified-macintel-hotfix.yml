@@ -1,0 +1,136 @@
+name: Publish qualified macOS Intel hotfix
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-macintel-hotfix-0.11.5
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      MANUFACTURING_RUN: ${{ inputs.manufacturing_run_id }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+    - name: Require original product gates and both qualified Mac Intel products
+      run: |
+        cat > "$RUNNER_TEMP/check-macintel-release.cjs" <<'NODE'
+        const assert = require('node:assert/strict');
+        const path = require('node:path');
+        const { execFileSync } = require('node:child_process');
+        const contract = require(path.resolve('scripts/qualified-macintel-release-contract.cjs'));
+        const sourceContract = require(path.resolve('scripts/qualified-unix-release-contract.cjs'));
+        const { GH_REPO, MANUFACTURING_RUN } = process.env;
+        assert.match(MANUFACTURING_RUN, /^\d+$/);
+        const api = route => JSON.parse(execFileSync('gh', ['api', `repos/${GH_REPO}/${route}`], { encoding: 'utf8' }));
+        async function check() {
+          contract.assertSource(api(`actions/runs/${sourceContract.SOURCE_RUN}`), api(`actions/runs/${sourceContract.SOURCE_RUN}/jobs?per_page=100`).jobs, api(`actions/runs/${sourceContract.E2E_RUN}`));
+          const deadline = Date.now() + 120 * 60 * 1000;
+          for (;;) {
+            const run = api(`actions/runs/${MANUFACTURING_RUN}`);
+            const jobs = api(`actions/runs/${MANUFACTURING_RUN}/jobs?per_page=100`).jobs;
+            if (contract.manufacturingStatus(run, jobs)) break;
+            assert(Date.now() < deadline, 'Timed out awaiting both Mac Intel products');
+            console.log('Waiting for Mac Intel installer UI and archive N-1 migration');
+            await new Promise(resolve => setTimeout(resolve, 60000));
+          }
+          let tag = api('git/ref/tags/0.11.5').object;
+          while (tag.type === 'tag') tag = api(`git/tags/${tag.sha}`).object;
+          contract.assertPublicRelease(api('releases/tags/0.11.5'), api('releases/latest'), tag);
+        }
+        check().catch(error => { console.error(error); process.exitCode = 1; });
+        NODE
+        node "$RUNNER_TEMP/check-macintel-release.cjs"
+    - name: Download qualified Mac Intel products and their independent manufacturing proofs
+      run: |
+        set -euo pipefail
+        gh run download "$MANUFACTURING_RUN" -n installer-macos-x64 -D candidate-installer
+        gh run download "$MANUFACTURING_RUN" -n archive-macos-x64 -D candidate-archive
+        gh run download "$MANUFACTURING_RUN" -n installer-macos-x64-manufacturing-proof -D installer-proof
+        gh run download "$MANUFACTURING_RUN" -n archive-macos-x64-manufacturing-proof -D archive-proof
+    - name: Bind final DMG and ZIP to reviewed overlay, actual installed UI and N-1 migration
+      run: |
+        node <<'NODE'
+        const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+        const contract = require('./scripts/qualified-macintel-release-contract.cjs');
+        const source = require('./scripts/qualified-unix-release-contract.cjs');
+        const { finalizeReleaseAssets } = require('./scripts/finalize-release-assets.cjs');
+        fs.mkdirSync('release');
+        for (const [name, dir] of [[contract.DMG, 'candidate-installer'], [contract.ZIP, 'candidate-archive']]) {
+          const original = name.replace('nirs4all.Studio', 'nirs4all Studio');
+          for (const suffix of ['', '.sha256']) fs.copyFileSync(path.join(dir, original + suffix), path.join('release', original + suffix), fs.constants.COPYFILE_EXCL);
+        }
+        const records = finalizeReleaseAssets(path.resolve('release'), [contract.DMG, contract.ZIP]);
+        function proof(root) {
+          const files = [];
+          function walk(dir) {
+            for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+              const file = path.join(dir, item.name);
+              if (item.isDirectory()) walk(file); else files.push(file);
+            }
+          }
+          walk(root);
+          return name => {
+            const found = files.filter(file => path.basename(file) === name);
+            assert.equal(found.length, 1, `${root}/${name}`);
+            return JSON.parse(fs.readFileSync(found[0], 'utf8'));
+          };
+        }
+        for (const [root, name] of [['installer-proof', contract.DMG], ['archive-proof', contract.ZIP]]) {
+          const read = proof(root);
+          contract.assertManufacturingEvidence(read('manufacturing-attestation.json'), read('version.json'), read('artifact-checksums.json'), name, records);
+        }
+        contract.assertMigration(proof('archive-proof')('result.json'), records);
+        fs.writeFileSync('publication-proof.json', JSON.stringify({ platform: 'macos-x64', manufacturing_run: process.env.MANUFACTURING_RUN, manufacturing_sha: contract.MANUFACTURING_SHA, product_sha: source.PRODUCT_SHA, source_run: source.SOURCE_RUN, overlay_files: contract.OVERLAY_FILES, records }, null, 2));
+        NODE
+    - name: Add only verified new assets without replacing existing release files
+      run: |
+        set -euo pipefail
+        node "$RUNNER_TEMP/check-macintel-release.cjs"
+        node <<'NODE'
+        const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+        const { execFileSync } = require('node:child_process');
+        const { sha256File } = require('./scripts/finalize-release-assets.cjs');
+        const api = () => JSON.parse(execFileSync('gh', ['api', `repos/${process.env.GH_REPO}/releases/tags/0.11.5`], { encoding: 'utf8' }));
+        // Make each checksum available before its payload becomes discoverable.
+        const names = fs.readdirSync('release').sort((a, b) => Number(b.endsWith('.sha256')) - Number(a.endsWith('.sha256')) || a.localeCompare(b));
+        for (const name of names) {
+          const file = path.join('release', name);
+          const digest = `sha256:${sha256File(file)}`;
+          const existing = api().assets.filter(asset => asset.name === name);
+          assert(existing.length <= 1);
+          if (existing.length) {
+            assert.equal(existing[0].state, 'uploaded');
+            assert.equal(existing[0].digest, digest, `Refusing to replace existing asset ${name}`);
+          } else {
+            execFileSync('gh', ['release', 'upload', '0.11.5', file], { stdio: 'inherit' });
+          }
+          const published = api().assets.filter(asset => asset.name === name);
+          assert.equal(published.length, 1);
+          assert.equal(published[0].state, 'uploaded');
+          assert.equal(published[0].digest, digest);
+        }
+        NODE
+        node "$RUNNER_TEMP/check-macintel-release.cjs"
+    - name: Preserve publication provenance
+      uses: actions/upload-artifact@v4
+      with:
+        name: published-macintel-proof
+        path: publication-proof.json
+        if-no-files-found: error
+        retention-days: 30
+'on':
+  workflow_dispatch:
+    inputs:
+      manufacturing_run_id:
+        description: Run at the exact reviewed Mac Intel manufacturing commit
+        required: true
+        type: string
