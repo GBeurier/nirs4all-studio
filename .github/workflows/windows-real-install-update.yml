@@ -25,7 +25,7 @@ permissions:
 jobs:
   real-install-update:
     runs-on: windows-2022
-    timeout-minutes: 55
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,7 +33,7 @@ jobs:
           node-version: '24'
       - name: Wait for successful Windows jobs and acquire their exact artifacts
         id: candidate
-        timeout-minutes: 25
+        timeout-minutes: 35
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -50,7 +50,7 @@ jobs:
           if ($run.head_branch -ne $env:TARGET_VERSION -and $run.head_branch -ne "v$env:TARGET_VERSION") { throw 'Release run does not match target version' }
           "sha=$($run.head_sha)" >> $env:GITHUB_OUTPUT
           $wantedJobs = @('Installer — Windows x64', 'All-in-one — Windows x64')
-          $deadline = (Get-Date).AddMinutes(23)
+          $deadline = (Get-Date).AddMinutes(33)
           do {
             $jobs = (gh api "repos/$env:GH_REPO/actions/runs/$env:RELEASE_RUN_ID/jobs?per_page=100" | ConvertFrom-Json).jobs
             if ($LASTEXITCODE -ne 0) { throw 'Could not read jobs' }
