@@ -1863,8 +1863,8 @@ jobs:
 
           ### Installers (Recommended)
 
-          Full desktop application with embedded Python environment and managed dependencies.
-          After installation, use the first-launch wizard to configure GPU/framework preferences.
+          Full desktop application with its included CPU runtime and required packages.
+          First launch verifies the installed runtime before opening your datasets.
 
           | Platform | Architecture | File | Status |
           |----------|-------------|------|--------|
@@ -1876,7 +1876,8 @@ jobs:
           ### All-in-one Bundles
 
           Self-contained Electron desktop bundles with a baked Python runtime.
-          CPU-only product profile, \`torch\` included, first launch works offline, and no setup wizard is required.
+          CPU-only product profile with verified scientific packages, including SHAP and Matplotlib.
+          The included runtime works offline and does not require a separate Python installation.
 
           | Platform | Architecture | File | Status |
           |----------|-------------|------|--------|
