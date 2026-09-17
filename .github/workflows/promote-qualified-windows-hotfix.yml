@@ -90,7 +90,7 @@ jobs:
                 return job;
               });
               const windows=api(`actions/runs/${WINDOWS_RUN_ID}`);
-              if(windows.path!=='.github/workflows/windows-real-install-update.yml'||windows.event!=='workflow_dispatch') throw Error('Unexpected Windows validation workflow');
+              if(windows.path!=='.github/workflows/windows-parallel-install-update.yml'||windows.event!=='workflow_dispatch') throw Error('Unexpected Windows validation workflow');
               if(windows.status==='completed'&&windows.conclusion!=='success') throw Error(`Real Windows installation/update failed: ${windows.conclusion}`);
               const e2e=api(`actions/runs/${E2E_RUN_ID}`);
               if(e2e.path!=='.github/workflows/playwright.yml'||e2e.head_sha!==SOURCE_SHA||!['push','workflow_dispatch'].includes(e2e.event)) throw Error('E2E run does not qualify this exact source commit');
@@ -99,10 +99,15 @@ jobs:
                 const e2eJobs=api(`actions/runs/${E2E_RUN_ID}/jobs?per_page=100`).jobs;
                 if(!e2eJobs.some(job=>job.name==='E2E Tests'&&job.conclusion==='success')) throw Error('E2E workflow has no successful test job');
                 const windowsJobs=api(`actions/runs/${WINDOWS_RUN_ID}/jobs?per_page=100`).jobs;
-                if(windowsJobs.length!==1||windowsJobs[0].conclusion!=='success') throw Error('Unexpected Windows validation jobs');
-                if(!windowsJobs[0].steps.some(step=>step.name==='Prove actual first setup and developer preference in installed Windows UI'&&step.conclusion==='success')) throw Error('Windows validation lacks the mandatory installed first-launch UI proof');
-                const log=execFileSync('gh',['api',`repos/${GH_REPO}/actions/jobs/${windowsJobs[0].id}/logs`],{encoding:'utf8',maxBuffer:32*1024*1024});
-                if(!log.includes(`RELEASE_RUN_ID: ${RELEASE_RUN_ID}`)||!log.includes(`TARGET_VERSION: ${RELEASE_VERSION}`)) throw Error('Windows installation/update tested another candidate');
+                const install=windowsJobs.find(job=>job.name==='nsis-install-ui');
+                const migration=windowsJobs.find(job=>job.name==='real-migration');
+                if(windowsJobs.length!==2||!install||!migration||windowsJobs.some(job=>job.conclusion!=='success')) throw Error('Unexpected Windows validation jobs');
+                if(!install.steps.some(step=>step.name==='Prove actual first setup and developer preference in installed Windows UI'&&step.conclusion==='success')) throw Error('Windows validation lacks the mandatory installed first-launch UI proof');
+                if(!migration.steps.some(step=>step.name==='Migrate actual previous release to exact candidate and cold boot offline'&&step.conclusion==='success')) throw Error('Windows validation lacks the mandatory real N-1 migration proof');
+                for(const job of [install,migration]){
+                  const log=execFileSync('gh',['api',`repos/${GH_REPO}/actions/jobs/${job.id}/logs`],{encoding:'utf8',maxBuffer:32*1024*1024});
+                  if(!log.includes(`RELEASE_RUN_ID: ${RELEASE_RUN_ID}`)||!log.includes(`TARGET_VERSION: ${RELEASE_VERSION}`)) throw Error('Windows installation/update tested another candidate');
+                }
                 console.log(`Windows source, builds, E2E, real NSIS and N-1 update all qualified for ${SOURCE_SHA}`);
                 break;
               }
