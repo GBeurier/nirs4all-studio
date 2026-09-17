@@ -31,7 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Wait for successful Windows jobs and acquire their exact artifacts
+      - name: Wait for successful Windows installer and acquire its exact artifact
         id: candidate
         timeout-minutes: 35
         shell: pwsh
@@ -49,7 +49,7 @@ jobs:
           if ($run.event -ne 'push' -or $run.path -ne '.github/workflows/release-unified.yml') { throw 'Expected an actual tag release workflow run' }
           if ($run.head_branch -ne $env:TARGET_VERSION -and $run.head_branch -ne "v$env:TARGET_VERSION") { throw 'Release run does not match target version' }
           "sha=$($run.head_sha)" >> $env:GITHUB_OUTPUT
-          $wantedJobs = @('Installer — Windows x64', 'All-in-one — Windows x64')
+          $wantedJobs = @('Installer — Windows x64')
           $deadline = (Get-Date).AddMinutes(33)
           do {
             $jobs = (gh api "repos/$env:GH_REPO/actions/runs/$env:RELEASE_RUN_ID/jobs?per_page=100" | ConvertFrom-Json).jobs
@@ -57,16 +57,14 @@ jobs:
             $selected = @($jobs | Where-Object { $_.name -in $wantedJobs })
             $bad = @($selected | Where-Object { $_.status -eq 'completed' -and $_.conclusion -ne 'success' })
             if ($bad.Count) { throw "Required Windows build failed: $($bad.name -join ', ')" }
-            $ready = $selected.Count -eq 2 -and @($selected | Where-Object { $_.conclusion -ne 'success' }).Count -eq 0
+            $ready = $selected.Count -eq 1 -and @($selected | Where-Object { $_.conclusion -ne 'success' }).Count -eq 0
             if ($ready) { break }
             if ((Get-Date) -gt $deadline) { throw 'Timed out waiting for Windows artifacts' }
-            Write-Host 'Waiting for successful Windows installer/archive builds...'
+            Write-Host 'Waiting for successful Windows installer build...'
             Start-Sleep -Seconds 20
           } while ($true)
           gh run download $env:RELEASE_RUN_ID -n installer-windows-x64 -D "$env:RUNNER_TEMP\candidate-installer"
           if ($LASTEXITCODE -ne 0) { throw 'Installer artifact download failed' }
-          gh run download $env:RELEASE_RUN_ID -n archive-windows-x64 -D "$env:RUNNER_TEMP\candidate-archive"
-          if ($LASTEXITCODE -ne 0) { throw 'Archive artifact download failed' }
       - name: Check out exact release sources for its existing runtime probes
         uses: actions/checkout@v4
         with:
@@ -81,9 +79,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $installers = @(Get-ChildItem "$env:RUNNER_TEMP\candidate-installer" -Recurse -Filter '*-win-x64.exe')
-          $archives = @(Get-ChildItem "$env:RUNNER_TEMP\candidate-archive" -Recurse -Filter '*-all-in-one-win-x64.zip')
-          if ($installers.Count -ne 1 -or $archives.Count -ne 1) { throw 'Expected exactly one NSIS installer and one archive' }
-          foreach ($file in @($installers[0], $archives[0])) {
+          if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          foreach ($file in @($installers[0])) {
             if (-not $file.Name.Contains("-$env:TARGET_VERSION-")) { throw "Wrong version: $($file.Name)" }
             $record = (Get-Content -Raw "$($file.FullName).sha256").Trim()
             if ($record -notmatch '^([a-fA-F0-9]{64})\s+\*?(.+)$') { throw 'Invalid SHA sidecar' }
@@ -99,7 +96,6 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "NSIS failed with exit $($process.ExitCode)" }
           if (-not (Test-Path "$installRoot\nirs4all Studio.exe")) { throw 'NSIS did not install the actual application in the requested directory' }
           "root=$installRoot" >> $env:GITHUB_OUTPUT
-          "archive=$($archives[0].FullName)" >> $env:GITHUB_OUTPUT
       - name: Prove installed NSIS application works offline
         timeout-minutes: 10
         shell: pwsh
@@ -119,13 +115,55 @@ jobs:
         run: |
           node qualified-source/scripts/smoke-first-launch-ui.cjs --extracted-root "$env:INSTALLED_ROOT" --platform win32 --timeout-ms 360000
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Await and verify the exact qualified Windows update archive
+        id: archive
+        timeout-minutes: 15
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          TARGET_VERSION: ${{ inputs.to_version }}
+          SOURCE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $deadline = (Get-Date).AddMinutes(13)
+          do {
+            $run = gh api "repos/$env:GH_REPO/actions/runs/$env:RELEASE_RUN_ID" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Could not reverify release run' }
+            if ($run.head_sha -cne $env:SOURCE_SHA -or $run.event -ne 'push' -or $run.path -ne '.github/workflows/release-unified.yml') { throw 'Update archive release identity differs from the installed candidate' }
+            if ($run.head_branch -ne $env:TARGET_VERSION -and $run.head_branch -ne "v$env:TARGET_VERSION") { throw 'Update archive release version differs' }
+            $jobs = (gh api "repos/$env:GH_REPO/actions/runs/$env:RELEASE_RUN_ID/jobs?per_page=100" | ConvertFrom-Json).jobs
+            if ($LASTEXITCODE -ne 0) { throw 'Could not read archive qualification' }
+            $selected = @($jobs | Where-Object { $_.name -eq 'All-in-one — Windows x64' })
+            if ($selected.Count -gt 1) { throw 'Ambiguous Windows archive job' }
+            if (@($selected | Where-Object { $_.status -eq 'completed' -and $_.conclusion -ne 'success' }).Count) { throw 'Windows archive qualification failed' }
+            if ($selected.Count -eq 1 -and $selected[0].conclusion -eq 'success') { break }
+            if ((Get-Date) -gt $deadline) { throw 'Timed out waiting for qualified Windows archive' }
+            Write-Host 'NSIS and installed UI passed; waiting for qualified update archive...'
+            Start-Sleep -Seconds 20
+          } while ($true)
+          gh run download $env:RELEASE_RUN_ID -n archive-windows-x64 -D "$env:RUNNER_TEMP\candidate-archive"
+          if ($LASTEXITCODE -ne 0) { throw 'Archive artifact download failed' }
+          $archives = @(Get-ChildItem "$env:RUNNER_TEMP\candidate-archive" -Recurse -Filter '*-all-in-one-win-x64.zip')
+          if ($archives.Count -ne 1) { throw 'Expected exactly one qualified Windows archive' }
+          $file = $archives[0]
+          if (-not $file.Name.Contains("-$env:TARGET_VERSION-")) { throw "Wrong archive version: $($file.Name)" }
+          $record = (Get-Content -Raw "$($file.FullName).sha256").Trim()
+          if ($record -notmatch '^([a-fA-F0-9]{64})\s+\*?(.+)$') { throw 'Invalid archive SHA sidecar' }
+          $expectedHash = $Matches[1].ToLower()
+          if ($Matches[2] -cne $file.Name) { throw 'Archive SHA sidecar filename mismatch' }
+          $actualHash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
+          if ($actualHash -cne $expectedHash) { throw 'Archive SHA mismatch' }
+          Write-Host "$actualHash  $($file.Name)"
+          "path=$($file.FullName)" >> $env:GITHUB_OUTPUT
       - name: Migrate actual previous release to exact candidate and cold boot offline
         timeout-minutes: 15
         shell: pwsh
         env:
           SOURCE_VERSION: ${{ inputs.from_version }}
           TARGET_VERSION: ${{ inputs.to_version }}
-          CANDIDATE_ARCHIVE: ${{ steps.install.outputs.archive }}
+          CANDIDATE_ARCHIVE: ${{ steps.archive.outputs.path }}
         run: |
           node scripts/verify-real-release-update.cjs qualified-source "$env:SOURCE_VERSION" "$env:TARGET_VERSION" "$env:CANDIDATE_ARCHIVE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
