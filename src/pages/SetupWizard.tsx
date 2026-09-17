@@ -46,7 +46,7 @@ import {
 import { alignConfig, getConfigDiff } from "@/api/config";
 import { getDependencies } from "@/api/dependencies";
 import { getRuntimeSummary } from "@/api/system";
-import { api } from "@/api/transport";
+import { api, formatApiErrorDetail } from "@/api/transport";
 import type { ProfileInfo, OptionalPackageInfo } from "@/api/config";
 import {
   filterOptionalPackagesForProfile,
@@ -66,6 +66,15 @@ const stepVariants = {
   center: { opacity: 1, x: 0 },
   exit: { opacity: 0, x: -30 },
 };
+
+function setupErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && "detail" in error) {
+    const status = "status" in error && typeof error.status === "number" ? error.status : undefined;
+    return formatApiErrorDetail(error.detail, status);
+  }
+  return fallback;
+}
 
 export default function SetupWizard() {
   const navigate = useNavigate();
@@ -104,7 +113,7 @@ export default function SetupWizard() {
       setReady(true);
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to verify the installed runtime");
+      setError(setupErrorMessage(err, "Failed to verify the installed runtime"));
       return false;
     } finally {
       setChecking(false);
@@ -120,7 +129,7 @@ export default function SetupWizard() {
       await completeSetupMutation.mutateAsync({ profile: "cpu" });
       navigate("/datasets", { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save setup completion");
+      setError(setupErrorMessage(err, "Failed to save setup completion"));
     }
   };
 

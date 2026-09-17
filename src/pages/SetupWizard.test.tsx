@@ -12,7 +12,10 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock("@/api/dependencies", () => ({ getDependencies: mocks.inventory }));
 vi.mock("@/api/config", () => ({ getConfigDiff: mocks.diff, alignConfig: mocks.align }));
 vi.mock("@/api/system", () => ({ getRuntimeSummary: mocks.runtime }));
-vi.mock("@/api/transport", () => ({ api: { get: mocks.readiness } }));
+vi.mock("@/api/transport", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/api/transport")>(),
+  api: { get: mocks.readiness },
+}));
 vi.mock("@/hooks/useRecommendedConfig", () => ({
   useCompleteSetup: () => ({ mutateAsync: mocks.complete, isPending: false }),
   useRecommendedConfig: mocks.config,
@@ -93,6 +96,31 @@ describe("SetupWizard packaged installation verification", () => {
     await mount();
     await act(async () => openButton().click());
     expect(container.textContent).toContain("Cannot save settings");
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it.each(["inventory", "diff", "runtime", "readiness"] as const)(
+    "shows the actual HTTP refusal from %s and permits a verified manual retry",
+    async (endpoint) => {
+      mocks[endpoint].mockRejectedValueOnce({ status: 503, detail: "The Python library host is busy. Retry verification." });
+      await mount();
+      expect(container.textContent).toContain("The Python library host is busy. Retry verification.");
+      expect(openButton().disabled).toBe(true);
+      expect(mocks.complete).not.toHaveBeenCalled();
+      const retry = [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry verification")!;
+      await act(async () => retry.click());
+      expect(container.textContent).toContain("required packages are ready");
+      expect(openButton().disabled).toBe(false);
+      expect(mocks.complete).not.toHaveBeenCalled();
+      expect(mocks.navigate).not.toHaveBeenCalled();
+    },
+  );
+
+  it("shows an HTTP error while saving completion and stays in setup", async () => {
+    mocks.complete.mockRejectedValue({ status: 409, detail: "The selected runtime changed. Verify it again." });
+    await mount();
+    await act(async () => openButton().click());
+    expect(container.textContent).toContain("The selected runtime changed. Verify it again.");
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
