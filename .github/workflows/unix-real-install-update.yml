@@ -1,0 +1,191 @@
+name: Unix real installation and N-1 update
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Qualified F314 release run
+        required: true
+        type: string
+        default: '35216053291'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  install-and-migrate:
+    name: Real install and N-1 update — ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux x64
+            runner: ubuntu-22.04
+            artifact: linux-x64
+            platform: linux
+            arch: x64
+            archive_suffix: linux-x64.tar.gz
+            installer_suffix: linux-amd64.deb
+          - label: macOS arm64
+            runner: macos-14
+            artifact: macos-arm64
+            platform: darwin
+            arch: arm64
+            archive_suffix: mac-arm64.zip
+            installer_suffix: mac-arm64.dmg
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      PRODUCT_SHA: f314cdb223cd77ce1a3fb6d336cca82206cd02a4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Acquire exact successful F314 installer and archive artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_RUN: ${{ inputs.release_run_id }}
+          PLATFORM_LABEL: ${{ matrix.label }}
+          ARTIFACT_PLATFORM: ${{ matrix.artifact }}
+          EXPECTED_PLATFORM: ${{ matrix.platform }}
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          const { SOURCE_RUN, GH_REPO, PRODUCT_SHA, PLATFORM_LABEL } = process.env;
+          assert.match(SOURCE_RUN, /^\d+$/);
+          assert.equal(process.platform, process.env.EXPECTED_PLATFORM);
+          assert.equal(process.arch, process.env.EXPECTED_ARCH);
+          const api = route => JSON.parse(execFileSync('gh', ['api', `repos/${GH_REPO}/${route}`], { encoding: 'utf8' }));
+          const run = api(`actions/runs/${SOURCE_RUN}`);
+          assert.equal(run.head_sha, PRODUCT_SHA);
+          assert.equal(run.path, '.github/workflows/release-unified.yml');
+          assert.equal(run.event, 'push');
+          assert(['0.11.5', 'v0.11.5'].includes(run.head_branch));
+          const jobs = api(`actions/runs/${SOURCE_RUN}/jobs?per_page=100`).jobs;
+          for (const name of [`Installer — ${PLATFORM_LABEL}`, `All-in-one — ${PLATFORM_LABEL}`]) {
+            const selected = jobs.filter(job => job.name === name);
+            assert.equal(selected.length, 1, name);
+            assert.equal(selected[0].conclusion, 'success', name);
+          }
+          NODE
+          gh run download "$SOURCE_RUN" -n "archive-$ARTIFACT_PLATFORM" -D "$RUNNER_TEMP/candidate-archive"
+          gh run download "$SOURCE_RUN" -n "installer-$ARTIFACT_PLATFORM" -D "$RUNNER_TEMP/candidate-installer"
+      - name: Check out the immutable product probes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          path: qualified-source
+      - name: Verify candidate filenames and checksums
+        id: candidate
+        env:
+          ARCHIVE_SUFFIX: ${{ matrix.archive_suffix }}
+          INSTALLER_SUFFIX: ${{ matrix.installer_suffix }}
+          SOURCE_RUN: ${{ inputs.release_run_id }}
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const crypto = require('node:crypto');
+          async function verify(kind, suffix) {
+            const dir = path.join(process.env.RUNNER_TEMP, `candidate-${kind}`);
+            const name = `nirs4all Studio-0.11.5-${kind === 'archive' ? 'all-in-one-' : ''}${suffix}`;
+            const file = path.join(dir, name);
+            const record = fs.readFileSync(`${file}.sha256`, 'utf8').trim().match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
+            assert(record && record[2] === name, `Checksum must bind ${name}`);
+            const hash = crypto.createHash('sha256');
+            for await (const bytes of fs.createReadStream(file)) hash.update(bytes);
+            const actual = hash.digest('hex');
+            assert.equal(actual, record[1].toLowerCase());
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `${kind}=${file}\n`);
+            return { name, sha256: actual };
+          }
+          (async () => {
+            const archive = await verify('archive', process.env.ARCHIVE_SUFFIX);
+            const installer = await verify('installer', process.env.INSTALLER_SUFFIX);
+            fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'candidate-proof.json'), JSON.stringify({ product_sha: process.env.PRODUCT_SHA, source_run: process.env.SOURCE_RUN, archive, installer }, null, 2));
+          })().catch(error => { console.error(error); process.exitCode = 1; });
+          NODE
+      - name: Install the actual DEB package
+        if: matrix.platform == 'linux'
+        env:
+          INSTALLER: ${{ steps.candidate.outputs.installer }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgomp1 libtbb12 "$INSTALLER"
+          PACKAGE_NAME="$(dpkg-deb -f "$INSTALLER" Package)"
+          test "$(dpkg-query -W -f='${Version}' "$PACKAGE_NAME")" = '0.11.5'
+          APP_EXECUTABLE="$(dpkg -L "$PACKAGE_NAME" | awk '/\/nirs4all-webapp$/ { print }')"
+          test -f "$APP_EXECUTABLE"
+          echo "INSTALLED_ROOT=$(dirname "$APP_EXECUTABLE")" >> "$GITHUB_ENV"
+      - name: Install the application from the actual DMG
+        if: matrix.platform == 'darwin'
+        env:
+          INSTALLER: ${{ steps.candidate.outputs.installer }}
+        run: |
+          set -euo pipefail
+          MOUNT_DIR="$RUNNER_TEMP/studio-dmg"
+          mkdir -p "$MOUNT_DIR"
+          hdiutil attach "$INSTALLER" -nobrowse -readonly -mountpoint "$MOUNT_DIR"
+          trap 'hdiutil detach "$MOUNT_DIR" || true' EXIT
+          test -d "$MOUNT_DIR/nirs4all Studio.app"
+          INSTALLED_ROOT="$RUNNER_TEMP/studio-dmg-installed/nirs4all Studio.app"
+          mkdir -p "$(dirname "$INSTALLED_ROOT")"
+          ditto "$MOUNT_DIR/nirs4all Studio.app" "$INSTALLED_ROOT"
+          test -x "$INSTALLED_ROOT/Contents/MacOS/nirs4all Studio"
+          echo "INSTALLED_ROOT=$INSTALLED_ROOT" >> "$GITHUB_ENV"
+      - name: Prove the installed application works offline
+        timeout-minutes: 10
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          LAUNCH=()
+          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a); fi
+          "${LAUNCH[@]}" node qualified-source/scripts/smoke-archive-standalone.cjs --extracted-root "$INSTALLED_ROOT" --platform "$PLATFORM" --timeout-ms 360000 2>&1 | tee "$RUNNER_TEMP/installed-smoke.log"
+      - name: Install only the real renderer test driver
+        working-directory: qualified-source
+        run: npm ci --ignore-scripts
+      - name: Prove first setup, saved preference, reload and restart in installed UI
+        timeout-minutes: 12
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          LAUNCH=()
+          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a); fi
+          "${LAUNCH[@]}" node qualified-source/scripts/smoke-first-launch-ui.cjs --extracted-root "$INSTALLED_ROOT" --platform "$PLATFORM" --timeout-ms 360000 2>&1 | tee "$RUNNER_TEMP/installed-ui.log"
+      - name: Migrate actual public 0.11.4 to exact F314 and cold boot offline
+        timeout-minutes: 20
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          CANDIDATE_ARCHIVE: ${{ steps.candidate.outputs.archive }}
+        run: |
+          set -euo pipefail
+          LAUNCH=()
+          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a); fi
+          "${LAUNCH[@]}" node scripts/verify-real-release-update.cjs qualified-source 0.11.4 0.11.5 "$CANDIDATE_ARCHIVE" 2>&1 | tee "$RUNNER_TEMP/migration.log"
+      - name: Preserve installation and real migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unix-real-update-proof-${{ matrix.artifact }}
+          path: |
+            ${{ runner.temp }}/candidate-proof.json
+            ${{ runner.temp }}/installed-smoke.log
+            ${{ runner.temp }}/installed-ui.log
+            ${{ runner.temp }}/migration.log
+            ${{ runner.temp }}/studio-real-update-*/result.json
+            ${{ runner.temp }}/studio-real-update-*/application.log
+          if-no-files-found: warn
+          retention-days: 7
