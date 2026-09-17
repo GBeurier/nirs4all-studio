@@ -379,7 +379,8 @@
       },
       "limits": [
         "DEB installation and UI were exercised; AppImage FUSE qualification is recorded separately.",
-        "Existing user workspaces and uninstall/data-retention were not qualified."
+        "Existing user workspaces and uninstall/data-retention were not qualified.",
+        "Optional Numba TBB/OpenMP dependencies are not bundled or declared; qualification runners preinstalled them. This does not prove a general Studio startup failure, but standalone availability of these optional backends is unproven."
       ],
       "actual_appimage_qualification": {
         "run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35229689810",
@@ -452,6 +453,550 @@
           "offline_mode": true,
           "process_group_stopped": true
         }
+      },
+      "native_dependencies_post_publication_audit": {
+        "verified_at": "2026-09-17T14:21:38.372649+00:00",
+        "product_commit": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+        "appimage_sha256": "e4be44160f80b654fa54d8d5aca2c824e7786ae8383a9d663c5ceae6d19f283f",
+        "appimage_full_sha256_verified": true,
+        "appimage_squashfs_offset": 188392,
+        "relevant_appimage_entries": [
+          "-rwxr-xr-x root/root            600113 2026-09-17 13:43 squashfs-root/resources/backend/python-runtime/python/lib/python3.11/site-packages/numba/np/ufunc/omppool.cpython-311-x86_64-linux-gnu.so",
+          "-rwxr-xr-x root/root           1054537 2026-09-17 13:43 squashfs-root/resources/backend/python-runtime/python/lib/python3.11/site-packages/numba/np/ufunc/tbbpool.cpython-311-x86_64-linux-gnu.so",
+          "-rwxr-xr-x root/root            253289 2026-09-17 13:43 squashfs-root/resources/backend/python-runtime/python/lib/python3.11/site-packages/scikit_learn.libs/libgomp-e985bcbb.so.1.0.0"
+        ],
+        "elf": [
+          {
+            "path": "numba/np/ufunc/omppool.cpython-311-x86_64-linux-gnu.so",
+            "sha256": "bacacb5a46179a9fa0171be2c13284a8c5b41396b9d48425a815705a2a797d54",
+            "dt_needed": [
+              "libdl.so.2",
+              "libstdc++.so.6",
+              "libm.so.6",
+              "libgomp.so.1.0.0",
+              "libgcc_s.so.1",
+              "libpthread.so.0",
+              "libc.so.6",
+              "ld-linux-x86-64.so.2"
+            ],
+            "soname": [],
+            "rpath_runpath": []
+          },
+          {
+            "path": "numba/np/ufunc/tbbpool.cpython-311-x86_64-linux-gnu.so",
+            "sha256": "eeee3cb1219b0ab354a0468791abea43515f090b7ff1fbef5ba3390eeef674a7",
+            "dt_needed": [
+              "libtbb.so.12",
+              "libstdc++.so.6",
+              "libm.so.6",
+              "libgcc_s.so.1",
+              "libpthread.so.0",
+              "libc.so.6",
+              "ld-linux-x86-64.so.2"
+            ],
+            "soname": [],
+            "rpath_runpath": []
+          },
+          {
+            "path": "scikit_learn.libs/libgomp-e985bcbb.so.1.0.0",
+            "sha256": "a43904e4fa297301d4640dc1bb3c8a3480b406f99e498eba9b1914b68aab604a",
+            "dt_needed": [
+              "libdl.so.2",
+              "libpthread.so.0",
+              "libc.so.6"
+            ],
+            "soname": [
+              "libgomp-e985bcbb.so.1.0.0"
+            ],
+            "rpath_runpath": []
+          }
+        ],
+        "deb_control": "Package: nirs4all-webapp\nVersion: 0.11.5\nLicense: (CECILL-2.1 OR AGPL-3.0-or-later)\nVendor: nirs4all\nArchitecture: amd64\nMaintainer: nirs4all\nInstalled-Size: 1870863\nDepends: libgtk-3-0, libnotify4, libnss3, libxss1, libxtst6, xdg-utils, libatspi2.0-0, libuuid1\nRecommends: libappindicator3-1\nSection: default\nPriority: optional\nHomepage: https://nirs4all.org\nDescription: \n  Unified NIRS analysis desktop application\n",
+        "conclusion": "Desktop scientific closure has undeclared external dependencies: libtbb.so.12 and libgomp.so.1.0.0 are not bundled in the exact public AppImage and libtbb12/libgomp1 are absent from public DEB Depends. Numba catches backend ImportError and defaults to another threading backend, so this does not itself prove Studio startup failure. Explicit tbb/omp or safe/threadsafe selection can fail without the corresponding system library.",
+        "proof_files": [
+          "/tmp/studio-public-appimage-file-list.txt",
+          "/tmp/studio-public-deb-file-md5sums.txt",
+          "/tmp/studio-public-0.11.5-deb-control.txt"
+        ],
+        "isolated_runtime_countercheck": {
+          "masked_system_library_files": [
+            "/usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0",
+            "/usr/lib/x86_64-linux-gnu/libtbb.so.12.5",
+            "/usr/lib/x86_64-linux-gnu/libtbbmalloc.so.2.5",
+            "/usr/lib/x86_64-linux-gnu/libtbbmalloc_proxy.so.2.5"
+          ],
+          "runs": [
+            {
+              "mode": "shap",
+              "layer": "default",
+              "exit": 0,
+              "stdout": "{\"kernel_additivity_error\": 8.881784197001252e-16, \"linear_additivity_error\": 8.881784197001252e-16, \"numba_version\": \"0.67.0\", \"priority\": [\"tbb\", \"omp\", \"workqueue\"], \"requested_layer\": \"default\", \"selected_layer\": \"not initialized (no parallel execution)\", \"system_libraries\": {\"libgomp.so.1\": \"libgomp.so.1: cannot open shared object file: No such file or directory\", \"libgomp.so.1.0.0\": \"libgomp.so.1.0.0: cannot open shared object file: No such file or directory\", \"libtbb.so.12\": \"libtbb.so.12: cannot open shared object file: No such file or directory\"}, \"tree_additivity_error\": 4.440892098500626e-16}\n",
+              "stderr": "\n  0%|          | 0/3 [00:00<?, ?it/s]\n100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 3/3 [00:00<00:00, 791.48it/s]\n"
+            },
+            {
+              "mode": "parallel",
+              "layer": "default",
+              "exit": 0,
+              "stdout": "{\"numba_version\": \"0.67.0\", \"priority\": [\"tbb\", \"omp\", \"workqueue\"], \"requested_layer\": \"default\", \"selected_layer\": \"workqueue\", \"success\": true, \"sum_squares\": 333283335000.0, \"system_libraries\": {\"libgomp.so.1\": \"libgomp.so.1: cannot open shared object file: No such file or directory\", \"libgomp.so.1.0.0\": \"libgomp.so.1.0.0: cannot open shared object file: No such file or directory\", \"libtbb.so.12\": \"libtbb.so.12: cannot open shared object file: No such file or directory\"}}\n",
+              "stderr": ""
+            },
+            {
+              "mode": "parallel",
+              "layer": "tbb",
+              "exit": 0,
+              "stdout": "{\"error\": \"No threading layer could be loaded.\\nHINT:\\nIntel TBB is required, try:\\n$ conda/pip install tbb\", \"numba_version\": \"0.67.0\", \"priority\": [\"tbb\", \"omp\", \"workqueue\"], \"requested_layer\": \"tbb\", \"success\": false, \"system_libraries\": {\"libgomp.so.1\": \"libgomp.so.1: cannot open shared object file: No such file or directory\", \"libgomp.so.1.0.0\": \"libgomp.so.1.0.0: cannot open shared object file: No such file or directory\", \"libtbb.so.12\": \"libtbb.so.12: cannot open shared object file: No such file or directory\"}}\n",
+              "stderr": ""
+            },
+            {
+              "mode": "parallel",
+              "layer": "omp",
+              "exit": 0,
+              "stdout": "{\"error\": \"No threading layer could be loaded.\\n\", \"numba_version\": \"0.67.0\", \"priority\": [\"tbb\", \"omp\", \"workqueue\"], \"requested_layer\": \"omp\", \"success\": false, \"system_libraries\": {\"libgomp.so.1\": \"libgomp.so.1: cannot open shared object file: No such file or directory\", \"libgomp.so.1.0.0\": \"libgomp.so.1.0.0: cannot open shared object file: No such file or directory\", \"libtbb.so.12\": \"libtbb.so.12: cannot open shared object file: No such file or directory\"}}\n",
+              "stderr": ""
+            },
+            {
+              "mode": "parallel",
+              "layer": "safe",
+              "exit": 0,
+              "stdout": "{\"error\": \"No threading layer could be loaded.\\nHINT:\\nIntel TBB is required, try:\\n$ conda/pip install tbb\", \"numba_version\": \"0.67.0\", \"priority\": [\"tbb\", \"omp\", \"workqueue\"], \"requested_layer\": \"safe\", \"success\": false, \"system_libraries\": {\"libgomp.so.1\": \"libgomp.so.1: cannot open shared object file: No such file or directory\", \"libgomp.so.1.0.0\": \"libgomp.so.1.0.0: cannot open shared object file: No such file or directory\", \"libtbb.so.12\": \"libtbb.so.12: cannot open shared object file: No such file or directory\"}}\n",
+              "stderr": ""
+            }
+          ]
+        },
+        "functional_impact": "Exact public AppImage Python runtime passed SHAP Linear/Kernel/Tree and Numba parallel workqueue with system TBB/OpenMP files masked. Explicit forced optional backends fail. No Studio CPU failure is established; source host clears inherited environment. This Python probe is not by itself a full isolated UI qualification.",
+        "isolated_native_product_countercheck": {
+          "success": true,
+          "product_sha": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+          "appimage_sha256": "e4be44160f80b654fa54d8d5aca2c824e7786ae8383a9d663c5ceae6d19f283f",
+          "appimage_full_sha256_verified": true,
+          "masked_libraries": [
+            "/usr/lib/x86_64-linux-gnu/libtbbmalloc_proxy.so.2.5",
+            "/usr/lib/x86_64-linux-gnu/libtbbmalloc.so.2.5",
+            "/usr/lib/x86_64-linux-gnu/libtbb.so.12.5",
+            "/usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0"
+          ],
+          "contract_verified": true,
+          "installed_product_dataset_smoke": true,
+          "harness_scope": "Exact public AppImage extracted sidecar + bundled attested scientific host; no Electron or FUSE execution; no training fit job, native training readiness only.",
+          "harness_sha256": "0a2f7b79641f8da415ce8e9866e58bca330ce920dba2928abdf260b3341ef4e0",
+          "readiness": {
+            "core_ready": true,
+            "elapsed_seconds": 0.005818114,
+            "ml_error": null,
+            "ml_loading": false,
+            "ml_ready": true,
+            "workspace_ready": true,
+            "native_prediction_ready": true,
+            "native_training_ready": true
+          },
+          "playground_success": true,
+          "playground_pca": {
+            "coordinates": [
+              [
+                -1.4142135623730945,
+                0
+              ],
+              [
+                1.414213562373095,
+                0
+              ]
+            ],
+            "explained_variance": [
+              4,
+              0
+            ],
+            "explained_variance_ratio": [
+              1,
+              0
+            ],
+            "n_components": 2,
+            "n_components_999": 2
+          }
+        }
+      },
+      "elf_abi_audit": {
+        "source": "public AppImage 0.11.5 F314",
+        "appimage_sha256": "e4be44160f80b654fa54d8d5aca2c824e7786ae8383a9d663c5ceae6d19f283f",
+        "elf_count": 430,
+        "maxima": {
+          "GLIBC": {
+            "version": "2.35",
+            "files": [
+              "resources/backend/native/libn4m.so"
+            ]
+          },
+          "GLIBCXX": {
+            "version": "3.4.29",
+            "files": [
+              "resources/backend/native/libn4m.so"
+            ]
+          },
+          "CXXABI": {
+            "version": "1.3.11",
+            "files": [
+              "resources/backend/python-runtime/python/lib/python3.11/site-packages/scipy/io/_fast_matrix_market/_fmm_core.cpython-311-x86_64-linux-gnu.so",
+              "resources/backend/python-runtime/python/lib/python3.11/site-packages/scipy/optimize/_highspy/_highs_options.cpython-311-x86_64-linux-gnu.so",
+              "resources/backend/python-runtime/python/lib/python3.11/site-packages/scipy/optimize/_highspy/_core.cpython-311-x86_64-linux-gnu.so",
+              "resources/backend/python-runtime/python/lib/python3.11/site-packages/contourpy/_contourpy.cpython-311-x86_64-linux-gnu.so",
+              "resources/backend/python-runtime/python/lib/python3.11/site-packages/pyarrow/libarrow_flight.so.2500",
+              "resources/backend/python-runtime/python/lib/python3.11/site-packages/pyarrow/libarrow.so.2500"
+            ]
+          }
+        },
+        "libn4m_limiting_symbols": [
+          "10: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND hypot@GLIBC_2.35 (7)",
+          "38: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZSt28__throw_bad_array_new_lengthv@GLIBCXX_3.4.29 (14)"
+        ],
+        "official_sources": {
+          "ubuntu20_glibc": "https://lists.ubuntu.com/archives/ubuntu-security-announce/2024-April/008236.html",
+          "ubuntu22_glibc": "https://packages.ubuntu.com/jammy/libc6",
+          "ubuntu22_libstdcxx": "https://packages.ubuntu.com/jammy/libstdc%2B%2B6",
+          "ubuntu24_glibc": "https://packages.ubuntu.com/noble/libc6",
+          "gcc_symbol_versions": "https://gcc.gnu.org/onlinedocs/libstdc++/manual/abi.html"
+        },
+        "ubuntu_mapping": {
+          "20.04": {
+            "glibc": "2.31",
+            "compatible_with_required_glibc": false
+          },
+          "22.04": {
+            "glibc": "2.35",
+            "compatible_with_required_glibc": true,
+            "libstdcxx_package": "12.3.0-1ubuntu1~22.04.3",
+            "provides_required_glibcxx": true
+          },
+          "24.04": {
+            "glibc": "2.39",
+            "compatible_with_required_glibc": true
+          }
+        },
+        "limits": "Symbol requirements are necessary ABI bounds, not full OS functional certification. Functional Linux release/installer/AppImage runners use ubuntu-22.04; no Ubuntu24 functional run claimed."
+      },
+      "cpu_closure_qualification": {
+        "elf_files_checked": 414,
+        "optional_numba_backends_unavailable": {
+          "lib/python3.11/site-packages/numba/np/ufunc/omppool.cpython-311-x86_64-linux-gnu.so": [
+            "libgomp.so.1.0.0"
+          ],
+          "lib/python3.11/site-packages/numba/np/ufunc/tbbpool.cpython-311-x86_64-linux-gnu.so": [
+            "libtbb.so.12"
+          ]
+        },
+        "runs": [
+          {
+            "layer": "default",
+            "mode": "shap",
+            "result": {
+              "kernel_additivity_error": 8.881784197001252e-16,
+              "linear_additivity_error": 8.881784197001252e-16,
+              "numba_version": "0.67.0",
+              "priority": [
+                "tbb",
+                "omp",
+                "workqueue"
+              ],
+              "requested_layer": "default",
+              "selected_layer": "not initialized (no parallel execution)",
+              "system_libraries": {
+                "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+                "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+                "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+              },
+              "tree_additivity_error": 4.440892098500626e-16
+            }
+          },
+          {
+            "layer": "default",
+            "mode": "parallel",
+            "result": {
+              "numba_version": "0.67.0",
+              "priority": [
+                "tbb",
+                "omp",
+                "workqueue"
+              ],
+              "requested_layer": "default",
+              "selected_layer": "workqueue",
+              "success": true,
+              "sum_squares": 333283335000.0,
+              "system_libraries": {
+                "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+                "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+                "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+              }
+            }
+          },
+          {
+            "layer": "tbb",
+            "mode": "parallel",
+            "result": {
+              "error": "No threading layer could be loaded.\nHINT:\nIntel TBB is required, try:\n$ conda/pip install tbb",
+              "numba_version": "0.67.0",
+              "priority": [
+                "tbb",
+                "omp",
+                "workqueue"
+              ],
+              "requested_layer": "tbb",
+              "success": false,
+              "system_libraries": {
+                "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+                "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+                "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+              }
+            }
+          },
+          {
+            "layer": "omp",
+            "mode": "parallel",
+            "result": {
+              "error": "No threading layer could be loaded.\n",
+              "numba_version": "0.67.0",
+              "priority": [
+                "tbb",
+                "omp",
+                "workqueue"
+              ],
+              "requested_layer": "omp",
+              "success": false,
+              "system_libraries": {
+                "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+                "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+                "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+              }
+            }
+          },
+          {
+            "layer": "safe",
+            "mode": "parallel",
+            "result": {
+              "error": "No threading layer could be loaded.\nHINT:\nIntel TBB is required, try:\n$ conda/pip install tbb",
+              "numba_version": "0.67.0",
+              "priority": [
+                "tbb",
+                "omp",
+                "workqueue"
+              ],
+              "requested_layer": "safe",
+              "success": false,
+              "system_libraries": {
+                "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+                "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+                "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+              }
+            }
+          }
+        ],
+        "success": true,
+        "platform": "linux-x64",
+        "runtime_root": "/tmp/studio-public-appimage-numba-probe/resources/backend/python-runtime/python",
+        "network_namespace_isolated": true,
+        "masked_system_library_files": [
+          "/usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0",
+          "/usr/lib/x86_64-linux-gnu/libtbb.so.12.5",
+          "/usr/lib/x86_64-linux-gnu/libtbbmalloc.so.2.5",
+          "/usr/lib/x86_64-linux-gnu/libtbbmalloc_proxy.so.2.5"
+        ],
+        "verified_at": "2026-09-17T14:33:54.741388+00:00",
+        "contract": "Studio CPU calculations and default workqueue; explicit Numba tbb/omp/safe backends are optional and not guaranteed"
+      },
+      "clean_cpu_and_actual_appimage_qualification": {
+        "run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35234849707",
+        "workflow_commit": "c8a79c7f0aca32e74b86a2b21548ba4733c36482",
+        "conclusion": "success",
+        "completed_at": "2026-09-17T14:42:03Z",
+        "cpu_namespace_result": {
+          "elf_files_checked": 414,
+          "optional_numba_backends_unavailable": {
+            "lib/python3.11/site-packages/numba/np/ufunc/omppool.cpython-311-x86_64-linux-gnu.so": [
+              "libgomp.so.1.0.0"
+            ],
+            "lib/python3.11/site-packages/numba/np/ufunc/tbbpool.cpython-311-x86_64-linux-gnu.so": [
+              "libtbb.so.12"
+            ]
+          },
+          "runs": [
+            {
+              "layer": "default",
+              "mode": "shap",
+              "result": {
+                "kernel_additivity_error": 8.881784197001252e-16,
+                "linear_additivity_error": 8.881784197001252e-16,
+                "numba_version": "0.67.0",
+                "priority": [
+                  "tbb",
+                  "omp",
+                  "workqueue"
+                ],
+                "requested_layer": "default",
+                "selected_layer": "not initialized (no parallel execution)",
+                "system_libraries": {
+                  "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+                  "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+                  "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+                },
+                "tree_additivity_error": 4.440892098500626e-16
+              }
+            },
+            {
+              "layer": "default",
+              "mode": "parallel",
+              "result": {
+                "numba_version": "0.67.0",
+                "priority": [
+                  "tbb",
+                  "omp",
+                  "workqueue"
+                ],
+                "requested_layer": "default",
+                "selected_layer": "workqueue",
+                "success": true,
+                "sum_squares": 333283335000.0,
+                "system_libraries": {
+                  "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+                  "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+                  "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+                }
+              }
+            },
+            {
+              "layer": "tbb",
+              "mode": "parallel",
+              "result": {
+                "error": "No threading layer could be loaded.\nHINT:\nIntel TBB is required, try:\n$ conda/pip install tbb",
+                "numba_version": "0.67.0",
+                "priority": [
+                  "tbb",
+                  "omp",
+                  "workqueue"
+                ],
+                "requested_layer": "tbb",
+                "success": false,
+                "system_libraries": {
+                  "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+                  "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+                  "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+                }
+              }
+            },
+            {
+              "layer": "omp",
+              "mode": "parallel",
+              "result": {
+                "error": "No threading layer could be loaded.\n",
+                "numba_version": "0.67.0",
+                "priority": [
+                  "tbb",
+                  "omp",
+                  "workqueue"
+                ],
+                "requested_layer": "omp",
+                "success": false,
+                "system_libraries": {
+                  "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+                  "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+                  "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+                }
+              }
+            },
+            {
+              "layer": "safe",
+              "mode": "parallel",
+              "result": {
+                "error": "No threading layer could be loaded.\nHINT:\nIntel TBB is required, try:\n$ conda/pip install tbb",
+                "numba_version": "0.67.0",
+                "priority": [
+                  "tbb",
+                  "omp",
+                  "workqueue"
+                ],
+                "requested_layer": "safe",
+                "success": false,
+                "system_libraries": {
+                  "libgomp.so.1": "libgomp.so.1: cannot open shared object file: No such file or directory",
+                  "libgomp.so.1.0.0": "libgomp.so.1.0.0: cannot open shared object file: No such file or directory",
+                  "libtbb.so.12": "libtbb.so.12: cannot open shared object file: No such file or directory"
+                }
+              }
+            }
+          ],
+          "success": true,
+          "platform": "linux-x64",
+          "runtime_root": "/home/runner/work/_temp/appimage-cpu-closure/resources/backend/python-runtime/python",
+          "network_namespace_isolated": true,
+          "masked_system_library_files": [
+            "/usr/lib/x86_64-linux-gnu/libgomp.so.1.0.0"
+          ],
+          "verified_at": "2026-09-17T14:39:17.451709+00:00",
+          "contract": "Studio CPU calculations and default workqueue; explicit Numba tbb/omp/safe backends are optional and not guaranteed"
+        },
+        "separate_actual_fuse_result": {
+          "success": true,
+          "version": "0.11.5",
+          "appimage_sha256": "e4be44160f80b654fa54d8d5aca2c824e7786ae8383a9d663c5ceae6d19f283f",
+          "actual_fuse_launch": true,
+          "mounted_processes": [
+            {
+              "pid": 7379,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4",
+              "executable": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4/nirs4all-webapp",
+              "fuse_mounts": [
+                "491 25 0:44 / /home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4 ro,nosuid,nodev,relatime shared:250 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            },
+            {
+              "pid": 7389,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4",
+              "executable": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4/nirs4all-webapp",
+              "fuse_mounts": [
+                "491 25 0:44 / /home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4 ro,nosuid,nodev,relatime shared:250 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            },
+            {
+              "pid": 7418,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4",
+              "executable": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4/nirs4all-webapp",
+              "fuse_mounts": [
+                "491 25 0:44 / /home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4 ro,nosuid,nodev,relatime shared:250 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            },
+            {
+              "pid": 7463,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4",
+              "executable": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4/resources/backend/native/studio-sidecar",
+              "fuse_mounts": [
+                "491 25 0:44 / /home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4 ro,nosuid,nodev,relatime shared:250 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            },
+            {
+              "pid": 7473,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4",
+              "executable": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4/nirs4all-webapp",
+              "fuse_mounts": [
+                "491 25 0:44 / /home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4 ro,nosuid,nodev,relatime shared:250 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            },
+            {
+              "pid": 7869,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4",
+              "executable": "/home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4/resources/backend/python-runtime/python/bin/python3",
+              "fuse_mounts": [
+                "491 25 0:44 / /home/runner/work/_temp/studio-appimage-zAhPvQ/profile/tmp/.mount_nirs4amsyKe4 ro,nosuid,nodev,relatime shared:250 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            }
+          ],
+          "scientific_readiness": true,
+          "installed_product_probe": true,
+          "offline_mode": true,
+          "process_group_stopped": true
+        },
+        "scope": "CPU namespace check and actual FUSE launch are separate steps; FUSE itself is not inside the CPU namespace."
       }
     },
     "macos_arm64": {
@@ -640,6 +1185,13 @@
       },
       "baseline_app_asar_sha256": "32becb33bee80b524eb1d68b0b2a105cd4d213c248353b4bdfecfba33ab9c508",
       "contract_change": "Only sidecar.size (36739104 -> 36736704) and sidecar.sha256 were updated."
+    },
+    "full_ci": {
+      "source_commit": "c4e0961455bdac3acb8fad6f0b534f3efe5af29e",
+      "ci_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35232120800",
+      "e2e_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35232120905",
+      "conclusion": "success",
+      "packaged_electron_included": true
     }
   }
 }

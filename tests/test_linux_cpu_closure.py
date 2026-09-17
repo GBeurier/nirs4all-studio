@@ -69,6 +69,13 @@ def test_linux_release_gates_run_clean_qualification_before_publication():
         upload = next(index for index, step in enumerate(steps) if step.get("uses", "").startswith("actions/upload-artifact"))
         assert clean < upload
         assert steps[clean].get("continue-on-error") is not True
+        proof = steps[clean + 1]
+        assert proof["uses"] == "actions/upload-artifact@v4"
+        assert proof["with"]["name"] == f"{job_name}-cpu-closure-proof"
+        kind = job_name.removesuffix("-linux")
+        assert proof["with"]["path"] == "${{ runner.temp }}/linux-" + kind + "-cpu-closure.json"
+        assert proof["with"]["if-no-files-found"] == "error"
+        assert proof["with"]["retention-days"] == 14
     appimage = yaml.safe_load((root / ".github/workflows/qualify-appimage-hotfix.yml").read_text())
     steps = appimage["jobs"]["appimage"]["steps"]
     commands = "\n".join(step.get("run", "") for step in steps)

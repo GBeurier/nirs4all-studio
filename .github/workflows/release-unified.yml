@@ -413,6 +413,14 @@ jobs:
           test -n "$PYTHON"
           python3 -B scripts/verify-linux-cpu-closure.py --runtime-root "$(dirname "$(dirname "$PYTHON")")" --output "$RUNNER_TEMP/linux-installer-cpu-closure.json"
 
+      - name: Preserve Linux installer CPU closure proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-linux-cpu-closure-proof
+          path: ${{ runner.temp }}/linux-installer-cpu-closure.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Generate checksums
         run: |
           cd release
@@ -1262,6 +1270,14 @@ jobs:
           PYTHON="$(find "${{ steps.archive.outputs.extract_root }}" -type f -path '*/resources/backend/python-runtime/python/bin/python3' -print -quit)"
           test -n "$PYTHON"
           python3 -B scripts/verify-linux-cpu-closure.py --runtime-root "$(dirname "$(dirname "$PYTHON")")" --output "$RUNNER_TEMP/linux-archive-cpu-closure.json"
+
+      - name: Preserve Linux archive CPU closure proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-linux-cpu-closure-proof
+          path: ${{ runner.temp }}/linux-archive-cpu-closure.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Smoke test offline all-in-one launch
         run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
