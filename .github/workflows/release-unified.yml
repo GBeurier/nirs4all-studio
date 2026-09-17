@@ -72,6 +72,7 @@ jobs:
       # Resolve once to an immutable commit; every platform checks out the
       # identical source even if a tag is moved while jobs are queued.
       checkout_ref: ${{ steps.checkout_ref.outputs.checkout_ref }}
+      previous_version: ${{ steps.previous_release.outputs.previous_version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -125,6 +126,30 @@ jobs:
           echo "checkout_ref=$REF" >> "$GITHUB_OUTPUT"
           echo "Resolved checkout SHA: $REF"
           echo "- **Checkout ref**: \`$REF\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Resolve previous stable public release for the Windows migration gate
+        if: steps.version.outputs.prerelease != 'true'
+        id: previous_release
+        uses: actions/github-script@v7
+        env:
+          TARGET_VERSION: ${{ steps.version.outputs.version }}
+          ARCHIVE_ENABLED: ${{ !inputs.skip_all_in_one }}
+          IS_TAG_RELEASE: ${{ github.event_name == 'push' }}
+        with:
+          script: |
+            const { previousReleasePlan } = require('./scripts/windows-release-gate-plan.cjs');
+            let release = null;
+            try {
+              release = (await github.rest.repos.getLatestRelease(context.repo)).data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            const plan = previousReleasePlan(release, process.env.TARGET_VERSION, {
+              archiveEnabled: process.env.ARCHIVE_ENABLED === 'true',
+              tagRelease: process.env.IS_TAG_RELEASE === 'true',
+            });
+            core.setOutput('previous_version', plan.previousVersion);
+            await core.summary.addRaw(plan.note).write();
 
       - name: Validate pinned runtime dependency refs
         shell: bash
@@ -198,6 +223,29 @@ jobs:
       nirs4all_library_ref: bf21c552b9d0929daf2dcc2ac7b220c9631ffa07
       dag_ml_ref: 233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27
       dag_ml_data_ref: ffe533704a1a0b0c7bb7d97a997caade3f4ba36e
+
+  # Producers finish first. The called workflow downloads those same-run
+  # artifacts directly and never waits for this parent run to complete.
+  windows-product:
+    name: Qualify stable Windows installation and N-1 migration
+    needs: [prepare, installer-windows, archive-windows]
+    if: >-
+      always() &&
+      needs.prepare.outputs.version != '0.11.5' &&
+      needs.prepare.outputs.prerelease != 'true' &&
+      needs.prepare.result == 'success' &&
+      needs.installer-windows.result == 'success' &&
+      (needs.prepare.outputs.skip_all_in_one == 'true' || needs.archive-windows.result == 'success')
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/windows-real-install-update.yml
+    with:
+      release_run_id: ${{ format('{0}', github.run_id) }}
+      checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
+      from_version: ${{ needs.prepare.outputs.previous_version }}
+      to_version: ${{ needs.prepare.outputs.version }}
+      archive_enabled: ${{ needs.prepare.outputs.skip_all_in_one != 'true' }}
 
   # Acquire the published universal nirs4all wheel once on Linux and build the
   # pinned conversion-tools wheel once. Every distributable consumes these exact
@@ -1670,6 +1718,7 @@ jobs:
     needs:
       - prepare
       - quality
+      - windows-product
       - installer-linux
       - installer-windows
       - installer-macos-x64
@@ -1682,6 +1731,7 @@ jobs:
       always() &&
       needs.prepare.result == 'success' &&
       needs.quality.result == 'success' &&
+      (needs.prepare.outputs.prerelease == 'true' || needs.windows-product.result == 'success') &&
       needs.prepare.outputs.skip_docker != 'true' &&
       needs.installer-linux.result == 'success' &&
       needs.installer-windows.result == 'success' &&
@@ -1779,6 +1829,7 @@ jobs:
     needs:
       - prepare
       - quality
+      - windows-product
       - installer-linux
       - installer-windows
       - installer-macos-x64
@@ -1793,6 +1844,7 @@ jobs:
       needs.prepare.outputs.version != '0.11.5' &&
       needs.prepare.result == 'success' &&
       needs.quality.result == 'success' &&
+      (needs.prepare.outputs.prerelease == 'true' || needs.windows-product.result == 'success') &&
       needs.installer-linux.result == 'success' &&
       needs.installer-windows.result == 'success' &&
       needs.installer-macos-x64.result == 'success' &&
