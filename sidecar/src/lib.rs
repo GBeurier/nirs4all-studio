@@ -753,7 +753,7 @@ impl SidecarState {
             self.archive_v2_prediction.is_selected(),
             self.native_archive_training.is_some(),
             self.archive_v2_prediction.is_selected(),
-            self.legacy_conversion.is_available(),
+            self.legacy_conversion.advertised_available(),
         )
     }
 
@@ -1602,7 +1602,14 @@ fn active_workspace_identity(
 }
 
 fn workspace_transition_status_response(state: &SidecarState) -> HttpResponse {
-    let (_, workspace_path) = match active_workspace_identity(&state.app_settings) {
+    workspace_transition_status_with(&state.app_settings, &state.legacy_conversion)
+}
+
+fn workspace_transition_status_with(
+    app_settings: &AppSettingsStore,
+    legacy_conversion: &LegacyConversionRuntime,
+) -> HttpResponse {
+    let (_, workspace_path) = match active_workspace_identity(app_settings) {
         Ok(active) => active,
         Err(response) => return response,
     };
@@ -1628,7 +1635,7 @@ fn workspace_transition_status_response(state: &SidecarState) -> HttpResponse {
             strict: false,
             link_converted_workspace: true,
         };
-        display_command(&state.legacy_conversion.command(&request))
+        display_command(&legacy_conversion.command(&request))
     });
     HttpResponse::json(
         200,
@@ -1639,7 +1646,7 @@ fn workspace_transition_status_response(state: &SidecarState) -> HttpResponse {
             "message": status.message,
             "conversion_command": conversion_command,
             "default_output_path": default_output_path,
-            "converter_available": state.legacy_conversion.is_available(),
+            "converter_available": legacy_conversion.is_available(),
         })
         .to_string(),
     )
@@ -2116,6 +2123,7 @@ fn route_workspace_workflows_without_global_lock(
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
     route_runtime_diagnostics_without_global_lock(state, request)
+        .or_else(|| route_workspace_transition_without_global_lock(state, request))
         .or_else(|| recommended_config_http::route(state, request))
         .or_else(|| dataset_synthesis::route(state, request))
         .or_else(|| playground::route(state, request))
@@ -2125,6 +2133,27 @@ fn route_workspace_workflows_without_global_lock(
         .or_else(|| route_pipeline_presets_without_global_lock(state, request))
         .or_else(|| route_workspace_run_history(state, request))
         .or_else(|| run_listing::route(state, request))
+}
+
+fn route_workspace_transition_without_global_lock(
+    state: &Arc<Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    if request.method != "GET"
+        || request.path != "/api/workspace/transition-status"
+        || request.query.is_some()
+    {
+        return None;
+    }
+    let (settings, conversion) = {
+        let state = state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        (state.app_settings.clone(), state.legacy_conversion.clone())
+    };
+    // Explicit transition inspection reattests repaired runtimes, but its
+    // Python probe must never own the route lock used by health and settings.
+    Some(workspace_transition_status_with(&settings, &conversion))
 }
 
 fn route_pipeline_presets_without_global_lock(
@@ -6382,6 +6411,142 @@ mod tests {
                 failure.reason()
             );
         }
+    }
+
+    #[test]
+    fn workspace_transition_queries_keep_the_existing_refusal_before_attestation() {
+        let state = Arc::new(Mutex::new(SidecarState::default()));
+        for target in [
+            "/api/workspace/transition-status?",
+            "/api/workspace/transition-status?cacheBust=1",
+        ] {
+            let request = parse_http_request(
+                format!("GET {target} HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes(),
+            )
+            .unwrap();
+            assert!(request.query.is_some());
+            assert!(route_workspace_transition_without_global_lock(&state, &request).is_none());
+            let response = route_http_request(&mut state.lock().unwrap(), &request);
+            assert_eq!(response.status, 404);
+            assert_eq!(
+                serde_json::from_str::<Value>(&response.body).unwrap()["error"]["code"],
+                "route_not_found"
+            );
+        }
+    }
+
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one real HTTP concurrency probe covers discovery, health, persistence, and a slow transition attestation"
+    )]
+    fn capabilities_and_preferences_stay_fast_during_slow_converter_reattestation() {
+        use std::sync::atomic::AtomicBool;
+
+        #[derive(Debug)]
+        struct SlowAvailability {
+            slow: AtomicBool,
+            entered: AtomicBool,
+            calls: AtomicUsize,
+        }
+        impl legacy_conversion::LegacyConverter for SlowAvailability {
+            fn is_available(&self) -> bool {
+                self.calls.fetch_add(1, Ordering::Relaxed);
+                if self.slow.load(Ordering::Acquire) {
+                    self.entered.store(true, Ordering::Release);
+                    thread::sleep(Duration::from_secs(1));
+                }
+                true
+            }
+            fn command(&self, _: &LegacyConversionRequest) -> Vec<String> {
+                Vec::new()
+            }
+            fn run(
+                &self,
+                _: &LegacyConversionRequest,
+            ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
+                unreachable!("availability-only probe")
+            }
+        }
+        let root = test_directory("capability-availability-concurrency");
+        fs::create_dir_all(&root).unwrap();
+        let probe = Arc::new(SlowAvailability {
+            slow: AtomicBool::new(false),
+            entered: AtomicBool::new(false),
+            calls: AtomicUsize::new(0),
+        });
+        let (mut state, _) = legacy_conversion_state(&root, 0);
+        state.legacy_conversion = LegacyConversionRuntime::with_converter(probe.clone());
+        let state = Arc::new(Mutex::new(state));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server_state = Arc::clone(&state);
+        let server = thread::spawn(move || {
+            let mut handlers = Vec::new();
+            for _ in 0..4 {
+                let (stream, _) = listener.accept().unwrap();
+                let state = Arc::clone(&server_state);
+                handlers.push(thread::spawn(move || {
+                    handle_connection_with_limits(stream, &state, ServerLimits::default()).unwrap();
+                }));
+            }
+            for handler in handlers {
+                handler.join().unwrap();
+            }
+        });
+        let send = move |request: &str| {
+            let mut client = TcpStream::connect(address).unwrap();
+            client
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            client.write_all(request.as_bytes()).unwrap();
+            let mut response = String::new();
+            client.read_to_string(&mut response).unwrap();
+            response
+        };
+        probe.slow.store(true, Ordering::Release);
+        let reattestation = thread::spawn(move || {
+            send("GET /api/workspace/transition-status HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !probe.entered.load(Ordering::Acquire) {
+            assert!(
+                Instant::now() < deadline,
+                "background preflight did not start"
+            );
+            thread::yield_now();
+        }
+        // The actual transition route performs full attestation concurrently
+        // with discovery, health, and a persisted preference over HTTP.
+        let start = Instant::now();
+        let capabilities = send("GET /sidecar/v1/capabilities HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        let health = send("GET /api/health HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        let body = r#"{"ui_preferences":{"developer_mode":true}}"#;
+        let preferences = send(&format!(
+            "PUT /api/app/settings HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()
+        ));
+        let elapsed = start.elapsed();
+        let transition = reattestation.join().unwrap();
+        server.join().unwrap();
+        for response in [capabilities, health, preferences, transition] {
+            assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{response}");
+        }
+        assert_eq!(
+            state.lock().unwrap().app_settings.response().unwrap()["ui_preferences"]
+                ["developer_mode"],
+            true
+        );
+        fs::remove_dir_all(root).unwrap();
+        eprintln!("capabilities + health + preference save: {elapsed:?}");
+        assert!(
+            elapsed < Duration::from_millis(300),
+            "discovery repeated a slow preflight"
+        );
+        assert_eq!(
+            probe.calls.load(Ordering::Relaxed),
+            2,
+            "bootstrap and explicit revalidation only"
+        );
     }
 
     #[test]
