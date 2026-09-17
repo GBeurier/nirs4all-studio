@@ -1,0 +1,64 @@
+name: Qualify actual AppImage FUSE launch
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  appimage:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Require the exact F314 installer build and download its AppImage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const assert = require('node:assert/strict'), { execFileSync } = require('node:child_process');
+          const api = route => JSON.parse(execFileSync('gh', ['api', `repos/${process.env.GH_REPO}/${route}`], { encoding: 'utf8' }));
+          const run = api('actions/runs/35216053291');
+          assert.equal(run.head_sha, 'f314cdb223cd77ce1a3fb6d336cca82206cd02a4');
+          assert.equal(run.path, '.github/workflows/release-unified.yml');
+          const jobs = api('actions/runs/35216053291/jobs?per_page=100').jobs.filter(job => job.name === 'Installer — Linux x64');
+          assert.equal(jobs.length, 1); assert.equal(jobs[0].conclusion, 'success');
+          NODE
+          gh run download 35216053291 -n installer-linux-x64 -D "$RUNNER_TEMP/installer"
+      - uses: actions/checkout@v4
+        with:
+          ref: f314cdb223cd77ce1a3fb6d336cca82206cd02a4
+          path: qualified-source
+      - name: Provide the actual FUSE and display runtime
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 xvfb libgomp1 libtbb12 libgtk-3-0 libnss3 libasound2
+          if [ ! -e /dev/fuse ]; then sudo modprobe fuse; fi
+          test -r /dev/fuse
+          test -w /dev/fuse
+      - name: Launch the original AppImage and verify its bundled scientific runtime
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          APPIMAGE_FILE="$RUNNER_TEMP/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage"
+          chmod +x "$APPIMAGE_FILE"
+          xvfb-run -a node scripts/smoke-appimage-standalone.cjs qualified-source "$APPIMAGE_FILE" 2>&1 | tee "$RUNNER_TEMP/appimage-probe.log"
+      - name: Preserve real AppImage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-f314-fuse-proof
+          path: |
+            ${{ runner.temp }}/appimage-probe.log
+            ${{ runner.temp }}/studio-appimage-*/result.json
+            ${{ runner.temp }}/studio-appimage-*/application.log
+          if-no-files-found: warn
+          retention-days: 14
