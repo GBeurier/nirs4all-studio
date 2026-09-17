@@ -1,0 +1,620 @@
+{
+  "product_source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+  "ci": {
+    "run_id": 35247375971,
+    "conclusion": "success",
+    "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247375971",
+    "frontend": {
+      "job_id": 105290894777,
+      "passed": 4179,
+      "skipped": 1,
+      "files": 586
+    },
+    "packaging_scripts": {
+      "passed": 38
+    },
+    "backend": {
+      "job_id": 105290894865,
+      "passed": 2491,
+      "skipped": 17
+    },
+    "windows_native": {
+      "job_id": 105290894907,
+      "passed": 313,
+      "ignored": 5,
+      "test_binaries": 14
+    },
+    "native_docker": "success",
+    "electron_build": "success"
+  },
+  "e2e": {
+    "run_id": 35247375954,
+    "job_id": 105290894166,
+    "conclusion": "success",
+    "passed": 63,
+    "duration_minutes_rounded": 9.8,
+    "artifact_id": 10508471477,
+    "artifact_sha256": "7466a0ebc584f6bed54db78f5b3ddb21535a1385e5dd466406c7136e9e99cc5e",
+    "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247375954"
+  },
+  "linux_cpu_closure": {
+    "archive": {
+      "artifact_id": 10509051147,
+      "result_file": "studio-linux-archive-cpu-closure-0.11.7-2026-09-17.json",
+      "elf_files_checked": 414,
+      "success": true
+    },
+    "installer": {
+      "result_file": "studio-linux-installer-cpu-closure-0.11.7-2026-09-17.json",
+      "elf_files_checked": 414,
+      "success": true
+    },
+    "scope": "Packaged Python runtime isolated without optional system TBB/OpenMP; does not attest a new AppImage FUSE launch."
+  },
+  "release_docker": {
+    "job_id": 105318077384,
+    "job_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105318077384",
+    "conclusion": "success",
+    "image_id": "sha256:163a6a2c9e83d50a0c1a13bef8f58d22c65aab928a84c896e081e26deff839e5",
+    "pushed_version_and_latest_digest": "sha256:2488299c649800f9ed0b98636252cadd350eeedec21351f4779eeff0ca335497",
+    "version_pushed_at": "2026-09-17T18:07:19Z",
+    "latest_pushed_at": "2026-09-17T18:07:21Z",
+    "native_runtime_smoke_passed": true,
+    "actual_chromium_authenticated_navigation_fetch_mutation_websocket_passed": true,
+    "access_boundary_tests_passed": true,
+    "log_sha256": "1dc35c5de1128f6772fb8ded29ee17141d1361343d6b8a4e298a054309491132",
+    "scope": "Linux amd64 CPU; same image tagged and pushed after successful tests, without rebuilding.",
+    "public_verification_report": "studio-docker-0.11.7-public-verification-2026-09-17.json"
+  },
+  "publisher_first_attempt": {
+    "job_id": 105322625297,
+    "conclusion": "failure",
+    "error": "Error saving asset",
+    "draft_release_id": 390944704,
+    "draft_state_observed": {
+      "draft": true,
+      "checksum_assets_uploaded": 10,
+      "product_payloads_uploaded": 0
+    },
+    "recovery_requested": "Rerun only the Create Release job, reusing existing qualified artifacts; no product rebuild or tag change.",
+    "run_id": 35247378499,
+    "job_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105322625297",
+    "log_evidence": {
+      "local_capture_name": "studio-0.11.7-release-publisher.log",
+      "sha256": "3e26d597b77df3cdd470d9df2a9498c3234fc0b61a7553c767d2169e075b2603"
+    }
+  },
+  "schema_version": 1,
+  "release_version": "0.11.7",
+  "publisher_second_attempt": {
+    "run_id": 35247378499,
+    "run_attempt": 2,
+    "job_id": 105324765919,
+    "job_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324765919",
+    "conclusion": "failure",
+    "started_at": "2026-09-17T18:13:47Z",
+    "completed_at": "2026-09-17T18:16:39Z",
+    "failed_step": "Create GitHub Release",
+    "error": "Error saving asset",
+    "error_at": "2026-09-17T18:15:45.8553921Z",
+    "log_evidence": {
+      "local_capture_name": "studio-0.11.7-publisher-retry.log",
+      "sha256": "743885085d94a173bc03153bbdf7f30b119b66d72801854d1cf9d43b050f0467"
+    },
+    "scope": "Publisher-only retry; qualified product artifacts and product tag remain those of the original release run."
+  },
+  "release_run_qualification": {
+    "run_id": 35247378499,
+    "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499",
+    "product_source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+    "jobs_snapshot_run_attempt": 2,
+    "counts": {
+      "total": 22,
+      "success": 21,
+      "failure": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "pending": 0
+    },
+    "only_failed_job": {
+      "id": 105324765919,
+      "name": "Create Release",
+      "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324765919"
+    },
+    "job_identity_note": "Job IDs below are from the local GitHub jobs snapshot for run attempt 2. Earlier raw qualification evidence retains the job IDs captured for the original attempt. The successful entries retain their original execution times; these records do not claim a product rebuild.",
+    "successful_jobs": [
+      {
+        "id": 105324760400,
+        "name": "Prepare",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:34:08Z",
+        "completed_at": "2026-09-17T16:34:16Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324760400"
+      },
+      {
+        "id": 105324761825,
+        "name": "Qualify release commit / Native Sidecar Windows Containment",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:34:18Z",
+        "completed_at": "2026-09-17T16:44:14Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324761825"
+      },
+      {
+        "id": 105324761894,
+        "name": "Acquire pinned plugin wheels",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:34:17Z",
+        "completed_at": "2026-09-17T16:35:49Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324761894"
+      },
+      {
+        "id": 105324761945,
+        "name": "Qualify release commit / Native Docker Runtime",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:34:18Z",
+        "completed_at": "2026-09-17T16:45:26Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324761945"
+      },
+      {
+        "id": 105324762056,
+        "name": "Qualify release commit / Backend",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:34:18Z",
+        "completed_at": "2026-09-17T16:41:49Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324762056"
+      },
+      {
+        "id": 105324762687,
+        "name": "Qualify release commit / Frontend",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:34:18Z",
+        "completed_at": "2026-09-17T16:38:07Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324762687"
+      },
+      {
+        "id": 105324762923,
+        "name": "Installer \u2014 Linux x64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:35:52Z",
+        "completed_at": "2026-09-17T16:55:31Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324762923"
+      },
+      {
+        "id": 105324762972,
+        "name": "All-in-one \u2014 Windows x64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:35:52Z",
+        "completed_at": "2026-09-17T17:12:49Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324762972"
+      },
+      {
+        "id": 105324762996,
+        "name": "All-in-one \u2014 macOS x64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:35:52Z",
+        "completed_at": "2026-09-17T17:38:34Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324762996"
+      },
+      {
+        "id": 105324763003,
+        "name": "Installer \u2014 macOS arm64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:35:55Z",
+        "completed_at": "2026-09-17T16:48:23Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324763003"
+      },
+      {
+        "id": 105324763242,
+        "name": "Installer \u2014 Windows x64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:35:52Z",
+        "completed_at": "2026-09-17T16:55:43Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324763242"
+      },
+      {
+        "id": 105324763451,
+        "name": "Installer \u2014 macOS x64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:35:52Z",
+        "completed_at": "2026-09-17T17:24:42Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324763451"
+      },
+      {
+        "id": 105324763491,
+        "name": "All-in-one \u2014 Linux x64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:35:52Z",
+        "completed_at": "2026-09-17T16:56:07Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324763491"
+      },
+      {
+        "id": 105324763644,
+        "name": "All-in-one \u2014 macOS arm64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:35:57Z",
+        "completed_at": "2026-09-17T16:54:22Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324763644"
+      },
+      {
+        "id": 105324764611,
+        "name": "Qualify release commit / Electron Build Test",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:41:51Z",
+        "completed_at": "2026-09-17T16:58:01Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324764611"
+      },
+      {
+        "id": 105324764619,
+        "name": "Qualify stable Windows installation and N-1 migration / real-install-update",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T17:12:51Z",
+        "completed_at": "2026-09-17T17:28:38Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324764619"
+      },
+      {
+        "id": 105324765202,
+        "name": "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 macOS arm64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T17:38:41Z",
+        "completed_at": "2026-09-17T17:47:58Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324765202"
+      },
+      {
+        "id": 105324765313,
+        "name": "Qualify release commit / CI Summary",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T16:58:04Z",
+        "completed_at": "2026-09-17T16:58:07Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324765313"
+      },
+      {
+        "id": 105324765495,
+        "name": "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 macOS x64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T17:38:37Z",
+        "completed_at": "2026-09-17T17:53:59Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324765495"
+      },
+      {
+        "id": 105324765501,
+        "name": "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 Linux x64",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T17:38:37Z",
+        "completed_at": "2026-09-17T17:49:33Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324765501"
+      },
+      {
+        "id": 105324766740,
+        "name": "Native Docker Image",
+        "run_attempt": 2,
+        "conclusion": "success",
+        "started_at": "2026-09-17T17:54:01Z",
+        "completed_at": "2026-09-17T18:07:24Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105324766740"
+      }
+    ],
+    "artifact_count": 17,
+    "artifacts": [
+      {
+        "id": 10511894623,
+        "name": "unix-product-proof-macos-x64",
+        "size_in_bytes": 4298,
+        "digest": "sha256:511508cd7ac849c0d1b4758f6a5744a4803e5f33cc00fd69ee6981493027cdf5",
+        "expired": false,
+        "created_at": "2026-09-17T17:53:48Z",
+        "updated_at": "2026-09-17T17:53:48Z",
+        "expires_at": "2026-10-01T17:53:47Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10511894623",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10511837151,
+        "name": "archive-macos-x64",
+        "size_in_bytes": 416426479,
+        "digest": "sha256:89f63c7b4d0c2e92ea5d2b0a0db253b907ebcde8045ff3479b6b1e028418cc42",
+        "expired": false,
+        "created_at": "2026-09-17T17:38:18Z",
+        "updated_at": "2026-09-17T17:38:18Z",
+        "expires_at": "2026-09-22T17:36:19Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10511837151",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10511630598,
+        "name": "windows-real-install-update-proof",
+        "size_in_bytes": 1284,
+        "digest": "sha256:ef2b34a2166c9ea6b9620412c0da23dc16888f9760eec958c3236eb7a62446db",
+        "expired": false,
+        "created_at": "2026-09-17T17:28:31Z",
+        "updated_at": "2026-09-17T17:28:31Z",
+        "expires_at": "2026-09-24T17:28:30Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10511630598",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10511209091,
+        "name": "unix-product-proof-macos-arm64",
+        "size_in_bytes": 3781,
+        "digest": "sha256:ca2c249c94ede0873186ef9f08950a44370c2746b41d540760ea7c5601aa06e1",
+        "expired": false,
+        "created_at": "2026-09-17T17:47:51Z",
+        "updated_at": "2026-09-17T17:47:51Z",
+        "expires_at": "2026-10-01T17:47:50Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10511209091",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10511069551,
+        "name": "unix-product-proof-linux-x64",
+        "size_in_bytes": 4190,
+        "digest": "sha256:140bdf4a4657d0f6d0eaed91ce8f1ca0be4b240045dda7d41da039611b7e0a07",
+        "expired": false,
+        "created_at": "2026-09-17T17:49:29Z",
+        "updated_at": "2026-09-17T17:49:29Z",
+        "expires_at": "2026-10-01T17:49:29Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10511069551",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10510665859,
+        "name": "installer-macos-x64",
+        "size_in_bytes": 450481121,
+        "digest": "sha256:91e20232258a3b0a23b2c1cbb4d7b784663bf6c05463f4b9a6de913201ff1ef0",
+        "expired": false,
+        "created_at": "2026-09-17T17:24:28Z",
+        "updated_at": "2026-09-17T17:24:28Z",
+        "expires_at": "2026-09-22T17:23:56Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10510665859",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10509301244,
+        "name": "installer-windows-x64",
+        "size_in_bytes": 699671923,
+        "digest": "sha256:bc8365469295ce51eaeca147f804792caf11171f36176f39d3c30b6f27f1ffa3",
+        "expired": false,
+        "created_at": "2026-09-17T16:55:23Z",
+        "updated_at": "2026-09-17T16:55:23Z",
+        "expires_at": "2026-09-22T16:55:06Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10509301244",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10509056897,
+        "name": "archive-linux-x64",
+        "size_in_bytes": 556647347,
+        "digest": "sha256:ee59a9bb2f5c6f01c1b02c4d148bbe026b77a7c0a5171adff3b4ce6229feb5b9",
+        "expired": false,
+        "created_at": "2026-09-17T16:56:00Z",
+        "updated_at": "2026-09-17T16:56:00Z",
+        "expires_at": "2026-09-22T16:55:42Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10509056897",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10509051147,
+        "name": "archive-linux-cpu-closure-proof",
+        "size_in_bytes": 1062,
+        "digest": "sha256:6684329bc5d592775344f4be1608348976bd991b76d2335ffd55f2b45c9a3340",
+        "expired": false,
+        "created_at": "2026-09-17T16:50:47Z",
+        "updated_at": "2026-09-17T16:50:47Z",
+        "expires_at": "2026-10-01T16:50:46Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10509051147",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10508916671,
+        "name": "installer-linux-x64",
+        "size_in_bytes": 999859721,
+        "digest": "sha256:def2002e0d258bb5979f1247423ececdb889b05dd0280743c5f94ca77442821c",
+        "expired": false,
+        "created_at": "2026-09-17T16:55:24Z",
+        "updated_at": "2026-09-17T16:55:24Z",
+        "expires_at": "2026-09-22T16:54:58Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10508916671",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10508561956,
+        "name": "archive-macos-arm64",
+        "size_in_bytes": 391581695,
+        "digest": "sha256:3374e8e24b1d7f5fb829626be5eb842e7d0b3c5346cb6b358999a51ac6811ed5",
+        "expired": false,
+        "created_at": "2026-09-17T16:54:12Z",
+        "updated_at": "2026-09-17T16:54:12Z",
+        "expires_at": "2026-09-22T16:53:59Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10508561956",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10508522028,
+        "name": "installer-linux-cpu-closure-proof",
+        "size_in_bytes": 1053,
+        "digest": "sha256:40e9e5fe2343c196d4b28eb060e58602274c35577fbaee321d5cb14d2b6ff16f",
+        "expired": false,
+        "created_at": "2026-09-17T16:54:55Z",
+        "updated_at": "2026-09-17T16:54:55Z",
+        "expires_at": "2026-10-01T16:54:54Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10508522028",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10508489569,
+        "name": "archive-windows-x64",
+        "size_in_bytes": 456348441,
+        "digest": "sha256:0793a05b3499e07a4e4ee84659fdf8f0e6efa848ddaec77f16364f3d2d26360c",
+        "expired": false,
+        "created_at": "2026-09-17T17:12:24Z",
+        "updated_at": "2026-09-17T17:12:24Z",
+        "expires_at": "2026-09-22T17:12:09Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10508489569",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10508154897,
+        "name": "installer-macos-arm64",
+        "size_in_bytes": 426295675,
+        "digest": "sha256:da1abf188330a741fce1ff966ff157690cbd4c4a3ee5b74ddc8e6d424cd51280",
+        "expired": false,
+        "created_at": "2026-09-17T16:48:14Z",
+        "updated_at": "2026-09-17T16:48:14Z",
+        "expires_at": "2026-09-22T16:48:03Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10508154897",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10508142648,
+        "name": "pinned-plugin-wheels",
+        "size_in_bytes": 2884340,
+        "digest": "sha256:6a68274c75bbf98d922ae54ac95a199525d08090600607bd52c607aa6ef71cba",
+        "expired": false,
+        "created_at": "2026-09-17T16:35:47Z",
+        "updated_at": "2026-09-17T16:35:47Z",
+        "expires_at": "2026-09-22T16:35:47Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10508142648",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10507898135,
+        "name": "plugin-runtime-reproducibility",
+        "size_in_bytes": 1103,
+        "digest": "sha256:4bd356ae9641c92721a220ebcd3f6c607698cc099e06c617613e09802ffb62f2",
+        "expired": false,
+        "created_at": "2026-09-17T16:35:46Z",
+        "updated_at": "2026-09-17T16:35:46Z",
+        "expires_at": "2026-12-16T16:34:04Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10507898135",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      },
+      {
+        "id": 10507869483,
+        "name": "backend-coverage",
+        "size_in_bytes": 68145,
+        "digest": "sha256:6186298fc50e34a786fbc434593c31e67d3e013227cb21e0e8579255a9135883",
+        "expired": false,
+        "created_at": "2026-09-17T16:41:46Z",
+        "updated_at": "2026-09-17T16:41:46Z",
+        "expires_at": "2026-09-24T16:41:46Z",
+        "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts/10507869483",
+        "source_run_id": 35247378499,
+        "source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6"
+      }
+    ],
+    "artifact_digest_scope": "GitHub Actions artifact ZIP digests, not the SHA-256 of each distributable stored inside the artifact.",
+    "qualification_status": "All 21 non-publisher jobs succeeded; the source workflow failed only at publication."
+  },
+  "publication_recovery": {
+    "run_id": 35262110398,
+    "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35262110398",
+    "infrastructure_source_sha": "9226313c1d3311bc1d305e8ccd9c9de4d9428e86",
+    "product_source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+    "qualified_artifact_source_run_id": 35247378499,
+    "status": "awaiting_public_verification",
+    "scope": "Separate publication recovery run reusing the already qualified product artifacts. The infrastructure commit is distinct from the immutable product source.",
+    "launch_provenance": "Run head SHA verified against the pushed infrastructure commit; qualified source tag and artifacts remain unchanged.",
+    "public_asset_verification": null,
+    "draft_cleanup_proof": "studio-0.11.7-incomplete-upload-cleanup.json",
+    "local_linux_gh_upload": {
+      "http_status": 500,
+      "message": "Error saving asset",
+      "host": "uploads.github.com",
+      "name": "nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz"
+    },
+    "local_windows_gh_upload": {
+      "exit_code": 0,
+      "asset_id": 570867725,
+      "name": "nirs4all.Studio-0.11.7-win-x64.exe",
+      "size": 350382030,
+      "state": "uploaded",
+      "sha256": "752c71ebcd71df2b609c084816f226ae76042148c3f39dd31f401bf6fc67af32",
+      "visibility": "draft"
+    },
+    "initial_recovery_run": {
+      "run_id": 35259219167,
+      "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35259219167",
+      "infrastructure_source_sha": "7c7c8355dfd8f7a7774727a046f90326c1f27365",
+      "first_attempt": {
+        "conclusion": "failure",
+        "failed_step": "Upload sequentially and publish only the complete verified release",
+        "reason": "Fail-closed rejection of an incomplete draft upload in state starter without a digest.",
+        "product_or_tag_changed": false
+      },
+      "second_attempt": {
+        "conclusion": "failure",
+        "job_id": 105332297964,
+        "failed_step": "Upload sequentially and publish only the complete verified release",
+        "reason": "Single Linux archive upload failed after 129 seconds; its incomplete starter record prevented publication.",
+        "qualified_product_rebuilt": false
+      },
+      "source_verification_proof": "studio-0.11.7-recovery-source-proof.json"
+    },
+    "job_id": 105340149983,
+    "local_http_1_1_probe": "studio-0.11.7-direct-upload-probe.json"
+  },
+  "evidence_provenance": {
+    "preparation": "Offline consolidation of existing local evidence; no GitHub API calls, artifact downloads, commits or remote mutations.",
+    "inputs": [
+      {
+        "local_capture_name": "source-qualification.json",
+        "sha256": "08da76b4d21f39355b79947c860f91586cfb40b4376a60ada91652ae19fd1b47"
+      },
+      {
+        "local_capture_name": "studio-0.11.7-qualified-jobs.json",
+        "sha256": "05702e2f6cd0026626c4df83f1c6e1cd9b8cc05f5d41b3435a57c06b62010b02",
+        "api_url": "https://api.github.com/repos/GBeurier/nirs4all-studio/actions/runs/35247378499/jobs?per_page=100"
+      },
+      {
+        "local_capture_name": "studio-0.11.7-source-artifacts.json",
+        "sha256": "d06aa42f472ff95331cc1a7e16bf62c4f38c293a1428f168656cd314414ffc85",
+        "api_url": "https://api.github.com/repos/GBeurier/nirs4all-studio/actions/runs/35247378499/artifacts?per_page=100"
+      }
+    ],
+    "consistency_checks": {
+      "local_release_tag_matches_product_source": true,
+      "local_recovery_infrastructure_commit_exists": true,
+      "all_22_jobs_match_product_source_and_source_run": true,
+      "exactly_21_successes_and_only_publisher_failure": true,
+      "all_17_artifacts_match_product_source_and_source_run": true,
+      "all_platform_installer_archive_and_product_proof_artifacts_present": true,
+      "no_expired_artifacts_in_captured_snapshot": true,
+      "publisher_error_confirmed_in_both_local_logs": true
+    }
+  }
+}

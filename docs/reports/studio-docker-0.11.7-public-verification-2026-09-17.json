@@ -1,0 +1,22 @@
+{
+  "version": "0.11.7",
+  "product_source_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+  "verified_at": "2026-09-17T18:47:34.075560+00:00",
+  "previous_release_0_11_5_assets_unchanged": true,
+  "public_anonymous_access": true,
+  "version_and_latest_manifest_digest": "sha256:2488299c649800f9ed0b98636252cadd350eeedec21351f4779eeff0ca335497",
+  "image_config_digest": "sha256:163a6a2c9e83d50a0c1a13bef8f58d22c65aab928a84c896e081e26deff839e5",
+  "matches_image_built_and_tested_in_release_job": true,
+  "qualification_job_id": 105318077384,
+  "previous_version_0_11_5_manifest_digest_unchanged": "sha256:6c6e4629ee30cafc0bcac97a1e26800ff93a2e23b701aae2431510cead6305aa",
+  "architecture": "amd64",
+  "os": "linux",
+  "labels": {
+    "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>",
+    "org.opencontainers.image.revision": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+    "org.opencontainers.image.source": "https://github.com/GBeurier/nirs4all-studio",
+    "org.opencontainers.image.title": "nirs4all Studio",
+    "org.opencontainers.image.version": "0.11.7"
+  },
+  "scope": "Public manifest/configuration verification; native runtime and Chromium qualification were performed before publication by the source release workflow."
+}
