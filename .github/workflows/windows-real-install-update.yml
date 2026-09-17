@@ -1,6 +1,25 @@
 name: Windows real installation and N-1 update
 
 on:
+  workflow_call:
+    inputs:
+      release_run_id:
+        required: true
+        type: string
+      checkout_ref:
+        required: true
+        type: string
+      from_version:
+        required: false
+        type: string
+        default: ''
+      to_version:
+        required: true
+        type: string
+      archive_enabled:
+        required: false
+        type: boolean
+        default: true
   workflow_dispatch:
     inputs:
       release_run_id:
@@ -8,15 +27,18 @@ on:
         required: true
         type: string
       from_version:
-        description: Previous public release without v prefix
+        description: Previous public release required for manual validation
         required: true
         type: string
-        default: '0.11.4'
       to_version:
         description: Candidate release without v prefix
         required: true
         type: string
-        default: '0.11.5'
+      archive_enabled:
+        description: Whether this nonpublishing validation includes update archives
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -38,17 +60,29 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          CHECKOUT_REF: ${{ inputs.checkout_ref }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
           RELEASE_RUN_ID: ${{ inputs.release_run_id }}
           TARGET_VERSION: ${{ inputs.to_version }}
+          SOURCE_VERSION: ${{ inputs.from_version }}
         run: |
           $ErrorActionPreference = 'Stop'
+          if (-not $env:CHECKOUT_REF -and [string]::IsNullOrWhiteSpace($env:SOURCE_VERSION)) { throw 'Manual validation requires from_version; initial-release bypass is reserved for the reusable gate after verified public API 404' }
           if ($env:RELEASE_RUN_ID -notmatch '^\d+$') { throw 'Invalid run id' }
           if ($env:TARGET_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid target version' }
           $run = gh api "repos/$env:GH_REPO/actions/runs/$env:RELEASE_RUN_ID" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Could not read release run' }
-          if ($run.event -ne 'push' -or $run.path -ne '.github/workflows/release-unified.yml') { throw 'Expected an actual tag release workflow run' }
-          if ($run.head_branch -ne $env:TARGET_VERSION -and $run.head_branch -ne "v$env:TARGET_VERSION") { throw 'Release run does not match target version' }
-          "sha=$($run.head_sha)" >> $env:GITHUB_OUTPUT
+          if ($env:CHECKOUT_REF) {
+            # Caller needs installer-windows/archive-windows, so their artifacts
+            # already exist. Never wait for completion of our own parent run.
+            if ($env:RELEASE_RUN_ID -ne $env:CURRENT_RUN_ID -or $env:CHECKOUT_REF -notmatch '^[a-f0-9]{40}$') { throw 'Reusable gate requires its own run and an immutable source commit' }
+            "sha=$env:CHECKOUT_REF" >> $env:GITHUB_OUTPUT
+          } else {
+            if ($run.event -ne 'push' -or $run.path -ne '.github/workflows/release-unified.yml') { throw 'Expected an actual tag release workflow run' }
+            if ($run.head_branch -ne $env:TARGET_VERSION -and $run.head_branch -ne "v$env:TARGET_VERSION") { throw 'Release run does not match target version' }
+            "sha=$($run.head_sha)" >> $env:GITHUB_OUTPUT
+          }
+          if (-not $env:CHECKOUT_REF) {
           $wantedJobs = @('Installer — Windows x64')
           $deadline = (Get-Date).AddMinutes(33)
           do {
@@ -63,12 +97,13 @@ jobs:
             Write-Host 'Waiting for successful Windows installer build...'
             Start-Sleep -Seconds 20
           } while ($true)
+          }
           gh run download $env:RELEASE_RUN_ID -n installer-windows-x64 -D "$env:RUNNER_TEMP\candidate-installer"
           if ($LASTEXITCODE -ne 0) { throw 'Installer artifact download failed' }
       - name: Check out exact release sources for its existing runtime probes
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.candidate.outputs.sha }}
+          ref: ${{ inputs.checkout_ref || steps.candidate.outputs.sha }}
           path: qualified-source
       - name: Verify hashes and actually install NSIS silently
         id: install
@@ -116,17 +151,20 @@ jobs:
           node qualified-source/scripts/smoke-first-launch-ui.cjs --extracted-root "$env:INSTALLED_ROOT" --platform win32 --timeout-ms 360000
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Await and verify the exact qualified Windows update archive
+        if: inputs.archive_enabled
         id: archive
         timeout-minutes: 15
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          CHECKOUT_REF: ${{ inputs.checkout_ref }}
           RELEASE_RUN_ID: ${{ inputs.release_run_id }}
           TARGET_VERSION: ${{ inputs.to_version }}
           SOURCE_SHA: ${{ steps.candidate.outputs.sha }}
         run: |
           $ErrorActionPreference = 'Stop'
+          if (-not $env:CHECKOUT_REF) {
           $deadline = (Get-Date).AddMinutes(13)
           do {
             $run = gh api "repos/$env:GH_REPO/actions/runs/$env:RELEASE_RUN_ID" | ConvertFrom-Json
@@ -143,6 +181,7 @@ jobs:
             Write-Host 'NSIS and installed UI passed; waiting for qualified update archive...'
             Start-Sleep -Seconds 20
           } while ($true)
+          }
           gh run download $env:RELEASE_RUN_ID -n archive-windows-x64 -D "$env:RUNNER_TEMP\candidate-archive"
           if ($LASTEXITCODE -ne 0) { throw 'Archive artifact download failed' }
           $archives = @(Get-ChildItem "$env:RUNNER_TEMP\candidate-archive" -Recurse -Filter '*-all-in-one-win-x64.zip')
@@ -158,6 +197,7 @@ jobs:
           Write-Host "$actualHash  $($file.Name)"
           "path=$($file.FullName)" >> $env:GITHUB_OUTPUT
       - name: Migrate actual previous release to exact candidate and cold boot offline
+        if: inputs.archive_enabled && inputs.from_version != ''
         timeout-minutes: 15
         shell: pwsh
         env:
@@ -167,6 +207,18 @@ jobs:
         run: |
           node scripts/verify-real-release-update.cjs qualified-source "$env:SOURCE_VERSION" "$env:TARGET_VERSION" "$env:CANDIDATE_ARCHIVE"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Record when N-1 migration is not applicable
+        if: inputs.from_version == '' || !inputs.archive_enabled
+        shell: pwsh
+        env:
+          FROM_VERSION: ${{ inputs.from_version }}
+          ARCHIVE_ENABLED: ${{ inputs.archive_enabled }}
+        run: |
+          if ($env:FROM_VERSION -eq '') {
+            'Initial release: no previous public release exists; NSIS and UI still qualified.' >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            'Validation without archives: NSIS and UI qualified; N-1 migration NOT tested. This mode must not publish a tag release.' >> $env:GITHUB_STEP_SUMMARY
+          }
       - name: Preserve migration result and bounded application log
         if: always()
         uses: actions/upload-artifact@v4

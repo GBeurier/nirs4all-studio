@@ -1,0 +1,98 @@
+name: Qualify repacked Windows update archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Qualified F314 release run
+        required: true
+        type: string
+        default: '35216053291'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  repack-and-migrate:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      PRODUCT_SHA: f314cdb223cd77ce1a3fb6d336cca82206cd02a4
+      SOURCE_ARCHIVE_SHA256: f069fa1552b9d61d6d74e46ad770d1f1a575c116887368b6904e341fc0f6b506
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Acquire the exact qualified Windows archive
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_RUN: ${{ inputs.release_run_id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:SOURCE_RUN -notmatch '^\d+$') { throw 'Invalid run id' }
+          $run = gh api "repos/$env:GH_REPO/actions/runs/$env:SOURCE_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read source run' }
+          if ($run.head_sha -cne $env:PRODUCT_SHA -or $run.path -ne '.github/workflows/release-unified.yml') { throw 'Source is not the qualified F314 product release' }
+          $jobs = (gh api "repos/$env:GH_REPO/actions/runs/$env:SOURCE_RUN/jobs?per_page=100" | ConvertFrom-Json).jobs
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read source jobs' }
+          $archiveJob = @($jobs | Where-Object { $_.name -eq 'All-in-one — Windows x64' })
+          if ($archiveJob.Count -ne 1 -or $archiveJob[0].conclusion -ne 'success') { throw 'Qualified Windows archive job must have passed' }
+          gh run download $env:SOURCE_RUN -n archive-windows-x64 -D "$env:RUNNER_TEMP\original-archive"
+          if ($LASTEXITCODE -ne 0) { throw 'Archive download failed' }
+      - name: Check out the immutable product probes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+          path: qualified-source
+      - name: Wrap the ZIP and verify every application file is identical
+        id: repack
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(Get-ChildItem "$env:RUNNER_TEMP\original-archive" -Recurse -Filter '*-all-in-one-win-x64.zip')
+          if ($files.Count -ne 1) { throw 'Expected exactly one source ZIP' }
+          $source = $files[0]
+          if ($source.Name -ne 'nirs4all Studio-0.11.5-all-in-one-win-x64.zip') { throw 'Unexpected product archive name' }
+          $record = (Get-Content -Raw "$($source.FullName).sha256").Trim()
+          if ($record -notmatch '^([a-fA-F0-9]{64})\s+\*?(.+)$') { throw 'Invalid source checksum' }
+          if ($Matches[2] -cne $source.Name) { throw 'Source checksum filename mismatch' }
+          $expected = $Matches[1].ToLower()
+          if ($expected -cne $env:SOURCE_ARCHIVE_SHA256) { throw 'Source archive differs from the independently recorded F314 digest' }
+          if ((Get-FileHash $source.FullName -Algorithm SHA256).Hash.ToLower() -cne $expected) { throw 'Source archive SHA mismatch' }
+          $destination = Join-Path "$env:RUNNER_TEMP\repacked-archive" $source.Name
+          python scripts/repack-windows-update-archive.py $source.FullName $destination | Tee-Object "$env:RUNNER_TEMP\repack-proof.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Byte-identical archive repack failed' }
+          "archive=$destination" >> $env:GITHUB_OUTPUT
+      - name: Migrate the actual public 0.11.4 and cold boot the unchanged product
+        timeout-minutes: 20
+        shell: pwsh
+        env:
+          CANDIDATE_ARCHIVE: ${{ steps.repack.outputs.archive }}
+        run: |
+          node scripts/verify-real-release-update.cjs qualified-source 0.11.4 0.11.5 "$env:CANDIDATE_ARCHIVE"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload the qualified repacked archive only after migration passes
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-windows-x64-repacked
+          path: ${{ runner.temp }}/repacked-archive/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve repack and migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-repacked-update-proof
+          path: |
+            ${{ runner.temp }}/repack-proof.json
+            ${{ runner.temp }}/studio-real-update-*/result.json
+            ${{ runner.temp }}/studio-real-update-*/application.log
+          if-no-files-found: warn
+          retention-days: 7
