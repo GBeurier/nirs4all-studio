@@ -406,6 +406,13 @@ jobs:
           xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform linux
           xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform linux
 
+      - name: Qualify Linux CPU closure without optional system thread pools
+        run: |
+          sudo apt-get install -y --no-install-recommends bubblewrap binutils
+          PYTHON="$(find release -type f -path '*/resources/backend/python-runtime/python/bin/python3' -print -quit)"
+          test -n "$PYTHON"
+          python3 -B scripts/verify-linux-cpu-closure.py --runtime-root "$(dirname "$(dirname "$PYTHON")")" --output "$RUNNER_TEMP/linux-installer-cpu-closure.json"
+
       - name: Generate checksums
         run: |
           cd release
@@ -1249,6 +1256,13 @@ jobs:
       - name: Smoke test staged archive extraction
         run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.archive_path }}" --platform linux
 
+      - name: Qualify Linux CPU closure without optional system thread pools
+        run: |
+          sudo apt-get install -y --no-install-recommends bubblewrap binutils
+          PYTHON="$(find "${{ steps.archive.outputs.extract_root }}" -type f -path '*/resources/backend/python-runtime/python/bin/python3' -print -quit)"
+          test -n "$PYTHON"
+          python3 -B scripts/verify-linux-cpu-closure.py --runtime-root "$(dirname "$(dirname "$PYTHON")")" --output "$RUNNER_TEMP/linux-archive-cpu-closure.json"
+
       - name: Smoke test offline all-in-one launch
         run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
@@ -1980,7 +1994,7 @@ jobs:
 
           - **Windows**: Windows 10+ (x64)
           - **macOS**: macOS 12+ (Intel or Apple Silicon)
-          - **Linux**: Ubuntu 20.04+ or equivalent (x64)
+          - **Linux**: Ubuntu 22.04+ or equivalent (x64; glibc 2.35 and GLIBCXX 3.4.29 required)
           - **Docker**: OCI runtime on Linux x64
 
           ---

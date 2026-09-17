@@ -40,10 +40,19 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y libfuse2 xvfb libgomp1 libtbb12 libgtk-3-0 libnss3 libasound2
+          sudo apt-get install -y libfuse2 xvfb libgtk-3-0 libnss3 libasound2 bubblewrap binutils squashfs-tools
           if [ ! -e /dev/fuse ]; then sudo modprobe fuse; fi
           test -r /dev/fuse
           test -w /dev/fuse
+      - name: Qualify extracted CPU closure without optional system thread pools
+        run: |
+          set -euo pipefail
+          APPIMAGE_FILE="$RUNNER_TEMP/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage"
+          chmod +x "$APPIMAGE_FILE"
+          OFFSET="$("$APPIMAGE_FILE" --appimage-offset)"
+          [[ "$OFFSET" =~ ^[0-9]+$ ]]
+          unsquashfs -no-progress -processors 2 -o "$OFFSET" -d "$RUNNER_TEMP/appimage-cpu-closure" "$APPIMAGE_FILE" resources/backend/python-runtime/python
+          python3 -B scripts/verify-linux-cpu-closure.py --runtime-root "$RUNNER_TEMP/appimage-cpu-closure/resources/backend/python-runtime/python" --output "$RUNNER_TEMP/appimage-cpu-closure.json"
       - name: Launch the original AppImage and verify its bundled scientific runtime
         timeout-minutes: 10
         run: |
@@ -58,6 +67,7 @@ jobs:
           name: appimage-f314-fuse-proof
           path: |
             ${{ runner.temp }}/appimage-probe.log
+            ${{ runner.temp }}/appimage-cpu-closure.json
             ${{ runner.temp }}/studio-appimage-*/result.json
             ${{ runner.temp }}/studio-appimage-*/application.log
           if-no-files-found: warn
