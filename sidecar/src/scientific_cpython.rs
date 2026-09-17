@@ -39,7 +39,9 @@ pub const WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT: &str = "--internal-scientifi
 /// valid cold starts exceeding 15 seconds under load, so keep this below the
 /// 75-second HTTP preflight budget while allowing a measured 3x margin.
 pub const SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(45);
-pub const SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT: Duration = Duration::from_secs(15);
+/// Document adapters import the same scientific stack in each fresh worker.
+/// Keep preview, setup and translation within the qualified cold-start budget.
+pub const SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT: Duration = SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT;
 pub const SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT: Duration = Duration::from_secs(120);
 pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
@@ -413,7 +415,11 @@ impl CpythonScientificJobExecutor {
             Some(runtime),
             &bytes,
             &AtomicBool::new(false),
-            document_operation_timeout(operation),
+            if matches!(operation, "predictions.run" | "predictions.file") {
+                SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT
+            } else {
+                SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT
+            },
         )
         .map_err(|error| error.reason().to_owned())?;
         crate::document_cpython::verify(&runtime.site_packages)?;
@@ -543,17 +549,6 @@ impl CpythonScientificJobExecutor {
             }
             self.acquisition.reason()
         }
-    }
-}
-
-fn document_operation_timeout(operation: &str) -> Duration {
-    match operation {
-        // Setup inspection launches the same fresh scientific worker as other
-        // adapters. Its import must tolerate the cold-start budget already
-        // qualified at acquisition, including concurrent first-launch probes.
-        "config.dependencies" | "config.compare" => SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
-        "predictions.run" | "predictions.file" => SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
-        _ => SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT,
     }
 }
 
@@ -2445,24 +2440,32 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn setup_inspection_survives_slow_workers_without_extending_other_document_budgets() {
+    fn document_adapters_survive_slow_cold_imports() {
         let directory = tempfile::tempdir().unwrap();
         let host = slow_document_host(directory.path());
-        // Run real confined workers concurrently: setup must survive a cold
-        // import exceeding the ordinary 15-second document budget, while a
-        // non-setup adapter must still time out. No optional Python is needed.
+        // Every adapter starts a fresh scientific worker. Setup, preview and
+        // pipeline rendering must all survive the observed cold-import delay
+        // beyond 15 seconds. No optional Python is needed by this fixture.
         let results = std::thread::scope(|scope| {
-            let handles =
-                ["config.dependencies", "config.compare", "pipeline.render"].map(|operation| {
-                    let host = &host;
-                    scope.spawn(move || host.adapt_document(operation, &serde_json::json!({})))
-                });
+            let handles = [
+                "config.dependencies",
+                "config.compare",
+                "dataset.preview",
+                "pipeline.render",
+            ]
+            .map(|operation| {
+                let host = &host;
+                scope.spawn(move || host.adapt_document(operation, &serde_json::json!({})))
+            });
             handles.map(|handle| handle.join().unwrap())
         });
-        let [inventory, comparison, rendering] = results;
+        let [inventory, comparison, preview, rendering] = results;
         assert_eq!(inventory.unwrap()["runtime_valid"], true);
         assert_eq!(comparison.unwrap()["is_aligned"], true);
-        assert_eq!(rendering, Err("python_host_timed_out".into()));
+        let preview = preview.unwrap();
+        assert_eq!(preview["success"], true);
+        assert_eq!(preview["summary"]["num_samples"], 1);
+        assert_eq!(rendering.unwrap()["filename"], "pipeline.yaml");
     }
 
     #[test]
@@ -2635,6 +2638,7 @@ sleep 16
 case "$request" in
   *config.dependencies*) result='{"read_only":true,"runtime_valid":true,"nirs4all_installed":true,"categories":[]}' ;;
   *config.compare*) result='{"is_aligned":true,"profile":"cpu","packages":[]}' ;;
+  *dataset.preview*) result='{"success":true,"error":null,"summary":{"num_samples":1,"num_features":2},"spectra_preview":null}' ;;
   *) result='{"json":"{}","yaml":"{}","filename":"pipeline.yaml"}' ;;
 esac
 printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":%s,"error":null}' "$result""#,
