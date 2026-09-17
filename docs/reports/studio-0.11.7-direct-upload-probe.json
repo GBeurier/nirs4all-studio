@@ -1,0 +1,20 @@
+{
+  "release_id": 390944704,
+  "name": "nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz",
+  "sha256": "784ffca1d284f73b8ec45eb5f1c3555db86fa2c945fe7bb51a15a18d103a9966",
+  "size": 560052761,
+  "transport": "Python HTTPSConnection HTTP/1.1, application/octet-stream, explicit Content-Length, raw qualified bytes",
+  "started_at": "2026-09-17T18:51:46.305045+00:00",
+  "deleted_incomplete_starter": {
+    "id": 570865110,
+    "name": "nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz",
+    "state": "starter",
+    "digest": null,
+    "size": 560052761
+  },
+  "outcome": "cancelled_while_sending",
+  "reason": "Direct local HTTP/1.1 transfer had sent only about102MB after5minutes; switch to bounded retries on a GitHub runner.",
+  "observed_bytes_read": 101711872,
+  "stopped_at": "2026-09-17T18:57:37.098694+00:00",
+  "http_response_observed": false
+}

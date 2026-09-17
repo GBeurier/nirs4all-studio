@@ -1,7 +1,7 @@
 # Livraison corrective Studio 0.11.7 — 17 septembre 2026
 
-**État : construction et qualification en cours. Aucune publication 0.11.7
-n'est encore attestée dans ce rapport.**
+**État : les quatre produits desktop et Docker ont réussi leurs qualifications.
+La publication GitHub est reprise après deux échecs de transfert des fichiers.**
 
 - Produit et tag : `bf6d7b13fda815b7f8153350e36907910829c4c6` / `0.11.7`.
 - [Workflow de release 35247378499](https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499).
@@ -95,10 +95,11 @@ sur **414 ELF** : [preuve exacte de l'installateur](studio-linux-installer-cpu-c
 - `npm run lint:parallel` : réussi, 21 avertissements ESLint préexistants.
 - `npm run test:parallel` : **4 180 tests frontend**, **2 505 backend**, 1 ignoré (avant les deux nouveaux tests ELF mentionnés ci-dessus).
 - `npm run test:e2e` : **63 tests navigateur** (avant l'élargissement du délai
-  documentaire ; les E2E du commit final sont relancés dans Actions).
+  documentaire ; les E2E du commit final ont également réussi dans Actions).
 - Cargo : **344 tests réussis, 5 ignorés**, avec le runtime Methods explicitement
   configuré et quatre threads ; formatage et Clippy réussis.
-- Scripts de packaging : **38 tests réussis**.
+- Scripts après correction de publication : **99 tests réussis**.
+- Contrats CI et qualification Unix après correction de publication : **21 réussis**.
 
 Les résultats locaux ne remplacent pas les qualifications des paquets réels.
 Les fichiers publics 0.11.5 ne sont ni remplacés ni reconstruits.
@@ -107,3 +108,72 @@ Le smoke du produit installé exerce aussi le parcours dataset d'origine :
 métadonnée vide, correction locale du séparateur et de l'en-tête, présence de
 `sample_id` parmi les identifiants, conservation de l'agrégation après
 enregistrement, puis aperçu et rafraîchissement du dataset sauvegardé.
+
+## Publication et reprise des transferts
+
+Les 21 jobs de qualification et de production du run source ont réussi. Seul
+`Create Release` a échoué, deux fois, avec `Error saving asset` lors des envois
+concurrents. Le brouillon `390944704` contenait les dix checksums mais aucun
+binaire public. Dix enregistrements d’envoi incomplets restaient au statut
+`starter`, sans digest. Le statut global de ce run reste donc **failure**.
+
+La [reprise de publication](https://github.com/GBeurier/nirs4all-studio/actions/runs/35259219167)
+utilise le commit d'infrastructure `7c7c8355dfd8f7a7774727a046f90326c1f27365`.
+Elle ne reconstruit aucun produit et ne déplace aucun tag : elle vérifie les
+21 jobs verts, les identités et digests des huit artefacts producteurs, puis
+les huit empreintes des produits installés et migrés. Le
+[manifeste de reprise](studio-0.11.7-publication-recovery-input.json) conserve
+ces valeurs exactes.
+
+La première tentative de reprise a refusé les dix entrées `starter`. Le
+[nettoyage ciblé](studio-0.11.7-incomplete-upload-cleanup.json) a supprimé
+uniquement ces entrées incomplètes du brouillon privé, après vérification
+individuelle de leur identité, état et absence de digest. Les dix checksums
+valides ont conservé leurs identités. Le même workflow a ensuite été relancé.
+
+Le nouvel envoi séquentiel réutilise uniquement les fichiers déjà vérifiés,
+refuse tout fichier divergent et publie le brouillon seulement après contrôle
+des dix binaires et dix checksums. Il remplace également l'envoi concurrent
+pour les prochaines releases.
+
+Docker a réussi les contrôles du runtime natif et les interactions réelles
+Chromium authentifiées (navigation, fetch, mutation JSON et WebSocket), puis
+les tests de frontières d'accès. L'image testée a été promue sans reconstruction
+sous `ghcr.io/gbeurier/nirs4all-studio:0.11.7` et `:latest` :
+
+- Manifeste : `sha256:2488299c649800f9ed0b98636252cadd350eeedec21351f4779eeff0ca335497`.
+- Image/configuration : `sha256:163a6a2c9e83d50a0c1a13bef8f58d22c65aab928a84c896e081e26deff839e5`.
+- Portée : Linux amd64 CPU. Ces preuves ne qualifient pas Docker arm64 ou GPU.
+
+La [vérification publique Docker](studio-docker-0.11.7-public-verification-2026-09-17.json)
+a confirmé l'accès anonyme, l'identité des tags `0.11.7` et `latest`, les labels
+source/version et l'identité exacte de l'image testée. L'inventaire public GitHub
+0.11.5 et le manifeste Docker 0.11.5 sont inchangés.
+
+La reprise séquentielle a ensuite rencontré la même erreur sur un seul fichier.
+L'envoi direct de l'archive Linux depuis WSL a permis d'obtenir la réponse exacte :
+**HTTP 500 `Error saving asset`** sur `uploads.github.com`. La concurrence n'est
+donc pas une explication suffisante. Les nouveaux diagnostics du helper conservent
+le statut HTTP et le message expurgé ; les fichiers incomplets restent bloquants.
+
+Le NSIS Windows a ensuite été accepté depuis le poste local et son SHA256 a été
+revérifié (`asset_id=570867725`). Un essai HTTP/1.1 brut de l'archive Linux a été
+[arrêté pendant l'envoi](studio-0.11.7-direct-upload-probe.json) en raison de son
+faible débit ; il n'a pas produit de réponse HTTP et n'est pas un nouvel échec
+serveur attesté.
+
+Le helper du commit `9226313c1d3311bc1d305e8ccd9c9de4d9428e86` permet désormais
+trois tentatives après erreurs serveur. Il peut supprimer uniquement le résidu
+`starter` créé par sa tentative courante après une erreur HTTP 5xx explicite :
+absence avant l'envoi, identité de release inchangée et toujours privée, digest
+null, taille attendue et relecture par identifiant sont obligatoires. Tous les
+fichiers précédemment vérifiés sont revérifiés avant suppression, puis le
+nettoyage est tracé. Un résidu préexistant ou un fichier public reste refusé.
+Ce comportement est couvert par les tests et suit la
+[documentation des résidus starter](https://docs.github.com/en/rest/releases/assets#upload-a-release-asset).
+
+Cette version est exécutée par le
+[nouveau run de reprise](https://github.com/GBeurier/nirs4all-studio/actions/runs/35262110398),
+lié au commit d'infrastructure exact ci-dessus. Le
+[rapport agrégé](studio-source-0.11.7-qualification-2026-09-17.json) sépare les
+qualifications produit, les tentatives de publication et les vérifications publiques.

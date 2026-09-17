@@ -1,0 +1,168 @@
+{
+  "product_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+  "source_run": 35247378499,
+  "publication_workflow_sha": "7c7c8355dfd8f7a7774727a046f90326c1f27365",
+  "publication_run": 35259219167,
+  "qualifications": [
+    {
+      "id": 105324760400,
+      "name": "Prepare",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324761825,
+      "name": "Qualify release commit / Native Sidecar Windows Containment",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324761894,
+      "name": "Acquire pinned plugin wheels",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324761945,
+      "name": "Qualify release commit / Native Docker Runtime",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324762056,
+      "name": "Qualify release commit / Backend",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324762687,
+      "name": "Qualify release commit / Frontend",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324762923,
+      "name": "Installer \u2014 Linux x64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324762972,
+      "name": "All-in-one \u2014 Windows x64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324762996,
+      "name": "All-in-one \u2014 macOS x64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324763003,
+      "name": "Installer \u2014 macOS arm64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324763242,
+      "name": "Installer \u2014 Windows x64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324763451,
+      "name": "Installer \u2014 macOS x64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324763491,
+      "name": "All-in-one \u2014 Linux x64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324763644,
+      "name": "All-in-one \u2014 macOS arm64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324764611,
+      "name": "Qualify release commit / Electron Build Test",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324764619,
+      "name": "Qualify stable Windows installation and N-1 migration / real-install-update",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324765202,
+      "name": "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 macOS arm64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324765313,
+      "name": "Qualify release commit / CI Summary",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324765495,
+      "name": "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 macOS x64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324765501,
+      "name": "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 Linux x64",
+      "conclusion": "success"
+    },
+    {
+      "id": 105324765919,
+      "name": "Create Release",
+      "conclusion": "failure"
+    },
+    {
+      "id": 105324766740,
+      "name": "Native Docker Image",
+      "conclusion": "success"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 10511837151,
+      "name": "archive-macos-x64",
+      "digest": "sha256:89f63c7b4d0c2e92ea5d2b0a0db253b907ebcde8045ff3479b6b1e028418cc42",
+      "size_in_bytes": 416426479
+    },
+    {
+      "id": 10510665859,
+      "name": "installer-macos-x64",
+      "digest": "sha256:91e20232258a3b0a23b2c1cbb4d7b784663bf6c05463f4b9a6de913201ff1ef0",
+      "size_in_bytes": 450481121
+    },
+    {
+      "id": 10509301244,
+      "name": "installer-windows-x64",
+      "digest": "sha256:bc8365469295ce51eaeca147f804792caf11171f36176f39d3c30b6f27f1ffa3",
+      "size_in_bytes": 699671923
+    },
+    {
+      "id": 10509056897,
+      "name": "archive-linux-x64",
+      "digest": "sha256:ee59a9bb2f5c6f01c1b02c4d148bbe026b77a7c0a5171adff3b4ce6229feb5b9",
+      "size_in_bytes": 556647347
+    },
+    {
+      "id": 10508916671,
+      "name": "installer-linux-x64",
+      "digest": "sha256:def2002e0d258bb5979f1247423ececdb889b05dd0280743c5f94ca77442821c",
+      "size_in_bytes": 999859721
+    },
+    {
+      "id": 10508561956,
+      "name": "archive-macos-arm64",
+      "digest": "sha256:3374e8e24b1d7f5fb829626be5eb842e7d0b3c5346cb6b358999a51ac6811ed5",
+      "size_in_bytes": 391581695
+    },
+    {
+      "id": 10508489569,
+      "name": "archive-windows-x64",
+      "digest": "sha256:0793a05b3499e07a4e4ee84659fdf8f0e6efa848ddaec77f16364f3d2d26360c",
+      "size_in_bytes": 456348441
+    },
+    {
+      "id": 10508154897,
+      "name": "installer-macos-arm64",
+      "digest": "sha256:da1abf188330a741fce1ff966ff157690cbd4c4a3ee5b74ddc8e6d424cd51280",
+      "size_in_bytes": 426295675
+    }
+  ]
+}

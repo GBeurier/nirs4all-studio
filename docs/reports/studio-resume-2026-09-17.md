@@ -75,9 +75,13 @@ de vérification. La publication Intel a été bloquée par le gate correspondan
   et le Python système 3.11. Les premiers essais avaient omis le chemin Methods,
   puis sélectionné le lien symbolique du venv, refusé par le contrôle de l'hôte.
 - `cargo fmt --check` et `cargo clippy --all-targets -- -D warnings` : réussis.
-- Le diagnostic Mac Intel est terminé ; le produit de remplacement 0.11.6 doit
-  encore passer ses propres contrôles d'installation et de migration.
+- Le diagnostic Mac Intel est terminé. La candidate 0.11.6 a été arrêtée après
+  un faux refus du contrôle ELF Linux ; le correctif est livré dans la candidate
+  0.11.7, dont les quatre installations réelles et migrations ont réussi.
+- Docker 0.11.7 est publié et vérifié anonymement. La publication desktop reste
+  suivie dans le [rapport final de livraison](studio-delivery-0.11.7-2026-09-17.md),
+  avec les preuves de chaque plateforme et les erreurs de transfert GitHub.
 
-Les nouveaux commits ne modifient pas les binaires publics 0.11.5. L'amélioration
-de réactivité déjà présente sur `main` avant le crash reste également distincte
-de ces binaires. Toute nouvelle livraison doit repasser ses qualifications.
+Les fichiers publics 0.11.5 restent inchangés. L'amélioration de réactivité
+déjà présente sur `main` avant le crash est incluse dans les paquets 0.11.7
+qualifiés, avec les correctifs de setup et de démarrage à froid de cette reprise.
