@@ -125,8 +125,9 @@ jobs:
           sudo apt-get install -y xvfb libgomp1 libtbb12 "$INSTALLER"
           PACKAGE_NAME="$(dpkg-deb -f "$INSTALLER" Package)"
           test "$(dpkg-query -W -f='${Version}' "$PACKAGE_NAME")" = '0.11.5'
-          APP_EXECUTABLE="$(dpkg -L "$PACKAGE_NAME" | awk '/\/nirs4all-webapp$/ { print }')"
-          test -f "$APP_EXECUTABLE"
+          APP_EXECUTABLE="$(dpkg -L "$PACKAGE_NAME" | awk '/^\/opt\/.*\/nirs4all-webapp$/ { print }')"
+          echo "Installed executable: $APP_EXECUTABLE"
+          test -x "$APP_EXECUTABLE"
           echo "INSTALLED_ROOT=$(dirname "$APP_EXECUTABLE")" >> "$GITHUB_ENV"
       - name: Install the application from the actual DMG
         if: matrix.platform == 'darwin'
@@ -150,9 +151,9 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
-          LAUNCH=()
-          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a); fi
-          "${LAUNCH[@]}" node qualified-source/scripts/smoke-archive-standalone.cjs --extracted-root "$INSTALLED_ROOT" --platform "$PLATFORM" --timeout-ms 360000 2>&1 | tee "$RUNNER_TEMP/installed-smoke.log"
+          LAUNCH=(node)
+          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a node); fi
+          "${LAUNCH[@]}" qualified-source/scripts/smoke-archive-standalone.cjs --extracted-root "$INSTALLED_ROOT" --platform "$PLATFORM" --timeout-ms 360000 2>&1 | tee "$RUNNER_TEMP/installed-smoke.log"
       - name: Install only the real renderer test driver
         working-directory: qualified-source
         run: npm ci --ignore-scripts
@@ -162,9 +163,9 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
-          LAUNCH=()
-          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a); fi
-          "${LAUNCH[@]}" node qualified-source/scripts/smoke-first-launch-ui.cjs --extracted-root "$INSTALLED_ROOT" --platform "$PLATFORM" --timeout-ms 360000 2>&1 | tee "$RUNNER_TEMP/installed-ui.log"
+          LAUNCH=(node)
+          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a node); fi
+          "${LAUNCH[@]}" qualified-source/scripts/smoke-first-launch-ui.cjs --extracted-root "$INSTALLED_ROOT" --platform "$PLATFORM" --timeout-ms 360000 2>&1 | tee "$RUNNER_TEMP/installed-ui.log"
       - name: Migrate actual public 0.11.4 to exact F314 and cold boot offline
         timeout-minutes: 20
         env:
@@ -172,9 +173,9 @@ jobs:
           CANDIDATE_ARCHIVE: ${{ steps.candidate.outputs.archive }}
         run: |
           set -euo pipefail
-          LAUNCH=()
-          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a); fi
-          "${LAUNCH[@]}" node scripts/verify-real-release-update.cjs qualified-source 0.11.4 0.11.5 "$CANDIDATE_ARCHIVE" 2>&1 | tee "$RUNNER_TEMP/migration.log"
+          LAUNCH=(node)
+          if [ "$PLATFORM" = linux ]; then LAUNCH=(xvfb-run -a node); fi
+          "${LAUNCH[@]}" scripts/verify-real-release-update.cjs qualified-source 0.11.4 0.11.5 "$CANDIDATE_ARCHIVE" 2>&1 | tee "$RUNNER_TEMP/migration.log"
       - name: Preserve installation and real migration evidence
         if: always()
         uses: actions/upload-artifact@v4
