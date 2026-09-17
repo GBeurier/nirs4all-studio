@@ -108,6 +108,17 @@ jobs:
         run: |
           node qualified-source/scripts/smoke-archive-standalone.cjs --extracted-root "$env:INSTALLED_ROOT" --platform win32 --timeout-ms 360000
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install only the real renderer test driver
+        working-directory: qualified-source
+        run: npm ci --ignore-scripts
+      - name: Prove actual first setup and developer preference in installed Windows UI
+        timeout-minutes: 10
+        shell: pwsh
+        env:
+          INSTALLED_ROOT: ${{ steps.install.outputs.root }}
+        run: |
+          node qualified-source/scripts/smoke-first-launch-ui.cjs --extracted-root "$env:INSTALLED_ROOT" --platform win32 --timeout-ms 360000
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Migrate actual previous release to exact candidate and cold boot offline
         timeout-minutes: 15
         shell: pwsh

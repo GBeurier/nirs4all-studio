@@ -554,11 +554,21 @@ mod tests {
                     if payload.get("record").is_some() {
                         return Ok(payload["record"]["config"].clone());
                     }
-                    assert_eq!(payload["files"][0]["path"], json!(canonical_path));
+                    assert_eq!(
+                        Path::new(payload["files"][0]["path"].as_str().unwrap())
+                            .canonicalize()
+                            .unwrap(),
+                        canonical_path
+                    );
                     return Ok(json!({"train_x":path,"global_params":{"has_header":true}}));
                 }
                 assert_eq!(operation, "dataset.preview");
-                assert_eq!(payload["config"]["train_x"], json!(canonical_path));
+                assert_eq!(
+                    Path::new(payload["config"]["train_x"].as_str().unwrap())
+                        .canonicalize()
+                        .unwrap(),
+                    canonical_path
+                );
                 assert_eq!(payload["max_samples"], 7);
                 Ok(
                     json!({"success":true,"summary":{"num_samples":2,"num_features":2},
@@ -649,7 +659,12 @@ mod tests {
             if operation == "dataset.configure" {
                 return Ok(payload["record"]["config"].clone());
             }
-            assert_eq!(payload["config"]["train_x"], json!(canonical_file));
+            assert_eq!(
+                Path::new(payload["config"]["train_x"].as_str().unwrap())
+                    .canonicalize()
+                    .unwrap(),
+                canonical_file
+            );
             assert_eq!(operation, "dataset.stats");
             assert_eq!(payload["partition"], "all");
             Ok(json!({"partition":"all","global":{"num_samples":2}}))

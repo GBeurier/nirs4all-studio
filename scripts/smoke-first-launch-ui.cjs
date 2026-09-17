@@ -26,6 +26,11 @@ async function main() {
   env.SENTRY_DSN = "";
   let app;
   const errors = [];
+  const diagnostics = [];
+  const record = message => {
+    diagnostics.push(String(message).slice(0, 1500));
+    if (diagnostics.length > 40) diagnostics.shift();
+  };
   const launch = async () => {
     app = await electron.launch({
       executablePath: layout.executablePath,
@@ -34,7 +39,25 @@ async function main() {
       env,
       timeout: config.timeoutMs,
     });
-    const page = await app.firstWindow({ timeout: config.timeoutMs });
+    app.process().stderr.on("data", chunk => record(`Electron: ${chunk}`));
+    // The splash can be the first window on a cold restart. Select the
+    // privileged Studio renderer rather than racing a soon-to-close splash.
+    let page;
+    await expect.poll(async () => {
+      for (const candidate of app.windows()) {
+        try {
+          if (await candidate.evaluate(() => Boolean(window.electronApi?.isElectron))) {
+            page = candidate;
+            return true;
+          }
+        } catch { /* A splash or navigation may disappear during inspection. */ }
+      }
+      return false;
+    }, { timeout: config.timeoutMs }).toBe(true);
+    page.setDefaultTimeout(config.timeoutMs);
+    page.setDefaultNavigationTimeout(config.timeoutMs);
+    page.on("console", message => { if (message.type() === "error") record(`Console: ${message.text()}`); });
+    page.on("requestfailed", request => record(`Request: ${request.method()} ${request.url()} ${request.failure()?.errorText}`));
     page.on("pageerror", error => { errors.push(error.message); if (errors.length > 20) errors.shift(); });
     return page;
   };
@@ -54,7 +77,8 @@ async function main() {
     console.log("First setup verified bundled packages and opened datasets without skipping setup.");
 
     const toggle = await openAdvanced(page);
-    await expect(toggle).toBeEnabled({ timeout: 30000 });
+    await expect(toggle).toBeEnabled({ timeout: config.timeoutMs });
+    const saveStarted = Date.now();
     await toggle.check();
     // Read the actual stored preference; optimistic switch state is not proof.
     await expect.poll(async () => {
@@ -63,14 +87,21 @@ async function main() {
           headers: { "X-Nirs4all-Session": env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN },
           signal: AbortSignal.timeout(5000),
         });
-        if (!response.ok) return false;
+        if (!response.ok) {
+          record(`Preference poll: HTTP ${response.status} after ${Date.now() - saveStarted}ms`);
+          return false;
+        }
         return (await response.json()).ui_preferences?.developer_mode === true;
-      } catch { return false; }
-    }, { timeout: 30000 }).toBe(true);
+      } catch (error) {
+        record(`Preference poll: ${error.message} after ${Date.now() - saveStarted}ms`);
+        return false;
+      }
+    }, { timeout: config.timeoutMs }).toBe(true);
+    console.log(`Developer preference persisted after ${Date.now() - saveStarted}ms.`);
 
     await page.reload();
     const reloadedToggle = await openAdvanced(page);
-    await expect(reloadedToggle).toHaveAttribute("aria-checked", "true", { timeout: 30000 });
+    await expect(reloadedToggle).toHaveAttribute("aria-checked", "true", { timeout: config.timeoutMs });
     console.log("Developer mode saved without a workspace and survived renderer reload.");
 
     await app.close();
@@ -81,6 +112,7 @@ async function main() {
     console.log("First-launch UI smoke passed: installed runtime, setup, Settings, saved preference, reload and app restart.");
   } catch (error) {
     console.error("Renderer errors:", errors.join("\n") || "none");
+    console.error("Recent transport diagnostics:", diagnostics.join("\n") || "none");
     if (app) {
       for (const page of app.windows()) {
         console.error("Current page:", page.url());

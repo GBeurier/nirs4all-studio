@@ -393,7 +393,12 @@ mod tests {
         };
         let result =
             prediction_payload(root.path(), &request, &|_| Ok(record.clone()), &adapt).unwrap();
-        assert_eq!(result["config"]["train_x"], json!(canonical_x));
+        assert_eq!(
+            Path::new(result["config"]["train_x"].as_str().unwrap())
+                .canonicalize()
+                .unwrap(),
+            canonical_x
+        );
         assert_eq!(result["partition"], "test");
         let escaped = json!({"train_x":outside.path()});
         assert!(
