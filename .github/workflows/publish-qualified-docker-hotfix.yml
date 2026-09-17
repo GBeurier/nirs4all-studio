@@ -1,0 +1,157 @@
+name: Qualify and publish Docker hotfix 0.11.5
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the newly qualified image to GHCR 0.11.5 and latest
+        required: true
+        type: boolean
+        default: false
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: docker-hotfix-0.11.5
+  cancel-in-progress: false
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    env:
+      PRODUCT_SHA: f314cdb223cd77ce1a3fb6d336cca82206cd02a4
+      RELEASE_VERSION: 0.11.5
+      IMAGE: ghcr.io/gbeurier/nirs4all-studio
+      CANDIDATE: nirs4all-studio:qualified-hotfix
+    steps:
+      - name: Verify exact source and existing public stable release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = 'GBeurier', repo = 'nirs4all-studio';
+            const sha = process.env.PRODUCT_SHA;
+            if (context.repo.owner !== owner || context.repo.repo !== repo) throw new Error('Unexpected repository');
+            const release = (await github.rest.repos.getLatestRelease({owner,repo})).data;
+            if (release.tag_name !== '0.11.5' || release.draft || release.prerelease) throw new Error('0.11.5 must already be public stable');
+            const tag = (await github.rest.git.getRef({owner,repo,ref:'tags/0.11.5'})).data.object;
+            if (tag.type !== 'commit' || tag.sha !== sha) throw new Error('Tag does not point directly to qualified F314');
+            const run = (await github.rest.actions.getWorkflowRun({owner,repo,run_id:35216053291})).data;
+            if (run.head_sha !== sha) throw new Error('Source qualification SHA mismatch');
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun,{owner,repo,run_id:35216053291,per_page:100});
+            for (const id of [105184723359,105184723431,105184723339,105184723363]) {
+              if (!jobs.some(job=>job.id===id && job.conclusion==='success')) throw new Error(`Missing successful source qualification ${id}`);
+            }
+            const e2e = (await github.rest.actions.getWorkflowRun({owner,repo,run_id:35216025664})).data;
+            if (e2e.head_sha !== sha || e2e.conclusion !== 'success') throw new Error('Exact source E2E did not pass');
+      - name: Refuse an existing public 0.11.5 Docker tag
+        run: |
+          cat > "$RUNNER_TEMP/assert-docker-hotfix-tag-absent.cjs" <<'JS'
+          const registry = 'https://ghcr.io';
+          const repository = 'gbeurier/nirs4all-studio';
+          const options = { signal: AbortSignal.timeout(30000) };
+          (async () => {
+            const tokenResponse = await fetch(`${registry}/token?service=ghcr.io&scope=repository:${repository}:pull`, options);
+            if (!tokenResponse.ok) throw Error(`Cannot inspect public registry: token HTTP ${tokenResponse.status}`);
+            const { token } = await tokenResponse.json();
+            if (!token) throw Error('Registry did not return a pull token');
+            const response = await fetch(`${registry}/v2/${repository}/manifests/0.11.5`, {
+              method: 'HEAD', signal: AbortSignal.timeout(30000),
+              headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json' },
+            });
+            if (response.status !== 404) throw Error(`Refusing Docker publication: version 0.11.5 must be absent, HTTP ${response.status}`);
+            console.log('Verified public Docker tag 0.11.5 does not exist');
+          })().catch(error => { console.error(error.message); process.exitCode = 1; });
+          JS
+          node "$RUNNER_TEMP/assert-docker-hotfix-tag-absent.cjs"
+      - uses: actions/checkout@v4
+        with:
+          ref: f314cdb223cd77ce1a3fb6d336cca82206cd02a4
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: docker/setup-buildx-action@v3
+      - name: Verify Docker contract and install browser test dependencies
+        run: |
+          npm run test:docker-runtime-contract
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: linux
+          arch: x64
+      - name: Qualify native Archive V2 replay
+        run: npm run test:native-archive-v2
+      - name: Build release image once
+        run: |
+          docker build \
+            --build-arg STUDIO_VERSION="$RELEASE_VERSION" \
+            --build-arg STUDIO_REVISION="$PRODUCT_SHA" \
+            --build-arg NIRS4ALL_METHODS_SHA256="$NIRS4ALL_BUILD_METHODS_SHA256" \
+            --build-context methods-runtime="$(dirname "$NIRS4ALL_BUILD_METHODS_LIBRARY")" \
+            --label "org.opencontainers.image.title=nirs4all Studio" \
+            --label "org.opencontainers.image.version=$RELEASE_VERSION" \
+            --label "org.opencontainers.image.source=https://github.com/GBeurier/nirs4all-studio" \
+            --label "org.opencontainers.image.revision=$PRODUCT_SHA" \
+            --tag "$CANDIDATE" .
+      - name: Verify image identity and qualify actual container and Chromium access
+        run: |
+          mkdir -p docker-proof
+          docker image inspect "$CANDIDATE" > docker-proof/image-inspect.json
+          docker run --rm --entrypoint cat "$CANDIDATE" /etc/nirs4all-studio-build-info.json > docker-proof/build-info.json
+          node -e 'const fs=require("fs"), b=JSON.parse(fs.readFileSync("docker-proof/build-info.json")), i=JSON.parse(fs.readFileSync("docker-proof/image-inspect.json"))[0]; if(b.version!==process.env.RELEASE_VERSION||b.revision!==process.env.PRODUCT_SHA||i.Config.Labels["org.opencontainers.image.revision"]!==process.env.PRODUCT_SHA) throw Error("Image source/version mismatch");fs.writeFileSync("docker-proof/image-id",i.Id+"\n")'
+          bash scripts/smoke-docker-native-runtime.sh "$CANDIDATE" 2>&1 | tee docker-proof/native-smoke.log
+          node scripts/test-docker-access.cjs "$CANDIDATE" --browser 2>&1 | tee docker-proof/browser-access.log
+      - name: Preserve exact qualified bytes before publication
+        run: |
+          docker save "$CANDIDATE" | gzip -1 > docker-proof/qualified-image.tar.gz
+          (cd docker-proof && sha256sum qualified-image.tar.gz > qualified-image.tar.gz.sha256)
+      - name: Upload reusable qualified image and proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualified-docker-0.11.5-linux-amd64
+          path: docker-proof/
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+      - name: Login to GitHub Container Registry
+        if: inputs.publish
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish and verify the exact qualified image
+        if: inputs.publish
+        run: |
+          node "$RUNNER_TEMP/assert-docker-hotfix-tag-absent.cjs"
+          expected_id=$(cat docker-proof/image-id)
+          test "$(docker image inspect "$CANDIDATE" --format '{{.Id}}')" = "$expected_id"
+          docker tag "$CANDIDATE" "$IMAGE:$RELEASE_VERSION"
+          docker push "$IMAGE:$RELEASE_VERSION" 2>&1 | tee docker-proof/version-push.log
+          docker pull "$IMAGE:$RELEASE_VERSION"
+          test "$(docker image inspect "$IMAGE:$RELEASE_VERSION" --format '{{.Id}}')" = "$expected_id"
+          docker tag "$CANDIDATE" "$IMAGE:latest"
+          docker push "$IMAGE:latest" 2>&1 | tee docker-proof/latest-push.log
+          docker pull "$IMAGE:latest"
+          test "$(docker image inspect "$IMAGE:latest" --format '{{.Id}}')" = "$expected_id"
+          docker image inspect "$IMAGE:$RELEASE_VERSION" "$IMAGE:latest" > docker-proof/published-image-inspect.json
+      - name: Upload final publication metadata and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-0.11.5-publication-proof
+          path: |
+            docker-proof/*.json
+            docker-proof/*.log
+            docker-proof/image-id
+            docker-proof/*.sha256
+          if-no-files-found: warn
+          retention-days: 30
