@@ -34,6 +34,13 @@ Les tests de workflow évaluent les conditions de publication pour plusieurs com
 
 Ces limites interdisent de promettre l’absence de tout bug. Les protections ajoutées visent à rendre reproductibles les incidents observés et à empêcher leur publication silencieuse.
 
+## Revue complémentaire pendant la préparation de la release
+
+- Un vrai premier lancement Electron Linux, piloté par Playwright dans un profil vierge, a validé la vérification du runtime puis l'ouverture des datasets sans `skip-setup`.
+- La revue de l'écran Settings a retrouvé un verrou résiduel du bouton développeur en l'absence de workspace. Il est retiré ; le test du vrai Switch a échoué avant correction et passe après correction.
+- Le build Docker distant a détecté `libtbb.so.12` manquante pour l'extension Numba apportée par SHAP. Le runtime installe maintenant `libtbb12` ; le contrôle de toutes les dépendances ELF reste bloquant.
+- Le workflow manuel `windows-real-install-update.yml` exécute réellement l'installateur NSIS, puis migre l'archive publique précédente vers les octets du candidat qualifié, sans reconstruire l'application. Il contrôle les SHA, les versions source/cible, le remplacement des anciens fichiers, la relance scientifique et un démarrage à froid offline. Son résultat doit être enregistré avant de considérer ces deux lacunes closes pour Windows.
+
 ## Livraison urgente
 
 La dernière version publique constatée est **0.11.4**. Le correctif préparé est **0.11.5**, avec priorité aux installateurs Windows et à l’archive utilisée pour la mise à jour. La publication doit suivre les contrôles du paquet Windows et du self-update ; les résultats de build et l’URL de la release sont consignés dans le suivi de livraison.

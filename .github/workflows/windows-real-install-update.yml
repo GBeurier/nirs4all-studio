@@ -1,0 +1,130 @@
+name: Windows real installation and N-1 update
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Release run providing the qualified Windows artifacts
+        required: true
+        type: string
+      from_version:
+        description: Previous public release without v prefix
+        required: true
+        type: string
+        default: '0.11.4'
+      to_version:
+        description: Candidate release without v prefix
+        required: true
+        type: string
+        default: '0.11.5'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  real-install-update:
+    runs-on: windows-2022
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Wait for successful Windows jobs and acquire their exact artifacts
+        id: candidate
+        timeout-minutes: 25
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          TARGET_VERSION: ${{ inputs.to_version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RELEASE_RUN_ID -notmatch '^\d+$') { throw 'Invalid run id' }
+          if ($env:TARGET_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid target version' }
+          $run = gh api "repos/$env:GH_REPO/actions/runs/$env:RELEASE_RUN_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read release run' }
+          if ($run.event -ne 'push' -or $run.path -ne '.github/workflows/release-unified.yml') { throw 'Expected an actual tag release workflow run' }
+          if ($run.head_branch -ne $env:TARGET_VERSION -and $run.head_branch -ne "v$env:TARGET_VERSION") { throw 'Release run does not match target version' }
+          "sha=$($run.head_sha)" >> $env:GITHUB_OUTPUT
+          $wantedJobs = @('Installer — Windows x64', 'All-in-one — Windows x64')
+          $deadline = (Get-Date).AddMinutes(23)
+          do {
+            $jobs = (gh api "repos/$env:GH_REPO/actions/runs/$env:RELEASE_RUN_ID/jobs?per_page=100" | ConvertFrom-Json).jobs
+            if ($LASTEXITCODE -ne 0) { throw 'Could not read jobs' }
+            $selected = @($jobs | Where-Object { $_.name -in $wantedJobs })
+            $bad = @($selected | Where-Object { $_.status -eq 'completed' -and $_.conclusion -ne 'success' })
+            if ($bad.Count) { throw "Required Windows build failed: $($bad.name -join ', ')" }
+            $ready = $selected.Count -eq 2 -and @($selected | Where-Object { $_.conclusion -ne 'success' }).Count -eq 0
+            if ($ready) { break }
+            if ((Get-Date) -gt $deadline) { throw 'Timed out waiting for Windows artifacts' }
+            Write-Host 'Waiting for successful Windows installer/archive builds...'
+            Start-Sleep -Seconds 20
+          } while ($true)
+          gh run download $env:RELEASE_RUN_ID -n installer-windows-x64 -D "$env:RUNNER_TEMP\candidate-installer"
+          if ($LASTEXITCODE -ne 0) { throw 'Installer artifact download failed' }
+          gh run download $env:RELEASE_RUN_ID -n archive-windows-x64 -D "$env:RUNNER_TEMP\candidate-archive"
+          if ($LASTEXITCODE -ne 0) { throw 'Archive artifact download failed' }
+      - name: Check out exact release sources for its existing runtime probes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.candidate.outputs.sha }}
+          path: qualified-source
+      - name: Verify hashes and actually install NSIS silently
+        id: install
+        timeout-minutes: 10
+        shell: pwsh
+        env:
+          TARGET_VERSION: ${{ inputs.to_version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem "$env:RUNNER_TEMP\candidate-installer" -Recurse -Filter '*-win-x64.exe')
+          $archives = @(Get-ChildItem "$env:RUNNER_TEMP\candidate-archive" -Recurse -Filter '*-all-in-one-win-x64.zip')
+          if ($installers.Count -ne 1 -or $archives.Count -ne 1) { throw 'Expected exactly one NSIS installer and one archive' }
+          foreach ($file in @($installers[0], $archives[0])) {
+            if (-not $file.Name.Contains("-$env:TARGET_VERSION-")) { throw "Wrong version: $($file.Name)" }
+            $record = (Get-Content -Raw "$($file.FullName).sha256").Trim()
+            if ($record -notmatch '^([a-fA-F0-9]{64})\s+\*?(.+)$') { throw 'Invalid SHA sidecar' }
+            $expectedHash = $Matches[1].ToLower()
+            if ($Matches[2] -cne $file.Name) { throw 'SHA sidecar filename mismatch' }
+            $actualHash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
+            if ($actualHash -cne $expectedHash) { throw "SHA mismatch: $($file.Name)" }
+            Write-Host "$actualHash  $($file.Name)"
+          }
+          $installRoot = Join-Path $env:RUNNER_TEMP 'studio-nsis-installed'
+          if ($installRoot -match '\s') { throw 'Use a temp path without spaces for NSIS /D' }
+          $process = Start-Process -FilePath $installers[0].FullName -ArgumentList @('/S', '/allusers', "/D=$installRoot") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "NSIS failed with exit $($process.ExitCode)" }
+          if (-not (Test-Path "$installRoot\nirs4all Studio.exe")) { throw 'NSIS did not install the actual application in the requested directory' }
+          "root=$installRoot" >> $env:GITHUB_OUTPUT
+          "archive=$($archives[0].FullName)" >> $env:GITHUB_OUTPUT
+      - name: Prove installed NSIS application works offline
+        timeout-minutes: 10
+        shell: pwsh
+        env:
+          INSTALLED_ROOT: ${{ steps.install.outputs.root }}
+        run: |
+          node qualified-source/scripts/smoke-archive-standalone.cjs --extracted-root "$env:INSTALLED_ROOT" --platform win32 --timeout-ms 360000
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Migrate actual previous release to exact candidate and cold boot offline
+        timeout-minutes: 15
+        shell: pwsh
+        env:
+          SOURCE_VERSION: ${{ inputs.from_version }}
+          TARGET_VERSION: ${{ inputs.to_version }}
+          CANDIDATE_ARCHIVE: ${{ steps.install.outputs.archive }}
+        run: |
+          node scripts/verify-real-release-update.cjs qualified-source "$env:SOURCE_VERSION" "$env:TARGET_VERSION" "$env:CANDIDATE_ARCHIVE"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve migration result and bounded application log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-real-install-update-proof
+          path: |
+            ${{ runner.temp }}/studio-real-update-*/result.json
+            ${{ runner.temp }}/studio-real-update-*/application.log
+          if-no-files-found: warn
+          retention-days: 7
