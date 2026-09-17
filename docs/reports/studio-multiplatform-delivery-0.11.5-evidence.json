@@ -1,0 +1,645 @@
+{
+  "version": "0.11.5",
+  "recorded_at": "2026-09-17T13:54:21Z",
+  "platforms": {
+    "windows_x64": {
+      "status": "delivered",
+      "report": "studio-delivery-0.11.5-2026-09-17.md",
+      "evidence": "studio-delivery-0.11.5-evidence.json"
+    },
+    "docker_linux_amd64": {
+      "status": "delivered",
+      "product_commit": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+      "workflow_commit": "59f3020b02c0b3114d8d42f1e775ec2b2b82aee0",
+      "source_qualification": {
+        "run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35216053291",
+        "frontend": {
+          "job_id": 105184723359,
+          "passed": 4143,
+          "skipped": 1
+        },
+        "backend": {
+          "job_id": 105184723431,
+          "passed": 2474,
+          "skipped": 17
+        },
+        "windows_containment": {
+          "job_id": 105184723339,
+          "passed": 309,
+          "skipped": 5
+        },
+        "docker_runtime": {
+          "job_id": 105184723363,
+          "conclusion": "success",
+          "image_id": "sha256:3384be1e5b0000034b7e29a9d5c9efcf00ad087b9e8c237f81ce8b83bca2db82",
+          "image_preserved": false,
+          "version": "ci"
+        },
+        "e2e": {
+          "run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35216025664",
+          "passed": 63,
+          "conclusion": "success"
+        }
+      },
+      "publication_qualification": {
+        "run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35226786609",
+        "job_id": 105220319930,
+        "conclusion": "success",
+        "started_at": "2026-09-17T13:23:43Z",
+        "completed_at": "2026-09-17T13:37:59Z",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:23:44Z",
+            "completed_at": "2026-09-17T13:23:46Z"
+          },
+          {
+            "name": "Verify exact source and existing public stable release",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:23:46Z",
+            "completed_at": "2026-09-17T13:23:47Z"
+          },
+          {
+            "name": "Refuse an existing public 0.11.5 Docker tag",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:23:47Z",
+            "completed_at": "2026-09-17T13:23:48Z"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:23:48Z",
+            "completed_at": "2026-09-17T13:23:50Z"
+          },
+          {
+            "name": "Run actions/setup-node@v4",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:23:50Z",
+            "completed_at": "2026-09-17T13:23:51Z"
+          },
+          {
+            "name": "Run docker/setup-buildx-action@v3",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:23:51Z",
+            "completed_at": "2026-09-17T13:23:56Z"
+          },
+          {
+            "name": "Verify Docker contract and install browser test dependencies",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:23:56Z",
+            "completed_at": "2026-09-17T13:24:40Z"
+          },
+          {
+            "name": "Build exact native Methods runtime",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:24:40Z",
+            "completed_at": "2026-09-17T13:26:36Z"
+          },
+          {
+            "name": "Qualify native Archive V2 replay",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:26:36Z",
+            "completed_at": "2026-09-17T13:28:42Z"
+          },
+          {
+            "name": "Build release image once",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:28:42Z",
+            "completed_at": "2026-09-17T13:35:45Z"
+          },
+          {
+            "name": "Verify image identity and qualify actual container and Chromium access",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:35:45Z",
+            "completed_at": "2026-09-17T13:36:24Z"
+          },
+          {
+            "name": "Preserve exact qualified bytes before publication",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:36:24Z",
+            "completed_at": "2026-09-17T13:36:53Z"
+          },
+          {
+            "name": "Upload reusable qualified image and proof",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:36:53Z",
+            "completed_at": "2026-09-17T13:36:57Z"
+          },
+          {
+            "name": "Login to GitHub Container Registry",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:36:57Z",
+            "completed_at": "2026-09-17T13:36:58Z"
+          },
+          {
+            "name": "Publish and verify the exact qualified image",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:36:58Z",
+            "completed_at": "2026-09-17T13:37:55Z"
+          },
+          {
+            "name": "Upload final publication metadata and logs",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:37:55Z",
+            "completed_at": "2026-09-17T13:37:55Z"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:37:57Z",
+            "completed_at": "2026-09-17T13:37:57Z"
+          }
+        ],
+        "version_push_recorded_at": "2026-09-17T13:37:53.9238720Z",
+        "latest_push_recorded_at": "2026-09-17T13:37:54.8531764Z",
+        "build_info": {
+          "flavor": "native-container",
+          "gpu_enabled": false,
+          "backend": "rust-sidecar",
+          "version": "0.11.5",
+          "revision": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4"
+        },
+        "qualified_image_id": "sha256:3d5bd6eed5b327cce38dd45b49983fedcb65d129f38e0bfe96a0fdf9583e54a3",
+        "native_smoke_log": [
+          "Docker native runtime smoke passed on http://127.0.0.1:32768"
+        ],
+        "browser_access_log": [
+          "PASS actual Chromium authenticated navigation, fetch, JSON mutation and WebSocket",
+          "PASS Docker access: default refusal; explicit local mode; authenticated SPA/HTTP/WS; cross-origin and public health refusal (product image)"
+        ],
+        "preserved_image_artifact": {
+          "id": 10499614287,
+          "name": "qualified-docker-0.11.5-linux-amd64",
+          "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35226786609/artifacts/10499614287",
+          "size_in_bytes": 577805645,
+          "retention_days": 14,
+          "format": "gzip-compressed docker save archive",
+          "file": "qualified-image.tar.gz",
+          "sha256": "f32905616e4659e28bde2ee824807a9d567570307035a011faaac10af241ce9d"
+        },
+        "publication_proof_artifact": {
+          "id": 10499689452,
+          "name": "docker-0.11.5-publication-proof",
+          "url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35226786609/artifacts/10499689452",
+          "retention_days": 30
+        }
+      },
+      "independent_public_verification": {
+        "success": true,
+        "verified_at": "2026-09-17T13:39:52.138Z",
+        "unauthenticated": true,
+        "registry": "https://ghcr.io",
+        "repository": "gbeurier/nirs4all-studio",
+        "source_sha": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+        "expected_qualified_image_id": "sha256:3d5bd6eed5b327cce38dd45b49983fedcb65d129f38e0bfe96a0fdf9583e54a3",
+        "previous_tag_unchanged": true,
+        "images": [
+          {
+            "tag": "0.11.5",
+            "digest": "sha256:6c6e4629ee30cafc0bcac97a1e26800ff93a2e23b701aae2431510cead6305aa",
+            "amd64_manifest_digest": "sha256:6c6e4629ee30cafc0bcac97a1e26800ff93a2e23b701aae2431510cead6305aa",
+            "image_id": "sha256:3d5bd6eed5b327cce38dd45b49983fedcb65d129f38e0bfe96a0fdf9583e54a3",
+            "labels": {
+              "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>",
+              "org.opencontainers.image.revision": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+              "org.opencontainers.image.source": "https://github.com/GBeurier/nirs4all-studio",
+              "org.opencontainers.image.title": "nirs4all Studio",
+              "org.opencontainers.image.version": "0.11.5"
+            },
+            "architecture": "amd64",
+            "os": "linux"
+          },
+          {
+            "tag": "latest",
+            "digest": "sha256:6c6e4629ee30cafc0bcac97a1e26800ff93a2e23b701aae2431510cead6305aa",
+            "amd64_manifest_digest": "sha256:6c6e4629ee30cafc0bcac97a1e26800ff93a2e23b701aae2431510cead6305aa",
+            "image_id": "sha256:3d5bd6eed5b327cce38dd45b49983fedcb65d129f38e0bfe96a0fdf9583e54a3",
+            "labels": {
+              "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>",
+              "org.opencontainers.image.revision": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+              "org.opencontainers.image.source": "https://github.com/GBeurier/nirs4all-studio",
+              "org.opencontainers.image.title": "nirs4all Studio",
+              "org.opencontainers.image.version": "0.11.5"
+            },
+            "architecture": "amd64",
+            "os": "linux"
+          },
+          {
+            "tag": "0.11.4",
+            "digest": "sha256:4f5f66e873ed2ddb4640a66180048b733a1b69646ec04fd4daceff887888ba1c",
+            "amd64_manifest_digest": "sha256:4b9f62f56c065ecee3416dd7c5ef5644e287e3c6a6181fee6df14b6f05cc3b2f",
+            "image_id": "sha256:c995299fbf1fa47a5ba91343e109c3a0fe7258a6b43d3b9e89fd99734f7ab3f4",
+            "labels": {
+              "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>",
+              "org.opencontainers.image.revision": "ad8051e64049925aa7ff7710693d42d4eba8e143",
+              "org.opencontainers.image.source": "https://github.com/GBeurier/nirs4all-studio",
+              "org.opencontainers.image.title": "nirs4all Studio",
+              "org.opencontainers.image.version": "0.11.4"
+            },
+            "architecture": "amd64",
+            "os": "linux"
+          }
+        ]
+      },
+      "limits": [
+        "Linux amd64 CPU image only; no Docker arm64 or GPU qualification.",
+        "Existing user Docker volumes and migration of stored workspaces were not exercised.",
+        "Anonymous verification read registry manifests and image configuration; it did not independently download every layer or start a second remote container. The CI pushed and pulled the tested image and checked its image ID.",
+        "The original CI image was not preserved and had version ci; the release image was rebuilt once from F314, qualified, preserved and pushed without a subsequent rebuild."
+      ]
+    },
+    "linux_desktop_x64": {
+      "status": "delivered",
+      "product_commit": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+      "source_build_run": "35216053291",
+      "qualification_workflow_commit": "47fddff8a4478d940325b3abd5886747055b1b49",
+      "qualification_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35227750924",
+      "qualification_job": {
+        "id": 105223568589,
+        "conclusion": "success",
+        "completed_at": "2026-09-17T13:44:57Z",
+        "steps": [
+          {
+            "name": "Install the actual DEB package",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:33:27Z",
+            "completed_at": "2026-09-17T13:34:35Z"
+          },
+          {
+            "name": "Install the application from the actual DMG",
+            "conclusion": "skipped",
+            "started_at": "2026-09-17T13:34:35Z",
+            "completed_at": "2026-09-17T13:34:35Z"
+          },
+          {
+            "name": "Prove the installed application works offline",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:34:35Z",
+            "completed_at": "2026-09-17T13:36:32Z"
+          },
+          {
+            "name": "Install only the real renderer test driver",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:36:32Z",
+            "completed_at": "2026-09-17T13:36:49Z"
+          },
+          {
+            "name": "Prove first setup, saved preference, reload and restart in installed UI",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:36:49Z",
+            "completed_at": "2026-09-17T13:40:12Z"
+          },
+          {
+            "name": "Migrate actual public 0.11.4 to exact F314 and cold boot offline",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:40:12Z",
+            "completed_at": "2026-09-17T13:44:53Z"
+          },
+          {
+            "name": "Preserve installation and real migration evidence",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:44:53Z",
+            "completed_at": "2026-09-17T13:44:54Z"
+          }
+        ]
+      },
+      "candidate": {
+        "product_sha": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+        "source_run": "35216053291",
+        "archive": {
+          "name": "nirs4all Studio-0.11.5-all-in-one-linux-x64.tar.gz",
+          "sha256": "c870a4d2248e9ae7ded017b14017df189f5feea70f45ed6935d5205f7e8639bf"
+        },
+        "installer": {
+          "name": "nirs4all Studio-0.11.5-linux-amd64.deb",
+          "sha256": "380069f5ab3fbe47a6bf23a541e01cf0e90e418fb903ddc61279b640afb6a9b5"
+        }
+      },
+      "real_previous_version_migration": {
+        "success": true,
+        "from": "0.11.4",
+        "to": "0.11.5",
+        "source": "qualified-candidate-fixture",
+        "target_archive_sha256": "c870a4d2248e9ae7ded017b14017df189f5feea70f45ed6935d5205f7e8639bf",
+        "old_archive_sha256": "f71b5a4ac55be8f015d069d0b045554bf47df0382d872cafcb0f7c835aa110bc",
+        "target_asset": "nirs4all.Studio-0.11.5-all-in-one-linux-x64.tar.gz",
+        "apply_result": {
+          "status": "success",
+          "from_version": "0.11.4",
+          "to_version": "0.11.5",
+          "current_version": "0.11.5",
+          "reconciled_at": "2026-09-17T13:41:21.379Z",
+          "relaunch_pid": 7601,
+          "backup_path": "/home/runner/work/_temp/studio-real-update-1veTHH/installed/.nirs4all Studio.nirs4all-backup-7598"
+        },
+        "offline_cold_boot": true
+      },
+      "installed_ui_log": [
+        "First-launch UI sandbox: /tmp/studio-first-launch-ui-96XIUr",
+        "First setup verified bundled packages and opened datasets without skipping setup.",
+        "Developer preference persisted after 34753ms.",
+        "Developer mode saved without a workspace and survived renderer reload.",
+        "First-launch UI smoke passed: installed runtime, setup, Settings, saved preference, reload and app restart."
+      ],
+      "publication_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35227918753",
+      "independent_public_verification": {
+        "success": true,
+        "verified_at": "2026-09-17T13:48:18.716Z",
+        "unauthenticated": true,
+        "platform": "linux-x64",
+        "product_sha": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+        "qualification_run": "35227750924",
+        "source_run": "35216053291",
+        "release_url": "https://github.com/GBeurier/nirs4all-studio/releases/tag/0.11.5",
+        "windows_assets_unchanged": true,
+        "assets": [
+          {
+            "name": "nirs4all.Studio-0.11.5-all-in-one-linux-x64.tar.gz",
+            "sha256": "c870a4d2248e9ae7ded017b14017df189f5feea70f45ed6935d5205f7e8639bf",
+            "size": 560044351,
+            "created_at": "2026-09-17T13:46:19Z",
+            "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-all-in-one-linux-x64.tar.gz"
+          },
+          {
+            "name": "nirs4all.Studio-0.11.5-linux-amd64.deb",
+            "sha256": "380069f5ab3fbe47a6bf23a541e01cf0e90e418fb903ddc61279b640afb6a9b5",
+            "size": 445718708,
+            "created_at": "2026-09-17T13:46:39Z",
+            "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-linux-amd64.deb"
+          },
+          {
+            "name": "nirs4all.Studio-0.11.5-linux-x86_64.AppImage",
+            "sha256": "e4be44160f80b654fa54d8d5aca2c824e7786ae8383a9d663c5ceae6d19f283f",
+            "size": 556918948,
+            "created_at": "2026-09-17T13:46:52Z",
+            "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-linux-x86_64.AppImage"
+          }
+        ]
+      },
+      "limits": [
+        "DEB installation and UI were exercised; AppImage FUSE qualification is recorded separately.",
+        "Existing user workspaces and uninstall/data-retention were not qualified."
+      ],
+      "actual_appimage_qualification": {
+        "run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35229689810",
+        "workflow_commit": "e953b74ea2f6c6503d5f1a530a4456ace5a3550b",
+        "job_id": 105230234803,
+        "completed_at": "2026-09-17T13:54:21Z",
+        "result": {
+          "success": true,
+          "version": "0.11.5",
+          "appimage_sha256": "e4be44160f80b654fa54d8d5aca2c824e7786ae8383a9d663c5ceae6d19f283f",
+          "actual_fuse_launch": true,
+          "mounted_processes": [
+            {
+              "pid": 2815,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy",
+              "executable": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy/nirs4all-webapp",
+              "fuse_mounts": [
+                "491 25 0:47 / /home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy ro,nosuid,nodev,relatime shared:226 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            },
+            {
+              "pid": 2825,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy",
+              "executable": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy/nirs4all-webapp",
+              "fuse_mounts": [
+                "491 25 0:47 / /home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy ro,nosuid,nodev,relatime shared:226 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            },
+            {
+              "pid": 2853,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy",
+              "executable": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy/nirs4all-webapp",
+              "fuse_mounts": [
+                "491 25 0:47 / /home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy ro,nosuid,nodev,relatime shared:226 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            },
+            {
+              "pid": 2898,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy",
+              "executable": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy/resources/backend/native/studio-sidecar",
+              "fuse_mounts": [
+                "491 25 0:47 / /home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy ro,nosuid,nodev,relatime shared:226 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            },
+            {
+              "pid": 2907,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy",
+              "executable": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy/nirs4all-webapp",
+              "fuse_mounts": [
+                "491 25 0:47 / /home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy ro,nosuid,nodev,relatime shared:226 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            },
+            {
+              "pid": 3351,
+              "appimage": "/home/runner/work/_temp/installer/nirs4all Studio-0.11.5-linux-x86_64.AppImage",
+              "app_dir": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy",
+              "executable": "/home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy/resources/backend/python-runtime/python/bin/python3",
+              "fuse_mounts": [
+                "491 25 0:47 / /home/runner/work/_temp/studio-appimage-NF48DK/profile/tmp/.mount_nirs4aflj4Wy ro,nosuid,nodev,relatime shared:226 - fuse.nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage nirs4all\\040Studio-0.11.5-linux-x86_64.AppImage ro,user_id=1001,group_id=1001"
+              ]
+            }
+          ],
+          "scientific_readiness": true,
+          "installed_product_probe": true,
+          "offline_mode": true,
+          "process_group_stopped": true
+        }
+      }
+    },
+    "macos_arm64": {
+      "status": "delivered",
+      "product_commit": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+      "source_build_run": "35216053291",
+      "qualification_workflow_commit": "47fddff8a4478d940325b3abd5886747055b1b49",
+      "qualification_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35227750924",
+      "qualification_job": {
+        "id": 105223568006,
+        "conclusion": "success",
+        "completed_at": "2026-09-17T13:43:37Z",
+        "steps": [
+          {
+            "name": "Install the actual DEB package",
+            "conclusion": "skipped",
+            "started_at": "2026-09-17T13:33:22Z",
+            "completed_at": "2026-09-17T13:33:22Z"
+          },
+          {
+            "name": "Install the application from the actual DMG",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:33:22Z",
+            "completed_at": "2026-09-17T13:33:33Z"
+          },
+          {
+            "name": "Prove the installed application works offline",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:33:33Z",
+            "completed_at": "2026-09-17T13:35:25Z"
+          },
+          {
+            "name": "Install only the real renderer test driver",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:35:25Z",
+            "completed_at": "2026-09-17T13:35:41Z"
+          },
+          {
+            "name": "Prove first setup, saved preference, reload and restart in installed UI",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:35:41Z",
+            "completed_at": "2026-09-17T13:38:56Z"
+          },
+          {
+            "name": "Migrate actual public 0.11.4 to exact F314 and cold boot offline",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:38:56Z",
+            "completed_at": "2026-09-17T13:43:30Z"
+          },
+          {
+            "name": "Preserve installation and real migration evidence",
+            "conclusion": "success",
+            "started_at": "2026-09-17T13:43:30Z",
+            "completed_at": "2026-09-17T13:43:31Z"
+          }
+        ]
+      },
+      "candidate": {
+        "product_sha": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+        "source_run": "35216053291",
+        "archive": {
+          "name": "nirs4all Studio-0.11.5-all-in-one-mac-arm64.zip",
+          "sha256": "b80a6730dc7442705609fd4f97005da5e276fb11ee118dbb7de1b3ebae8736e2"
+        },
+        "installer": {
+          "name": "nirs4all Studio-0.11.5-mac-arm64.dmg",
+          "sha256": "dcaedc17cb9f205151224f79305a26e6edb23a2c97e58372da2b9990bb70f8d4"
+        }
+      },
+      "real_previous_version_migration": {
+        "success": true,
+        "from": "0.11.4",
+        "to": "0.11.5",
+        "source": "qualified-candidate-fixture",
+        "target_archive_sha256": "b80a6730dc7442705609fd4f97005da5e276fb11ee118dbb7de1b3ebae8736e2",
+        "old_archive_sha256": "daf616baf6a06d859f6f013d239d8bd6d5f69a5811bf5d41b10fd4cb790e1bb5",
+        "target_asset": "nirs4all.Studio-0.11.5-all-in-one-mac-arm64.zip",
+        "apply_result": {
+          "status": "success",
+          "from_version": "0.11.4",
+          "to_version": "0.11.5",
+          "current_version": "0.11.5",
+          "reconciled_at": "2026-09-17T13:40:21.094Z",
+          "relaunch_pid": 32669,
+          "backup_path": "/Users/runner/work/_temp/studio-real-update-xyRlo2/installed/.nirs4all Studio.app.nirs4all-backup-32317"
+        },
+        "offline_cold_boot": true
+      },
+      "installed_ui_log": [
+        "First-launch UI sandbox: /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/studio-first-launch-ui-jjUJJm",
+        "First setup verified bundled packages and opened datasets without skipping setup.",
+        "Developer preference persisted after 33812ms.",
+        "Developer mode saved without a workspace and survived renderer reload.",
+        "First-launch UI smoke passed: installed runtime, setup, Settings, saved preference, reload and app restart."
+      ],
+      "publication_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35227919265",
+      "independent_public_verification": {
+        "success": true,
+        "verified_at": "2026-09-17T13:45:28.343Z",
+        "unauthenticated": true,
+        "platform": "macos-arm64",
+        "product_sha": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+        "qualification_run": "35227750924",
+        "source_run": "35216053291",
+        "release_url": "https://github.com/GBeurier/nirs4all-studio/releases/tag/0.11.5",
+        "windows_assets_unchanged": true,
+        "assets": [
+          {
+            "name": "nirs4all.Studio-0.11.5-all-in-one-mac-arm64.zip",
+            "sha256": "b80a6730dc7442705609fd4f97005da5e276fb11ee118dbb7de1b3ebae8736e2",
+            "size": 397238223,
+            "created_at": "2026-09-17T13:44:08Z",
+            "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-all-in-one-mac-arm64.zip"
+          },
+          {
+            "name": "nirs4all.Studio-0.11.5-mac-arm64.dmg",
+            "sha256": "dcaedc17cb9f205151224f79305a26e6edb23a2c97e58372da2b9990bb70f8d4",
+            "size": 428140893,
+            "created_at": "2026-09-17T13:44:20Z",
+            "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-mac-arm64.dmg"
+          }
+        ]
+      },
+      "limits": [
+        "Existing user workspaces and uninstall/data-retention were not qualified.",
+        "macOS unsigned and unnotarized; no Gatekeeper approval was demonstrated."
+      ]
+    },
+    "macos_x64": {
+      "status": "pending",
+      "note": "Python wheel compatibility correction and new package qualification required before delivery."
+    }
+  },
+  "follow_up_performance_fix": {
+    "commit": "09d74709a35cfae5529dfd980b36a94bfa28b7d4",
+    "included_in_published_0_11_5": false,
+    "scope": "Local prepublication Linux reference identified by component hashes; source commit not asserted; not an F314 or macOS benchmark.",
+    "rust_validation": {
+      "passed": 291,
+      "ignored": 3,
+      "clippy": "success",
+      "format": "success",
+      "release_build": "success",
+      "real_tcp_concurrency_ms": 19.709919,
+      "simulated_attestation_ms": 1000
+    },
+    "ui_experiment": {
+      "cpu_count": 2,
+      "scope": "Instrumented first setup and developer-preference action; not a complete installer qualification.",
+      "preference_observed_ms": {
+        "before": 28718,
+        "after": 343
+      },
+      "click_returned_ms": {
+        "before": 440,
+        "after": 335
+      },
+      "put_total_ms": {
+        "before": 5755,
+        "after": 13
+      },
+      "before_connection_ms": {
+        "before": 5734,
+        "after": 0.7
+      },
+      "request_to_response_ms": {
+        "before": 16.3,
+        "after": 9.4
+      },
+      "payload_comparison": {
+        "checked_regular_files": 11571,
+        "changed": [
+          {
+            "path": "resources/backend/native/STUDIO_RUNTIME_CONTRACT.json",
+            "before_sha256": "576360fbbb0a5b136a6b255650c9236b86e858b44d16d6863a7ae034bcb7ca42",
+            "after_sha256": "56ac008fe7f53db89226f18b60d82d1d8aafdc0e309c07d0103ed6d21f31b15e"
+          },
+          {
+            "path": "resources/backend/native/studio-sidecar",
+            "before_sha256": "11aac8d7c747a4049c3bfa7bed2b4a8a03189c59c9ac159d415b161c3fc7d8f6",
+            "after_sha256": "5ef519adff243ea65380fbc019f0247ed989dfb86934b899c0d8324013fa0a85"
+          }
+        ],
+        "identical_entry_sets": true,
+        "checked_symlinks": 0
+      },
+      "baseline_app_asar_sha256": "32becb33bee80b524eb1d68b0b2a105cd4d213c248353b4bdfecfba33ab9c508",
+      "contract_change": "Only sidecar.size (36739104 -> 36736704) and sidecar.sha256 were updated."
+    }
+  }
+}
