@@ -1,11 +1,15 @@
 import { createRequire } from "node:module";
 import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
+import { execFileSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const archiveBuildModule = require("../scripts/build-archive-standalone.cjs") as {
   getElectronBuilderArgs(config: { platform: string; arch: string }): string[];
+  createWindowsZip(config: { arch: string }, options: { releaseDir: string; pythonPath: string }): Promise<string>;
   parseArgs(argv?: string[]): {
     profile: string;
     platform: string;
@@ -190,5 +194,37 @@ describe("build-archive-standalone", () => {
       "--dir",
       "--arm64",
     ]);
+  });
+
+  it("builds Windows unpacked so the final ZIP can enforce the updater layout", () => {
+    expect(archiveBuildModule.getElectronBuilderArgs({ platform: "win32", arch: "x64" })).toEqual([
+      path.join("node_modules", "electron-builder", "cli.js"),
+      "--config", "electron-builder.archive.yml", "--publish", "never", "--win", "--dir", "--x64",
+    ]);
+  });
+
+  it("creates a real ZIP with one application root and preserves hidden runtime files", async () => {
+    const releaseDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-windows-archive-"));
+    const pythonPath = process.platform === "win32" ? "python" : "python3";
+    try {
+      const appDir = path.join(releaseDir, "win-unpacked");
+      fs.mkdirSync(path.join(appDir, "resources", "backend"), { recursive: true });
+      fs.writeFileSync(path.join(appDir, "nirs4all Studio.exe"), "executable bytes");
+      fs.writeFileSync(path.join(appDir, "resources", "app.asar"), "application bytes");
+      fs.writeFileSync(path.join(appDir, "resources", "backend", ".runtime-identity"), "runtime bytes");
+      const archive = await archiveBuildModule.createWindowsZip({ arch: "x64" }, { releaseDir, pythonPath });
+      const entries = JSON.parse(execFileSync(pythonPath, ["-B", "-I", "-S", "-c", [
+        "import json, sys, zipfile",
+        "with zipfile.ZipFile(sys.argv[1]) as archive:",
+        " print(json.dumps({name: archive.read(name).decode() for name in archive.namelist() if not name.endswith('/')}))",
+      ].join("\n"), archive], { encoding: "utf8" })) as Record<string, string>;
+      expect(entries).toEqual({
+        "nirs4all Studio/nirs4all Studio.exe": "executable bytes",
+        "nirs4all Studio/resources/app.asar": "application bytes",
+        "nirs4all Studio/resources/backend/.runtime-identity": "runtime bytes",
+      });
+    } finally {
+      fs.rmSync(releaseDir, { recursive: true, force: true });
+    }
   });
 });
