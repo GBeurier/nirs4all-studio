@@ -136,7 +136,7 @@ describe("plugin-only CPython runtime", () => {
         "768e65e0ca900f1a50a88a01f6c09cc7870ce033383cac5c968bfac8fee25bbe",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "e96dd6da1c76e3d0f1c6f04331d2bf19a68e7f02875cd17940bff1ea94eba647",
+        sha256: "8a9430806d2fb316ba5a415cd03982bb5a4ea71535cd828fe1b9bdbb40348619",
       },
       platform: "linux",
       arch: "x64",
@@ -166,7 +166,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "e96dd6da1c76e3d0f1c6f04331d2bf19a68e7f02875cd17940bff1ea94eba647",
+      "8a9430806d2fb316ba5a415cd03982bb5a4ea71535cd828fe1b9bdbb40348619",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -174,13 +174,14 @@ describe("plugin-only CPython runtime", () => {
     const linux = pluginRuntime.constrainedDistributionVersions("linux", "x64");
     const linuxArm = pluginRuntime.constrainedDistributionVersions("linux", "arm64");
     const macArm = pluginRuntime.constrainedDistributionVersions("darwin", "arm64");
+    const macIntel = pluginRuntime.constrainedDistributionVersions("darwin", "x64");
     const windows = pluginRuntime.constrainedDistributionVersions("win32", "x64");
     const { PLUGIN_HOST_PACKAGES } = require("../scripts/python-runtime-config.cjs") as {
       PLUGIN_HOST_PACKAGES: string[];
     };
     for (const spec of PLUGIN_HOST_PACKAGES) {
       const [name, version] = spec.split("==");
-      for (const target of [linux, linuxArm, macArm, windows]) {
+      for (const target of [linux, linuxArm, macArm, macIntel, windows]) {
         expect(target.get(name), `${name} must be installed in every packaged host`).toBe(version);
       }
     }
@@ -193,6 +194,14 @@ describe("plugin-only CPython runtime", () => {
     expect(macArm.has("greenlet")).toBe(false);
     expect(windows.get("colorama")).toBe("0.4.6");
     expect(windows.get("tzdata")).toBe("2025.3");
+    expect(macIntel.get("numpy")).toBe("2.3.5");
+    expect(macIntel.get("numba")).toBe("0.62.1");
+    expect(macIntel.get("llvmlite")).toBe("0.45.1");
+    for (const target of [linux, linuxArm, macArm, windows]) {
+      expect(target.get("numpy")).toBe("2.4.6");
+      expect(target.get("numba")).toBe("0.67.0");
+      expect(target.get("llvmlite")).toBe("0.49.0");
+    }
   });
 
   it("binds constraints to checkout bytes and rejects CRLF substitution", () => {
