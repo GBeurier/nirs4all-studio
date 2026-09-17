@@ -1,0 +1,150 @@
+{
+  "schema": "studio.unix-delivery-evidence.v1",
+  "checked_at": "2026-09-17T17:51:54.515093+00:00",
+  "version": "0.11.7",
+  "platform": "macos-arm64",
+  "source_commit": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+  "run_id": 35247378499,
+  "run_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499",
+  "job": {
+    "id": 105312911956,
+    "name": "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 macOS arm64",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at": "2026-09-17T17:38:41Z",
+    "completed_at": "2026-09-17T17:47:58Z",
+    "html_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35247378499/job/105312911956"
+  },
+  "proof_artifact": {
+    "id": 10511209091,
+    "name": "unix-product-proof-macos-arm64",
+    "digest": "sha256:ca2c249c94ede0873186ef9f08950a44370c2746b41d540760ea7c5601aa06e1",
+    "size_in_bytes": 3781,
+    "expired": false,
+    "workflow_run": {
+      "head_branch": "0.11.7",
+      "head_repository_id": 1129999985,
+      "head_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+      "id": 35247378499,
+      "repository_id": 1129999985
+    }
+  },
+  "candidate": {
+    "product_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+    "source_run": "35247378499",
+    "version": "0.11.7",
+    "platform": {
+      "label": "macOS arm64",
+      "runner": "macos-14",
+      "artifact": "macos-arm64",
+      "platform": "darwin",
+      "arch": "arm64",
+      "archive_suffix": "mac-arm64.zip",
+      "installer_suffix": "mac-arm64.dmg",
+      "from_version": "0.11.5",
+      "source_release_id": 390685191,
+      "source_archive_id": 570350171,
+      "source_checksum_id": 570350075
+    },
+    "previous_archive_sha256": "b80a6730dc7442705609fd4f97005da5e276fb11ee118dbb7de1b3ebae8736e2",
+    "installer": {
+      "name": "nirs4all Studio-0.11.7-mac-arm64.dmg",
+      "sha256": "5d8ec00f8fa3aab4da9a2bea6e2239e10f372fe62e51ac6e669416d5ef26e559"
+    },
+    "archive": {
+      "name": "nirs4all Studio-0.11.7-all-in-one-mac-arm64.zip",
+      "sha256": "17aacd052e76a0634b828734366eed4486b9001b72a13d6b028525e7afed53b1"
+    }
+  },
+  "installed_ui": {
+    "first_setup_and_bundled_runtime": true,
+    "developer_preference_persisted_ms": 349,
+    "saved_without_workspace": true,
+    "renderer_reload_passed": true,
+    "application_restart_passed": true,
+    "timing_scope": "Full UI action through stored-preference observation; not PUT-only latency"
+  },
+  "installed_offline_runtime": {
+    "passed": true,
+    "native_training_readiness": true,
+    "inline_playground_executed": true
+  },
+  "migration": {
+    "success": true,
+    "from": "0.11.5",
+    "to": "0.11.7",
+    "source": "qualified-candidate-fixture",
+    "target_archive_sha256": "17aacd052e76a0634b828734366eed4486b9001b72a13d6b028525e7afed53b1",
+    "old_archive_sha256": "b80a6730dc7442705609fd4f97005da5e276fb11ee118dbb7de1b3ebae8736e2",
+    "target_asset": "nirs4all.Studio-0.11.7-all-in-one-mac-arm64.zip",
+    "apply_result": {
+      "status": "success",
+      "from_version": "0.11.5",
+      "to_version": "0.11.7",
+      "current_version": "0.11.7",
+      "reconciled_at": "2026-09-17T17:44:44.044Z",
+      "relaunch_pid": 34450,
+      "backup_path": "/Users/runner/work/_temp/studio-real-update-2nIFHc/installed/.nirs4all Studio.app.nirs4all-backup-33948"
+    },
+    "offline_cold_boot": true
+  },
+  "required_successful_steps": {
+    "Install the application from the actual DMG": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:39:57Z",
+      "completed_at": "2026-09-17T17:40:10Z"
+    },
+    "Verify same-run producers and acquire their exact artifacts": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:38:46Z",
+      "completed_at": "2026-09-17T17:39:56Z"
+    },
+    "Bind candidate filenames and hashes to the product and producer run": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:39:56Z",
+      "completed_at": "2026-09-17T17:39:57Z"
+    },
+    "Prove the installed application works offline": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:40:10Z",
+      "completed_at": "2026-09-17T17:41:29Z"
+    },
+    "Prove first setup, saved preference, reload and restart in installed UI": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:41:46Z",
+      "completed_at": "2026-09-17T17:43:10Z"
+    },
+    "Migrate the actual previous platform release and cold boot offline": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:43:10Z",
+      "completed_at": "2026-09-17T17:47:49Z"
+    },
+    "Verify migration proof is bound to the exact candidate archive": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:47:49Z",
+      "completed_at": "2026-09-17T17:47:49Z"
+    },
+    "Preserve installation and actual platform migration evidence": {
+      "conclusion": "success",
+      "started_at": "2026-09-17T17:47:49Z",
+      "completed_at": "2026-09-17T17:47:51Z"
+    }
+  },
+  "qualified_hashes": {
+    "nirs4all.Studio-0.11.7-mac-arm64.dmg": "5d8ec00f8fa3aab4da9a2bea6e2239e10f372fe62e51ac6e669416d5ef26e559",
+    "nirs4all.Studio-0.11.7-all-in-one-mac-arm64.zip": "17aacd052e76a0634b828734366eed4486b9001b72a13d6b028525e7afed53b1"
+  },
+  "proof_file_sha256": {
+    "candidate-proof.json": "3a7d9a5d5bea83cf16601e702331687a8a65d3d8e2fe548eb5cae3f993ea0840",
+    "installed-smoke.log": "9810834c082b430488bdefa234abd91718fd645c402a4b87997b3f0870dd792e",
+    "installed-ui.log": "7b7d3ef0f46d5667e70f335b4d492fb88a4a1d5fde187babdeb87a3236de58f5",
+    "migration.log": "01b6d3fae820f8a421e47fa9c88ec160428b2b2d0476bcb28768872cfa0e120d",
+    "studio-real-update-2nIFHc/application.log": "a3bb677f98e7da1d55e5b592f22bc508cc0de8cb3e4e6cb282e103297a006f3c",
+    "studio-real-update-2nIFHc/result.json": "b8e2968ccfbb56272e8714e1b31e727fb2b4714841d91655c25fc307401f79e2"
+  },
+  "limits": [
+    "Package payload hashes are from CI qualified candidate evidence; large package binaries were not downloaded again for this evidence collection.",
+    "Linux DEB or macOS DMG installed path and archive migration were exercised; this collection does not independently repeat AppImage FUSE qualification.",
+    "Scientific smoke proves training readiness and Playground execution, not a completed training fit."
+  ]
+}
