@@ -1,0 +1,207 @@
+{
+  "schema": "studio.macintel-first-launch-diagnostic.v1",
+  "recorded_at": "2026-09-17T16:12:34Z",
+  "diagnostic_only": true,
+  "qualifies_automatic_setup": false,
+  "platform": "darwin-x64",
+  "product_version": "0.11.5",
+  "diagnostic": {
+    "run_id": 35243553221,
+    "run_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35243553221",
+    "job_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35243553221/job/105277862261",
+    "workflow": ".github/workflows/diagnose-macintel-first-launch.yml",
+    "source_sha": "fa7b58226ef0eb35563d6bc8ecd7179adebf385b",
+    "conclusion": "failure",
+    "completed_at": "2026-09-17T16:08:50Z",
+    "artifact_id": 10506588563,
+    "artifact_name": "macintel-first-launch-diagnostic",
+    "artifact_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35243553221/artifacts/10506588563",
+    "artifact_retention_days": 14,
+    "evidence_files": [
+      "source-run.json",
+      "archive-identity.json",
+      "events.jsonl",
+      "result.json",
+      "scientific-smoke.log",
+      "automatic-setup.txt",
+      "after-single-manual-retry.txt"
+    ],
+    "harness_error": null
+  },
+  "product_provenance": {
+    "product_sha": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+    "manufacturing_sha": "721c7eca0ff2c882ef5779ed9d1b2b54480a6568",
+    "source_run_id": 35228169611,
+    "source_run_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35228169611",
+    "qualified_archive_job_id": 105225069240,
+    "qualified_archive_job_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35228169611/job/105225069240",
+    "archive_artifact_id": 10503473264,
+    "archive_artifact_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35228169611/artifacts/10503473264",
+    "archive_file": "nirs4all Studio-0.11.5-all-in-one-mac-x64.zip",
+    "archive_sha256": "30eaa04c95618897f30c4ebfeff6424e0560a02bf5dbaead7e61645e5e36180c",
+    "archive_hash_and_manufacturing_evidence_verified": true,
+    "product_modified_for_diagnostic": false
+  },
+  "setup": {
+    "actions_step_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35243553221/job/105277862261#step:7:1",
+    "automatic": {
+      "ready": false,
+      "ui_error": "Failed to verify the installed runtime",
+      "verdict_elapsed_ms": 181988,
+      "setup_request": {
+        "method": "GET",
+        "route": "/api/config/diff?profile=cpu&include_latest=false",
+        "http_status": 503,
+        "request_started_elapsed_ms": 157735,
+        "response_finished_elapsed_ms": 181304,
+        "request_wall_duration_ms": 23569,
+        "error_body": {
+          "detail": "python_host_timed_out"
+        }
+      },
+      "successful_related_requests": [
+        {
+          "method": "GET",
+          "route": "/api/updates/dependencies?force_refresh=true",
+          "http_status": 200,
+          "request_started_elapsed_ms": 137322,
+          "response_finished_elapsed_ms": 155029,
+          "request_wall_duration_ms": 17707
+        },
+        {
+          "method": "GET",
+          "route": "/api/system/env-coherence",
+          "http_status": 200,
+          "request_started_elapsed_ms": 160234,
+          "response_finished_elapsed_ms": 182005,
+          "request_wall_duration_ms": 21771
+        }
+      ]
+    },
+    "manual_retry": {
+      "ready": false,
+      "ui_error": "Failed to verify the installed runtime",
+      "verdict_elapsed_ms": 229861,
+      "setup_request": {
+        "method": "GET",
+        "route": "/api/config/diff?profile=cpu&include_latest=false",
+        "http_status": 503,
+        "request_started_elapsed_ms": 205405,
+        "response_finished_elapsed_ms": 229432,
+        "request_wall_duration_ms": 24027,
+        "error_body": {
+          "detail": "python_host_timed_out"
+        }
+      },
+      "successful_related_requests": [
+        {
+          "method": "GET",
+          "route": "/api/updates/dependencies?force_refresh=true",
+          "http_status": 200,
+          "request_started_elapsed_ms": 186139,
+          "response_finished_elapsed_ms": 202415,
+          "request_wall_duration_ms": 16276
+        },
+        {
+          "method": "GET",
+          "route": "/api/system/env-coherence",
+          "http_status": 200,
+          "request_started_elapsed_ms": 208336,
+          "response_finished_elapsed_ms": 233475,
+          "request_wall_duration_ms": 25139
+        }
+      ],
+      "click_elapsed_ms": 182111,
+      "time_from_click_to_verdict_ms": 47750,
+      "retry_count": 1
+    },
+    "recovered_after_manual_retry": false,
+    "earlier_background_config_request": {
+      "method": "GET",
+      "route": "/api/config/diff",
+      "http_status": 503,
+      "request_started_elapsed_ms": 88563,
+      "response_finished_elapsed_ms": 116247,
+      "request_wall_duration_ms": 27684,
+      "error_body": {
+        "detail": "python_host_timed_out"
+      }
+    }
+  },
+  "unrelated_workspace_response": {
+    "method": "GET",
+    "route": "/api/workspace/transition-status",
+    "http_status": 409,
+    "request_started_elapsed_ms": 73035,
+    "response_finished_elapsed_ms": 100370,
+    "request_wall_duration_ms": 27335,
+    "error_body": {
+      "detail": "No workspace selected"
+    }
+  },
+  "post_attempt_probes": [
+    {
+      "route": "/api/health",
+      "status": 200,
+      "elapsed_ms": 4488,
+      "selected_response_fields": {
+        "core_ready": true,
+        "ml_ready": false,
+        "ml_loading": false
+      }
+    },
+    {
+      "route": "/api/system/readiness",
+      "status": 200,
+      "elapsed_ms": 4487,
+      "selected_response_fields": {
+        "core_ready": true,
+        "ml_ready": true,
+        "ml_loading": false,
+        "ml_error": null,
+        "native_training_ready": true,
+        "native_prediction_ready": true
+      }
+    },
+    {
+      "route": "/api/system/env-coherence",
+      "error": "TimeoutError: The operation was aborted due to timeout",
+      "elapsed_ms": 20011
+    },
+    {
+      "route": "/api/updates/dependencies?force_refresh=true",
+      "error": "TimeoutError: The operation was aborted due to timeout",
+      "elapsed_ms": 20013
+    },
+    {
+      "route": "/api/config/diff?profile=cpu&include_latest=false",
+      "error": "TimeoutError: The operation was aborted due to timeout",
+      "elapsed_ms": 20013
+    }
+  ],
+  "scientific_smoke": {
+    "actions_step_url": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35243553221/job/105277862261#step:8:1",
+    "conclusion": "failure",
+    "route": "/api/datasets/<redacted-dataset-id>/preview?max_samples=2",
+    "route_in_harness_log": "/datasets/<redacted-dataset-id>/preview?max_samples=2",
+    "http_status": 400,
+    "error_body": {
+      "detail": "python_host_timed_out"
+    },
+    "individual_request_duration_ms": null,
+    "individual_request_duration_note": "The smoke log does not record the duration of this request.",
+    "evidence_file": "scientific-smoke.log"
+  },
+  "interpretation": {
+    "setup_blocker": "The setup config comparison timed out in the Python host on both the automatic attempt and the single explicit retry.",
+    "workspace_409": "No workspace selected is a separate expected refusal in this fresh sandbox.",
+    "scientific_smoke": "Dataset preview also timed out in the subsequent scientific smoke; fixing setup alone is not proof of scientific qualification."
+  },
+  "limitations": [
+    "This diagnosis used the existing all-in-one ZIP, not the DMG installer.",
+    "The product was unchanged; no fix was evaluated by this run.",
+    "Post-attempt probes ran concurrently with a 20000 ms client timeout. A client timeout does not identify the eventual server response.",
+    "The JSONL captures HTTP timing, not isolated Python worker execution duration.",
+    "Ephemeral sandbox paths, local ports, session tokens and generated dataset identifiers are omitted."
+  ]
+}

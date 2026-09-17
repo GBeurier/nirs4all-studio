@@ -8,7 +8,7 @@
 | Docker Linux amd64 CPU | Livrée, `0.11.5` et `latest` | Qualification et contrôle public ci-dessous |
 | Linux desktop x64 | Livrée : DEB, AppImage et archive | Installation DEB, UI et migration réelles réussies ; empreintes publiques vérifiées |
 | macOS Apple Silicon | Livrée : DMG et archive | Installation DMG, UI et migration réelles réussies ; empreintes publiques vérifiées |
-| macOS Intel | En attente | Compatibilité des roues Python et nouvelle qualification à compléter |
+| macOS Intel | Bloquée au premier setup | Roues compatibles et archive qualifiée ; échec HTTP du setup dans le DMG installé |
 
 Le dernier contrôle public enregistré porte sur Linux desktop au **17 septembre 2026 à 13:48:18 UTC / 15:48:18 Paris** ; la qualification renforcée de l'AppImage s'est terminée à **13:54:21 UTC**. Chaque distribution dispose de ses propres qualifications. [Preuves structurées multiplateformes](studio-multiplatform-delivery-0.11.5-evidence.json).
 
@@ -83,6 +83,8 @@ L’[image qualifiée conservée](https://github.com/GBeurier/nirs4all-studio/ac
 
 La preuve Docker porte sur **Linux amd64 CPU**. Elle ne couvre pas Docker arm64/GPU ni la migration de volumes et workspaces utilisateurs existants. Le contrôle public indépendant a lu les manifestes et la configuration ; il n’a pas téléchargé toutes les couches ni redémarré un second conteneur distant. Le workflow CI a poussé puis tiré l’image et vérifié son identité après les tests réels.
 
-macOS Intel nécessite encore la nouvelle qualification de sa fermeture Python compatible ; aucun succès macOS Intel n'est revendiqué ici. Les paquets Apple Silicon sont sans signature ni notarisation Apple : les tests fonctionnels ne démontrent pas l'approbation Gatekeeper. La désinstallation, la conservation des données et les migrations de workspaces existants restent à qualifier. L'action de préférence développeur a pris 33,812 s sur Apple Silicon et 34,753 s sur Linux dans ces tests ; sa persistance a été confirmée. La cause de cette attente est corrigée sur main avec mesure locale avant/après, mais cette amélioration nécessite une version ultérieure et n'est pas incluse dans 0.11.5 ; voir l'audit.
+La [fabrication macOS Intel](https://github.com/GBeurier/nirs4all-studio/actions/runs/35228169611) a corrigé la compatibilité des roues Python et qualifié l'archive, y compris la migration 0.11.4 → 0.11.5 et le démarrage hors ligne. Le test du premier setup dans le DMG installé a échoué sur une erreur HTTP ; la [publication](https://github.com/GBeurier/nirs4all-studio/actions/runs/35228418181) a donc été bloquée. Aucun livrable Intel 0.11.5 n'est public. Le [diagnostic de reprise](https://github.com/GBeurier/nirs4all-studio/actions/runs/35243553221) réutilise l'archive exacte pour recueillir la route et le corps d'erreur.
+
+Les paquets Apple Silicon sont sans signature ni notarisation Apple : les tests fonctionnels ne démontrent pas l'approbation Gatekeeper. La désinstallation, la conservation des données et les migrations de workspaces existants restent à qualifier. L'action de préférence développeur a pris 33,812 s sur Apple Silicon et 34,753 s sur Linux dans ces tests ; sa persistance a été confirmée. La cause de cette attente est corrigée sur main avec mesure locale avant/après, mais cette amélioration nécessite une version ultérieure et n'est pas incluse dans 0.11.5 ; voir l'audit.
 
 Les limites Windows restent celles du [rapport de livraison Windows](studio-delivery-0.11.5-2026-09-17.md). L’[audit des tests d’installation](studio-package-test-audit-2026-09-17.md) décrit les défauts trouvés par les vrais paquets et les contrôles supplémentaires.

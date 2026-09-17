@@ -1,6 +1,6 @@
 {
   "version": "0.11.5",
-  "recorded_at": "2026-09-17T13:54:21Z",
+  "recorded_at": "2026-09-17T16:02:33Z",
   "platforms": {
     "windows_x64": {
       "status": "delivered",
@@ -1127,7 +1127,15 @@
     },
     "macos_x64": {
       "status": "pending",
-      "note": "Python wheel compatibility correction and new package qualification required before delivery."
+      "note": "Compatible Python closure and archive migration qualified; installed DMG first setup failed with an HTTP error, blocking publication.",
+      "checked_at": "2026-09-17T16:02:33Z",
+      "manufacturing_run": 35228169611,
+      "archive_job": 105225069240,
+      "archive_qualification": "success",
+      "archive_sha256": "30eaa04c95618897f30c4ebfeff6424e0560a02bf5dbaead7e61645e5e36180c",
+      "installer_ui_qualification": "failure",
+      "publication_run": 35228418181,
+      "diagnostic_run": 35243553221
     }
   },
   "follow_up_performance_fix": {
