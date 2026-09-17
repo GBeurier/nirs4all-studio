@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
-const { promisify } = require("node:util");
+const { promisify, stripVTControlCharacters } = require("node:util");
 const { setTimeout: sleep } = require("node:timers/promises");
 const {
   expectedPublishedNames,
@@ -18,6 +18,52 @@ async function runGh(args) {
     maxBuffer: 8 * 1024 * 1024,
     timeout: 10 * 60 * 1000,
   })).stdout;
+}
+
+function ghFailureDiagnostic(error) {
+  // Never use error.message, cmd, stdout or env: execFile includes the command
+  // and its arguments in message. Limit input work as well as the emitted log.
+  const stderr = typeof error?.stderr === "string" ? error.stderr.slice(0, 65536)
+    : Buffer.isBuffer(error?.stderr) ? error.stderr.subarray(0, 65536).toString("utf8") : "";
+  const clean = stripVTControlCharacters(stderr)
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+  const status = [...clean.matchAll(/\bHTTP(?:\/[\d.]+)?[ :]+([45]\d{2})\b/gi)].at(-1)?.[1];
+  const details = [];
+  if (status) details.push(`HTTP ${status}`);
+  if (Number.isInteger(error?.code) && error.code >= 0 && error.code <= 255) details.push(`exit ${error.code}`);
+  const messages = [];
+  for (const raw of clean.split(/\r?\n/)) {
+    let line = raw.trim();
+    // Drop all HTTP headers and debug/command traces, including folded lines.
+    if (!line || /^[<>*]/.test(line) || /^[ \t]+/.test(raw) ||
+      /^(?!gh:|error:|fatal:)[\w-]+:/i.test(line) ||
+      /\b(?:command|cmd|environment|env)\s*(?:failed\b|[=:])/i.test(line) ||
+      /\bgh\s+(?:api|release|auth)\b/i.test(line) || /^[A-Z_][A-Z0-9_]*=/.test(line)) continue;
+    if (/^(?:gh:\s*)?[{[]/.test(line)) {
+      try {
+        // JSON error bodies may include arbitrary metadata: retain only message.
+        const body = JSON.parse(line.replace(/^gh:\s*/, ""));
+        line = typeof body.message === "string" ? body.message : "";
+      } catch { continue; }
+    }
+    line = line
+      .replace(/(?:^|[\r\n])\s*(?!gh:|error:|fatal:)[\w-]+:[^\r\n]*/gi, "")
+      .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s"'<>]+/g, "[URL redacted]")
+      .replace(/\?[^\s"'<>]+/g, "[query redacted]")
+      .replace(/\b(?:Bearer|Basic|token)\s+[A-Za-z0-9._~+/=-]+/gi, "[credential redacted]")
+      .replace(/["']?\b(?:[\w-]*(?:token|secret|password|passwd|credential|authorization|cookie|client[_-]?id|user[_-]?id|request[_-]?id|session[_-]?id)|username|login)["']?\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi, "[credential redacted]")
+      .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b/g, "[token redacted]")
+      .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[identity redacted]")
+      .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "[address redacted]")
+      .replace(/(?:[A-Za-z]:[\\/]|\/(?:home|Users|tmp|private|var|runner|__w)\/)[^\s"'<>]+/g, "[path redacted]")
+      .replace(/[A-Za-z0-9_+/.=-]{24,}/g, "[identifier redacted]")
+      .replace(/\b\d{6,}\b/g, "[identifier redacted]")
+      .replace(/\s+/g, " ").trim();
+    if (line) messages.push(line);
+  }
+  if (messages.length) details.push(`stderr: ${messages.join(" | ")}`);
+  const result = details.join("; ") || "no safe stderr detail available";
+  return result.length > 1200 ? `${result.slice(0, 1186)} [truncated]` : result;
 }
 
 function releaseManifest(root, version, includeAllInOne) {
@@ -128,9 +174,9 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     if (prerelease) args.push("--prerelease");
     try {
       await gh(args);
-    } catch {
+    } catch (error) {
       // The response may have been lost after creation. Reconcile by immutable tag.
-      log("Draft creation did not return success; checking its identity before continuing.");
+      log(`Draft creation did not return success (${ghFailureDiagnostic(error)}); checking its identity before continuing.`);
     }
     release = await lookupRelease();
     if (!release) throw new Error("Could not create the release draft");
@@ -186,9 +232,9 @@ async function publishQualifiedRelease(options, dependencies = {}) {
         log(`Uploading ${entry.name} (attempt ${attempt}/3)`);
         try {
           await gh(["release", "upload", tag, entry.file, "--repo", repo]);
-        } catch {
+        } catch (error) {
           // A failed response may still have stored the complete asset. Never clobber it.
-          log(`Upload did not return success for ${entry.name}; verifying remote state.`);
+          log(`Upload did not return success for ${entry.name} (${ghFailureDiagnostic(error)}); verifying remote state.`);
         }
         present = await inspect();
         if (present.has(entry.name)) break;
@@ -204,9 +250,9 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     // This must be the final mutation: no payload is ever replaced or deleted.
     try {
       await api(`releases/${releaseId}`, ["--method", "PATCH", "--field", "draft=false"]);
-    } catch {
+    } catch (error) {
       // Publication can also succeed before a lost response; verify rather than retry blindly.
-      log("Publication did not return success; checking final release visibility.");
+      log(`Publication did not return success (${ghFailureDiagnostic(error)}); checking final release visibility.`);
     }
     release = await lookupRelease();
     assertRelease(release, releaseId);
@@ -242,4 +288,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, publishQualifiedRelease, releaseManifest };
+module.exports = { ghFailureDiagnostic, main, publishQualifiedRelease, releaseManifest };

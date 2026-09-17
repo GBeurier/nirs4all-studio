@@ -5,7 +5,7 @@ const path = require("node:path");
 const test = require("node:test");
 const yaml = require("js-yaml");
 const { expectedPublishedNames, sha256File } = require("../finalize-release-assets.cjs");
-const { publishQualifiedRelease, releaseManifest } = require("../publish-qualified-release.cjs");
+const { ghFailureDiagnostic, publishQualifiedRelease, releaseManifest } = require("../publish-qualified-release.cjs");
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-publisher-"));
@@ -273,3 +273,98 @@ test("unified workflow invokes the sequential publisher only for immutable tag r
   assert.match(job.if, /needs\.unix-product\.result == 'success'/);
   assert.match(job.if, /needs\.prepare\.outputs\.skip_all_in_one != 'true'/);
 });
+
+test("diagnostic preserves HTTP failure while excluding headers, URLs and credential values", () => {
+  const error = {
+    code: 1,
+    stderr: [
+      "* Request to https://uploads.example.test/private?token=trace-secret",
+      "> Authorization: Bearer header-secret",
+      "< X-Request-Id: private-request-id",
+      "Set-Cookie: sid=cookie-secret",
+      "X-Private:unspaced-header-secret",
+      "  folded-header-secret",
+      "HTTP/2.0 502 Bad Gateway",
+      'HTTP 502: Error saving asset (https://username:url-password@uploads.example.test/releases/123456/assets?name=private&token=query-secret)',
+      'error: token=plain-secret password="quoted secret with spaces" username=private-login',
+      "error: github_pat_fake_test_token ghp_fake_test_token Bearer bearer-secret Basic basic-secret",
+      "error: contact person@example.test, server 192.0.2.10:443, request_id=request-secret",
+    ].join("\n"),
+  };
+  for (const key of ["cmd", "env", "message", "stdout"]) {
+    Object.defineProperty(error, key, { get: () => assert.fail(`${key} must never be read`) });
+  }
+  const result = ghFailureDiagnostic(error);
+  assert.match(result, /HTTP 502; exit 1/);
+  assert.match(result, /Error saving asset/);
+  for (const value of ["header-secret", "private-request-id", "cookie-secret", "unspaced-header-secret",
+    "folded-header-secret", "url-password", "uploads.example", "query-secret", "plain-secret",
+    "quoted secret", "private-login", "github_pat_", "ghp_", "bearer-secret", "basic-secret",
+    "person@example", "192.0.2.10", "request-secret", "Authorization", "Set-Cookie", "X-Private", "123456"]) {
+    assert(!result.includes(value), `must redact ${value}`);
+  }
+});
+
+test("diagnostic keeps useful network and JSON error text without metadata or local identities", () => {
+  const error = { stderr: Buffer.from([
+    'Post "https://login:password@example.test/path?signature=secret": unexpected EOF',
+    '{"message":"Validation Failed","documentation_url":"https://example.test/?private=secret","token":"json-secret","headers":{"X-Internal":"hidden"}}',
+    'error: open /home/private-user/release/file.zip: permission denied',
+    'error: open C:\\Users\\private-user\\release\\file.zip: permission denied',
+    'error: request failed for ?signature=naked-query-secret',
+    'error: trace abcdef0123456789abcdef0123456789abcdef0123456789',
+  ].join("\n")) };
+  const result = ghFailureDiagnostic(error);
+  for (const message of ["unexpected EOF", "Validation Failed", "permission denied"]) assert(result.includes(message));
+  for (const value of ["example.test", "signature", "json-secret", "headers", "hidden", "private-user", "abcdef0123456789"]) {
+    assert(!result.includes(value), `must redact ${value}`);
+  }
+});
+
+test("diagnostic is bounded and does not fall back to command-bearing errors", () => {
+  const result = ghFailureDiagnostic({ stderr: "HTTP 502: " + "Error saving asset. ".repeat(10000) });
+  assert(result.length <= 1200);
+  assert.match(result, /\[truncated\]$/);
+  assert.equal(ghFailureDiagnostic({ message: "Command failed: secret", cmd: "secret", env: { TOKEN: "secret" } }), "no safe stderr detail available");
+  const traces = ghFailureDiagnostic({ stderr: "Command failed: gh release upload --token secret\nGH_TOKEN=secret\ngh api --header secret\nenv: secret" });
+  assert.equal(traces, "no safe stderr detail available");
+});
+
+for (const operation of ["create", "upload", "publish"]) {
+  test(`logs a redacted ${operation} error without weakening publication checks`, async (t) => {
+    const options = fixture(t);
+    const remote = github(options, { absent: operation === "create" });
+    const messages = [];
+    const originalGh = remote.dependencies.gh;
+    let injected = false;
+    remote.dependencies.log = (message) => messages.push(message);
+    remote.dependencies.gh = async (args) => {
+      const response = await originalGh(args);
+      const matches = operation === "publish" ? args.includes("PATCH") : args[1] === operation;
+      if (matches && !injected) {
+        injected = true;
+        if (operation === "upload") remote.state.assets.at(-1).state = "starter";
+        const error = new Error("Command failed: --token message-secret");
+        error.code = 1;
+        error.stderr = "HTTP 502: Error saving asset (https://example.test/?token=query-secret)\nAuthorization: Bearer header-secret";
+        error.cmd = "gh release --token cmd-secret";
+        throw error;
+      }
+      return response;
+    };
+    if (operation === "upload") {
+      await assert.rejects(publishQualifiedRelease(options, remote.dependencies), /Refusing to replace/);
+      assert.equal(remote.state.release.draft, true);
+      assert.equal(remote.state.mutations.length, 1);
+      assert.deepEqual(remote.state.waits, []);
+    } else {
+      await publishQualifiedRelease(options, remote.dependencies);
+      assert.equal(remote.state.mutations.at(-1), "publish");
+    }
+    assert(injected);
+    const logs = messages.join("\n");
+    assert.match(logs, /HTTP 502; exit 1/);
+    assert.match(logs, /Error saving asset/);
+    for (const value of ["message-secret", "cmd-secret", "query-secret", "header-secret", "example.test", "Authorization"]) assert(!logs.includes(value));
+  });
+}
