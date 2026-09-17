@@ -1,5 +1,7 @@
 # Audit installation et déploiement Studio — 17 septembre 2026
 
+> Suivi final : [livraison Windows 0.11.5 et preuves de qualification](studio-delivery-0.11.5-2026-09-17.md). Ce document conserve les étapes initiales de l’audit.
+
 Le correctif rend bloquantes les vérifications du runtime scientifique installé et du parcours dataset avant qualification des artefacts. Aucune publication ni rétrogradation de version n’a été effectuée pendant cet audit.
 
 ## Défauts constatés et corrections

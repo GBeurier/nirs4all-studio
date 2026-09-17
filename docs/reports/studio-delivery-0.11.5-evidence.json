@@ -1,0 +1,110 @@
+{
+  "product_commit": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+  "deadline_utc": "2026-09-17T12:17:00Z",
+  "installer_preview_published_at": "2026-09-17T12:16:17Z",
+  "stable_promotion_workflow_completed_at": "2026-09-17T12:32:38Z",
+  "stable_public_verification_recorded_at": "2026-09-17T12:34:15.416884+00:00",
+  "source_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35216053291",
+  "installed_windows_ui_job": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35219251646/job/105195060850",
+  "e2e_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35216025664",
+  "migration_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35220453537",
+  "promotion_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35221208155",
+  "repack": {
+    "source_sha256": "f069fa1552b9d61d6d74e46ad770d1f1a575c116887368b6904e341fc0f6b506",
+    "archive_sha256": "053112186b48c46084ffd71a620df33566a42f453fc08c5058ee2a82f076417e",
+    "application_files_verified_identical": 13348,
+    "top_level_directory": "nirs4all Studio"
+  },
+  "migration": {
+    "success": true,
+    "from": "0.11.4",
+    "to": "0.11.5",
+    "source": "qualified-candidate-fixture",
+    "target_archive_sha256": "053112186b48c46084ffd71a620df33566a42f453fc08c5058ee2a82f076417e",
+    "old_archive_sha256": "703a1ebfb5993d07775d600608c1d84adc25da7de41a28a37d3ccc423e02cc48",
+    "target_asset": "nirs4all.Studio-0.11.5-all-in-one-win-x64.zip",
+    "apply_result": {
+      "status": "success",
+      "from_version": "0.11.4",
+      "to_version": "0.11.5",
+      "current_version": "0.11.5",
+      "reconciled_at": "2026-09-17T12:23:22.209Z",
+      "relaunch_pid": 4884
+    },
+    "offline_cold_boot": true
+  },
+  "public_verification": {
+    "success": true,
+    "version": "0.11.5",
+    "commit": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+    "published_at": "2026-09-17T12:16:17Z",
+    "release_url": "https://github.com/GBeurier/nirs4all-studio/releases/tag/0.11.5",
+    "windows_assets": [
+      {
+        "name": "nirs4all.Studio-0.11.5-win-x64.exe",
+        "size": 350377832,
+        "sha256": "1f9eecc8a75e141c4552af8d95281730371b33a8d1c213f03a9b693671b9df1d",
+        "github_digest_checked": true,
+        "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-win-x64.exe"
+      },
+      {
+        "name": "nirs4all.Studio-0.11.5-win-x64-portable.exe",
+        "size": 350132349,
+        "sha256": "8359fc05b3a438921c18436daa7815c8a40e9a7c68b1816a42470d90664656d8",
+        "github_digest_checked": true,
+        "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-win-x64-portable.exe"
+      },
+      {
+        "name": "nirs4all.Studio-0.11.5-all-in-one-win-x64.zip",
+        "size": 462941287,
+        "sha256": "053112186b48c46084ffd71a620df33566a42f453fc08c5058ee2a82f076417e",
+        "github_digest_checked": true,
+        "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-all-in-one-win-x64.zip"
+      }
+    ]
+  },
+  "independent_public_verification": {
+    "success": true,
+    "version": "0.11.5",
+    "commit": "f314cdb223cd77ce1a3fb6d336cca82206cd02a4",
+    "published_at": "2026-09-17T12:16:17Z",
+    "release_url": "https://github.com/GBeurier/nirs4all-studio/releases/tag/0.11.5",
+    "windows_assets": [
+      {
+        "name": "nirs4all.Studio-0.11.5-win-x64.exe",
+        "size": 350377832,
+        "sha256": "1f9eecc8a75e141c4552af8d95281730371b33a8d1c213f03a9b693671b9df1d",
+        "github_digest_checked": true,
+        "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-win-x64.exe"
+      },
+      {
+        "name": "nirs4all.Studio-0.11.5-win-x64-portable.exe",
+        "size": 350132349,
+        "sha256": "8359fc05b3a438921c18436daa7815c8a40e9a7c68b1816a42470d90664656d8",
+        "github_digest_checked": true,
+        "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-win-x64-portable.exe"
+      },
+      {
+        "name": "nirs4all.Studio-0.11.5-all-in-one-win-x64.zip",
+        "size": 462941287,
+        "sha256": "053112186b48c46084ffd71a620df33566a42f453fc08c5058ee2a82f076417e",
+        "github_digest_checked": true,
+        "download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.5/nirs4all.Studio-0.11.5-all-in-one-win-x64.zip"
+      }
+    ],
+    "verified_at": "2026-09-17T12:33:21.615Z",
+    "unauthenticated": true,
+    "latest_tag": "0.11.5",
+    "prerelease": false,
+    "draft": false,
+    "asset_count": 6,
+    "installer_hashes_unchanged": true,
+    "migration_run": "https://github.com/GBeurier/nirs4all-studio/actions/runs/35220453537",
+    "migration_from": "0.11.4",
+    "migration_to": "0.11.5",
+    "offline_cold_boot": true,
+    "repacked_application_files_identical": 13348,
+    "original_archive_sha256": "f069fa1552b9d61d6d74e46ad770d1f1a575c116887368b6904e341fc0f6b506",
+    "migration_archive_sha256": "053112186b48c46084ffd71a620df33566a42f453fc08c5058ee2a82f076417e"
+  }
+}

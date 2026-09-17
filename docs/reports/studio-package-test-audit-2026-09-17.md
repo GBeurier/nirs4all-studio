@@ -48,7 +48,7 @@ La qualification Windows réelle a reproduit un autre défaut absent des tests L
 
 La priorité de publication est Windows. La qualification macOS Intel a également révélé une absence de roue compatible pour la fermeture Numba/llvmlite ; cette distribution ne doit pas être publiée avant correction et nouvelle qualification.
 
-Les installateurs Windows **0.11.5** ont été publiés en préversion à **14:16:17 Paris**. Le premier test N−1 a bloqué l’archive plate produite par electron-builder : le smoke de self-update construisait sa propre fixture enveloppée et masquait le défaut du livrable. L’archive est reconditionnée avec une racine unique et comparaison SHA de chaque fichier. La promotion stable dépend de la nouvelle migration réelle. Le [suivi de livraison](studio-delivery-0.11.5-2026-09-17.md) consigne le résultat final et ses limites.
+Les installateurs Windows **0.11.5** ont été publiés en préversion à **14:16:17 Paris**. Le premier test N−1 a bloqué l’archive plate produite par electron-builder : le smoke de self-update construisait sa propre fixture enveloppée et masquait le défaut du livrable. L’archive a été reconditionnée avec une racine unique et comparaison SHA de chaque fichier. La nouvelle migration réelle et le redémarrage hors ligne ont réussi ; la promotion stable a terminé à **14:32:38 Paris**. Le [suivi de livraison](studio-delivery-0.11.5-2026-09-17.md) consigne le résultat final et ses limites.
 
 ### Remaining performance observation (2026-09-17)
 
