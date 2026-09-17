@@ -413,11 +413,7 @@ impl CpythonScientificJobExecutor {
             Some(runtime),
             &bytes,
             &AtomicBool::new(false),
-            if matches!(operation, "predictions.run" | "predictions.file") {
-                SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT
-            } else {
-                SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT
-            },
+            document_operation_timeout(operation),
         )
         .map_err(|error| error.reason().to_owned())?;
         crate::document_cpython::verify(&runtime.site_packages)?;
@@ -547,6 +543,17 @@ impl CpythonScientificJobExecutor {
             }
             self.acquisition.reason()
         }
+    }
+}
+
+fn document_operation_timeout(operation: &str) -> Duration {
+    match operation {
+        // Setup inspection launches the same fresh scientific worker as other
+        // adapters. Its import must tolerate the cold-start budget already
+        // qualified at acquisition, including concurrent first-launch probes.
+        "config.dependencies" | "config.compare" => SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
+        "predictions.run" | "predictions.file" => SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
+        _ => SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT,
     }
 }
 
@@ -2436,6 +2443,28 @@ fn read_bounded(mut reader: impl Read, limit: usize) -> std::io::Result<(Vec<u8>
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn setup_inspection_survives_slow_workers_without_extending_other_document_budgets() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = slow_document_host(directory.path());
+        // Run real confined workers concurrently: setup must survive a cold
+        // import exceeding the ordinary 15-second document budget, while a
+        // non-setup adapter must still time out. No optional Python is needed.
+        let results = std::thread::scope(|scope| {
+            let handles =
+                ["config.dependencies", "config.compare", "pipeline.render"].map(|operation| {
+                    let host = &host;
+                    scope.spawn(move || host.adapt_document(operation, &serde_json::json!({})))
+                });
+            handles.map(|handle| handle.join().unwrap())
+        });
+        let [inventory, comparison, rendering] = results;
+        assert_eq!(inventory.unwrap()["runtime_valid"], true);
+        assert_eq!(comparison.unwrap()["is_aligned"], true);
+        assert_eq!(rendering, Err("python_host_timed_out".into()));
+    }
+
     #[test]
     fn general_contract_keeps_batches_and_honest_absent_validation_scores() {
         let directory = tempfile::tempdir().unwrap();
@@ -2569,6 +2598,62 @@ mod tests {
         fs::set_permissions(&path, permissions).unwrap();
         std::thread::sleep(Duration::from_millis(10));
         path
+    }
+
+    #[cfg(unix)]
+    fn slow_document_host(root: &Path) -> CpythonScientificJobExecutor {
+        let runtime = root.join("python-runtime");
+        let python_root = runtime.join("python");
+        let site_packages = python_root.join("lib/python3.11/site-packages");
+        let adapters = site_packages.join("studio_document_adapters");
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let manifest: Value = serde_json::from_str(include_str!(
+            "../contracts/studio_document_adapters_v1.json"
+        ))
+        .unwrap();
+        // Use the actual compiled adapter bytes so adapt_document exercises
+        // its normal manifest verification instead of bypassing admission.
+        for entry in manifest["files"].as_array().unwrap() {
+            let relative = entry["path"].as_str().unwrap();
+            let target = adapters.join(relative);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            if relative.ends_with("__init__.py") {
+                fs::write(
+                    target,
+                    "\"\"\"Pure document translation package; no HTTP or application state.\"\"\"\n",
+                )
+                .unwrap();
+            } else {
+                fs::copy(repository.join(relative), target).unwrap();
+            }
+        }
+        let host = shell_host(
+            &python_root.join("bin"),
+            "python3",
+            r#"IFS= read -r request
+sleep 16
+case "$request" in
+  *config.dependencies*) result='{"read_only":true,"runtime_valid":true,"nirs4all_installed":true,"categories":[]}' ;;
+  *config.compare*) result='{"is_aligned":true,"profile":"cpu","packages":[]}' ;;
+  *) result='{"json":"{}","yaml":"{}","filename":"pipeline.yaml"}' ;;
+esac
+printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":%s,"error":null}' "$result""#,
+        );
+        let callable = site_packages.join("studio_scientific.py");
+        fs::write(&callable, "def studio_scientific_job_v1(request): pass\n").unwrap();
+        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
+        write_runtime_closure(&python_root, &site_packages, &closure);
+        CpythonScientificJobExecutor {
+            identity: Some(host_identity(&host).unwrap()),
+            callable_identity: Some(host_identity(&callable).unwrap()),
+            packaged_runtime: Some(
+                packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap(),
+            ),
+            acquisition: ScientificCpythonUnavailable::RequestResolverUnavailable,
+            resolver: ScientificRequestResolver::new(root.join("config")),
+            running: Arc::new(Mutex::new(BTreeMap::new())),
+            terminal_callback_failed: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     #[cfg(unix)]
