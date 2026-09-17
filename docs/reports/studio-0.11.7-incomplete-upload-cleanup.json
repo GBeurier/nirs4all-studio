@@ -819,5 +819,47 @@
     "reason": "Owned direct HTTP/1.1 attempt stopped before sending all bytes; incomplete record removed.",
     "deleted_at": "2026-09-17T18:58:17.916116+00:00",
     "verified_assets_preserved": true
+  },
+  "final_cleanup": {
+    "asset": {
+      "url": "https://api.github.com/repos/GBeurier/nirs4all-studio/releases/assets/570891861",
+      "id": 570891861,
+      "node_id": "RA_kwDOQ1pucc4iBx5V",
+      "name": "nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz",
+      "label": "",
+      "uploader": {
+        "login": "github-actions[bot]",
+        "id": 41898282,
+        "node_id": "MDM6Qm90NDE4OTgyODI=",
+        "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+        "html_url": "https://github.com/apps/github-actions",
+        "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+        "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+        "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+        "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+        "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+        "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+        "type": "Bot",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "content_type": "application/x-gtar",
+      "state": "starter",
+      "size": 560052761,
+      "digest": null,
+      "download_count": 0,
+      "created_at": "2026-09-17T19:00:33Z",
+      "updated_at": "2026-09-17T19:00:33Z",
+      "browser_download_url": "https://github.com/GBeurier/nirs4all-studio/releases/download/untagged-1d8d8ed2249d62f0f424/nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz"
+    },
+    "reason": "Completed recovery run stopped after the600second upload limit; no HTTP5xx was observed so automatic cleanup correctly refused.",
+    "deleted_at": "2026-09-17T19:15:00.273212+00:00",
+    "verified_assets_preserved": true,
+    "no_incomplete_starters_remaining": true
   }
 }
