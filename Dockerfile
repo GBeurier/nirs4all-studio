@@ -73,9 +73,9 @@ ARG STUDIO_REVISION=unknown
 
 # tini forwards termination to nginx and its loopback sidecar process group;
 # curl is used for startup/readiness checks only. CPython has no public socket.
-# SHAP brings Numba's native TBB pool; retain its system dependency in the image.
+# SHAP brings Numba's TBB and OpenMP pools; retain both system dependencies.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 libtbb12 tini \
+    && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 libtbb12 libgomp1 tini \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/lib/nirs4all-studio/config /workspaces /var/cache/nginx /var/run/nginx \
     && chown -R nginx:nginx /var/lib/nirs4all-studio /workspaces /var/cache/nginx /var/run/nginx /var/log/nginx

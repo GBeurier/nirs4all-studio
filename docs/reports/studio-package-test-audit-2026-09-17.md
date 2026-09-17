@@ -28,7 +28,7 @@ Les tests de workflow évaluent les conditions de publication pour plusieurs com
 
 - Exécuter les installateurs Windows NSIS, Linux DEB/AppImage et macOS DMG dans des machines vierges, puis désinstaller et vérifier la conservation des données. Le smoke actuel démarre l’application dépaquetée ; il ne remplace pas cette preuve.
 - Tester la migration **de la précédente version publique vers la nouvelle** avec préférences et workspace existants. Le self-update actuel prouve download/apply/relaunch, mais utilise une copie du candidat modifiée comme cible.
-- Ajouter un vrai parcours UI du premier lancement avec les paquets embarqués. Les tests React du setup utilisent des réponses simulées ; les E2E génériques appellent `skip-setup`.
+- Étendre le nouveau parcours UI du paquet Linux aux plateformes Windows/macOS. Les tests React du setup utilisent des réponses simulées ; les E2E navigateur génériques appellent `skip-setup`.
 - Étendre la qualification des paquets Windows/macOS aux PR pertinentes. Les builds réels multiplateformes restent effectués à la release.
 - Protéger la branche principale avec des checks obligatoires. Vérification GitHub en lecture seule le 17 septembre : `branches/main/protection` renvoie « Branch not protected » et `rules/branches/main` renvoie une liste vide. Aucun réglage distant n’a été modifié pendant cet audit.
 
@@ -38,7 +38,8 @@ Ces limites interdisent de promettre l’absence de tout bug. Les protections aj
 
 - Un vrai premier lancement Electron Linux, piloté par Playwright dans un profil vierge, a validé la vérification du runtime puis l'ouverture des datasets sans `skip-setup`.
 - La revue de l'écran Settings a retrouvé un verrou résiduel du bouton développeur en l'absence de workspace. Il est retiré ; le test du vrai Switch a échoué avant correction et passe après correction.
-- Le build Docker distant a détecté `libtbb.so.12` manquante pour l'extension Numba apportée par SHAP. Le runtime installe maintenant `libtbb12` ; le contrôle de toutes les dépendances ELF reste bloquant.
+- Le build Docker distant a détecté les bibliothèques TBB puis OpenMP manquantes pour les extensions Numba apportées par SHAP. Le runtime installe maintenant `libtbb12` et `libgomp1` ; le contrôle de toutes les dépendances ELF reste bloquant. L'audit local des 412 objets ELF n'a identifié aucune autre dépendance externe non couverte.
+- Le test réel des Settings a reproduit une saturation du serveur : les diagnostics `/system/build` et `/system/env-coherence` importaient Python sous le verrou global. Ils utilisent désormais une copie de l'état et libèrent le verrou avant l'import. Un test HTTP impose que health réponde en moins de 500 ms pendant un diagnostic volontairement ralenti. Le script `smoke-first-launch-ui.cjs` contrôle setup, sauvegarde réelle du mode développeur sans workspace, rechargement de la fenêtre et redémarrage de l'application ; il est exécuté sur le paquet Linux en CI et à la release.
 - Le workflow manuel `windows-real-install-update.yml` exécute réellement l'installateur NSIS, puis migre l'archive publique précédente vers les octets du candidat qualifié, sans reconstruire l'application. Il contrôle les SHA, les versions source/cible, le remplacement des anciens fichiers, la relance scientifique et un démarrage à froid offline. Son résultat doit être enregistré avant de considérer ces deux lacunes closes pour Windows.
 
 ## Livraison urgente
