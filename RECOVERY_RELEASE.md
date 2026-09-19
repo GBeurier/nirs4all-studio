@@ -4,9 +4,9 @@ This recovery release restores the Python backend from Studio 0.10.1 and explici
 
 ## Recover an existing 0.11.7 installation
 
-Download and run the installer for your OS. The updater in 0.11.7 only discovers all-in-one archives, so it cannot perform this recovery automatically. Future updates use the installer channel.
+Download and run the installer for your OS over the existing installation. The updater in 0.11.7 only discovers all-in-one archives, so it cannot perform this recovery automatically. Future updates use the installer channel.
 
-Keep your configuration when prompted. Workspaces, datasets, preferences and environments are retained. The Windows installer temporarily preserves application data before invoking the old uninstaller, which could otherwise delete it. The managed Python environment is aligned to the qualified library version; a shared custom environment is never silently changed.
+Workspaces, datasets and preferences are retained. Existing managed Python environments are reused when available; the obsolete bundled runtime from 0.11.7 is replaced with a managed environment during setup. The Windows installer temporarily preserves application data before invoking the old uninstaller, which could otherwise delete it. The managed Python environment is aligned to the qualified library version; a shared custom environment is never silently changed.
 
 New installations start with the lightweight scikit-learn profile. Additional frameworks are optional. The default workspace uses the actual OS Documents folder, including redirected or localized Windows folders.
 

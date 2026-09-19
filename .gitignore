@@ -78,3 +78,6 @@ docs/audit/
 
 # Built once by the recovery workflow and shared by all installers and Docker.
 vendor/python/
+
+# Owner qualification source extracted from the verified release archive
+build/recovery-library-tests/

@@ -271,6 +271,8 @@ async function awaitReady(context) {
   await expect.poll(async () => {
     try {
       const readiness = await api(context.env, '/system/readiness');
+      context.proof.last_readiness = readiness;
+      assert(!readiness.ml_error, `Backend ML initialization failed: ${readiness.ml_error}`);
       return readiness.ml_ready && readiness.workspace_ready;
     } catch (error) {
       if (error.cause?.code === 'ECONNREFUSED') return false;
