@@ -10,7 +10,8 @@
       "source_sha256": "d27fe7db6f405535470dcedc5a7975c2ff3c794ff740faacb8a9cf34756f780c",
       "source_filename": "nirs4all_io-0.1.18.tar.gz",
       "manifest_path": "bindings/python/Cargo.toml",
-      "lock_path": "bindings/python/Cargo.lock"
+      "lock_path": "bindings/python/Cargo.lock",
+      "module_name": "nirs4all_io._native"
     },
     {
       "name": "nirs4all-core",
@@ -19,7 +20,8 @@
       "source_sha256": "073f234edd20cbd390a7bdfc3124ab28afff2558613d601fca9b87c5b27911e3",
       "source_filename": "nirs4all_core-0.3.30.tar.gz",
       "manifest_path": "bindings/python-native/Cargo.toml",
-      "lock_path": "Cargo.lock"
+      "lock_path": "Cargo.lock",
+      "module_name": "nirs4all_core._native"
     }
   ]
 }

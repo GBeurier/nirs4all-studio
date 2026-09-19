@@ -22,6 +22,7 @@ def write_wheel(directory, package, tag="cp311-abi3-macosx_11_0_x86_64"):
     with zipfile.ZipFile(wheel, "w") as archive:
         archive.writestr(f"{metadata_root}/METADATA", f"Name: {package['name']}\nVersion: {package['version']}\n")
         archive.writestr(f"{metadata_root}/WHEEL", f"Wheel-Version: 1.0\nTag: {tag}\n")
+        archive.writestr(f"{name}/__init__.py", "from . import _native\n")
         archive.writestr(f"{name}/_native.abi3.so", b"fixture")
     return wheel
 
@@ -36,6 +37,7 @@ def cached_pair(tmp_path):
         wheel = write_wheel(tmp_path, package)
         proof["packages"].append({
             "name": package["name"], "version": package["version"],
+            "module_name": package["module_name"], "init_symbol": "PyInit__native",
             "source": {"url": package["source_url"], "filename": package["source_filename"],
                        "sha256": package["source_sha256"]},
             "wheel": builder.verify_wheel(wheel, package),
@@ -75,3 +77,24 @@ def test_source_checksum_verified_before_extract_or_build(tmp_path, monkeypatch)
     monkeypatch.setattr(builder.urllib.request, "urlopen", lambda *args, **kwargs: io.BytesIO(b"changed source"))
     with pytest.raises(ValueError, match="checksum mismatch"):
         builder.prepare_source(package, tmp_path)
+
+
+@pytest.mark.parametrize("exported, valid", [("_PyInit__native", True), ("_PyInit_nirs4all_io_native", False)])
+def test_extension_must_export_python_project_module_name(tmp_path, monkeypatch, exported, valid):
+    package = {"name": "nirs4all-io", "version": "0.1.18", "module_name": "nirs4all_io._native"}
+    wheel = write_wheel(tmp_path, package)
+    monkeypatch.setattr(builder.subprocess, "check_output", lambda *args, **kwargs: f"000000 T {exported}\n")
+    if valid:
+        assert builder.verify_init_symbol(wheel, package) == "PyInit__native"
+    else:
+        with pytest.raises(ValueError, match="missing PyInit__native"):
+            builder.verify_init_symbol(wheel, package)
+
+
+def test_changed_python_module_configuration_fails_before_compilation(tmp_path):
+    package = {"name": "nirs4all-io", "manifest_path": "bindings/python/Cargo.toml", "module_name": "nirs4all_io._native"}
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.maturin]\nmanifest-path="bindings/python/Cargo.toml"\nmodule-name="nirs4all_io_native"\n'
+    )
+    with pytest.raises(ValueError, match="configuration differs"):
+        builder.verify_project_metadata(tmp_path, package, tmp_path / "metadata")

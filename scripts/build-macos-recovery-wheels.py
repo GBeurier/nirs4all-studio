@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -46,8 +47,12 @@ def verify_wheel(wheel: Path, package: dict) -> dict[str, str]:
             for tag in tags
         ):
             raise ValueError(f"Wheel must support CPython 3.11 ABI3 on Intel macOS: {tags}")
-        if not any(name.endswith(".so") for name in archive.namelist()):
-            raise ValueError(f"Wheel is missing its native extension: {wheel.name}")
+        module_name = package["module_name"]
+        package_path, module = module_name.rsplit(".", 1)
+        prefix = package_path.replace(".", "/") + "/" + module + "."
+        extensions = [name for name in archive.namelist() if name.startswith(prefix) and name.endswith(".so")]
+        if len(extensions) != 1 or package_path.replace(".", "/") + "/__init__.py" not in archive.namelist():
+            raise ValueError(f"Wheel is missing its Python package or {module_name} extension: {wheel.name}")
     return {"filename": wheel.name, "sha256": sha256(wheel)}
 
 
@@ -64,7 +69,9 @@ def verified_cache(output: Path, pin: dict) -> dict | None:
         ):
             return None
         for package, record in zip(pin["packages"], proof["packages"], strict=True):
-            if record["name"] != package["name"] or record["version"] != package["version"]:
+            if (record["name"] != package["name"] or record["version"] != package["version"]
+                    or record["module_name"] != package["module_name"]
+                    or record["init_symbol"] != "PyInit_" + package["module_name"].rsplit(".", 1)[1]):
                 return None
             if record["source"] != {
                 "url": package["source_url"], "filename": package["source_filename"],
@@ -79,6 +86,45 @@ def verified_cache(output: Path, pin: dict) -> dict | None:
         return proof
     except (OSError, ValueError, KeyError, TypeError, AttributeError, zipfile.BadZipFile):
         return None
+
+
+def verify_project_metadata(source: Path, package: dict, metadata_directory: Path) -> None:
+    """Exercise Maturin's actual project discovery before compiling any Rust."""
+    project = tomllib.loads((source / "pyproject.toml").read_text())
+    config = project["tool"]["maturin"]
+    if config["manifest-path"] != package["manifest_path"] or config["module-name"] != package["module_name"]:
+        raise ValueError(f"Published Python project configuration differs from the pin: {package['name']}")
+    # Deliberately do not pass --manifest-path: Maturin then reads this root
+    # pyproject, including its Python package/module name and nested Cargo path.
+    subprocess.run([
+        sys.executable, "-m", "maturin", "pep517", "write-dist-info", "--locked",
+        "--metadata-directory", str(metadata_directory), "--interpreter", sys.executable,
+    ], cwd=source, check=True)
+    metadata_files = list(metadata_directory.glob("*.dist-info/METADATA"))
+    if len(metadata_files) != 1:
+        raise ValueError(f"Expected one Maturin metadata record: {package['name']}")
+    metadata = email.parser.Parser().parsestr(metadata_files[0].read_text())
+    if metadata["Name"].replace("_", "-").lower() != package["name"] or metadata["Version"] != package["version"]:
+        raise ValueError(f"Maturin selected the wrong Python project: {package['name']}")
+
+
+def verify_init_symbol(wheel: Path, package: dict) -> str:
+    """Check the exported CPython entry point instead of accepting a warning."""
+    package_path, module = package["module_name"].rsplit(".", 1)
+    prefix = package_path.replace(".", "/") + "/" + module + "."
+    symbol = "PyInit_" + module
+    with zipfile.ZipFile(wheel) as archive, tempfile.TemporaryDirectory(prefix="studio-native-symbol-") as temporary:
+        extensions = [name for name in archive.namelist() if name.startswith(prefix) and name.endswith(".so")]
+        if len(extensions) != 1:
+            raise ValueError(f"Expected one native module for {package['module_name']}")
+        library = Path(temporary) / "extension.so"
+        library.write_bytes(archive.read(extensions[0]))
+        # Apple's nm prefixes C symbols with an underscore on Mach-O binaries.
+        output = subprocess.check_output(["nm", "-gU", str(library)], text=True)
+    symbols = {line.split()[-1] for line in output.splitlines() if line.split()}
+    if symbol not in symbols and "_" + symbol not in symbols:
+        raise ValueError(f"Native extension is missing {symbol}: {wheel.name}")
+    return symbol
 
 
 def prepare_source(package: dict, directory: Path) -> tuple[Path, dict]:
@@ -154,18 +200,21 @@ def main() -> None:
         env.setdefault("CARGO_TARGET_DIR", str(work / "cargo-target"))
         for package in pin["packages"]:
             source, package_proof = prepare_source(package, work)
+            verify_project_metadata(source, package, work / (package["name"] + "-metadata"))
+            package_proof["module_name"] = package["module_name"]
             if not args.validate_sources_only:
                 before = set(wheel_directory.glob("*.whl"))
                 subprocess.run([
                     sys.executable, "-m", "maturin", "build", "--release", "--locked",
                     "--target", "x86_64-apple-darwin", "--interpreter", sys.executable,
-                    "--manifest-path", str(source / package["manifest_path"]),
                     "--out", str(wheel_directory),
                 ], cwd=source, env=env, check=True)
                 built = set(wheel_directory.glob("*.whl")) - before
                 if len(built) != 1:
                     raise ValueError(f"Expected exactly one wheel for {package['name']}")
-                package_proof["wheel"] = verify_wheel(built.pop(), package)
+                wheel = built.pop()
+                package_proof["wheel"] = verify_wheel(wheel, package)
+                package_proof["init_symbol"] = verify_init_symbol(wheel, package)
             proof["packages"].append(package_proof)
         if not args.validate_sources_only:
             # Publish only after both builds verify. Preserve the independently
