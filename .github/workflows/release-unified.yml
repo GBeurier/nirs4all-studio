@@ -2,6 +2,12 @@ name: Python recovery installers
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: 'Promote this successful qualification run; leave empty to build candidates'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -12,6 +18,7 @@ concurrency:
 
 jobs:
   quality:
+    if: inputs.candidate_run_id == ''
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +34,7 @@ jobs:
       - run: npm run smoke:nirs4all-ui-package
       - run: npm run lint:tsc
       - run: python -m pip install -r requirements-cpu.txt nirs4all==0.11.0 pytest pytest-asyncio pytest-timeout pytest-xdist
-      - run: python -m pytest tests/test_workspace_manager_startup.py tests/test_recommended_config_api.py tests/test_recovery_dependency_profile.py -q
+      - run: python -m pytest tests/test_workspace_manager_startup.py tests/test_recommended_config_api.py tests/test_recovery_dependency_profile.py tests/test_packaged_node_registry.py -q
 
   installer:
     needs: quality
@@ -121,3 +128,70 @@ jobs:
           name: recovery-docker
           path: recovery-docker.tar.gz
           if-no-files-found: error
+
+  promote:
+    if: inputs.candidate_run_id != ''
+    runs-on: ubuntu-22.04
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require successful qualification of this exact commit
+        run: |
+          gh run view "$CANDIDATE_RUN_ID" --json conclusion,headSha,headBranch,workflowName,event > candidate-run.json
+          python3 - <<'PYCODE'
+          import json, os
+          run = json.load(open('candidate-run.json'))
+          assert run['conclusion'] == 'success', run
+          assert run['headSha'] == os.environ['GITHUB_SHA'], run
+          assert run['headBranch'] == 'recovery/python-studio', run
+          assert run['workflowName'] == 'Python recovery installers', run
+          assert run['event'] == 'workflow_dispatch', run
+          assert json.load(open('package.json'))['version'] == '0.11.8'
+          PYCODE
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run_id }}
+          pattern: recovery-*
+          path: candidates
+      - name: Verify installed-platform receipts and prepare installer checksums
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib, json, pathlib, shutil
+          root = pathlib.Path('candidates')
+          assets = [p for p in root.rglob('*') if p.suffix in ('.exe', '.deb', '.dmg')]
+          assert len(assets) == 4, assets
+          reports = [json.loads(p.read_text()) for p in root.rglob('*.json') if p.parent.name == 'qualification']
+          assert len(reports) == 4, reports
+          assert {(r['platform'], r['arch']) for r in reports} == {('win32','x64'),('linux','x64'),('darwin','x64'),('darwin','arm64')}
+          assert all(r['success'] and r['scope'] == 'installed_application' and r['migration']['success'] for r in reports)
+          verified = {r['installer_sha256'] for r in reports}
+          output = pathlib.Path('release-assets'); output.mkdir()
+          for asset in assets:
+              assert 'portable' not in asset.name.lower() and 'all-in-one' not in asset.name.lower()
+              digest = hashlib.file_digest(asset.open('rb'), 'sha256').hexdigest()
+              assert digest in verified, asset
+              shutil.copy2(asset, output / asset.name)
+              (output / (asset.name + '.sha256')).write_text(digest + '  ' + asset.name + '\n')
+          (output / 'qualification.json').write_text(json.dumps(reports, indent=2))
+          PYCODE
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish the already-qualified Docker image
+        run: |
+          gunzip -c candidates/recovery-docker/recovery-docker.tar.gz | docker load
+          docker tag nirs4all-studio:0.11.8 ghcr.io/gbeurier/nirs4all-studio:0.11.8
+          docker tag nirs4all-studio:0.11.8 ghcr.io/gbeurier/nirs4all-studio:latest
+          docker push ghcr.io/gbeurier/nirs4all-studio:0.11.8
+          docker push ghcr.io/gbeurier/nirs4all-studio:latest
+      - name: Publish the recovery release
+        run: gh release create 0.11.8 --target "$GITHUB_SHA" --title 'Studio 0.11.8 — Python recovery' --notes-file RECOVERY_RELEASE.md --latest release-assets/*

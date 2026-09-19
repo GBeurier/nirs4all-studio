@@ -70,6 +70,10 @@ const items = [
   { src: "updater", type: "dir" },
   { src: "main.py", type: "file" },
   { src: "public", type: "dir" },
+  // Python resolves the same curated names and aliases as the renderer palette.
+  // extended.json alone omits aliases such as SNV, MSC and PLS.
+  { src: "src/data/nodes/definitions", type: "dir" },
+  { src: "src/data/nodes/generated/canonical-registry.json", type: "file" },
   { src: "recommended-config.json", type: "file" },
   { src: "version.json", type: "file" },
 ];
@@ -90,6 +94,7 @@ for (const item of items) {
     copyDirSync(srcPath, destPath);
     console.log(`  Copied: ${item.src}/ (${formatSize(getDirSize(destPath))})`);
   } else {
+    fs.mkdirSync(path.dirname(destPath), { recursive: true });
     fs.copyFileSync(srcPath, destPath);
     console.log(`  Copied: ${item.src} (${formatSize(fs.statSync(destPath).size)})`);
   }

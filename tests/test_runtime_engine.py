@@ -229,3 +229,11 @@ def test_finalize_handles_broken_rt_result_gracefully():
         pass
     record = observation.finalize(result=_Result())
     assert record["engine"] == "dag-ml"
+
+
+@pytest.fixture(autouse=True)
+def ordinary_release_engine_policy(monkeypatch):
+    """These engine-routing units use ordinary releases; recovery is covered separately."""
+    from api import recommended_config
+
+    monkeypatch.setattr(recommended_config, "recovery_nirs4all_version", lambda: None)

@@ -147,3 +147,11 @@ def test_run_training_task_forwards_runtime_engine_to_nirs4all(monkeypatch: pyte
         "allow_fallback": True,
         "mode": "allow_fallback",
     }
+
+
+@pytest.fixture(autouse=True)
+def ordinary_release_engine_policy(monkeypatch):
+    """These engine-routing units use ordinary releases; recovery is covered separately."""
+    from api import recommended_config
+
+    monkeypatch.setattr(recommended_config, "recovery_nirs4all_version", lambda: None)

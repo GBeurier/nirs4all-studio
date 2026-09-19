@@ -37,6 +37,8 @@ extraResources:
       - "updater/**/*"
       - "main.py"
       - "public/**/*"
+      - "src/data/nodes/definitions/**/*"
+      - "src/data/nodes/generated/canonical-registry.json"
       - "recommended-config.json"
       - "version.json"
 

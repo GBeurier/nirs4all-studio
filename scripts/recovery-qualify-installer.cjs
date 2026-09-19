@@ -160,6 +160,7 @@ async function launch(installed, profile, proof, actualWindowsProfile = false) {
   let page;
   await expect.poll(() => { page = app.windows().find(window => /index\.html/.test(window.url())); return Boolean(page); }, { timeout: BUDGETS.launch }).toBe(true);
   await page.locator('body').waitFor();
+  page.setDefaultTimeout(10000);
   return { app, page, env, errors, proof, profile };
 }
 
@@ -203,6 +204,14 @@ async function verifyRuntime(context) {
   context.proof.nirs4all_version = stdout.trim();
 }
 
+async function awaitReady(context) {
+  await expect.poll(async () => {
+    const readiness = await api(context.env, '/system/readiness');
+    return readiness.ml_ready && readiness.workspace_ready;
+  }, { timeout: BUDGETS.launch, intervals: [100, 200, 500] }).toBe(true);
+  await expect(context.page.getByRole('link', { name: 'Datasets', exact: true })).toBeVisible({ timeout: BUDGETS.launch });
+}
+
 async function businessJourney(context, data) {
   const { page, app, env, proof } = context;
   await page.getByRole('link', { name: 'Datasets', exact: true }).click();
@@ -227,12 +236,22 @@ async function businessJourney(context, data) {
   await timed(proof, 'playground_transform_ui', BUDGETS.playground, async () => {
     await page.evaluate(({ id, name }) => { window.location.hash = `/playground?datasetId=${encodeURIComponent(id)}&datasetName=${encodeURIComponent(name)}`; }, dataset);
     await page.getByRole('button', { name: /Search operators/ }).click();
-    await page.getByPlaceholder('Search operators...').fill('StandardNormalVariate');
-    const responsePromise = page.waitForResponse(response => response.url().includes('/playground/execute') && response.request().method() === 'POST', { timeout: BUDGETS.playground });
+    await page.getByPlaceholder('Search operators...').fill('SNV');
+    const responsePromise = page.waitForResponse(response => response.url().includes('/playground/execute')
+      && response.request().method() === 'POST'
+      && response.request().postDataJSON()?.steps?.some(step => /StandardNormalVariate|SNV/.test(step.name)), { timeout: BUDGETS.playground });
     await page.getByRole('option').filter({ hasText: /SNV|Standard Normal Variate|StandardNormalVariate/i }).first().click();
-    const result = await (await responsePromise).json();
-    assert(result.success && !result.is_raw_data && result.execution_trace.some(step => step.success && /StandardNormalVariate|SNV/.test(step.name)), 'Renderer did not execute SNV');
+    const response = await responsePromise;
+    const result = response.headers()['content-type']?.includes('application/x-msgpack')
+      ? require('@msgpack/msgpack').decode(await response.body()) : await response.json();
+    assert(result.success && !result.is_raw_data && result.execution_trace.some(step => step.success && /StandardNormalVariate|SNV/.test(step.name)),
+      `Renderer did not execute SNV: ${JSON.stringify({ trace: result.execution_trace, errors: result.step_errors })}`);
     assert(result.processed && result.original, 'Missing real spectral arrays');
+    const spectrum = result.processed.spectra[0];
+    assert(Array.isArray(spectrum) && spectrum.length === 256 && spectrum.every(Number.isFinite));
+    const mean = spectrum.reduce((sum, value) => sum + value, 0) / spectrum.length;
+    const variance = spectrum.reduce((sum, value) => sum + (value - mean) ** 2, 0) / spectrum.length;
+    assert(Math.abs(mean) < 1e-5 && Math.abs(variance - 1) < .02, `SNV numerical invariant failed: mean=${mean}, variance=${variance}`);
     proof.playground = { execution_time_ms: result.execution_time_ms, trace: result.execution_trace };
     await expect(page.locator('canvas, .recharts-surface').first()).toBeVisible({ timeout: BUDGETS.playground });
   });
@@ -254,10 +273,21 @@ async function businessJourney(context, data) {
     return result;
   });
   proof.training = { id: training.id, status: training.status };
+  const pipelines = training.datasets.flatMap(datasetRun => datasetRun.pipelines);
+  assert(pipelines.length > 0 && pipelines.every(pipelineRun => pipelineRun.engine === 'legacy'), 'Recovery training did not use the legacy engine');
+  proof.training.engines = pipelines.map(pipelineRun => pipelineRun.engine);
   await timed(proof, 'nonempty_predictions_ui', BUDGETS.predictions, async () => {
     const stored = await api(env, '/aggregated-predictions');
     assert(stored.total > 0 && stored.predictions.some(entry => Number.isFinite(entry.cv_val_score)), 'No finite cross-validation prediction score');
     proof.predictions = { total: stored.total, cv_val_scores: stored.predictions.map(entry => entry.cv_val_score) };
+    const cvChain = stored.predictions.find(entry => Number.isFinite(entry.cv_val_score));
+    const chain = await api(env, `/aggregated-predictions/chain/${encodeURIComponent(cvChain.chain_id)}`);
+    const fold = chain.predictions.find(entry => entry.partition === 'val');
+    assert(fold?.prediction_id, 'No persisted validation-fold predictions');
+    const arrays = await api(env, `/aggregated-predictions/${encodeURIComponent(fold.prediction_id)}/arrays`);
+    const truth = arrays.y_true?.flat(Infinity), predicted = arrays.y_pred?.flat(Infinity);
+    assert(truth?.length > 100 && truth.length === predicted?.length && truth.every(Number.isFinite) && predicted.every(Number.isFinite));
+    proof.predictions.validation_samples = truth.length;
     await page.locator('a[href="#/predictions"]').click();
     await expect(page.getByText('PLSRegression', { exact: false }).first()).toBeVisible({ timeout: BUDGETS.predictions });
     await expect(page.getByText(/Error loading predictions|route_not_native_qualified|No predictions/i)).not.toBeVisible();
@@ -360,7 +390,7 @@ async function main(argv = process.argv.slice(2)) {
     await context.app.close(); context = undefined;
     context = await timed(proof, 'restart_ready', BUDGETS.launch, async () => {
       const reopened = await launch(installed, profile, proof);
-      await expect(reopened.page.getByRole('link', { name: 'Datasets', exact: true })).toBeVisible({ timeout: BUDGETS.launch });
+      await awaitReady(reopened);
       return reopened;
     });
     assert.equal((await api(context.env, '/workspace')).workspace.path, workspace);
@@ -374,7 +404,7 @@ async function main(argv = process.argv.slice(2)) {
     await finishSetup(context, 'accept');
     await context.app.close(); context = undefined;
     context = await launch(installed, path.join(root, 'fresh-accept'), proof);
-    await expect(context.page.getByRole('link', { name: 'Datasets', exact: true })).toBeVisible({ timeout: BUDGETS.launch });
+    await awaitReady(context);
     assert.equal(await context.page.evaluate(() => localStorage.getItem('nirs4all-telemetry-consent')), 'accepted');
     assert.deepEqual(context.errors, []);
     await context.app.close(); context = undefined;

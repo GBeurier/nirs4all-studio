@@ -95,6 +95,7 @@ RUN python -m pip install --no-cache-dir "https://github.com/GBeurier/nirs4all/a
 # Copy backend source
 COPY main.py ./
 COPY api/ api/
+COPY src/data/nodes/ src/data/nodes/
 COPY websocket/ websocket/
 COPY recommended-config.json package.json ./
 
