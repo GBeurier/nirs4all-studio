@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
 const { createServer } = require('node:net');
 const { pipeline } = require('node:stream/promises');
@@ -50,7 +50,7 @@ function installerMatch(name, platform = process.platform, arch = process.arch) 
 }
 
 async function install(file, root) {
-  const command = (program, args) => run(program, args, { timeout: BUDGETS.installer, maxBuffer: 2 ** 20 });
+  const command = (program, args) => streamedCommand(program, args, path.dirname(root));
   if (process.platform === 'win32') {
     await command(file, ['/S', '/allusers', `/D=${root}`]);
     assert(fs.existsSync(path.join(root, 'nirs4all Studio.exe')));
@@ -78,6 +78,22 @@ async function install(file, root) {
 }
 
 const sha256 = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+/** Old bundled installers emit more output than execFile's default buffer. */
+async function streamedCommand(program, args, logRoot) {
+  fs.mkdirSync(logRoot, { recursive: true });
+  const prefix = path.join(logRoot, `install-${path.basename(program)}-${crypto.randomBytes(4).toString('hex')}`);
+  const output = fs.openSync(`${prefix}.stdout.log`, 'w');
+  const errors = fs.openSync(`${prefix}.stderr.log`, 'w');
+  try {
+    await new Promise((resolve, reject) => {
+      const child = spawn(program, args, { stdio: ['ignore', output, errors], timeout: BUDGETS.installer });
+      child.once('error', reject);
+      child.once('exit', (code, signal) => code === 0 ? resolve() : reject(new Error(
+        `${program} exited ${code ?? signal}; see ${prefix}.*.log: ${fs.readFileSync(`${prefix}.stderr.log`, 'utf8').slice(-4096)}`)));
+    });
+  } finally { fs.closeSync(output); fs.closeSync(errors); }
+  return { stdout: /^dpkg/.test(path.basename(program)) ? fs.readFileSync(`${prefix}.stdout.log`, 'utf8') : '' };
+}
 async function baselineInstaller(version, root) {
   const tag = version;
   const response = await fetch(`https://api.github.com/repos/GBeurier/nirs4all-studio/releases/tags/${tag}`, { signal: AbortSignal.timeout(30000) });
@@ -147,21 +163,40 @@ async function launch(installed, profile, proof, actualWindowsProfile = false) {
   const layout = archive.resolveLaunchLayout(installed, process.platform, 'nirs4all Studio');
   fs.mkdirSync(profile, { recursive: true });
   const app = await electron.launch({ executablePath: layout.executablePath, cwd: layout.appRoot, env,
-    args: process.platform === 'linux' ? ['--no-sandbox'] : [], timeout: BUDGETS.launch });
+    args: [...(process.platform === 'linux' ? ['--no-sandbox'] : []),
+      ...(!actualWindowsProfile ? [`--user-data-dir=${path.join(profile, 'electron-user-data')}`] : [])], timeout: BUDGETS.launch });
   app.process().stderr.on('data', data => fs.appendFileSync(path.join(profile, 'electron.log'), data));
+  app.process().stdout.on('data', data => fs.appendFileSync(path.join(profile, 'electron-stdout.log'), data));
   const errors = [];
+  const requests = [];
   const attach = page => {
+    page.on('console', message => fs.appendFileSync(path.join(profile, 'renderer.log'), `${message.type()}: ${message.text()}\n`));
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => {
       if (response.url().includes('/api/') && response.status() >= 400) errors.push(`HTTP ${response.status()} ${response.url()}`);
+    });
+    page.on('requestfinished', async request => {
+      try {
+      if (!request.url().includes('/api/') || /readiness|health/.test(request.url())) return;
+      const response = await request.response();
+      const entry = { method: request.method(), url: request.url(), status: response?.status(), timing: request.timing() };
+      if (/datasets\/(preview|validate|detect)/.test(request.url())) {
+        entry.response = await response?.json().then(value => ({ success: value.success, error: value.error,
+          summary: value.summary, validation: value.validation })).catch(() => null);
+      }
+      requests.push(entry);
+      } catch { /* The page can close while diagnostics finish reading a response. */ }
     });
   };
   app.on('window', attach); app.windows().forEach(attach);
   let page;
   await expect.poll(() => { page = app.windows().find(window => /index\.html/.test(window.url())); return Boolean(page); }, { timeout: BUDGETS.launch }).toBe(true);
   await page.locator('body').waitFor();
+  await page.evaluate(() => window.electronApi?.onEnvSetupProgress?.(progress => {
+    console.log('QUALIFICATION_ENV_PROGRESS', JSON.stringify(progress));
+  }));
   page.setDefaultTimeout(10000);
-  return { app, page, env, errors, proof, profile };
+  return { app, page, env, errors, requests, proof, profile };
 }
 
 async function finishSetup(context, consent = 'decline') {
@@ -177,7 +212,11 @@ async function finishSetup(context, consent = 'decline') {
   proof.python_env_dir = defaultEnv.envDir;
   await timed(proof, `python_setup_${consent}`, BUDGETS.python_setup, async () => {
     await page.getByRole('button', { name: /Set up automatically/ }).click();
-    await expect(page.getByText('Select Compute Profile', { exact: true })).toBeVisible({ timeout: BUDGETS.python_setup });
+    const completed = page.getByText('Select Compute Profile', { exact: true });
+    // Report an installation error immediately instead of timing out on a later screen.
+    const failed = page.getByRole('alert').filter({ hasText: /failed|error|cannot|unable/i });
+    await expect(completed.or(failed).first()).toBeVisible({ timeout: BUDGETS.python_setup });
+    assert(await completed.isVisible(), `Python setup failed:\n${await page.locator('body').innerText()}`);
   });
   await timed(proof, `profile_setup_${consent}`, BUDGETS.profile_setup, async () => {
     await page.getByText('CPU — Lite (scikit-learn only)', { exact: true }).click();
@@ -226,9 +265,13 @@ async function businessJourney(context, data) {
   const dialog = page.getByRole('dialog');
   await dialog.getByText('Select Folder', { exact: true }).click();
   await dialog.getByPlaceholder('Enter dataset name').fill('Release journey spectra');
-  for (let step = 0; step < 3; step++) await dialog.getByRole('button', { name: 'Next', exact: true }).click();
+  for (const description of ['Configure file roles and splits', 'Configure CSV and data parsing', 'Configure target columns and task type']) {
+    await expect(dialog.getByText(description, { exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Next', exact: true }).click();
+  }
   await timed(proof, 'dataset_preview_ui', BUDGETS.preview, async () => {
-    await expect(dialog.getByText(/All files parsed successfully/)).toBeVisible({ timeout: BUDGETS.preview });
+    try { await expect(dialog.getByText(/All files parsed successfully/)).toBeVisible({ timeout: BUDGETS.preview }); }
+    catch (error) { throw new Error(`${error.message}\nDataset wizard:\n${await dialog.innerText()}\nRequests:\n${JSON.stringify(context.requests)}`); }
   });
   await timed(proof, 'dataset_link_ui', BUDGETS.link, async () => {
     await dialog.getByRole('button', { name: 'Add Dataset', exact: true }).click();
@@ -417,16 +460,30 @@ async function main(argv = process.argv.slice(2)) {
     proof.success = true;
   } catch (error) { proof.error = error.stack || String(error); throw error; }
   finally {
+    const diagnostics = path.join(path.dirname(path.resolve(options.output)), `${process.platform}-${process.arch}-diagnostics`);
+    fs.mkdirSync(diagnostics, { recursive: true });
     if (context) {
-      await context.page.screenshot({ path: path.join(root, 'failure.png') }).catch(() => {});
-      fs.writeFileSync(path.join(root, 'failure-body.txt'), await context.page.locator('body').innerText().catch(() => ''));
+      await context.page.screenshot({ path: path.join(diagnostics, 'failure.png') }).catch(() => {});
+      fs.writeFileSync(path.join(diagnostics, 'failure-body.txt'), await context.page.locator('body').innerText().catch(() => ''));
+      proof.api_errors = context.errors;
+      proof.requests = context.requests;
       await context.app.close().catch(() => {});
     }
+    function collect(directory) {
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const source = path.join(directory, entry.name);
+        if (entry.isDirectory() && !['home', 'electron-user-data', 'Application installée', 'UserProfile'].includes(entry.name)) collect(source);
+        else if (entry.isFile() && /\.(log|png)$/.test(entry.name)) {
+          fs.copyFileSync(source, path.join(diagnostics, path.relative(root, source).replaceAll(path.sep, '_')));
+        }
+      }
+    }
+    collect(root);
     fs.mkdirSync(path.dirname(path.resolve(options.output)), { recursive: true });
     fs.writeFileSync(options.output, JSON.stringify(proof, null, 2));
   }
   return proof;
 }
 
-module.exports = { BUDGETS, baselineInstaller, businessJourney, finishSetup, fixture, installerMatch, launch, main, parseArgs, qualifyMigration, snapshot, timed };
+module.exports = { BUDGETS, baselineInstaller, businessJourney, finishSetup, fixture, installerMatch, launch, main, parseArgs, qualifyMigration, snapshot, streamedCommand, timed };
 if (require.main === module) main().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

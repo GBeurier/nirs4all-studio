@@ -7,7 +7,7 @@
  * - Target distribution
  * - Final confirmation
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   CheckCircle2,
   AlertCircle,
@@ -42,6 +42,7 @@ const Histogram = TargetHistogram;
 
 export function PreviewStep() {
   const { state, dispatch } = useWizard();
+  const requestRevision = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<number>(0);
@@ -51,8 +52,10 @@ export function PreviewStep() {
   const loadPreview = useCallback(async () => {
     if (state.files.length === 0) return;
 
+    const revision = ++requestRevision.current;
     setLoading(true);
     setError(null);
+    dispatch({ type: "SET_PREVIEW", payload: null });
 
     try {
       // Convert DetectedFile to DatasetFile for API
@@ -101,26 +104,27 @@ export function PreviewStep() {
         });
       }
 
+      if (revision !== requestRevision.current) return;
       dispatch({ type: "SET_PREVIEW", payload: result });
 
-      if (result.error) {
-        setError(result.error);
+      if (result.error || !result.success) {
+        setError(result.error || "Some files could not be loaded. Check their parsing options.");
       }
     } catch (e) {
+      if (revision !== requestRevision.current) return;
       const message = e instanceof Error ? e.message : "Failed to load preview";
       setError(message);
       dispatch({ type: "SET_PREVIEW", payload: null });
     } finally {
-      setLoading(false);
+      if (revision === requestRevision.current) setLoading(false);
     }
   }, [state.files, state.basePath, state.parsing, state.perFileOverrides, state.fileBlobs, dispatch]);
 
-  // Load preview on mount
+  // Failed requests stay visible until Retry or a configuration change.
   useEffect(() => {
-    if (!state.preview && !loading) {
-      loadPreview();
-    }
-  }, [loadPreview, state.preview, loading]);
+    void loadPreview();
+    return () => { requestRevision.current += 1; };
+  }, [loadPreview]);
 
   const preview = state.preview;
   const partitionMap = preview?.spectra_preview_by_partition;

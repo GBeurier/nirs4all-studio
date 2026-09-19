@@ -179,14 +179,20 @@ jobs:
           assert len(reports) == 4, reports
           assert {(r['platform'], r['arch']) for r in reports} == {('win32','x64'),('linux','x64'),('darwin','x64'),('darwin','arm64')}
           assert all(r['success'] and r['scope'] == 'installed_application' and r['migration']['success'] for r in reports)
+          docker_report = json.loads((root / 'recovery-docker/docker-qualification.json').read_text())
+          assert docker_report['success'] and docker_report['samples'] == 1000 and docker_report['features'] == 256
           verified = {r['installer_sha256'] for r in reports}
           output = pathlib.Path('release-assets'); output.mkdir()
           for asset in assets:
               assert 'portable' not in asset.name.lower() and 'all-in-one' not in asset.name.lower()
               digest = hashlib.file_digest(asset.open('rb'), 'sha256').hexdigest()
               assert digest in verified, asset
-              shutil.copy2(asset, output / asset.name)
-              (output / (asset.name + '.sha256')).write_text(digest + '  ' + asset.name + '\n')
+              # Match GitHub's public filename normalization before generating
+              # checksums, so downloaded sidecars resolve the actual payload.
+              public_name = asset.name.replace(' ', '.')
+              assert not (output / public_name).exists(), public_name
+              shutil.copy2(asset, output / public_name)
+              (output / (public_name + '.sha256')).write_text(digest + '  ' + public_name + '\n')
           (output / 'qualification.json').write_text(json.dumps(reports, indent=2))
           PYCODE
       - uses: docker/login-action@v3
