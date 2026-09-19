@@ -83,7 +83,10 @@ fn history_reads_actual_store_without_changing_any_bytes_or_timestamp() {
             fs::metadata(&database).unwrap().modified().unwrap()
         )
     );
-    assert_eq!(fs::read_dir(&fixture.0).unwrap().count(), 1);
+    assert!(fs::read_dir(&fixture.0).unwrap().all(|entry| matches!(
+        entry.unwrap().file_name().to_str(),
+        Some("store.sqlite" | "store.sqlite-wal" | "store.sqlite-shm")
+    )));
 }
 
 #[test]
@@ -158,7 +161,7 @@ fn history_connection_and_immutable_file_projection_are_identical() {
 }
 
 #[test]
-fn history_refuses_invalid_bounds_schema_and_live_journals() {
+fn history_refuses_invalid_bounds_and_schema_but_reads_committed_wal() {
     let fixture = Fixture::new();
     assert!(matches!(
         fixture.read(None, 0, 0),
@@ -178,11 +181,11 @@ fn history_refuses_invalid_bounds_schema_and_live_journals() {
         Err(WorkspaceStoreReadError::SchemaVersion { actual: 4, .. })
     ));
     fixture.edit("PRAGMA user_version=5;");
-    fs::write(fixture.0.join("store.sqlite-wal"), b"active writer").unwrap();
-    assert!(matches!(
-        fixture.read(None, 100, 0),
-        Err(WorkspaceStoreReadError::LiveJournal(_))
-    ));
+    let writer = Connection::open(fixture.0.join("store.sqlite")).unwrap();
+    writer
+        .execute_batch("PRAGMA journal_mode=WAL; UPDATE runs SET name='committed during training'")
+        .unwrap();
+    assert!(fixture.read(None, 100, 0).is_ok());
 }
 
 #[test]

@@ -12,7 +12,6 @@ use std::{
     error::Error,
     fmt, fs,
     path::{Path, PathBuf},
-    time::SystemTime,
 };
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row, TransactionBehavior};
@@ -245,7 +244,6 @@ pub fn register_archive_v2_artifact(
     }
 
     let database = canonical_workspace_store_path(&workspace).map_err(|error| error.to_string())?;
-    refuse_live_journals(&database).map_err(|error| error.to_string())?;
     let mut connection = Connection::open_with_flags(
         &database,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -275,7 +273,7 @@ pub fn register_archive_v2_artifact(
         .commit()
         .map_err(|error| format!("WorkspaceStore registration commit failed: {error}"))?;
     drop(connection);
-    refuse_live_journals(&database).map_err(|error| error.to_string())
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -528,15 +526,9 @@ impl fmt::Display for WorkspaceStoreReadError {
 
 impl Error for WorkspaceStoreReadError {}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct FileStamp {
-    len: u64,
-    modified: Option<SystemTime>,
-}
-
 /// Return the public Store v5 run-summary projection for a linked workspace.
 ///
-/// The database is opened only through `SQLite`'s URI immutable/read-only mode.
+/// The database is opened through a fresh `SQLite` read-only transaction.
 /// A caller must treat [`WorkspaceStoreReadError::SchemaVersion`] as a
 /// fail-closed compatibility result, rather than falling back to a private
 /// schema reconstruction.
@@ -556,24 +548,10 @@ pub fn read_run_summaries(
     }
     let offset =
         i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
-    let database = canonical_workspace_store_path(workspace_path)?;
-    let before = file_stamp(&database)?;
-    refuse_live_journals(&database)?;
-    let uri = immutable_read_only_uri(&database)?;
-    let connection = Connection::open_with_flags(
-        uri,
-        OpenFlags::SQLITE_OPEN_READ_ONLY
-            | OpenFlags::SQLITE_OPEN_URI
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    let connection = open_read_snapshot(workspace_path)?;
     validate_database(&connection)?;
     let result = query_run_summaries(&connection, i64::from(limit), offset);
     drop(connection);
-    refuse_live_journals(&database)?;
-    if file_stamp(&database)? != before {
-        return Err(WorkspaceStoreReadError::ChangedDuringRead);
-    }
     result
 }
 
@@ -605,23 +583,9 @@ pub(crate) fn read_run_summaries_from_connection(
 pub fn read_archive_v2_registrations(
     workspace_path: &Path,
 ) -> Result<Vec<WorkspaceStoreArchiveV2Registration>, WorkspaceStoreReadError> {
-    let database = canonical_workspace_store_path(workspace_path)?;
-    let before = file_stamp(&database)?;
-    refuse_live_journals(&database)?;
-    let uri = immutable_read_only_uri(&database)?;
-    let connection = Connection::open_with_flags(
-        uri,
-        OpenFlags::SQLITE_OPEN_READ_ONLY
-            | OpenFlags::SQLITE_OPEN_URI
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    let connection = open_read_snapshot(workspace_path)?;
     let result = read_archive_v2_registrations_from_connection(&connection);
     drop(connection);
-    refuse_live_journals(&database)?;
-    if file_stamp(&database)? != before {
-        return Err(WorkspaceStoreReadError::ChangedDuringRead);
-    }
     result
 }
 
@@ -674,17 +638,7 @@ pub fn read_run_detail_projection(
     if run_id.is_empty() || run_id.trim() != run_id || run_id.contains('\0') {
         return Err(WorkspaceStoreReadError::InvalidRunId);
     }
-    let database = canonical_workspace_store_path(workspace_path)?;
-    let before = file_stamp(&database)?;
-    refuse_live_journals(&database)?;
-    let uri = immutable_read_only_uri(&database)?;
-    let connection = Connection::open_with_flags(
-        uri,
-        OpenFlags::SQLITE_OPEN_READ_ONLY
-            | OpenFlags::SQLITE_OPEN_URI
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    let connection = open_read_snapshot(workspace_path)?;
     validate_database(&connection)?;
     validate_table_columns(&connection, "runs", &RUN_DETAIL_RUN_COLUMNS)?;
     validate_table_columns(&connection, "pipelines", &RUN_DETAIL_PIPELINE_COLUMNS)?;
@@ -692,10 +646,6 @@ pub fn read_run_detail_projection(
     validate_table_columns(&connection, "logs", &RUN_DETAIL_LOG_COLUMNS)?;
     let result = query_run_detail_projection(&connection, run_id);
     drop(connection);
-    refuse_live_journals(&database)?;
-    if file_stamp(&database)? != before {
-        return Err(WorkspaceStoreReadError::ChangedDuringRead);
-    }
     result
 }
 
@@ -734,27 +684,13 @@ pub fn preflight_run_detail_projection(
 ) -> Result<(), WorkspaceStoreReadError> {
     validate_contract()?;
     validate_run_detail_http_contract()?;
-    let database = canonical_workspace_store_path(workspace_path)?;
-    let before = file_stamp(&database)?;
-    refuse_live_journals(&database)?;
-    let uri = immutable_read_only_uri(&database)?;
-    let connection = Connection::open_with_flags(
-        uri,
-        OpenFlags::SQLITE_OPEN_READ_ONLY
-            | OpenFlags::SQLITE_OPEN_URI
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    let connection = open_read_snapshot(workspace_path)?;
     validate_database(&connection)?;
     validate_table_columns(&connection, "runs", &RUN_DETAIL_RUN_COLUMNS)?;
     validate_table_columns(&connection, "pipelines", &RUN_DETAIL_PIPELINE_COLUMNS)?;
     validate_table_columns(&connection, "chains", &RUN_DETAIL_CHAIN_COLUMNS)?;
     validate_table_columns(&connection, "logs", &RUN_DETAIL_LOG_COLUMNS)?;
     drop(connection);
-    refuse_live_journals(&database)?;
-    if file_stamp(&database)? != before {
-        return Err(WorkspaceStoreReadError::ChangedDuringRead);
-    }
     Ok(())
 }
 
@@ -792,24 +728,10 @@ pub fn read_pipeline_summaries(
     }
     let offset =
         i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
-    let database = canonical_workspace_store_path(workspace_path)?;
-    let before = file_stamp(&database)?;
-    refuse_live_journals(&database)?;
-    let uri = immutable_read_only_uri(&database)?;
-    let connection = Connection::open_with_flags(
-        uri,
-        OpenFlags::SQLITE_OPEN_READ_ONLY
-            | OpenFlags::SQLITE_OPEN_URI
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    let connection = open_read_snapshot(workspace_path)?;
     validate_database(&connection)?;
     let result = query_pipeline_summaries(&connection, i64::from(limit), offset);
     drop(connection);
-    refuse_live_journals(&database)?;
-    if file_stamp(&database)? != before {
-        return Err(WorkspaceStoreReadError::ChangedDuringRead);
-    }
     result
 }
 
@@ -859,17 +781,7 @@ pub fn read_ranked_chains(
     }
     let offset =
         i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
-    let database = canonical_workspace_store_path(workspace_path)?;
-    let before = file_stamp(&database)?;
-    refuse_live_journals(&database)?;
-    let uri = immutable_read_only_uri(&database)?;
-    let connection = Connection::open_with_flags(
-        uri,
-        OpenFlags::SQLITE_OPEN_READ_ONLY
-            | OpenFlags::SQLITE_OPEN_URI
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    let connection = open_read_snapshot(workspace_path)?;
     validate_database(&connection)?;
     validate_table_columns(&connection, "chains", &CHAIN_RANKING_COLUMNS)?;
     validate_table_columns(&connection, "predictions", &PREDICTION_RANKING_COLUMNS)?;
@@ -882,10 +794,6 @@ pub fn read_ranked_chains(
         offset,
     );
     drop(connection);
-    refuse_live_journals(&database)?;
-    if file_stamp(&database)? != before {
-        return Err(WorkspaceStoreReadError::ChangedDuringRead);
-    }
     result
 }
 
@@ -915,27 +823,13 @@ pub(crate) fn visit_results_summary_source(
 ) -> Result<(), WorkspaceStoreReadError> {
     validate_contract()?;
     validate_results_summary_contract()?;
-    let database = canonical_workspace_store_path(workspace_path)?;
-    let before = file_stamp(&database)?;
-    refuse_live_journals(&database)?;
-    let uri = immutable_read_only_uri(&database)?;
-    let connection = Connection::open_with_flags(
-        uri,
-        OpenFlags::SQLITE_OPEN_READ_ONLY
-            | OpenFlags::SQLITE_OPEN_URI
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    let connection = open_read_snapshot(workspace_path)?;
     validate_database(&connection)?;
     validate_table_columns(&connection, "chains", &RESULTS_SUMMARY_CHAIN_COLUMNS)?;
     validate_table_columns(&connection, "pipelines", &RESULTS_SUMMARY_PIPELINE_COLUMNS)?;
     validate_table_columns(&connection, "predictions", &PREDICTION_RANKING_COLUMNS)?;
     let result = visit_results_summary_source_from_connection(&connection, consume);
     drop(connection);
-    refuse_live_journals(&database)?;
-    if file_stamp(&database)? != before {
-        return Err(WorkspaceStoreReadError::ChangedDuringRead);
-    }
     result
 }
 
@@ -986,7 +880,7 @@ fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
             .and_then(Value::as_str)
             != Some(STORE_FILENAME)
         || contract.pointer("/store/open_mode").and_then(Value::as_str)
-            != Some("sqlite_immutable_read_only")
+            != Some("sqlite_read_only_transaction")
         || contract
             .pointer("/store/compatibility")
             .and_then(Value::as_str)
@@ -1004,7 +898,7 @@ fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
         || contract
             .pointer("/store/must_not_create_wal_or_shm")
             .and_then(Value::as_bool)
-            != Some(true)
+            != Some(false)
         || projection.get("query").and_then(Value::as_str) != Some(RUN_SUMMARY_QUERY)
         || contract.get("workspace_location") != Some(&expected_location)
     {
@@ -1082,7 +976,7 @@ fn validate_run_discovery_contract(contract: &Value) -> Result<(), WorkspaceStor
         },
         "store_semantics": {
             "source": "accepted_for_store_parity_but_does_not_switch_away_from_workspace_store",
-            "refresh": "every_native_request_is_an_uncached_immutable_read",
+            "refresh": "every_native_request_uses_a_fresh_transaction_snapshot",
             "limit": 500,
             "offset": 0,
             "ordering": "studio_run_summary",
@@ -1190,11 +1084,11 @@ fn validate_run_detail_contract(contract: &Value) -> Result<(), WorkspaceStoreRe
 
 fn validate_run_detail_cutover_policy(projection: &Value) -> Result<(), WorkspaceStoreReadError> {
     let expected_preconditions = json!({
-        "open_mode": "sqlite_immutable_read_only",
+        "open_mode": "sqlite_read_only_transaction",
         "pragma_user_version": 5,
         "active_sidecars": ["store.sqlite-wal", "store.sqlite-shm", "store.sqlite-journal"],
-        "active_sidecar_policy": "reject_if_any_exists",
-        "database_change_during_read": "reject",
+        "active_sidecar_policy": "read_committed_sqlite_snapshot",
+        "database_change_during_read": "retain_transaction_snapshot",
         "writes_or_cache": "forbidden",
     });
     let expected_composition = json!({
@@ -1286,7 +1180,7 @@ fn validate_run_detail_http_owner_inputs(contract: &Value) -> Result<(), Workspa
         "entry_fields": ["pipeline_id", "splitter"],
         "splitter": "splitter_config_output_or_null",
         "materialization": "derived_by_owner_oracle_before_consumer_boundary",
-        "materialization_time": "immutable_owner_read",
+        "materialization_time": "transactional_owner_read",
         "consumer_reimplementation": "forbidden",
         "consumer_expanded_config_access": "forbidden",
     });
@@ -1369,7 +1263,7 @@ fn expected_run_detail_owner_oracle() -> Value {
             "pipeline_runner_construction": "forbidden",
         },
         "scope": "store_v5_owner_inputs_only",
-        "open_mode": "composed_immutable_reads_guarded_by_before_after_database_stamp",
+        "open_mode": "single_sqlite_read_only_transaction",
         "writes_or_cache": "forbidden",
         "not_found": "null",
     })
@@ -1822,7 +1716,7 @@ fn validate_ranked_chain_contract(contract: &Value) -> Result<(), WorkspaceStore
     Ok(())
 }
 
-fn workspace_store_path(workspace_path: &Path) -> Option<PathBuf> {
+pub(crate) fn workspace_store_path(workspace_path: &Path) -> Option<PathBuf> {
     let nested = workspace_path.join("workspace");
     let content = if nested.is_dir() {
         nested
@@ -1839,6 +1733,26 @@ fn workspace_store_path(workspace_path: &Path) -> Option<PathBuf> {
         })
 }
 
+/// A fresh `SQLite` transaction sees committed WAL data and remains consistent
+/// across every query composing a response. It is closed at request completion.
+pub(crate) fn open_read_snapshot(workspace: &Path) -> Result<Connection, WorkspaceStoreReadError> {
+    let database = canonical_workspace_store_path(workspace)?;
+    let connection = Connection::open_with_flags(
+        read_only_uri(&database)?,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    connection
+        .busy_timeout(std::time::Duration::from_secs(2))
+        .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    connection
+        .execute_batch("PRAGMA query_only=ON; BEGIN")
+        .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    Ok(connection)
+}
+
 fn canonical_workspace_store_path(
     workspace_path: &Path,
 ) -> Result<PathBuf, WorkspaceStoreReadError> {
@@ -1848,50 +1762,7 @@ fn canonical_workspace_store_path(
         .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))
 }
 
-fn file_stamp(path: &Path) -> Result<FileStamp, WorkspaceStoreReadError> {
-    let metadata =
-        fs::metadata(path).map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
-    if !metadata.is_file() {
-        return Err(WorkspaceStoreReadError::NotARegularFile(path.to_path_buf()));
-    }
-    Ok(FileStamp {
-        len: metadata.len(),
-        modified: metadata.modified().ok(),
-    })
-}
-
-fn refuse_live_journals(database: &Path) -> Result<(), WorkspaceStoreReadError> {
-    let parent = database.parent().ok_or_else(|| {
-        WorkspaceStoreReadError::Open("WorkspaceStore path has no parent directory".into())
-    })?;
-    let database_name = database
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| {
-            WorkspaceStoreReadError::Open("WorkspaceStore filename is not valid UTF-8".into())
-        })?;
-    let journal_prefix = format!("{database_name}-mj");
-    for entry in
-        fs::read_dir(parent).map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?
-    {
-        let path = entry
-            .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?
-            .path();
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if matches!(
-            name,
-            "store.sqlite-wal" | "store.sqlite-shm" | "store.sqlite-journal"
-        ) || name.starts_with(&journal_prefix)
-        {
-            return Err(WorkspaceStoreReadError::LiveJournal(path));
-        }
-    }
-    Ok(())
-}
-
-fn immutable_read_only_uri(path: &Path) -> Result<String, WorkspaceStoreReadError> {
+fn read_only_uri(path: &Path) -> Result<String, WorkspaceStoreReadError> {
     #[cfg(windows)]
     refuse_unsupported_path(path)?;
     let canonical = path
@@ -1902,7 +1773,7 @@ fn immutable_read_only_uri(path: &Path) -> Result<String, WorkspaceStoreReadErro
             "could not construct a file URI for the WorkspaceStore".into(),
         )
     })?;
-    uri.set_query(Some("mode=ro&immutable=1"));
+    uri.set_query(Some("mode=ro"));
     Ok(uri.into())
 }
 
@@ -2789,7 +2660,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_the_python_written_v5_fixture_immutably() {
+    fn reads_the_python_written_v5_fixture_without_mutating_database() {
         let workspace = fixture_workspace("workspace-store-v5");
         let before = fs::read_dir(&workspace)
             .unwrap()
@@ -2821,7 +2692,10 @@ mod tests {
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
             .collect::<BTreeSet<_>>();
-        assert_eq!(after, before);
+        assert!(before.is_subset(&after));
+        assert!(after
+            .difference(&before)
+            .all(|name| matches!(name.to_str(), Some("store.sqlite-wal" | "store.sqlite-shm"))));
         assert_eq!(
             fs::read(workspace.join("store.sqlite")).unwrap(),
             before_database
@@ -3072,7 +2946,7 @@ mod tests {
     }
 
     #[test]
-    fn refuses_a_workspace_with_an_active_wal_sidecar() {
+    fn reads_committed_wal_and_keeps_one_snapshot_per_request() {
         let workspace = fixture_workspace("workspace-store-wal");
         let wal = workspace.join("store.sqlite-wal");
         let writer = Connection::open(workspace.join("store.sqlite")).unwrap();
@@ -3085,23 +2959,34 @@ mod tests {
         assert!(wal.is_file());
         let shm = workspace.join("store.sqlite-shm");
         assert!(shm.is_file());
-        let error = read_run_summaries(&workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0)
-            .expect_err("active WAL state must close the immutable reader");
-        let WorkspaceStoreReadError::LiveJournal(path) = error else {
-            panic!("expected an active SQLite journal path, got {error:?}");
-        };
-        assert!(
-            same_file::is_same_file(&path, &wal).unwrap()
-                || same_file::is_same_file(&path, &shm).unwrap(),
-            "reported journal path {path:?} must identify active WAL state {wal:?}/{shm:?}"
+        let first = super::open_read_snapshot(&workspace).unwrap();
+        let rows =
+            super::read_run_summaries_from_connection(&first, DEFAULT_RUN_SUMMARIES_LIMIT, 0)
+                .unwrap();
+        assert_eq!(
+            rows[0].response()["name"],
+            "writer has uncheckpointed changes"
         );
+        writer
+            .execute("UPDATE runs SET name='new committed training result'", [])
+            .unwrap();
+        let rows =
+            super::read_run_summaries_from_connection(&first, DEFAULT_RUN_SUMMARIES_LIMIT, 0)
+                .unwrap();
+        assert_eq!(
+            rows[0].response()["name"],
+            "writer has uncheckpointed changes"
+        );
+        let rows = read_run_summaries(&workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0).unwrap();
+        assert_eq!(rows[0].response()["name"], "new committed training result");
+        drop(first);
         drop(writer);
         fs::remove_dir_all(workspace).unwrap();
     }
 
     #[cfg(unix)]
     #[test]
-    fn refuses_a_symlink_whose_canonical_store_has_an_active_wal() {
+    fn follows_canonical_store_with_committed_wal() {
         use std::os::unix::fs::symlink;
 
         let target = fixture_workspace("workspace-store-symlink-target-wal");
@@ -3112,13 +2997,13 @@ mod tests {
             link_workspace.join("store.sqlite"),
         )
         .unwrap();
-        let target_wal = target.join("store.sqlite-wal");
-        fs::write(&target_wal, b"active canonical writer").unwrap();
-
-        assert!(matches!(
-            read_run_summaries(&link_workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0),
-            Err(WorkspaceStoreReadError::LiveJournal(path)) if path == target_wal
-        ));
+        let writer = Connection::open(target.join("store.sqlite")).unwrap();
+        writer
+            .execute_batch("PRAGMA journal_mode=WAL; UPDATE runs SET name='canonical WAL result'")
+            .unwrap();
+        let rows = read_run_summaries(&link_workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0).unwrap();
+        assert_eq!(rows[0].response()["name"], "canonical WAL result");
+        drop(writer);
         fs::remove_dir_all(link_workspace).unwrap();
         fs::remove_dir_all(target).unwrap();
     }
@@ -3128,7 +3013,7 @@ mod tests {
     fn refuses_unc_paths_before_opening_sqlite() {
         let path = PathBuf::from(r"\\server\share\store.sqlite");
         assert!(matches!(
-            super::immutable_read_only_uri(&path),
+            super::read_only_uri(&path),
             Err(WorkspaceStoreReadError::UnsupportedPath(unsupported)) if unsupported == path
         ));
     }

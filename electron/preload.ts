@@ -8,6 +8,8 @@ const { contextBridge, ipcRenderer, webUtils } =
  * This provides a secure interface for the React app to access native features.
  */
 const electronApi = {
+  getDefaultWorkspaceLocation: (): Promise<string> =>
+    ipcRenderer.invoke("workspace:defaultLocation"),
   /**
    * File dialogs
    */

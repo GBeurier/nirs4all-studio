@@ -843,13 +843,7 @@ pub(crate) fn open_validated_workspace_v2_store(
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err("store");
     }
-    for suffix in ["-wal", "-shm", "-journal"] {
-        if strict_candidate_metadata(&workspace_path.join(format!("store.sqlite{suffix}")))?
-            .is_some()
-        {
-            return Err("live-journal");
-        }
-    }
+    validate_quiescent_sidecars(workspace_path)?;
     let store = sqlite_path.canonicalize().map_err(|_| "store")?;
     if !store.starts_with(&root) {
         return Err("store");
@@ -888,8 +882,15 @@ pub(crate) fn open_validated_workspace_v2_store(
     if tables.contains("prediction_arrays") {
         return Err("legacy-arrays");
     }
-    if version != WORKSPACE_V2_USER_VERSION
+    if !matches!(version, WORKSPACE_V2_USER_VERSION | 5)
         || WORKSPACE_V2_TABLES
+            .iter()
+            .any(|table| !tables.contains(*table))
+    {
+        return Err("schema");
+    }
+    if version == 5
+        && ["conformal_results", "tuning_results", "robustness_results"]
             .iter()
             .any(|table| !tables.contains(*table))
     {
@@ -919,7 +920,23 @@ pub(crate) fn open_validated_workspace_v2_store(
     {
         return Err("changed");
     }
+    validate_quiescent_sidecars(workspace_path)?;
     Ok(connection)
+}
+
+fn validate_quiescent_sidecars(workspace_path: &Path) -> Result<(), &'static str> {
+    for suffix in ["-wal", "-shm", "-journal"] {
+        if let Some(metadata) =
+            strict_candidate_metadata(&workspace_path.join(format!("store.sqlite{suffix}")))?
+        {
+            // A completed owner migration can leave read-only SQLite bookkeeping.
+            // SHM contains coordination, while a nonempty WAL/journal can carry data.
+            if !metadata.is_file() || (suffix != "-shm" && metadata.len() != 0) {
+                return Err("live-journal");
+            }
+        }
+    }
+    Ok(())
 }
 
 fn strict_candidate_metadata(path: &Path) -> Result<Option<std::fs::Metadata>, &'static str> {
@@ -1419,6 +1436,36 @@ pub fn display_command(command: &[String]) -> String {
 mod tests {
     use super::*;
     use std::{env, fs, time::SystemTime};
+
+    #[test]
+    fn converted_store_accepts_empty_reader_bookkeeping_but_not_pending_writes() {
+        let root = tempfile::tempdir().unwrap();
+        write_strict_v2_store(root.path());
+        let database = root.path().join("store.sqlite");
+        let writer = Connection::open(&database).unwrap();
+        writer.execute_batch("PRAGMA journal_mode=WAL").unwrap();
+        drop(writer);
+        let reader =
+            Connection::open_with_flags(&database, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        assert_eq!(
+            reader
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        drop(reader);
+        let bytes = fs::read(&database).unwrap();
+        assert!(validate_workspace_v2_store(root.path(), &database).is_ok());
+        assert_eq!(fs::read(&database).unwrap(), bytes);
+        let writer = Connection::open(&database).unwrap();
+        writer
+            .execute_batch("PRAGMA wal_autocheckpoint=0; CREATE TABLE extra_probe (value INTEGER)")
+            .unwrap();
+        assert_eq!(
+            validate_workspace_v2_store(root.path(), &database),
+            Err("live-journal")
+        );
+    }
 
     #[test]
     fn library_store_v5_with_arrays_is_current_without_conversion_or_mutation() {

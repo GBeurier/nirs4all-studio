@@ -44,6 +44,23 @@ const Histogram = TargetHistogram;
 export function PreviewStep() {
   const { state, dispatch } = useWizard();
   const requestRevision = useRef(0);
+  const lastRequestKey = useRef<string | null>(null);
+  const fileIds = useRef(new WeakMap<File, number>());
+  const nextFileId = useRef(0);
+  // Defaults/validation can replace state objects without changing the request.
+  const requestKey = JSON.stringify({
+    path: state.basePath,
+    files: state.files.filter(file => file.type !== "unknown").map(file => ({
+      path: file.path, type: file.type, split: file.split, source: file.source,
+    })),
+    parsing: state.parsing,
+    overrides: state.perFileOverrides,
+    uploads: [...state.fileBlobs.entries()].map(([name, file]) => {
+      if (!fileIds.current.has(file)) fileIds.current.set(file, ++nextFileId.current);
+      return [name, fileIds.current.get(file)];
+    }),
+  }, (_key, value) => value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<number>(0);
@@ -118,9 +135,11 @@ export function PreviewStep() {
 
   // Failed requests stay visible until Refresh or a configuration change.
   useEffect(() => {
+    if (lastRequestKey.current === requestKey) return;
+    lastRequestKey.current = requestKey;
     void loadPreview();
-    return () => { requestRevision.current += 1; };
-  }, [loadPreview]);
+  }, [loadPreview, requestKey]);
+  useEffect(() => () => { requestRevision.current += 1; lastRequestKey.current = null; }, []);
 
   const preview = state.preview;
   const partitionMap = preview?.spectra_preview_by_partition;

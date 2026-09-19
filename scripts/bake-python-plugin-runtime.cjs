@@ -210,6 +210,24 @@ function removeBytecode(runtimeRoot) {
   }
 }
 
+/** Compile with the exact bundled interpreter, before the closure is signed off.
+ * Checked-hash bytecode remains covered by the closure SHA inventory; -B still
+ * prevents runtime writes. Test/example sources need no startup acceleration.
+ */
+function compileRuntimeBytecode(runtimeRoot, platform = process.platform) {
+  const script = `import compileall,py_compile,re,sys
+root=sys.argv[1]
+excluded=re.compile(r"[/\\\\](tests?|testing|examples|benchmarks|studio_document_adapters)[/\\\\]")
+ok=compileall.compile_dir(root,quiet=1,workers=2,rx=excluded,stripdir=root,prependdir="python-runtime/python",invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
+raise SystemExit(0 if ok else 1)`;
+  const result = spawnSync(bundledPython(runtimeRoot, platform), ["-I", "-S", "-B", "-c", script, runtimeRoot], {
+    encoding: "utf8", windowsHide: true, timeout: 180000, maxBuffer: 2 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`Runtime bytecode compilation failed: ${result.error?.message ?? result.stderr ?? result.stdout}`);
+  }
+}
+
 function removeEmptyDirectories(runtimeRoot) {
   const directories = [];
   const pending = [runtimeRoot];
@@ -241,8 +259,17 @@ function assertClosedTree(runtimeRoot) {
         throw new Error(`Plugin runtime contains a link or special file: ${entryPath}`);
       }
       if (metadata.isDirectory()) pending.push(entryPath);
-      if (metadata.isFile() && (entry.name.endsWith(".pth") || entry.name.endsWith(".pyc"))) {
+      if (metadata.isFile() && entry.name.endsWith(".pth")) {
         throw new Error(`Plugin runtime contains a forbidden acquisition artifact: ${entryPath}`);
+      }
+      if (metadata.isFile() && entry.name.endsWith(".pyc")) {
+        const header = Buffer.alloc(8);
+        const fd = fs.openSync(entryPath, "r");
+        let count;
+        try { count = fs.readSync(fd, header, 0, header.length, 0); } finally { fs.closeSync(fd); }
+        if (count !== 8 || header.readUInt32LE(4) !== 3 || path.basename(directory) !== "__pycache__") {
+          throw new Error(`Plugin runtime bytecode must use checked source hashes: ${entryPath}`);
+        }
       }
     }
   }
@@ -461,6 +488,10 @@ function verifyPluginRuntime({ backendRoot, platform = process.platform, arch = 
     sitePackages,
     platform,
   );
+  if (writeMarker) {
+    compileRuntimeBytecode(runtimeRoot, platform);
+    assertClosedTree(runtimeRoot);
+  }
   const preflight = runPreflight(runtimeRoot, sitePackages, platform);
   const expected = expectedMarker(platform, arch);
   if (writeMarker) {
@@ -540,6 +571,8 @@ if (require.main === module) {
 
 module.exports = {
   assertConstraintsIdentity,
+  compileRuntimeBytecode,
+  assertClosedTree,
   assertPluginOnlyPayload,
   FORBIDDEN_DISTRIBUTIONS,
   PLUGIN_MARKER_FILE,

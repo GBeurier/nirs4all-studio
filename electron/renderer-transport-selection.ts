@@ -136,7 +136,95 @@ function isUpdateChangelogPath(path: string): boolean {
     && isValidIdentifier(fields.get("current_version") ?? "");
 }
 
+function classifyPredictionResults(method: string, path: string): NativeSurface | null {
+  if (method !== "GET" || path.split("?").length > 2) return null;
+  const [pathname, query] = path.split("?", 2);
+  const page = identifierPath("/workspaces/", "/predictions/data").exec(pathname);
+  const summary = identifierPath("/workspaces/", "/predictions/summary").exec(pathname);
+  const matched = page ?? summary;
+  if (!matched || !isValidIdentifier(matched[1])) return null;
+  const fields = new URLSearchParams(query);
+  const seen = new Set<string>();
+  for (const [key, value] of fields) {
+    if (seen.has(key)) return null;
+    seen.add(key);
+    if (page && ["limit", "offset"].includes(key)) {
+      if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) return null;
+      if (key === "limit" && (Number(value) < 1 || Number(value) > 1000)) return null;
+    } else if (key === "dataset" || (page && ["model_class", "partition"].includes(key))) {
+      if (!value || value.length > 1024 || value.includes("\0")) return null;
+      if (key === "partition" && !["train", "val", "test"].includes(value)) return null;
+    } else return null;
+  }
+  return { name: "workspace-prediction-results", capability: "workspace_prediction_result_routes", requiresPythonHost: true };
+}
+
+function classifyAggregatedPredictionResults(method: string, path: string): NativeSurface | null {
+  if (method !== "GET" || path.split("?").length > 2) return null;
+  const [pathname, query] = path.split("?", 2);
+  if (query === "") return null;
+  const fields = new URLSearchParams(query);
+  if ([...fields.keys()].some((key) => fields.getAll(key).length !== 1)) return null;
+  const validId = (raw: string): boolean => {
+    try {
+      const decoded = decodeURIComponent(raw);
+      return decoded.length > 0 && Buffer.byteLength(decoded, "utf8") <= 256
+        && decoded !== "." && decoded !== ".." && !/[\\/\0]/.test(decoded);
+    } catch { return false; }
+  };
+  let allowed: string[];
+  if (pathname === "/aggregated-predictions") {
+    allowed = ["run_id", "pipeline_id", "chain_id", "dataset_name", "model_class", "metric"];
+  } else if (pathname === "/aggregated-predictions/top") {
+    if (!fields.get("metric")) return null;
+    allowed = ["metric", "n", "score_column", "run_id", "pipeline_id", "dataset_name", "model_class"];
+  } else {
+    const reload = /^\/aggregated-predictions\/(?:chain|pipeline)\/([^/]+)\/pipeline-steps$/.exec(pathname);
+    const chain = /^\/aggregated-predictions\/chain\/([^/]+)(\/detail)?$/.exec(pathname);
+    const arrays = /^\/aggregated-predictions\/([^/]+)\/arrays$/.exec(pathname);
+    if (reload && validId(reload[1])) {
+      allowed = [];
+    } else if (chain && validId(chain[1])) {
+      allowed = chain[2] ? ["partition", "fold_id"] : ["metric", "dataset_name"];
+    } else if (arrays && validId(arrays[1])) {
+      allowed = [];
+    } else return null;
+  }
+  for (const [key, value] of fields) {
+    if (!allowed.includes(key) || !value || Buffer.byteLength(value, "utf8") > 1024 || value.includes("\0")) return null;
+    if (key === "n" && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 100)) return null;
+    if (key === "partition" && !["train", "val", "test"].includes(value)) return null;
+    if (key === "score_column" && !["cv_val_score", "cv_test_score", "cv_train_score", "final_test_score", "final_train_score"].includes(value)) return null;
+  }
+  return { name: "aggregated-prediction-results", capability: "aggregated_prediction_result_routes", requiresPythonHost: true };
+}
+
+function classifyWorkspaceMetadata(method: string, path: string): NativeSurface | null {
+  const metadata = { name: "workspace-metadata", capability: "workspace_metadata_routes" };
+  if (["/workspace/settings", "/workspace/data-defaults"].includes(path) && ["GET", "PUT"].includes(method)) {
+    return { name: "workspace-preferences", capability: "workspace_document_routes" };
+  }
+  if (method === "GET" && /^\/workspace\/recent(?:\?limit=\d+)?$/.test(path)) {
+    const limit = path.includes("?") ? Number(path.split("=", 2)[1]) : 10;
+    return Number.isSafeInteger(limit) && limit >= 1 && limit <= 256 ? metadata : null;
+  }
+  if (path === "/workspace/groups" && method === "POST") return metadata;
+  const group = identifierPath("/workspace/groups/").exec(path);
+  if (group && isValidIdentifier(group[1]) && ["PUT", "DELETE"].includes(method)) return metadata;
+  const add = identifierPath("/workspace/groups/", "/datasets").exec(path);
+  if (add && isValidIdentifier(add[1]) && method === "POST") return metadata;
+  const remove = new RegExp(`^/workspace/groups/(${IDENTIFIER})/datasets/(${IDENTIFIER})$`).exec(path);
+  if (remove && isValidIdentifier(remove[1]) && isValidIdentifier(remove[2]) && method === "DELETE") return metadata;
+  return null;
+}
+
 function classifyHttp(method: string, path: string): NativeSurface | null {
+  const workspace = classifyWorkspaceMetadata(method, path);
+  if (workspace) return workspace;
+  const aggregated = classifyAggregatedPredictionResults(method, path);
+  if (aggregated) return aggregated;
+  const predictions = classifyPredictionResults(method, path);
+  if (predictions) return predictions;
   const exact = exactHttpRoutes.get(`${method} ${path}`) ?? pythonHostRoutes.get(`${method} ${path}`);
   if (exact) return exact;
   const workflow = classifyScientificWorkflow(method, path);
@@ -223,13 +311,15 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
   const playgroundPosts = [
     "/playground/execute",
     "/playground/execute-dataset",
+    "/playground/pca",
+    "/playground/repetitions",
     "/playground/validate",
     "/playground/diff/compute",
     "/playground/diff/repetition-variance",
   ];
   if (!query && (
     (method === "POST" && playgroundPosts.includes(pathname))
-    || (method === "GET" && pathname === "/playground/capabilities")
+    || (method === "GET" && ["/playground/capabilities", "/playground/operators", "/playground/presets"].includes(pathname))
     || (method === "GET" && identifierPath("/playground/metadata-columns/").test(pathname))
   )) {
     return { name: "playground", capability: "playground_routes", requiresPythonHost: true };
@@ -270,6 +360,15 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
   const inspection = ["detect-files", "detect-unified", "detect-files-list", "scan-folder", "detect-format", "auto-detect", "validate-files", "preview"];
   if (method === "POST" && !query && inspection.some((operation) => pathname === `/datasets/${operation}`)) {
     return { name: "dataset-inspection", capability: "dataset_inspection_routes" };
+  }
+  const spectra = identifierPath("/spectra/", "(/stats)?").exec(pathname);
+  if (method === "GET" && spectra && isValidIdentifier(spectra[1])) {
+    const number = (value: string) => /^\d+$/.test(value) && Number(value) <= 4294967295;
+    const fields: Record<string, (value: string) => boolean> = spectra[2] ? { partition: (value: string) => ["train", "test", "all"].includes(value), source: number }
+      : { partition: (value: string) => ["train", "test", "all"].includes(value), source: number,
+          target_index: number, start: number, end: number, include_y: bool, include_metadata: bool,
+          max_wavelengths_returned: (value: string) => number(value) && Number(value) > 0 };
+    if (validQuery(fields)) return { name: "playground", capability: "playground_routes", requiresPythonHost: true };
   }
   const dataset = identifierPath("/datasets/", "/(preview|stats)").exec(pathname);
   if (method === "GET" && dataset && isValidIdentifier(dataset[1]) && validQuery(dataset[2] === "preview"

@@ -20,7 +20,7 @@ function fixture(t) {
   const notesPath = path.join(root, "notes.md");
   fs.writeFileSync(notesPath, "Qualified release\n");
   return { repo: "owner/studio", tag: "0.11.7", version: "0.11.7", sha: "b".repeat(40),
-    prerelease: false, includeAllInOne: true, releaseRoot, notesPath };
+    prerelease: false, includeAllInOne: false, releaseRoot, notesPath };
 }
 
 function github(options, behavior = {}) {
@@ -126,20 +126,20 @@ test("creates a draft, uploads exactly one asset at a time and publishes last", 
   const remote = github(options, { absent: true, annotated: true });
   const result = await publishQualifiedRelease(options, remote.dependencies);
   assert.equal(result.published, true);
-  assert.equal(result.assets, 20);
+  assert.equal(result.assets, 8);
   assert.equal(remote.state.maxActive, 1);
   assert.equal(remote.state.mutations[0], "create-draft");
   assert.equal(remote.state.mutations.at(-1), "publish");
-  assert(remote.state.mutations.slice(1, 11).every((name) => name.endsWith(".sha256")));
-  assert.equal(remote.state.mutations.length, 22);
+  assert(remote.state.mutations.slice(1, 5).every((name) => name.endsWith(".sha256")));
+  assert.equal(remote.state.mutations.length, 10);
 });
 
 test("resumes verified draft assets without uploading them again", async (t) => {
   const options = fixture(t);
   const remote = github(options, { draftHidden: true });
-  remote.state.assets.push(...remote.manifest.slice(0, 10).map(remote.state.asset));
+  remote.state.assets.push(...remote.manifest.slice(0, 4).map(remote.state.asset));
   await publishQualifiedRelease(options, remote.dependencies);
-  assert.equal(remote.state.mutations.length, 11);
+  assert.equal(remote.state.mutations.length, 5);
   assert.equal(remote.state.mutations.at(-1), "publish");
 });
 
@@ -180,7 +180,7 @@ test("reconciles lost create, upload and publish responses without duplicate mut
   const options = fixture(t);
   const remote = github(options, { absent: true, createResponseLost: true, uploadResponseLost: true, publishResponseLost: true });
   await publishQualifiedRelease(options, remote.dependencies);
-  assert.equal(remote.state.mutations.length, 22);
+  assert.equal(remote.state.mutations.length, 10);
   assert.deepEqual(remote.state.waits, []);
 });
 
@@ -265,10 +265,10 @@ test("failed promotion does not claim success or modify payloads", async (t) => 
   assert.deepEqual(remote.state.mutations, ["publish"]);
 });
 
-test("invalid local bytes, missing sidecars and stable archive skips fail before GitHub", async (t) => {
+test("invalid local bytes, missing sidecars and disabled archive publication fail before GitHub", async (t) => {
   const options = fixture(t);
   const dependencies = { gh: async () => assert.fail("must validate locally first"), log: () => {} };
-  await assert.rejects(publishQualifiedRelease({ ...options, includeAllInOne: false }, dependencies), /requires every/);
+  await assert.rejects(publishQualifiedRelease({ ...options, includeAllInOne: true }, dependencies), /publication is disabled/);
   const file = path.join(options.releaseRoot, expectedPublishedNames(options.version)[0]);
   fs.appendFileSync(file, "changed bytes");
   await assert.rejects(publishQualifiedRelease(options, dependencies), /checksum does not match/);
@@ -285,9 +285,9 @@ test("unified workflow invokes the sequential publisher only for immutable tag r
   assert.equal(step.env.RELEASE_TAG, "${{ needs.prepare.outputs.tag }}");
   assert.equal(step.env.RELEASE_PRERELEASE, "${{ needs.prepare.outputs.prerelease }}");
   assert(!job.steps.some((entry) => entry.uses?.startsWith("softprops/action-gh-release")));
-  assert.match(job.if, /needs\.windows-product\.result == 'success'/);
-  assert.match(job.if, /needs\.unix-product\.result == 'success'/);
-  assert.match(job.if, /needs\.prepare\.outputs\.skip_all_in_one != 'true'/);
+  assert.match(job.if, /needs\.installer-windows\.result == 'success'/);
+  assert.match(job.if, /needs\.installer-linux\.result == 'success'/);
+  assert(!job.if.includes('skip_all_in_one'));
 });
 
 test("diagnostic preserves HTTP failure while excluding headers, URLs and credential values", () => {
@@ -394,7 +394,7 @@ function failedStarterFixture(t, overrides = {}) {
     throw failure;
   }, ...overrides };
   const remote = github(options, behavior);
-  const target = remote.manifest.find((entry) => entry.name.endsWith("-linux-x64.tar.gz"));
+  const target = remote.manifest.find((entry) => entry.name.endsWith("-linux-amd64.deb"));
   remote.state.assets.push(...remote.manifest.filter((entry) => entry !== target).map(remote.state.asset));
   const messages = [];
   remote.dependencies.log = (message) => messages.push(message);

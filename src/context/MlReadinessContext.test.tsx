@@ -199,10 +199,11 @@ async function renderProvider(electronApi: ElectronApiMock | undefined) {
   document.body.appendChild(container);
   const root = createRoot(container);
   const client = createQueryClient();
-  const result: { current?: ReturnType<typeof useMlReadiness> } = {};
+  const result: { current?: ReturnType<typeof useMlReadiness>; renders: number } = { renders: 0 };
 
   function ReadinessProbe() {
     result.current = useMlReadiness();
+    result.renders += 1;
     return null;
   }
 
@@ -243,6 +244,19 @@ afterEach(() => {
 });
 
 describe("MlReadinessProvider", () => {
+  it("does not rerender context consumers for unchanged desktop heartbeats", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockResolvedValue({ core_ready: true, ml_ready: true, workspace_ready: true });
+    const view = await renderProvider(createElectronApiMock());
+    const readyState = view.result.current;
+    const renders = view.result.renders;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(mocks.apiGet).toHaveBeenCalledTimes(31);
+    expect(view.result.current).toBe(readyState);
+    expect(view.result.renders).toBe(renders);
+    await view.unmount();
+  });
+
   it("reports the native control plane ready without activating Python", async () => {
     mocks.apiGet.mockResolvedValue({
       core_ready: true,

@@ -34,7 +34,7 @@ def test_catalogue_reads_metadata_without_deserializing_models(trained, monkeypa
     result, _, _, root = trained
     database = root / "store.sqlite"
     before = hashlib.sha256(database.read_bytes()).hexdigest(), database.stat().st_mtime_ns
-    entries = sorted(path.name for path in root.iterdir())
+    entries = {path.name for path in root.iterdir()}
     monkeypatch.setattr(joblib, "load", lambda *args, **kwargs: pytest.fail("catalogue deserialized fitted model"))
     monkeypatch.setattr(WorkspaceStore, "__init__", lambda *args, **kwargs: pytest.fail("catalogue opened writable store"))
     catalogue = available_models({"workspace_path": str(root)})
@@ -45,7 +45,14 @@ def test_catalogue_reads_metadata_without_deserializing_models(trained, monkeypa
     assert model["cv_artifacts_available"] is False
     assert "Ridge" in model["model_class"]
     assert (hashlib.sha256(database.read_bytes()).hexdigest(), database.stat().st_mtime_ns) == before
-    assert sorted(path.name for path in root.iterdir()) == entries
+    # A real read transaction sees concurrent WAL commits. SQLite may create
+    # its shared-memory bookkeeping and an empty WAL on the first reader;
+    # immutable=1 avoided these files by incorrectly ignoring live writers.
+    after_entries = {path.name for path in root.iterdir()}
+    assert entries <= after_entries
+    assert after_entries - entries <= {"store.sqlite-wal", "store.sqlite-shm"}
+    if "store.sqlite-wal" in after_entries - entries:
+        assert (root / "store.sqlite-wal").stat().st_size == 0
     json.dumps(catalogue, allow_nan=False)
 
 

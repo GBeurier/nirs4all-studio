@@ -44,14 +44,8 @@ win:
     - target: nsis
       arch:
         - x64
-    - target: portable
-      arch:
-        - x64
   icon: public/nirs4all.ico
   artifactName: "${productName}-${version}-win-${arch}.${ext}"
-
-portable:
-  artifactName: "${productName}-${version}-win-${arch}-portable.${ext}"
 
 nsis:
   oneClick: false
@@ -92,18 +86,12 @@ dmg:
 
 linux:
   target:
-    - target: AppImage
-      arch:
-        - x64
     - target: deb
       arch:
         - x64
   icon: public/nirs4all_icon.png
   category: Science
   maintainer: nirs4all
-  artifactName: "${productName}-${version}-linux-${arch}.${ext}"
-
-appImage:
   artifactName: "${productName}-${version}-linux-${arch}.${ext}"
 
 deb:

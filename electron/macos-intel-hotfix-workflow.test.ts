@@ -33,7 +33,12 @@ describe("macOS Intel manufacturing source identity", () => {
         fs.mkdirSync(path.dirname(path.join(fixture, file)), { recursive: true });
         fs.writeFileSync(path.join(fixture, file), "original\n");
         fs.mkdirSync(path.dirname(path.join(fixture, "manufacturing", file)), { recursive: true });
-        fs.copyFileSync(path.join(root, file), path.join(fixture, "manufacturing", file));
+        // The hotfix freezes historical manufacturing bytes. Current scripts
+        // evolve independently; committed fixtures also work in shallow CI clones.
+        fs.copyFileSync(
+          path.join(root, "electron/fixtures/macos-intel-manufacturing", `${file}.source`),
+          path.join(fixture, "manufacturing", file),
+        );
       }
       fs.writeFileSync(path.join(fixture, ".gitattributes"), "*.json text eol=lf\n");
       const model = path.join(fixture, "model.json");

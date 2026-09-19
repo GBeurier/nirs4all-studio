@@ -1,5 +1,5 @@
 /** Tracks the Rust control plane independently from the optional Python plugin. */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/transport";
 import { datasetQueryKeys } from "@/hooks/useDatasetQueries";
@@ -38,6 +38,15 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<MlReadiness>(() =>
     initialState(queryClient.getQueryData(datasetQueryKeys.list()) !== undefined),
   );
+  // A heartbeat is not a state change. Keep the context identity stable so
+  // consumers holding spectra do not rerender on every backend poll.
+  const setReadiness = useCallback((update: (previous: MlReadiness) => MlReadiness) => {
+    setState((previous) => {
+      const next = update(previous);
+      return (Object.keys(next) as (keyof MlReadiness)[])
+        .every((key) => Object.is(next[key], previous[key])) ? previous : next;
+    });
+  }, []);
   const workspaceReadyFired = useRef(false);
   const readinessRevision = useRef(0);
 
@@ -57,7 +66,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     const cache = queryClient.getQueryCache();
     const check = () => {
       if (queryClient.getQueryData(datasetQueryKeys.list()) === undefined) return false;
-      setState((previous) => previous.datasetsPrimed
+      setReadiness((previous) => previous.datasetsPrimed
         ? previous
         : { ...previous, datasetsPrimed: true });
       return true;
@@ -67,13 +76,13 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       if (check()) unsubscribe();
     });
     return unsubscribe;
-  }, [state.datasetsPrimed, queryClient]);
+  }, [state.datasetsPrimed, queryClient, setReadiness]);
 
   useEffect(() => {
     if (!electronApi?.isElectron) return;
     const cleanupStatus = electronApi.onBackendStatusChanged?.((info) => {
       readinessRevision.current += 1;
-      setState((previous) => ({
+      setReadiness((previous) => ({
         ...previous,
         scientificStatus: info.status,
         scientificRequested: true,
@@ -87,7 +96,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     const cleanupMl = electronApi.onMlReady?.((info) => {
       readinessRevision.current += 1;
       if (info.ready) {
-        setState((previous) => ({
+        setReadiness((previous) => ({
           ...previous,
           scientificStatus: "running",
           scientificRequested: true,
@@ -97,7 +106,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
           workspaceReady: info.workspaceReady ? true : previous.workspaceReady,
         }));
       } else if (info.error) {
-        setState((previous) => ({
+        setReadiness((previous) => ({
           ...previous,
           scientificRequested: true,
           mlReady: false,
@@ -110,7 +119,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       cleanupStatus?.();
       cleanupMl?.();
     };
-  }, []);
+  }, [setReadiness]);
 
   useEffect(() => {
     if (!electronApi?.isElectron) return;
@@ -119,7 +128,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       try {
         const control = await electronApi.getControlPlaneInfo?.();
         if (disposed || !control) return;
-        setState((previous) => ({
+        setReadiness((previous) => ({
           ...previous,
           controlReady: control.ready,
           controlStatus: control.status,
@@ -128,7 +137,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
         }));
       } catch (error) {
         if (disposed) return;
-        setState((previous) => ({
+        setReadiness((previous) => ({
           ...previous,
           controlError: previous.controlReady
             ? previous.controlError
@@ -142,7 +151,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       disposed = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [setReadiness]);
 
   useEffect(() => {
     let disposed = false;
@@ -160,7 +169,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
         // Rust reports portable capabilities and the general library host
         // independently. The real preload has no scientific-plugin URL/IPC.
         if (electronApi?.isElectron) {
-          setState((previous) => ({
+          setReadiness((previous) => ({
             ...previous,
             mlReady: readiness.ml_ready === true,
             mlLoading: readiness.ml_ready !== true && readiness.ml_loading === true,
@@ -174,7 +183,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
           }));
           return;
         }
-        setState((previous) => ({
+        setReadiness((previous) => ({
           ...previous,
           controlReady: previous.controlReady || !!readiness.core_ready,
           controlStatus: readiness.core_ready ? "running" : "starting",
@@ -193,7 +202,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
         }));
       } catch {
         // The externally managed web backend may still be starting.
-        if (!disposed && revision === readinessRevision.current) setState((previous) => ({
+        if (!disposed && revision === readinessRevision.current) setReadiness((previous) => ({
           ...previous,
           mlReady: false,
           mlLoading: false,
@@ -211,7 +220,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       disposed = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [setReadiness]);
 
   return (
     <MlReadinessContext.Provider value={state}>

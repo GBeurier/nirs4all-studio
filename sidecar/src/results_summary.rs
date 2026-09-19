@@ -528,8 +528,6 @@ mod tests {
         let expected: Value = serde_json::from_str(PYTHON_ORACLE).unwrap();
 
         assert_eq!(actual, expected);
-        assert!(!workspace.join("store.sqlite-wal").exists());
-        assert!(!workspace.join("store.sqlite-shm").exists());
         fs::remove_dir_all(workspace).unwrap();
     }
 

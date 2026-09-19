@@ -142,6 +142,16 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
     """Dispatch a bounded library adapter; never own HTTP or schedule jobs."""
     if not isinstance(document, dict):
         raise ValueError("Document must be a JSON object")
+    if operation in {"playground.operators", "playground.presets", "spectra.data", "spectra.stats"}:
+        from .library_playground_views import playground_view
+
+        return playground_view(operation, document)
+    if operation == "workspace.upgrade":
+        from nirs4all.workspace.upgrade import upgrade_workspace_copy
+
+        if set(document) != {"source", "output"}:
+            raise ValueError("Workspace upgrade requires explicit source and output paths")
+        return upgrade_workspace_copy(document["source"], document["output"])
     if operation == "config.dependencies":
         from .library_runtime_config import dependency_inventory
 
@@ -150,6 +160,14 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         from .library_runtime_config import compare_configuration
 
         return compare_configuration(document)
+    if operation in {"results.chains", "results.top", "results.chain", "results.chain_detail", "results.arrays", "results.chain_steps", "results.pipeline_steps"}:
+        from .library_aggregated_results import read_aggregated_results
+
+        return read_aggregated_results(operation, document)
+    if operation in {"results.page", "results.summary"}:
+        from .library_prediction_results import read_prediction_results
+
+        return read_prediction_results(operation, document)
     if operation in {"predictions.catalogue", "predictions.run", "predictions.file"}:
         from .library_predictions import adapt_prediction
 

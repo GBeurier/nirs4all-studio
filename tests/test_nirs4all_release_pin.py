@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -68,10 +70,10 @@ def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> No
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
 
     assert "  pinned-plugin-wheels:\n" in workflow
-    assert workflow.count("needs: [prepare, pinned-plugin-wheels]") == 8
-    assert workflow.count("name: Download canonical plugin wheels") == 8
-    assert workflow.count("--plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.1-py3-none-any.whl") == 8
-    assert workflow.count("--tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl") == 8
+    assert workflow.count("needs: [prepare, pinned-plugin-wheels]") == 4
+    assert workflow.count("name: Download canonical plugin wheels") == 4
+    assert workflow.count("--plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.1-py3-none-any.whl") == 4
+    assert workflow.count("--tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl") == 4
     assert 'curl --fail --location --proto "=https" --tlsv1.2' in workflow
 
 
@@ -99,24 +101,34 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
 
 
 def test_release_dispatch_never_publishes_docker_images() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8"))
 
     for step_name in ["Login to GitHub Container Registry", "Publish the tested Docker image"]:
-        guarded_step = re.search(
-            rf"      - name: {re.escape(step_name)}\n"
-            r"        if: needs\.prepare\.outputs\.is_tag_release == 'true'\n",
-            workflow,
-        )
-        assert guarded_step is not None, f"manual release dispatch could publish in step: {step_name}"
+        step = next(step for step in workflow["jobs"]["release"]["steps"] if step.get("name") == step_name)
+        assert step["if"] == "needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'"
 
 
-def test_release_self_update_is_blocking_and_checksums_use_basenames() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
+def test_release_installed_upgrade_is_blocking_and_checksums_use_basenames() -> None:
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8"))
 
-    assert workflow.count("name: Smoke test self-update (download -> apply -> relaunch)") == 4
-    for match in re.finditer(r"name: Smoke test self-update \(download -> apply -> relaunch\)", workflow):
-        step = workflow[match.start() : match.start() + 320]
-        assert "continue-on-error" not in step
-    assert 'sha256sum "$FILE" > "$FILE.sha256"' not in workflow
-    assert 'shasum -a 256 "$FILE" > "$FILE.sha256"' not in workflow
-    assert workflow.count('"$(basename "$FILE")" > "$(basename "$FILE").sha256"') == 3
+    installers = {name: job for name, job in workflow["jobs"].items() if name.startswith("installer-")}
+    assert set(installers) == {"installer-linux", "installer-windows", "installer-macos-x64", "installer-macos-arm64"}
+    release = workflow["jobs"]["release"]
+    for name, job in installers.items():
+        assert name in release["needs"]
+        assert f"needs.{name}.result == 'success'" in release["if"]
+        steps = job["steps"]
+        qualification = next(i for i, step in enumerate(steps) if "scripts/qualify-installer.cjs" in step.get("run", ""))
+        upload = next(i for i, step in enumerate(steps) if step.get("name") == "Upload artifacts")
+        assert qualification < upload
+        assert not steps[qualification].get("continue-on-error", False)
+        assert "INSTALLER_BASELINE" in steps[qualification]["env"]
+        checksum = next(step["run"] for step in steps if step.get("name") == "Generate checksums")
+        if name == "installer-windows":
+            assert "$($_.Name)" in checksum
+        else:
+            assert checksum.startswith("cd release\n")
+    # The existing finalizer verifies producer hashes and rewrites sidecars to
+    # the exact public asset basename (GitHub normalizes spaces to dots).
+    preparation = next(step for step in release["steps"] if step.get("name") == "Prepare release assets")
+    assert "scripts/finalize-release-assets.cjs" in preparation["run"]

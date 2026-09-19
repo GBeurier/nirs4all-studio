@@ -22,6 +22,72 @@ mod imp {
         },
     };
 
+    /// Identity and change marker for a file or directory, read from one handle.
+    /// ChangeTime is distinct from creation time and cannot be hidden by merely
+    /// restoring LastWriteTime after changing the contents.
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    pub struct FileChangeStamp {
+        pub volume: u64,
+        pub file_id: u128,
+        pub size: u64,
+        pub modified: i64,
+        pub changed: i64,
+    }
+
+    pub fn file_change_stamp(path: &std::path::Path) -> io::Result<FileChangeStamp> {
+        use std::{
+            fs::OpenOptions,
+            os::windows::{fs::OpenOptionsExt, io::AsRawHandle},
+        };
+        use windows_sys::Win32::Storage::FileSystem::{
+            FileBasicInfo, FileIdInfo, GetFileInformationByHandleEx, FILE_ATTRIBUTE_REPARSE_POINT,
+            FILE_BASIC_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+            FILE_ID_INFO, FILE_READ_ATTRIBUTES,
+        };
+        let file = OpenOptions::new()
+            .access_mode(FILE_READ_ATTRIBUTES)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(path)?;
+        let mut basic = FILE_BASIC_INFO::default();
+        let mut identity = FILE_ID_INFO::default();
+        // SAFETY: the handle is owned by `file`, both output structures are
+        // initialized and have the exact size for their information classes.
+        // Windows writes synchronously and does not retain these pointers.
+        let basic_ok = unsafe {
+            GetFileInformationByHandleEx(
+                file.as_raw_handle(),
+                FileBasicInfo,
+                ptr::from_mut(&mut basic).cast(),
+                mem::size_of::<FILE_BASIC_INFO>() as u32,
+            )
+        };
+        if basic_ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if basic.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Err(io::Error::other("runtime entry is a reparse point"));
+        }
+        // SAFETY: identical ownership and output-buffer contract to the call above.
+        let id_ok = unsafe {
+            GetFileInformationByHandleEx(
+                file.as_raw_handle(),
+                FileIdInfo,
+                ptr::from_mut(&mut identity).cast(),
+                mem::size_of::<FILE_ID_INFO>() as u32,
+            )
+        };
+        if id_ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(FileChangeStamp {
+            volume: identity.VolumeSerialNumber,
+            file_id: u128::from_le_bytes(identity.FileId.Identifier),
+            size: file.metadata()?.len(),
+            modified: basic.LastWriteTime,
+            changed: basic.ChangeTime,
+        })
+    }
+
     /// Return the Windows installation directory reported by the operating
     /// system, independently from caller-controlled environment variables.
     pub fn system_windows_directory() -> io::Result<PathBuf> {
@@ -122,11 +188,54 @@ mod imp {
     }
 }
 
-pub use imp::{system_windows_directory, KillOnCloseJob};
+pub use imp::{file_change_stamp, system_windows_directory, FileChangeStamp, KillOnCloseJob};
 
 #[cfg(test)]
 mod tests {
-    use super::{system_windows_directory, KillOnCloseJob};
+    use super::{file_change_stamp, system_windows_directory, KillOnCloseJob};
+
+    #[test]
+    fn change_marker_detects_same_size_edit_with_restored_mtime() {
+        use std::{
+            fs,
+            time::{Duration, SystemTime, UNIX_EPOCH},
+        };
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-change-stamp-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let path = directory.join("runtime-member.py");
+        fs::write(&path, "VALUE = 1\n").unwrap();
+        let before = file_change_stamp(&path).unwrap();
+        assert_eq!(before, file_change_stamp(&path).unwrap());
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        fs::write(&path, "VALUE = 2\n").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        let after = file_change_stamp(&path).unwrap();
+        assert_eq!(before.size, after.size);
+        assert_eq!(before.modified, after.modified);
+        assert_eq!(before.file_id, after.file_id);
+        assert_ne!(before.changed, after.changed);
+        // Directory entries must carry stable identity and a genuine marker too.
+        let parent = file_change_stamp(&directory).unwrap();
+        assert!(parent.changed > 0);
+        assert_eq!(parent, file_change_stamp(&directory).unwrap());
+        fs::rename(&path, directory.join("old.py")).unwrap();
+        fs::write(&path, "VALUE = 2\n").unwrap();
+        assert_ne!(after.file_id, file_change_stamp(&path).unwrap().file_id);
+        fs::remove_dir_all(&directory).unwrap();
+    }
 
     #[test]
     fn containment_contract_uses_kill_on_last_handle_close_without_breakaway() {

@@ -1,11 +1,7 @@
-"""NaN/Inf-safe value sanitization for JSON serialization.
-
-Single source of truth for the float/dict sanitizers that were previously
-copy-pasted across routers (predict, runs, store_adapter, inspector,
-aggregated_predictions).
-"""
+"""JSON-safe values shared by result views and the isolated document host."""
 
 import math
+from datetime import date, datetime, time
 from typing import Any
 
 
@@ -16,17 +12,16 @@ def sanitize_float(value: Any) -> Any:
     return value
 
 
+def _sanitize_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return sanitize_dict(value)
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_value(item) for item in value]
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    return sanitize_float(value)
+
+
 def sanitize_dict(d: dict[str, Any]) -> dict[str, Any]:
-    """Recursively replace NaN / Inf float values with ``None`` in a dict."""
-    out: dict[str, Any] = {}
-    for k, v in d.items():
-        if isinstance(v, dict):
-            out[k] = sanitize_dict(v)
-        elif isinstance(v, list):
-            out[k] = [
-                sanitize_dict(item) if isinstance(item, dict) else sanitize_float(item)
-                for item in v
-            ]
-        else:
-            out[k] = sanitize_float(v)
-    return out
+    """Preserve timestamps and recursively encode non-finite values as null."""
+    return {key: _sanitize_value(value) for key, value in d.items()}

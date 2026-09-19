@@ -157,7 +157,7 @@ fn contract_freezes_per_request_preselection_and_no_native_fallback() {
 }
 
 #[test]
-fn exact_store_v5_is_verified_but_legacy_and_busy_are_rejected() {
+fn exact_store_v5_accepts_committed_wal_and_rejects_legacy() {
     let root = test_directory();
     let config = root.join("config");
     let native = root.join("native");
@@ -171,7 +171,10 @@ fn exact_store_v5_is_verified_but_legacy_and_busy_are_rejected() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/workspace_store_v5.sqlite");
     fs::copy(&fixture, native.join("store.sqlite")).unwrap();
     fs::copy(&fixture, busy.join("store.sqlite")).unwrap();
-    fs::write(busy.join("store.sqlite-wal"), b"active writer").unwrap();
+    // A real writer leaves committed WAL rows while the reader opens a fresh
+    // snapshot. A sidecar filename alone must not make a valid store busy.
+    let writer = Connection::open(busy.join("store.sqlite")).unwrap();
+    writer.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE live_probe(value INTEGER); INSERT INTO live_probe VALUES (1);").unwrap();
     let old_connection = Connection::open(old_store.join("store.sqlite")).unwrap();
     old_connection
         .execute("CREATE TABLE metadata (key TEXT, value TEXT)", [])
@@ -222,9 +225,11 @@ fn exact_store_v5_is_verified_but_legacy_and_busy_are_rejected() {
         &mut state,
         "/sidecar/v1/workspaces/busy/run-detail-preselection",
     );
-    assert_eq!(busy_status, 409);
+    assert_eq!(busy_status, 503);
     assert_eq!(busy_body["target"], "reject");
-    assert_eq!(busy_body["reason"], "workspace_store_busy");
+    assert_eq!(busy_body["verified_store_v5"], true);
+    assert_eq!(busy_body["reason"], "python_plugin_host_unconfigured");
+    drop(writer);
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -298,6 +303,7 @@ fn preflighted_store_v5_routes_through_owner_host_and_rust_composition() {
     let host = owner_host(&root, &owner_fixture);
     let database = native.join("store.sqlite");
     let before = fs::metadata(&database).unwrap();
+    let before_bytes = fs::read(&database).unwrap();
     let mut state = SidecarState::with_run_detail_host(&host, &config);
 
     let (preselection_status, preselection) = json_response(
@@ -325,8 +331,14 @@ fn preflighted_store_v5_routes_through_owner_host_and_rust_composition() {
     let after = fs::metadata(&database).unwrap();
     assert_eq!(before.len(), after.len());
     assert_eq!(before.modified().unwrap(), after.modified().unwrap());
-    for suffix in ["-wal", "-shm", "-journal"] {
-        assert!(!PathBuf::from(format!("{}{suffix}", database.display())).exists());
+    assert_eq!(fs::read(&database).unwrap(), before_bytes);
+    // SQLite read-only transactions may create empty WAL/SHM bookkeeping;
+    // they must never write a transaction or change the main database.
+    for suffix in ["-wal", "-journal"] {
+        let sidecar = PathBuf::from(format!("{}{suffix}", database.display()));
+        if sidecar.exists() {
+            assert_eq!(fs::metadata(sidecar).unwrap().len(), 0);
+        }
     }
 
     fs::remove_dir_all(root).unwrap();

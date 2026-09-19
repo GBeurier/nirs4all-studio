@@ -159,7 +159,11 @@ fn response(settings: &AppSettingsStore, id: &str) -> HttpResponse {
         Ok(links) => links,
         Err(error) => return crate::app_settings_storage_error("read dataset-score links", &error),
     };
-    match read(workspace.path(), workspace.store(), id, &links) {
+    let result = {
+        let store = workspace.store();
+        read(workspace.path(), store.as_deref(), id, &links)
+    };
+    match result {
         Ok(value) => HttpResponse::json(200, value.to_string()),
         Err(WorkspaceStoreReadError::StoreNotFound) => {
             HttpResponse::json(200, json!({"workspace_id":id,"datasets":[]}).to_string())

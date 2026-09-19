@@ -1,7 +1,6 @@
 # Unified Release Workflow
-# Produces all distribution formats from a single CI trigger:
-#   - Electron installers (Windows NSIS, macOS DMG, Linux AppImage+DEB)
-#   - All-in-one bundled archives (CPU ZIP on Windows/macOS, tar.gz on Linux)
+# One installer format per OS: NSIS, DMG (one per CPU), DEB.
+# Every installer is installed and exercised before its bytes can be published.
 #   - Native Docker image (static frontend + Rust sidecar)
 #
 # Trigger: tag v* or manual dispatch
@@ -18,11 +17,6 @@ on:
         description: 'Tag to build (e.g., 1.2.0)'
         required: true
         type: string
-      skip_all_in_one:
-        description: 'Skip all-in-one bundle builds'
-        required: false
-        default: false
-        type: boolean
       skip_docker:
         description: 'Skip Docker image builds'
         required: false
@@ -58,7 +52,6 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
-      skip_all_in_one: ${{ steps.flags.outputs.skip_all_in_one }}
       skip_docker: ${{ steps.flags.outputs.skip_docker }}
       # Tag-push releases are public and must fail closed on signing.
       # workflow_dispatch is used for smoke testing (often without secrets) and
@@ -72,8 +65,7 @@ jobs:
       # Resolve once to an immutable commit; every platform checks out the
       # identical source even if a tag is moved while jobs are queued.
       checkout_ref: ${{ steps.checkout_ref.outputs.checkout_ref }}
-      previous_version: ${{ steps.previous_release.outputs.previous_version }}
-      unix_migration_matrix: ${{ steps.previous_unix_releases.outputs.matrix }}
+      installer_baselines: ${{ steps.baselines.outputs.baselines }}
     steps:
       - uses: actions/checkout@v4
 
@@ -128,48 +120,16 @@ jobs:
           echo "Resolved checkout SHA: $REF"
           echo "- **Checkout ref**: \`$REF\`" >> $GITHUB_STEP_SUMMARY
 
-      - name: Resolve previous stable public release for the Windows migration gate
-        if: steps.version.outputs.prerelease != 'true'
-        id: previous_release
+      - name: Resolve previous public installer per platform
+        id: baselines
         uses: actions/github-script@v7
         env:
           TARGET_VERSION: ${{ steps.version.outputs.version }}
-          ARCHIVE_ENABLED: ${{ !inputs.skip_all_in_one }}
-          IS_TAG_RELEASE: ${{ github.event_name == 'push' }}
         with:
           script: |
-            const { previousReleasePlan } = require('./scripts/windows-release-gate-plan.cjs');
-            let release = null;
-            try {
-              release = (await github.rest.repos.getLatestRelease(context.repo)).data;
-            } catch (error) {
-              if (error.status !== 404) throw error;
-            }
-            const plan = previousReleasePlan(release, process.env.TARGET_VERSION, {
-              archiveEnabled: process.env.ARCHIVE_ENABLED === 'true',
-              tagRelease: process.env.IS_TAG_RELEASE === 'true',
-            });
-            core.setOutput('previous_version', plan.previousVersion);
-            await core.summary.addRaw(plan.note).write();
-
-      - name: Resolve the last public migration release for each Unix platform
-        if: steps.version.outputs.prerelease != 'true'
-        id: previous_unix_releases
-        uses: actions/github-script@v7
-        env:
-          TARGET_VERSION: ${{ steps.version.outputs.version }}
-          ARCHIVE_ENABLED: ${{ !inputs.skip_all_in_one }}
-        with:
-          script: |
-            const { previousUnixReleasePlan } = require('./scripts/unix-release-gate-plan.cjs');
+            const { installerBaselines } = require('./scripts/installer-baselines.cjs');
             const releases = await github.paginate(github.rest.repos.listReleases, { ...context.repo, per_page: 100 });
-            const include = previousUnixReleasePlan(releases, process.env.TARGET_VERSION, {
-              archiveEnabled: process.env.ARCHIVE_ENABLED === 'true',
-            });
-            core.setOutput('matrix', JSON.stringify({ include }));
-            await core.summary.addRaw(include.map(platform =>
-              `${platform.label}: public ${platform.from_version} -> candidate ${process.env.TARGET_VERSION}.`
-            ).join('\n')).write();
+            core.setOutput('baselines', JSON.stringify(installerBaselines(releases, process.env.TARGET_VERSION)));
 
       - name: Validate pinned runtime dependency refs
         shell: bash
@@ -229,7 +189,6 @@ jobs:
       - name: Determine build flags
         id: flags
         run: |
-          echo "skip_all_in_one=${{ inputs.skip_all_in_one || 'false' }}" >> $GITHUB_OUTPUT
           echo "skip_docker=${{ inputs.skip_docker || 'false' }}" >> $GITHUB_OUTPUT
 
   # Run the required checks on the exact Studio commit and pinned library refs.
@@ -243,53 +202,6 @@ jobs:
       nirs4all_library_ref: bf21c552b9d0929daf2dcc2ac7b220c9631ffa07
       dag_ml_ref: 233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27
       dag_ml_data_ref: ffe533704a1a0b0c7bb7d97a997caade3f4ba36e
-
-  # Producers finish first. The called workflow downloads those same-run
-  # artifacts directly and never waits for this parent run to complete.
-  windows-product:
-    name: Qualify stable Windows installation and N-1 migration
-    needs: [prepare, installer-windows, archive-windows]
-    if: >-
-      always() &&
-      needs.prepare.outputs.version != '0.11.5' &&
-      needs.prepare.outputs.prerelease != 'true' &&
-      needs.prepare.result == 'success' &&
-      needs.installer-windows.result == 'success' &&
-      (needs.prepare.outputs.skip_all_in_one == 'true' || needs.archive-windows.result == 'success')
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/windows-real-install-update.yml
-    with:
-      release_run_id: ${{ format('{0}', github.run_id) }}
-      checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      from_version: ${{ needs.prepare.outputs.previous_version }}
-      to_version: ${{ needs.prepare.outputs.version }}
-      archive_enabled: ${{ needs.prepare.outputs.skip_all_in_one != 'true' }}
-
-  unix-product:
-    name: Qualify stable Unix installation and platform migration
-    needs: [prepare, installer-linux, installer-macos-x64, installer-macos-arm64, archive-linux, archive-macos-x64, archive-macos-arm64]
-    if: >-
-      always() &&
-      needs.prepare.outputs.prerelease != 'true' &&
-      needs.prepare.result == 'success' &&
-      needs.prepare.outputs.skip_all_in_one != 'true' &&
-      needs.installer-linux.result == 'success' &&
-      needs.installer-macos-x64.result == 'success' &&
-      needs.installer-macos-arm64.result == 'success' &&
-      needs.archive-linux.result == 'success' &&
-      needs.archive-macos-x64.result == 'success' &&
-      needs.archive-macos-arm64.result == 'success'
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/unix-product-qualification.yml
-    with:
-      release_run_id: ${{ format('{0}', github.run_id) }}
-      checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      to_version: ${{ needs.prepare.outputs.version }}
-      platform_matrix: ${{ needs.prepare.outputs.unix_migration_matrix }}
 
   # Acquire the published universal nirs4all wheel once on Linux and build the
   # pinned conversion-tools wheel once. Every distributable consumes these exact
@@ -447,8 +359,6 @@ jobs:
           sudo chown root:root "$ARTIFACT_BOUNDARY/chrome-sandbox"
           sudo chmod 4755 "$ARTIFACT_BOUNDARY/chrome-sandbox"
           test "$(stat -c '%u:%g:%a' "$ARTIFACT_BOUNDARY/chrome-sandbox")" = '0:0:4755'
-          xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform linux
-          xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform linux
 
       - name: Qualify Linux CPU closure without optional system thread pools
         run: |
@@ -468,16 +378,34 @@ jobs:
       - name: Generate checksums
         run: |
           cd release
-          for f in *.AppImage *.deb; do
+          for f in *.deb; do
             [ -f "$f" ] && sha256sum "$f" > "$f.sha256"
           done
+
+      - name: Qualify actual installer, populated upgrade and user journeys
+        timeout-minutes: 12
+        env:
+          INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['linux-x64']) }}
+          RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
+        run: |
+          installers=(release/*.deb)
+          test "${#installers[@]}" = 1
+          xvfb-run -a node scripts/qualify-installer.cjs --installer "${installers[0]}" --platform linux --output "$RUNNER_TEMP/installer-proof.json"
+
+      - name: Preserve product proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-linux-proof
+          path: ${{ runner.temp }}/installer-proof*
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: installer-linux-x64
+          name: installer-linux-x64-payload
           path: |
-            release/*.AppImage
             release/*.deb
             release/*.sha256
             release/*.yml
@@ -601,7 +529,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar.FullName --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node scripts/smoke-archive-standalone.cjs --extracted-root $artifactBoundary --platform win32
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify Authenticode signature
@@ -637,10 +564,31 @@ jobs:
             "$hash  $($_.Name)" | Out-File -FilePath "$($_.FullName).sha256" -Encoding ascii -NoNewline
           }
 
+      - name: Qualify actual installer, populated upgrade and user journeys
+        timeout-minutes: 12
+        env:
+          INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['windows-x64']) }}
+          RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem release -File -Filter '*.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          node scripts/qualify-installer.cjs --installer $installers[0].FullName --platform win32 --output "$env:RUNNER_TEMP/installer-proof.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Preserve product proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-windows-proof
+          path: ${{ runner.temp }}/installer-proof*
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: installer-windows-x64
+          name: installer-windows-x64-payload
           path: |
             release/*.exe
             release/*.sha256
@@ -772,7 +720,6 @@ jobs:
           node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch x64 --require-bundled-python-plugin --require-bundled-methods
           if [ "$(uname -m)" = "x86_64" ]; then
             "$SIDECAR" --smoke-readiness
-            node scripts/smoke-archive-standalone.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform darwin
           else
             echo "Skipping packaged x86_64 sidecar execution on $(uname -m)."
           fi
@@ -844,10 +791,29 @@ jobs:
             [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
           done
 
+      - name: Qualify actual installer, populated upgrade and user journeys
+        timeout-minutes: 12
+        env:
+          INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['macos-x64']) }}
+          RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
+        run: |
+          installers=(release/*.dmg)
+          test "${#installers[@]}" = 1
+          node scripts/qualify-installer.cjs --installer "${installers[0]}" --platform darwin --output "$RUNNER_TEMP/installer-proof.json"
+
+      - name: Preserve product proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos-x64-proof
+          path: ${{ runner.temp }}/installer-proof*
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: installer-macos-x64
+          name: installer-macos-x64-payload
           path: |
             release/*.dmg
             release/*.sha256
@@ -976,7 +942,6 @@ jobs:
           node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch arm64 --require-bundled-python-plugin --require-bundled-methods
           if [ "$(uname -m)" = "arm64" ]; then
             "$SIDECAR" --smoke-readiness
-            node scripts/smoke-archive-standalone.cjs --extracted-root "$ARTIFACT_BOUNDARY" --platform darwin
           else
             echo "Skipping packaged arm64 sidecar execution on $(uname -m)."
           fi
@@ -1048,10 +1013,29 @@ jobs:
             [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
           done
 
+      - name: Qualify actual installer, populated upgrade and user journeys
+        timeout-minutes: 12
+        env:
+          INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['macos-arm64']) }}
+          RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
+        run: |
+          installers=(release/*.dmg)
+          test "${#installers[@]}" = 1
+          node scripts/qualify-installer.cjs --installer "${installers[0]}" --platform darwin --output "$RUNNER_TEMP/installer-proof.json"
+
+      - name: Preserve product proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos-arm64-proof
+          path: ${{ runner.temp }}/installer-proof*
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: installer-macos-arm64
+          name: installer-macos-arm64-payload
           path: |
             release/*.dmg
             release/*.sha256
@@ -1059,769 +1043,14 @@ jobs:
           retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # All-in-one archive: Windows x64 (Electron ZIP + bundled runtime)
-  # ═══════════════════════════════════════════════════════════════════════════
-  archive-windows:
-    name: All-in-one — Windows x64
-    needs: [prepare, pinned-plugin-wheels]
-    if: needs.prepare.outputs.skip_all_in_one != 'true'
-    # Methods' release preset is intentionally bound to VS 17 / 2022.
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare.outputs.checkout_ref }}
-
-      - name: Note — building an unsigned Windows archive (no signing secrets)
-        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_windows_signing != 'true'
-        shell: bash
-        run: |
-          echo "::warning::No Windows code-signing secrets set — publishing an UNSIGNED all-in-one archive. Users see a SmartScreen prompt on first run. This is fine for this project; add WINDOWS_CERT_BASE64 + WINDOWS_CERT_PASSWORD to sign."
-
-      - name: Checkout nirs4all library
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/nirs4all
-          ref: ${{ env.NIRS4ALL_LIBRARY_REF }}
-          path: nirs4all-lib
-
-      - name: Checkout dag-ml runtime
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/dag-ml
-          ref: ${{ env.DAG_ML_REF }}
-          path: dag-ml
-
-      - name: Checkout dag-ml-data runtime
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/dag-ml-data
-          ref: ${{ env.DAG_ML_DATA_REF }}
-          path: dag-ml-data
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Download canonical plugin wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: pinned-plugin-wheels
-          path: _deps/pinned-plugin-wheels
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Build exact native Methods runtime
-        uses: ./.github/actions/build-native-methods
-        with:
-          platform: win32
-          arch: x64
-
-      - name: Qualify native Archive V2 replay
-        run: npm run test:native-archive-v2
-
-      - name: Cache all-in-one runtime downloads
-        uses: actions/cache@v4
-        with:
-          path: build/.python-cache
-          key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Verify exact nirs4all-ui package
-        run: npm run check:ui-package
-
-      - name: Update package.json version
-        run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
-
-      - name: Import code signing certificate
-        if: needs.prepare.outputs.has_windows_signing == 'true'
-        env:
-          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
-          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
-        shell: pwsh
-        run: |
-          $certBytes = [Convert]::FromBase64String($env:WINDOWS_CERT_BASE64)
-          [IO.File]::WriteAllBytes("${{ runner.temp }}\cert.pfx", $certBytes)
-          echo "CSC_LINK=${{ runner.temp }}\cert.pfx" >> $env:GITHUB_ENV
-          echo "CSC_KEY_PASSWORD=$($env:WINDOWS_CERT_PASSWORD)" >> $env:GITHUB_ENV
-
-      - name: Build all-in-one archive
-        run: node scripts/build-archive-standalone.cjs --clean --platform win32 --arch x64 --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.1-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract archive for smoke test
-        id: archive
-        shell: pwsh
-        run: |
-          $zipPath = (Resolve-Path "release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-win-x64.zip").Path
-          $extractRoot = Join-Path $env:RUNNER_TEMP "archive-smoke"
-          if (Test-Path $extractRoot) {
-            Remove-Item -LiteralPath $extractRoot -Recurse -Force
-          }
-          New-Item -ItemType Directory -Path $extractRoot | Out-Null
-          Expand-Archive -LiteralPath $zipPath -DestinationPath $extractRoot -Force
-          "zip_path=$zipPath" >> $env:GITHUB_OUTPUT
-          "extract_root=$extractRoot" >> $env:GITHUB_OUTPUT
-
-      - name: Smoke test offline all-in-one launch
-        run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform win32
-
-      - name: Smoke test self-update (download -> apply -> relaunch)
-        timeout-minutes: 10
-        run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform win32
-
-      - name: Clean up certificate
-        if: always()
-        shell: pwsh
-        run: Remove-Item "${{ runner.temp }}\cert.pfx" -ErrorAction SilentlyContinue
-
-      - name: Generate checksum
-        shell: pwsh
-        run: |
-          $file = '${{ steps.archive.outputs.zip_path }}'
-          $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
-          "$hash  $(Split-Path -Path $file -Leaf)" | Out-File -FilePath "$file.sha256" -Encoding ascii -NoNewline
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: archive-windows-x64
-          path: |
-            ${{ steps.archive.outputs.zip_path }}
-            ${{ steps.archive.outputs.zip_path }}.sha256
-          retention-days: 5
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # All-in-one archive: Linux x64 (Electron tar.gz + bundled runtime)
-  # ═══════════════════════════════════════════════════════════════════════════
-  archive-linux:
-    name: All-in-one — Linux x64
-    needs: [prepare, pinned-plugin-wheels]
-    if: needs.prepare.outputs.skip_all_in_one != 'true'
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare.outputs.checkout_ref }}
-
-      - name: Checkout nirs4all library
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/nirs4all
-          ref: ${{ env.NIRS4ALL_LIBRARY_REF }}
-          path: nirs4all-lib
-
-      - name: Checkout dag-ml runtime
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/dag-ml
-          ref: ${{ env.DAG_ML_REF }}
-          path: dag-ml
-
-      - name: Checkout dag-ml-data runtime
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/dag-ml-data
-          ref: ${{ env.DAG_ML_DATA_REF }}
-          path: dag-ml-data
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Download canonical plugin wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: pinned-plugin-wheels
-          path: _deps/pinned-plugin-wheels
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Build exact native Methods runtime
-        uses: ./.github/actions/build-native-methods
-        with:
-          platform: linux
-          arch: x64
-
-      - name: Qualify native Archive V2 replay
-        run: npm run test:native-archive-v2
-
-      - name: Cache all-in-one runtime downloads
-        uses: actions/cache@v4
-        with:
-          path: build/.python-cache
-          key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            unzip \
-            pigz \
-            xvfb \
-            libgirepository1.0-dev \
-            libcairo2-dev \
-            gir1.2-gtk-3.0 \
-            gir1.2-webkit2-4.1
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Verify exact nirs4all-ui package
-        run: npm run check:ui-package
-
-      - name: Update package.json version
-        run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
-
-      - name: Build all-in-one archive
-        run: node scripts/build-archive-standalone.cjs --clean --platform linux --arch x64 --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.1-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NIRS4ALL_TAR_GZIP_PROGRAM: pigz -9
-
-      - name: Extract archive for smoke test
-        id: archive
-        run: |
-          ARCHIVE_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-linux-x64.tar.gz"
-          EXTRACT_ROOT="$RUNNER_TEMP/archive-smoke"
-          rm -rf "$EXTRACT_ROOT"
-          mkdir -p "$EXTRACT_ROOT"
-          tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_ROOT"
-          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
-          echo "extract_root=$EXTRACT_ROOT" >> $GITHUB_OUTPUT
-
-      - name: Smoke test staged archive extraction
-        run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.archive_path }}" --platform linux
-
-      - name: Qualify Linux CPU closure without optional system thread pools
-        run: |
-          sudo apt-get install -y --no-install-recommends bubblewrap binutils
-          PYTHON="$(find "${{ steps.archive.outputs.extract_root }}" -type f -path '*/resources/backend/python-runtime/python/bin/python3' -print -quit)"
-          test -n "$PYTHON"
-          python3 -B scripts/verify-linux-cpu-closure.py --runtime-root "$(dirname "$(dirname "$PYTHON")")" --output "$RUNNER_TEMP/linux-archive-cpu-closure.json"
-
-      - name: Preserve Linux archive CPU closure proof
-        uses: actions/upload-artifact@v4
-        with:
-          name: archive-linux-cpu-closure-proof
-          path: ${{ runner.temp }}/linux-archive-cpu-closure.json
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Smoke test offline all-in-one launch
-        run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
-
-      - name: Smoke test self-update (download -> apply -> relaunch)
-        timeout-minutes: 10
-        run: xvfb-run -a node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
-
-      - name: Generate checksum
-        run: |
-          FILE="${{ steps.archive.outputs.archive_path }}"
-          (cd "$(dirname "$FILE")" && sha256sum "$(basename "$FILE")" > "$(basename "$FILE").sha256")
-
-      - name: Report archive size
-        run: |
-          FILE="${{ steps.archive.outputs.archive_path }}"
-          SIZE_BYTES="$(stat -c%s "$FILE")"
-          SIZE_MIB="$((SIZE_BYTES / 1024 / 1024))"
-          echo "Archive size: ${SIZE_BYTES} bytes (${SIZE_MIB} MiB)"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: archive-linux-x64
-          path: |
-            ${{ steps.archive.outputs.archive_path }}
-            ${{ steps.archive.outputs.archive_path }}.sha256
-          retention-days: 5
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # All-in-one archive: macOS x64 (notarized + stapled when secrets are available)
-  # ═══════════════════════════════════════════════════════════════════════════
-  archive-macos-x64:
-    name: All-in-one — macOS x64
-    needs: [prepare, pinned-plugin-wheels]
-    if: needs.prepare.outputs.skip_all_in_one != 'true'
-    runs-on: macos-15-intel
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare.outputs.checkout_ref }}
-
-      - name: Note — building an unsigned macOS archive (no Apple signing secrets)
-        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
-        run: |
-          echo "::warning::No Apple signing/notarization secrets set — publishing an UNSIGNED, un-notarized all-in-one archive. Users must right-click > Open on first launch (Gatekeeper). This is fine for this project; add APPLE_* secrets to sign + notarize."
-
-      - name: Checkout nirs4all library
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/nirs4all
-          ref: ${{ env.NIRS4ALL_LIBRARY_REF }}
-          path: nirs4all-lib
-
-      - name: Checkout dag-ml runtime
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/dag-ml
-          ref: ${{ env.DAG_ML_REF }}
-          path: dag-ml
-
-      - name: Checkout dag-ml-data runtime
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/dag-ml-data
-          ref: ${{ env.DAG_ML_DATA_REF }}
-          path: dag-ml-data
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Download canonical plugin wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: pinned-plugin-wheels
-          path: _deps/pinned-plugin-wheels
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Build exact native Methods runtime
-        uses: ./.github/actions/build-native-methods
-        with:
-          platform: darwin
-          arch: x64
-
-      - name: Qualify native Archive V2 replay
-        run: npm run test:native-archive-v2
-
-      - name: Cache all-in-one runtime downloads
-        uses: actions/cache@v4
-        with:
-          path: build/.python-cache
-          key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Verify exact nirs4all-ui package
-        run: npm run check:ui-package
-
-      - name: Update package.json version
-        run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
-
-      - name: Detect notarization secrets
-        id: notarization
-        env:
-          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
-          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          missing=()
-          for secret_name in APPLE_CERT_BASE64 APPLE_CERT_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            if [ -z "${!secret_name}" ]; then
-              missing+=("$secret_name")
-            fi
-          done
-
-          if [ ${#missing[@]} -eq 0 ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "Using notarized packaging for the macOS all-in-one archive."
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Building an unsigned macOS all-in-one archive because these notarization secrets are missing: ${missing[*]}"
-          fi
-
-      - name: Import Apple Developer certificate
-        if: steps.notarization.outputs.enabled == 'true'
-        env:
-          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
-          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=${{ runner.temp }}/build.keychain
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          echo "$APPLE_CERT_BASE64" | base64 --decode > ${{ runner.temp }}/cert.p12
-          security import ${{ runner.temp }}/cert.p12 -k "$KEYCHAIN_PATH" \
-            -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
-
-          echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> $GITHUB_ENV
-
-      - name: Build all-in-one archive
-        run: |
-          HARD_LIMIT="$(ulimit -Hn 2>/dev/null || echo '')"
-          TARGET_LIMIT=65536
-          if [[ "$HARD_LIMIT" =~ ^[0-9]+$ ]] && (( HARD_LIMIT < TARGET_LIMIT )); then
-            TARGET_LIMIT="$HARD_LIMIT"
-          fi
-          ulimit -n "$TARGET_LIMIT" || true
-          echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
-          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch x64 --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.1-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # cpu-darwin-x64 ships a checked-in constraints file; fail the bake if
-          # it is ever missing so this distributable stays reproducible. Read by
-          # the plugin-only runtime builder (inherited through build-archive-standalone.cjs).
-          NIRS4ALL_REQUIRE_CONSTRAINTS: '1'
-
-      - name: Notarize, staple, and rebuild final ZIP
-        if: steps.notarization.outputs.enabled == 'true'
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          APP_PATH="release/mac/nirs4all Studio.app"
-          ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-mac-x64.zip"
-          NOTARY_ZIP="${RUNNER_TEMP}/notary-mac-x64.zip"
-          EXTRACT_ROOT="${RUNNER_TEMP}/archive-smoke"
-
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$NOTARY_ZIP"
-          xcrun notarytool submit "$NOTARY_ZIP" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait --timeout 600
-          xcrun stapler staple "$APP_PATH"
-          xcrun stapler validate "$APP_PATH"
-
-          rm -f "$ZIP_PATH"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
-
-          rm -rf "$EXTRACT_ROOT"
-          mkdir -p "$EXTRACT_ROOT"
-          ditto -x -k "$ZIP_PATH" "$EXTRACT_ROOT"
-
-      - name: Extract archive for smoke test
-        id: archive
-        run: |
-          ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-mac-x64.zip"
-          EXTRACT_ROOT="${RUNNER_TEMP}/archive-smoke"
-          rm -rf "$EXTRACT_ROOT"
-          mkdir -p "$EXTRACT_ROOT"
-          ditto -x -k "$ZIP_PATH" "$EXTRACT_ROOT"
-          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
-          echo "extract_root=$EXTRACT_ROOT" >> "$GITHUB_OUTPUT"
-
-      - name: Smoke test update ZIP permissions
-        run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.zip_path }}" --platform darwin
-
-      - name: Smoke test offline all-in-one launch
-        run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
-
-      - name: Smoke test self-update (download -> apply -> relaunch)
-        timeout-minutes: 10
-        run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
-
-      - name: Cleanup keychain
-        if: always()
-        run: |
-          KEYCHAIN_PATH=${{ runner.temp }}/build.keychain
-          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
-
-      - name: Generate checksum
-        run: |
-          FILE="${{ steps.archive.outputs.zip_path }}"
-          (cd "$(dirname "$FILE")" && shasum -a 256 "$(basename "$FILE")" > "$(basename "$FILE").sha256")
-
-      # Upload as a workflow artifact (like every other archive job) so the
-      # single `Create Release` job consolidates and publishes it. Publishing to
-      # the release here too made macOS x64 a second publisher, which collided
-      # with `Create Release` on a fresh tag (workflow_dispatch) — duplicate
-      # release / "already_exists" at finalize.
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: archive-macos-x64
-          path: |
-            ${{ steps.archive.outputs.zip_path }}
-            ${{ steps.archive.outputs.zip_path }}.sha256
-          retention-days: 5
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # All-in-one archive: macOS arm64 (notarized + stapled when secrets are available)
-  # ═══════════════════════════════════════════════════════════════════════════
-  archive-macos-arm64:
-    name: All-in-one — macOS arm64
-    needs: [prepare, pinned-plugin-wheels]
-    if: needs.prepare.outputs.skip_all_in_one != 'true'
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare.outputs.checkout_ref }}
-
-      - name: Note — building an unsigned macOS archive (no Apple signing secrets)
-        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
-        run: |
-          echo "::warning::No Apple signing/notarization secrets set — publishing an UNSIGNED, un-notarized all-in-one archive. Users must right-click > Open on first launch (Gatekeeper). This is fine for this project; add APPLE_* secrets to sign + notarize."
-
-      - name: Checkout nirs4all library
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/nirs4all
-          ref: ${{ env.NIRS4ALL_LIBRARY_REF }}
-          path: nirs4all-lib
-
-      - name: Checkout dag-ml runtime
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/dag-ml
-          ref: ${{ env.DAG_ML_REF }}
-          path: dag-ml
-
-      - name: Checkout dag-ml-data runtime
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/dag-ml-data
-          ref: ${{ env.DAG_ML_DATA_REF }}
-          path: dag-ml-data
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Download canonical plugin wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: pinned-plugin-wheels
-          path: _deps/pinned-plugin-wheels
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Build exact native Methods runtime
-        uses: ./.github/actions/build-native-methods
-        with:
-          platform: darwin
-          arch: arm64
-
-      - name: Qualify native Archive V2 replay
-        run: npm run test:native-archive-v2
-
-      - name: Cache all-in-one runtime downloads
-        uses: actions/cache@v4
-        with:
-          path: build/.python-cache
-          key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Verify exact nirs4all-ui package
-        run: npm run check:ui-package
-
-      - name: Update package.json version
-        run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
-
-      - name: Detect notarization secrets
-        id: notarization
-        env:
-          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
-          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          missing=()
-          for secret_name in APPLE_CERT_BASE64 APPLE_CERT_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            if [ -z "${!secret_name}" ]; then
-              missing+=("$secret_name")
-            fi
-          done
-
-          if [ ${#missing[@]} -eq 0 ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "Using notarized packaging for the macOS all-in-one archive."
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Building an unsigned macOS all-in-one archive because these notarization secrets are missing: ${missing[*]}"
-          fi
-
-      - name: Import Apple Developer certificate
-        if: steps.notarization.outputs.enabled == 'true'
-        env:
-          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
-          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=${{ runner.temp }}/build.keychain
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          echo "$APPLE_CERT_BASE64" | base64 --decode > ${{ runner.temp }}/cert.p12
-          security import ${{ runner.temp }}/cert.p12 -k "$KEYCHAIN_PATH" \
-            -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
-
-          echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> $GITHUB_ENV
-
-      - name: Build all-in-one archive
-        run: |
-          HARD_LIMIT="$(ulimit -Hn 2>/dev/null || echo '')"
-          TARGET_LIMIT=65536
-          if [[ "$HARD_LIMIT" =~ ^[0-9]+$ ]] && (( HARD_LIMIT < TARGET_LIMIT )); then
-            TARGET_LIMIT="$HARD_LIMIT"
-          fi
-          ulimit -n "$TARGET_LIMIT" || true
-          echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
-          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch arm64 --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.1-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: Notarize, staple, and rebuild final ZIP
-        if: steps.notarization.outputs.enabled == 'true'
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          APP_PATH="release/mac-arm64/nirs4all Studio.app"
-          ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-mac-arm64.zip"
-          NOTARY_ZIP="${RUNNER_TEMP}/notary-mac-arm64.zip"
-          EXTRACT_ROOT="${RUNNER_TEMP}/archive-smoke"
-
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$NOTARY_ZIP"
-          xcrun notarytool submit "$NOTARY_ZIP" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait --timeout 600
-          xcrun stapler staple "$APP_PATH"
-          xcrun stapler validate "$APP_PATH"
-
-          rm -f "$ZIP_PATH"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
-
-          rm -rf "$EXTRACT_ROOT"
-          mkdir -p "$EXTRACT_ROOT"
-          ditto -x -k "$ZIP_PATH" "$EXTRACT_ROOT"
-
-      - name: Extract archive for smoke test
-        id: archive
-        run: |
-          ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-mac-arm64.zip"
-          EXTRACT_ROOT="${RUNNER_TEMP}/archive-smoke"
-          rm -rf "$EXTRACT_ROOT"
-          mkdir -p "$EXTRACT_ROOT"
-          ditto -x -k "$ZIP_PATH" "$EXTRACT_ROOT"
-          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
-          echo "extract_root=$EXTRACT_ROOT" >> "$GITHUB_OUTPUT"
-
-      - name: Smoke test update ZIP permissions
-        run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.zip_path }}" --platform darwin
-
-      - name: Smoke test offline all-in-one launch
-        run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
-
-      - name: Smoke test self-update (download -> apply -> relaunch)
-        timeout-minutes: 10
-        run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
-
-      - name: Cleanup keychain
-        if: always()
-        run: |
-          KEYCHAIN_PATH=${{ runner.temp }}/build.keychain
-          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
-
-      - name: Generate checksum
-        run: |
-          FILE="${{ steps.archive.outputs.zip_path }}"
-          (cd "$(dirname "$FILE")" && shasum -a 256 "$(basename "$FILE")" > "$(basename "$FILE").sha256")
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: archive-macos-arm64
-          path: |
-            ${{ steps.archive.outputs.zip_path }}
-            ${{ steps.archive.outputs.zip_path }}.sha256
-          retention-days: 5
-
-  # ═══════════════════════════════════════════════════════════════════════════
   # Docker: static frontend + loopback Rust sidecar
   # ═══════════════════════════════════════════════════════════════════════════
   docker:
     name: Native Docker Image
-    needs:
-      - prepare
-      - quality
-      - windows-product
-      - unix-product
-      - installer-linux
-      - installer-windows
-      - installer-macos-x64
-      - installer-macos-arm64
-      - archive-windows
-      - archive-linux
-      - archive-macos-x64
-      - archive-macos-arm64
-    if: >-
-      always() &&
-      needs.prepare.result == 'success' &&
-      needs.quality.result == 'success' &&
-      (needs.prepare.outputs.prerelease == 'true' || needs.windows-product.result == 'success') &&
-      (needs.prepare.outputs.prerelease == 'true' || (needs.prepare.outputs.skip_all_in_one != 'true' && needs.unix-product.result == 'success')) &&
-      needs.prepare.outputs.skip_docker != 'true' &&
-      needs.installer-linux.result == 'success' &&
-      needs.installer-windows.result == 'success' &&
-      needs.installer-macos-x64.result == 'success' &&
-      needs.installer-macos-arm64.result == 'success' &&
-      (
-        needs.prepare.outputs.skip_all_in_one == 'true' ||
-        (
-          needs.archive-windows.result == 'success' &&
-          needs.archive-linux.result == 'success' &&
-          needs.archive-macos-x64.result == 'success' &&
-          needs.archive-macos-arm64.result == 'success'
-        )
-      )
+    needs: prepare
+    if: needs.prepare.outputs.skip_docker != 'true'
+    outputs:
+      image_id: ${{ steps.image.outputs.id }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1871,78 +1100,40 @@ jobs:
           bash scripts/smoke-docker-native-runtime.sh nirs4all-studio:native-release-candidate
           node scripts/test-docker-access.cjs nirs4all-studio:native-release-candidate --browser
 
-      - name: Login to GitHub Container Registry
-        if: needs.prepare.outputs.is_tag_release == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish the tested Docker image
-        if: needs.prepare.outputs.is_tag_release == 'true'
-        env:
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-          IS_PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      - name: Preserve the tested image without publishing
+        id: image
         run: |
-          # Promote the image that passed the smoke. Rebuilding here would
-          # publish bytes that have never been tested.
-          IMAGE=ghcr.io/gbeurier/nirs4all-studio
-          docker tag nirs4all-studio:native-release-candidate "$IMAGE:$RELEASE_VERSION"
-          docker push "$IMAGE:$RELEASE_VERSION"
-          if [ "$IS_PRERELEASE" != 'true' ]; then
-            docker tag nirs4all-studio:native-release-candidate "$IMAGE:latest"
-            docker push "$IMAGE:latest"
-          fi
+          echo "id=$(docker image inspect --format '{{.Id}}' nirs4all-studio:native-release-candidate)" >> "$GITHUB_OUTPUT"
+          docker save --output "$RUNNER_TEMP/studio-image.tar" nirs4all-studio:native-release-candidate
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-candidate
+          path: ${{ runner.temp }}/studio-image.tar
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Release: Consolidate all artifacts into GitHub Release
-  # The urgent 0.11.5 release is promoted by promote-qualified-windows-hotfix.yml
-  # after actual Windows installation/UI/N-1 migration; this publisher must not race it.
+  # Publication consumes the exact installers and image qualified above.
   # ═══════════════════════════════════════════════════════════════════════════
   release:
     name: Create Release
-    needs:
-      - prepare
-      - quality
-      - windows-product
-      - unix-product
-      - installer-linux
-      - installer-windows
-      - installer-macos-x64
-      - installer-macos-arm64
-      - archive-windows
-      - archive-linux
-      - archive-macos-x64
-      - archive-macos-arm64
-      - docker
+    needs: [prepare, quality, installer-linux, installer-windows, installer-macos-x64, installer-macos-arm64, docker]
     if: >-
       always() &&
-      needs.prepare.outputs.version != '0.11.5' &&
       needs.prepare.result == 'success' &&
       needs.quality.result == 'success' &&
-      (needs.prepare.outputs.prerelease == 'true' || needs.windows-product.result == 'success') &&
-      (needs.prepare.outputs.prerelease == 'true' || (needs.prepare.outputs.skip_all_in_one != 'true' && needs.unix-product.result == 'success')) &&
       needs.installer-linux.result == 'success' &&
       needs.installer-windows.result == 'success' &&
       needs.installer-macos-x64.result == 'success' &&
       needs.installer-macos-arm64.result == 'success' &&
-      (
-        needs.prepare.outputs.skip_all_in_one == 'true' ||
-        (
-          needs.archive-windows.result == 'success' &&
-          needs.archive-linux.result == 'success' &&
-          needs.archive-macos-x64.result == 'success' &&
-          needs.archive-macos-arm64.result == 'success'
-        )
-      ) &&
-      (
-        needs.prepare.outputs.skip_docker == 'true' ||
-        needs.docker.result == 'success'
-      )
+      (needs.prepare.outputs.skip_docker == 'true' || needs.docker.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1952,15 +1143,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: '{installer,archive}-*'
+          pattern: 'installer-*-payload'
           merge-multiple: false
 
       - name: Prepare release assets
         run: |
           mkdir -p release
           find artifacts -type f \( \
-            -name "*.AppImage" -o -name "*.deb" -o -name "*.exe" \
-            -o -name "*.dmg" -o -name "*.zip" -o -name "*.tar.gz" \
+            -name "*.deb" -o -name "*.exe" \
+            -o -name "*.dmg" \
             -o -name "*.sha256" \
           \) -exec cp {} release/ \; 2>/dev/null || true
 
@@ -1971,7 +1162,7 @@ jobs:
           node scripts/finalize-release-assets.cjs \
             release \
             '${{ needs.prepare.outputs.version }}' \
-            '${{ needs.prepare.outputs.skip_all_in_one != 'true' }}'
+            false
 
           echo "## Release Assets" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -1990,10 +1181,6 @@ jobs:
           INSTALLER_WINDOWS="${{ needs.installer-windows.result }}"
           INSTALLER_MACOS_X64="${{ needs.installer-macos-x64.result }}"
           INSTALLER_MACOS_ARM64="${{ needs.installer-macos-arm64.result }}"
-          ARCHIVE_WIN="${{ needs.archive-windows.result }}"
-          ARCHIVE_LINUX="${{ needs.archive-linux.result }}"
-          ARCHIVE_MACOS_X64="${{ needs.archive-macos-x64.result }}"
-          ARCHIVE_MACOS_ARM64="${{ needs.archive-macos-arm64.result }}"
           DOCKER="${{ needs.docker.result }}"
 
           cat > release_notes.md << NOTES
@@ -2006,23 +1193,10 @@ jobs:
 
           | Platform | Architecture | File | Status |
           |----------|-------------|------|--------|
-          | **Windows** | x64 | \`nirs4all.Studio-${VERSION}-win-x64.exe\` / \`nirs4all.Studio-${VERSION}-win-x64-portable.exe\` | ${INSTALLER_WINDOWS} |
+          | **Windows** | x64 | \`nirs4all.Studio-${VERSION}-win-x64.exe\` | ${INSTALLER_WINDOWS} |
           | **macOS** | Intel (x64) | \`nirs4all.Studio-${VERSION}-mac-x64.dmg\` | ${INSTALLER_MACOS_X64} |
           | **macOS** | Apple Silicon (arm64) | \`nirs4all.Studio-${VERSION}-mac-arm64.dmg\` | ${INSTALLER_MACOS_ARM64} |
-          | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-linux-x86_64.AppImage\` / \`nirs4all.Studio-${VERSION}-linux-amd64.deb\` | ${INSTALLER_LINUX} |
-
-          ### All-in-one Bundles
-
-          Self-contained Electron desktop bundles with a baked Python runtime.
-          CPU-only product profile with verified scientific packages, including SHAP and Matplotlib.
-          The included runtime works offline and does not require a separate Python installation.
-
-          | Platform | Architecture | File | Status |
-          |----------|-------------|------|--------|
-          | **Windows** | x64 | \`nirs4all.Studio-${VERSION}-all-in-one-win-x64.zip\` | ${ARCHIVE_WIN} |
-          | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-all-in-one-linux-x64.tar.gz\` | ${ARCHIVE_LINUX} |
-          | **macOS** | Intel (x64) | \`nirs4all.Studio-${VERSION}-all-in-one-mac-x64.zip\` | ${ARCHIVE_MACOS_X64} |
-          | **macOS** | Apple Silicon (arm64) | \`nirs4all.Studio-${VERSION}-all-in-one-mac-arm64.zip\` | ${ARCHIVE_MACOS_ARM64} |
+          | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-linux-amd64.deb\` | ${INSTALLER_LINUX} |
 
           ### Docker
 
@@ -2048,7 +1222,7 @@ jobs:
 
           \`\`\`bash
           # Linux/macOS
-          sha256sum -c 'nirs4all.Studio-${VERSION}-linux-x86_64.AppImage.sha256'
+          sha256sum -c 'nirs4all.Studio-${VERSION}-linux-amd64.deb.sha256'
 
           # Windows (PowerShell)
           (Get-FileHash '.\nirs4all.Studio-${VERSION}-win-x64.exe').Hash
@@ -2064,6 +1238,38 @@ jobs:
           ---
           *Commit: ${{ github.sha }}*
           NOTES
+
+      - name: Download the tested Docker image
+        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-candidate
+          path: docker-candidate
+
+      - name: Login to GitHub Container Registry
+        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the tested Docker image
+        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'
+        env:
+          EXPECTED_IMAGE_ID: ${{ needs.docker.outputs.image_id }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          IS_PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          docker load --input docker-candidate/studio-image.tar
+          test "$(docker image inspect --format '{{.Id}}' nirs4all-studio:native-release-candidate)" = "$EXPECTED_IMAGE_ID"
+          IMAGE=ghcr.io/gbeurier/nirs4all-studio
+          docker tag nirs4all-studio:native-release-candidate "$IMAGE:$RELEASE_VERSION"
+          docker push "$IMAGE:$RELEASE_VERSION"
+          if [ "$IS_PRERELEASE" != 'true' ]; then
+            docker tag nirs4all-studio:native-release-candidate "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi
 
       - name: Publish verified assets sequentially
         # Publish ONLY on a real tag push. workflow_dispatch is for build/smoke
@@ -2081,7 +1287,7 @@ jobs:
           node scripts/publish-qualified-release.cjs \
             release \
             '${{ needs.prepare.outputs.version }}' \
-            '${{ needs.prepare.outputs.skip_all_in_one != 'true' }}'
+            false
 
       - name: Release summary
         run: |
@@ -2098,10 +1304,6 @@ jobs:
           echo "| Installer Windows | ${{ needs.installer-windows.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Installer macOS x64 | ${{ needs.installer-macos-x64.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Installer macOS arm64 | ${{ needs.installer-macos-arm64.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| All-in-one Windows | ${{ needs.archive-windows.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| All-in-one Linux | ${{ needs.archive-linux.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| All-in-one macOS x64 | ${{ needs.archive-macos-x64.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| All-in-one macOS arm64 | ${{ needs.archive-macos-arm64.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Docker | ${{ needs.docker.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Assets" >> $GITHUB_STEP_SUMMARY

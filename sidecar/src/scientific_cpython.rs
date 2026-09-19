@@ -1,4 +1,4 @@
-//! Bounded fresh-process `CPython` scientific-library host.
+//! Bounded `CPython` host: fresh training jobs and reusable interactive workers.
 //!
 //! The stdio worker and Rust-owned terminal callback are implemented here,
 //! with explicit native job lifecycle and separately attested document
@@ -27,6 +27,9 @@ use crate::job_http::{
     ScientificJobExecutor, ScientificJobTerminal, ScientificSubmissionPreflight,
 };
 use crate::scientific_request_resolver::ScientificRequestResolver;
+
+#[path = "warm_library_host.rs"]
+mod warm_library_host;
 
 pub const SCIENTIFIC_CPYTHON_HOST_CONTRACT: &str =
     include_str!("../contracts/studio_scientific_cpython_host_v1.json");
@@ -167,7 +170,7 @@ with contextlib.redirect_stdout(sys.stderr):
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":True,"result":result,"error":None}
         except Exception as error:
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":False,"result":None,"error":str(error).encode("utf-8")[:4000].decode("utf-8",errors="ignore")}
-        response_limit=33554432 if request.get("operation") in {"dataset.preview","dataset.stats","dataset.inspect_format","predictions.catalogue","predictions.run","predictions.file"} else document_limit
+        response_limit=33554432 if request.get("operation") in {"spectra.data","spectra.stats","playground.operators","playground.presets","dataset.preview","dataset.stats","dataset.inspect_format","results.chain_steps","results.pipeline_steps","results.chains","results.top","results.chain","results.chain_detail","results.arrays","results.page","results.summary","predictions.catalogue","predictions.run","predictions.file"} else document_limit
     elif request.get("schema") == "nirs4all.studio-scientific-job.v2":
         general=getattr(nirs4all,"studio_scientific_job_v2",None)
         if not callable(general):
@@ -285,7 +288,7 @@ struct RuntimePathSnapshot {
     relative_path: String,
     size: u64,
     device: u64,
-    inode: u64,
+    inode: u128,
     modified_nanos: i128,
     changed_nanos: i128,
 }
@@ -305,6 +308,7 @@ struct PackagedRuntimeIdentity {
     files: Vec<RuntimeClosureFile>,
     snapshot: Arc<Mutex<RuntimeSnapshot>>,
     full_hash_scans: Arc<AtomicUsize>,
+    changes: Option<Arc<warm_library_host::RuntimeChanges>>,
 }
 
 /// Sticky acquisition record for an explicitly selected `CPython` stdio host.
@@ -323,6 +327,7 @@ pub struct CpythonScientificJobExecutor {
     resolver: ScientificRequestResolver,
     running: Arc<Mutex<BTreeMap<String, Arc<AtomicBool>>>>,
     terminal_callback_failed: Arc<AtomicBool>,
+    warm_workers: [Mutex<Option<warm_library_host::Worker>>; 2],
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -336,10 +341,10 @@ impl CpythonScientificJobExecutor {
         platform_kill_tree_qualified()
             && self.identity.is_some()
             && self.callable_identity.is_some()
-            && self.packaged_runtime.as_ref().is_some_and(|runtime| {
-                verify_packaged_runtime_anchor(runtime).is_ok()
-                    && verify_identity(&runtime.closure).is_ok()
-            })
+            && self
+                .packaged_runtime
+                .as_ref()
+                .is_some_and(|runtime| validate_runtime_availability(runtime).is_ok())
     }
 
     pub(crate) fn invoke_library_facade(
@@ -372,15 +377,15 @@ impl CpythonScientificJobExecutor {
         };
         let bytes = serde_json::to_vec(request)
             .map_err(|_| fail("invalid_request", "Library facade request is not JSON"))?;
-        let response = run_scientific_process_with_timeout(
-            host,
-            callable,
-            Some(runtime),
-            &bytes,
-            &AtomicBool::new(false),
-            SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
-        )
-        .map_err(|error| fail(error.reason(), "Scientific library facade failed"))?;
+        let response = self
+            .run_interactive_request(
+                host,
+                callable,
+                runtime,
+                &bytes,
+                SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
+            )
+            .map_err(|error| fail(error.reason(), "Scientific library facade failed"))?;
         if response.get("schema").and_then(Value::as_str)
             == Some("nirs4all.studio-library-error.v1")
         {
@@ -409,19 +414,22 @@ impl CpythonScientificJobExecutor {
         crate::document_cpython::verify(&runtime.site_packages)?;
         let request = crate::document_cpython::request(operation, payload)?;
         let bytes = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
-        let response = run_scientific_process_with_timeout(
-            host,
-            callable,
-            Some(runtime),
-            &bytes,
-            &AtomicBool::new(false),
-            if matches!(operation, "predictions.run" | "predictions.file") {
-                SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT
-            } else {
-                SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT
-            },
-        )
-        .map_err(|error| error.reason().to_owned())?;
+        let response = self
+            .run_interactive_request(
+                host,
+                callable,
+                runtime,
+                &bytes,
+                if matches!(
+                    operation,
+                    "workspace.upgrade" | "predictions.run" | "predictions.file"
+                ) {
+                    SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT
+                } else {
+                    SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT
+                },
+            )
+            .map_err(|error| error.reason().to_owned())?;
         crate::document_cpython::verify(&runtime.site_packages)?;
         if response["success"] == true {
             Ok(response["result"].clone())
@@ -477,8 +485,20 @@ impl CpythonScientificJobExecutor {
         let site_packages = packaged_runtime
             .as_ref()
             .map(|identity| identity.site_packages.as_path());
-        match acquire_host(path, site_packages) {
-            Ok((identity, callable_identity)) => {
+        let acquired = packaged_runtime.as_ref().map_or_else(
+            || {
+                acquire_host(path, site_packages)
+                    .map(|(identity, callable)| (identity, callable, None))
+            },
+            |runtime| {
+                let identity = host_identity(path)?;
+                let (worker, output) = warm_library_host::Worker::acquire(&identity, runtime)?;
+                let (identity, callable) = parse_acquired_host(identity, &output)?;
+                Ok((identity, callable, Some(worker)))
+            },
+        );
+        match acquired {
+            Ok((identity, callable_identity, worker)) => {
                 let callable_ready = callable_identity.is_some();
                 Self {
                     identity: Some(identity),
@@ -492,6 +512,7 @@ impl CpythonScientificJobExecutor {
                     resolver,
                     running: Arc::new(Mutex::new(BTreeMap::new())),
                     terminal_callback_failed: Arc::new(AtomicBool::new(false)),
+                    warm_workers: [Mutex::new(worker), Mutex::new(None)],
                 }
             }
             Err(error) => Self {
@@ -502,6 +523,7 @@ impl CpythonScientificJobExecutor {
                 resolver,
                 running: Arc::new(Mutex::new(BTreeMap::new())),
                 terminal_callback_failed: Arc::new(AtomicBool::new(false)),
+                warm_workers: std::array::from_fn(|_| Mutex::new(None)),
             },
         }
     }
@@ -515,6 +537,7 @@ impl CpythonScientificJobExecutor {
             resolver: ScientificRequestResolver::new(config_dir),
             running: Arc::new(Mutex::new(BTreeMap::new())),
             terminal_callback_failed: Arc::new(AtomicBool::new(false)),
+            warm_workers: std::array::from_fn(|_| Mutex::new(None)),
         }
     }
 
@@ -529,19 +552,24 @@ impl CpythonScientificJobExecutor {
             if self.terminal_callback_failed.load(Ordering::Acquire) {
                 return ScientificCpythonUnavailable::TerminalCallbackFailed.reason();
             }
-            if let Some(identity) = &self.identity {
-                if verify_identity(identity).is_err() {
+            if let Some(runtime) = &self.packaged_runtime {
+                if validate_runtime_availability(runtime).is_err() {
+                    return ScientificCpythonUnavailable::RuntimeContractTampered.reason();
+                }
+            } else {
+                if self
+                    .identity
+                    .as_ref()
+                    .is_some_and(|identity| verify_identity(identity).is_err())
+                {
                     return ScientificCpythonUnavailable::HostTampered.reason();
                 }
-            }
-            if let Some(identity) = &self.callable_identity {
-                if verify_identity(identity).is_err() {
+                if self
+                    .callable_identity
+                    .as_ref()
+                    .is_some_and(|identity| verify_identity(identity).is_err())
+                {
                     return ScientificCpythonUnavailable::CallableTampered.reason();
-                }
-            }
-            if let Some(identity) = &self.packaged_runtime {
-                if verify_packaged_runtime_anchor(identity).is_err() {
-                    return ScientificCpythonUnavailable::RuntimeContractTampered.reason();
                 }
             }
             if self.callable_identity.is_some() && !self.resolver.is_configured() {
@@ -678,7 +706,14 @@ fn acquire_host(
 ) -> Result<(HostIdentity, Option<HostIdentity>), ScientificCpythonUnavailable> {
     let identity = host_identity(path)?;
     let output = run_preflight(&identity.canonical_path, site_packages)?;
-    let response: Value = serde_json::from_slice(&output)
+    parse_acquired_host(identity, &output)
+}
+
+fn parse_acquired_host(
+    identity: HostIdentity,
+    output: &[u8],
+) -> Result<(HostIdentity, Option<HostIdentity>), ScientificCpythonUnavailable> {
+    let response: Value = serde_json::from_slice(output)
         .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
     let object = response
         .as_object()
@@ -842,6 +877,8 @@ fn packaged_runtime_identity(
         return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
     }
     let (directories, files) = parse_runtime_closure(&closure, &runtime_root, &site_packages)?;
+    // Subscribe before validation so a mutation during acquisition is observed.
+    let changes = warm_library_host::RuntimeChanges::watch(&runtime_root);
     let snapshot = collect_runtime_snapshot(&runtime_root)?;
     let identity = PackagedRuntimeIdentity {
         runtime_root,
@@ -851,6 +888,7 @@ fn packaged_runtime_identity(
         files,
         snapshot: Arc::new(Mutex::new(snapshot.clone())),
         full_hash_scans: Arc::new(AtomicUsize::new(0)),
+        changes,
     };
     verify_packaged_runtime_full(&identity, &snapshot)?;
     Ok(identity)
@@ -1052,6 +1090,15 @@ fn canonical_directory_identity(path: &Path) -> Result<PathBuf, ScientificCpytho
         .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)
 }
 
+fn validate_runtime_availability(
+    identity: &PackagedRuntimeIdentity,
+) -> Result<(), ScientificCpythonUnavailable> {
+    identity.changes.as_ref().map_or_else(
+        || verify_packaged_runtime_identity(identity),
+        |changes| changes.validate(identity).map(|_| ()),
+    )
+}
+
 fn verify_packaged_runtime_identity(
     identity: &PackagedRuntimeIdentity,
 ) -> Result<(), ScientificCpythonUnavailable> {
@@ -1073,15 +1120,15 @@ fn verify_packaged_runtime_identity(
     Ok(())
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 const fn runtime_snapshot_cache_is_trustworthy() -> bool {
     true
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 const fn runtime_snapshot_cache_is_trustworthy() -> bool {
-    // Rust exposes the inode ctime needed to detect a restored mtime on Unix.
-    // Other supported metadata APIs do not expose an equivalent change marker,
+    // Unix ctime and Windows FILE_BASIC_INFO.ChangeTime detect restored mtime.
+    // Other targets do not expose an equivalent change marker,
     // so those targets retain the full cryptographic verification on every
     // boundary instead of weakening the fail-closed contract.
     false
@@ -1245,7 +1292,7 @@ fn runtime_path_snapshot(
         relative_path: manifest_relative_path(relative)?,
         size: metadata.len(),
         device: metadata.dev(),
-        inode: metadata.ino(),
+        inode: u128::from(metadata.ino()),
         modified_nanos: i128::from(metadata.mtime()) * 1_000_000_000
             + i128::from(metadata.mtime_nsec()),
         changed_nanos: i128::from(metadata.ctime()) * 1_000_000_000
@@ -1259,21 +1306,18 @@ fn runtime_path_snapshot(
     relative: &Path,
     metadata: &fs::Metadata,
 ) -> Result<RuntimePathSnapshot, ScientificCpythonUnavailable> {
-    use std::hash::{DefaultHasher, Hash, Hasher};
-    use std::os::windows::fs::MetadataExt;
-
-    let mut identity = DefaultHasher::new();
-    same_file::Handle::from_path(path)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?
-        .hash(&mut identity);
-
+    let stamp = studio_windows_job::file_change_stamp(path)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    if stamp.size != metadata.len() || stamp.changed <= 0 {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
     Ok(RuntimePathSnapshot {
         relative_path: manifest_relative_path(relative)?,
-        size: metadata.file_size(),
-        device: 0,
-        inode: identity.finish(),
-        modified_nanos: i128::from(metadata.last_write_time()) * 100,
-        changed_nanos: i128::from(metadata.creation_time()) * 100,
+        size: stamp.size,
+        device: stamp.volume,
+        inode: stamp.file_id,
+        modified_nanos: i128::from(stamp.modified) * 100,
+        changed_nanos: i128::from(stamp.changed) * 100,
     })
 }
 
@@ -1636,9 +1680,22 @@ fn request_limits(request: &Value) -> (usize, usize) {
             let output_limit = if matches!(
                 request["operation"].as_str(),
                 Some(
-                    "dataset.preview"
+                    "spectra.data"
+                        | "spectra.stats"
+                        | "playground.operators"
+                        | "playground.presets"
+                        | "dataset.preview"
                         | "dataset.stats"
                         | "dataset.inspect_format"
+                        | "results.chain_steps"
+                        | "results.pipeline_steps"
+                        | "results.chains"
+                        | "results.top"
+                        | "results.chain"
+                        | "results.chain_detail"
+                        | "results.arrays"
+                        | "results.page"
+                        | "results.summary"
                         | "predictions.catalogue"
                         | "predictions.run"
                         | "predictions.file"
@@ -1855,6 +1912,16 @@ fn scientific_worker_command(
     site_packages: Option<&Path>,
     scratch: &Path,
 ) -> Result<Command, ScientificCpythonUnavailable> {
+    scientific_worker_command_with_script(host, callable, site_packages, scratch, EXECUTION_SCRIPT)
+}
+
+fn scientific_worker_command_with_script(
+    host: &HostIdentity,
+    callable: &HostIdentity,
+    site_packages: Option<&Path>,
+    scratch: &Path,
+    script: &str,
+) -> Result<Command, ScientificCpythonUnavailable> {
     let mut command = contained_scientific_command(&host.canonical_path)?;
     let isolated_packaged = site_packages.is_some();
     let site_packages = site_packages
@@ -1878,7 +1945,7 @@ fn scientific_worker_command(
             "-S",
             "-B",
             "-c",
-            EXECUTION_SCRIPT,
+            script,
             site_packages,
             callable_path,
             &callable_digest,
@@ -1888,7 +1955,7 @@ fn scientific_worker_command(
             "-I",
             "-B",
             "-c",
-            EXECUTION_SCRIPT,
+            script,
             site_packages,
             callable_path,
             &callable_digest,
@@ -2443,8 +2510,8 @@ mod tests {
     fn document_adapters_survive_slow_cold_imports() {
         let directory = tempfile::tempdir().unwrap();
         let host = slow_document_host(directory.path());
-        // Every adapter starts a fresh scientific worker. Setup, preview and
-        // pipeline rendering must all survive the observed cold-import delay
+        // Both interactive workers must survive their initial cold import.
+        // Setup, preview and pipeline rendering must survive that delay
         // beyond 15 seconds. No optional Python is needed by this fixture.
         let results = std::thread::scope(|scope| {
             let handles = [
@@ -2633,15 +2700,16 @@ mod tests {
         let host = shell_host(
             &python_root.join("bin"),
             "python3",
-            r#"IFS= read -r request
-sleep 16
+            r#"sleep 16
+while IFS= read -r request; do
 case "$request" in
   *config.dependencies*) result='{"read_only":true,"runtime_valid":true,"nirs4all_installed":true,"categories":[]}' ;;
   *config.compare*) result='{"is_aligned":true,"profile":"cpu","packages":[]}' ;;
   *dataset.preview*) result='{"success":true,"error":null,"summary":{"num_samples":1,"num_features":2},"spectra_preview":null}' ;;
   *) result='{"json":"{}","yaml":"{}","filename":"pipeline.yaml"}' ;;
 esac
-printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":%s,"error":null}' "$result""#,
+printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":%s,"error":null}' "$result" | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(4,"little")+data);sys.stdout.buffer.flush()'
+done"#,
         );
         let callable = site_packages.join("studio_scientific.py");
         fs::write(&callable, "def studio_scientific_job_v1(request): pass\n").unwrap();
@@ -2657,10 +2725,11 @@ printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-tran
             resolver: ScientificRequestResolver::new(root.join("config")),
             running: Arc::new(Mutex::new(BTreeMap::new())),
             terminal_callback_failed: Arc::new(AtomicBool::new(false)),
+            warm_workers: std::array::from_fn(|_| Mutex::new(None)),
         }
     }
 
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     fn write_runtime_closure(runtime_root: &Path, site_packages: &Path, closure: &Path) {
         let (directories, files) = collect_runtime_inventory(runtime_root).unwrap();
         let encoded_files = files
@@ -2835,6 +2904,35 @@ printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-tran
 
     #[cfg(unix)]
     #[test]
+    #[ignore = "requires STUDIO_BENCH_RUNTIME_ROOT with a real packaged runtime"]
+    fn benchmark_packaged_runtime_acquisition_phases() {
+        let root = PathBuf::from(
+            std::env::var_os("STUDIO_BENCH_RUNTIME_ROOT").expect("packaged runtime path"),
+        );
+        let python = root.join("python");
+        let host = python.join("bin/python3.11");
+        let site = python.join("lib/python3.11/site-packages");
+        let started = Instant::now();
+        let runtime = packaged_runtime_identity(
+            &host,
+            &root.join("PYTHON_PLUGIN_CLOSURE.json"),
+            &python,
+            &site,
+        )
+        .unwrap();
+        eprintln!("runtime full validation: {:?}", started.elapsed());
+        let started = Instant::now();
+        let host = host_identity(&host).unwrap();
+        eprintln!("host SHA: {:?}", started.elapsed());
+        let started = Instant::now();
+        let (worker, output) = warm_library_host::Worker::acquire(&host, &runtime).unwrap();
+        eprintln!("preflight + warm acquisition: {:?}", started.elapsed());
+        parse_acquired_host(host, &output).unwrap();
+        drop(worker);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn acquisition_is_sticky_and_detects_later_host_tamper() {
         let root = test_directory("identity");
         let missing = root.join("missing-python");
@@ -2855,6 +2953,96 @@ printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-tran
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn unchanged_runtime_skips_content_reads_and_restored_mtime_does_not_hide_edits() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = root.path().join("python-runtime");
+        let python = runtime.join("python");
+        let site = python.join("site-packages");
+        fs::create_dir_all(&site).unwrap();
+        let host = python.join("python-host");
+        fs::write(&host, "host identity").unwrap();
+        let member = site.join("large-library.bin");
+        let mut contents = vec![42_u8; 32 * 1024 * 1024];
+        fs::write(&member, &contents).unwrap();
+        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
+        write_runtime_closure(&python, &site, &closure);
+        let identity = packaged_runtime_identity(&host, &closure, &python, &site).unwrap();
+        assert_eq!(identity.full_hash_scans.load(Ordering::Relaxed), 1);
+        let start = Instant::now();
+        for _ in 0..20 {
+            verify_packaged_runtime_identity(&identity).unwrap();
+        }
+        eprintln!(
+            "20 runtime checks, 32 MiB immutable member: {:?}",
+            start.elapsed()
+        );
+        assert_eq!(
+            identity.full_hash_scans.load(Ordering::Relaxed),
+            1,
+            "unchanged request boundaries must not rehash the runtime"
+        );
+        let modified = fs::metadata(&member).unwrap().modified().unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        contents[0] = 43;
+        fs::write(&member, &contents).unwrap();
+        File::options()
+            .write(true)
+            .open(&member)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        assert_eq!(
+            verify_packaged_runtime_identity(&identity),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+        assert_eq!(identity.full_hash_scans.load(Ordering::Relaxed), 2);
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn runtime_notifications_invalidate_cached_installation_verification() {
+        let root = tempfile::tempdir().unwrap();
+        let python = root.path().join("python-runtime/python");
+        let site = python.join("site-packages");
+        fs::create_dir_all(&site).unwrap();
+        let host = python.join("python-host");
+        fs::write(&host, "host identity").unwrap();
+        let member = site.join("library.py");
+        fs::write(&member, "value = 1").unwrap();
+        let closure = python.parent().unwrap().join("PYTHON_PLUGIN_CLOSURE.json");
+        write_runtime_closure(&python, &site, &closure);
+        let runtime = packaged_runtime_identity(&host, &closure, &python, &site).unwrap();
+        let changes = runtime
+            .changes
+            .as_ref()
+            .expect("local filesystem supports notifications");
+        let initial = changes.validate(&runtime).unwrap();
+        for _ in 0..100 {
+            assert_eq!(changes.validate(&runtime).unwrap(), initial);
+        }
+        assert_eq!(runtime.full_hash_scans.load(Ordering::Relaxed), 1);
+        let modified = fs::metadata(&member).unwrap().modified().unwrap();
+        fs::write(&member, "value = 2").unwrap();
+        File::options()
+            .write(true)
+            .open(&member)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        let start = Instant::now();
+        loop {
+            match changes.validate(&runtime) {
+                Err(ScientificCpythonUnavailable::RuntimeContractTampered) => break,
+                Ok(_) if start.elapsed() < Duration::from_secs(3) => {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                result => panic!("runtime watcher did not invalidate content mutation: {result:?}"),
+            }
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn packaged_runtime_contract_is_adjacent_sticky_and_symlink_closed() {
@@ -2864,7 +3052,8 @@ printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-tran
         let site_packages = python_root.join("lib/python3.11/site-packages");
         fs::create_dir_all(&site_packages).unwrap();
         let valid_json = attested_unready_host_response("cpython");
-        let host = shell_host(&python_root.join("bin"), "python3", &valid_json);
+        let framed = format!("{valid_json} | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(4, chr(108)+chr(105)+chr(116)+chr(116)+chr(108)+chr(101))); sys.stdout.buffer.write(data)'");
+        let host = shell_host(&python_root.join("bin"), "python3", &framed);
         let package_member = site_packages.join("attested_plugin.py");
         fs::write(&package_member, "ATTESTED = True\n").unwrap();
         let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
@@ -2969,6 +3158,7 @@ printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-tran
             resolver: ScientificRequestResolver::new(config.clone()),
             running: Arc::new(Mutex::new(BTreeMap::new())),
             terminal_callback_failed: Arc::new(AtomicBool::new(false)),
+            warm_workers: std::array::from_fn(|_| Mutex::new(None)),
         });
         assert!(!scientific_host.resolver.is_configured());
         assert!(!scientific_host.is_selected());
@@ -2987,7 +3177,18 @@ printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-tran
 
         // A real runtime refusal must still block setup and inline features.
         fs::write(&closure, "tampered closure").unwrap();
-        let refused: Value = serde_json::from_str(&state.legacy_readiness_json()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let refused = loop {
+            let value: Value = serde_json::from_str(&state.legacy_readiness_json()).unwrap();
+            if value["ml_ready"] == false {
+                break value;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "runtime notification did not invalidate readiness"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        };
         assert_eq!(refused["ml_ready"], false);
         assert!(!refused["ml_error"].is_null());
     }

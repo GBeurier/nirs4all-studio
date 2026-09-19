@@ -15,14 +15,34 @@
       "sha256": "384de68151d25396db5309d84b4c493a26aea244a4f218547d1d20e71cb33a49"
     },
     {
+      "path": "api/library_aggregated_results.py",
+      "size": 8550,
+      "sha256": "5e82749529fd3e4e155c9fb070d8112c157dcb72a7a17601559b3e1fde015103"
+    },
+    {
+      "path": "api/library_aggregated_steps.py",
+      "size": 5741,
+      "sha256": "b752cf91ea3dca39fc9a5b7b148182bceaaf9b2a9266a1d1ea6ba50abf5e626f"
+    },
+    {
       "path": "api/library_dataset_inspection.py",
       "size": 1556,
       "sha256": "be84328df19f23837be139b8e80238bb61d147a883cb2a5497edc06ccb6a7d39"
     },
     {
       "path": "api/library_documents.py",
-      "size": 8358,
-      "sha256": "329603c985374ba6e2c97c3ebc979f267907ff9c31ad101475483e0e2f064be4"
+      "size": 9392,
+      "sha256": "0054ada548ff1fbc969e2073a3d9b3ad4f6f8e205ad2fe38aa05506323f94cd1"
+    },
+    {
+      "path": "api/library_playground_views.py",
+      "size": 9694,
+      "sha256": "bc62e5daf1ceb764023c57461033af7ebf5ef6dcbee16d5290b2a476b03dc349"
+    },
+    {
+      "path": "api/library_prediction_results.py",
+      "size": 1728,
+      "sha256": "015701c021ef5631c1b5ed5b0ba36297c8ada359329ec867e158872e071dedc4"
     },
     {
       "path": "api/library_predictions.py",
@@ -70,9 +90,29 @@
       "sha256": "d080cf5b100a3979b7e0a8ca32f88b62fcc7a15d5e24f094799d2b7335d9cfb0"
     },
     {
+      "path": "api/shared/decimation.py",
+      "size": 3435,
+      "sha256": "c4ab56930b1b4767d2c0d935eec2c05caa19f4fb9673be8514c5bc1ae61274d9"
+    },
+    {
+      "path": "api/shared/filter_catalogue.py",
+      "size": 8789,
+      "sha256": "da4b902196606fd385c9bc06920e8e1855072e15e21b16e30c9b25a5e4b0a111"
+    },
+    {
       "path": "api/shared/json_safe.py",
-      "size": 1023,
-      "sha256": "2bc9a2e76d3d03b9a040d2ef09a59a5eed612027ebde828d3001a31ba5e1a9b7"
+      "size": 923,
+      "sha256": "83fc8f3e7db95532b07e6a0966c15c20fd126d66b47bcb78f3240bcb41f86f48"
+    },
+    {
+      "path": "api/shared/operator_catalogue.py",
+      "size": 13030,
+      "sha256": "e4e5678dfc326ce7fcd81d8f98a017883765168145244388a4a80b9ed6e8ffc5"
+    },
+    {
+      "path": "api/store_adapter.py",
+      "size": 96453,
+      "sha256": "0590ddc248fed1bb387c8f244624e7452719a7a597914a0f8a81cc9ca47a9527"
     },
     {
       "path": "src/data/nodes/definitions/augmentation/transforms.json",

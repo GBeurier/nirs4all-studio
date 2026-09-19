@@ -323,7 +323,7 @@ describe("datasetChainsToRows", () => {
     expect(rows[1]?.children?.[0]?.chainId).toBe("cv-snv");
   });
 
-  it("treats synthetic refits as non-exportable fallback rows", () => {
+  it("shows old synthetic refit payloads as CV results, never as measured refits", () => {
     const row = datasetChainsToRows([
       makeChain({
         chain_id: "cv-only",
@@ -342,11 +342,11 @@ describe("datasetChainsToRows", () => {
       }),
     ], "rmse", "regression")[0];
 
-    expect(row?.cardType).toBe("refit");
+    expect(row?.cardType).toBe("crossval");
     expect(row?.primaryTestScore).toBe(0.23);
-    expect(row?.children?.[0]?.cardType).toBe("crossval");
+    expect(row?.children).toBeUndefined();
     expect(row?.hasRefitArtifact).toBe(false);
-    expect(row?.syntheticRefit).toBe(true);
+    expect(row?.syntheticRefit).not.toBe(true);
   });
 
   it("pairs standalone refits with their real CV source when it is present", () => {
@@ -506,6 +506,19 @@ describe("collapseStandaloneRefitSummaries", () => {
 });
 
 describe("chainSummaryToRow", () => {
+  it("keeps CV-only summaries as CV cards, including old synthetic fallback payloads", () => {
+    for (const synthetic of [false, true]) {
+      const row = chainSummaryToRow(makeChainSummary({
+        cv_val_score: 0.24, cv_test_score: 0.25, cv_fold_count: 3,
+        synthetic_refit: synthetic,
+        final_test_score: synthetic ? 0.25 : null,
+        final_scores: synthetic ? { test: { rmse: 0.25 } } : null,
+      }));
+      expect(row.cardType).toBe("crossval");
+      expect(row.primaryValScore).toBe(0.24);
+      expect(row.hasRefitArtifact).toBe(false);
+    }
+  });
   it("uses the matched CV source chain id for refit summaries", () => {
     const row = chainSummaryToRow(makeChainSummary({
       chain_id: "refit-only",

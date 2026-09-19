@@ -293,27 +293,15 @@ Notes:
 
 - it is the local helper for installer targets
 - the desktop matrix is not split into CPU/GPU installers
-- `--mode standalone` is rejected; use `npm run release:all-in-one`
+- `--mode standalone` is rejected; portable and all-in-one releases are disabled
 - only the CPU profile and the matching host platform are accepted; cross-host and `--platform all` builds are rejected
 
-### All-in-one local builds
+### Supported release formats
 
-Use `scripts/build-archive-standalone.cjs` for an all-in-one archive:
-
-```bash
-npm run release:all-in-one:clean -- --platform win32 --arch x64
-npm run release:all-in-one:clean -- --platform linux --arch x64
-npm run release:all-in-one:clean -- --platform darwin --arch arm64
-# Optional smaller scientific closure (same Rust/product boundary):
-npm run release:all-in-one:clean -- --profile cpu-lite --platform linux --arch x64
-```
-
-Behavior:
-
-- supports profile `cpu` (default) and `cpu-lite`; both keep the same Rust
-  product backend and plugin-only CPython boundary
-- must run on the matching target host (`platform` and `arch` must match the runner)
-- bakes the embedded runtime first, then packages with `electron-builder.archive.yml`
+Publish NSIS for Windows, DEB for Linux, DMG for each macOS architecture, and
+Docker. Portable and all-in-one archives are excluded from the release workflow
+and npm release commands. Historical archive helpers remain for regression
+tests of previously published versions.
 
 ### Plugin-runtime-only bake
 

@@ -92,7 +92,8 @@ def test_linux_release_gates_run_clean_qualification_before_publication():
 
     root = SCRIPT.parents[1]
     release = yaml.safe_load((root / ".github/workflows/release-unified.yml").read_text())
-    for job_name in ["installer-linux", "archive-linux"]:
+    assert not any(name.startswith("archive-") for name in release["jobs"])
+    for job_name in ["installer-linux"]:
         steps = release["jobs"][job_name]["steps"]
         clean = next(index for index, step in enumerate(steps) if "verify-linux-cpu-closure.py" in step.get("run", ""))
         upload = next(index for index, step in enumerate(steps) if step.get("uses", "").startswith("actions/upload-artifact"))

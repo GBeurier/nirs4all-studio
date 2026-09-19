@@ -1,15 +1,15 @@
-//! Immutable history inputs from the separately published Store-v5 contract.
+//! Transactional history inputs from the separately published Store-v5 contract.
 
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, path::Path};
 
 use super::{
-    canonical_workspace_store_path, file_stamp, immutable_read_only_uri, refuse_live_journals,
-    row_to_results_summary_source, row_to_run_detail, validate_contract, validate_database,
-    validate_results_summary_contract, validate_table_columns, WorkspaceStoreReadError,
-    WorkspaceStoreResultsSummarySourceRow, MAX_RUN_SUMMARIES, PREDICTION_RANKING_COLUMNS,
-    RESULTS_SUMMARY_CHAIN_COLUMNS, RESULTS_SUMMARY_PIPELINE_COLUMNS, RUN_DETAIL_RUN_COLUMNS,
+    open_read_snapshot, row_to_results_summary_source, row_to_run_detail, validate_contract,
+    validate_database, validate_results_summary_contract, validate_table_columns,
+    WorkspaceStoreReadError, WorkspaceStoreResultsSummarySourceRow, MAX_RUN_SUMMARIES,
+    PREDICTION_RANKING_COLUMNS, RESULTS_SUMMARY_CHAIN_COLUMNS, RESULTS_SUMMARY_PIPELINE_COLUMNS,
+    RUN_DETAIL_RUN_COLUMNS,
 };
 
 const CONTRACT: &str = include_str!("../../contracts/workspace_store_run_history_v1.json");
@@ -39,36 +39,21 @@ pub fn read_filtered_history(
     offset: u64,
     statuses: &[String],
 ) -> Result<HistorySource, WorkspaceStoreReadError> {
-    with_immutable_history(workspace, |connection| {
+    with_history_snapshot(workspace, |connection| {
         read_filtered_history_from_connection(connection, project_id, limit, offset, statuses)
     })
 }
 
 pub fn read_history_stats(workspace: &Path) -> Result<Value, WorkspaceStoreReadError> {
-    with_immutable_history(workspace, read_history_stats_from_connection)
+    with_history_snapshot(workspace, read_history_stats_from_connection)
 }
 
-fn with_immutable_history<T>(
+fn with_history_snapshot<T>(
     workspace: &Path,
     read: impl FnOnce(&Connection) -> Result<T, WorkspaceStoreReadError>,
 ) -> Result<T, WorkspaceStoreReadError> {
-    let database = canonical_workspace_store_path(workspace)?;
-    let before = file_stamp(&database)?;
-    refuse_live_journals(&database)?;
-    let connection = Connection::open_with_flags(
-        immutable_read_only_uri(&database)?,
-        OpenFlags::SQLITE_OPEN_READ_ONLY
-            | OpenFlags::SQLITE_OPEN_URI
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(query_error)?;
-    let result = read(&connection);
-    drop(connection);
-    refuse_live_journals(&database)?;
-    if file_stamp(&database)? != before {
-        return Err(WorkspaceStoreReadError::ChangedDuringRead);
-    }
-    result
+    let connection = open_read_snapshot(workspace)?;
+    read(&connection)
 }
 
 pub fn read_history_from_connection(
@@ -299,8 +284,8 @@ fn history_contract() -> Result<Value, WorkspaceStoreReadError> {
     if contract["schema_id"] != "nirs4all.workspace-store-run-history.v1"
         || contract["schema_version"] != 1
         || contract["workspace_store_schema_version"] != 5
-        || contract["store"]["open_mode"] != "sqlite_immutable_read_only"
-        || contract["store"]["must_not_create_wal_or_shm"] != true
+        || contract["store"]["open_mode"] != "sqlite_read_only_transaction"
+        || contract["store"]["must_not_create_wal_or_shm"] != false
         || contract["parameters"]["page_chain_batch_size"] != 500
     {
         return Err(WorkspaceStoreReadError::Contract(

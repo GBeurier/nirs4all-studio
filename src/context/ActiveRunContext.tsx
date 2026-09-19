@@ -15,6 +15,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useMemo,
   ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -48,7 +49,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   const [runProgressMap, setRunProgressMap] = useState<Map<string, RunProgressState>>(new Map());
   const [isMinimized, setIsMinimized] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const wsConnectionsRef = useRef<Map<string, WebSocket>>(new Map());
+  const wsConnectionsRef = useRef<Map<string, WebSocket | null>>(new Map());
 
   // Fetch active runs periodically
   const { data: activeRunsData, refetch: refreshActiveRuns } = useQuery({
@@ -67,7 +68,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
     if (status !== "running" && status !== "queued") return;
 
     // Mark as pending to prevent duplicate async connections
-    wsConnectionsRef.current.set(runId, null as unknown as WebSocket);
+    wsConnectionsRef.current.set(runId, null);
 
     getWebSocketBaseUrl().then((baseUrl) => {
       // Check if disconnected while resolving URL
@@ -120,6 +121,11 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
                   newState.status = "failed";
                 }
 
+                if (newState.progress === existing.progress
+                    && newState.message === existing.message
+                    && newState.status === existing.status
+                    && newState.logs === existing.logs) return prev;
+
                 newState.updatedAt = Date.now();
                 const updated = new Map(prev);
                 updated.set(runId, newState);
@@ -143,16 +149,16 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       } catch {
         wsConnectionsRef.current.delete(runId);
       }
+    }).catch(() => {
+      wsConnectionsRef.current.delete(runId);
     });
   }, []);
 
   // Cleanup WebSocket for completed/failed runs
   const disconnectFromRun = useCallback((runId: string) => {
     const ws = wsConnectionsRef.current.get(runId);
-    if (ws) {
-      ws.close();
-      wsConnectionsRef.current.delete(runId);
-    }
+    wsConnectionsRef.current.delete(runId);
+    ws?.close();
   }, []);
 
   // Sync active runs with our progress map
@@ -161,6 +167,12 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
 
     const activeRuns = activeRunsData.runs;
     const activeRunIds = new Set(activeRuns.map(r => r.id));
+
+    // Connection side effects must not run inside a React state updater.
+    for (const run of activeRuns) connectToRun(run.id, run.name, run.status);
+    for (const runId of wsConnectionsRef.current.keys()) {
+      if (!activeRunIds.has(runId)) disconnectFromRun(runId);
+    }
 
     // Update progress map
     setRunProgressMap((prev) => {
@@ -171,10 +183,11 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
         const existing = prev.get(run.id);
         if (existing) {
           // Update status if changed
-          if (existing.status !== run.status) {
+          if (existing.status !== run.status || existing.runName !== run.name) {
             updated.set(run.id, {
               ...existing,
               status: run.status,
+              runName: run.name,
               updatedAt: Date.now(),
             });
           }
@@ -192,8 +205,6 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
           });
         }
 
-        // Connect WebSocket
-        connectToRun(run.id, run.name, run.status);
       }
 
       // Update status and remove completed/failed runs
@@ -214,12 +225,14 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
           const elapsed = Date.now() - state.updatedAt;
           if (elapsed > 5000 && state.status !== "running" && state.status !== "queued") {
             updated.delete(runId);
-            disconnectFromRun(runId);
+
           }
         }
       }
 
-      return updated;
+      return updated.size === prev.size
+        && Array.from(updated).every(([id, state]) => prev.get(id) === state)
+        ? prev : updated;
     });
   }, [activeRunsData, connectToRun, disconnectFromRun]);
 
@@ -227,39 +240,42 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const wsConnections = wsConnectionsRef.current;
     return () => {
-      wsConnections.forEach((ws) => {
+      const connections = Array.from(wsConnections.values());
+      wsConnections.clear();
+      connections.forEach((ws) => {
         if (ws) ws.close();
       });
     };
   }, []);
 
   // Convert map to array, sorted by update time
-  const activeRuns = Array.from(runProgressMap.values())
+  const activeRuns = useMemo(() => Array.from(runProgressMap.values())
     .filter((r) => r.status === "running" || r.status === "queued")
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+    .sort((a, b) => b.updatedAt - a.updatedAt), [runProgressMap]);
 
   // Auto-select first run if none selected
   useEffect(() => {
-    if (activeRuns.length > 0 && !selectedRunId) {
+    if (activeRuns.length > 0 && !activeRuns.some((run) => run.runId === selectedRunId)) {
       setSelectedRunId(activeRuns[0].runId);
     } else if (activeRuns.length === 0) {
       setSelectedRunId(null);
     }
   }, [activeRuns, selectedRunId]);
 
-  const value: ActiveRunContextValue = {
+  const getRunProgress = useCallback(
+    (runId: string) => runProgressMap.get(runId), [runProgressMap],
+  );
+  const toggleMinimized = useCallback(() => setIsMinimized((prev) => !prev), []);
+  const value = useMemo<ActiveRunContextValue>(() => ({
     activeRuns,
     hasActiveRuns: activeRuns.length > 0,
-    getRunProgress: useCallback(
-      (runId: string) => runProgressMap.get(runId),
-      [runProgressMap]
-    ),
+    getRunProgress,
     refreshActiveRuns,
     isMinimized,
-    toggleMinimized: useCallback(() => setIsMinimized((prev) => !prev), []),
+    toggleMinimized,
     selectedRunId,
     selectRun: setSelectedRunId,
-  };
+  }), [activeRuns, getRunProgress, refreshActiveRuns, isMinimized, toggleMinimized, selectedRunId]);
 
   return (
     <ActiveRunContext.Provider value={value}>
