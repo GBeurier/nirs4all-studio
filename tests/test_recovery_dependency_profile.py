@@ -67,6 +67,7 @@ def test_library_repair_installs_exact_recovery_version(monkeypatch):
 
 def test_installer_only_release_remains_discoverable_after_recovery(monkeypatch):
     import platform
+
     from api.updates import UpdateManager
     from api.updates.staging import get_update_capability
 
@@ -97,6 +98,7 @@ def test_installer_only_release_remains_discoverable_after_recovery(monkeypatch)
 def test_version_probe_does_not_import_the_ml_stack(monkeypatch):
     import subprocess
     import sys
+
     from api.venv_manager import VenvManager
 
     manager = VenvManager()
@@ -113,6 +115,7 @@ def test_version_probe_does_not_import_the_ml_stack(monkeypatch):
 
 def test_recovery_selects_legacy_even_with_dag_environment(monkeypatch):
     import pytest
+
     from api.runtime_engine import engine_run_kwargs, resolve_engine, runtime_engine_capabilities
     from api.runtime_errors import RtUnsupportedError
 

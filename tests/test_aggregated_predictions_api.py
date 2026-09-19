@@ -459,7 +459,7 @@ class TestGetAggregatedPredictions:
         prediction = resp.json()["predictions"][0]
         assert prediction["score_maps"]["cv"]["targets"]["protein"]["rmse"] == 0.31
 
-    def test_cv_only_chain_gets_synthetic_refit_payload(self, client, patched_endpoints, mock_polars_df):
+    def test_cv_only_chain_keeps_final_scores_absent(self, client, patched_endpoints, mock_polars_df):
         rows = [
             {
                 "run_id": "run-001",
@@ -500,14 +500,12 @@ class TestGetAggregatedPredictions:
         assert resp.status_code == 200
 
         prediction = resp.json()["predictions"][0]
-        assert prediction["final_test_score"] == pytest.approx(10.615)
-        assert prediction["final_train_score"] == pytest.approx(11.432)
-        assert prediction["final_scores"] == {
-            "val": {"rmse": 12.811},
-            "test": {"rmse": 10.615},
-            "train": {"rmse": 11.432},
-        }
-        assert prediction["synthetic_refit"] is True
+        assert prediction["final_test_score"] is None
+        assert prediction["final_train_score"] is None
+        assert prediction["final_scores"] is None
+        assert prediction["cv_val_score"] == pytest.approx(12.811)
+        assert prediction["cv_test_score"] == pytest.approx(10.615)
+        assert prediction["synthetic_refit"] is False
 
     def test_filter_by_run_id(self, client, patched_endpoints):
         resp = client.get("/api/aggregated-predictions?run_id=run-001")

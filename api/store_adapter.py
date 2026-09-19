@@ -581,20 +581,16 @@ def _build_synthetic_final_scores(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _apply_synthetic_refit_fallback_inplace(row: dict[str, Any]) -> None:
-    """Materialize a webapp-only refit fallback from CV summaries when needed."""
-    if _has_meaningful_final_payload(row):
-        row["synthetic_refit"] = bool(row.get("synthetic_refit"))
-        return
+    """Keep the response flag without relabelling CV results as final results.
 
-    has_cv = _has_cv_summary_payload(row)
-    if not has_cv:
-        row["synthetic_refit"] = bool(row.get("synthetic_refit"))
-        return
-
-    row["final_test_score"] = sanitize_float(row.get("cv_test_score"))
-    row["final_train_score"] = sanitize_float(row.get("cv_train_score"))
-    row["final_scores"] = _build_synthetic_final_scores(row)
-    row["synthetic_refit"] = True
+    Existing callers retain this compatibility hook, but only the store can
+    supply final_* metrics from a real refit. Missing final results stay absent.
+    """
+    if row.get("synthetic_refit"):
+        row["final_test_score"] = None
+        row["final_train_score"] = None
+        row["final_scores"] = None
+    row["synthetic_refit"] = False
 
 
 def _attach_variant_params_inplace(

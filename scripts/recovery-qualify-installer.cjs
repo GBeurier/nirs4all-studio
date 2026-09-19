@@ -166,7 +166,7 @@ async function launch(installed, profile, proof, actualWindowsProfile = false) {
 
 async function finishSetup(context, consent = 'decline') {
   const { page, proof } = context;
-  const consentButton = page.getByRole('button', { name: consent === 'decline' ? 'Do not send' : 'Allow reports', exact: true });
+  const consentButton = page.getByRole('button', { name: consent === 'decline' ? /^Do not send$/ : /^Allow reports/ });
   await expect(consentButton).toBeVisible({ timeout: BUDGETS.launch });
   await consentButton.click();
   const defaultEnv = await page.evaluate(() => window.electronApi.getEnvInfo());
@@ -206,8 +206,13 @@ async function verifyRuntime(context) {
 
 async function awaitReady(context) {
   await expect.poll(async () => {
-    const readiness = await api(context.env, '/system/readiness');
-    return readiness.ml_ready && readiness.workspace_ready;
+    try {
+      const readiness = await api(context.env, '/system/readiness');
+      return readiness.ml_ready && readiness.workspace_ready;
+    } catch (error) {
+      if (error.cause?.code === 'ECONNREFUSED') return false;
+      throw error;
+    }
   }, { timeout: BUDGETS.launch, intervals: [100, 200, 500] }).toBe(true);
   await expect(context.page.getByRole('link', { name: 'Datasets', exact: true })).toBeVisible({ timeout: BUDGETS.launch });
 }

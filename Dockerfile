@@ -97,6 +97,7 @@ COPY main.py ./
 COPY api/ api/
 COPY src/data/nodes/ src/data/nodes/
 COPY websocket/ websocket/
+COPY updater/ updater/
 COPY recommended-config.json package.json ./
 
 # Copy frontend build from stage 1

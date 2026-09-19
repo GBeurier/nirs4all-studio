@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import pytest
-
 import sys
 from datetime import datetime
 from types import SimpleNamespace
+
+import pytest
 
 import api.automl as automl_api
 from api.jobs import Job, JobStatus, JobType

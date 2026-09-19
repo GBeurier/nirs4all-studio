@@ -68,7 +68,7 @@ function hasCvData(chain: TopChainResult): boolean {
 }
 
 function hasFinalData(chain: TopChainResult): boolean {
-  return (
+  return !chain.synthetic_refit && (
     safeNumber(chain.final_test_score) != null
     || safeNumber(chain.final_train_score) != null
     || hasKeys(chain.final_scores)

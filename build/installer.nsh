@@ -1,3 +1,5 @@
+!include "LogicLib.nsh"
+
 ; Custom NSIS lifecycle for nirs4all Studio.
 ; An upgrade/reinstall must never ask about or remove user configuration.
 
@@ -43,9 +45,9 @@ Function studioRestorePreservedData
   !insertmacro studioRestoreRoot "$APPDATA\nirs4all" "$APPDATA\nirs4all-upgrade-preserved-config" restore_config
   !insertmacro studioRestoreRoot "$LOCALAPPDATA\nirs4all" "$LOCALAPPDATA\nirs4all-upgrade-preserved-data" restore_data
   !insertmacro studioRestoreRoot "$APPDATA\nirs4all Studio" "$APPDATA\nirs4all-upgrade-preserved-electron" restore_electron
-  ${If} $installMode == "all"
-    SetShellVarContext all
-  ${EndIf}
+  ; Both installer configurations are per-machine. This include precedes
+  ; electron-builder's declaration of $installMode.
+  SetShellVarContext all
 FunctionEnd
 
 Section "-Preserve Studio user data"
@@ -53,9 +55,9 @@ Section "-Preserve Studio user data"
   !insertmacro studioPreserveRoot "$APPDATA\nirs4all" "$APPDATA\nirs4all-upgrade-preserved-config" preserve_config
   !insertmacro studioPreserveRoot "$LOCALAPPDATA\nirs4all" "$LOCALAPPDATA\nirs4all-upgrade-preserved-data" preserve_data
   !insertmacro studioPreserveRoot "$APPDATA\nirs4all Studio" "$APPDATA\nirs4all-upgrade-preserved-electron" preserve_electron
-  ${If} $installMode == "all"
-    SetShellVarContext all
-  ${EndIf}
+  ; Both installer configurations are per-machine. This include precedes
+  ; electron-builder's declaration of $installMode.
+  SetShellVarContext all
 SectionEnd
 
 !macro customInstall

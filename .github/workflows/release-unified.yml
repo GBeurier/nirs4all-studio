@@ -115,18 +115,23 @@ jobs:
       - name: Verify Python backend health and version
         shell: bash
         run: |
+          trap 'docker logs recovery || true' EXIT
           docker run -d --name recovery -p 8000:8000 -e SENTRY_DSN= nirs4all-studio:0.11.8
           for attempt in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8000/api/system/readiness > readiness.json && python -c 'import json; assert json.load(open("readiness.json"))["ml_ready"]'; then break; fi
+            if curl -fsS http://127.0.0.1:8000/api/system/readiness > readiness.json && python -c 'import json; assert json.load(open("readiness.json"))["ml_ready"] and json.load(open("readiness.json"))["workspace_ready"]'; then break; fi
+            test "$(docker inspect -f '{{.State.Running}}' recovery)" = true
             sleep 1
           done
-          python -c 'import json; assert json.load(open("readiness.json"))["ml_ready"]'
+          python -c 'import json; r=json.load(open("readiness.json")); assert r["ml_ready"] and r["workspace_ready"]'
           docker exec recovery python -c 'import nirs4all; assert nirs4all.__version__ == "0.11.0"'
+          python3 scripts/qualify-python-docker.py > docker-qualification.json
           docker save nirs4all-studio:0.11.8 | gzip > recovery-docker.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: recovery-docker
-          path: recovery-docker.tar.gz
+          path: |
+            recovery-docker.tar.gz
+            docker-qualification.json
           if-no-files-found: error
 
   promote:
@@ -141,6 +146,9 @@ jobs:
       CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Require successful qualification of this exact commit
         run: |
           gh run view "$CANDIDATE_RUN_ID" --json conclusion,headSha,headBranch,workflowName,event > candidate-run.json

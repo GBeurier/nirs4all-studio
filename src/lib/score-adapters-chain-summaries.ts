@@ -43,9 +43,9 @@ export function collapseStandaloneRefitSummaries(summaries: ChainSummary[]): Cha
  * Otherwise -> CROSSVAL_CARD. TRAIN children are loaded lazily.
  */
 export function chainSummaryToRow(summary: ChainSummary): ScoreCardRow {
-  const hasFinal = summary.final_test_score != null
+  const hasFinal = !summary.synthetic_refit && (summary.final_test_score != null
     || summary.final_train_score != null
-    || !!summary.final_scores;
+    || Object.keys(summary.final_scores ?? {}).length > 0);
   const hasCv = !summary.is_refit_only && (summary.cv_val_score != null || summary.cv_fold_count > 0);
   const cvValScores = extractNestedScores(summary.cv_scores, "val");
   const cvTestScores = extractNestedScores(summary.cv_scores, "test");
