@@ -11,6 +11,7 @@ const childProcessMocks = vi.hoisted(() => ({
 }));
 
 const fakeApp = {
+  isPackaged: true,
   getPath: vi.fn(),
   getVersion: vi.fn(() => "0.3.1"),
 };
@@ -37,11 +38,17 @@ function makeUserDataDir(): string {
   (globalThis as { __NIRS4ALL_TEST_APP__?: typeof fakeApp }).__NIRS4ALL_TEST_APP__ =
     fakeApp;
   fakeApp.getPath.mockImplementation(() => dir);
+  const resources = path.join(dir, "resources");
+  (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resources;
+  for (const root of [resources, dir]) {
+    fs.mkdirSync(path.join(root, "python-wheels"), { recursive: true });
+    fs.writeFileSync(path.join(root, "python-wheels", "nirs4all-1.0.2-py3-none-any.whl"), "test wheel");
+  }
   return dir;
 }
 
 const backendRuntimePackages = {
-  nirs4all: "0.9.3",
+  nirs4all: "1.0.2",
   fastapi: "0.111.0",
   uvicorn: "0.30.0",
   pydantic: "2.10.0",
@@ -81,12 +88,22 @@ afterEach(() => {
 });
 
 describe("EnvManager", () => {
-  it.each(["managed", "custom"])("enforces the recovery pin without modifying a %s environment unexpectedly", async (kind) => {
+  it("fails repair when the qualified library wheel is missing instead of using PyPI", async () => {
+    const userData = makeUserDataDir();
+    fs.rmSync(path.join(userData, "resources", "python-wheels"), { recursive: true });
+    const { resolvePackagedRequirements } = await import("./env/provisioning");
+    expect(() => resolvePackagedRequirements(["nirs4all==1.0.2"])).toThrow("qualified nirs4all wheel is missing");
+    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  });
+  it.each(["managed", "managed-custom", "custom"])("enforces the recovery pin without modifying a %s environment unexpectedly", async (kind) => {
     const userDataDir = makeUserDataDir();
-    const envRoot = kind === "managed" ? path.join(userDataDir, "python-env", "venv") : path.join(userDataDir, "shared-project");
+    const envRoot = kind === "managed" ? path.join(userDataDir, "python-env", "venv")
+      : kind === "managed-custom" ? path.join(userDataDir, "custom-install", "venv") : path.join(userDataDir, "shared-project");
     const pythonPath = process.platform === "win32" ? path.join(envRoot, "Scripts", "python.exe") : path.join(envRoot, "bin", "python");
     fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
     fs.writeFileSync(pythonPath, "");
+    if (kind === "managed-custom") fs.writeFileSync(path.join(path.dirname(envRoot), "build_info.json"),
+      JSON.stringify({ mode: "runtime-setup", platform: `${process.platform}-${process.arch}` }));
     const settingsPath = path.join(userDataDir, "env-settings.json");
     const settings = JSON.stringify({ pythonPath, appVersion: "0.11.7", wizardCompleted: true });
     fs.writeFileSync(settingsPath, settings);
@@ -97,17 +114,18 @@ describe("EnvManager", () => {
         ? JSON.stringify({ version: "3.11.11", installed: { nirs4all: installedVersion } }) : "");
     });
     childProcessMocks.spawn.mockImplementation(() => {
-      installedVersion = "0.11.0";
+      installedVersion = "1.0.2";
       const proc = Object.assign(new EventEmitter(), { pid: 1234, stderr: new EventEmitter(), stdout: new EventEmitter() });
       process.nextTick(() => proc.emit("close", 0));
       return proc;
     });
     const { EnvManager } = await import("./env-manager");
     const manager = new EnvManager();
-    if (kind === "managed") {
+    if (kind.startsWith("managed")) {
       await expect(manager.ensureBackendPackages()).resolves.toBe(true);
       expect(childProcessMocks.spawn).toHaveBeenCalledTimes(1);
-      expect(childProcessMocks.spawn.mock.calls[0][1]).toEqual(["-m", "pip", "install", "--prefer-binary", "nirs4all==0.11.0"]);
+      expect(childProcessMocks.spawn.mock.calls[0][1]).toEqual(["-m", "pip", "install", "--prefer-binary",
+        path.join(userDataDir, "resources", "python-wheels", "nirs4all-1.0.2-py3-none-any.whl")]);
     } else {
       await expect(manager.ensureBackendPackages()).rejects.toThrow("selected shared Python environment was left unchanged");
       expect(childProcessMocks.spawn).not.toHaveBeenCalled();
@@ -170,7 +188,7 @@ describe("EnvManager", () => {
     childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
       const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
       if ((args[1] as string[])[1]?.includes("importlib_metadata")) {
-        callback(null, JSON.stringify({ version: "3.11.11", installed: { nirs4all: "0.11.0" } }));
+        callback(null, JSON.stringify({ version: "3.11.11", installed: { nirs4all: "1.0.2" } }));
         return;
       }
       verifyCalls += 1;
@@ -232,7 +250,7 @@ describe("EnvManager", () => {
       const code = args[1] as string[];
       const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
       if (code[1]?.includes("importlib_metadata")) {
-        callback(null, JSON.stringify({ version: "3.11.11", installed: { nirs4all: "0.11.0" } }));
+        callback(null, JSON.stringify({ version: "3.11.11", installed: { nirs4all: "1.0.2" } }));
         return;
       }
       if (Array.isArray(code) && code[1]?.includes("import uvicorn, fastapi")) {
@@ -743,7 +761,7 @@ describe("EnvManager", () => {
     childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
       const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
       callback(null, (args[1] as string[])[1]?.includes("importlib_metadata")
-        ? JSON.stringify({ version: "3.11.11", installed: { nirs4all: "0.11.0" } }) : "", "");
+        ? JSON.stringify({ version: "3.11.11", installed: { nirs4all: "1.0.2" } }) : "", "");
     });
 
     const { EnvManager } = await import("./env-manager");

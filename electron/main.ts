@@ -10,6 +10,7 @@ import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 import { BackendManager, type BackendStatus } from "./backend-manager";
 import { EnvManager } from "./env-manager";
+import { resolveDocumentsDirectory } from "./workspace-location";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { applyPortablePathOverrides } from "./portable-paths";
 import {
@@ -272,7 +273,7 @@ ipcMain.handle("app:quitForUpdate", () => {
 });
 
 // IPC Handlers for file dialogs
-ipcMain.handle("workspace:defaultLocation", () => path.join(app.getPath("documents"), "nirs4all Studio"));
+ipcMain.handle("workspace:defaultLocation", () => path.join(resolveDocumentsDirectory(name => app.getPath(name)), "nirs4all Studio"));
 
 ipcMain.handle("dialog:selectFolder", async () => {
   if (!mainWindow) return null;

@@ -16,15 +16,9 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
 };
 
 describe("python-runtime-config", () => {
-  it("keeps the standalone v1 scope pinned to the cpu profile extras", () => {
+  it("does not preselect optional frameworks in the recovery runtime", () => {
     expect(runtimeConfig.STANDALONE_V1_PROFILE).toBe("cpu");
-    expect(runtimeConfig.PRODUCT_PROFILES.cpu.extraPackageNames).toEqual([
-      "pyopls",
-      "trendfitter",
-      "xgboost",
-      "umap-learn",
-      "torch",
-    ]);
+    expect(runtimeConfig.PRODUCT_PROFILES.cpu.extraPackageNames).toEqual([]);
   });
 
   it("keeps the cpu-lite profile lite: exclusions and CPU-wheel renames come from recommended-config.json", () => {
@@ -43,30 +37,10 @@ describe("python-runtime-config", () => {
       "autogluon",
       "umap-learn",
     ]);
-    expect(runtimeConfig.PRODUCT_PROFILES["cpu-lite"].extraPackageNames).toEqual([
-      "pyopls",
-      "trendfitter",
-      "xgboost",
-    ]);
-    expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "linux" })).toEqual([
-      "nirs4all>=0.10.0",
-      "pyopls>=20.0",
-      "trendfitter>=0.0.6",
-      "xgboost-cpu>=2.0.0",
-    ]);
-    expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "win32" })).toEqual([
-      "nirs4all>=0.10.0",
-      "pyopls>=20.0",
-      "trendfitter>=0.0.6",
-      "xgboost-cpu>=2.0.0",
-    ]);
-    // No macOS xgboost-cpu wheel exists — darwin keeps the regular name.
-    expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "darwin" })).toEqual([
-      "nirs4all>=0.10.0",
-      "pyopls>=20.0",
-      "trendfitter>=0.0.6",
-      "xgboost>=2.0.0",
-    ]);
+    expect(runtimeConfig.PRODUCT_PROFILES["cpu-lite"].extraPackageNames).toEqual([]);
+    for (const platform of ["linux", "win32", "darwin"]) {
+      expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform })).toEqual(["nirs4all==1.0.2"]);
+    }
   });
 
   it("resolves python-build-standalone archive names and URLs from the shared mapping", () => {
@@ -81,7 +55,7 @@ describe("python-runtime-config", () => {
   it("maps legacy installer flavors onto product profiles while preserving the managed runtime footprint", () => {
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "darwin")).toBe("gpu-mps");
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "win32")).toBe("gpu-cuda-torch");
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all>=0.10.0");
+    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==1.0.2");
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES.some((pkg) => pkg.startsWith("torch"))).toBe(false);
   });
 

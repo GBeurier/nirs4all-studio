@@ -307,6 +307,26 @@ class VenvManager:
         if version:
             pkg_spec = f"{pkg_spec}=={version}"
 
+        if package.lower().replace("_", "-") == "nirs4all":
+            from .recommended_config import recovery_nirs4all_version
+
+            qualified_version = recovery_nirs4all_version()
+            if qualified_version:
+                if version not in (None, qualified_version):
+                    return False, f"This Studio release requires nirs4all {qualified_version}", []
+                filename = f"nirs4all-{qualified_version}-py3-none-any.whl"
+                configured = os.environ.get("NIRS4ALL_RECOVERY_WHEEL")
+                backend_root = Path(__file__).resolve().parent.parent
+                candidates = [Path(configured)] if configured else [
+                    backend_root.parent / "python-wheels" / filename,
+                    backend_root / "vendor" / "python" / filename,
+                ]
+                wheel = next((candidate for candidate in candidates if candidate.is_file() and candidate.name == filename), None)
+                if wheel is None:
+                    return False, f"The qualified nirs4all wheel is missing from this Studio installation: {candidates[0]}", []
+                distribution = f"nirs4all[{','.join(extras)}]" if extras else "nirs4all"
+                pkg_spec = f"{distribution} @ {wheel.resolve().as_uri()}"
+
         if progress_callback:
             progress_callback(0, f"Installing {pkg_spec}...")
 

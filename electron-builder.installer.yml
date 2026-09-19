@@ -17,6 +17,10 @@ files:
 # Installer builds ship backend source only.
 # Python is downloaded / managed at runtime in user data.
 extraResources:
+  - from: vendor/python/
+    to: python-wheels/
+    filter:
+      - "nirs4all-1.0.2-py3-none-any.whl"
   - from: LICENSE
     to: LICENSE
   - from: LICENSING.md

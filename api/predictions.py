@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .lazy_imports import get_cached
+from .runtime_engine import recovery_replay_kwargs
 from .workspace_manager import workspace_manager
 
 NIRS4ALL_AVAILABLE = True
@@ -137,8 +138,8 @@ async def predict_batch(request: PredictBatchRequest):
 
     try:
         # Use nirs4all.predict() directly
-        pred_result = get_cached("nirs4all").predict(model=model_path, data=X, verbose=0)
-        predictions = pred_result.predictions if hasattr(pred_result, 'predictions') else []
+        pred_result = get_cached("nirs4all").predict(model=model_path, data=X, verbose=0, **recovery_replay_kwargs())
+        predictions = pred_result.y_pred
         results = predictions.tolist() if hasattr(predictions, 'tolist') else list(predictions)
 
         # Get preprocessing steps from the bundle if available
@@ -212,8 +213,8 @@ async def predict_dataset(request: PredictDatasetRequest):
 
     try:
         # Use nirs4all.predict() directly
-        pred_result = get_cached("nirs4all").predict(model=model_path, data=X, verbose=0)
-        predictions = pred_result.predictions if hasattr(pred_result, 'predictions') else []
+        pred_result = get_cached("nirs4all").predict(model=model_path, data=X, verbose=0, **recovery_replay_kwargs())
+        predictions = pred_result.y_pred
         results = predictions.tolist() if hasattr(predictions, 'tolist') else list(predictions)
 
         # Get preprocessing steps from the bundle if available

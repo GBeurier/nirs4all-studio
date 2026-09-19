@@ -12,9 +12,9 @@ describe("pinned recovery runtime readiness", () => {
     expect(getMissingCorePackages(installed)).toEqual(["nirs4all"]);
   });
   it("requires the recovery version when an older or newer nirs4all is already installed", () => {
-    for (const version of ["0.9.3", "0.11.1", "0.11.0rc1"]) {
-      expect(getUnsatisfiedExactPins(new Map([["nirs4all", version]]))).toEqual(["nirs4all==0.11.0"]);
+    for (const version of ["0.9.3", "0.11.1", "1.0.2rc1"]) {
+      expect(getUnsatisfiedExactPins(new Map([["nirs4all", version]]))).toEqual(["nirs4all==1.0.2"]);
     }
-    expect(getUnsatisfiedExactPins(new Map([["nirs4all", "0.11.0"]]))).toEqual([]);
+    expect(getUnsatisfiedExactPins(new Map([["nirs4all", "1.0.2"]]))).toEqual([]);
   });
 });

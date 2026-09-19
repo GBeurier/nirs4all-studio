@@ -140,6 +140,18 @@ export function getEnvKind(envDir: string, envRoot: string, pythonPath: string):
     return "managed";
   }
 
+  // A directory chosen in Studio's setup wizard is still application-owned.
+  // Distinguish it from an arbitrary shared venv using the metadata we wrote.
+  const setupRoot = path.dirname(envRoot);
+  if (path.normalize(getManagedPythonPath(setupRoot)) === path.normalize(pythonPath)) {
+    try {
+      const metadata = JSON.parse(fs.readFileSync(path.join(setupRoot, "build_info.json"), "utf8"));
+      if (metadata.mode === "runtime-setup" && metadata.platform === `${process.platform}-${process.arch}`) {
+        return "managed";
+      }
+    } catch { /* A shared/custom interpreter has no Studio ownership marker. */ }
+  }
+
   if (fs.existsSync(path.join(envRoot, "conda-meta"))) {
     return "conda";
   }

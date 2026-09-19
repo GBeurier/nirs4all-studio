@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from .lazy_imports import get_cached
 from .models import _resolve_bundle_path
+from .runtime_engine import recovery_replay_kwargs
 from .shared.json_safe import sanitize_float
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
@@ -83,10 +84,11 @@ def _run_prediction(
                 data=X,
                 workspace_path=str(workspace_path) if workspace_path else None,
                 verbose=0,
+                **recovery_replay_kwargs(),
             )
         else:
             bundle_path = str(_resolve_bundle_path(model_id))
-            pred_result = nirs4all.predict(model=bundle_path, data=X, verbose=0)
+            pred_result = nirs4all.predict(model=bundle_path, data=X, verbose=0, **recovery_replay_kwargs())
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
     except Exception as e:

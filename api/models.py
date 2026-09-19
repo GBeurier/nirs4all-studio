@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .results_repository import ResultsRepository, ResultsRepositoryNotFound, resolve_results_repository
+from .runtime_engine import recovery_replay_kwargs
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -933,7 +934,7 @@ async def compare_models(request: CompareModelsRequest):
 
         try:
             # Use nirs4all.predict() to get predictions
-            pred_result = nirs4all.predict(model=str(bundle_path), data=X)
+            pred_result = nirs4all.predict(model=str(bundle_path), data=X, **recovery_replay_kwargs())
             y_pred = pred_result.y_pred
 
             # Compute metrics

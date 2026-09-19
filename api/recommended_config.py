@@ -883,6 +883,24 @@ async def compare_config(
     If include_optional is True, also compares optional packages that
     are currently installed against their recommended versions.
     """
+    import asyncio
+
+    return await asyncio.to_thread(_compare_config_sync, profile=profile, include_optional=include_optional, include_latest=include_latest)
+
+
+def _compare_config_sync(
+    profile: str | None = None,
+    include_optional: bool = False,
+    include_latest: bool = True,
+):
+    """Compare installed packages against the recommended config.
+
+    If no profile is specified, uses the profile from setup status
+    (or defaults to 'cpu').
+
+    If include_optional is True, also compares optional packages that
+    are currently installed against their recommended versions.
+    """
     # Load config
     try:
         raw_config = _load_active_raw_config()
@@ -1002,6 +1020,7 @@ async def compare_config(
         is_aligned=misaligned_count == 0 and missing_count == 0,
         checked_at=datetime.now().isoformat(),
     )
+
 
 
 @router.post("/align", response_model=AlignConfigResponse)

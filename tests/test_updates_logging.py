@@ -43,6 +43,8 @@ def test_check_github_release_offline_does_not_log_error(monkeypatch, tmp_path, 
 
 
 def test_check_pypi_release_offline_does_not_log_error(monkeypatch, tmp_path, caplog):
+    # Exercise the ordinary online updater; recovery deliberately uses its local pin.
+    monkeypatch.setattr("api.recommended_config.recovery_nirs4all_version", lambda: None)
     manager = _make_manager(monkeypatch, tmp_path)
 
     async def fake_fetch(url, headers=None):

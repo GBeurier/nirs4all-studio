@@ -1,6 +1,6 @@
 # Studio 0.11.8 — Python recovery
 
-This recovery release uses the Python backend from Studio 0.10.1, with nirs4all 0.11.0 and the legacy execution engine. It is isolated from development dependency manifests and independent library upgrades.
+This recovery release restores the Python backend from Studio 0.10.1 and explicitly uses the historical Python execution engine for training and prediction. It includes the corrected nirs4all 1.0.2 library to retain access to existing schema-5 workspaces from Studio 0.11.7. The older 0.11.0 library cannot read those workspaces and is therefore not used. Development dependency manifests and independent library upgrades cannot replace the qualified runtime.
 
 ## Recover an existing 0.11.7 installation
 

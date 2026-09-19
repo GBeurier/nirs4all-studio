@@ -949,3 +949,11 @@ def test_quick_run_route_and_chain_detail_keep_runtime_envelope_semantics(
     assert detail_payload["summary"]["variant_params"]["result_metadata"] == runtime_metadata
     assert detail_payload["predictions"][0]["result_metadata"] == runtime_metadata
     assert observed["repository_closed"] is True
+
+
+@pytest.fixture(autouse=True)
+def ordinary_release_engine_policy(monkeypatch):
+    """These routing units exercise selectable engines, outside recovery policy."""
+    from api import recommended_config
+
+    monkeypatch.setattr(recommended_config, "recovery_nirs4all_version", lambda: None)

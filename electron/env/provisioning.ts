@@ -11,11 +11,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { app } from "electron";
 
 import { runCommand, rmWithRetry } from "./process-utils";
 import { downloadFile, extractTarball, removeQuarantine } from "./python-runtime-installer";
 import { MANAGED_RUNTIME_PACKAGES } from "./env-inspection";
-import { loadPythonRuntimeConfig } from "./external-config";
+import { loadPythonRuntimeConfig, loadRecommendedConfig } from "./external-config";
 
 interface PythonRuntimeConfigModule {
   PBS_TAG: string;
@@ -32,6 +33,21 @@ const ENSUREPIP_TIMEOUT_MS = 60_000;
 const PIP_INSTALL_TIMEOUT_MS = 600_000;
 const COMPILEALL_TIMEOUT_MS = 180_000;
 const PIP_INSTALL_BASE_ARGS = ["-m", "pip", "install", "--prefer-binary"] as const;
+
+/** Use the qualified library bytes carried by this installer, independent of PyPI. */
+export function resolvePackagedRequirements(requirements: readonly string[]): string[] {
+  if (!requirements.some(spec => /^nirs4all(?:[=<>!~\[]|$)/i.test(spec))) return [...requirements];
+  const version = loadRecommendedConfig<{ nirs4all: string }>().nirs4all;
+  const filename = `nirs4all-${version}-py3-none-any.whl`;
+  const resources = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  const candidates = [
+    ...(resources ? [path.join(resources, "python-wheels", filename)] : []),
+    ...(!app.isPackaged ? [path.resolve(process.cwd(), "vendor", "python", filename)] : []),
+  ];
+  const wheel = candidates.find(candidate => fs.existsSync(candidate));
+  if (!wheel) throw new Error(`The qualified nirs4all wheel is missing from this Studio installation: ${candidates[0]}`);
+  return requirements.map(spec => /^nirs4all(?:[=<>!~\[]|$)/i.test(spec) ? wheel : spec);
+}
 
 export type EnvStatus = "none" | "downloading" | "extracting" | "creating_venv" | "installing" | "ready" | "error";
 export type ProgressCallback = (percent: number, step: string, detail: string) => void;
@@ -76,7 +92,7 @@ export async function installCorePackages(
   }
 
   // Install all core packages in a single pip call
-  await runCommand(pythonPath, [...PIP_INSTALL_BASE_ARGS, ...MANAGED_RUNTIME_PACKAGES], {
+  await runCommand(pythonPath, [...PIP_INSTALL_BASE_ARGS, ...resolvePackagedRequirements(MANAGED_RUNTIME_PACKAGES)], {
     retries: 2,
     timeoutMs,
   });
@@ -85,7 +101,7 @@ export async function installCorePackages(
 /** Repair only release-pinned distributions in an application-owned runtime. */
 export async function installPinnedPackages(pythonPath: string, requirements: string[], timeoutMs = PIP_INSTALL_TIMEOUT_MS): Promise<void> {
   if (requirements.length === 0) return;
-  await runCommand(pythonPath, [...PIP_INSTALL_BASE_ARGS, ...requirements], { retries: 2, timeoutMs });
+  await runCommand(pythonPath, [...PIP_INSTALL_BASE_ARGS, ...resolvePackagedRequirements(requirements)], { retries: 2, timeoutMs });
 }
 
 /**
@@ -213,7 +229,7 @@ export async function provisionManagedRuntime(
     // Resolve the environment as one transaction. Per-package pip processes
     // repeatedly scan installed metadata, redo dependency resolution and can
     // replace each other's dependencies; Windows antivirus magnifies the I/O.
-    await runCommand(venvPython, [...PIP_INSTALL_BASE_ARGS, ...MANAGED_RUNTIME_PACKAGES], {
+    await runCommand(venvPython, [...PIP_INSTALL_BASE_ARGS, ...resolvePackagedRequirements(MANAGED_RUNTIME_PACKAGES)], {
       retries: 2,
       timeoutMs: PIP_INSTALL_TIMEOUT_MS,
     });

@@ -12,7 +12,7 @@
 # ── Build arguments ──
 ARG BASE_IMAGE=python:3.11-slim
 ARG INSTALL_GPU=false
-ARG NIRS4ALL_VERSION=0.11.0
+ARG NIRS4ALL_VERSION=1.0.2
 ARG PYTHON_VERSION=3.11.13
 ARG PYTHON_STANDALONE_TAG=20250828
 
@@ -41,7 +41,7 @@ RUN npm run build
 FROM ${BASE_IMAGE} AS runtime
 
 ARG INSTALL_GPU=false
-ARG NIRS4ALL_VERSION=0.11.0
+ARG NIRS4ALL_VERSION=1.0.2
 ARG PYTHON_VERSION=3.11.13
 ARG PYTHON_STANDALONE_TAG=20250828
 ENV PATH="/opt/python-build-standalone/python/bin:${PATH}"
@@ -59,7 +59,7 @@ RUN rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/lib/apt/lists/*
 
 # Ensure Python 3.11+ is available. CUDA Ubuntu 22.04 images ship Python 3.10,
-# which is too old for nirs4all 0.11.0.
+# which is too old for the recovery library.
 # hadolint ignore=DL3013
 RUN set -eux; \
     if command -v python3 >/dev/null 2>&1 && python3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"; then \
@@ -83,14 +83,15 @@ WORKDIR /app
 
 # Install Python dependencies
 COPY requirements-cpu.txt requirements-gpu.txt ./
-RUN python -m pip install --no-cache-dir -r requirements-cpu.txt && \
+# Every platform consumes the exact same canonical library wheel.
+COPY vendor/python/ /app/python-wheels/
+ENV NIRS4ALL_RECOVERY_WHEEL=/app/python-wheels/nirs4all-1.0.2-py3-none-any.whl
+RUN python -m pip install --no-cache-dir -r requirements-cpu.txt "$NIRS4ALL_RECOVERY_WHEEL" && \
     if [ "$INSTALL_GPU" = "true" ]; then \
         python -m pip install --no-cache-dir -r requirements-gpu.txt; \
     fi
 
-# Install nirs4all
-RUN python -m pip install --no-cache-dir "https://github.com/GBeurier/nirs4all/archive/refs/tags/${NIRS4ALL_VERSION}.tar.gz" && \
-    python -c "import nirs4all; assert nirs4all.__version__ == '${NIRS4ALL_VERSION}', nirs4all.__version__"
+RUN python -c "import hashlib, importlib.metadata, json, os; from pathlib import Path; import nirs4all; assert nirs4all.__version__ == '${NIRS4ALL_VERSION}', nirs4all.__version__; receipt = json.loads(importlib.metadata.distribution('nirs4all').read_text('direct_url.json')); assert receipt['archive_info']['hashes']['sha256'] == hashlib.sha256(Path(os.environ['NIRS4ALL_RECOVERY_WHEEL']).read_bytes()).hexdigest()"
 
 # Copy backend source
 COPY main.py ./

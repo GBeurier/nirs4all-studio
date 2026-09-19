@@ -75,3 +75,6 @@ docs/_internals/wizard_refactor.md
 docs/_internals/backlog_hybrid_storage_webapp_adaptation.md
 docs/_internals/archive/
 docs/audit/
+
+# Built once by the recovery workflow and shared by all installers and Docker.
+vendor/python/

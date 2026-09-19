@@ -13,6 +13,7 @@ const { _electron: electron } = require('playwright');
 const { expect } = require('@playwright/test');
 const archive = require('./smoke-archive-standalone.cjs');
 const run = promisify(execFile);
+const liveApps = new Set();
 const BUDGETS = Object.freeze({ installer: 120000, launch: 30000, python_setup: 180000,
   profile_setup: 60000, preview: 5000, link: 5000, playground: 10000, training: 60000, predictions: 5000 });
 
@@ -165,6 +166,8 @@ async function launch(installed, profile, proof, actualWindowsProfile = false) {
   const app = await electron.launch({ executablePath: layout.executablePath, cwd: layout.appRoot, env,
     args: [...(process.platform === 'linux' ? ['--no-sandbox'] : []),
       ...(!actualWindowsProfile ? [`--user-data-dir=${path.join(profile, 'electron-user-data')}`] : [])], timeout: BUDGETS.launch });
+  // A later readiness/budget assertion can throw before the caller receives context.
+  trackApp(app);
   app.process().stderr.on('data', data => fs.appendFileSync(path.join(profile, 'electron.log'), data));
   app.process().stdout.on('data', data => fs.appendFileSync(path.join(profile, 'electron-stdout.log'), data));
   const errors = [];
@@ -199,11 +202,25 @@ async function launch(installed, profile, proof, actualWindowsProfile = false) {
   return { app, page, env, errors, requests, proof, profile };
 }
 
-async function finishSetup(context, consent = 'decline') {
+async function finishSetup(context, consent = 'decline', existingConsent = false) {
   const { page, proof } = context;
   const consentButton = page.getByRole('button', { name: consent === 'decline' ? /^Do not send$/ : /^Allow reports/ });
-  await expect(consentButton).toBeVisible({ timeout: BUDGETS.launch });
-  await consentButton.click();
+  if (existingConsent) {
+    assert.equal(await page.evaluate(() => localStorage.getItem('nirs4all-telemetry-consent')), 'declined', 'Migration lost telemetry preference');
+    let mode;
+    await expect.poll(async () => {
+      if (await page.getByRole('button', { name: /Set up automatically/ }).isVisible()) mode = 'setup';
+      else {
+        const ready = await api(context.env, '/system/readiness').catch(() => null);
+        if (ready?.ml_ready && ready?.workspace_ready) mode = 'ready';
+      }
+      return mode !== undefined;
+    }, { timeout: BUDGETS.launch }).toBe(true);
+    if (mode === 'ready') { await verifyRuntime(context); return; }
+  } else {
+    await expect(consentButton).toBeVisible({ timeout: BUDGETS.launch });
+    await consentButton.click();
+  }
   const defaultEnv = await page.evaluate(() => window.electronApi.getEnvInfo());
   const userData = await context.app.evaluate(({ app }) => app.getPath('userData'));
   assert(path.isAbsolute(defaultEnv.envDir) && !path.relative(userData, defaultEnv.envDir).startsWith('..'),
@@ -238,9 +255,16 @@ async function finishSetup(context, consent = 'decline') {
 async function verifyRuntime(context) {
   const info = await context.page.evaluate(() => window.electronApi.getEnvInfo());
   assert(info.pythonPath && path.isAbsolute(info.pythonPath));
-  const { stdout } = await run(info.pythonPath, ['-I', '-c', 'import importlib.metadata; print(importlib.metadata.version("nirs4all"))'], { timeout: 10000 });
-  assert.equal(stdout.trim(), '0.11.0', 'Shipped recovery must actually execute nirs4all 0.11.0');
-  context.proof.nirs4all_version = stdout.trim();
+  const { stdout } = await run(info.pythonPath, ['-I', '-c',
+    'import json, importlib.metadata; d = importlib.metadata.distribution("nirs4all"); print(json.dumps({"version": d.version, "origin": json.loads(d.read_text("direct_url.json") or "null")}))'], { timeout: 10000 });
+  const installed = JSON.parse(stdout.trim());
+  assert.equal(installed.version, '1.0.2', 'Shipped recovery must actually execute nirs4all 1.0.2');
+  const resources = await context.app.evaluate(() => process.resourcesPath);
+  const wheel = path.join(resources, 'python-wheels', 'nirs4all-1.0.2-py3-none-any.whl');
+  const installedHash = installed.origin?.archive_info?.hashes?.sha256;
+  assert.equal(installedHash, sha256(wheel), 'Runtime did not install the exact library wheel carried by this installer');
+  context.proof.nirs4all_version = installed.version;
+  context.proof.nirs4all_wheel_sha256 = installedHash;
 }
 
 async function awaitReady(context) {
@@ -254,6 +278,23 @@ async function awaitReady(context) {
     }
   }, { timeout: BUDGETS.launch, intervals: [100, 200, 500] }).toBe(true);
   await expect(context.page.getByRole('link', { name: 'Datasets', exact: true })).toBeVisible({ timeout: BUDGETS.launch });
+}
+
+async function qualifyReplay(context, chainId, data, phase) {
+  const spectra = fs.readFileSync(path.join(data, 'Xtrain.csv'), 'utf8').trim().split('\n').slice(1, 9)
+    .map(line => line.split(';').map(Number));
+  const expected = fs.readFileSync(path.join(data, 'Ytrain.csv'), 'utf8').trim().split('\n').slice(1, 9).map(Number);
+  await timed(context.proof, phase, BUDGETS.predictions, async () => {
+    const replay = await api(context.env, '/predict', 'POST', {
+      model_id: chainId, model_source: 'chain', data_source: 'array', spectra,
+    });
+    assert.equal(replay.num_samples, spectra.length, 'Saved-model replay returned the wrong sample count');
+    assert.equal(replay.predictions.length, spectra.length, 'Saved-model replay returned missing predictions');
+    assert(replay.predictions.every(Number.isFinite), 'Saved-model replay contains non-finite predictions');
+    const rmse = Math.sqrt(replay.predictions.reduce((sum, value, i) => sum + (value - expected[i]) ** 2, 0) / expected.length);
+    assert(rmse < .05, `Saved PLS model failed the synthetic-fixture accuracy check: RMSE=${rmse}`);
+    context.proof[phase] = { samples: spectra.length, rmse };
+  });
 }
 
 async function businessJourney(context, data) {
@@ -288,7 +329,7 @@ async function businessJourney(context, data) {
     const responsePromise = page.waitForResponse(response => response.url().includes('/playground/execute')
       && response.request().method() === 'POST'
       && response.request().postDataJSON()?.steps?.some(step => /StandardNormalVariate|SNV/.test(step.name)), { timeout: BUDGETS.playground });
-    await page.getByRole('option').filter({ hasText: /SNV|Standard Normal Variate|StandardNormalVariate/i }).first().click();
+    await page.getByRole('option').filter({ has: page.getByText(/^(SNV|Standard Normal Variate|StandardNormalVariate)$/) }).first().click();
     const response = await responsePromise;
     const result = response.headers()['content-type']?.includes('application/x-msgpack')
       ? require('@msgpack/msgpack').decode(await response.body()) : await response.json();
@@ -299,7 +340,7 @@ async function businessJourney(context, data) {
     assert(Array.isArray(spectrum) && spectrum.length === 256 && spectrum.every(Number.isFinite));
     const mean = spectrum.reduce((sum, value) => sum + value, 0) / spectrum.length;
     const variance = spectrum.reduce((sum, value) => sum + (value - mean) ** 2, 0) / spectrum.length;
-    assert(Math.abs(mean) < 1e-5 && Math.abs(variance - 1) < .02, `SNV numerical invariant failed: mean=${mean}, variance=${variance}`);
+    assert(Math.abs(mean) < 1e-5 && Math.abs(variance - 1) < .02, `SNV numerical invariant failed: mean=${mean}, variance=${variance}, trace=${JSON.stringify(result.execution_trace)}`);
     proof.playground = { execution_time_ms: result.execution_time_ms, trace: result.execution_trace };
     await expect(page.locator('canvas, .recharts-surface').first()).toBeVisible({ timeout: BUDGETS.playground });
   });
@@ -324,11 +365,13 @@ async function businessJourney(context, data) {
   const pipelines = training.datasets.flatMap(datasetRun => datasetRun.pipelines);
   assert(pipelines.length > 0 && pipelines.every(pipelineRun => pipelineRun.engine === 'legacy'), 'Recovery training did not use the legacy engine');
   proof.training.engines = pipelines.map(pipelineRun => pipelineRun.engine);
+  let replayChainId;
   await timed(proof, 'nonempty_predictions_ui', BUDGETS.predictions, async () => {
     const stored = await api(env, '/aggregated-predictions');
     assert(stored.total > 0 && stored.predictions.some(entry => Number.isFinite(entry.cv_val_score)), 'No finite cross-validation prediction score');
     proof.predictions = { total: stored.total, cv_val_scores: stored.predictions.map(entry => entry.cv_val_score) };
     const cvChain = stored.predictions.find(entry => Number.isFinite(entry.cv_val_score));
+    replayChainId = cvChain.chain_id;
     const chain = await api(env, `/aggregated-predictions/chain/${encodeURIComponent(cvChain.chain_id)}`);
     const fold = chain.predictions.find(entry => entry.partition === 'val');
     assert(fold?.prediction_id, 'No persisted validation-fold predictions');
@@ -340,6 +383,7 @@ async function businessJourney(context, data) {
     await expect(page.getByText('PLSRegression', { exact: false }).first()).toBeVisible({ timeout: BUDGETS.predictions });
     await expect(page.getByText(/Error loading predictions|route_not_native_qualified|No predictions/i)).not.toBeVisible();
   });
+  await qualifyReplay(context, replayChainId, data, 'saved_model_replay');
   await page.screenshot({ path: path.join(context.profile, 'predictions.png') });
   assert.deepEqual(context.errors, []);
   return dataset;
@@ -385,19 +429,52 @@ async function qualifyMigration(candidate, version, root, proof, data) {
       localStorage.setItem('nirs4all-telemetry-consent-decided-at', new Date().toISOString());
     });
     preserved = { dataset_id: linked.dataset.id, preferences: (await api(context.env, '/app/settings')).ui_preferences };
-  } finally { await context.app.close(); }
+  } finally { await closeTrackedApps(); }
+  // Registration alone does not create a store. Populate actual predictions with
+  // the previous installer's own Python/library, while that application is closed.
+  const layout = archive.resolveLaunchLayout(installed, process.platform, 'nirs4all Studio');
+  const python = (layout.bundledPythonCandidates || [layout.bundledPythonPath]).find(file => fs.existsSync(file));
+  assert(python, 'Previous installer has no bundled scientific interpreter');
+  const seedCode = [
+    'import json, sys, sqlite3, importlib.metadata',
+    'from pathlib import Path',
+    'import numpy as np',
+    'import nirs4all',
+    'from sklearn.preprocessing import StandardScaler',
+    'from sklearn.model_selection import KFold',
+    'from sklearn.cross_decomposition import PLSRegression',
+    'data, workspace = map(Path, sys.argv[1:])',
+    'X = np.loadtxt(data / "Xtrain.csv", delimiter=";", skiprows=1)',
+    'y = np.loadtxt(data / "Ytrain.csv", delimiter=";", skiprows=1)',
+    'nirs4all.run([StandardScaler(), KFold(n_splits=3, shuffle=True, random_state=42), PLSRegression(n_components=3)], dataset=(X, y), workspace_path=workspace, engine="legacy", verbose=0, save_charts=False)',
+    'store = workspace / "store.sqlite"',
+    'assert store.is_file(), "Previous library did not persist its real store"',
+    'with sqlite3.connect(f"file:{store.as_posix()}?mode=ro", uri=True) as db: count = db.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]',
+    'assert count > 0, "Previous library did not persist predictions"',
+    'print(json.dumps({"prediction_count": count, "nirs4all_version": importlib.metadata.version("nirs4all"), "store_bytes": store.stat().st_size}))',
+  ].join('\n');
+  const seeded = await timed(proof, 'baseline_populate_scientific_store', BUDGETS.installer, () => run(python,
+    ['-I', '-c', seedCode, data, workspace], { timeout: BUDGETS.installer, maxBuffer: 2 ** 20,
+      env: { ...process.env, PYTHONNOUSERSITE: '1', N4A_ENGINE: 'legacy' } }));
+  proof.baseline.scientific_store = JSON.parse(seeded.stdout.trim().split('\n').at(-1));
   const before = snapshot(workspace);
   assert(Object.keys(before).some(name => /store\.(sqlite|duckdb)$/.test(name)), 'Baseline must contain a genuine store');
   const upgraded = await timed(proof, 'populated_reinstall', BUDGETS.installer, () => install(candidate, installRoot));
   assert.deepEqual(snapshot(workspace), before, 'Installer changed workspace bytes');
   context = await launch(upgraded, profile, proof, actualWindowsProfile);
   try {
+    // Moving from an old bundled runtime to source installation may need one
+    // real managed-runtime setup. Keep the existing profile and consent intact.
+    await finishSetup(context, 'decline', true);
     await expect(context.page.getByRole('link', { name: 'Datasets', exact: true })).toBeVisible({ timeout: BUDGETS.python_setup });
     await verifyRuntime(context);
     assert.equal((await api(context.env, '/workspace')).workspace.path, workspace);
     const preferences = (await api(context.env, '/app/settings')).ui_preferences;
     for (const key of ['language', 'theme', 'developer_mode']) assert.equal(preferences[key], preserved.preferences[key], `Lost ${key}`);
     assert((await api(context.env, '/datasets')).datasets.some(entry => entry.id === preserved.dataset_id), 'Lost dataset');
+    const previousResults = await api(context.env, '/aggregated-predictions');
+    assert(previousResults.total > 0, 'Recovery cannot read previous scientific results');
+    await qualifyReplay(context, previousResults.predictions[0].chain_id, data, 'previous_model_replay');
     assert.equal(await context.page.evaluate(() => localStorage.getItem('nirs4all-telemetry-consent')), 'declined');
     await expect(context.page.getByRole('button', { name: 'Do not send', exact: true })).not.toBeVisible();
     const preview = await api(context.env, `/datasets/${preserved.dataset_id}`);
@@ -408,7 +485,25 @@ async function qualifyMigration(candidate, version, root, proof, data) {
     assert.deepEqual(context.errors, []);
     proof.migration = { success: true, workspace, dataset_id: preserved.dataset_id, files_preserved: Object.keys(before).length,
       windows_known_folders: actualWindowsProfile };
-  } finally { await context.app.close(); }
+  } finally { await closeTrackedApps(); }
+}
+
+function trackApp(app) {
+  liveApps.add(app);
+  app.on('close', () => liveApps.delete(app));
+  return app;
+}
+
+async function closeTrackedApps(timeoutMs = 5000) {
+    for (const app of liveApps) {
+      let timeout;
+      try {
+        await Promise.race([app.close(), new Promise(resolve => {
+          timeout = setTimeout(() => { app.process().kill('SIGKILL'); resolve(); }, timeoutMs);
+        })]);
+      } catch { app.process().kill('SIGKILL'); }
+      finally { clearTimeout(timeout); liveApps.delete(app); }
+    }
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -435,7 +530,7 @@ async function main(argv = process.argv.slice(2)) {
     await businessJourney(context, data);
     const workspace = (await api(context.env, '/workspace')).workspace.path;
     await api(context.env, '/app/settings', 'PUT', { ui_preferences: { language: 'en', theme: 'dark', developer_mode: true } });
-    await context.app.close(); context = undefined;
+    await closeTrackedApps(); context = undefined;
     context = await timed(proof, 'restart_ready', BUDGETS.launch, async () => {
       const reopened = await launch(installed, profile, proof);
       await awaitReady(reopened);
@@ -447,15 +542,15 @@ async function main(argv = process.argv.slice(2)) {
     await expect(context.page.getByText(/Python Environment Setup|Checking installation|Select Compute Profile/)).not.toBeVisible();
     assert((await api(context.env, '/aggregated-predictions')).total > 0, 'Restart lost predictions');
     assert.deepEqual(context.errors, []);
-    await context.app.close(); context = undefined;
+    await closeTrackedApps(); context = undefined;
     context = await launch(installed, path.join(root, 'fresh-accept'), proof);
     await finishSetup(context, 'accept');
-    await context.app.close(); context = undefined;
+    await closeTrackedApps(); context = undefined;
     context = await launch(installed, path.join(root, 'fresh-accept'), proof);
     await awaitReady(context);
     assert.equal(await context.page.evaluate(() => localStorage.getItem('nirs4all-telemetry-consent')), 'accepted');
     assert.deepEqual(context.errors, []);
-    await context.app.close(); context = undefined;
+    await closeTrackedApps(); context = undefined;
     if (options['previous-version']) await qualifyMigration(candidate, options['previous-version'], root, proof, data);
     proof.success = true;
   } catch (error) { proof.error = error.stack || String(error); throw error; }
@@ -467,8 +562,9 @@ async function main(argv = process.argv.slice(2)) {
       fs.writeFileSync(path.join(diagnostics, 'failure-body.txt'), await context.page.locator('body').innerText().catch(() => ''));
       proof.api_errors = context.errors;
       proof.requests = context.requests;
-      await context.app.close().catch(() => {});
+      await closeTrackedApps();
     }
+    await closeTrackedApps();
     function collect(directory) {
       for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
         const source = path.join(directory, entry.name);
@@ -485,5 +581,5 @@ async function main(argv = process.argv.slice(2)) {
   return proof;
 }
 
-module.exports = { BUDGETS, baselineInstaller, businessJourney, finishSetup, fixture, installerMatch, launch, main, parseArgs, qualifyMigration, snapshot, streamedCommand, timed };
+module.exports = { BUDGETS, baselineInstaller, businessJourney, finishSetup, fixture, installerMatch, launch, main, parseArgs, qualifyMigration, snapshot, streamedCommand, timed, trackApp, closeTrackedApps };
 if (require.main === module) main().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

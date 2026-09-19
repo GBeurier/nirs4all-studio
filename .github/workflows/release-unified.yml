@@ -33,8 +33,17 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run smoke:nirs4all-ui-package
       - run: npm run lint:tsc
-      - run: python -m pip install -r requirements-cpu.txt nirs4all==0.11.0 pytest pytest-asyncio pytest-timeout pytest-xdist
-      - run: python -m pytest tests/test_workspace_manager_startup.py tests/test_recommended_config_api.py tests/test_recovery_dependency_profile.py tests/test_packaged_node_registry.py -q
+      - name: Build the canonical workspace-compatible Python library
+        run: python scripts/build-recovery-library.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recovery-library-wheel
+          path: vendor/python/
+          if-no-files-found: error
+      - run: python -m pip install -r requirements-cpu.txt vendor/python/nirs4all-1.0.2-py3-none-any.whl pytest pytest-asyncio pytest-timeout pytest-xdist
+      - run: python -m pytest tests/test_workspace_manager_startup.py tests/test_recommended_config_api.py tests/test_recovery_dependency_profile.py tests/test_packaged_node_registry.py tests/test_nirs4all_release_pin.py tests/test_preview_eventloop.py tests/test_recovery_legacy_replay.py tests/test_runtime_engine.py -q
+      - run: npx vitest run electron/env-manager.test.ts electron/env-inspection.test.ts electron/python-runtime-config.test.ts electron/workspace-location.test.ts src/components/datasets/DatasetWizard/PreviewStep.test.tsx
+      - run: node --test scripts/tests/recovery-qualify-installer.test.cjs
 
   installer:
     needs: quality
@@ -70,6 +79,10 @@ jobs:
         with:
           python-version: '3.11'
       - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: recovery-library-wheel
+          path: vendor/python/
       - name: Build Python recovery installer
         run: npm run release -- --platform ${{ matrix.build_platform }} --flavor cpu
         env:
@@ -104,6 +117,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: recovery-library-wheel
+          path: vendor/python/
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
@@ -123,7 +140,7 @@ jobs:
             sleep 1
           done
           python -c 'import json; r=json.load(open("readiness.json")); assert r["ml_ready"] and r["workspace_ready"]'
-          docker exec recovery python -c 'import nirs4all; assert nirs4all.__version__ == "0.11.0"'
+          docker exec recovery python -c 'import nirs4all; assert nirs4all.__version__ == "1.0.2"'
           python3 scripts/qualify-python-docker.py > docker-qualification.json
           docker save nirs4all-studio:0.11.8 | gzip > recovery-docker.tar.gz
       - uses: actions/upload-artifact@v4

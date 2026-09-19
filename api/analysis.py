@@ -27,6 +27,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .lazy_imports import get_cached
+from .runtime_engine import recovery_replay_kwargs
 from .workspace_manager import workspace_manager
 
 SKLEARN_AVAILABLE = True
@@ -506,7 +507,8 @@ async def feature_importance(request: ImportanceRequest):
                 model=str(bundle_path),
                 data=X,
                 verbose=0,
-                plots_visible=False
+                plots_visible=False,
+                **recovery_replay_kwargs(),
             )
             importance = explain_result.mean_abs_shap
             importance_std = None  # SHAP doesn't provide std in the same way

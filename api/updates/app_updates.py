@@ -187,7 +187,8 @@ async def install_nirs4all(request: InstallRequest) -> dict[str, Any]:
         )
 
     # Install nirs4all
-    success, message, output = _u.venv_manager.install_package(
+    success, message, output = await asyncio.to_thread(
+        _u.venv_manager.install_package,
         "nirs4all",
         version=qualified_version or request.version,
         extras=request.extras,

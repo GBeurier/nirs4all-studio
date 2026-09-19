@@ -88,7 +88,17 @@ def resolve_engine(requested: str | None) -> str:
         if isinstance(requested, str) and requested.strip():
             return requested
         return _LEGACY
-    return _lib_resolve(requested)
+    return _lib_resolve(requested.strip() or None if isinstance(requested, str) else requested)
+
+
+def recovery_replay_kwargs() -> dict[str, str]:
+    """Select Python replay for recovery models and workspace chains.
+
+    Library 1.x defaults to portable native replay and intentionally refuses
+    legacy archives without an explicit engine. Recovery trains Python models,
+    so prediction and explanation must carry the same explicit policy.
+    """
+    return {"engine": _LEGACY} if _recovery_engine(None) is not None else {}
 
 
 def supports_explicit_run_engine() -> bool:

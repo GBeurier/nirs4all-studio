@@ -366,7 +366,7 @@ class TestDependencyScanningOptionalMetadata:
 
     @patch("api.updates._dependencies_cache")
     @patch("api.updates.venv_manager")
-    def test_visible_profile_managed_default_package_is_exposed(self, mock_vm, mock_cache):
+    def test_visible_profile_managed_opt_in_package_is_exposed(self, mock_vm, mock_cache):
         mock_cache.get.return_value = None
 
         mock_vm.get_venv_info.return_value = FakeVenvInfo(
@@ -390,4 +390,4 @@ class TestDependencyScanningOptionalMetadata:
         assert torch_pkg is not None
         assert torch_pkg["is_installed"] is True
         assert torch_pkg["managed_by_profile"] is True
-        assert torch_pkg["default_install"] is True
+        assert torch_pkg["default_install"] is False

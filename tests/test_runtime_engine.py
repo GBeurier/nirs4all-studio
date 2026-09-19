@@ -16,9 +16,15 @@ from api import runtime_engine
 from api.runtime_errors import RtError, RtUnsupportedError
 
 
-def test_resolve_engine_defaults_to_legacy():
-    assert runtime_engine.resolve_engine(None) == "legacy"
-    assert runtime_engine.resolve_engine("") == "legacy"
+def library_default_engine():
+    from importlib import import_module
+    return import_module("nirs4all.api.run").resolve_engine(None)
+
+
+def test_resolve_engine_delegates_default_to_installed_library():
+    assert runtime_engine.resolve_engine(None) == library_default_engine()
+    assert runtime_engine.resolve_engine("") == library_default_engine()
+    assert runtime_engine.resolve_engine("   ") == library_default_engine()
 
 
 def test_resolve_engine_passes_through_explicit():
@@ -47,7 +53,7 @@ def test_engine_run_kwargs_preserves_default_when_runtime_lacks_support(monkeypa
     monkeypatch.setattr(runtime_engine, "supports_explicit_run_engine", lambda: False)
 
     assert runtime_engine.engine_run_kwargs(None) == {}
-    assert runtime_engine.engine_run_kwargs("legacy") == {}
+    assert runtime_engine.engine_run_kwargs(library_default_engine()) == {}
 
 
 def test_runtime_engine_capabilities_reports_explicit_support(monkeypatch):
@@ -57,7 +63,7 @@ def test_runtime_engine_capabilities_reports_explicit_support(monkeypatch):
 
     assert capabilities["supports_explicit_run_engine"] is True
     assert capabilities["supported_engines"] == ["legacy", "dag-ml"]
-    assert capabilities["default_engine"] == "legacy"
+    assert capabilities["default_engine"] == library_default_engine()
 
 
 def test_observe_engine_no_fallback_records_resolved_engine():
@@ -73,7 +79,7 @@ def test_observe_engine_records_default_engine_for_none_request():
     with runtime_engine.observe_engine(None) as observation:
         pass
     record = observation.finalize(result=None)
-    assert record["engine"] == "legacy"
+    assert record["engine"] == library_default_engine()
     assert record["engine_requested"] is None
     assert record["engine_diagnostics"] is None
 

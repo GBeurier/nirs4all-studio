@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from "node:child_process";
 import { createServer, AddressInfo } from "node:net";
 import path from "node:path";
 import type { EnvManager } from "./env-manager";
+import { resolveDocumentsDirectory } from "./workspace-location";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 // Use require for electron to avoid Rollup ESM/CJS interop issues.
@@ -532,7 +533,7 @@ export class BackendManager {
       NIRS4ALL_PORT: this.port.toString(),
       NIRS4ALL_DESKTOP: "true",
       N4A_ENGINE: "legacy",
-      NIRS4ALL_DEFAULT_WORKSPACE: path.join(electron.app.getPath("documents"), "nirs4all Studio", "workspace"),
+      NIRS4ALL_DEFAULT_WORKSPACE: path.join(resolveDocumentsDirectory(name => electron.app.getPath(name)), "nirs4all Studio", "workspace"),
       NIRS4ALL_ELECTRON: "true",
       NIRS4ALL_APP_VERSION: electron.app.getVersion(),
       NIRS4ALL_APP_DIR: path.dirname(process.execPath),

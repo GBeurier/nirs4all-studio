@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { installerMatch, parseArgs, fixture, streamedCommand, timed } = require('../recovery-qualify-installer.cjs');
+const { installerMatch, parseArgs, fixture, streamedCommand, timed, trackApp, closeTrackedApps } = require('../recovery-qualify-installer.cjs');
 
 test('qualification selects installers only and rejects wrong architecture', () => {
   assert(installerMatch('nirs4all-setup.exe', 'win32', 'x64'));
@@ -47,4 +47,21 @@ test('installer output streams beyond execFile buffer limits and preserves failu
     assert.equal(fs.statSync(path.join(root, output)).size, 3 * 1024 * 1024);
     await assert.rejects(streamedCommand(process.execPath, ['-e', 'process.stderr.write("installer failed"); process.exit(7)'], root), /exited 7.*installer failed/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a readiness budget failure closes an app even before its context reaches the caller', async () => {
+  let closes = 0;
+  const app = { on() {}, close: async () => { closes++; }, process: () => ({ kill() {} }) };
+  await assert.rejects(timed({ timings: [] }, 'restart ready', -1, async () => ({ app: trackApp(app) })), /exceeded/);
+  await closeTrackedApps();
+  assert.equal(closes, 1);
+  await closeTrackedApps();
+  assert.equal(closes, 1);
+});
+
+test('a stuck Electron close is terminated within the cleanup deadline', async () => {
+  let kills = 0;
+  trackApp({ on() {}, close: () => new Promise(() => {}), process: () => ({ kill() { kills++; } }) });
+  await closeTrackedApps(10);
+  assert.equal(kills, 1);
 });
