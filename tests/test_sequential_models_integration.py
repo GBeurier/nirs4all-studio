@@ -14,6 +14,15 @@ from sklearn.preprocessing import StandardScaler
 import api.shared  # noqa: F401 (initialize application lazy imports)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def initialized_scientific_dependencies():
+    """Exercise the same real initialization barrier as the running backend."""
+    from api.lazy_imports import _do_load_ml_deps, get_ml_status, is_ml_ready
+
+    _do_load_ml_deps()
+    assert is_ml_ready(), get_ml_status()
+
+
 @pytest.mark.parametrize("with_cv", [False, True], ids=["train-only", "kfold"])
 def test_sequential_models_survive_studio_training_results_and_export(tmp_path, monkeypatch, with_cv):
     import nirs4all

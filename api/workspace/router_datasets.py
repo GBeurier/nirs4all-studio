@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from ..app_config import app_config
+from ..lazy_imports import get_cached, is_ml_ready
 from ..shared.logger import get_logger
 from .models import CreateGroupRequest, LinkDatasetRequest
 
@@ -25,7 +26,7 @@ def _extract_dataset_metadata_columns(dataset_info: dict[str, Any]) -> list[str]
         return None
 
     try:
-        from nirs4all.data import DatasetConfigs
+        DatasetConfigs = get_cached("DatasetConfigs")
 
         from ..spectra import _build_nirs4all_config_from_stored
 
@@ -101,12 +102,14 @@ async def list_datasets():
     try:
         datasets = app_config.get_datasets()
         groups = app_config.get_dataset_groups()
-        dataset_payloads = await asyncio.to_thread(
-            lambda: [
-                _maybe_enrich_dataset_metadata_columns(d.to_dict())
-                for d in datasets
-            ]
-        )
+        dataset_payloads = [d.to_dict() for d in datasets]
+        if is_ml_ready():
+            dataset_payloads = await asyncio.to_thread(
+                lambda: [
+                    _maybe_enrich_dataset_metadata_columns(payload)
+                    for payload in dataset_payloads
+                ]
+            )
         return {
             "datasets": dataset_payloads,
             "groups": [g.to_dict() for g in groups],
@@ -129,7 +132,7 @@ def _populate_linked_dataset_stats(dataset_info: dict[str, Any]) -> dict[str, An
 
         nirs4all_config = _build_nirs4all_config_from_stored(dataset_info)
         if "train_x" in nirs4all_config:
-            from nirs4all.data import DatasetConfigs
+            DatasetConfigs = get_cached("DatasetConfigs")
 
             dataset_configs = DatasetConfigs(nirs4all_config)
             datasets = dataset_configs.get_datasets()

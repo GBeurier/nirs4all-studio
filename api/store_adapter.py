@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .lazy_imports import get_cached, is_ml_ready
+from .lazy_imports import get_cached
 from .shared.json_safe import sanitize_dict, sanitize_float
 
 STORE_AVAILABLE = True
@@ -25,24 +25,13 @@ _OBJECT_REPR_RE = re.compile(
 
 
 def _get_workspace_store_cls() -> Any:
-    """Resolve ``WorkspaceStore`` without waiting for the full ML warmup.
+    """Use the initialized storage class; never compete with the ML loader.
 
-    Store-backed data pages only need the storage layer. If the background ML
-    loader has not populated the lazy cache yet, import ``WorkspaceStore``
-    directly so read-only database views do not stay blocked behind
-    ``ml_ready``.
+    Importing storage also initializes scientific dependencies. During startup
+    a second import from an HTTP worker can observe their partially initialized
+    modules. The common cache returns a retryable 503 until loading succeeds.
     """
-    if is_ml_ready():
-        store_cls = get_cached("WorkspaceStore", optional=True)
-        if store_cls is not None:
-            return store_cls
-
-    try:
-        from nirs4all.pipeline.storage import WorkspaceStore
-    except Exception as exc:
-        raise RuntimeError("nirs4all WorkspaceStore is not available") from exc
-
-    return WorkspaceStore
+    return get_cached("WorkspaceStore")
 
 
 def _to_json_compatible(value: Any) -> Any:

@@ -18,6 +18,7 @@ one TRAINING job whose id IS the run id, so WebSocket subscribers keyed by run i
 receive the JobManager lifecycle notifications directly.
 """
 
+import asyncio
 import json
 import logging
 import math
@@ -2396,10 +2397,16 @@ async def list_runs(status: str = None):
 
     # Sort by created_at descending (newest first)
     runs.sort(key=lambda r: r.created_at, reverse=True)
-    for run in runs:
-        _attach_run_robustness_plan(run)
-        _attach_workspace_robustness_artifacts(run)
-        _attach_workspace_tuning_artifacts(run)
+    # Enrichment is response-only; concurrent requests/jobs own the live rows.
+    runs = [run.model_copy(deep=True) for run in runs]
+
+    def _enrich_runs():
+        for run in runs:
+            _attach_run_robustness_plan(run)
+            _attach_workspace_robustness_artifacts(run)
+            _attach_workspace_tuning_artifacts(run)
+
+    await asyncio.to_thread(_enrich_runs)
     return RunListResponse(runs=runs, total=len(runs))
 
 
@@ -2502,10 +2509,15 @@ async def get_run(run_id: str):
     _ensure_runs_loaded()
     if run_id not in _runs:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
-    _attach_run_robustness_plan(_runs[run_id])
-    _attach_workspace_robustness_artifacts(_runs[run_id])
-    _attach_workspace_tuning_artifacts(_runs[run_id])
-    return _runs[run_id]
+    run = _runs[run_id].model_copy(deep=True)
+
+    def _enrich_run():
+        _attach_run_robustness_plan(run)
+        _attach_workspace_robustness_artifacts(run)
+        _attach_workspace_tuning_artifacts(run)
+
+    await asyncio.to_thread(_enrich_run)
+    return run
 
 
 @router.get("/{run_id}/execution-job-record")
