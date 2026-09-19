@@ -39,6 +39,10 @@ def main():
     pin = json.loads((root / "build/recovery-library.json").read_text())
     output = root / "vendor/python"
     output.mkdir(parents=True, exist_ok=True)
+    # A repeated local/CI build must not leave a previous pinned library beside
+    # the new one: the installer payload has one unambiguous library wheel.
+    for previous_wheel in output.glob("nirs4all-*.whl"):
+        previous_wheel.unlink()
     with tempfile.TemporaryDirectory(prefix="studio-recovery-library-") as temporary:
         source = Path(temporary) / "source.tar.gz"
         with urllib.request.urlopen(pin["source_url"], timeout=60) as response:
