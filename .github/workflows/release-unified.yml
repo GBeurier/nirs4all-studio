@@ -47,7 +47,7 @@ jobs:
       - run: python -m pip install -r requirements-cpu.txt vendor/python/nirs4all-1.0.2-py3-none-any.whl pytest pytest-asyncio pytest-timeout pytest-xdist
       - name: Qualify cold concurrent imports of the installed library wheel
         run: python -I -m pytest build/recovery-library-tests --import-mode=importlib -q
-      - run: python -m pytest tests/test_workspace_manager_startup.py tests/test_recommended_config_api.py tests/test_recovery_dependency_profile.py tests/test_packaged_node_registry.py tests/test_nirs4all_release_pin.py tests/test_preview_eventloop.py tests/test_recovery_legacy_replay.py tests/test_runtime_engine.py tests/test_macos_recovery_wheel_builder.py -q
+      - run: python -m pytest tests/test_workspace_manager_startup.py tests/test_recommended_config_api.py tests/test_recovery_dependency_profile.py tests/test_packaged_node_registry.py tests/test_nirs4all_release_pin.py tests/test_preview_eventloop.py tests/test_recovery_legacy_replay.py tests/test_runtime_engine.py tests/test_macos_recovery_wheel_builder.py tests/test_recovery_promotion.py -q
       - run: npx vitest run electron/env-manager.test.ts electron/env-inspection.test.ts electron/python-runtime-config.test.ts electron/workspace-location.test.ts src/components/datasets/DatasetWizard/PreviewStep.test.tsx
       - run: node --test scripts/tests/recovery-qualify-installer.test.cjs
 
@@ -272,12 +272,76 @@ jobs:
           (output / 'qualification.json').write_text(json.dumps(reports, indent=2))
           (output / 'library-provenance.json').write_text(json.dumps(library_proof, indent=2))
           PYCODE
+      - name: Verify the qualified tag and any existing publication
+        id: published
+        env:
+          QUALIFIED_SHA: ${{ steps.qualified.outputs.source_sha }}
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib, json, os, pathlib, subprocess, tempfile
+
+          def github_json(endpoint, allow_missing=False):
+              result = subprocess.run(['gh', 'api', endpoint], capture_output=True, text=True, timeout=60)
+              payload = json.loads(result.stdout)
+              if result.returncode:
+                  if allow_missing and str(payload.get('status')) == '404':
+                      return None
+                  raise RuntimeError(f'GitHub API failed for {endpoint}: status {payload.get("status", "unknown")}')
+              return payload
+
+          def verify_tag(repository, tag, qualified_sha):
+              value = github_json(f'repos/{repository}/git/ref/tags/{tag}')['object']
+              # Resolve annotated tags too; never compare their object ID to a commit.
+              for _ in range(10):
+                  if value['type'] == 'commit':
+                      assert value['sha'] == qualified_sha, 'Published tag does not identify the qualified source'
+                      return
+                  assert value['type'] == 'tag', 'Tag does not resolve to a commit'
+                  value = github_json(f'repos/{repository}/git/tags/{value["sha"]}')['object']
+              raise AssertionError('Too many annotated tag indirections')
+
+          def verify_published_assets(release, expected_root, downloaded_root):
+              assert release['tag_name'] == '0.11.8' and not release['draft'] and not release['prerelease'], 'Existing release is not the published recovery'
+              expected = {item.name: item for item in expected_root.iterdir() if item.is_file()}
+              assets = release['assets']
+              names = [asset['name'] for asset in assets]
+              assert len(names) == len(set(names)) and set(names) == set(expected), 'Existing release asset names differ'
+              assert {item.name for item in downloaded_root.iterdir()} == set(expected), 'Downloaded asset set differs'
+              for asset in assets:
+                  downloaded = downloaded_root / asset['name']
+                  assert asset['state'] == 'uploaded' and downloaded.stat().st_size == asset['size'], 'Published asset is incomplete'
+                  digest = hashlib.file_digest(downloaded.open('rb'), 'sha256').hexdigest()
+                  assert asset.get('digest') == f'sha256:{digest}', f'Published download digest mismatch: {asset["name"]}'
+                  source = expected[asset['name']]
+                  if asset['name'] in ('qualification.json', 'library-provenance.json'):
+                      actual, qualified = json.loads(downloaded.read_text()), json.loads(source.read_text())
+                      if asset['name'] == 'qualification.json':
+                          key = lambda report: (report['platform'], report['arch'])
+                          actual, qualified = sorted(actual, key=key), sorted(qualified, key=key)
+                      assert actual == qualified, f'Published evidence differs: {asset["name"]}'
+                  else:
+                      assert digest == hashlib.file_digest(source.open('rb'), 'sha256').hexdigest(), f'Published bytes differ: {asset["name"]}'
+
+          if __name__ == '__main__':
+              repository = os.environ['GITHUB_REPOSITORY']
+              verify_tag(repository, '0.11.8', os.environ['QUALIFIED_SHA'])
+              release = github_json(f'repos/{repository}/releases/tags/0.11.8', allow_missing=True)
+              if release is not None:
+                  with tempfile.TemporaryDirectory(prefix='recovery-published-') as directory:
+                      subprocess.run(['gh', 'release', 'download', '0.11.8', '--repo', repository, '--dir', directory], check=True, timeout=300)
+                      verify_published_assets(release, pathlib.Path('release-assets'), pathlib.Path(directory))
+                  print('Existing publication matches the qualified artifacts; no release or image will be modified.')
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                  output.write(f'exists={str(release is not None).lower()}\n')
+          PYCODE
       - uses: docker/login-action@v3
+        if: steps.published.outputs.exists != 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - name: Publish the already-qualified Docker image
+        if: steps.published.outputs.exists != 'true'
         run: |
           gunzip -c candidates/recovery-docker/recovery-docker.tar.gz | docker load
           docker tag nirs4all-studio:0.11.8 ghcr.io/gbeurier/nirs4all-studio:0.11.8
@@ -285,6 +349,5 @@ jobs:
           docker push ghcr.io/gbeurier/nirs4all-studio:0.11.8
           docker push ghcr.io/gbeurier/nirs4all-studio:latest
       - name: Publish the recovery release
-        env:
-          QUALIFIED_SHA: ${{ steps.qualified.outputs.source_sha }}
-        run: gh release create 0.11.8 --repo "$GITHUB_REPOSITORY" --target "$QUALIFIED_SHA" --title 'Studio 0.11.8 — Python recovery' --notes-file RECOVERY_RELEASE.md --latest release-assets/*
+        if: steps.published.outputs.exists != 'true'
+        run: gh release create 0.11.8 --repo "$GITHUB_REPOSITORY" --verify-tag --title 'Studio 0.11.8 — Python recovery' --notes-file RECOVERY_RELEASE.md --latest release-assets/*
