@@ -5,6 +5,7 @@ This patch continues the Python backend and explicit legacy execution engine fro
 ## Changes
 
 - Sequential models now retain distinct identities and appear in Results, including runs without cross-validation. Training-only scores are labelled as training scores; absent validation, test and refit scores remain absent. Model exports replay the intended estimator.
+- Concurrent workspace openings preserve the SQLite results view, including immediately after restarting the application.
 - Results refresh also reloads an already-expanded model history. PCA rendering, pipeline catalog availability and experiment selection are corrected.
 - Installation logs can be expanded and copied in setup and Settings. Output is bounded and secrets are redacted; package processes drain both output streams and enforce timeouts independently of output reads.
 - Optional package installation checks compatible dependencies, including the scikit-learn requirement of TabPFN 2.0.x. Dependency scanning no longer blocks the application event loop.

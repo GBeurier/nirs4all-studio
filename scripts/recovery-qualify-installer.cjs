@@ -647,6 +647,17 @@ async function main(argv = process.argv.slice(2)) {
     const diagnostics = path.join(path.dirname(path.resolve(options.output)), `${process.platform}-${process.arch}-diagnostics`);
     fs.mkdirSync(diagnostics, { recursive: true });
     if (context) {
+      if (!proof.success) {
+        // Capture the backend traceback before shutdown; failure here must never
+        // replace the original smoke error or turn it into a retry/success.
+        const errorLog = await api(context.env, '/system/errors?limit=100', 'GET', undefined, { timeoutMs: 3000 })
+          .catch(() => ({ unavailable: true }));
+        let diagnostic = JSON.stringify(errorLog, null, 2);
+        for (const secret of [context.env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN, process.env.GH_TOKEN, process.env.GITHUB_TOKEN]) {
+          if (secret) diagnostic = diagnostic.split(secret).join('[REDACTED]');
+        }
+        fs.writeFileSync(path.join(diagnostics, 'backend-errors.json'), diagnostic);
+      }
       await context.page.screenshot({ path: path.join(diagnostics, 'failure.png') }).catch(() => {});
       fs.writeFileSync(path.join(diagnostics, 'failure-body.txt'), await context.page.locator('body').innerText().catch(() => ''));
       proof.api_errors = context.errors;

@@ -42,7 +42,7 @@ jobs:
           if-no-files-found: error
       - run: python -m pip install -r requirements-cpu.txt vendor/python/nirs4all-1.0.3-py3-none-any.whl pytest pytest-asyncio pytest-timeout pytest-xdist
       - name: Test the corrected scientific results, compatibility and installation logs
-        run: python -m pytest tests/test_sequential_models_integration.py tests/test_recovery_legacy_replay.py tests/test_package_compatibility.py tests/test_optional_operator_preflight.py tests/test_install_log.py tests/test_dependency_scan_responsiveness.py tests/test_recovery_promotion.py -q
+        run: python -m pytest tests/test_sequential_models_integration.py tests/test_recovery_legacy_replay.py tests/test_package_compatibility.py tests/test_optional_operator_preflight.py tests/test_install_log.py tests/test_dependency_scan_responsiveness.py tests/test_recovery_promotion.py build/recovery-library-tests/test_workspace_schema_concurrency.py -q
       - name: Test the corrected Results, PCA, selection and installation interfaces
         run: npx vitest run electron/env/process-utils.test.ts src/components/setup/InstallationLogPanel.test.tsx src/components/experiments/NewExperimentSelectableOptionCard.test.tsx src/hooks/useNewExperimentSelectionFlow.test.tsx src/hooks/usePipelines.catalog.test.tsx src/components/playground/visualizations/__tests__/DimensionReductionPca.test.tsx src/pages/Results.trainingOnly.test.tsx src/components/scores/ScoreCardTrainingOnly.test.tsx
 
