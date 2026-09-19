@@ -2,6 +2,8 @@
 
 Audit initial des sources, CodeGraph et GitHub Actions, suivi de correctifs et qualifications ci-dessous. Les budgets proposés ne sont pas des mesures Windows. Le parent confirme spawn gpt-6-astra/high.
 
+État du bilan : récupération Python avec moteur legacy et bibliothèque compatible 1.0.2 ; parcours locaux complets verts. Le candidat CI6 `360ff940` doit encore terminer ses quatre qualifications natives et Docker avant publication. Les sections chronologiques ci-dessous distinguent les défauts reproduits, leurs corrections et les preuves obtenues ; les anciens candidats échoués ne sont pas des versions recommandées.
+
 ## Résultat
 
 Le système teste souvent présence d’écran ou intégrité du paquet, sans prouver le parcours métier. La priorité est un petit driver Playwright du vrai Electron installé, avec vrai dataset/workspace, conservation du profil entre upgrade/restart, assertions métier et temps bornés. Les builds d’archives dupliquent un coût mesuré et couplent inutilement toutes les plateformes.
@@ -79,3 +81,39 @@ La lecture de résultats ne suffit pas : le driver rejoue également huit spectr
 Le Rust corrigé a une preuve HTTP et des suites ciblées ; il ne possède pas encore de qualification Electron scientifique complète. Un essai privé a atteint import/preview réels, puis sa qualification a été interrompue pour donner priorité à la récupération Python. Les adaptations de bibliothèque privées ne doivent pas remplacer les pins publics d'une release. La couverture des routes reste incomplète ; aucun argument de performance Rust ne justifie de le publier avant parité de parcours et mesure comparative.
 
 Validation finale du frontend current après correctifs : 4 196 tests passent, lint complet passe (agent performance). Backend recovery avec bibliothèque propre 1.0.2 : 2 145 tests passent, 55 ignorés et 169 désélectionnés selon les marqueurs existants ; les fixtures obsolètes de politique de release ont été corrigées explicitement, sans désactiver les guards de récupération.
+
+
+La première qualification locale du candidat 1.0.2 (roue `471b91f3…`, source `560df344…`) valide setup 52,79 s, profil 1,75 s, preview 359 ms, ajout 961 ms, SNV 1,79 s, PLS 970 ms, Predictions 218 ms et replay 22 ms. Elle **échoue au redémarrage**, reproduit deux fois : `ml_error` signale un import circulaire de `DatasetConfigs` via `nirs4all.api → pipeline.__init__ → explainer` pendant des imports concurrents. Cette roue ne constitue donc pas une preuve finale verte ; la correction appartient à la bibliothèque. Le driver conserve maintenant le dernier JSON readiness et échoue explicitement sur une erreur ML, sans attendre artificiellement le budget de 30 s.
+
+
+## Dernière preuve locale — candidat corrigé
+
+Le candidat suivant corrige le cycle d'import à sa source (bibliothèque commit `0e9acc66235ab7f461a0b0a61d0107df0e1750ad`). La roue locale installée est `33b0ecac15ac33bb095257abc2bee3505d71ed016057b31967fcc0f8427bf41a` ; la CI reconstruit sa roue canonique et ses propres reçus vérifient ses octets. Le test owner autonome `tests/integration/api/test_concurrent_imports.py` est extrait de l'archive source vérifiée et exécuté contre la roue installée : quatre familles d'imports concurrents froids et conservation des exports publics. Aucun checkout de bibliothèque ne masque le paquet testé.
+
+`/tmp/recovery-ci5-local/proof.json` est **vert**, scope `packaged_application_only` : deux profils vides, deux vrais téléchargements/installations Python (52,79 s et 57,80 s), deux choix de consentement conservés après redémarrage, workspace automatique. Preview 363 ms, ajout 967 ms, SNV UI 1,80 s avec invariants numériques, PLS legacy 1,11 s, Predictions 206 ms, replay de 8 spectres en 23 ms (RMSE 0,00080234), redémarrage prêt en 5,439 s. Toutes les limites restent celles définies avant le test.
+
+`/tmp/recovery-ci5-local/previous-store.json` est également **vert**, scope `packaged_application_previous_store_only` : copie du vrai store v5 peuplé par la bibliothèque 1.0.1 livrée auparavant, deux chaînes lues et affichées dans Electron, modèle enregistré rejoué sur 8 spectres en 107 ms avec le même RMSE. Ce contrôle ne prétend pas qualifier l'installation DEB ni la désinstallation Windows : les quatre parcours natifs de CI, avec réinstallation N-1 et conservation du vrai profil Windows jetable, restent obligatoires avant publication.
+
+La limitation restante de distribution est explicite : la roue nirs4all est embarquée et identifiée par SHA ; Python et ses dépendances transitives sont installés au premier lancement. Les reçus locaux ne remplacent ni les reçus des artefacts CI exacts, ni une fermeture offline complète. Aucun all-in-one ou portable n'est réintroduit.
+
+
+CI5 macOS ARM : installation DMG 2,87 s, premier Python 37,28 s, preview 385 ms, ajout 1,03 s, SNV 1,95 s, PLS 768 ms, replay 15 ms, restart 7,48 s ; second consentement et provisioning passent également. Installation N-1, entraînement réel de la fixture, réinstallation et setup migré passent. Le gate s'arrête ensuite sur une comparaison textuelle entre `/var/...` et `/private/var/...`, deux alias du même dossier macOS. Le driver compare désormais `fs.realpathSync.native` aux deux endroits concernés (migration et restart), sans conversion de casse ; un test avec vrai symlink/junction accepte l'alias et refuse un autre dossier ou un chemin absent. Les huit tests du driver passent ; préférences, consentement et hashes restent comparés strictement. Le candidat reste bloqué jusqu'à la CI complète corrigée.
+
+
+CI5 macOS Intel a révélé une autre cause réelle de lenteur : absence de roues publiques x64 pour `nirs4all-io==0.1.18` et `nirs4all-core==0.3.30`, déclenchant une compilation Rust au premier lancement. La correction conserve les métadonnées et dépendances complètes : ces deux roues sont construites en CI et embarquées pour Intel ; Electron et l'API de réparation utilisent le dossier `python-wheels` avec `--find-links`, et `--only-binary=nirs4all-io,nirs4all-core` interdit cette compilation chez l'utilisateur. Les extras et index des frameworks restent explicites et inchangés. Les 30 tests Electron et 12 tests backend ciblés passent ; le driver exige également `pip check`. La construction des roues et leur installation sur macOS Intel doivent encore être qualifiées dans la CI suivante.
+
+
+La préparation de l'ancien installateur 0.11.7 a désormais un timeout distinct de 300 s (113,28 s observés sur Windows). Cette marge concerne uniquement la construction de la fixture historique. Les installations fraîche et de remplacement du candidat restent limitées à 120 s ; le blocage de sa réinstallation Windows doit être corrigé, pas masqué par un budget augmenté. Un test couvre la distinction et un vrai processus confirme la transmission du timeout jusqu'à spawn.
+
+
+## Bilan du candidat CI6 — en attente du résultat complet
+
+Le candidat `360ff940` est qualifié par le run `35439867842`. La qualité rapide est verte ; aucune qualification complète des quatre OS n'est revendiquée avant la fin des jobs natifs et Docker.
+
+Windows : la reproduction NSIS isolée démontre que l'ancien désinstalleur affiche effectivement une boîte modale malgré `/S --updated`, tandis que le désinstalleur corrigé n'en affiche pas. Le pont de récupération remplace uniquement le désinstalleur enregistré de la version 0.11.7 et conserve son original ; ses trois cas Windows (réparation, restauration sur échec, version non concernée) passent. Ces preuves sont dans `/tmp/studio-nsis-upgrade-proof/result.json` et `bridge-result.json`. Elles complètent la compilation NSIS avec l'ordre réel des includes ; la réinstallation complète du produit reste un gate distinct.
+
+macOS : la comparaison de workspace résout les alias réels `/var` et `/private/var`, sans ignorer la casse ni accepter un dossier absent. Pour Intel, les roues natives IO 0.1.18 et Core 0.3.30 sont fabriquées en CI depuis leurs sdists vérifiées et leurs dépendances Cargo verrouillées, avec cible macOS 11 et x86_64. Elles rejoignent la roue universelle nirs4all dans le paquet. Le provisionnement et la réparation utilisent ce répertoire et refusent de compiler ces deux dépendances chez l'utilisateur ; `pip check` reste obligatoire. La première compilation/qualification complète de ces roues appartient à CI6.
+
+Audit limité du parcours de mise à jour livré : 38 tests backend existants et 6 tests de logique UI passent. Un probe supplémentaire des quatre noms publiables 0.11.8 (normalisation GitHub des espaces en points incluse) sélectionne exactement NSIS Windows x64, DEB Linux x64, DMG Intel ou DMG ARM, et refuse l'autre architecture. Aucun asset archive n'est nécessaire. Les builds gérés annoncent le canal `installer`; un appel d'application en place est refusé avant de quitter l'application.
+
+Le bouton **Get installer** ouvre l'URL du bon asset dans le navigateur via Electron `shell.openExternal`. Le téléchargement est réalisé par le navigateur, puis l'utilisateur lance l'installateur ; ce canal ne revendique pas une installation automatique silencieuse. La version 0.11.7 doit être récupérée manuellement car son ancien updater ne découvre que les archives. Après récupération, les versions suivantes sont détectées et proposées via l'installateur. La conservation des préférences repose sur le cycle NSIS corrigé et le remplacement des paquets OS, vérifiés séparément par le parcours natif de migration. Aucun défaut supplémentaire n'a été trouvé dans le parcours updater examiné, et aucun code du candidat distant n'a été modifié pendant cet audit.
