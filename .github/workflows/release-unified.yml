@@ -20,6 +20,8 @@ jobs:
   quality:
     if: inputs.candidate_run_id == ''
     runs-on: ubuntu-22.04
+    # A stalled browser download must fail visibly instead of blocking a release forever.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
