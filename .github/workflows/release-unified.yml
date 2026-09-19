@@ -195,21 +195,41 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
     steps:
+      - name: Resolve the successful qualification source
+        id: qualified
+        run: |
+          [[ "$CANDIDATE_RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" > "$RUNNER_TEMP/recovery-candidate-run.json"
+          python3 - <<'PYCODE'
+          import json, os, pathlib, re
+          run = json.loads((pathlib.Path(os.environ['RUNNER_TEMP']) / 'recovery-candidate-run.json').read_text())
+          repository = os.environ['GITHUB_REPOSITORY']
+          assert run['id'] == int(os.environ['CANDIDATE_RUN_ID']), run
+          assert run['status'] == 'completed' and run['conclusion'] == 'success', run
+          assert run['event'] == 'workflow_dispatch', run
+          assert run['path'] == '.github/workflows/release-unified.yml', run
+          assert run['head_branch'] == 'recovery/python-studio', run
+          assert run['repository']['full_name'] == repository, run
+          assert run['head_repository']['full_name'] == repository, run
+          assert run['head_repository']['id'] == run['repository']['id'], run
+          source_sha = run['head_sha']
+          assert re.fullmatch(r'[0-9a-f]{40}', source_sha), run
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'source_sha={source_sha}\n')
+          PYCODE
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.qualified.outputs.source_sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Require successful qualification of this exact commit
+      - name: Verify the checked-out qualified release source
+        env:
+          QUALIFIED_SHA: ${{ steps.qualified.outputs.source_sha }}
         run: |
-          gh run view "$CANDIDATE_RUN_ID" --json conclusion,headSha,headBranch,workflowName,event > candidate-run.json
+          test "$(git rev-parse HEAD)" = "$QUALIFIED_SHA"
           python3 - <<'PYCODE'
-          import json, os
-          run = json.load(open('candidate-run.json'))
-          assert run['conclusion'] == 'success', run
-          assert run['headSha'] == os.environ['GITHUB_SHA'], run
-          assert run['headBranch'] == 'recovery/python-studio', run
-          assert run['workflowName'] == 'Python recovery installers', run
-          assert run['event'] == 'workflow_dispatch', run
+          import json
           assert json.load(open('package.json'))['version'] == '0.11.8'
           PYCODE
       - uses: actions/download-artifact@v4
@@ -265,4 +285,6 @@ jobs:
           docker push ghcr.io/gbeurier/nirs4all-studio:0.11.8
           docker push ghcr.io/gbeurier/nirs4all-studio:latest
       - name: Publish the recovery release
-        run: gh release create 0.11.8 --target "$GITHUB_SHA" --title 'Studio 0.11.8 — Python recovery' --notes-file RECOVERY_RELEASE.md --latest release-assets/*
+        env:
+          QUALIFIED_SHA: ${{ steps.qualified.outputs.source_sha }}
+        run: gh release create 0.11.8 --repo "$GITHUB_REPOSITORY" --target "$QUALIFIED_SHA" --title 'Studio 0.11.8 — Python recovery' --notes-file RECOVERY_RELEASE.md --latest release-assets/*
