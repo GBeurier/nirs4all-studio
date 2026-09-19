@@ -1,6 +1,6 @@
 {
-  "version": "1.0.2",
-  "source_commit": "0e9acc66235ab7f461a0b0a61d0107df0e1750ad",
-  "source_url": "https://github.com/GBeurier/nirs4all/archive/0e9acc66235ab7f461a0b0a61d0107df0e1750ad.tar.gz",
-  "source_sha256": "b7e2d6613a5abfa5104aebaa5fe9be0e289c389df79ccf34d7a933ebba1b5b33"
+  "version": "1.0.3",
+  "source_commit": "e75fed2632d5cb93fb43ca0c285965f3469bc13b",
+  "source_url": "https://github.com/GBeurier/nirs4all/archive/e75fed2632d5cb93fb43ca0c285965f3469bc13b.tar.gz",
+  "source_sha256": "ae9bb8cdc67fb32692220c2ca0a43451eecd393ef18a75db90a55b8d2904b474"
 }

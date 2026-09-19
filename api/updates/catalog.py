@@ -30,7 +30,7 @@ APP_AUTHOR = "nirs4all"
 # Packages that require a backend restart after install/update/uninstall
 RESTART_REQUIRED_PACKAGES = {
     "nirs4all", "numpy", "scipy", "scikit-learn", "pandas",
-    "pydantic", "fastapi", "uvicorn",
+    "pydantic", "fastapi", "uvicorn", "tabpfn",
 }
 PROFILE_MANAGED_DEPENDENCIES = {"torch"}
 

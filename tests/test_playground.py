@@ -1409,3 +1409,28 @@ class TestNumpySerialization:
         data = response.json()
         assert data["original"]["spectra"] == [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
         assert isinstance(data["original"]["sample_indices"], list)
+
+
+def test_pca_retains_minor_components_when_first_component_dominates():
+    """The real HTTP PCA result must retain low-variance axes for exploration."""
+    rng = np.random.default_rng(431)
+    latent = rng.normal(size=(40, 3)) * np.array([100.0, 0.1, 0.01])
+    basis, _ = np.linalg.qr(rng.normal(size=(8, 3)))
+    spectra = latent @ basis.T
+    response = client.post(
+        "/api/playground/execute",
+        json={"data": {"x": spectra.tolist()}, "steps": [],
+              "options": {"compute_pca": True, "compute_repetitions": False}},
+    )
+    assert response.status_code == 200
+    result = response.json()["pca"]
+    assert "error" not in result, result
+    scores = np.asarray(result["coordinates"])
+    assert result["n_components"] == 8
+    assert scores.shape == (40, 8)
+    assert result["explained_variance_ratio"][0] > 0.999
+    assert np.std(scores[:, 1]) > 0.01
+    assert np.std(scores[:, 2]) > 0.001
+    # Compare the retained PCA score geometry with the centered input geometry.
+    centered = spectra - spectra.mean(axis=0)
+    np.testing.assert_allclose(scores @ scores.T, centered @ centered.T, atol=1e-7)

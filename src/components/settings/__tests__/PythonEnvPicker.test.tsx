@@ -4,6 +4,7 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -169,9 +170,10 @@ async function renderComponent(electronApi: ElectronApiMock) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   await act(async () => {
-    root.render(<PythonEnvPicker />);
+    root.render(<QueryClientProvider client={client}><PythonEnvPicker /></QueryClientProvider>);
   });
 
   return {
@@ -180,6 +182,7 @@ async function renderComponent(electronApi: ElectronApiMock) {
       await act(async () => {
         root.unmount();
       });
+      client.clear();
       container.remove();
     },
   };

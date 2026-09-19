@@ -6,6 +6,7 @@
  * Shows version status relative to recommended versions.
  */
 
+import { InstallationLogPanel } from "@/components/setup/InstallationLogPanel";
 import { useCallback, useEffect, useState } from "react";
 import {
   getDependencies,
@@ -249,6 +250,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       onDismissLastAction={() => setLastAction(null)}
       onRestartBackend={handleRestartBackend}
     >
+      <InstallationLogPanel active={Boolean(processingPackage)} error={lastAction?.success === false ? lastAction.message : null} />
       <div className="space-y-4">
         {dependencies.categories.map((category, index) => (
           <CategorySection

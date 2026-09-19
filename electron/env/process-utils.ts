@@ -7,6 +7,8 @@
 
 import { spawn, execFile } from "node:child_process";
 import fs from "node:fs";
+import { StringDecoder } from "node:string_decoder";
+import { appendInstallLog, finishInstallLog, redactInstallOutput, startInstallLog } from "./install-log";
 
 const isWindows = process.platform === "win32";
 
@@ -49,9 +51,10 @@ export function execFileText(
 export function runCommand(command: string, args: string[], options?: CommandOptions): Promise<void> {
   const maxRetries = options?.retries ?? 0;
   const timeoutMs = options?.timeoutMs ?? 0;
-  const commandLabel = `${command} ${args.join(" ")}`.trim();
+  const commandLabel = redactInstallOutput(`${command} ${args.join(" ")}`.trim());
 
   const exec = (): Promise<void> => new Promise((resolve, reject) => {
+    startInstallLog(commandLabel);
     const proc = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
       shell: false,
@@ -66,11 +69,36 @@ export function runCommand(command: string, args: string[], options?: CommandOpt
       if (finished) return;
       finished = true;
       if (timeoutHandle) clearTimeout(timeoutHandle);
+      finishInstallLog(error?.message);
       if (error) reject(error);
       else resolve();
     };
 
-    proc.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
+    // Drain both pipes immediately. An unread stdout pipe can block pip forever.
+    for (const stream of [proc.stdout, proc.stderr]) {
+      if (!stream) continue;
+      const decoder = new StringDecoder("utf8");
+      let pending = "";
+      let oversized = false;
+      const emit = (line: string) => {
+        if (!line.trim()) return;
+        const safe = redactInstallOutput(line.trim());
+        stderr = (stderr + safe + "\n").slice(-8000);
+        appendInstallLog(safe);
+      };
+      stream.on("data", (data: Buffer | string) => {
+        pending += decoder.write(Buffer.isBuffer(data) ? data : Buffer.from(data)).replace(/\r/g, "\n");
+        let newline: number;
+        while ((newline = pending.indexOf("\n")) >= 0) {
+          const line = pending.slice(0, newline);
+          pending = pending.slice(newline + 1);
+          emit(oversized || line.length > 4096 ? "[Oversized output line omitted]" : line);
+          oversized = false;
+        }
+        if (pending.length > 4096) { pending = ""; oversized = true; }
+      });
+      stream.on("end", () => emit(oversized ? "[Oversized output line omitted]" : pending + decoder.end()));
+    }
 
     if (timeoutMs > 0) {
       timeoutHandle = setTimeout(() => {

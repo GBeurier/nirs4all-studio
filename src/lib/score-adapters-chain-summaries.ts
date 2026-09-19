@@ -65,6 +65,9 @@ export function chainSummaryToRow(summary: ChainSummary): ScoreCardRow {
     aggregatedScoreSource,
   );
 
+  const trainingOnly = !hasFinal && summary.cv_fold_count === 0 && safeNumber(summary.cv_train_score) != null
+    && safeNumber(summary.cv_val_score) == null && safeNumber(summary.cv_test_score) == null
+    && Object.keys(cvValScores).length === 0 && Object.keys(cvTestScores).length === 0;
   const crossvalRow: ScoreCardRow = {
     id: `cv-${summary.cv_source_chain_id ?? summary.chain_id}`,
     chainId: summary.cv_source_chain_id ?? summary.chain_id,
@@ -75,13 +78,15 @@ export function chainSummaryToRow(summary: ChainSummary): ScoreCardRow {
     modelClass: summary.model_class,
     preprocessings: summary.preprocessings || null,
     bestParams: (summary.best_params as Record<string, unknown>) ?? null,
-    cardType: "crossval",
+    cardType: trainingOnly ? "train" : "crossval",
+    foldId: trainingOnly ? "" : undefined,
+    partition: trainingOnly ? "train" : undefined,
     foldCount: summary.cv_fold_count,
     metric: summary.metric,
     taskType: summary.task_type,
     testScores: cvTestScores,
     valScores: cvValScores,
-    trainScores: {},
+    trainScores: extractNestedScores(summary.cv_scores, "train"),
     avgValScores: cvValScores,
     avgTestScores: cvTestScores,
     primaryTestScore: safeNumber(summary.cv_test_score),

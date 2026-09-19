@@ -327,9 +327,9 @@ async function verifyRuntime(context) {
   const { stdout } = await run(info.pythonPath, ['-I', '-c',
     'import json, importlib.metadata; d = importlib.metadata.distribution("nirs4all"); print(json.dumps({"version": d.version, "origin": json.loads(d.read_text("direct_url.json") or "null")}))'], { timeout: 10000 });
   const installed = JSON.parse(stdout.trim());
-  assert.equal(installed.version, '1.0.2', 'Shipped recovery must actually execute nirs4all 1.0.2');
+  assert.equal(installed.version, '1.0.3', 'Shipped recovery must actually execute nirs4all 1.0.3');
   const resources = await context.app.evaluate(() => process.resourcesPath);
-  const wheel = path.join(resources, 'python-wheels', 'nirs4all-1.0.2-py3-none-any.whl');
+  const wheel = path.join(resources, 'python-wheels', 'nirs4all-1.0.3-py3-none-any.whl');
   const installedHash = installed.origin?.archive_info?.hashes?.sha256;
   assert.equal(installedHash, sha256(wheel), 'Runtime did not install the exact library wheel carried by this installer');
   context.proof.nirs4all_version = installed.version;
@@ -640,6 +640,7 @@ async function main(argv = process.argv.slice(2)) {
     assert.deepEqual(context.errors, []);
     await closeTrackedApps(); context = undefined;
     if (options['previous-version']) await qualifyMigration(candidate, options['previous-version'], root, proof, data);
+    else proof.migration = { status: 'not_requested' };
     proof.success = true;
   } catch (error) { proof.error = error.stack || String(error); throw error; }
   finally {

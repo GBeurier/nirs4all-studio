@@ -17,9 +17,11 @@
  * TRAIN_CARD                      ← always leaf, never expandable
  */
 
+import { ScoreCardRowView } from "./ScoreCardRowView";
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { isLowerBetter } from "@/lib/scores";
 import { partitionScoreCardRows } from "@/lib/scoreCardTreeData";
 import type { ScoreCardRow } from "@/types/score-cards";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
@@ -57,7 +59,29 @@ export function ScoreCardTree({
 }: ScoreCardTreeProps) {
   const [nonRefitExpanded, setNonRefitExpanded] = useState(false);
 
-  const { refitRows, cvRows } = useMemo(() => partitionScoreCardRows(rows), [rows]);
+  const { refitRows, cvRows, trainRows } = useMemo(() => {
+    const sections = partitionScoreCardRows(rows);
+    sections.trainRows.sort((a, b) => {
+      if (a.primaryTrainScore == null) return b.primaryTrainScore == null ? 0 : 1;
+      if (b.primaryTrainScore == null) return -1;
+      return isLowerBetter(a.metric)
+        ? a.primaryTrainScore - b.primaryTrainScore
+        : b.primaryTrainScore - a.primaryTrainScore;
+    });
+    return sections;
+  }, [rows]);
+
+  const trainingSection = showNonRefitSection && trainRows.length > 0 ? (
+    <div className="space-y-1">
+      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Training only · {trainRows.length} models</div>
+      {trainRows.map((row, index) => (
+        <ScoreCardRowView key={row.id} row={row} variant="inline" selectedMetrics={selectedMetrics}
+          workspaceId={workspaceId} rank={index + 1}
+          onViewDetails={onViewDetails ? () => onViewDetails(row) : undefined}
+          onViewPrediction={onViewPrediction} />
+      ))}
+    </div>
+  ) : null;
 
   if (variant === "card") {
     return (
@@ -86,6 +110,8 @@ export function ScoreCardTree({
             ))}
           </div>
         )}
+
+        {trainingSection}
 
         {/* Non-refit models section (foldable) */}
         {showNonRefitSection && cvRows.length > 0 && (
@@ -158,6 +184,8 @@ export function ScoreCardTree({
           maxTableMetrics={maxTableMetrics}
         />
       ))}
+
+      {trainingSection && <tr><td colSpan={100}>{trainingSection}</td></tr>}
 
       {/* CV section header */}
       {showNonRefitSection && cvRows.length > 0 && (

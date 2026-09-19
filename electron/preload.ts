@@ -296,6 +296,13 @@ const electronApi = {
   isPortable: (): Promise<boolean> =>
     ipcRenderer.invoke("env:isPortable"),
 
+  getInstallLog: (): Promise<import("../src/types/installLog").InstallLogSnapshot> => ipcRenderer.invoke("env:getInstallLog"),
+  onInstallLog: (callback: (snapshot: import("../src/types/installLog").InstallLogSnapshot) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, snapshot: import("../src/types/installLog").InstallLogSnapshot) => callback(snapshot);
+    ipcRenderer.on("env:installLog", handler);
+    return () => ipcRenderer.removeListener("env:installLog", handler);
+  },
+
   onEnvSetupProgress: (
     callback: (progress: { percent: number; step: string; detail: string }) => void
   ) => {

@@ -1,19 +1,22 @@
-# Studio 0.11.8 — Python recovery
+# Studio 0.11.9 — Results and installation fixes
 
-This recovery release restores the Python backend from Studio 0.10.1 and explicitly uses the historical Python execution engine for training and prediction. It includes the corrected nirs4all 1.0.2 library to retain access to existing schema-5 workspaces from Studio 0.11.7. The older 0.11.0 library cannot read those workspaces and is therefore not used. Development dependency manifests and independent library upgrades cannot replace the qualified runtime.
+This patch continues the Python backend and explicit legacy execution engine from Studio 0.11.8, with the corrected nirs4all 1.0.3 library. Existing schema-5 workspaces remain supported.
 
-## Recover an existing 0.11.7 installation
+## Changes
 
-Download and run the installer for your OS over the existing installation. The updater in 0.11.7 only discovers all-in-one archives, so it cannot perform this recovery automatically. Future updates use the installer channel.
+- Sequential models now retain distinct identities and appear in Results, including runs without cross-validation. Training-only scores are labelled as training scores; absent validation, test and refit scores remain absent. Model exports replay the intended estimator.
+- Results refresh also reloads an already-expanded model history. PCA rendering, pipeline catalog availability and experiment selection are corrected.
+- Installation logs can be expanded and copied in setup and Settings. Output is bounded and secrets are redacted; package processes drain both output streams and enforce timeouts independently of output reads.
+- Optional package installation checks compatible dependencies, including the scikit-learn requirement of TabPFN 2.0.x. Dependency scanning no longer blocks the application event loop.
 
-Workspaces, datasets and preferences are retained. Existing managed Python environments are reused when available; the obsolete bundled runtime from 0.11.7 is replaced with a managed environment during setup. The Windows installer temporarily preserves application data before invoking the old uninstaller, which could otherwise delete it. The managed Python environment is aligned to the qualified library version; a shared custom environment is never silently changed.
+## Installation
 
-New installations start with the lightweight scikit-learn profile. Additional frameworks are optional. The default workspace uses the actual OS Documents folder, including redirected or localized Windows folders.
+Use the installer for your OS or the installer update channel introduced in 0.11.8. Workspaces and preferences are retained; shared custom Python environments are not silently modified. Users still on 0.11.7 must run the installer directly because that version's updater only discovers the retired all-in-one format.
 
-## Distribution and qualification
+Distribution remains Windows NSIS, Linux DEB, macOS DMG for Intel and Apple Silicon, and Docker. No portable or all-in-one archives are published. The Windows and macOS installers are unsigned; macOS builds are not notarized. The automated smoke test does not qualify browser-download SmartScreen or Gatekeeper trust handling.
 
-Only NSIS (Windows), DEB (Linux), DMG (macOS architectures) and Docker are built. No portable or all-in-one archive is published.
+## Qualification scope
 
-Publication requires passing actual installer runs, populated 0.11.7 migration, first-run setup, real dataset preview/import, SNV computation, PLS training, nonempty Predictions, restart persistence, and a real Docker scientific calculation. The release uses those exact qualified installers and Docker image, without rebuilding them. Reports record elapsed times and distinguish locally unpacked application tests from actual installer qualification.
+This patch reuses the installer and two-phase build/promotion process qualified for 0.11.8. It does not repeat the populated-profile installation/update migration campaign. Qualification reports explicitly mark migration as not requested; 0.11.8 remains the previously qualified installer/update baseline.
 
-Source work in progress on the native architecture is preserved separately.
+The release gate runs targeted regressions for the corrected behavior and the existing installed-application smoke on each supported OS/CPU: first-run setup, dataset preview/import, SNV computation, PLS training, nonempty Predictions, saved-model replay, preferences and restart persistence. Docker runs its existing scientific smoke. Promotion publishes those exact qualified installers and image without rebuilding them.

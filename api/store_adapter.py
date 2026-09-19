@@ -2130,14 +2130,22 @@ class StoreAdapter:
 
             cv_chains: list[dict[str, Any]] = []
             refit_only: list[dict[str, Any]] = []
+            training_only: list[dict[str, Any]] = []
 
             for entry in ds_chains:
                 fold_count = entry.get("cv_fold_count") or 0
                 final_score = _coerce_score(entry.get("final_test_score"))
                 if fold_count > 0:
                     cv_chains.append(entry)
-                elif final_score is not None:
+                elif _has_meaningful_final_payload(entry):
+                    # A stored final model can have training observations only.
+                    # Missing held-out test data must not hide that model, and
+                    # must not be replaced by its training score for ranking.
                     refit_only.append(entry)
+                elif (_coerce_score(entry.get("cv_train_score")) is not None
+                      and entry.get("cv_val_score") is None
+                      and entry.get("cv_test_score") is None):
+                    training_only.append(entry)
 
                 if final_score is not None and (best_final_score is None or (higher_is_better and final_score > best_final_score) or (not higher_is_better and final_score < best_final_score)):
                     best_final_score = final_score
@@ -2152,13 +2160,23 @@ class StoreAdapter:
 
             cv_chains.sort(key=_cv_key, reverse=higher_is_better)
             top_cv = cv_chains[:n]
+            # Training-only fits are a separate, explicitly labelled group;
+            # their training scores never compete with held-out CV scores.
+            # Keep these fits visible like standalone final models, including
+            # all model families rather than truncating against old CV rows.
+            training_only.sort(
+                key=lambda row: (
+                    -float(row["cv_train_score"]) if higher_is_better else float(row["cv_train_score"]),
+                    str(row.get("chain_id", "")),
+                )
+            )
 
             # Build the ordered selection list, deduping by chain_id while
             # preserving emission order: top CV first, then refit-only,
             # then the best-final fallback if it is not already present.
             seen_chain_ids: set[str] = set()
             selected: list[tuple[dict[str, Any], bool]] = []
-            for entry in top_cv:
+            for entry in top_cv + training_only:
                 cid = entry.get("chain_id") or ""
                 if cid and cid in seen_chain_ids:
                     continue

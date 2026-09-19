@@ -83,7 +83,8 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     [prefs]
   );
 
-  const { getStepOptions } = useStepMetadataCatalog({ tierLevel });
+  // An explicit search also finds advanced models hidden by the browsing tier.
+  const { getStepOptions } = useStepMetadataCatalog({ tierLevel: search.trim() ? "all" : tierLevel });
 
   // Try to use the registry if available (Phase 2 feature)
   const registryContext = useNodeRegistryOptional();

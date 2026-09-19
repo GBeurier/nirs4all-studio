@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import importlib
 import inspect
+import sys
 from functools import lru_cache
 from typing import Any
 from uuid import uuid4
@@ -433,12 +434,35 @@ def import_operator_class(class_path: str, *, allow_callable: bool = False) -> A
     if not module_path or not attr:
         raise OperatorResolutionError(f"Unsupported operator reference '{class_path}'")
 
+    if module_path.split(".")[0] == "tabpfn":
+        from importlib.metadata import PackageNotFoundError, version
+
+        from .package_compatibility import compatibility_issues
+
+        installed = {}
+        for package in ("tabpfn", "scikit-learn"):
+            try:
+                installed[package] = version(package)
+            except PackageNotFoundError:
+                pass
+        conflicts = compatibility_issues("tabpfn", installed)
+        if conflicts:
+            raise OperatorResolutionError(
+                f"Cannot execute '{class_path}' in Python '{sys.executable}': {'; '.join(conflicts)}. "
+                "Reinstall TabPFN through Dependencies to resolve its compatible requirements."
+            )
+
     try:
         module = importlib.import_module(module_path)
-    except ImportError as exc:
-        raise OperatorResolutionError(str(exc), missing_dependency=True) from exc
-
-    obj = _lookup_module_attr(module, attr, allow_callable=allow_callable)
+        obj = _lookup_module_attr(module, attr, allow_callable=allow_callable)
+    except Exception as exc:
+        # Installed packages can fail with ABI errors, missing DLLs or an
+        # incompatible transitive dependency, not only ModuleNotFoundError.
+        raise OperatorResolutionError(
+            f"Cannot import '{class_path}' in Python '{sys.executable}': "
+            f"{type(exc).__name__}: {exc}",
+            missing_dependency=isinstance(exc, ImportError),
+        ) from exc
     if obj is None:
         raise OperatorResolutionError(f"Unsupported operator reference '{class_path}'")
     return obj

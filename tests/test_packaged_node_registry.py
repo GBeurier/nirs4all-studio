@@ -1,9 +1,9 @@
 """The installed Python backend must resolve the names shown by the UI palette."""
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 
 def test_source_installer_contains_the_same_operator_registry(tmp_path):

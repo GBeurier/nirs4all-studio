@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getDefaultSelectedMetricsForTaskTypes,
   getDefaultSelectionUpgradeCandidatesForTaskTypes,
@@ -15,6 +15,7 @@ import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 import type { DatasetTopChains } from "@/types/runs";
 
 export function useResultsPageState() {
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const { data: workspacesData } = useLinkedWorkspacesQuery();
   const activeWorkspace = workspacesData?.workspaces.find((workspace) => workspace.is_active) ?? null;
@@ -63,7 +64,12 @@ export function useResultsPageState() {
     filteredDatasets: datasetView.filteredDatasets,
     isLoading,
     metricContext,
-    refetch,
+    refetch: async () => {
+      await Promise.all([
+        refetch(),
+        queryClient.invalidateQueries({ queryKey: ["dataset-all-chains", activeWorkspace?.id] }),
+      ]);
+    },
     searchQuery,
     selectedMetrics,
     setSearchQuery,

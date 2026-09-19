@@ -8,6 +8,7 @@
  * 4. Completion
  */
 
+import { InstallationLogPanel } from "@/components/setup/InstallationLogPanel";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -190,11 +191,9 @@ export default function SetupWizard() {
         setTimeout(() => setCurrentStep("ready"), 500);
       } else {
         setInstallError(result.message);
-        setInstallProgress(100);
       }
     } catch (err) {
       setInstallError(err instanceof Error ? err.message : t("setupWizard.install.failed"));
-      setInstallProgress(100);
     }
   };
 
@@ -492,7 +491,7 @@ export default function SetupWizard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Progress value={installProgress} className="h-2" />
+                  {installProgress === 100 && !installError ? <Progress value={100} className="h-2" /> : <p className="text-xs text-muted-foreground">{installError ? "Installation stopped with an error" : "Working. Package download progress is shown in installation details."}</p>}
                   <p className="text-sm text-center text-muted-foreground">
                     {installMessage}
                   </p>
@@ -558,6 +557,7 @@ export default function SetupWizard() {
             )}
           </motion.div>
         </AnimatePresence>
+        <InstallationLogPanel active={currentStep === "install" && !installError && installProgress < 100} error={installError} />
       </div>
     </div>
   );

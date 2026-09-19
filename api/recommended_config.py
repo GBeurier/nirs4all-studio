@@ -21,6 +21,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from .package_compatibility import compatibility_issues, installation_requirements
 from .shared.gpu_detection import detect_gpu_hardware
 from .shared.logger import get_logger
 from .venv_manager import _user_data_dir, venv_manager
@@ -722,14 +723,22 @@ def _resolve_optional_install_spec(
     pkg_name: str,
     pkg_raw: Any,
     installed_version: str | None,
+    installed_packages: dict[str, str] | None = None,
 ) -> ResolvedInstallSpec | None:
-    """Resolve whether an optional package needs installation or upgrade."""
+    """Resolve optional installation, including explicitly requested compatibility repair."""
     min_spec = pkg_raw.get("min", pkg_raw.get("version", ""))
     recommended_ver = pkg_raw.get("recommended")
     if installed_version is not None and (not min_spec or _version_satisfies(installed_version, min_spec)):
-        return None
+        if not compatibility_issues(pkg_name, installed_packages or {}):
+            return None
+        # Repair dependencies of the explicitly selected installed release;
+        # do not silently switch its TabPFN version.
+        recommended_ver = installed_version
 
     display_spec = f"{pkg_name}=={recommended_ver}" if recommended_ver else f"{pkg_name}{min_spec}"
+    requirements = installation_requirements(pkg_name, recommended_ver)
+    if requirements:
+        display_spec += f" (with {', '.join(requirements)})"
     return ResolvedInstallSpec(
         package=pkg_name,
         version=recommended_ver,
@@ -989,7 +998,10 @@ def _compare_config_sync(
                 continue  # Skip uninstalled optional packages
             # v1.2 uses "min", v1.1 uses "version"
             version_spec = opt_data.get("min", opt_data.get("version", ""))
-            if version_spec and not _version_satisfies(installed_ver, version_spec):
+            conflicts = compatibility_issues(opt_name, installed)
+            if conflicts or (version_spec and not _version_satisfies(installed_ver, version_spec)):
+                if conflicts:
+                    version_spec = f"{opt_name}=={installed_ver} (with {', '.join(installation_requirements(opt_name, installed_ver))})"
                 diffs.append(PackageDiff(
                     name=opt_name,
                     installed_version=installed_ver,
@@ -1115,7 +1127,7 @@ async def align_config(request: AlignConfigRequest):
             if not _is_optional_python_compatible(opt_name, opt_data):
                 continue
             installed_ver = installed.get(norm_name)
-            install_spec = _resolve_optional_install_spec(opt_name, opt_data, installed_ver)
+            install_spec = _resolve_optional_install_spec(opt_name, opt_data, installed_ver, installed)
             if install_spec is not None:
                 to_install.append(install_spec)
 
@@ -1203,6 +1215,14 @@ async def align_config(request: AlignConfigRequest):
         failures=failure_details,
         requires_restart=requires_restart,
     )
+
+
+@router.get("/install-log")
+async def get_installation_log():
+    """Bounded current-session history; reading does not start or restart pip."""
+    from .install_log import installation_log
+
+    return installation_log.snapshot()
 
 
 @router.get("/setup-status", response_model=SetupStatusResponse)

@@ -34,6 +34,10 @@ export function ScoreCardTypeBadge({ row }: { row: ScoreCardRow }) {
     );
   }
 
+  if (row.cardType === "train" && row.foldCount === 0 && row.partition === "train") {
+    return <Badge variant="outline" className="text-[9px] shrink-0">Training only</Badge>;
+  }
+
   if (row.foldId) {
     return (
       <Badge variant="outline" className={cn("text-[9px] shrink-0", foldBadgeClasses(row.foldId))}>

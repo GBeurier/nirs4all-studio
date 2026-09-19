@@ -206,6 +206,21 @@ export function buildCrossvalScorePairs(row: ScoreCardRow, selectedMetrics: stri
 export function buildTrainScorePairs(row: ScoreCardRow, selectedMetrics: string[]): ScorePairData[] {
   const primaryMetric = getScoreCardPrimaryMetric(row);
   const secondaryMetrics = getSecondaryMetrics(row, selectedMetrics);
+  if (row.foldCount === 0 && row.partition === 'train') {
+    return [
+      {
+        label: `Train ${getScoreRowMetricLabel(primaryMetric)}`,
+        value: row.primaryTrainScore ?? getScoreMapValue(row.trainScores, primaryMetric),
+        metric: primaryMetric,
+        colorClass: 'font-semibold',
+      },
+      ...secondaryMetrics.map(metric => ({
+        label: `Train ${metric.label}`,
+        value: getScoreMapValue(row.trainScores, metric.key),
+        metric: metric.key,
+      })),
+    ];
+  }
   const primaryLabel = isClassificationTaskType(row.taskType)
     ? getScoreRowMetricLabel(primaryMetric)
     : regressionPrimaryLabel(primaryMetric);

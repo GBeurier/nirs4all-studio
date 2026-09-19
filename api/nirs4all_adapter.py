@@ -182,9 +182,8 @@ def _resolve_operator_class(name: str, step_type: str) -> Any:
         return import_operator_class(class_path, allow_callable=step_type == "model")
     except OperatorResolutionError as exc:
         http_exc = HTTPException(status_code=400, detail=str(exc))
-        # Surface whether the failure is a missing optional dependency so the
-        # preflight checker can keep valid-but-uninstalled operators out of the
-        # blocking issue list.
+        # Preserve dependency classification for callers. A missing optional
+        # dependency still prevents execution and must fail preflight.
         http_exc.operator_missing_dependency = exc.missing_dependency
         raise http_exc from exc
 
@@ -590,19 +589,14 @@ def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str | None]
         try:
             _resolve_operator_class(reference, resolve_type)
         except HTTPException as exc:
-            # Don't report registry-known operators whose optional package is
-            # simply not installed — they are valid, just optional deps.
-            if getattr(exc, "operator_missing_dependency", False):
-                pass
-            else:
-                issues.append({
-                    "step_id": step_id or None,
-                    "step_name": step_name,
-                    "step_type": step_type,
-                    "class_path": str(step.get("classPath", "") or "") or None,
-                    "function_path": str(step.get("functionPath", "") or "") or None,
-                    "error": str(exc.detail),
-                })
+            issues.append({
+                "step_id": step_id or None,
+                "step_name": step_name,
+                "step_type": step_type,
+                "class_path": str(step.get("classPath", "") or "") or None,
+                "function_path": str(step.get("functionPath", "") or "") or None,
+                "error": str(exc.detail),
+            })
 
     # Recurse into children (for containers like sample_augmentation)
     for child in step.get("children", []):

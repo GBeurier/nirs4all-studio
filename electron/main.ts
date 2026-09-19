@@ -10,6 +10,7 @@ import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 import { BackendManager, type BackendStatus } from "./backend-manager";
 import { EnvManager } from "./env-manager";
+import { getInstallLog, subscribeInstallLog } from "./env/install-log";
 import { resolveDocumentsDirectory } from "./workspace-location";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { applyPortablePathOverrides } from "./portable-paths";
@@ -557,6 +558,13 @@ ipcMain.handle("env:getCurrentEnvSummary", async () => {
 
 ipcMain.handle("env:isPortable", () => {
   return envManager.isPortable();
+});
+
+ipcMain.handle("env:getInstallLog", () => getInstallLog());
+subscribeInstallLog((snapshot) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("env:installLog", snapshot);
+  }
 });
 
 ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {

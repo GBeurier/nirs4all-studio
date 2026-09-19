@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .install_log import installation_log, installation_operation, redact_install_output, stream_install_process
 from .shared.logger import get_logger
 from .shared.runtime_paths import get_portable_backend_data_dir
 
@@ -291,6 +292,7 @@ class VenvManager:
             pass
         return total
 
+    @installation_operation
     def install_package(
         self,
         package: str,
@@ -364,58 +366,47 @@ class VenvManager:
             cmd.extend(extra_pip_args)
         cmd.extend(_recovery_wheel_install_options())
         cmd.append(pkg_spec)
+        from .package_compatibility import installation_requirements
 
-        output_lines = []
-        try:
-            # Run pip install
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
+        compatibility_requirements = installation_requirements(package, version)
+        cmd.extend(compatibility_requirements)
+        if compatibility_requirements:
+            installation_log.append(
+                f"Resolving {pkg_spec} with compatibility requirements: {', '.join(compatibility_requirements)}"
             )
 
-            # Stream output
-            for line in iter(process.stdout.readline, ""):
-                line = line.strip()
-                if line:
-                    output_lines.append(line)
-                    if progress_callback:
-                        # Estimate progress based on output
-                        if "Collecting" in line:
-                            progress_callback(20, line)
-                        elif "Downloading" in line:
-                            progress_callback(40, line)
-                        elif "Installing" in line:
-                            progress_callback(70, line)
-                        elif "Successfully" in line:
-                            progress_callback(95, line)
+        output_lines = []
 
-            process.wait(timeout=600)
+        def on_line(line):
+            installation_log.append(line)
+            output_lines.append(line)
+            del output_lines[:-250]
+            if progress_callback:
+                progress_callback(0, line)  # pip does not expose reliable total progress
 
-            if process.returncode != 0:
+        try:
+            returncode = stream_install_process(cmd, on_line, timeout=600)
+
+            if returncode != 0:
                 # Surface the real pip error: log full output and include the
                 # tail in the returned message so the caller can show it.
                 logger.warning(
                     "pip install %s failed with code %s. Output:\n%s",
                     pkg_spec,
-                    process.returncode,
+                    returncode,
                     "\n".join(output_lines),
                 )
                 tail = "\n".join(output_lines[-15:]) if output_lines else "(no output captured)"
                 return (
                     False,
-                    f"pip install failed with code {process.returncode}:\n{tail}",
+                    f"pip install failed with code {returncode}:\n{tail}",
                     output_lines,
                 )
 
         except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=10)
             return False, "Installation timed out after 600 seconds", output_lines
         except Exception as e:
-            return False, f"Installation failed: {e}", output_lines
+            return False, f"Installation failed: {redact_install_output(str(e))}", output_lines
 
         # Update metadata
         metadata = self._load_metadata() or {}
@@ -506,6 +497,7 @@ class VenvManager:
         """Check if a package is installed in the venv."""
         return self.get_package_version(package) is not None
 
+    @installation_operation
     def uninstall_package(
         self,
         package: str,

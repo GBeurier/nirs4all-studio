@@ -28,7 +28,11 @@ export function NewExperimentSelectableOptionCard({
       )}
     >
       <div className="flex items-center gap-3">
-        <Checkbox checked={selected} onCheckedChange={() => onToggle(optionId)} />
+        <Checkbox
+          checked={selected}
+          onClick={(event) => event.stopPropagation()}
+          onCheckedChange={() => onToggle(optionId)}
+        />
         <div className="flex-1 space-y-1">{children}</div>
       </div>
     </div>

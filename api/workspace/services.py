@@ -369,18 +369,11 @@ def _build_summary_synthetic_final_scores(row: dict[str, Any]) -> dict[str, Any]
 
 
 def _apply_summary_synthetic_refit_fallback(row: dict[str, Any]) -> None:
-    if _summary_has_meaningful_final_payload(row):
-        row["synthetic_refit"] = bool(row.get("synthetic_refit"))
-        return
+    # All result routes must preserve the same scientific partition semantics.
+    # In particular, training/CV scores cannot stand in for a real refit.
+    from api.store_adapter import _apply_synthetic_refit_fallback_inplace
 
-    if not _summary_has_cv_payload(row):
-        row["synthetic_refit"] = bool(row.get("synthetic_refit"))
-        return
-
-    row["final_test_score"] = _coerce_summary_score(row.get("cv_test_score"))
-    row["final_train_score"] = _coerce_summary_score(row.get("cv_train_score"))
-    row["final_scores"] = _build_summary_synthetic_final_scores(row)
-    row["synthetic_refit"] = True
+    _apply_synthetic_refit_fallback_inplace(row)
 
 
 def _summary_extract_model_params(expanded_config: Any, model_step_idx: Any) -> dict[str, Any] | None:
@@ -597,6 +590,7 @@ def _build_results_summary_payload(
 
         cv_rows: list[dict[str, Any]] = []
         refit_only_rows: list[dict[str, Any]] = []
+        training_only_rows: list[dict[str, Any]] = []
         best_final_row: dict[str, Any] | None = None
         best_final_score: float | None = None
 
@@ -605,8 +599,12 @@ def _build_results_summary_payload(
             final_score = _coerce_summary_score(row.get("final_test_score"))
             if fold_count > 0:
                 cv_rows.append(row)
-            elif final_score is not None:
+            elif _summary_has_meaningful_final_payload(row):
                 refit_only_rows.append(row)
+            elif (_coerce_summary_score(row.get("cv_train_score")) is not None
+                  and row.get("cv_val_score") is None
+                  and row.get("cv_test_score") is None):
+                training_only_rows.append(row)
 
             if final_score is not None and _summary_is_better(
                 final_score,
@@ -674,6 +672,13 @@ def _build_results_summary_payload(
             _selected.append(selected_row)
 
         for row in top_cv_rows:
+            _append_selected(row)
+        # Training observations remain visible separately from ranked CV.
+        training_only_rows.sort(key=lambda row: (
+            -float(row["cv_train_score"]) if higher_is_better else float(row["cv_train_score"]),
+            str(row.get("chain_id", "")),
+        ))
+        for row in training_only_rows:
             _append_selected(row)
         for row in refit_only_rows:
             _append_selected(row, is_refit_only=True)

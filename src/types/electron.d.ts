@@ -188,6 +188,8 @@ interface ElectronApi {
     options?: { installCorePackages?: boolean },
   ): Promise<DesktopEnvActionResult>;
   startEnvSetup(targetDir?: string): Promise<{ success: boolean; error?: string }>;
+  getInstallLog?(): Promise<import("./installLog").InstallLogSnapshot>;
+  onInstallLog?(callback: (snapshot: import("./installLog").InstallLogSnapshot) => void): () => void;
   onEnvSetupProgress(callback: (progress: {
     percent: number;
     step: string;

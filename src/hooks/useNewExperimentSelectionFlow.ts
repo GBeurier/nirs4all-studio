@@ -60,6 +60,11 @@ export function useNewExperimentSelectionFlow({
     const source = searchParams.get("source");
     const routeSelectionKey = `${source ?? ""}:${pipelineId ?? ""}`;
 
+    if (!pipelineId && source !== "editor") {
+      handledRouteSelectionRef.current = null;
+      return;
+    }
+
     if (handledRouteSelectionRef.current === routeSelectionKey) return;
 
     if (source === "editor") {
@@ -76,9 +81,13 @@ export function useNewExperimentSelectionFlow({
 
     if (!pipelineId || !rawPipelines) return;
 
-    handledRouteSelectionRef.current = routeSelectionKey;
     const pipeline = rawPipelines.find((candidate) => candidate.id === pipelineId);
-    if (pipeline && !selectedPipelineIds.includes(pipelineId)) {
+    // The catalog starts empty and can also be stale while it is being refreshed.
+    // Keep the route intent until the requested pipeline actually arrives.
+    if (!pipeline) return;
+
+    handledRouteSelectionRef.current = routeSelectionKey;
+    if (!selectedPipelineIds.includes(pipelineId)) {
       setSelectedPipelineIds([pipelineId]);
       toast.info(`Pipeline "${pipeline.name}" selected`);
     }

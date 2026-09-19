@@ -15,6 +15,7 @@
  * 7. done        — Summary + launch
  */
 
+import { InstallationLogPanel } from "@/components/setup/InstallationLogPanel";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "@/lib/motion";
@@ -376,11 +377,9 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
         setTimeout(() => setCurrentStep("done"), 500);
       } else {
         setInstallError(result.message);
-        setInstallProgress(100);
       }
     } catch (err) {
       setInstallError(err instanceof Error ? err.message : t("setupWizard.install.failed"));
-      setInstallProgress(100);
     }
   }, [effectiveExtras, selectedProfile, t]);
 
@@ -533,6 +532,8 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
             )}
           </motion.div>
         </AnimatePresence>
+        <InstallationLogPanel active={(currentStep === "env-progress" && !error) || (currentStep === "install" && !installError && installProgress < 100)}
+          backendEnabled={currentStep !== "env" && currentStep !== "env-progress"} error={error || installError} />
       </div>
     </div>
   );

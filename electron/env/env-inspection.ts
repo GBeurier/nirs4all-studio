@@ -151,13 +151,15 @@ export function inspectPythonPackages(pythonPath: string): Promise<InspectPython
       pythonPath,
       [
         "-c",
-        "import json, sys\n"
+        "import json, re, sys\n"
         + "from importlib import metadata as importlib_metadata\n"
         + "installed = {}\n"
         + "for dist in importlib_metadata.distributions():\n"
         + "    name = dist.metadata.get('Name')\n"
         + "    if name:\n"
-        + "        installed[name] = dist.version\n"
+        + "        normalized = re.sub(r'[-_.]+', '_', name).lower()\n"
+        // Match importlib.metadata.version: the first distribution on sys.path wins.
+        + "        installed.setdefault(normalized, dist.version)\n"
         + "payload = {\n"
         + "    'version': f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}',\n"
         + "    'installed': installed,\n"

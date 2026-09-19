@@ -1456,12 +1456,12 @@ def _extract_pipeline_info(pipeline_config: dict) -> tuple[str, str, str]:
         Tuple of (models_str, preprocessing_str, split_strategy)
         - models_str: Model names (truncated if too many)
         - preprocessing_str: Preprocessing names (truncated if too many)
-        - split_strategy: First splitter found or "KFold(5)"
+        - split_strategy: First splitter found or "No splitter in pipeline"
     """
     steps = pipeline_config.get("steps", [])
     models = []
     preprocessing = []
-    split_strategy = "KFold(5)"
+    split_strategy = "No splitter in pipeline"
 
     def extract_from_step(step: dict):
         """Recursively extract info from a step and its children/branches."""
@@ -2337,9 +2337,10 @@ def _execute_pipeline_training(
             models_dir = ensure_models_dir(workspace_path)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             model_filename = f"{pipeline.pipeline_id}_{run_id}_{timestamp}.n4a"
-            model_path = str(models_dir / model_filename)
+            export_path = str(models_dir / model_filename)
 
-            result.export(model_path)
+            result.export(export_path)
+            model_path = export_path
             log(f"[INFO] Model exported: {model_filename}")
         except Exception as e:
             log(f"[WARN] Model export failed: {e}")
@@ -3045,15 +3046,15 @@ class PipelineEstimate:
 
 
 def _estimate_fold_count(steps: list[dict[str, Any]], cv_folds: int | None = None) -> int:
-    """Estimate CV fold count from editor steps, with explicit request override."""
-    fold_count = cv_folds or 1
+    """Estimate folds from actual splitters; a request alone does not create CV."""
+    fold_count = 1
 
     def visit(step_list: list[dict[str, Any]]) -> None:
         nonlocal fold_count
         for step in step_list:
             if step.get("type") == "splitting":
                 params = step.get("params") or {}
-                raw_value = params.get("n_splits", params.get("cv_folds"))
+                raw_value = params.get("n_splits", params.get("cv_folds", cv_folds))
                 if isinstance(raw_value, (int, float)) and int(raw_value) > 0:
                     fold_count = int(raw_value)
 

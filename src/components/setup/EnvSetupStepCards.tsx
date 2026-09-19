@@ -360,7 +360,7 @@ export function InstallProgressStepCard({
         <CardDescription>{t("setupWizard.install.description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Progress value={installProgress} className="h-2" />
+        {installProgress === 100 && !installError ? <Progress value={100} className="h-2" /> : <p className="text-xs text-muted-foreground">{installError ? "Installation stopped with an error" : "Working. Package download progress is shown in installation details."}</p>}
         <p className="text-sm text-center text-muted-foreground">
           {installMessage}
         </p>

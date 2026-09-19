@@ -8,6 +8,7 @@ plus the dependency-scan response. Shared state (``venv_manager``,
 / ``api.updates._dependencies_cache`` and have it take effect here.
 """
 
+import asyncio
 import os
 import sys
 from datetime import datetime
@@ -71,6 +72,12 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
 
     Returns cached results if available. Use force_refresh=true to bypass cache.
     """
+    # pip inventory/update checks may wait on disk or network. Keep the ASGI
+    # event loop available for training progress and all other requests.
+    return await asyncio.to_thread(_get_dependencies_sync, force_refresh)
+
+
+def _get_dependencies_sync(force_refresh: bool = False) -> DependenciesResponse:
     runtime_info = _u.venv_manager.get_venv_info()
     runtime_path = str(runtime_info.path)
 
@@ -316,8 +323,8 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
                         break
 
     # Install the package
-    success, message, output = _u.venv_manager.install_package(
-        request.package,
+    success, message, output = await asyncio.to_thread(
+        _u.venv_manager.install_package, request.package,
         version=install_version,
         upgrade=install_upgrade,
     )
@@ -369,7 +376,7 @@ async def uninstall_dependency(request: PackageUninstallRequest) -> dict[str, An
     _u._ensure_runtime_mutable()
     _u._ensure_runtime_is_valid()
 
-    success, message = _u.venv_manager.uninstall_package(request.package)
+    success, message = await asyncio.to_thread(_u.venv_manager.uninstall_package, request.package)
 
     if not success:
         raise HTTPException(status_code=500, detail=message)
@@ -437,7 +444,7 @@ async def revert_dependency(request: PackageUninstallRequest) -> dict[str, Any]:
     if not recommended:
         raise HTTPException(status_code=400, detail=f"No recommended version for {request.package}")
 
-    success, message, output = _u.venv_manager.install_package(request.package, version=recommended)
+    success, message, output = await asyncio.to_thread(_u.venv_manager.install_package, request.package, version=recommended)
     _u._dependencies_cache.invalidate()
 
     new_version = _u.venv_manager.get_package_version(request.package)
@@ -475,8 +482,8 @@ async def update_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     _u._ensure_runtime_is_valid()
 
     # Update the package
-    success, message, output = _u.venv_manager.install_package(
-        request.package,
+    success, message, output = await asyncio.to_thread(
+        _u.venv_manager.install_package, request.package,
         upgrade=True,
     )
 

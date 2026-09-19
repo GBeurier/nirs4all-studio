@@ -382,7 +382,17 @@ def test_editor_runtime_canonical_resolves_boosting_classifier_names_without_cla
     ]
 
 
-def test_import_check_accepts_boosting_classifier_names_without_classpath():
+def test_import_check_accepts_boosting_classifier_names_without_classpath(monkeypatch):
+    # This tests name resolution, so provide importable optional packages.
+    # A missing package must be rejected by execution preflight.
+    import sys
+    from types import ModuleType
+
+    for package, class_name in [("xgboost", "XGBClassifier"), ("lightgbm", "LGBMClassifier")]:
+        module = ModuleType(package)
+        setattr(module, class_name, type(class_name, (), {}))
+        monkeypatch.setitem(sys.modules, package, module)
+
     steps = [
         {
             "id": "xgb-clf",

@@ -6,6 +6,7 @@
  * Only renders in Electron mode (env management via IPC).
  */
 
+import { InstallationLogPanel } from "@/components/setup/InstallationLogPanel";
 import { useTranslation } from "react-i18next";
 import {
   Card,
@@ -118,6 +119,7 @@ export function PythonEnvPicker() {
         onRefresh={loadEnvInfo}
       />
       <CardContent className="space-y-4">
+        <InstallationLogPanel active={isSettingUp || isAligning || isSwitching} backendEnabled={!isSettingUp} error={setupError || reviewError} />
         {isLoading ? (
           <LoadingPanel label={t("common.loading")} />
         ) : (

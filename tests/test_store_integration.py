@@ -428,6 +428,55 @@ class TestStoreAdapter:
         cv_chain = next(c for c in top_chains if c["chain_id"] == "chain-cv-final-winner")
         assert cv_chain.get("is_refit_only") is not True
 
+    def test_results_preserve_all_training_only_models_separately_from_cv(self, mock_polars_df):
+        rows = [{
+            "chain_id": f"train-{model}", "pipeline_id": f"pipe-{model}", "run_id": "run-new",
+            "dataset_name": "dataset_a", "metric": "rmse", "task_type": "regression",
+            "model_name": model, "model_class": model, "cv_fold_count": 0,
+            "cv_train_score": score, "cv_val_score": None, "cv_test_score": None,
+            "cv_scores": {"train": {"rmse": score}},
+        } for model, score in [("PLSRegression", 0.3), ("Ridge", 0.2), ("TabPFNRegressor", 0.1)]]
+        rows.insert(0, {
+            "chain_id": "old-cv", "pipeline_id": "old-pipe", "dataset_name": "dataset_a",
+            "model_name": "Old model", "model_class": "Old", "metric": "rmse",
+            "cv_fold_count": 3, "cv_val_score": 0.05,
+        })
+        store = MagicMock()
+        store.query_chain_summaries.return_value = mock_polars_df(rows)
+        adapter = self._make_adapter(store)
+        adapter._get_pipeline_metadata_map = MagicMock(return_value={})
+        chains = adapter.get_dataset_top_chains(n=1)["datasets"][0]["top_chains"]
+        assert [chain["model_name"] for chain in chains] == ["Old model", "TabPFNRegressor", "Ridge", "PLSRegression"]
+        for chain in chains[1:]:
+            assert chain["fold_count"] == 0
+            assert chain["avg_train_score"] is not None
+            assert chain["avg_val_score"] is None
+            assert chain["final_train_score"] is None
+            assert not chain.get("is_refit_only")
+
+    def test_get_dataset_top_chains_keeps_observed_final_training_without_test(self, mock_polars_df):
+        """A real final training score is visible without inventing a test score."""
+        mock_store = MagicMock()
+        mock_store.query_chain_summaries.return_value = mock_polars_df([{
+            "chain_id": "final-train-only", "run_id": "run-001", "pipeline_id": "pipe-001",
+            "dataset_name": "dataset_a", "metric": "rmse", "task_type": "regression",
+            "model_name": "TabPFNRegressor", "model_class": "TabPFNRegressor",
+            "cv_fold_count": 0, "cv_val_score": None, "cv_scores": {},
+            "final_test_score": None, "final_train_score": 0.12,
+            "final_scores": {"train": {"rmse": 0.12, "r2": 0.85}},
+        }])
+        adapter = self._make_adapter(mock_store)
+        adapter._get_pipeline_metadata_map = MagicMock(return_value={})
+        result = adapter.get_dataset_top_chains()
+        rows = result["datasets"][0]["top_chains"]
+        assert len(rows) == 1
+        assert rows[0]["model_name"] == "TabPFNRegressor"
+        assert rows[0]["final_train_score"] == 0.12
+        assert rows[0]["final_test_score"] is None
+        assert rows[0]["avg_val_score"] is None
+        assert rows[0]["fold_count"] == 0
+        assert rows[0]["final_scores"] == {"train": {"rmse": 0.12, "r2": 0.85}}
+
     def test_get_dataset_top_chains_only_loads_metadata_for_selected(self, mock_polars_df):
         """``_get_pipeline_metadata_map`` must be called only with the
         pipeline ids of chains that survive ranking."""

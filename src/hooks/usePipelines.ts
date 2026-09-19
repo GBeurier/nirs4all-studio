@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback, useMemo, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/transport";
 import type {
   Pipeline,
@@ -24,6 +25,7 @@ interface UsePipelinesOptions {
 
 export function usePipelines(options: UsePipelinesOptions = {}) {
   const { autoFetch = true } = options;
+  const queryClient = useQueryClient();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [presets, setPresets] = useState<PipelinePreset[]>([]);
@@ -59,12 +61,14 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
         taskType: p.task_type as Pipeline["taskType"] | undefined,
       }));
       setPipelines(formattedPipelines);
+      // Run selection reads this same catalog through React Query.
+      queryClient.setQueryData(["pipelines"], response);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch pipelines");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   // Fetch presets
   const fetchPresets = useCallback(async () => {
@@ -166,6 +170,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
 
       if (response.success) {
         setPipelines(prev => prev.filter(p => p.id !== id));
+        await queryClient.invalidateQueries({ queryKey: ["pipelines"] });
         return true;
       }
       return false;
@@ -173,7 +178,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       setError(err instanceof Error ? err.message : "Failed to delete pipeline");
       return false;
     }
-  }, []);
+  }, [queryClient]);
 
   // Clone pipeline
   const clonePipeline = useCallback(async (
@@ -219,6 +224,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
         );
         return false;
       }
+      await queryClient.invalidateQueries({ queryKey: ["pipelines"] });
       return true;
     } catch (err) {
       // Revert on error
@@ -228,7 +234,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       setError(err instanceof Error ? err.message : "Failed to toggle favorite");
       return false;
     }
-  }, [pipelines]);
+  }, [pipelines, queryClient]);
 
   // Export pipeline to JSON
   const exportPipeline = useCallback((id: string): string | null => {

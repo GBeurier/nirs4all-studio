@@ -51,13 +51,13 @@ export function packagedWheelInstallOptions(): string[] {
 
 /** Use the qualified library bytes carried by this installer, independent of PyPI. */
 export function resolvePackagedRequirements(requirements: readonly string[]): string[] {
-  if (!requirements.some(spec => /^nirs4all(?:[=<>!~\[]|$)/i.test(spec))) return [...requirements];
+  if (!requirements.some(spec => /^nirs4all(?:[=<>!~[]|$)/i.test(spec))) return [...requirements];
   const version = loadRecommendedConfig<{ nirs4all: string }>().nirs4all;
   const filename = `nirs4all-${version}-py3-none-any.whl`;
   const candidates = packagedWheelDirectories().map(directory => path.join(directory, filename));
   const wheel = candidates.find(candidate => fs.existsSync(candidate));
   if (!wheel) throw new Error(`The qualified nirs4all wheel is missing from this Studio installation: ${candidates[0]}`);
-  return requirements.map(spec => /^nirs4all(?:[=<>!~\[]|$)/i.test(spec) ? wheel : spec);
+  return requirements.map(spec => /^nirs4all(?:[=<>!~[]|$)/i.test(spec) ? wheel : spec);
 }
 
 export type EnvStatus = "none" | "downloading" | "extracting" | "creating_venv" | "installing" | "ready" | "error";

@@ -957,3 +957,33 @@ def ordinary_release_engine_policy(monkeypatch):
     from api import recommended_config
 
     monkeypatch.setattr(recommended_config, "recovery_nirs4all_version", lambda: None)
+
+
+def test_failed_export_does_not_advertise_nonexistent_model(stub_training_deps, tmp_path):
+    def fail_export(path):
+        raise ValueError("No predictions available to export")
+
+    stub_training_deps["install"](lambda **kwargs: SimpleNamespace(export=fail_export))
+    result = runs_api._execute_pipeline_training(
+        _pipeline(), "dataset-a", str(tmp_path), "run-1", engine="legacy",
+    )
+    assert result["model_path"] is None
+    assert any("Model export failed" in line for line in result["logs"])
+
+
+def test_pipeline_without_splitter_does_not_claim_cross_validation():
+    models, _, split = runs_api._extract_pipeline_info({"steps": [
+        {"type": "model", "name": "PLSRegression"},
+        {"type": "model", "name": "Ridge"},
+        {"type": "model", "name": "TabPFN"},
+    ]})
+    assert models == "PLSRegression + Ridge + TabPFN"
+    assert split == "No splitter in pipeline"
+
+
+def test_requested_cv_count_does_not_invent_missing_splitter():
+    assert runs_api._estimate_fold_count([{"type": "model", "name": "Ridge"}], cv_folds=5) == 1
+    assert runs_api._estimate_fold_count([
+        {"type": "splitting", "name": "KFold", "params": {"n_splits": 3}},
+        {"type": "model", "name": "Ridge"},
+    ], cv_folds=5) == 3

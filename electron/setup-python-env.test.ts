@@ -77,33 +77,16 @@ describe("setup-python-env", () => {
     ]);
   });
 
-  it("installs torch separately with the Linux CPU wheel index for the standalone CPU bundle scope", () => {
-    const phases = setupPythonEnvModule.getDependencyInstallPhases("cpu", "linux");
-
-    expect(phases).toHaveLength(2);
-    expect(phases[0]).toEqual({
-      label: "torch runtime",
-      packageSpecs: ["torch>=2.1.0"],
-      extraPipArgs: ["--index-url", "https://download.pytorch.org/whl/cpu"],
-    });
-    expect(phases[1].label).toBe("backend dependencies");
-    expect(phases[1].extraPipArgs).toEqual([]);
-    expect(phases[1].packageSpecs).toContain("pyopls>=20.0");
-    expect(phases[1].packageSpecs).toContain("trendfitter>=0.0.6");
-    expect(phases[1].packageSpecs).toContain("xgboost>=2.0.0");
-    expect(phases[1].packageSpecs).toContain("umap-learn>=0.5.0");
-    expect(phases[1].packageSpecs).not.toContain("torch>=2.1.0");
-    expect(phases[1].packageSpecs).not.toContain("tabpfn>=2.0.0");
-    expect(phases[1].packageSpecs).not.toContain("tabicl>=2.0.0");
-  });
-
-  it("keeps macOS CPU standalone installs on the default index", () => {
-    const phases = setupPythonEnvModule.getDependencyInstallPhases("cpu", "darwin");
-
+  it.each(["linux", "darwin", "win32"])("keeps recovery CPU Lite provisioning lightweight on %s", (platform) => {
+    const phases = setupPythonEnvModule.getDependencyInstallPhases("cpu-lite", platform);
     expect(phases).toHaveLength(1);
     expect(phases[0].label).toBe("backend dependencies");
     expect(phases[0].extraPipArgs).toEqual([]);
-    expect(phases[0].packageSpecs).toContain("torch>=2.1.0");
+    expect(phases[0].packageSpecs).toEqual(expect.arrayContaining([
+      "fastapi>=0.115.0", "uvicorn[standard]>=0.34.0", "msgpack>=1.0.0",
+    ]));
+    // GPU/foundation-model stacks belong to explicit optional installs, not bootstrap.
+    expect(phases[0].packageSpecs.some(spec => /^(torch|tabpfn|tabicl|tensorflow|nvidia-|umap-learn)/.test(spec))).toBe(false);
   });
 
   it("resolves an explicit local nirs4all source path", () => {

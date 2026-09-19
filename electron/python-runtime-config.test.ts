@@ -39,7 +39,7 @@ describe("python-runtime-config", () => {
     ]);
     expect(runtimeConfig.PRODUCT_PROFILES["cpu-lite"].extraPackageNames).toEqual([]);
     for (const platform of ["linux", "win32", "darwin"]) {
-      expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform })).toEqual(["nirs4all==1.0.2"]);
+      expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform })).toEqual(["nirs4all==1.0.3"]);
     }
   });
 
@@ -55,7 +55,7 @@ describe("python-runtime-config", () => {
   it("maps legacy installer flavors onto product profiles while preserving the managed runtime footprint", () => {
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "darwin")).toBe("gpu-mps");
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "win32")).toBe("gpu-cuda-torch");
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==1.0.2");
+    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==1.0.3");
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES.some((pkg) => pkg.startsWith("torch"))).toBe(false);
   });
 

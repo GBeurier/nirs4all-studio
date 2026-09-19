@@ -505,6 +505,42 @@ describe("collapseStandaloneRefitSummaries", () => {
 });
 
 describe("chainSummaryToRow", () => {
+  it("labels splitless observations as training, never CV or refit", () => {
+    const summary = chainSummaryToRow(makeChainSummary({
+      model_name: "TabPFNRegressor", cv_fold_count: 0, cv_train_score: 0.12,
+      cv_scores: { train: { rmse: 0.12 } },
+    }));
+    const [top] = datasetChainsToRows([makeChain({
+      model_name: "TabPFNRegressor", fold_count: 0, avg_train_score: 0.12,
+      scores: { train: { rmse: 0.12 }, val: {}, test: {} },
+    })], "rmse", "regression");
+    for (const row of [summary, top]) {
+      expect(row.cardType).toBe("train");
+      expect(row.foldCount).toBe(0);
+      expect(row.partition).toBe("train");
+      expect(row.trainScores).toEqual({ rmse: 0.12 });
+      expect(row.primaryTestScore).toBeNull();
+      expect(row.primaryValScore).toBeNull();
+      expect(row.hasRefitArtifact).toBe(false);
+    }
+  });
+
+  it("preserves observed training metric maps without filling validation/test", () => {
+    const row = chainSummaryToRow(makeChainSummary({
+      cv_fold_count: 2, cv_scores: { train: { rmse: 0.12, r2: 0.85 }, val: {}, test: {} },
+      cv_train_score: 0.12,
+    }));
+    expect(row.trainScores).toEqual({ rmse: 0.12, r2: 0.85 });
+    expect(row.valScores).toEqual({});
+    expect(row.testScores).toEqual({});
+    const [top] = datasetChainsToRows([makeChain({
+      fold_count: 2, avg_train_score: 0.12, scores: { train: { rmse: 0.12, r2: 0.85 }, val: {}, test: {} },
+    })], "rmse", "regression");
+    expect(top.trainScores).toEqual({ rmse: 0.12, r2: 0.85 });
+    expect(top.valScores).toEqual({});
+    expect(top.testScores).toEqual({});
+  });
+
   it("keeps CV-only summaries as CV cards, including old synthetic fallback payloads", () => {
     for (const synthetic of [false, true]) {
       const row = chainSummaryToRow(makeChainSummary({
