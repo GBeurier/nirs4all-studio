@@ -525,8 +525,6 @@ session.
 | `npm run electron:preview` | Preview Electron production build |
 | `npm run release` | Build an unpublished installer candidate locally |
 | `npm run release:clean` | Clean and rebuild an unpublished installer candidate |
-| `npm run release:all-in-one` | Build an unpublished portable archive candidate |
-| `npm run release:all-in-one:clean` | Clean and rebuild an unpublished archive candidate |
 
 ### Desktop Release Profiles
 
@@ -538,10 +536,9 @@ library/plugin interop and does not use a user venv, PATH discovery, or runtime
 
 ```bash
 npm run release -- --platform linux --flavor cpu
-npm run release:all-in-one -- --platform linux --arch x64
 ```
 
-Portable archives use `release:all-in-one`. Legacy `--standalone`, non-CPU
+Portable and all-in-one releases are disabled. Legacy `--standalone`, non-CPU
 flavors, `--platform all`, and cross-host installer builds are rejected.
 
 ### npm Scripts - Packaging

@@ -267,7 +267,15 @@ impl NativeUpdater {
         } else {
             "deb"
         };
-        let (can_apply, reason) = if env::var_os("APPIMAGE").is_some() {
+        let installer_release = self
+            .release
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|release| is_installer_asset(&release.asset_name));
+        let (can_apply, reason) = if installer_release {
+            (false, "installer_release")
+        } else if env::var_os("APPIMAGE").is_some() {
             (false, "appimage")
         } else if !self.config.all_in_one {
             (false, "managed_install")
@@ -436,8 +444,8 @@ impl NativeUpdater {
             "asset_name": release.asset_name,
             "checksum_sha256": release.sha256,
             "is_prerelease": release.prerelease,
-            "installer_download_url": null,
-            "installer_asset_name": null,
+            "installer_download_url": is_installer_asset(&release.asset_name).then_some(&release.download_url),
+            "installer_asset_name": is_installer_asset(&release.asset_name).then_some(&release.asset_name),
         })
     }
 
@@ -453,8 +461,8 @@ impl NativeUpdater {
             "download_size_bytes": release.size,
             "release_notes": release.notes,
             "release_url": release.release_url,
-            "installer_download_url": null,
-            "installer_asset_name": null,
+            "installer_download_url": is_installer_asset(&release.asset_name).then_some(&release.download_url),
+            "installer_asset_name": is_installer_asset(&release.asset_name).then_some(&release.asset_name),
             "can_apply_in_place": capability["can_apply_in_place"],
             "update_channel": capability["channel"],
             "install_kind": capability["install_kind"],
@@ -1292,7 +1300,7 @@ fn parse_release(
         .and_then(Value::as_array)
         .ok_or("GitHub release assets are missing")?;
     let asset = select_platform_asset(assets)
-        .ok_or("No matching all-in-one asset for this platform and architecture")?;
+        .ok_or("No matching installer or legacy archive for this platform and architecture")?;
     let name = asset
         .get("name")
         .and_then(Value::as_str)
@@ -1374,6 +1382,26 @@ fn select_platform_asset(assets: &[Value]) -> Option<&Value> {
     } else {
         "zip"
     };
+    // Prefer the native installer. Releases no longer need to manufacture an
+    // all-in-one archive merely for discovery by installed desktop clients.
+    let installer_suffix = match os {
+        "win" => format!("-win-{arch}.exe"),
+        "mac" => format!("-mac-{arch}.dmg"),
+        _ => format!("-linux-{}.deb", if arch == "x64" { "amd64" } else { arch }),
+    };
+    if let Some(installer) = assets.iter().find(|asset| {
+        let name = asset
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        name.ends_with(&installer_suffix)
+            || (os == "linux" && name.ends_with(&format!("-linux-{arch}.deb")))
+            || (os == "mac" && name.ends_with("-mac-universal.dmg"))
+    }) {
+        return Some(installer);
+    }
+    // Retain discovery for already-published portable installations only.
     let suffix = format!("-all-in-one-{os}-{arch}.{extension}");
     assets.iter().find(|asset| {
         let name = asset
@@ -1383,6 +1411,18 @@ fn select_platform_asset(assets: &[Value]) -> Option<&Value> {
             .to_ascii_lowercase();
         name.ends_with(&suffix)
     })
+}
+
+fn is_installer_asset(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    match std::path::Path::new(&name)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+    {
+        Some("exe") => !name.ends_with("-portable.exe"),
+        Some("dmg" | "deb") => true,
+        _ => false,
+    }
 }
 
 fn update_redirect_policy(fixture: bool) -> Policy {
@@ -1973,6 +2013,8 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
 fn copy_tree_portable(source: &Path, destination: &Path) -> Result<(), String> {
     fs::create_dir(destination)
         .map_err(|error| format!("Could not prepare replacement directory: {error}"))?;
+    #[cfg(unix)]
+    #[cfg(unix)]
     let root = source.canonicalize().map_err(|error| error.to_string())?;
     let mut pending = vec![(source.to_path_buf(), destination.to_path_buf())];
     while let Some((from, to)) = pending.pop() {
@@ -2372,6 +2414,33 @@ mod tests {
         );
         assert_eq!(download_progress_bucket(1, 0), 0);
         assert_eq!(download_progress_bucket(u64::MAX, 1), 80);
+    }
+
+    #[test]
+    fn installer_only_release_is_discoverable_and_preferred_to_legacy_archives() {
+        let arch = if cfg!(target_arch = "aarch64") {
+            "arm64"
+        } else {
+            "x64"
+        };
+        let name = if cfg!(windows) {
+            format!("nirs4all.Studio-0.11.8-win-{arch}.exe")
+        } else if cfg!(target_os = "macos") {
+            format!("nirs4all.Studio-0.11.8-mac-{arch}.dmg")
+        } else {
+            format!(
+                "nirs4all.Studio-0.11.8-linux-{}.deb",
+                if arch == "x64" { "amd64" } else { arch }
+            )
+        };
+        let assets = vec![
+            json!({"name": name}),
+            json!({"name": format!("{name}.sha256")}),
+        ];
+        assert_eq!(select_platform_asset(&assets).unwrap()["name"], name);
+        assert!(is_installer_asset(&name));
+        assert!(!is_installer_asset("studio-win-x64-portable.exe"));
+        assert!(!is_installer_asset("studio-all-in-one-win-x64.zip"));
     }
 
     #[test]

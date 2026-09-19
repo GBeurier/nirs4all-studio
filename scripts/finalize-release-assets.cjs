@@ -11,25 +11,18 @@ const PAYLOAD_SUFFIXES = Object.freeze([
   ".zip",
 ]);
 
-function expectedPublishedNames(version, includeAllInOne = true) {
+function expectedPublishedNames(version, includeAllInOne = false) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`Release version is invalid: ${version}`);
   }
+  if (includeAllInOne) throw new Error("All-in-one publication is disabled; publish installers only");
   const installers = [
     `nirs4all.Studio-${version}-linux-amd64.deb`,
-    `nirs4all.Studio-${version}-linux-x86_64.AppImage`,
     `nirs4all.Studio-${version}-mac-arm64.dmg`,
     `nirs4all.Studio-${version}-mac-x64.dmg`,
-    `nirs4all.Studio-${version}-win-x64-portable.exe`,
     `nirs4all.Studio-${version}-win-x64.exe`,
   ];
-  const allInOne = [
-    `nirs4all.Studio-${version}-all-in-one-linux-x64.tar.gz`,
-    `nirs4all.Studio-${version}-all-in-one-mac-arm64.zip`,
-    `nirs4all.Studio-${version}-all-in-one-mac-x64.zip`,
-    `nirs4all.Studio-${version}-all-in-one-win-x64.zip`,
-  ];
-  return (includeAllInOne ? [...installers, ...allInOne] : installers).sort();
+  return installers.sort();
 }
 
 function canonicalPublishedName(name) {

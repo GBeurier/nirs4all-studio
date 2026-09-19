@@ -50,7 +50,8 @@ describe("SetupWizard packaged installation verification", () => {
     expect(container.textContent).toContain("required packages are ready");
     expect(mocks.config).not.toHaveBeenCalled();
     await act(async () => openButton().click());
-    expect(mocks.diff).toHaveBeenCalledTimes(2);
+    expect(mocks.diff).toHaveBeenCalledTimes(1);
+    expect(mocks.inventory).toHaveBeenCalledTimes(1);
     expect(mocks.diff).toHaveBeenCalledWith("cpu", false, false);
     expect(mocks.complete).toHaveBeenCalledWith({ profile: "cpu" });
     expect(mocks.navigate).toHaveBeenCalledWith("/datasets", { replace: true });
@@ -75,10 +76,10 @@ describe("SetupWizard packaged installation verification", () => {
 
   it("refuses a runtime that becomes unavailable before completion", async () => {
     await mount();
-    mocks.inventory.mockRejectedValue(new Error("Runtime unavailable"));
+    mocks.complete.mockRejectedValue(new Error("Runtime unavailable"));
     await act(async () => openButton().click());
     expect(container.textContent).toContain("Runtime unavailable");
-    expect(mocks.complete).not.toHaveBeenCalled();
+    expect(mocks.complete).toHaveBeenCalledWith({ profile: "cpu" });
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
 

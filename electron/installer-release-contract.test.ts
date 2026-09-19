@@ -54,10 +54,6 @@ function writeLinuxOutputs(stagingRoot: string): string {
   fs.writeFileSync(path.join(backendRoot, "contract.ok"), "valid");
   fs.writeFileSync(path.join(nativeRoot, "studio-sidecar"), "sidecar");
   fs.writeFileSync(
-    path.join(stagingRoot, "nirs4all Studio-0.10.3-linux-x64.AppImage"),
-    "appimage",
-  );
-  fs.writeFileSync(
     path.join(stagingRoot, "nirs4all Studio-0.10.3-linux-x64.deb"),
     "deb",
   );
@@ -71,7 +67,6 @@ function writeWindowsOutputs(stagingRoot: string): string {
   fs.writeFileSync(path.join(backendRoot, "contract.ok"), "valid");
   fs.writeFileSync(path.join(nativeRoot, "studio-sidecar.exe"), "sidecar");
   fs.writeFileSync(path.join(stagingRoot, "nirs4all Studio Setup 0.10.3.exe"), "nsis");
-  fs.writeFileSync(path.join(stagingRoot, "nirs4all Studio-0.10.3-portable.exe"), "portable");
   return backendRoot;
 }
 
@@ -131,7 +126,7 @@ describe("installer release post-package contract", () => {
     const root = temporaryRoot();
     const releaseRoot = path.join(root, "release");
     writeLinuxOutputs(releaseRoot);
-    const before = fs.readFileSync(path.join(releaseRoot, "nirs4all Studio-0.10.3-linux-x64.AppImage"));
+    const before = fs.readFileSync(path.join(releaseRoot, "nirs4all Studio-0.10.3-linux-x64.deb"));
     const smokeProduct = vi.fn().mockRejectedValue(new Error("installed package import failed"));
     await expect(contract.packageAndVerifyInstallerOutputs({
       releaseRoot,
@@ -143,7 +138,7 @@ describe("installer release post-package contract", () => {
       smokeProduct,
     })).rejects.toThrow("installed package import failed");
     expect(smokeProduct).toHaveBeenCalledWith(expect.objectContaining({ platform: "linux" }));
-    expect(fs.readFileSync(path.join(releaseRoot, "nirs4all Studio-0.10.3-linux-x64.AppImage"))).toEqual(before);
+    expect(fs.readFileSync(path.join(releaseRoot, "nirs4all Studio-0.10.3-linux-x64.deb"))).toEqual(before);
   });
 
   it("publishes only the fresh, unambiguous invocation after two-stage verification", async () => {
@@ -166,7 +161,6 @@ describe("installer release post-package contract", () => {
 
     expect(result.producedNames).toEqual([
       "linux-unpacked",
-      "nirs4all Studio-0.10.3-linux-x64.AppImage",
       "nirs4all Studio-0.10.3-linux-x64.deb",
     ]);
     expect(result.outputs[0]?.backendRoot).toBe(
@@ -536,7 +530,7 @@ describe("installer release post-package contract", () => {
       smokeProduct: () => undefined,
       smokeSidecar: () => {
         fs.appendFileSync(
-          path.join(staging, "nirs4all Studio-0.10.3-linux-x64.AppImage"),
+          path.join(staging, "nirs4all Studio-0.10.3-linux-x64.deb"),
           "tampered",
         );
       },
@@ -618,7 +612,7 @@ describe("installer release post-package contract", () => {
     writeLinuxOutputs(releaseRoot);
     const appImage = path.join(
       releaseRoot,
-      "nirs4all Studio-0.10.3-linux-x64.AppImage",
+      "nirs4all Studio-0.10.3-linux-x64.deb",
     );
     fs.writeFileSync(appImage, "old-appimage");
     let smokeCount = 0;
@@ -648,7 +642,7 @@ describe("installer release post-package contract", () => {
     writeLinuxOutputs(releaseRoot);
     const appImage = path.join(
       releaseRoot,
-      "nirs4all Studio-0.10.3-linux-x64.AppImage",
+      "nirs4all Studio-0.10.3-linux-x64.deb",
     );
     fs.writeFileSync(appImage, "old-post-check");
     let verifyCount = 0;

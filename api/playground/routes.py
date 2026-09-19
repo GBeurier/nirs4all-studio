@@ -769,60 +769,8 @@ async def list_operators():
     Returns preprocessing, augmentation, splitting, and filter operators with their
     metadata, parameters, and categories.
     """
-    if not NIRS4ALL_AVAILABLE:
-        return {
-            "preprocessing": [],
-            "augmentation": [],
-            "splitting": [],
-            "filter": [],
-            "total": 0
-        }
-
-    preprocessing = get_preprocessing_methods()
-    augmentation = get_augmentation_methods()
-    splitting = get_splitter_methods()
-    filters = get_filter_methods()
-
-    # Group by category
-    preprocessing_by_category = {}
-    for method in preprocessing:
-        cat = method.get("category", "other")
-        if cat not in preprocessing_by_category:
-            preprocessing_by_category[cat] = []
-        preprocessing_by_category[cat].append(method)
-
-    augmentation_by_category = {}
-    for method in augmentation:
-        cat = method.get("category", "other")
-        if cat not in augmentation_by_category:
-            augmentation_by_category[cat] = []
-        augmentation_by_category[cat].append(method)
-
-    splitting_by_category = {}
-    for method in splitting:
-        cat = method.get("category", "other")
-        if cat not in splitting_by_category:
-            splitting_by_category[cat] = []
-        splitting_by_category[cat].append(method)
-
-    filter_by_category = {}
-    for method in filters:
-        cat = method.get("category", "other")
-        if cat not in filter_by_category:
-            filter_by_category[cat] = []
-        filter_by_category[cat].append(method)
-
-    return {
-        "preprocessing": preprocessing,
-        "preprocessing_by_category": preprocessing_by_category,
-        "augmentation": augmentation,
-        "augmentation_by_category": augmentation_by_category,
-        "splitting": splitting,
-        "splitting_by_category": splitting_by_category,
-        "filter": filters,
-        "filter_by_category": filter_by_category,
-        "total": len(preprocessing) + len(augmentation) + len(splitting) + len(filters)
-    }
+    from ..library_playground_views import list_operators as build
+    return build()
 
 
 @router.post("/validate")
@@ -870,77 +818,8 @@ async def get_presets():
 
     Returns predefined pipeline configurations for common use cases.
     """
-    presets = [
-        {
-            "id": "snv_basic",
-            "name": "SNV Basic",
-            "description": "Standard Normal Variate for scatter correction",
-            "category": "preprocessing",
-            "steps": [
-                {"type": "preprocessing", "name": "StandardNormalVariate", "params": {}}
-            ]
-        },
-        {
-            "id": "snv_savgol",
-            "name": "SNV + Savitzky-Golay",
-            "description": "Scatter correction with smoothing",
-            "category": "preprocessing",
-            "steps": [
-                {"type": "preprocessing", "name": "StandardNormalVariate", "params": {}},
-                {"type": "preprocessing", "name": "SavitzkyGolay", "params": {"window_length": 11, "polyorder": 2}}
-            ]
-        },
-        {
-            "id": "derivative_first",
-            "name": "First Derivative",
-            "description": "First derivative using Savitzky-Golay",
-            "category": "preprocessing",
-            "steps": [
-                {"type": "preprocessing", "name": "SavitzkyGolay", "params": {"window_length": 11, "polyorder": 2, "deriv": 1}}
-            ]
-        },
-        {
-            "id": "kfold_5",
-            "name": "5-Fold CV",
-            "description": "Standard 5-fold cross-validation",
-            "category": "splitting",
-            "steps": [
-                {"type": "splitting", "name": "KFold", "params": {"n_splits": 5, "shuffle": True, "random_state": 42}}
-            ]
-        },
-        {
-            "id": "stratified_kfold_5",
-            "name": "Stratified 5-Fold CV",
-            "description": "5-fold CV with stratification by target",
-            "category": "splitting",
-            "steps": [
-                {"type": "splitting", "name": "StratifiedKFold", "params": {"n_splits": 5, "shuffle": True, "random_state": 42}}
-            ]
-        },
-        {
-            "id": "train_test_80_20",
-            "name": "80/20 Train-Test Split",
-            "description": "Simple train-test split",
-            "category": "splitting",
-            "steps": [
-                {"type": "splitting", "name": "ShuffleSplit", "params": {"n_splits": 1, "test_size": 0.2, "random_state": 42}}
-            ]
-        },
-        {
-            "id": "full_pipeline",
-            "name": "Full NIRS Pipeline",
-            "description": "Complete preprocessing with MSC, derivative, scaling, and 5-fold CV",
-            "category": "combined",
-            "steps": [
-                {"type": "preprocessing", "name": "MultiplicativeScatterCorrection", "params": {}},
-                {"type": "preprocessing", "name": "SavitzkyGolay", "params": {"window_length": 11, "polyorder": 2, "deriv": 1}},
-                {"type": "preprocessing", "name": "StandardScaler", "params": {}},
-                {"type": "splitting", "name": "KFold", "params": {"n_splits": 5, "shuffle": True, "random_state": 42}}
-            ]
-        },
-    ]
-
-    return {"presets": presets, "total": len(presets)}
+    from ..library_playground_views import get_presets as build
+    return build()
 
 
 @router.get("/capabilities")

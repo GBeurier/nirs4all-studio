@@ -10,6 +10,8 @@ import type { BrowserWindow as BrowserWindowInstance } from "electron";
 import type { ErrorEvent as SentryErrorEvent } from "@sentry/electron/main";
 import { EnvManager } from "./env-manager";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
+import { ensureDesktopWorkspace } from "./default-workspace";
+import { resolveDocumentsDirectory } from "./workspace-location";
 import { NativeSidecarManager } from "./native-sidecar-manager";
 import { startNativeSession } from "./native-session-lifecycle";
 import { installNativeSessionAuth, isStudioDocument } from "./native-session-auth";
@@ -157,6 +159,9 @@ function nativeSidecarStartOptions() {
 async function startNativeSidecar(): Promise<void> {
   const info = await nativeSidecarManager.start(nativeSidecarStartOptions());
   if (info.status === "running") {
+    if (info.url) {
+      await ensureDesktopWorkspace(info.url, resolveDocumentsDirectory(name => app.getPath(name)), nativeSidecarManager.authenticatedFetch);
+    }
     nativePythonPluginHostStale = false;
     console.log(
       `Native Studio sidecar ready at ${info.url} (${info.protocolVersion})`,
@@ -347,6 +352,8 @@ ipcMain.handle("app:quitForUpdate", () => {
 });
 
 // IPC Handlers for file dialogs
+ipcMain.handle("workspace:defaultLocation", () => path.join(resolveDocumentsDirectory(name => app.getPath(name)), "nirs4all Studio"));
+
 ipcMain.handle("dialog:selectFolder", async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {

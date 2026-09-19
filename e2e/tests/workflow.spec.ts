@@ -1,10 +1,10 @@
 import { test, expect } from '../fixtures/app.fixture';
 
 /**
- * Complete workflow tests: pipeline -> run -> results -> predictions
+ * Browser navigation checks. Actual analysis and installer qualification run against packaged Electron.
  */
-test.describe('Complete Workflow', () => {
-  test('should navigate through the complete analysis workflow', async ({
+test.describe('Workflow Navigation', () => {
+  test('should navigate analysis pages without displaying a transport error', async ({
     page,
     sidebar,
     pipelinesPage,
@@ -34,10 +34,8 @@ test.describe('Complete Workflow', () => {
     const hasRuns = await runsPage.getRunCount() > 0;
     const isEmpty = await runsPage.isEmptyState();
     const noWorkspace = await runsPage.isNoWorkspaceState();
-    // Also accept if main content area is visible
-    const hasMainContent = await page.locator('main').isVisible().catch(() => false);
-
-    expect(hasRuns || isEmpty || noWorkspace || hasMainContent).toBe(true);
+    expect(hasRuns || isEmpty || noWorkspace).toBe(true);
+    await expect(page.getByText(/route_not_native_qualified|Error loading runs/i)).not.toBeVisible();
 
     // Step 3: Check New Run/Experiment link
     if (await runsPage.newRunButton.isVisible()) {
@@ -53,10 +51,8 @@ test.describe('Complete Workflow', () => {
     const hasPredictions = await predictionsPage.getPredictionCount() > 0;
     const predictionsEmpty = await predictionsPage.isEmptyState();
     const predictionsNoWorkspace = await predictionsPage.isNoWorkspaceState();
-    // Also accept if main content is visible
-    const predictionsHasContent = await page.locator('main').isVisible().catch(() => false);
-
-    expect(hasPredictions || predictionsEmpty || predictionsNoWorkspace || predictionsHasContent).toBe(true);
+    expect(hasPredictions || predictionsEmpty || predictionsNoWorkspace).toBe(true);
+    await expect(page.getByText(/route_not_native_qualified|Error loading predictions/i)).not.toBeVisible();
 
     // Step 5: Navigate to Results
     await sidebar.navigateTo('results');
@@ -142,26 +138,6 @@ test.describe('Workflow - Pipeline Editor', () => {
     // Pipeline editor should be visible - check for various possible elements
     const editorVisible = await page.locator('[data-testid="pipeline-canvas"], [data-testid="step-palette"]').isVisible().catch(() => false);
     const hasEditorContent = await page.getByText(/add.*step|drag.*drop|pipeline|preprocessing|model/i).isVisible().catch(() => false);
-    // Also accept if there's a heading or main content visible
-    const hasPageContent = await page.locator('main').isVisible().catch(() => false);
-
-    expect(editorVisible || hasEditorContent || hasPageContent).toBe(true);
-  });
-});
-
-test.describe('Workflow - Quick Actions', () => {
-  test('should access workflow from dashboard', async ({ sidebar, page }) => {
-    await page.goto('/');
-
-    // Look for quick action buttons or cards on dashboard
-    const quickActions = page.getByRole('button', { name: /new.*run|new.*experiment|start/i });
-    const workflowCards = page.locator('[data-testid="workflow-card"], [data-testid="quick-action"]');
-
-    const hasQuickActions = await quickActions.count() > 0;
-    const hasWorkflowCards = await workflowCards.count() > 0;
-    const hasRecentRuns = await page.getByText(/recent.*runs|latest.*runs/i).isVisible().catch(() => false);
-
-    // Dashboard should have some way to start workflow or show recent activity
-    expect(hasQuickActions || hasWorkflowCards || hasRecentRuns || true).toBe(true);
+    expect(editorVisible || hasEditorContent).toBe(true);
   });
 });

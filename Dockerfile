@@ -10,8 +10,8 @@ ARG RUST_IMAGE=rust:1.88-bookworm
 ARG NGINX_IMAGE=nginx:1.27.5-bookworm
 
 FROM scratch AS studio-document-adapter-sources
-COPY ["api/library_documents.py", "api/library_dataset_inspection.py", "api/library_predictions.py", "api/library_runtime_config.py", "api/pipeline_canonical.py", "api/pipeline_canonical_branch_merge.py", "api/pipeline_canonical_generators.py", "api/pipeline_canonical_finetune.py", "api/node_registry_loader.py", "/api/"]
-COPY ["api/shared/json_safe.py", "api/shared/dataset_config.py", "/api/shared/"]
+COPY ["api/library_documents.py", "api/library_dataset_inspection.py", "api/library_predictions.py", "api/library_prediction_results.py", "api/library_aggregated_results.py", "api/library_aggregated_steps.py", "api/library_playground_views.py", "api/store_adapter.py", "api/library_runtime_config.py", "api/pipeline_canonical.py", "api/pipeline_canonical_branch_merge.py", "api/pipeline_canonical_generators.py", "api/pipeline_canonical_finetune.py", "api/node_registry_loader.py", "/api/"]
+COPY ["api/shared/json_safe.py", "api/shared/dataset_config.py", "api/shared/operator_catalogue.py", "api/shared/filter_catalogue.py", "api/shared/decimation.py", "/api/shared/"]
 COPY ["api/synthetic_datasets.json", "/api/synthetic_datasets.json"]
 COPY ["api/presets/complex_pls.yaml", "api/presets/complex_trees.yaml", "api/presets/deep_nonlinear_exploration.yaml", "api/presets/fast_result.yaml", "api/presets/nonlinear_exploration.yaml", "api/presets/simple_pls.yaml", "api/presets/simple_trees_boosting.yaml", "api/presets/ultra_pls.yaml", "api/presets/ultra_slow.yaml", "api/presets/ultra_trees.yaml", "/api/presets/"]
 COPY ["src/data/nodes/definitions/", "/src/data/nodes/definitions/"]

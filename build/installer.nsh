@@ -1,76 +1,125 @@
-; Custom NSIS installer script for nirs4all Studio
-; Handles closing the running app before install/uninstall
-; and optional cleanup of app data on uninstall
+!include "LogicLib.nsh"
+
+; Custom NSIS lifecycle for nirs4all Studio.
+; An upgrade/reinstall must never ask about or remove user configuration.
+
+; Older uninstallers ignore --updated and /KEEP_APP_DATA. Protect the whole
+; user-data roots by same-volume rename before invoking them. This is constant
+; time even with a large Python environment or workspaces under app data.
+; Restore on success, failure and cancellation; interrupted installs retain
+; named sibling backups that the next installer can restore.
+!ifndef BUILD_UNINSTALLER
+!macro studioPreserveRoot ROOT BACKUP LABEL
+  IfFileExists "${BACKUP}\." 0 ${LABEL}_preserve
+  IfFileExists "${ROOT}\." 0 ${LABEL}_done
+    MessageBox MB_OK|MB_ICONSTOP "An earlier installation left preserved data at ${BACKUP}. Both folders have been kept. Restore that folder before retrying." /SD IDOK
+    Abort
+  ${LABEL}_preserve:
+  IfFileExists "${ROOT}\." 0 ${LABEL}_done
+  ClearErrors
+  Rename "${ROOT}" "${BACKUP}"
+  ${If} ${Errors}
+    MessageBox MB_OK|MB_ICONSTOP "Could not preserve ${ROOT}. Close applications using this folder and retry. Installation has stopped without deleting your data." /SD IDOK
+    Abort
+  ${EndIf}
+  ${LABEL}_done:
+!macroend
+
+!macro studioRestoreRoot ROOT BACKUP LABEL
+  IfFileExists "${BACKUP}\." 0 ${LABEL}_done
+  IfFileExists "${ROOT}\." 0 ${LABEL}_restore
+    MessageBox MB_OK|MB_ICONSTOP "Your preserved data is safe at ${BACKUP}. The destination ${ROOT} was recreated during installation; restore your data before opening Studio." /SD IDOK
+    Abort
+  ${LABEL}_restore:
+  ClearErrors
+  Rename "${BACKUP}" "${ROOT}"
+  ${If} ${Errors}
+    MessageBox MB_OK|MB_ICONSTOP "Could not restore ${ROOT}. Your data is preserved at ${BACKUP}. Restore it before opening Studio." /SD IDOK
+    Abort
+  ${EndIf}
+  ${LABEL}_done:
+!macroend
+
+Function studioRestorePreservedData
+  SetShellVarContext current
+  !insertmacro studioRestoreRoot "$APPDATA\nirs4all" "$APPDATA\nirs4all-upgrade-preserved-config" restore_config
+  !insertmacro studioRestoreRoot "$LOCALAPPDATA\nirs4all" "$LOCALAPPDATA\nirs4all-upgrade-preserved-data" restore_data
+  !insertmacro studioRestoreRoot "$APPDATA\nirs4all Studio" "$APPDATA\nirs4all-upgrade-preserved-electron" restore_electron
+  ; Both installer configurations are per-machine. This include precedes
+  ; electron-builder's declaration of $installMode.
+  SetShellVarContext all
+FunctionEnd
+
+Section "-Preserve Studio user data"
+  SetShellVarContext current
+  !insertmacro studioPreserveRoot "$APPDATA\nirs4all" "$APPDATA\nirs4all-upgrade-preserved-config" preserve_config
+  !insertmacro studioPreserveRoot "$LOCALAPPDATA\nirs4all" "$LOCALAPPDATA\nirs4all-upgrade-preserved-data" preserve_data
+  !insertmacro studioPreserveRoot "$APPDATA\nirs4all Studio" "$APPDATA\nirs4all-upgrade-preserved-electron" preserve_electron
+  ; Both installer configurations are per-machine. This include precedes
+  ; electron-builder's declaration of $installMode.
+  SetShellVarContext all
+SectionEnd
+
+!macro customInstall
+  Call studioRestorePreservedData
+!macroend
+
+Function .onInstFailed
+  Call studioRestorePreservedData
+FunctionEnd
+
+Function .onGUIEnd
+  Call studioRestorePreservedData
+FunctionEnd
+!endif
 
 !macro customInit
-  ; Kill any running instances before install
   nsExec::ExecToLog 'taskkill /f /im "nirs4all Studio.exe" /t'
-  Sleep 1000
 !macroend
 
 !macro customUnInit
-  ; Kill any running instances before uninstall
   nsExec::ExecToLog 'taskkill /f /im "nirs4all Studio.exe" /t'
-  Sleep 1000
 !macroend
 
 !macro customUnInstall
-  ; electron-builder sets SetShellVarContext=all for per-machine installs, which
-  ; makes $APPDATA resolve to C:\ProgramData instead of the user's AppData.
-  ; Switch to current-user context so we target the correct directories.
+  ; electron-builder invokes the old uninstaller with --updated /KEEP_APP_DATA.
+  ; Silent removal also preserves data: no unattended affirmative defaults.
+  ${If} ${isUpdated}
+    Goto studioCleanupDone
+  ${EndIf}
+  ${If} ${Silent}
+    Goto studioCleanupDone
+  ${EndIf}
+
   SetShellVarContext current
+  MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 \
+    "Remove application preferences and cache?$\n$\nWorkspaces, datasets and the Python environment will be kept." \
+    /SD IDNO IDNO studioKeepPreferences
 
-  ; Pre-check: note about external Python environment (before any deletion)
-  StrCpy $0 ""
-  IfFileExists "$APPDATA\nirs4all Studio\env-settings.json" 0 +2
-    StrCpy $0 "$\n$\nNote: Your external Python environment (if configured) will NOT be affected."
+  ; Delete only known preferences/cache. User workspaces may be inside any of
+  ; these roots, so never remove an entire application-data directory.
+  Delete "$APPDATA\nirs4all\app_settings.json"
+  Delete "$APPDATA\nirs4all\dataset_links.json"
+  Delete "$APPDATA\nirs4all\setup_status.json"
+  Delete "$LOCALAPPDATA\nirs4all\nirs4all-webapp\setup_status.json"
+  Delete "$APPDATA\nirs4all Studio\env-settings.json"
+  Delete "$APPDATA\nirs4all Studio\telemetry-consent.json"
+  RMDir /r "$APPDATA\nirs4all Studio\Cache"
+  RMDir /r "$APPDATA\nirs4all Studio\Code Cache"
+  RMDir /r "$APPDATA\nirs4all Studio\GPUCache"
+  RMDir /r "$APPDATA\nirs4all Studio\logs"
+  RMDir /r "$LOCALAPPDATA\nirs4all\updates"
 
-  ; ---- Question 1: Application settings & cache ----
-  MessageBox MB_YESNO|MB_ICONQUESTION \
-    "Do you want to remove application settings and cache?$\n$\n\
-This includes preferences, logs, dataset links, and backend cache.$\n\
-Your workspaces (models, predictions, databases) and dataset files are NOT affected." \
-    IDYES removeData IDNO skipData
+  studioKeepPreferences:
+  IfFileExists "$APPDATA\nirs4all Studio\python-env\*.*" 0 studioKeepEnvironment
+  MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 \
+    "Remove the managed Python environment?$\n$\nIt will need to be installed again. External Python environments will be kept." \
+    /SD IDNO IDNO studioKeepEnvironment
+  RMDir /r "$APPDATA\nirs4all Studio\python-env"
 
-  removeData:
-    ; Remove global app config (app_settings.json, dataset_links.json)
-    RMDir /r "$APPDATA\nirs4all"
-
-    ; Remove Python backend app data (update cache/backup/staging, venv settings, config snapshots)
-    RMDir /r "$LOCALAPPDATA\nirs4all"
-
-    ; Remove Electron userData but preserve python-env if it exists
-    RMDir /r "$TEMP\nirs4all-python-env-tmp"
-    IfFileExists "$APPDATA\nirs4all Studio\python-env\*.*" 0 removeAllUserData
-      ; python-env exists — move it aside, nuke the rest, move it back
-      Rename "$APPDATA\nirs4all Studio\python-env" "$TEMP\nirs4all-python-env-tmp"
-      RMDir /r "$APPDATA\nirs4all Studio"
-      CreateDirectory "$APPDATA\nirs4all Studio"
-      Rename "$TEMP\nirs4all-python-env-tmp" "$APPDATA\nirs4all Studio\python-env"
-      Goto skipData
-    removeAllUserData:
-      ; No python-env to preserve — remove the whole directory
-      RMDir /r "$APPDATA\nirs4all Studio"
-
-  skipData:
-
-  ; ---- Question 2: Python environment ----
-  ; Only ask if a managed python-env actually exists
-  IfFileExists "$APPDATA\nirs4all Studio\python-env\*.*" 0 skipEnv
-
-  MessageBox MB_YESNO|MB_ICONQUESTION \
-    "Do you want to remove the managed Python environment?$\n$\n\
-This frees approximately 1-2 GB of disk space.$\n\
-It will be re-downloaded automatically if you reinstall.$0" \
-    IDYES removeEnv IDNO skipEnv
-
-  removeEnv:
-    RMDir /r "$APPDATA\nirs4all Studio\python-env"
-
-  skipEnv:
-  ; Clean up parent directory if it's now empty
-  RMDir "$APPDATA\nirs4all Studio"
-
-  ; Restore all-users context for any remaining electron-builder uninstall steps
-  SetShellVarContext all
+  studioKeepEnvironment:
+  ${If} $installMode == "all"
+    SetShellVarContext all
+  ${EndIf}
+  studioCleanupDone:
 !macroend

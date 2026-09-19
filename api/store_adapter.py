@@ -15,7 +15,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .lazy_imports import get_cached, is_ml_ready
 from .shared.json_safe import sanitize_dict, sanitize_float
 
 STORE_AVAILABLE = True
@@ -25,18 +24,7 @@ _OBJECT_REPR_RE = re.compile(
 
 
 def _get_workspace_store_cls() -> Any:
-    """Resolve ``WorkspaceStore`` without waiting for the full ML warmup.
-
-    Store-backed data pages only need the storage layer. If the background ML
-    loader has not populated the lazy cache yet, import ``WorkspaceStore``
-    directly so read-only database views do not stay blocked behind
-    ``ml_ready``.
-    """
-    if is_ml_ready():
-        store_cls = get_cached("WorkspaceStore", optional=True)
-        if store_cls is not None:
-            return store_cls
-
+    """Import only the owner storage API; independent of HTTP startup state."""
     try:
         from nirs4all.pipeline.storage import WorkspaceStore
     except Exception as exc:
@@ -581,20 +569,16 @@ def _build_synthetic_final_scores(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _apply_synthetic_refit_fallback_inplace(row: dict[str, Any]) -> None:
-    """Materialize a webapp-only refit fallback from CV summaries when needed."""
-    if _has_meaningful_final_payload(row):
-        row["synthetic_refit"] = bool(row.get("synthetic_refit"))
-        return
+    """Keep the response flag without relabelling CV results as final results.
 
-    has_cv = _has_cv_summary_payload(row)
-    if not has_cv:
-        row["synthetic_refit"] = bool(row.get("synthetic_refit"))
-        return
-
-    row["final_test_score"] = sanitize_float(row.get("cv_test_score"))
-    row["final_train_score"] = sanitize_float(row.get("cv_train_score"))
-    row["final_scores"] = _build_synthetic_final_scores(row)
-    row["synthetic_refit"] = True
+    Existing callers retain this compatibility hook, but only the store can
+    supply final_* metrics from a real refit. Missing final results stay absent.
+    """
+    if row.get("synthetic_refit"):
+        row["final_test_score"] = None
+        row["final_train_score"] = None
+        row["final_scores"] = None
+    row["synthetic_refit"] = False
 
 
 def _attach_variant_params_inplace(
@@ -628,11 +612,17 @@ class StoreAdapter:
         workspace_path: Root directory of the nirs4all workspace.
     """
 
-    def __init__(self, workspace_path: Path) -> None:
+    def __init__(self, workspace_path: Path, *, read_only: bool = False) -> None:
         if not STORE_AVAILABLE:
             raise RuntimeError("nirs4all library is required for StoreAdapter")
         self._workspace_path = Path(workspace_path)
-        self._store = _get_workspace_store_cls()(workspace_path)
+        store_cls = _get_workspace_store_cls()
+        if read_only:
+            if not hasattr(store_cls, "open_readonly"):
+                raise RuntimeError("Installed nirs4all lacks read-only workspace access; update the library runtime")
+            self._store = store_cls.open_readonly(workspace_path)
+        else:
+            self._store = store_cls(workspace_path)
 
     def __enter__(self) -> StoreAdapter:
         return self
@@ -1323,9 +1313,8 @@ class StoreAdapter:
         Returns:
             Dict with total count, top predictions, model breakdown, and stats.
         """
-        # Total count
-        all_preds = self._store.query_predictions(dataset_name=dataset_name)
-        total = len(all_preds)
+        # Aggregate in SQL: summary cost must not materialize every prediction.
+        total = self._count_predictions(dataset_name=dataset_name)
 
         # Top predictions
         top_df = self._store.top_predictions(n=10, dataset_name=dataset_name)
@@ -1336,23 +1325,18 @@ class StoreAdapter:
                 d["id"] = d.pop("prediction_id")
             top_predictions.append(d)
 
-        # Model breakdown
-        models: dict[str, dict[str, Any]] = {}
-        if total > 0 and "model_class" in all_preds.columns:
-            for row in all_preds.iter_rows(named=True):
-                mc = row.get("model_class", "Unknown")
-                if mc not in models:
-                    models[mc] = {"name": mc, "count": 0, "total_val_score": 0.0, "score_count": 0}
-                models[mc]["count"] += 1
-                vs = row.get("val_score")
-                if vs is not None and isinstance(vs, (int, float)) and not math.isnan(vs):
-                    models[mc]["total_val_score"] += vs
-                    models[mc]["score_count"] += 1
-
+        where = " WHERE dataset_name LIKE $1" if dataset_name is not None else ""
+        model_rows = self._store._fetch_pl(
+            "SELECT model_class AS name, COUNT(*) AS count, AVG(val_score) AS avg_val_score "
+            f"FROM predictions{where} GROUP BY model_class",
+            [dataset_name] if dataset_name is not None else [],
+        )
         models_list = []
-        for m in models.values():
-            avg = round(m["total_val_score"] / m["score_count"], 4) if m["score_count"] > 0 else None
-            models_list.append({"name": m["name"], "count": m["count"], "avg_val_score": avg})
+        for row in model_rows.iter_rows(named=True):
+            value = sanitize_dict(dict(row))
+            score = value.get("avg_val_score")
+            value["avg_val_score"] = round(score, 4) if isinstance(score, (int, float)) else None
+            models_list.append(value)
         models_list.sort(key=lambda x: x["count"], reverse=True)
 
         return {

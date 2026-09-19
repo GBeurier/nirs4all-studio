@@ -1,0 +1,9 @@
+{
+  "commit": "721c7eca0ff2c882ef5779ed9d1b2b54480a6568",
+  "purpose": "Historical manufacturing blobs for macos-intel-hotfix.yml tests, independent of current product changes and Git history depth.",
+  "sha256": {
+    "build/constraints/plugin-runtime-cpython311.txt": "8a9430806d2fb316ba5a415cd03982bb5a4ea71535cd828fe1b9bdbb40348619",
+    "scripts/bake-python-plugin-runtime.cjs": "8bff0fa0505efe43983894089075ccbcdf83faf1adabfc183772353aff34152e",
+    "scripts/setup-python-env.cjs": "b6e28b737e4281e050a59ebbd96a50a80d1376a4fbf6e4fa0380cf3773a69559"
+  }
+}

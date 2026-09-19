@@ -1062,6 +1062,13 @@ async def validate_files(request: ValidateFilesRequest):
 @router.post("/datasets/preview", response_model=PreviewDataResponse)
 async def preview_dataset(request: PreviewDataRequest):
     """Preview a dataset with current configuration using nirs4all."""
+    import asyncio
+
+    return await asyncio.to_thread(_preview_dataset_sync, request=request)
+
+
+def _preview_dataset_sync(request: PreviewDataRequest):
+    """Preview a dataset with current configuration using nirs4all."""
     import numpy as np
     if not NIRS4ALL_AVAILABLE:
         return PreviewDataResponse(success=False, error="nirs4all library not available")
@@ -1208,6 +1215,7 @@ async def preview_dataset(request: PreviewDataRequest):
 
     except Exception as e:
         return PreviewDataResponse(success=False, error=f"Preview failed: {e}")
+
 
 
 @router.post("/datasets/preview-upload", response_model=PreviewDataResponse)

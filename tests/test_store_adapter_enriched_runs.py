@@ -300,7 +300,7 @@ def test_get_enriched_runs_falls_back_to_pipeline_name_and_keeps_final_agg_score
     assert top_chain["final_agg_scores"] == {"test": {"rmse": 0.08}, "train": {"rmse": 0.07}}
 
 
-def test_get_enriched_runs_synthesizes_refit_from_cv_when_final_is_missing():
+def test_get_enriched_runs_keeps_cv_scores_separate_when_final_is_missing():
     mock_store = _build_mock_store(
         run_rows=[
             {
@@ -360,10 +360,10 @@ def test_get_enriched_runs_synthesizes_refit_from_cv_when_final_is_missing():
     result = adapter.get_enriched_runs()
 
     top_chain = result["runs"][0]["datasets"][0]["top_5"][0]
-    assert top_chain["final_test_score"] == 13.12
-    assert top_chain["final_train_score"] == 4.06
-    assert top_chain["final_scores"] == {"val": {"rmse": 19.94}, "test": {"rmse": 13.12}, "train": {"rmse": 4.06}}
-    assert top_chain["synthetic_refit"] is True
+    assert top_chain["final_test_score"] is None
+    assert top_chain["final_train_score"] is None
+    assert not top_chain["final_scores"]
+    assert top_chain["synthetic_refit"] is False
 
 
 def test_get_enriched_runs_infers_runtime_config_from_expanded_pipeline():

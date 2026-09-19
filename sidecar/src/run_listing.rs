@@ -34,31 +34,18 @@ fn read(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Result<Val
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         (state.app_settings.clone(), state.native_jobs.clone())
     };
-    let active = settings
-        .active_linked_workspace_response()
-        .map_err(|error| {
-            crate::app_settings_storage_error("resolve active run workspace", &error)
-        })?;
+    let active = settings.active_linked_workspace_access().map_err(|error| {
+        crate::app_settings_storage_error("resolve active run workspace", &error)
+    })?;
     let empty_stats = json!({"running":0,"queued":0,"completed":0,"failed":0,"cancelled":0,"partial":0,"total":0,"total_pipelines":0});
-    let Some(active) = active else {
+    let Some(workspace) = active else {
         return Ok(if stats_only {
             empty_stats
         } else {
             json!({"runs":[],"total":0})
         });
     };
-    let id = active["id"].as_str().ok_or_else(|| {
-        HttpResponse::json(
-            500,
-            json!({"detail":"Invalid active workspace identity"}).to_string(),
-        )
-    })?;
-    let workspace = settings
-        .linked_workspace_access(id)
-        .map_err(|error| crate::app_settings_storage_error("resolve run workspace", &error))?
-        .ok_or_else(|| {
-            HttpResponse::json(404, json!({"detail":"Workspace not found"}).to_string())
-        })?;
+    let id = workspace.id();
     let links = settings
         .dataset_links()
         .map_err(|error| crate::app_settings_storage_error("read run dataset links", &error))?;
@@ -81,7 +68,7 @@ fn read(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Result<Val
             },
             |store| {
                 crate::run_history::read_filtered_enriched_runs_from_connection(
-                    store,
+                    &store,
                     id,
                     &links,
                     None,
@@ -99,7 +86,7 @@ fn read(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Result<Val
     };
     let stats = workspace.store().map_or_else(
         || crate::workspace_store::history::read_history_stats(workspace.path()),
-        crate::workspace_store::history::read_history_stats_from_connection,
+        |store| crate::workspace_store::history::read_history_stats_from_connection(&store),
     );
     let stats = match stats {
         Ok(value) => value,

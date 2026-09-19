@@ -69,6 +69,7 @@ interface ElectronApi {
    * @returns The selected folder path or null if cancelled
    */
   selectFolder(): Promise<string | null>;
+  getDefaultWorkspaceLocation?(): Promise<string>;
 
   /**
    * Confirm a dropped folder by opening a folder dialog

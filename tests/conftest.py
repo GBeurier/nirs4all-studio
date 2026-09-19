@@ -7,6 +7,7 @@ that applies to all test modules.
 
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -15,6 +16,12 @@ import pytest
 # Never let a developer or CI host's telemetry configuration turn test failures
 # into production Sentry issues. This must run before test modules import main.py.
 os.environ["SENTRY_DSN"] = ""
+
+# Isolate before collection: several modules create their config singleton at
+# import time, before an autouse fixture can redirect it. Each xdist worker gets
+# its own directory, including when the caller has a real NIRS4ALL_CONFIG set.
+_test_config = tempfile.TemporaryDirectory(prefix="studio-pytest-config-")
+os.environ["NIRS4ALL_CONFIG"] = _test_config.name
 
 # Ensure the webapp root is in the path
 webapp_root = Path(__file__).parent.parent
@@ -73,53 +80,21 @@ def _drain_background_jobs():
 
 @pytest.fixture(autouse=True)
 def _guard_against_real_app_config():
-    """Fail any test that ends up writing to the real user app_settings.json.
-
-    Prior incident: tests that instantiated WorkspaceManager() without
-    isolation accumulated 135 stale ``nirs4all_test_*`` workspace
-    entries in the user's %APPDATA%/nirs4all/app_settings.json. This
-    fixture imports the app_config singleton at test time and asserts
-    its config_dir is NOT the platform default. Tests that need to
-    touch the workspace manager must either redirect via
-    NIRS4ALL_CONFIG or monkeypatch the singleton.
-    """
-    try:
-        from api.app_config import app_config as _live_app_config
-    except Exception:
-        # api.app_config not importable in this environment - nothing to guard.
-        yield
-        return
-
-    default_dir = Path(_live_app_config._get_default_config_dir()).resolve()
-    current_dir = Path(_live_app_config.config_dir).resolve()
-
-    if current_dir == default_dir:
-        # Allowed only if the test never touches the singleton; we cannot
-        # detect that statically. Tests that DO touch it must shadow the
-        # singleton (see tests/test_custom_nodes.py for the pattern).
-        pass
-
+    """Reject a singleton redirected back to the user's real configuration."""
+    _assert_config_is_isolated()
     yield
+    _assert_config_is_isolated()
 
-    # After the test, re-check that no test leaked entries with a
-    # ``nirs4all_test_`` prefix into the real app_settings.json.
-    try:
-        from api.app_config import app_config as _post_app_config
-        post_dir = Path(_post_app_config.config_dir).resolve()
-        if post_dir == default_dir:
-            settings = _post_app_config.get_app_settings()
-            leaked = [
-                ws for ws in settings.get("linked_workspaces", [])
-                if "nirs4all_test_" in ws.get("path", "")
-                or "pytest" in ws.get("path", "").lower()
-            ]
-            assert not leaked, (
-                f"Test leaked {len(leaked)} workspace entries into the real "
-                f"user app_settings.json at {post_dir}. Use the isolated-config "
-                f"fixture pattern from tests/test_custom_nodes.py."
-            )
-    except Exception:
-        pass
+
+def _assert_config_is_isolated():
+    from api.app_config import app_config
+
+    current_dir = Path(app_config.config_dir).resolve()
+    default_dir = Path(app_config._get_default_config_dir()).resolve()
+    assert current_dir != default_dir, (
+        f"Test configuration points at the real user directory {default_dir}. "
+        "Redirect NIRS4ALL_CONFIG before creating an AppConfigManager."
+    )
 
 
 # ============================================================================

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const pluginRuntime = require("../scripts/bake-python-plugin-runtime.cjs") as {
+  assertClosedTree(runtimeRoot: string): void;
   assertConstraintsIdentity(path?: string, expectedSha256?: string): void;
   FORBIDDEN_DISTRIBUTIONS: readonly string[];
   PLUGIN_CONSTRAINTS_PATH: string;
@@ -92,6 +93,7 @@ describe("plugin-only CPython runtime", () => {
       fs.mkdirSync(path.dirname(executable));
       fs.writeFileSync(executable, `#!${process.execPath}\n` + [
         'const fs = require("node:fs");',
+        'if (process.argv.some(value => value.includes("import compileall,"))) process.exit(0);',
         `fs.writeFileSync(${JSON.stringify(evidence)}, JSON.stringify({ args: process.argv.slice(2),`,
         'cache: process.env.MPLCONFIGDIR, backend: process.env.MPLBACKEND,',
         'files: fs.readdirSync(process.env.MPLCONFIGDIR) }));',
@@ -105,6 +107,21 @@ describe("plugin-only CPython runtime", () => {
       expect(probe.files).toEqual([]);
       expect(fs.existsSync(probe.cache)).toBe(false);
       expect(fs.existsSync(marker)).toBe(false);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it.each([0, 1, 2, 3])("allows only checked-hash bytecode (flags %i)", (flags) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-bytecode-policy-"));
+    try {
+      const cache = path.join(root, "__pycache__");
+      fs.mkdirSync(cache);
+      const header = Buffer.alloc(16);
+      header.writeUInt32LE(flags, 4);
+      fs.writeFileSync(path.join(cache, "sample.cpython-311.pyc"), header);
+      if (flags === 3) expect(() => pluginRuntime.assertClosedTree(root)).not.toThrow();
+      else expect(() => pluginRuntime.assertClosedTree(root)).toThrow(/checked source hashes/);
+      fs.renameSync(path.join(cache, "sample.cpython-311.pyc"), path.join(root, "sample.pyc"));
+      expect(() => pluginRuntime.assertClosedTree(root)).toThrow(/checked source hashes/);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 

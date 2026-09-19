@@ -43,6 +43,8 @@ mod native_archive_training;
 pub mod native_updates;
 mod pipeline_presets;
 mod playground;
+mod playground_views;
+mod prediction_results;
 mod prediction_upload;
 mod recommended_config;
 mod recommended_config_http;
@@ -58,7 +60,9 @@ pub mod scientific_submission;
 mod settings;
 pub mod websocket_transport;
 mod workspace_documents;
+mod workspace_metadata;
 pub mod workspace_store;
+mod workspace_upgrade;
 
 use archive_v2_prediction::{
     parse_conformal_presentation_request, parse_request as parse_archive_v2_prediction_request,
@@ -718,6 +722,7 @@ impl SidecarState {
         let mut capabilities: Value = serde_json::from_str(&self.base_capabilities_json())
             .expect("the native capability template is valid JSON");
         capabilities["features"]["workspace_document_routes"] = json!(true);
+        capabilities["features"]["workspace_metadata_routes"] = json!(true);
         capabilities["features"]["pipeline_document_routes"] = json!(true);
         capabilities["features"]["pipeline_library_routes"] = json!(true);
         capabilities["features"]["dataset_catalogue_routes"] = json!(true);
@@ -734,6 +739,8 @@ impl SidecarState {
             json!(self.scientific_host.as_deref().is_some_and(
                 scientific_cpython::CpythonScientificJobExecutor::library_facades_available
             ));
+        capabilities["features"]["workspace_prediction_result_routes"] =
+            capabilities["features"]["dataset_synthetic_generation_routes"].clone();
         capabilities["features"]["playground_routes"] =
             capabilities["features"]["dataset_synthetic_generation_routes"].clone();
         capabilities["features"]["native_webapp_update_routes"] = json!(true);
@@ -779,7 +786,7 @@ impl SidecarState {
             "ml_error": if ml_ready { None } else { self.native_jobs.execution_unavailability_reason() },
             "ml_loading": false,
             "ml_ready": ml_ready,
-            "workspace_ready": self.app_settings.active_linked_workspace_response().is_ok(),
+            "workspace_ready": self.app_settings.workspace_catalogue_ready(),
             "native_prediction_ready": self.archive_v2_prediction.is_selected(),
             "native_training_ready": self.native_archive_training.is_some(),
         })
@@ -892,6 +899,18 @@ pub fn route_request_with_body(
         state.scientific_host.as_deref(),
         method,
         path,
+        body,
+    ) {
+        return response;
+    }
+    let (metadata_path, metadata_query) = path
+        .split_once('?')
+        .map_or((path, None), |(path, query)| (path, Some(query)));
+    if let Some(response) = workspace_metadata::route_document(
+        &state.app_settings,
+        method,
+        metadata_path,
+        metadata_query,
         body,
     ) {
         return response;
@@ -1097,7 +1116,7 @@ fn archive_v2_conformal_projection_response(state: &SidecarState, body: &[u8]) -
         .store()
         .map_or_else(
             || workspace_store::read_archive_v2_registrations(workspace.path()).ok(),
-            |store| workspace_store::read_archive_v2_registrations_from_connection(store).ok(),
+            |store| workspace_store::read_archive_v2_registrations_from_connection(&store).ok(),
         )
         .is_some_and(|registrations| {
             registrations.iter().any(|registration| {
@@ -1138,7 +1157,7 @@ fn archive_v2_catalogue_response(state: &SidecarState, workspace_id: &str) -> Ht
     };
     let registrations = match workspace.store().map_or_else(
         || workspace_store::read_archive_v2_registrations(workspace.path()),
-        workspace_store::read_archive_v2_registrations_from_connection,
+        |store| workspace_store::read_archive_v2_registrations_from_connection(&store),
     ) {
         Ok(registrations) => registrations,
         Err(error) => return workspace_store_read_error_response(&error),
@@ -1178,7 +1197,7 @@ fn archive_v2_prediction_response(state: &SidecarState, body: &[u8]) -> HttpResp
             .store()
             .map_or_else(
                 || workspace_store::read_archive_v2_registrations(workspace.path()).ok(),
-                |store| workspace_store::read_archive_v2_registrations_from_connection(store).ok(),
+                |store| workspace_store::read_archive_v2_registrations_from_connection(&store).ok(),
             )
             .is_some_and(|registrations| {
                 registrations.iter().any(|registration| {
@@ -1226,7 +1245,7 @@ fn archive_v2_conformal_presentation_response(state: &SidecarState, body: &[u8])
         .store()
         .map_or_else(
             || workspace_store::read_archive_v2_registrations(workspace.path()).ok(),
-            |store| workspace_store::read_archive_v2_registrations_from_connection(store).ok(),
+            |store| workspace_store::read_archive_v2_registrations_from_connection(&store).ok(),
         )
         .is_some_and(|registrations| {
             registrations.iter().any(|registration| {
@@ -1997,7 +2016,7 @@ fn route_workspace_run_summaries(state: &SidecarState, method: &str, path: &str)
     };
     let result = workspace.store().map_or_else(
         || read_run_summaries(workspace.path(), MAX_RUN_SUMMARIES, 0),
-        |store| read_run_summaries_from_connection(store, MAX_RUN_SUMMARIES, 0),
+        |store| read_run_summaries_from_connection(&store, MAX_RUN_SUMMARIES, 0),
     );
     match result {
         Ok(runs) => {
@@ -2103,7 +2122,7 @@ fn route_workspace_run_history(
         },
         |store| {
             run_history::read_enriched_runs_from_connection(
-                store,
+                &store,
                 workspace_id,
                 &links,
                 project,
@@ -2122,7 +2141,8 @@ fn route_workspace_workflows_without_global_lock(
     state: &std::sync::Arc<std::sync::Mutex<SidecarState>>,
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
-    route_runtime_diagnostics_without_global_lock(state, request)
+    workspace_upgrade::route(state, request)
+        .or_else(|| route_runtime_diagnostics_without_global_lock(state, request))
         .or_else(|| route_workspace_transition_without_global_lock(state, request))
         .or_else(|| recommended_config_http::route(state, request))
         .or_else(|| dataset_synthesis::route(state, request))
@@ -2132,6 +2152,7 @@ fn route_workspace_workflows_without_global_lock(
         .or_else(|| dataset_inspection_http::route(state, request))
         .or_else(|| route_pipeline_presets_without_global_lock(state, request))
         .or_else(|| route_workspace_run_history(state, request))
+        .or_else(|| prediction_results::route(state, request))
         .or_else(|| run_listing::route(state, request))
 }
 
@@ -2218,7 +2239,7 @@ fn route_workspace_run_detail_preselection(
     };
     let projection = workspace.store().map_or_else(
         || preflight_run_detail_projection(workspace.path()),
-        preflight_run_detail_projection_from_connection,
+        |store| preflight_run_detail_projection_from_connection(&store),
     );
     let decision = match projection {
         Ok(()) => run_detail_preselection::preselect_verified_run_detail_owner(
@@ -2249,7 +2270,7 @@ fn route_workspace_run_detail(state: &SidecarState, method: &str, path: &str) ->
 
     let projection = workspace.store().map_or_else(
         || preflight_run_detail_projection(workspace.path()),
-        preflight_run_detail_projection_from_connection,
+        |store| preflight_run_detail_projection_from_connection(&store),
     );
     if let Err(error) = projection {
         return workspace_store_read_error_response(&error);
@@ -2265,7 +2286,7 @@ fn route_workspace_run_detail(state: &SidecarState, method: &str, path: &str) ->
     };
     let owner_result = workspace.store().map_or_else(
         || materialize_run_detail_owner(python_plugin_host, workspace.path(), &run_id),
-        |store| materialize_run_detail_owner_from_connection(python_plugin_host, store, &run_id),
+        |store| materialize_run_detail_owner_from_connection(python_plugin_host, &store, &run_id),
     );
     let owner_output = match owner_result {
         Ok(Some(output)) => output,
@@ -2349,7 +2370,9 @@ fn route_workspace_pipeline_summaries(
     };
     let result = workspace.store().map_or_else(
         || read_pipeline_summaries(workspace.path(), DEFAULT_PIPELINE_SUMMARIES_LIMIT, 0),
-        |store| read_pipeline_summaries_from_connection(store, DEFAULT_PIPELINE_SUMMARIES_LIMIT, 0),
+        |store| {
+            read_pipeline_summaries_from_connection(&store, DEFAULT_PIPELINE_SUMMARIES_LIMIT, 0)
+        },
     );
     match result {
         Ok(page) => {
@@ -2400,7 +2423,7 @@ fn route_workspace_results_summary(state: &SidecarState, method: &str, path: &st
     };
     let result = workspace.store().map_or_else(
         || read_results_summary(workspace.path(), workspace_id, &linked_datasets),
-        |store| read_results_summary_from_connection(store, workspace_id, &linked_datasets),
+        |store| read_results_summary_from_connection(&store, workspace_id, &linked_datasets),
     );
     match result {
         Ok(payload) => HttpResponse::json(200, payload.to_string()),
@@ -2431,7 +2454,7 @@ fn route_durable_execution_job_record(
     };
     let run = match workspace.store().map_or_else(
         || read_run_detail_projection(workspace.path(), &route.id),
-        |store| read_run_detail_projection_from_connection(store, &route.id),
+        |store| read_run_detail_projection_from_connection(&store, &route.id),
     ) {
         Ok(run) => run,
         Err(error) => return workspace_store_read_error_response(&error),
@@ -4016,13 +4039,6 @@ fn native_archive_training_response(state: &SidecarState, body: &[u8]) -> HttpRe
             json!({"detail": "Persisted linked workspace is unavailable"}).to_string(),
         );
     };
-    if workspace.store().is_some() {
-        return HttpResponse::json(
-            409,
-            json!({"detail": "Content-addressed immutable workspace cannot accept training artifacts"})
-                .to_string(),
-        );
-    }
     let executor: Arc<dyn job_http::ScientificJobExecutor> = trainer.clone();
     let timestamp = websocket_transport::rfc3339_now();
     scientific_submission_runtime_response(state.native_jobs.submit_with_executor_at(
@@ -4402,6 +4418,16 @@ fn handle_connection_with_limits_and_websocket(
     )
 }
 
+fn route_result_and_upgrade(
+    state: &Arc<Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    workspace_metadata::route(state, request)
+        .or_else(|| workspace_upgrade::route(state, request))
+        .or_else(|| prediction_results::route(state, request))
+        .or_else(|| playground_views::route(state, request))
+}
+
 fn handle_connection_with_access(
     mut stream: TcpStream,
     state: &Arc<Mutex<SidecarState>>,
@@ -4425,6 +4451,9 @@ fn handle_connection_with_access(
                         "Access-Control-Allow-Headers",
                         "Content-Type, X-Nirs4all-Session",
                     );
+                return write_access_response(&mut stream, response, accepted_origin.as_deref());
+            }
+            if let Some(response) = route_result_and_upgrade(state, &request) {
                 return write_access_response(&mut stream, response, accepted_origin.as_deref());
             }
             if let Some(response) = route_documents_without_global_lock(state, &request) {
@@ -6790,8 +6819,6 @@ mod tests {
         .unwrap();
         assert_eq!(payload, expected);
         assert_run_discovery_queries_match_oracle(&mut state, &expected);
-        assert!(!workspace.join("store.sqlite-wal").exists());
-        assert!(!workspace.join("store.sqlite-shm").exists());
         let results_response =
             route_request(&mut state, "GET", "/api/workspaces/workspace-a/results");
         assert_eq!(results_response.status, 200);
@@ -6815,17 +6842,13 @@ mod tests {
             409,
             "workspace_store_unavailable",
         );
-        assert_route_code(
-            &mut state,
-            "/api/workspaces/workspace-busy/runs",
-            409,
-            "workspace_store_busy",
+        assert_eq!(
+            route_request(&mut state, "GET", "/api/workspaces/workspace-busy/runs").status,
+            200
         );
-        assert_route_code(
-            &mut state,
-            "/api/workspaces/workspace-busy/results",
-            409,
-            "workspace_store_busy",
+        assert_eq!(
+            route_request(&mut state, "GET", "/api/workspaces/workspace-busy/results").status,
+            200
         );
         assert_route_code(
             &mut state,
@@ -6906,7 +6929,6 @@ mod tests {
                 fs::metadata(&database).unwrap().modified().unwrap()
             )
         );
-        assert!(!workspace.join("store.sqlite-wal").exists());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -6978,8 +7000,6 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(actual, expected);
-        assert!(!workspace.join("store.sqlite-wal").exists());
-        assert!(!workspace.join("store.sqlite-shm").exists());
         assert_eq!(
             route_request(
                 &mut state,
@@ -6995,11 +7015,14 @@ mod tests {
             409,
             "workspace_store_unavailable",
         );
-        assert_route_code(
-            &mut state,
-            "/api/workspaces/workspace-busy/results/summary",
-            409,
-            "workspace_store_busy",
+        assert_eq!(
+            route_request(
+                &mut state,
+                "GET",
+                "/api/workspaces/workspace-busy/results/summary"
+            )
+            .status,
+            200
         );
         assert_workspace_not_found(&mut state, "/api/workspaces/missing/results/summary");
         fs::remove_dir_all(directory).unwrap();

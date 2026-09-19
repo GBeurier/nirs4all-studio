@@ -16,8 +16,8 @@ use crate::{settings::AppSettingsStore, websocket_transport::rfc3339_now, HttpRe
 
 pub const MAX_DOCUMENT_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_PIPELINES: usize = 256;
-static DOCUMENT_LOCK: Mutex<()> = Mutex::new(());
-type DocumentResult<T> = Result<T, (u16, String)>;
+pub static DOCUMENT_LOCK: Mutex<()> = Mutex::new(());
+pub type DocumentResult<T> = Result<T, (u16, String)>;
 
 fn invalid(message: impl Into<String>) -> (u16, String) {
     (400, message.into())
@@ -168,14 +168,14 @@ fn string<'a>(value: &'a Value, key: &str) -> DocumentResult<&'a str> {
         .ok_or_else(|| invalid(format!("{key} must be a nonempty string")))
 }
 
-fn catalogue(settings: &AppSettingsStore) -> DocumentResult<Value> {
+pub fn catalogue(settings: &AppSettingsStore) -> DocumentResult<Value> {
     match read_document(&settings.config_dir().join("dataset_links.json")) {
         Err((404, _)) => Ok(json!({"schema_version": 2, "datasets": [], "groups": []})),
         value => value,
     }
 }
 
-fn save_catalogue(settings: &AppSettingsStore, catalogue: &Value) -> DocumentResult<()> {
+pub fn save_catalogue(settings: &AppSettingsStore, catalogue: &Value) -> DocumentResult<()> {
     fs::create_dir_all(settings.config_dir()).map_err(storage)?;
     write_document(
         &settings.config_dir().join("dataset_links.json"),
@@ -452,11 +452,17 @@ fn ensure_directory(workspace: &Path, relative: &str) -> DocumentResult<()> {
     Ok(())
 }
 
-fn list_workspaces(settings: &AppSettingsStore) -> DocumentResult<Value> {
+pub fn list_workspaces(settings: &AppSettingsStore) -> DocumentResult<Value> {
     let mut result = settings.linked_workspaces_response().map_err(storage)?;
     if let Some(workspaces) = result["workspaces"].as_array_mut() {
         for workspace in workspaces {
             workspace["created_at"] = workspace["linked_at"].clone();
+            workspace["num_datasets"] = workspace["discovered"]
+                .get("datasets_count")
+                .cloned()
+                .unwrap_or_else(|| json!(0));
+            workspace["num_pipelines"] = json!(0);
+            workspace["description"] = Value::Null;
             workspace["last_accessed"] = workspace
                 .get("last_scanned")
                 .filter(|value| !value.is_null())
@@ -593,7 +599,7 @@ fn read_editor_pipeline(path: &Path) -> DocumentResult<Value> {
     Ok(document)
 }
 
-fn valid_identifier(id: &str) -> bool {
+pub fn valid_identifier(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 256
         && id != "."
@@ -665,8 +671,12 @@ fn dispatch(
         ("GET", "/api/workspace/settings") => workspace_preferences(settings),
         ("PUT", "/api/workspace/settings") => request(body).and_then(|update| save_workspace_preferences(settings, update)),
         ("GET", "/api/workspace/data-defaults") => workspace_preferences(settings).map(|value| value["data_loading_defaults"].clone()),
-        ("PUT", "/api/workspace/data-defaults") => request(body).and_then(|update| save_workspace_preferences(settings, json!({"data_loading_defaults":update}))),
-        ("GET", "/api/workspace/groups") => catalogue(settings).map(|catalogue| json!({"groups": catalogue.get("groups").cloned().unwrap_or_else(|| json!([]))})),
+        ("PUT", "/api/workspace/data-defaults") => request(body).and_then(|update| {
+            let mut response = save_workspace_preferences(settings, json!({"data_loading_defaults":update}))?;
+            response["defaults"] = workspace_preferences(settings)?["data_loading_defaults"].clone();
+            Ok(response)
+        }),
+        ("GET", "/api/workspace/groups") => catalogue(settings).and_then(|catalogue| crate::workspace_metadata::groups(&catalogue)).map(|groups| json!({"groups":groups})),
         ("GET", "/api/pipelines") => list_pipelines(settings),
         ("POST", "/api/pipelines") => save_pipeline(settings, None, body),
         ("GET", "/api/datasets") => catalogue(settings).map(|catalogue| json!({

@@ -79,7 +79,10 @@ fn immutable_projection_preserves_real_final_and_cv_provenance() {
             fs::metadata(&path).unwrap().modified().unwrap()
         )
     );
-    assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+    assert!(fs::read_dir(root.path()).unwrap().all(|entry| matches!(
+        entry.unwrap().file_name().to_str(),
+        Some("store.sqlite" | "store.sqlite-wal" | "store.sqlite-shm")
+    )));
 }
 
 #[test]
@@ -142,7 +145,7 @@ fn streaming_consumer_sees_last_page_and_uses_same_snapshot() {
 }
 
 #[test]
-fn links_use_shared_policy_and_live_journals_remain_errors() {
+fn links_use_shared_policy_with_committed_wal() {
     let root = fixture();
     let links = [DatasetLinkIdentity {
         id: "dataset-1".into(),
@@ -157,9 +160,9 @@ fn links_use_shared_policy_and_live_journals_remain_errors() {
         .find(|d| d["dataset_name"] == "R2 Exact")
         .unwrap();
     assert_eq!(linked["linked_dataset_id"], "dataset-1");
-    fs::write(root.path().join("store.sqlite-wal"), b"active").unwrap();
-    assert!(matches!(
-        read(root.path(), None, "w", &links),
-        Err(WorkspaceStoreReadError::LiveJournal(_))
-    ));
+    let writer = Connection::open(root.path().join("store.sqlite")).unwrap();
+    writer
+        .execute_batch("PRAGMA journal_mode=WAL; UPDATE chains SET cv_val_score=0.123")
+        .unwrap();
+    assert!(read(root.path(), None, "w", &links).is_ok());
 }

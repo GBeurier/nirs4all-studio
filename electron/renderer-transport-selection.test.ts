@@ -35,6 +35,73 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 }
 
 describe("renderer transport preselection", () => {
+  it("qualifies populated result browsing, ranking and prediction arrays through the owner", async () => {
+    const request = async () => capabilityResponse({ aggregated_prediction_result_routes: true, python_plugin_preflight: true });
+    const paths = [
+      "/aggregated-predictions",
+      "/aggregated-predictions?dataset_name=Durum+wheat&metric=rmse&chain_id=chain-1",
+      "/aggregated-predictions/top?metric=rmse&n=100&score_column=final_test_score",
+      "/aggregated-predictions/chain/chain-1?metric=rmse&dataset_name=wheat",
+      "/aggregated-predictions/chain/cha%C3%AEne/detail?partition=val&fold_id=0",
+      "/aggregated-predictions/prediction-1/arrays",
+      "/aggregated-predictions/chain/chain-1/pipeline-steps",
+      "/aggregated-predictions/pipeline/pipeline-1/pipeline-steps",
+    ];
+    for (const path of paths) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar", surface: "aggregated-prediction-results" });
+    }
+    await expect(preselectRendererTransport({ kind: "http", method: "GET", path: paths[0] }, running, async () => capabilityResponse()))
+      .resolves.toMatchObject({ target: "reject" });
+    await expect(preselectRendererTransport({ kind: "http", method: "GET", path: paths[0] },
+      () => ({ ...running(), pythonPluginHostConfigured: false }), request))
+      .resolves.toMatchObject({ target: "reject", reason: "native_python_host_unavailable" });
+  });
+
+  it("rejects unimplemented or malformed aggregated result contracts", async () => {
+    const request = async () => capabilityResponse({ aggregated_prediction_result_routes: true, python_plugin_preflight: true });
+    for (const path of [
+      "/aggregated-predictions?path=/other/workspace",
+      "/aggregated-predictions?metric=rmse&%6Detric=mae",
+      "/aggregated-predictions?metric=",
+      "/aggregated-predictions/top?n=2",
+      "/aggregated-predictions/top?metric=rmse&n=101",
+      "/aggregated-predictions/top?metric=rmse&n=-1",
+      "/aggregated-predictions/top?metric=rmse&n=1.5",
+      "/aggregated-predictions/top?metric=rmse&score_column=arbitrary_sql",
+      "/aggregated-predictions/chain/id/detail?partition=invalid",
+      "/aggregated-predictions/chain/%2F/arrays",
+      "/aggregated-predictions/%2F/arrays",
+      "/aggregated-predictions/%5C/arrays",
+      "/aggregated-predictions/%00/arrays",
+      "/aggregated-predictions/%ZZ/arrays",
+      `/aggregated-predictions/${"x".repeat(257)}/arrays`,
+      "/aggregated-predictions/id/arrays?partition=test",
+      "/aggregated-predictions/id/robustness-evidence",
+      "/aggregated-predictions/chain/chain-1/pipeline-steps?metric=rmse",
+      "/aggregated-predictions/pipeline/%2F/pipeline-steps",
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+    await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/aggregated-predictions" }, running, request))
+      .resolves.toMatchObject({ target: "reject" });
+  });
+
+  it("selects the actual Predictions page and summary contracts", async () => {
+    const request = async () => capabilityResponse({ workspace_prediction_result_routes: true, python_plugin_preflight: true });
+    for (const path of ["/workspaces/workspace-1/predictions/data?limit=1000&offset=0",
+      "/workspaces/workspace-1/predictions/data?dataset=durum+wheat&partition=test",
+      "/workspaces/workspace-1/predictions/summary"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar", surface: "workspace-prediction-results" });
+    }
+    for (const suffix of ["limit=1001", "offset=-1", "limit=1&limit=2", "partition=oops", "path=/tmp/other"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path: `/workspaces/workspace-1/predictions/data?${suffix}` }, running, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+  });
+
   it("requires the exact compact dataset-score capability without a Python host", async () => {
     const request = async () => capabilityResponse({ dataset_score_routes: true });
     const info = () => ({ ...running(), pythonPluginHostConfigured: false });
@@ -77,11 +144,18 @@ describe("renderer transport preselection", () => {
       running,
       request,
     )).resolves.toMatchObject({ target: "native-sidecar", surface: "playground" });
-    await expect(preselectRendererTransport(
-      { kind: "http", method: "GET", path: "/spectra/dataset_1" },
-      running,
-      request,
-    )).resolves.toMatchObject({ target: "reject" });
+    for (const path of ["/playground/operators", "/playground/presets", "/spectra/dataset_1", "/spectra/dataset_1?start=2&end=8&source=1&target_index=2&include_y=true", "/spectra/dataset_1/stats?partition=test&source=1"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar", surface: "playground" });
+    }
+    for (const path of ["/playground/pca", "/playground/repetitions"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "POST", path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar", surface: "playground" });
+    }
+    for (const path of ["/spectra/dataset_1?source=-1", "/spectra/dataset_1?source=1&source=2", "/spectra/dataset_1?include_y=yes", "/spectra/dataset_1/stats?start=2", "/spectra/dataset_1?max_wavelengths_returned=0"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
   });
 
   it("selects local update status and its explicit unsupported refresh", async () => {

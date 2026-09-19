@@ -74,20 +74,6 @@ test.describe('Dataset Import Wizard', () => {
     });
   });
 
-  test.describe('Data Stats Display', () => {
-    test('wizard should have stats display area', async ({ datasetsPage }) => {
-      await datasetsPage.openAddDatasetWizard();
-
-      // Stats should be conditionally shown based on data
-      // When no data, stats should not be visible or show zeros
-      const statsVisible = await datasetsPage.wizardDataStats.isVisible().catch(() => false);
-
-      // This test just verifies the component exists in the DOM structure
-      // Actual stats will show when files are detected
-      expect(true).toBe(true); // Pass - component exists
-    });
-  });
-
   test.describe('Source Selection Step', () => {
     test('should show folder and files source options', async ({ datasetsPage, page }) => {
       await datasetsPage.openAddDatasetWizard();
@@ -200,19 +186,7 @@ test.describe('Dataset Wizard - Regression Prevention', () => {
     }
   });
 
-  test('wizard should show data stats component when files present', async ({ datasetsPage, page }) => {
-    await datasetsPage.openAddDatasetWizard();
 
-    // The data stats component should be part of the wizard structure
-    // Look for the stats container even if empty
-    const wizardContent = datasetsPage.wizardDialog;
-    await expect(wizardContent).toBeVisible();
-
-    // Stats show file counts when files are present
-    // This test just verifies the structure exists
-    const hasStatsArea = await page.locator('.text-xs.text-muted-foreground').isVisible().catch(() => true);
-    expect(true).toBe(true); // Structure test passes
-  });
 });
 
 test.describe('Dataset Wizard - Accessibility', () => {

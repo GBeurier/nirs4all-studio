@@ -89,11 +89,11 @@ async function freePort() {
   return port;
 }
 
-async function main() {
-  const config = archive.assertValidConfig(archive.parseArgs());
+async function main(options = {}) {
+  const config = options.config || archive.assertValidConfig(archive.parseArgs());
   const layout = archive.resolveLaunchLayout(config.extractedRoot, config.platform, config.appName);
-  const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "studio-first-launch-ui-"));
-  const env = archive.buildSandboxEnv(config.platform, sandbox, await freePort(), config.timeoutMs);
+  const sandbox = options.sandboxRoot || fs.mkdtempSync(path.join(os.tmpdir(), "studio-first-launch-ui-"));
+  const env = { ...archive.buildSandboxEnv(config.platform, sandbox, await freePort(), config.timeoutMs), ...options.envOverrides };
   env.SENTRY_DSN = "";
   let app;
   const errors = [];
@@ -106,9 +106,12 @@ async function main() {
     if (diagnostics.length > 40) diagnostics.shift();
   };
   const launch = async () => {
+    const started = Date.now();
     app = await electron.launch({
       executablePath: layout.executablePath,
-      args: config.platform === "linux" ? ["--no-sandbox"] : [],
+      args: [...(config.platform === "linux" ? ["--no-sandbox"] : []),
+        ...(!(config.platform === "win32" && options.existingProfile && options.envOverrides)
+          ? [`--user-data-dir=${path.join(sandbox, "electron-user-data")}`] : [])],
       cwd: layout.appRoot,
       env,
       timeout: config.timeoutMs,
@@ -133,12 +136,16 @@ async function main() {
     page.on("console", message => { if (message.type() === "error") record(`Console: ${message.text()}`); });
     page.on("requestfailed", request => record(`Request: ${request.method()} ${diagnosticUrl(request.url())} ${request.failure()?.errorText}`));
     page.on("response", response => {
+      if (response.status() >= 400 && /\/api\//.test(response.url())) {
+        errors.push(`HTTP ${response.status()} ${response.request().method()} ${diagnosticUrl(response.url())}`);
+      }
       const pending = recordHttpFailure(response, record, sanitize)
         .catch(error => record(`HTTP diagnostic unavailable: ${sanitize(error.message)}`));
       pendingDiagnostics.add(pending);
       void pending.finally(() => pendingDiagnostics.delete(pending));
     });
     page.on("pageerror", error => { errors.push(sanitize(error.message)); if (errors.length > 20) errors.shift(); });
+    options.timings?.push({ phase: "renderer_launch", duration_ms: Date.now() - started });
     return page;
   };
   const openAdvanced = async page => {
@@ -148,8 +155,10 @@ async function main() {
   };
   console.log(`First-launch UI sandbox: ${sandbox}`);
   try {
+    const setupStarted = Date.now();
     const page = await launch();
-    await page.getByRole("button", { name: "Do not send", exact: true }).click({ timeout: config.timeoutMs });
+    if (!options.existingProfile) {
+    await page.getByRole("button", { name: options.consent === "accept" ? "Allow reports (recommended)" : "Do not send", exact: true }).click({ timeout: config.timeoutMs });
     await waitForSetupState(page,
       () => page.getByText("The included CPU runtime and required packages are ready.", { exact: true }).isVisible(),
       config.timeoutMs, "the included CPU runtime and required packages to be ready", sanitize);
@@ -157,6 +166,13 @@ async function main() {
     await waitForSetupState(page, () => /\/datasets(?:[?#]|$)/.test(page.url()),
       config.timeoutMs, "setup completion and the datasets page", sanitize);
     console.log("First setup verified bundled packages and opened datasets without skipping setup.");
+    if (options.timings) {
+      const elapsed = Date.now() - setupStarted;
+      options.timings.push({ phase: "first_setup", duration_ms: elapsed, budget_ms: config.timeoutMs });
+      if (elapsed > config.timeoutMs) throw new Error(`First setup took ${elapsed}ms; budget ${config.timeoutMs}ms`);
+    }
+    }
+    if (options.inspectProfile) await options.inspectProfile({ page, app, env });
 
     const toggle = await openAdvanced(page);
     await expect(toggle).toBeEnabled({ timeout: config.timeoutMs });
@@ -191,6 +207,14 @@ async function main() {
     const restarted = await launch();
     const restartedToggle = await openAdvanced(restarted);
     await expect(restartedToggle).toHaveAttribute("aria-checked", "true", { timeout: config.timeoutMs });
+    if (!options.existingProfile) {
+      const expectedConsent = options.consent === "accept" ? "accepted" : "declined";
+      await expect.poll(() => restarted.evaluate(() => localStorage.getItem("nirs4all-telemetry-consent")),
+        { timeout: 3000 }).toBe(expectedConsent);
+    }
+    if (options.journeys) await options.journeys({ page: restarted, app, env });
+    await withDiagnosticTimeout(Promise.allSettled([...pendingDiagnostics]));
+    if (errors.length) throw new Error(`Installed renderer failed: ${errors.join("; ")}`);
     console.log("First-launch UI smoke passed: installed runtime, setup, Settings, saved preference, reload and app restart.");
   } catch (error) {
     await withDiagnosticTimeout(Promise.allSettled([...pendingDiagnostics]));
@@ -205,11 +229,11 @@ async function main() {
     throw new Error(sanitizeDiagnostic(error.stack || error, secrets, 8000));
   } finally {
     if (app) await app.close();
-    if (!config.keepSandbox) await archive.cleanupSandboxRoot(sandbox);
+    if (!options.sandboxRoot && !config.keepSandbox) await archive.cleanupSandboxRoot(sandbox);
   }
 }
 
-module.exports = { diagnosticUrl, sanitizeDiagnostic, recordHttpFailure, waitForSetupState };
+module.exports = { main, diagnosticUrl, sanitizeDiagnostic, recordHttpFailure, waitForSetupState };
 
 if (require.main === module) {
   main().catch(error => { console.error("First-launch UI smoke failed:", sanitizeDiagnostic(error.stack || error)); process.exitCode = 1; });

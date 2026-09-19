@@ -93,11 +93,15 @@ def test_fastapi_oracle_matches_the_native_composition_golden() -> None:
     contract = CONTRACTS / "studio_run_detail_http_v1.json"
     owner_fixture = FIXTURES / "workspace_store_v5_run_detail_http_inputs.response.json"
     assert hashlib.sha256(contract.read_bytes()).hexdigest() == (
-        "8230963eeb317ccacf5fa83a29fec730a830ebbb81ead9d16629251a1993ab1e"
+        "a36832b6fb4583b0b98f0d61b23df4879349da7c0166aa2bae2a59f120ccce7d"
     )
     assert hashlib.sha256(owner_fixture.read_bytes()).hexdigest() == (
         "1053274a5d5a900bb3511afc3290c0adae5a1c2b84beacb742fd650f806c19bd"
     )
+
+    # Both projections now share a read-only WAL snapshot; payload goldens stay unchanged.
+    policy = json.loads(contract.read_text(encoding="utf-8"))
+    assert policy["owner_oracle"]["open_mode"] == "single_sqlite_read_only_transaction"
 
     owner = json.loads(owner_fixture.read_text(encoding="utf-8"))
     before = copy.deepcopy(owner)

@@ -141,7 +141,7 @@ describe("CI release protection graph", () => {
       expect(quality.with?.[input]).toMatch(/^[0-9a-f]{40}$/);
       expect(quality.with?.[input]).toBe(release.env?.[variable]);
     }
-    for (const publisher of ["docker", "release"]) {
+    for (const publisher of ["release"]) {
       expect(dependencies(release.jobs[publisher])).toContain("quality");
     }
     for (const [name, job] of Object.entries(release.jobs)) {
@@ -151,41 +151,40 @@ describe("CI release protection graph", () => {
     }
   });
 
-  it("blocks both publishers when quality or any enabled platform fails or is skipped", () => {
-    for (const publisher of ["docker", "release"]) {
+  it("blocks publication when quality or any enabled platform fails or is skipped", () => {
+    for (const publisher of ["release"]) {
       expect(releaseGate(publisher)).toBe(true);
       for (const prerequisite of dependencies(release.jobs[publisher])) {
         for (const outcome of ["failure", "cancelled", "skipped"]) {
           expect(releaseGate(publisher, { [prerequisite]: outcome }), `${publisher}: ${prerequisite} ${outcome}`).toBe(false);
         }
       }
-      const skippedArchives = Object.fromEntries(Object.keys(release.jobs).filter((name) => name.startsWith("archive-")).map((name) => [name, "skipped"]));
-      expect(releaseGate(publisher, skippedArchives, { skip_all_in_one: "true" })).toBe(false);
-      expect(releaseGate(publisher, skippedArchives, { skip_all_in_one: "true", prerelease: "true" })).toBe(true);
-      expect(releaseGate(publisher, { ...skippedArchives, quality: "failure" }, { skip_all_in_one: "true" })).toBe(false);
+
     }
     expect(releaseGate("docker", {}, { skip_docker: "true" })).toBe(false);
     expect(releaseGate("release", { docker: "skipped" }, { skip_docker: "true" })).toBe(true);
   });
 
   it.skipIf(process.platform === "win32")("promotes the exact tested Docker candidate and reserves latest for stable releases", () => {
-    const steps = release.jobs.docker.steps!;
+    const steps = release.jobs.release.steps!;
     const publication = steps.find((step) => step.run?.includes("docker push"))!;
-    expect(publication.if).toBe("needs.prepare.outputs.is_tag_release == 'true'");
+    expect(publication.if).toBe("needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'");
     const root = temporaryDirectory();
     const log = path.join(root, "docker-calls");
     const fakeDocker = path.join(root, "docker");
-    fs.writeFileSync(fakeDocker, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DOCKER_TEST_LOG"\n');
+    fs.writeFileSync(fakeDocker, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DOCKER_TEST_LOG"\nif [ "$1" = image ]; then echo sha256:tested; fi\n');
     fs.chmodSync(fakeDocker, 0o700);
     for (const prerelease of ["true", "false"]) {
       fs.writeFileSync(log, "");
       const result = spawnSync("bash", ["-e", "-c", publication.run!], {
-        env: { ...process.env, PATH: `${root}:${process.env.PATH}`, DOCKER_TEST_LOG: log, RELEASE_VERSION: "1.2.3", IS_PRERELEASE: prerelease },
+        env: { ...process.env, PATH: `${root}:${process.env.PATH}`, DOCKER_TEST_LOG: log, RELEASE_VERSION: "1.2.3", IS_PRERELEASE: prerelease, EXPECTED_IMAGE_ID: "sha256:tested" },
         encoding: "utf8",
       });
       expect(result.status, result.stderr).toBe(0);
       const calls = fs.readFileSync(log, "utf8").trim().split("\n");
       const expected = [
+        "load --input docker-candidate/studio-image.tar",
+        "image inspect --format {{.Id}} nirs4all-studio:native-release-candidate",
         "tag nirs4all-studio:native-release-candidate ghcr.io/gbeurier/nirs4all-studio:1.2.3",
         "push ghcr.io/gbeurier/nirs4all-studio:1.2.3",
       ];

@@ -32,7 +32,7 @@ Individual gates: `lint:eslint`, `lint:tsc`, `lint:nodes` (= `validate:nodes`), 
 ### Build / release
 - Frontend: `npm run build` (web) / `npm run build:electron` (Electron renderer, relative `./` base).
 - Installer release: `npm run release -- --platform <matching-host> --flavor cpu`. It packages the Rust product backend plus the attested plugin-only CPython closure; cross-host builds, non-CPU labels, and legacy standalone mode are rejected.
-- Portable all-in-one archive: `npm run release:all-in-one -- --platform <host> --arch <host-arch>`.
+- Portable and all-in-one releases are disabled; publish only NSIS, DEB, DMG and Docker.
 - Docker-isolated CI locally: `npm run ci:docker[:frontend|:backend|:e2e|:lint]`.
 
 ## Architecture

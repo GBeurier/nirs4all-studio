@@ -336,7 +336,6 @@ function discoverPlatformOutput(
       "Linux unpacked application",
     );
     artifacts = [
-      requireExactlyOne(producedEntries.filter((name) => name.endsWith(".AppImage")), "Linux AppImage"),
       requireExactlyOne(producedEntries.filter((name) => name.endsWith(".deb")), "Linux deb"),
     ];
     backendSegments = [unpackedName, "resources", "backend"];
@@ -349,7 +348,6 @@ function discoverPlatformOutput(
     );
     const executables = producedEntries.filter((name) => name.toLowerCase().endsWith(".exe"));
     artifacts = [
-      requireExactlyOne(executables.filter((name) => /-portable\.exe$/i.test(name)), "Windows portable executable"),
       requireExactlyOne(executables.filter((name) => !/-portable\.exe$/i.test(name)), "Windows NSIS installer"),
     ];
     backendSegments = [unpackedName, "resources", "backend"];

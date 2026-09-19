@@ -7,7 +7,7 @@
  *
  * Options:
  *   --flavor cpu          Build flavor (only supported release profile)
- *   --mode installer      Installer mode (standalone uses release:all-in-one)
+ *   --mode installer      Installer mode (the only supported distribution)
  *   --clean               Clean all build artifacts before building
  *   --skip-backend        Reuse an existing attested plugin-host closure
  *   --skip-frontend       Skip building the frontend (use existing)
@@ -83,7 +83,7 @@ if (flavor !== "cpu") {
 
 if (mode !== "installer") {
   console.error(
-    `Error: Release mode '${mode}' is not supported here. Use 'npm run release:all-in-one' for portable archives.`,
+    `Error: Release mode '${mode}' is not supported. Only installers are enabled; portable and all-in-one releases are disabled.`,
   );
   process.exit(1);
 }

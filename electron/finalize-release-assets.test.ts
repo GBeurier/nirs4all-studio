@@ -126,10 +126,10 @@ describe("finalize release assets", () => {
     ).toThrow("Release asset inventory mismatch");
   });
 
-  it("supports the installer-only workflow dispatch profile", () => {
+  it("supports the installer-only publication profile", () => {
     const root = temporaryRoot();
     const expectedNames = finalizer.expectedPublishedNames("0.11.2", false);
-    expect(expectedNames).toHaveLength(6);
+    expect(expectedNames).toHaveLength(4);
     expect(expectedNames.every((name) => !name.includes("all-in-one"))).toBe(true);
     for (const publishedName of expectedNames) {
       writePair(

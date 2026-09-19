@@ -121,8 +121,8 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   if (typeof prerelease !== "boolean" || typeof includeAllInOne !== "boolean") {
     throw new Error("Explicit prerelease and archive inclusion flags are required");
   }
-  if (!prerelease && !includeAllInOne) {
-    throw new Error("A stable release requires every qualified all-in-one archive");
+  if (includeAllInOne) {
+    throw new Error("All-in-one publication is disabled; publish installers only");
   }
   const manifest = releaseManifest(path.resolve(releaseRoot), version, includeAllInOne);
   const apiRoot = `repos/${repo}`;

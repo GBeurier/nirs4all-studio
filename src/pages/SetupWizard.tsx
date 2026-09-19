@@ -84,12 +84,12 @@ export default function SetupWizard() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const verifyRuntime = useCallback(async () => {
+  const verifyRuntime = useCallback(async (forceRefresh = false) => {
     setChecking(true);
     setReady(false);
     setError(null);
     try {
-      const inventory = await getDependencies(true);
+      const inventory = await getDependencies(forceRefresh);
       if (inventory.read_only !== true) {
         setMode("writable");
         return false;
@@ -123,8 +123,9 @@ export default function SetupWizard() {
   useEffect(() => { void verifyRuntime(); }, [verifyRuntime]);
 
   const finishPackagedSetup = async () => {
-    // Recheck the selected interpreter immediately before persisting completion.
-    if (!await verifyRuntime()) return;
+    // The completion endpoint validates the runtime before persisting setup.
+    // Repeating every inventory request here adds another cold-start cycle.
+    if (!ready || checking) return;
     try {
       await completeSetupMutation.mutateAsync({ profile: "cpu" });
       navigate("/datasets", { replace: true });
@@ -147,7 +148,7 @@ export default function SetupWizard() {
           {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
           {ready && !checking && <p role="status">The included CPU runtime and required packages are ready.</p>}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => void verifyRuntime()} disabled={checking || completeSetupMutation.isPending}>Retry verification</Button>
+            <Button variant="outline" onClick={() => void verifyRuntime(true)} disabled={checking || completeSetupMutation.isPending}>Retry verification</Button>
             <Button onClick={() => void finishPackagedSetup()} disabled={!ready || checking || completeSetupMutation.isPending}>Open Studio</Button>
           </div>
         </CardContent>
