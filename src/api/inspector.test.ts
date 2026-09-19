@@ -39,6 +39,8 @@ describe("inspector API", () => {
       pipeline_id: "pipe-1",
       score_column: "cv_val_score",
       score_ref: {
+        key: "metric=rmse|protocol=cross_validation|partition=test|aggregation=fold_mean",
+        metric: "rmse",
         protocol: "cross_validation",
         partition: "test",
         aggregation: "fold_mean",
@@ -52,6 +54,8 @@ describe("inspector API", () => {
     expect(params.get("pipeline_id")).toBe("pipe-1");
     expect(params.get("score_column")).toBe("cv_val_score");
     expect(JSON.parse(params.get("score_ref") ?? "{}")).toMatchObject({
+      key: "metric=rmse|protocol=cross_validation|partition=test|aggregation=fold_mean",
+      metric: "rmse",
       protocol: "cross_validation",
       partition: "test",
       aggregation: "fold_mean",

@@ -8,6 +8,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { KeywordRegistryDocument } from "@/ui/keywordRegistry";
+
 import { getKeywordRegistry } from "@/api/system";
 import { useKeywordRegistry } from "./useKeywordRegistry";
 
@@ -21,7 +23,7 @@ vi.mock("@/api/system", () => ({
 const mockedGetKeywordRegistry = vi.mocked(getKeywordRegistry);
 let mountedContainers: HTMLDivElement[] = [];
 
-function registryPayload() {
+function registryPayload(): KeywordRegistryDocument {
   return {
     entries: [
       {
@@ -138,7 +140,8 @@ describe("useKeywordRegistry", () => {
   });
 
   it("fails closed when the registry payload does not match the public schema", async () => {
-    mockedGetKeywordRegistry.mockResolvedValue({ entries: [] });
+    // Deliberately malformed server payload exercises runtime validation.
+    mockedGetKeywordRegistry.mockResolvedValue({ entries: [] } as unknown as KeywordRegistryDocument);
     const { container, queryClient, root } = await renderWithQueryClient(<HookProbe />);
 
     await waitFor(() => {

@@ -3,6 +3,8 @@
 const electron = require("electron") as typeof import("electron");
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = electron;
 
+import type { BrowserWindow as ElectronBrowserWindow } from "electron";
+import type { ErrorEvent } from "@sentry/electron/main";
 import path from "node:path";
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -36,10 +38,7 @@ function syncSentryEnvironment(consentStatus: TelemetryConsentStatus): string {
   return dsn;
 }
 
-function sanitizeSentryEvent(event: {
-  user?: unknown;
-  request?: Record<string, unknown>;
-}): typeof event {
+function sanitizeSentryEvent(event: ErrorEvent): ErrorEvent {
   delete event.user;
 
   if (event.request && typeof event.request === "object") {
@@ -130,8 +129,8 @@ async function restartBackendAfterTelemetryChange(): Promise<boolean> {
   }
 }
 
-let mainWindow: BrowserWindow | null = null;
-let splashWindow: BrowserWindow | null = null;
+let mainWindow: ElectronBrowserWindow | null = null;
+let splashWindow: ElectronBrowserWindow | null = null;
 
 // The desktop app is single-window today. Prevent a second Electron process
 // from racing the first one during startup and trying to launch another backend.
@@ -173,7 +172,7 @@ if (app.commandLine.hasSwitch("offline") || process.argv.includes("--offline")) 
   console.log("[main] --offline flag detected; forcing offline mode");
 }
 
-function createSplashWindow(): BrowserWindow {
+function createSplashWindow(): ElectronBrowserWindow {
   const splash = new BrowserWindow({
     width: 460,
     height: 420,
@@ -273,6 +272,8 @@ ipcMain.handle("app:quitForUpdate", () => {
 });
 
 // IPC Handlers for file dialogs
+ipcMain.handle("workspace:defaultLocation", () => path.join(app.getPath("documents"), "nirs4all Studio"));
+
 ipcMain.handle("dialog:selectFolder", async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {

@@ -81,6 +81,40 @@ afterEach(() => {
 });
 
 describe("EnvManager", () => {
+  it.each(["managed", "custom"])("enforces the recovery pin without modifying a %s environment unexpectedly", async (kind) => {
+    const userDataDir = makeUserDataDir();
+    const envRoot = kind === "managed" ? path.join(userDataDir, "python-env", "venv") : path.join(userDataDir, "shared-project");
+    const pythonPath = process.platform === "win32" ? path.join(envRoot, "Scripts", "python.exe") : path.join(envRoot, "bin", "python");
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.writeFileSync(pythonPath, "");
+    const settingsPath = path.join(userDataDir, "env-settings.json");
+    const settings = JSON.stringify({ pythonPath, appVersion: "0.11.7", wizardCompleted: true });
+    fs.writeFileSync(settingsPath, settings);
+    let installedVersion = "0.11.1";
+    childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
+      const callback = args.at(-1) as (error: Error | null, stdout?: string) => void;
+      callback(null, (args[1] as string[])[1]?.includes("importlib_metadata")
+        ? JSON.stringify({ version: "3.11.11", installed: { nirs4all: installedVersion } }) : "");
+    });
+    childProcessMocks.spawn.mockImplementation(() => {
+      installedVersion = "0.11.0";
+      const proc = Object.assign(new EventEmitter(), { pid: 1234, stderr: new EventEmitter(), stdout: new EventEmitter() });
+      process.nextTick(() => proc.emit("close", 0));
+      return proc;
+    });
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+    if (kind === "managed") {
+      await expect(manager.ensureBackendPackages()).resolves.toBe(true);
+      expect(childProcessMocks.spawn).toHaveBeenCalledTimes(1);
+      expect(childProcessMocks.spawn.mock.calls[0][1]).toEqual(["-m", "pip", "install", "--prefer-binary", "nirs4all==0.11.0"]);
+    } else {
+      await expect(manager.ensureBackendPackages()).rejects.toThrow("selected shared Python environment was left unchanged");
+      expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+    }
+    expect(fs.readFileSync(settingsPath, "utf8")).toBe(settings);
+  });
+
   it("clears a stale saved custom python path instead of treating it as ready", async () => {
     const userDataDir = makeUserDataDir();
     const settingsPath = path.join(userDataDir, "env-settings.json");
@@ -134,7 +168,11 @@ describe("EnvManager", () => {
 
     let verifyCalls = 0;
     childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
-      const callback = args[args.length - 1] as (error: Error | null) => void;
+      const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
+      if ((args[1] as string[])[1]?.includes("importlib_metadata")) {
+        callback(null, JSON.stringify({ version: "3.11.11", installed: { nirs4all: "0.11.0" } }));
+        return;
+      }
       verifyCalls += 1;
       callback(verifyCalls === 1 ? new Error("missing packages") : null);
     });
@@ -192,7 +230,11 @@ describe("EnvManager", () => {
     let heavyVerifyCalls = 0;
     childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
       const code = args[1] as string[];
-      const callback = args[args.length - 1] as (error: Error | null) => void;
+      const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
+      if (code[1]?.includes("importlib_metadata")) {
+        callback(null, JSON.stringify({ version: "3.11.11", installed: { nirs4all: "0.11.0" } }));
+        return;
+      }
       if (Array.isArray(code) && code[1]?.includes("import uvicorn, fastapi")) {
         callback(null);
         return;
@@ -700,7 +742,8 @@ describe("EnvManager", () => {
 
     childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
       const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
-      callback(null, "", "");
+      callback(null, (args[1] as string[])[1]?.includes("importlib_metadata")
+        ? JSON.stringify({ version: "3.11.11", installed: { nirs4all: "0.11.0" } }) : "", "");
     });
 
     const { EnvManager } = await import("./env-manager");

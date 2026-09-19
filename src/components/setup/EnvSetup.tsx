@@ -116,7 +116,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
   // Post-backend state (profile + packages)
   const [gpuInfo, setGpuInfo] = useState<GPUDetectionResponse | null>(null);
   const [config, setConfig] = useState<RecommendedConfigResponse | null>(null);
-  const [selectedProfile, setSelectedProfile] = useState<string>("cpu");
+  const [selectedProfile, setSelectedProfile] = useState<string>("cpu-lite");
   const [selectedExtras, setSelectedExtras] = useState<string[]>([]);
   const [installProgress, setInstallProgress] = useState(0);
   const [installMessage, setInstallMessage] = useState("");

@@ -563,7 +563,7 @@ class AppConfigManager:
         # Create dataset link
         dataset = DatasetLink(
             id=f"dataset_{int(datetime.now().timestamp())}_{len(datasets)}",
-            name=dataset_path.name,
+            name=str((config or {}).get("name") or dataset_path.name),
             path=str(dataset_path),
             linked_at=now,
             hash=dataset_hash,

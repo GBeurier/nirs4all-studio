@@ -155,7 +155,7 @@ describe("smoke-self-update", () => {
 
     const server = await smoke.startFixtureServer({ assetPath, assetName, assetSha });
     try {
-      const rel = await (await fetch(`${server.base}/repos/x/y/releases/latest`)).json();
+      const rel = await (await fetch(`${server.base}/repos/x/y/releases/latest`)).json() as { tag_name: string; assets: Array<{ browser_download_url: string }> };
       expect(rel.tag_name).toBe("999.0.0");
       expect(rel.assets[0].browser_download_url).toBe(`${server.base}/${assetName}`);
 

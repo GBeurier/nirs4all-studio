@@ -314,8 +314,8 @@ class UpdateManager:
     def get_nirs4all_version(self, force: bool = False) -> str | None:
         """Get the installed nirs4all version from the current runtime.
 
-        Memoized: the underlying probe spawns a subprocess that imports the
-        full ML stack. Pass ``force=True`` (the explicit "check for updates"
+        Memoized: the underlying probe reads installed distribution metadata
+        in the selected runtime without importing the ML stack. Pass ``force=True`` (the explicit "check for updates"
         path) to re-probe after an in-session upgrade.
         """
         if force or not self._nirs4all_version_probed:
@@ -689,11 +689,18 @@ class UpdateManager:
         Returns:
             Nirs4allUpdateInfo with latest release details
         """
-        # get_nirs4all_version() spawns a subprocess that imports nirs4all
-        # (the full ML stack — up to ~20s cold). Off-load it so it cannot block
+        # get_nirs4all_version() reads metadata in a subprocess. Off-load it so it cannot block
         # the event loop and stall every other in-flight request.
         current_version = await asyncio.to_thread(self.get_nirs4all_version, force)
         info = Nirs4allUpdateInfo(current_version=current_version)
+        from ..recommended_config import recovery_nirs4all_version
+
+        qualified_version = recovery_nirs4all_version()
+        if qualified_version is not None:
+            info.latest_version = qualified_version
+            info.update_available = self._compare_versions(current_version, qualified_version)
+            return info
+
 
         # Check cache (lazy load on first access)
         cache_key = "pypi_release"

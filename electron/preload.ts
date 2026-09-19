@@ -7,6 +7,8 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron") as typeof i
  * This provides a secure interface for the React app to access native features.
  */
 const electronApi = {
+  getDefaultWorkspaceLocation: (): Promise<string> =>
+    ipcRenderer.invoke("workspace:defaultLocation"),
   /**
    * File dialogs
    */

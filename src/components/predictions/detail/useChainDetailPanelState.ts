@@ -60,6 +60,7 @@ import {
 import {
   createRobustnessGuaranteeView,
   createRobustnessSummaryCards,
+  getRobustnessSpectralReplay,
   getRobustnessScenarioDistributionOptionsFromRegistry,
   getRobustnessScenarioKindOptions,
   getRobustnessScenarioKindOptionsFromRegistry,
@@ -71,6 +72,7 @@ import {
   type RobustnessScenarioKindOption,
   type RobustnessSummaryArtifact,
   type RobustnessSummaryCard,
+  type RobustnessSpectralReplay,
 } from "@/ui/robustness";
 import {
   createTuningSummaryCard,
@@ -168,6 +170,7 @@ export interface ChainDetailRobustnessSummary {
   mode: RobustnessSummaryArtifact["mode"];
   reportVersion: number;
   sliceBy: string[];
+  spectralReplay: RobustnessSpectralReplay | null;
   cards: RobustnessSummaryCard[];
 }
 
@@ -584,6 +587,7 @@ function buildChainDetailRobustnessSummaryFromArtifact(value: unknown): ChainDet
     mode: value.mode,
     reportVersion: value.report_version,
     sliceBy: value.slice_by,
+    spectralReplay: getRobustnessSpectralReplay(value),
     cards: createRobustnessSummaryCards(value),
   };
 }
@@ -632,7 +636,7 @@ function buildRobustnessScenarioPayload(
   if (kind === "spectral_scale" && severity <= -1) {
     return { error: "Spectral scale severity must keep 1 + severity positive.", scenario: null };
   }
-  const scenario: RobustnessScenarioDraft = option.stochastic
+  const scenario: PredictionRobustnessReportRequest["robustness"]["scenarios"][number] = option.stochastic
     ? { kind, severity, distribution }
     : { kind, severity };
   const issues = validateRobustnessScenarioDraft(scenario);

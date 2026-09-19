@@ -48,6 +48,23 @@ _FALLBACK_MITIGATION = (
 )
 
 
+def _recovery_engine(requested: str | None) -> str | None:
+    """Keep the recovery release on the execution engine it qualifies."""
+    from .recommended_config import recovery_nirs4all_version
+
+    if recovery_nirs4all_version() is None:
+        return None
+    if requested and requested.strip() not in ("", _LEGACY):
+        raise RtUnsupportedError(RtError(
+            verb="run",
+            cause="unsupported_capability",
+            message="This Studio recovery release uses the legacy Python engine.",
+            mitigation="Select the legacy engine for this recovery release.",
+            unsupported_capability="recovery.engine",
+        ))
+    return _LEGACY
+
+
 def resolve_engine(requested: str | None) -> str:
     """Resolve a requested engine to the engine nirs4all would select.
 
@@ -62,6 +79,9 @@ def resolve_engine(requested: str | None) -> str:
     Returns:
         The resolved engine id (e.g. ``"legacy"`` or ``"dag-ml"``).
     """
+    recovery = _recovery_engine(requested)
+    if recovery is not None:
+        return recovery
     try:
         from nirs4all.api.run import resolve_engine as _lib_resolve
     except Exception:
@@ -91,7 +111,7 @@ def runtime_engine_capabilities() -> dict[str, Any]:
     supports_explicit = supports_explicit_run_engine()
     return {
         "supports_explicit_run_engine": supports_explicit,
-        "supported_engines": ["legacy", "dag-ml"] if supports_explicit else [],
+        "supported_engines": (["legacy"] if _recovery_engine(None) else ["legacy", "dag-ml"]) if supports_explicit else [],
         "default_engine": resolve_engine(None),
         "reason": None
         if supports_explicit
@@ -111,6 +131,9 @@ def engine_run_kwargs(requested: str | None) -> dict[str, str]:
     Returns:
         ``{"engine": requested}`` when a non-blank engine was requested, else ``{}``.
     """
+    recovery = _recovery_engine(requested)
+    if recovery is not None:
+        return {"engine": recovery} if supports_explicit_run_engine() else {}
     if isinstance(requested, str) and requested.strip():
         normalized = requested.strip()
         if not supports_explicit_run_engine():

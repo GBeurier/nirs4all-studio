@@ -10,13 +10,6 @@ const isElectronBuild = isElectron && process.env.NODE_ENV === "production";
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "package.json"), "utf-8"));
 const appVersion = process.env.NIRS4ALL_APP_VERSION || process.env.VITE_APP_VERSION || pkg.version;
 
-function resolveNirs4allUiSourceRoot(): string {
-  const ciCheckout = path.resolve(__dirname, "nirs4all-ui-lib/src");
-  if (fs.existsSync(ciCheckout)) return ciCheckout;
-  return path.resolve(__dirname, "../nirs4all-ui/src");
-}
-
-const nirs4allUiSourceRoot = resolveNirs4allUiSourceRoot();
 
 /** Copy static electron assets needed at runtime to dist-electron during build */
 function copyElectronAssets(): Plugin {
@@ -125,14 +118,6 @@ export default defineConfig(({ mode }) => ({
   },
   resolve: {
     alias: {
-      "nirs4all-ui/score": path.resolve(nirs4allUiSourceRoot, "score/index.ts"),
-      "nirs4all-ui/runtime": path.resolve(nirs4allUiSourceRoot, "runtime/index.ts"),
-      "nirs4all-ui/conformal": path.resolve(nirs4allUiSourceRoot, "conformal/index.ts"),
-      "nirs4all-ui/robustness": path.resolve(nirs4allUiSourceRoot, "robustness/index.ts"),
-      "nirs4all-ui/keywordRegistry": path.resolve(nirs4allUiSourceRoot, "keywordRegistry/index.ts"),
-      "nirs4all-ui/tuning": path.resolve(nirs4allUiSourceRoot, "tuning/index.ts"),
-      "nirs4all-ui/components": path.resolve(nirs4allUiSourceRoot, "components/index.ts"),
-      "nirs4all-ui": path.resolve(nirs4allUiSourceRoot, "index.ts"),
       "@": path.resolve(__dirname, "./src"),
     },
   },

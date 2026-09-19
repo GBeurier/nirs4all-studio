@@ -66,7 +66,7 @@ export interface StudioTuningSpacePreviewResult {
 }
 
 function normalizePrefixSegments(prefix: string | readonly string[] | undefined): string[] {
-  if (Array.isArray(prefix)) {
+  if (prefix !== undefined && typeof prefix !== "string") {
     return prefix.map((segment) => segment.trim()).filter(Boolean);
   }
 
@@ -329,12 +329,12 @@ export function buildStudioTuningSpacePreview(
     return { ...resultBase, artifact: null, preview: null };
   }
 
-  const fingerprintPayload: JsonNativeValue = {
+  const fingerprintPayloadCandidate = {
     force_params: forceParams,
     parameters,
     source: "nirs4all-studio",
   };
-  const tuningFingerprintPayload: JsonNativeValue = {
+  const tuningFingerprintPayloadCandidate = {
     approach: config.approach,
     eval_mode: config.eval_mode,
     n_trials: config.n_trials,
@@ -344,6 +344,20 @@ export function buildStudioTuningSpacePreview(
     study_name: config.study_name ?? null,
     timeout: config.timeout ?? null,
   };
+
+  if (
+    !isJsonNativeValue(fingerprintPayloadCandidate)
+    || !isJsonNativeValue(tuningFingerprintPayloadCandidate)
+  ) {
+    issues.push({
+      code: "invalid_preview_artifact",
+      message: "Studio could not build JSON-native tuning fingerprint inputs.",
+    });
+    return { ...resultBase, artifact: null, preview: null };
+  }
+
+  const fingerprintPayload: JsonNativeValue = fingerprintPayloadCandidate;
+  const tuningFingerprintPayload: JsonNativeValue = tuningFingerprintPayloadCandidate;
 
   try {
     const artifact = parseOrderedTuningSearchSpaceArtifact({

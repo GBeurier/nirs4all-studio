@@ -10,7 +10,7 @@
  * Phase 3 Implementation
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -64,13 +64,25 @@ export function CreateWorkspaceDialog({
   // Form state
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
+  const [defaultLocation, setDefaultLocation] = useState("");
   const [description, setDescription] = useState("");
   const [createStructure, setCreateStructure] = useState(true);
   const invalidateDatasets = useInvalidateDatasets();
 
+  useEffect(() => {
+    let cancelled = false;
+    window.electronApi?.getDefaultWorkspaceLocation?.().then((directory) => {
+      if (!cancelled) {
+        setDefaultLocation(directory);
+        setLocation((current) => current || directory);
+      }
+    }).catch(() => { /* The folder picker remains available. */ });
+    return () => { cancelled = true; };
+  }, []);
+
   const resetForm = () => {
     setName("");
-    setLocation("");
+    setLocation(defaultLocation);
     setDescription("");
     setCreateStructure(true);
     setError(null);
@@ -242,7 +254,7 @@ export function CreateWorkspaceDialog({
               <div className="flex gap-2">
                 <Input
                   id="workspace-location"
-                  placeholder={t("settings.workspace.create.locationPlaceholder")}
+                  placeholder={defaultLocation || t("settings.workspace.create.location")}
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                   className="flex-1"

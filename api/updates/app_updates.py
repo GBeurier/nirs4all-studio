@@ -177,10 +177,19 @@ async def install_nirs4all(request: InstallRequest) -> dict[str, Any]:
     _u._ensure_runtime_mutable()
     _u._ensure_runtime_is_valid()
 
+    from ..recommended_config import recovery_nirs4all_version
+
+    qualified_version = recovery_nirs4all_version()
+    if qualified_version and request.version not in (None, qualified_version):
+        raise HTTPException(
+            status_code=400,
+            detail=f"This recovery release requires nirs4all {qualified_version}. Update Studio to change its runtime.",
+        )
+
     # Install nirs4all
     success, message, output = _u.venv_manager.install_package(
         "nirs4all",
-        version=request.version,
+        version=qualified_version or request.version,
         extras=request.extras,
         upgrade=True,
     )

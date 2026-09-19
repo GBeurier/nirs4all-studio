@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { getN4AWorkspacePredictionScatter } from "@/api/linkedWorkspaces";
 import { getPredictionArrays } from "@/api/aggregatedPredictions";
+import type { PredictionArrayPayload } from "@/types/aggregated-predictions";
 import { attachConformalIntervalsToSingleDataset } from "./conformalChartData";
 import type { PartitionDataset, ViewerPartitionTarget } from "./types";
 
@@ -22,6 +23,20 @@ interface State {
   data: PartitionDataset[];
   isLoading: boolean;
   error: string | null;
+}
+
+export function coercePredictionVector(payload: PredictionArrayPayload | null | undefined, targetIndex = 0): number[] {
+  if (payload == null) return [];
+  if (payload.length === 0) return [];
+  const first = payload[0];
+  if (typeof first === "number") {
+    return payload as number[];
+  }
+  const matrix = payload as number[][];
+  return matrix.map((row) => {
+    const value = row[targetIndex];
+    return typeof value === "number" ? value : Number.NaN;
+  });
 }
 
 async function fetchOne(
@@ -49,19 +64,22 @@ async function fetchOne(
       yTrue: r.y_true ?? [],
       yPred: r.y_pred ?? [],
       nSamples: r.n_samples ?? 0,
-      sampleIds: r.sample_indices ?? undefined,
+      sampleIds: r.sample_ids ?? undefined,
       sampleMetadata: r.sample_metadata ?? null,
     });
   }
   const r = await getPredictionArrays(target.predictionId);
+  const targetIndex = r.target_index ?? 0;
+  const yTrue = coercePredictionVector(r.y_true, targetIndex);
+  const yPred = coercePredictionVector(r.y_pred, targetIndex);
   return attachConformal({
     predictionId: target.predictionId,
     partition: target.partition,
     label: target.label ?? target.partition,
-    yTrue: r.y_true ?? [],
-    yPred: r.y_pred ?? [],
-    nSamples: r.n_samples ?? (r.y_true?.length ?? 0),
-    sampleIds: r.sample_indices ?? undefined,
+    yTrue,
+    yPred,
+    nSamples: r.n_samples ?? yTrue.length,
+    sampleIds: r.sample_ids ?? undefined,
     sampleMetadata: r.sample_metadata ?? null,
   });
 }

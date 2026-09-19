@@ -604,20 +604,12 @@ import sys
 cwd = os.getcwd()
 sys.path = [entry for entry in sys.path if entry not in ("", cwd)]
 
-version = None
-
+# Reading package metadata must not initialize NumPy/sklearn or any ML engine.
+from importlib import metadata
 try:
-    import nirs4all
-    version = getattr(nirs4all, "__version__", None)
-except Exception:
+    version = metadata.version("nirs4all")
+except metadata.PackageNotFoundError:
     version = None
-
-if not version:
-    try:
-        from importlib import metadata
-        version = metadata.version("nirs4all")
-    except Exception:
-        version = None
 
 if version:
     print(version)

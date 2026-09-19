@@ -254,6 +254,15 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     _u._ensure_runtime_mutable()
     _u._ensure_runtime_is_valid()
 
+    from ..recommended_config import recovery_nirs4all_version
+
+    qualified_version = recovery_nirs4all_version()
+    if request.package.lower().replace("_", "-") == "nirs4all" and qualified_version:
+        raise HTTPException(
+            status_code=400,
+            detail="nirs4all follows this recovery release. Use the nirs4all runtime installer to repair it.",
+        )
+
     if _is_profile_managed_dependency(request.package):
         if request.target == "latest" or request.upgrade:
             raise HTTPException(

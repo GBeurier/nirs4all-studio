@@ -1,53 +1,127 @@
 {
   "schema_version": "1.2",
-  "app_version": "0.8.2",
+  "app_version": "0.11.8",
   "nirs4all": "0.11.0",
-  "_note": "cpu-lite ships a slim install — its exclude_optionals + the xgboost->xgboost-cpu package_renames keep torch/tensorflow/jax/autogluon/tabpfn/umap-learn and CUDA wheels out (enforced at build and in the interactive installer). Requires nirs4all >= 0.10.0, whose slim core no longer bundles matplotlib/shap/umap; the full profiles install shap+matplotlib explicitly so SHAP keeps working.",
+  "_note": "Python recovery: a minimal scikit-learn environment is the default; additional frameworks are installed only when selected. Existing environments and choices are preserved.",
   "profiles": {
     "cpu": {
       "label": "CPU Only",
       "description": "Core NIRS analysis with scikit-learn and PyTorch (CPU). TensorFlow and JAX are not installed by default.",
-      "platforms": ["win32", "linux", "darwin"],
+      "platforms": [
+        "win32",
+        "linux",
+        "darwin"
+      ],
       "packages": {
-        "nirs4all": { "min": ">=0.10.0", "recommended": "0.11.0" },
-        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
-        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" },
-        "shap": { "min": ">=0.44", "recommended": "0.47.1" },
-        "matplotlib": { "min": ">=3.7.0", "recommended": "3.10.1" }
+        "nirs4all": {
+          "min": "==0.11.0",
+          "recommended": "0.11.0"
+        },
+        "torch": {
+          "min": ">=2.1.0",
+          "recommended": "2.6.0"
+        },
+        "tabicl": {
+          "min": ">=2.0.0",
+          "recommended": "2.0.3"
+        },
+        "shap": {
+          "min": ">=0.44",
+          "recommended": "0.47.1"
+        },
+        "matplotlib": {
+          "min": ">=3.7.0",
+          "recommended": "3.10.1"
+        }
       }
     },
     "cpu-lite": {
-      "label": "CPU — Lite (scikit-learn only)",
-      "description": "Lightweight pure-scikit-learn analysis. No PyTorch, TensorFlow, JAX, AutoGluon or TabPFN — much smaller install. Deep-learning model nodes are hidden.",
-      "platforms": ["win32", "linux", "darwin"],
+      "label": "CPU \u2014 Lite (scikit-learn only)",
+      "description": "Lightweight pure-scikit-learn analysis. No PyTorch, TensorFlow, JAX, AutoGluon or TabPFN \u2014 much smaller install. Deep-learning model nodes are hidden.",
+      "platforms": [
+        "win32",
+        "linux",
+        "darwin"
+      ],
       "packages": {
-        "nirs4all": { "min": ">=0.10.0", "recommended": "0.11.0" }
+        "nirs4all": {
+          "min": "==0.11.0",
+          "recommended": "0.11.0"
+        }
       },
-      "exclude_optionals": ["torch", "tensorflow", "keras", "jax", "jaxlib", "flax", "tabpfn", "tabicl", "autogluon", "umap-learn"],
-      "package_renames": { "xgboost": "xgboost-cpu" }
+      "exclude_optionals": [
+        "torch",
+        "tensorflow",
+        "keras",
+        "jax",
+        "jaxlib",
+        "flax",
+        "tabpfn",
+        "tabicl",
+        "autogluon",
+        "umap-learn"
+      ],
+      "package_renames": {
+        "xgboost": "xgboost-cpu"
+      }
     },
     "gpu-cuda-torch": {
-      "label": "GPU — CUDA + PyTorch",
+      "label": "GPU \u2014 CUDA + PyTorch",
       "description": "Deep learning with PyTorch on NVIDIA GPUs. TensorFlow and JAX are not installed by default.",
-      "platforms": ["win32", "linux"],
+      "platforms": [
+        "win32",
+        "linux"
+      ],
       "packages": {
-        "nirs4all": { "min": ">=0.10.0", "recommended": "0.11.0" },
-        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
-        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" },
-        "shap": { "min": ">=0.44", "recommended": "0.47.1" },
-        "matplotlib": { "min": ">=3.7.0", "recommended": "3.10.1" }
+        "nirs4all": {
+          "min": "==0.11.0",
+          "recommended": "0.11.0"
+        },
+        "torch": {
+          "min": ">=2.1.0",
+          "recommended": "2.6.0"
+        },
+        "tabicl": {
+          "min": ">=2.0.0",
+          "recommended": "2.0.3"
+        },
+        "shap": {
+          "min": ">=0.44",
+          "recommended": "0.47.1"
+        },
+        "matplotlib": {
+          "min": ">=3.7.0",
+          "recommended": "3.10.1"
+        }
       }
     },
     "gpu-mps": {
-      "label": "GPU — Apple MPS",
+      "label": "GPU \u2014 Apple MPS",
       "description": "Deep learning with PyTorch on Apple Silicon. TensorFlow and JAX are not installed by default.",
-      "platforms": ["darwin"],
+      "platforms": [
+        "darwin"
+      ],
       "packages": {
-        "nirs4all": { "min": ">=0.10.0", "recommended": "0.11.0" },
-        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
-        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" },
-        "shap": { "min": ">=0.44", "recommended": "0.47.1" },
-        "matplotlib": { "min": ">=3.7.0", "recommended": "3.10.1" }
+        "nirs4all": {
+          "min": "==0.11.0",
+          "recommended": "0.11.0"
+        },
+        "torch": {
+          "min": ">=2.1.0",
+          "recommended": "2.6.0"
+        },
+        "tabicl": {
+          "min": ">=2.0.0",
+          "recommended": "2.0.3"
+        },
+        "shap": {
+          "min": ">=0.44",
+          "recommended": "0.47.1"
+        },
+        "matplotlib": {
+          "min": ">=3.7.0",
+          "recommended": "3.10.1"
+        }
       }
     }
   },
@@ -94,118 +168,132 @@
       "min": ">=3.0.0",
       "recommended": "3.8.0",
       "description": "High-level neural networks API",
-      "category": "deep_learning"
+      "category": "deep_learning",
+      "default_install": false
     },
     "jax": {
       "min": ">=0.4.20",
       "recommended": "0.4.38",
       "description": "JAX numerical computing library",
       "note": "Optional GPU accelerator for PLS models. PyTorch is recommended for deep learning.",
-      "category": "deep_learning"
+      "category": "deep_learning",
+      "default_install": false
     },
     "jaxlib": {
       "min": ">=0.4.20",
       "recommended": "0.4.38",
       "description": "JAX backend library",
       "note": "Optional GPU accelerator for PLS models. PyTorch is recommended for deep learning.",
-      "category": "deep_learning"
+      "category": "deep_learning",
+      "default_install": false
     },
     "flax": {
       "min": ">=0.8.0",
       "recommended": "0.10.4",
       "description": "Flax neural network library for JAX",
       "note": "Optional GPU accelerator for PLS models. PyTorch is recommended for deep learning.",
-      "category": "deep_learning"
+      "category": "deep_learning",
+      "default_install": false
     },
     "tabpfn": {
       "min": ">=2.0.0",
       "recommended": "2.0.3",
       "description": "TabPFN tabular data model",
-      "category": "deep_learning"
+      "category": "deep_learning",
+      "default_install": false
     },
     "tabicl": {
       "min": ">=2.0.0",
       "recommended": "2.0.3",
       "description": "TabICL in-context learning model for tabular data",
       "category": "deep_learning",
-      "show_when_profile_managed": true
+      "show_when_profile_managed": true,
+      "default_install": false
     },
     "ikpls": {
       "min": ">=1.1.0",
       "recommended": "1.3.0",
       "description": "Improved kernel PLS algorithms",
-      "category": "pls_variants"
+      "category": "pls_variants",
+      "default_install": false
     },
     "pyopls": {
       "min": ">=20.0",
       "recommended": "20.0",
       "description": "Orthogonal PLS (OPLS)",
       "category": "pls_variants",
-      "default_install": true
+      "default_install": false
     },
     "trendfitter": {
       "min": ">=0.0.6",
       "recommended": "0.0.6",
       "description": "PLS with trend analysis",
       "category": "pls_variants",
-      "default_install": true
+      "default_install": false
     },
     "autogluon": {
       "min": ">=1.0.0",
       "recommended": "1.2.0",
       "python": "<3.13",
       "description": "AutoGluon AutoML toolkit",
-      "category": "automl"
+      "category": "automl",
+      "default_install": false
     },
     "lightgbm": {
       "min": ">=4.0.0",
       "recommended": "4.6.0",
       "description": "LightGBM gradient boosting framework",
-      "category": "boosting"
+      "category": "boosting",
+      "default_install": false
     },
     "xgboost": {
       "min": ">=2.0.0",
       "recommended": "3.0.0",
       "description": "XGBoost gradient boosting framework",
       "category": "boosting",
-      "default_install": true
+      "default_install": false
     },
     "catboost": {
       "min": ">=1.2.0",
       "recommended": "1.2.7",
       "description": "CatBoost gradient boosting framework",
-      "category": "boosting"
+      "category": "boosting",
+      "default_install": false
     },
     "shap": {
       "min": ">=0.44",
       "recommended": "0.47.1",
       "description": "SHAP explanations for model interpretability",
-      "category": "explainability"
+      "category": "explainability",
+      "default_install": false
     },
     "matplotlib": {
       "min": ">=3.7.0",
       "recommended": "3.10.1",
       "description": "Core plotting library",
-      "category": "visualization"
+      "category": "visualization",
+      "default_install": false
     },
     "seaborn": {
       "min": ">=0.12.0",
       "recommended": "0.13.2",
       "description": "Statistical data visualization",
-      "category": "visualization"
+      "category": "visualization",
+      "default_install": false
     },
     "plotly": {
       "min": ">=5.0.0",
       "recommended": "6.0.1",
       "description": "Interactive plotting library",
-      "category": "visualization"
+      "category": "visualization",
+      "default_install": false
     },
     "umap-learn": {
       "min": ">=0.5.0",
       "recommended": "0.5.7",
       "description": "UMAP dimensionality reduction",
       "category": "dimensionality",
-      "default_install": true
+      "default_install": false
     },
     "torch": {
       "min": ">=2.1.0",
@@ -213,31 +301,36 @@
       "description": "PyTorch deep learning framework",
       "category": "deep_learning",
       "show_when_profile_managed": true,
-      "default_install": true
+      "default_install": false
     },
     "pypandoc": {
       "min": ">=1.12",
       "recommended": "1.12",
       "description": "Pandoc document conversion",
-      "category": "reports"
+      "category": "reports",
+      "default_install": false
     },
     "PyPDF2": {
       "min": ">=3.0.0",
       "recommended": "3.0.1",
       "description": "PDF manipulation",
-      "category": "reports"
+      "category": "reports",
+      "default_install": false
     },
     "pdf2image": {
       "min": ">=1.16.0",
       "recommended": "1.17.0",
       "description": "PDF to image conversion",
-      "category": "reports"
+      "category": "reports",
+      "default_install": false
     },
     "openpyxl": {
       "min": ">=3.1.0",
       "recommended": "3.1.5",
       "description": "Excel file support",
-      "category": "export"
+      "category": "export",
+      "default_install": false
     }
-  }
+  },
+  "recovery_backend": "python"
 }

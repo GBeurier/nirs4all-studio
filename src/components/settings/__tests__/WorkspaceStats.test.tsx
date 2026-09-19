@@ -103,6 +103,8 @@ describe("WorkspaceStats transition release panel", () => {
       command: ["python", "-m", "nirs4all_tools"],
       output_path: "/tmp/legacy-workspace-v2",
       dry_run: false,
+      best_effort: false,
+      activation_skipped: false,
       return_code: null,
       stdout: "",
       stderr: "",

@@ -70,7 +70,7 @@ export default function SetupWizard() {
   const navigate = useNavigate();
 
   const [currentStep, setCurrentStep] = useState<Step>("detect");
-  const [selectedProfile, setSelectedProfile] = useState<string>("cpu");
+  const [selectedProfile, setSelectedProfile] = useState<string>("cpu-lite");
   const [selectedExtras, setSelectedExtras] = useState<string[]>([]);
   const [installProgress, setInstallProgress] = useState(0);
   const [installMessage, setInstallMessage] = useState("");

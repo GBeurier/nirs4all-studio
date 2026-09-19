@@ -49,6 +49,24 @@ def test_desktop_default_workspace_uses_documents_dir(monkeypatch, tmp_path):
     assert (expected / "workspace.json").exists()
 
 
+def test_desktop_workspace_uses_os_documents_path_and_keeps_existing_metadata(monkeypatch, tmp_path):
+    import json
+
+    workspace = tmp_path / "OneDrive" / "Documents localisés" / "Studio" / "workspace"
+    workspace.mkdir(parents=True)
+    metadata = {"name": "Existing project", "settings": {"theme": "dark"}, "custom": "keep"}
+    (workspace / "workspace.json").write_text(json.dumps(metadata))
+    monkeypatch.setenv("NIRS4ALL_DESKTOP", "true")
+    monkeypatch.setenv("NIRS4ALL_DEFAULT_WORKSPACE", str(workspace))
+    monkeypatch.delenv("NIRS4ALL_PORTABLE_ROOT", raising=False)
+    monkeypatch.setattr(workspace_manager_module, "app_config", _DummyAppConfig(tmp_path / "config"))
+    monkeypatch.setattr(lazy_imports, "get_cached", lambda *args, **kwargs: None)
+
+    manager = workspace_manager_module.WorkspaceManager()
+    assert Path(manager.get_active_workspace().path) == workspace.resolve()
+    assert json.loads((workspace / "workspace.json").read_text()) == metadata
+
+
 def test_portable_default_workspace_uses_portable_root(monkeypatch, tmp_path):
     portable_root = tmp_path / ".nirs4all"
     config_dir = tmp_path / "config"

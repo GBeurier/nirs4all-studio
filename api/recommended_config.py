@@ -276,6 +276,10 @@ def _load_bundled_config() -> dict[str, Any]:
 
 async def _fetch_remote_config() -> dict[str, Any] | None:
     """Fetch recommended config from GitHub. Returns None when offline or on any error."""
+    # Recovery releases ship a fixed, qualified Python dependency profile.
+    # A manifest from the Rust development branch must not upgrade this runtime.
+    if _load_bundled_config().get("recovery_backend") == "python":
+        return None
     from .network_state import is_online
     if not await is_online():
         logger.debug("Offline — skipping remote recommended config fetch")
@@ -316,6 +320,8 @@ def _select_preferred_config(
     config shipped with the running app so local/package integrations are not
     masked by stale cache content.
     """
+    if bundled is not None and bundled.get("recovery_backend") == "python":
+        return bundled, "bundled"
     if cached is None:
         if bundled is None:
             raise FileNotFoundError("No recommended config available")
@@ -767,6 +773,14 @@ def _compare_versions(v1: str, v2: str) -> int:
     return len(p1) - len(p2)
 
 
+def recovery_nirs4all_version() -> str | None:
+    """Return the library version qualified with this recovery build, if any."""
+    config = _load_bundled_config()
+    if config.get("recovery_backend") == "python":
+        return str(config["nirs4all"])
+    return None
+
+
 def _detect_gpu() -> GPUDetectionResponse:
     """Detect available GPU hardware and recommend platform-compatible profiles."""
     gpu_info = detect_gpu_hardware()
@@ -784,6 +798,8 @@ def _detect_gpu() -> GPUDetectionResponse:
     try:
         raw_config = _load_bundled_config()
         profiles = raw_config.get("profiles", {})
+        if raw_config.get("recovery_backend") == "python":
+            candidates = ["cpu-lite", *candidates]
         recommended = [
             pid for pid in candidates
             if pid in profiles and (

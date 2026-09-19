@@ -48,6 +48,9 @@ function createWizardState(overrides: Partial<WizardState> = {}): WizardState {
 }
 
 describe("DatasetWizardConfig", () => {
+  it("sends the chosen display name with the import configuration", () => {
+    expect(buildDatasetWizardConfig(createWizardState({ datasetName: " Chosen spectra " })).name).toBe("Chosen spectra");
+  });
   it("builds files while dropping unknown roles and preserving per-file overrides", () => {
     const state = createWizardState({
       files: [

@@ -31,7 +31,7 @@ const isWindows = process.platform === "win32";
 const ENSUREPIP_TIMEOUT_MS = 60_000;
 const PIP_INSTALL_TIMEOUT_MS = 600_000;
 const COMPILEALL_TIMEOUT_MS = 180_000;
-const PIP_INSTALL_BASE_ARGS = ["-m", "pip", "install", "--no-cache-dir", "--prefer-binary"] as const;
+const PIP_INSTALL_BASE_ARGS = ["-m", "pip", "install", "--prefer-binary"] as const;
 
 export type EnvStatus = "none" | "downloading" | "extracting" | "creating_venv" | "installing" | "ready" | "error";
 export type ProgressCallback = (percent: number, step: string, detail: string) => void;
@@ -80,6 +80,12 @@ export async function installCorePackages(
     retries: 2,
     timeoutMs,
   });
+}
+
+/** Repair only release-pinned distributions in an application-owned runtime. */
+export async function installPinnedPackages(pythonPath: string, requirements: string[], timeoutMs = PIP_INSTALL_TIMEOUT_MS): Promise<void> {
+  if (requirements.length === 0) return;
+  await runCommand(pythonPath, [...PIP_INSTALL_BASE_ARGS, ...requirements], { retries: 2, timeoutMs });
 }
 
 /**
@@ -204,17 +210,13 @@ export async function provisionManagedRuntime(
     ctx.setStatus("installing");
     report(40, "installing", "Installing core packages...");
 
-    const totalPackages = MANAGED_RUNTIME_PACKAGES.length;
-    for (let i = 0; i < totalPackages; i++) {
-      const pkg = MANAGED_RUNTIME_PACKAGES[i];
-      const pkgName = pkg.split(">=")[0].split("[")[0];
-      const progressPercent = 40 + Math.round(((i + 1) / totalPackages) * 50);
-      report(progressPercent, "installing", `Installing ${pkgName}...`);
-      await runCommand(venvPython, [...PIP_INSTALL_BASE_ARGS, pkg], {
-        retries: 2,
-        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
-      });
-    }
+    // Resolve the environment as one transaction. Per-package pip processes
+    // repeatedly scan installed metadata, redo dependency resolution and can
+    // replace each other's dependencies; Windows antivirus magnifies the I/O.
+    await runCommand(venvPython, [...PIP_INSTALL_BASE_ARGS, ...MANAGED_RUNTIME_PACKAGES], {
+      retries: 2,
+      timeoutMs: PIP_INSTALL_TIMEOUT_MS,
+    });
 
     report(90, "installing", "All packages installed");
 

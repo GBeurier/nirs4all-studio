@@ -31,6 +31,7 @@ import {
 import {
   getMissingCorePackages,
   getMissingOptionalPackages,
+  getUnsatisfiedExactPins,
   guessProfileAlignment,
   inspectPythonPackages,
 } from "./env/env-inspection";
@@ -39,7 +40,7 @@ import type {
   InspectedEnv,
   InspectPythonData,
 } from "./env/env-inspection";
-import { installCorePackages, provisionManagedRuntime } from "./env/provisioning";
+import { installCorePackages, installPinnedPackages, provisionManagedRuntime } from "./env/provisioning";
 import type { ProvisioningContext } from "./env/provisioning";
 import { SETTINGS_FILE, readEnvSettings, writeEnvSettings } from "./env/env-settings";
 import type { EnvSettings } from "./env/env-settings";
@@ -519,6 +520,22 @@ export class EnvManager {
         }
       } else {
         console.log("ensureBackendPackages: verify-cache disabled (no fingerprint)");
+      }
+
+      const inspected = await inspectPythonPackages(pythonPath);
+      if (!inspected) throw new Error("Unable to verify the Python package versions required by this release.");
+      const incompatiblePins = getUnsatisfiedExactPins(inspected.installedPackages);
+      if (incompatiblePins.length > 0) {
+        const kind = getEnvKind(this.envDir, getEnvRootForPythonPath(pythonPath), pythonPath);
+        if (kind !== "managed") {
+          throw new Error(`This Studio release requires ${incompatiblePins.join(", ")}. The selected shared Python environment was left unchanged. Set up a separate managed environment to use this release.`);
+        }
+        await installPinnedPackages(pythonPath, incompatiblePins, options?.timeoutMs);
+        const repairedPackages = await inspectPythonPackages(pythonPath);
+        if (!repairedPackages || getUnsatisfiedExactPins(repairedPackages.installedPackages).length > 0) {
+          throw new Error("The managed Python environment still does not match this Studio release after repair.");
+        }
+        repaired = true;
       }
 
       // Cache miss / disabled / mismatch — verify the lightweight runtime

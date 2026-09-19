@@ -182,8 +182,9 @@ class WorkspaceManager:
                 "settings": {},
             }
             workspace_config_file = default_path / "workspace.json"
-            with open(workspace_config_file, "w", encoding="utf-8") as f:
-                json.dump(workspace_json, f, indent=2)
+            if not workspace_config_file.exists():
+                with open(workspace_config_file, "x", encoding="utf-8") as f:
+                    json.dump(workspace_json, f, indent=2)
 
             # Link and activate the workspace
             # Use internal method to bypass validation (workspace is empty but valid)
@@ -200,6 +201,9 @@ class WorkspaceManager:
             return portable_root / "workspace"
 
         if os.environ.get("NIRS4ALL_DESKTOP") == "true" or getattr(sys, "frozen", False):
+            configured = os.environ.get("NIRS4ALL_DEFAULT_WORKSPACE")
+            if configured and Path(configured).is_absolute():
+                return Path(configured)
             return Path.home() / "Documents" / "nirs4all Studio" / "workspace"
 
         return Path.cwd() / "workspace"

@@ -218,7 +218,9 @@ describe("RobustnessScenarioDraftCard", () => {
     expect(publishCheckbox?.checked).toBe(true);
     expect(publishCheckbox?.disabled).toBe(false);
     expect(modeSelect?.value).toBe("clean_frozen");
-    expect(modeSelect?.querySelector("option[value='matched_recalibration']")?.disabled).toBe(true);
+    expect(
+      modeSelect?.querySelector<HTMLOptionElement>("option[value='matched_recalibration']")?.disabled,
+    ).toBe(true);
     expect(distributionSelect?.disabled).toBe(true);
 
     await act(async () => {

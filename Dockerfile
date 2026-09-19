@@ -19,16 +19,18 @@ ARG PYTHON_STANDALONE_TAG=20250828
 # ══════════════════════════════════════════════════════════════════════
 # Stage 1: Frontend builder
 # ══════════════════════════════════════════════════════════════════════
-FROM node:22-slim AS frontend
+FROM node:24-slim AS frontend
 
 WORKDIR /build
 
 # Install dependencies first (layer caching)
 COPY package.json package-lock.json ./
+COPY vendor/npm/ vendor/npm/
 RUN npm ci --ignore-scripts
 
 # Build frontend
 COPY vite.config.ts tsconfig*.json index.html ./
+COPY tailwind.config.ts postcss.config.js ./
 COPY public/ public/
 COPY src/ src/
 RUN npm run build
@@ -94,7 +96,7 @@ RUN python -m pip install --no-cache-dir "https://github.com/GBeurier/nirs4all/a
 COPY main.py ./
 COPY api/ api/
 COPY websocket/ websocket/
-COPY recommended-config.json ./
+COPY recommended-config.json package.json ./
 
 # Copy frontend build from stage 1
 COPY --from=frontend /build/dist ./dist
@@ -109,11 +111,17 @@ RUN python -c "import json, datetime; json.dump({ \
 
 # Runtime configuration
 ENV NIRS4ALL_DOCKER=true
+ENV N4A_ENGINE=legacy
 ENV PYTHONUNBUFFERED=1
+ENV NIRS4ALL_CONFIG=/data/config
+ENV XDG_DATA_HOME=/data
+
+VOLUME ["/data", "/workspaces"]
+WORKDIR /workspaces
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/api/health || exit 1
 
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "main:app", "--app-dir", "/app", "--host", "0.0.0.0", "--port", "8000"]

@@ -84,12 +84,24 @@ function getSupportedProfiles(config: RecommendedConfigFile): Array<[string, Rec
 
 /** Core package names with version/extras specifiers stripped. */
 export function getManagedCorePackageNames(): string[] {
-  return MANAGED_RUNTIME_PACKAGES.map((packageSpec) => packageSpec.split(">=")[0].split("[")[0]);
+  return MANAGED_RUNTIME_PACKAGES.map((packageSpec) => {
+    const name = /^[A-Za-z0-9][A-Za-z0-9._-]*/.exec(packageSpec.trim())?.[0];
+    if (!name) throw new Error(`Invalid managed package requirement: ${packageSpec}`);
+    return name;
+  });
 }
 
 export function getMissingCorePackages(installedPackageNames: Set<string>): string[] {
   return getManagedCorePackageNames()
     .filter((packageName) => !installedPackageNames.has(normalizePackageName(packageName)));
+}
+
+/** Exact release pins are a compatibility contract, not merely a presence check. */
+export function getUnsatisfiedExactPins(installedPackages: Map<string, string>): string[] {
+  return MANAGED_RUNTIME_PACKAGES.filter((requirement) => {
+    const match = /^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]+\])?==([^,;\s]+)$/.exec(requirement.trim());
+    return match !== null && installedPackages.get(normalizePackageName(match[1])) !== match[2];
+  });
 }
 
 export function getMissingOptionalPackages(installedPackages: Set<string>): string[] {

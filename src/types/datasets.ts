@@ -164,6 +164,7 @@ export interface AggregationConfig {
  * CSV parsing configuration
  */
 export interface DatasetConfig {
+  name?: string;
   delimiter: string;
   decimal_separator: string;
   has_header: boolean;

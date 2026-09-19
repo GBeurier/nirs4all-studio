@@ -47,14 +47,8 @@ win:
     - target: nsis
       arch:
         - x64
-    - target: portable
-      arch:
-        - x64
   icon: public/nirs4all.ico
   artifactName: "${productName}-${version}-win-${arch}.${ext}"
-
-portable:
-  artifactName: "${productName}-${version}-win-${arch}-portable.${ext}"
 
 nsis:
   oneClick: false
@@ -90,9 +84,6 @@ dmg:
 
 linux:
   target:
-    - target: AppImage
-      arch:
-        - x64
     - target: deb
       arch:
         - x64
@@ -118,4 +109,4 @@ deb:
 publish:
   provider: github
   owner: GBeurier
-  repo: nirs4all-webapp
+  repo: nirs4all-studio

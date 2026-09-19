@@ -429,7 +429,7 @@ export class BackendManager {
    * fully restored — frontend pages should refetch their data when it flips.
    */
   private notifyMlReady(ready: boolean, error?: string, workspaceReady: boolean = false): void {
-    const windows = BrowserWindow.getAllWindows();
+    const windows = BrowserWindow?.getAllWindows() ?? [];
     for (const win of windows) {
       try {
         if (!win.isDestroyed()) {
@@ -531,6 +531,8 @@ export class BackendManager {
       ...process.env,
       NIRS4ALL_PORT: this.port.toString(),
       NIRS4ALL_DESKTOP: "true",
+      N4A_ENGINE: "legacy",
+      NIRS4ALL_DEFAULT_WORKSPACE: path.join(electron.app.getPath("documents"), "nirs4all Studio", "workspace"),
       NIRS4ALL_ELECTRON: "true",
       NIRS4ALL_APP_VERSION: electron.app.getVersion(),
       NIRS4ALL_APP_DIR: path.dirname(process.execPath),
@@ -891,7 +893,7 @@ export class BackendManager {
    * Notify renderer windows of status change
    */
   private notifyRenderer(): void {
-    const windows = BrowserWindow.getAllWindows();
+    const windows = BrowserWindow?.getAllWindows() ?? [];
     for (const win of windows) {
       try {
         if (!win.isDestroyed()) {

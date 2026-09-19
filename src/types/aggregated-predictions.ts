@@ -144,6 +144,8 @@ export interface PredictionArraysResponse {
   y_pred: PredictionArrayPayload | null;
   y_proba: number[] | number[][] | null;
   sample_indices: number[] | null;
+  /** Stable persisted sample identities; never inferred from positional indices. */
+  sample_ids?: string[] | null;
   weights: number[] | null;
   sample_metadata?: Record<string, unknown[]> | null;
   n_samples: number;

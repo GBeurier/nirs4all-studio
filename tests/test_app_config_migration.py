@@ -74,6 +74,15 @@ def _legacy_links_payload() -> dict:
     }
 
 
+def test_link_preserves_name_chosen_in_import_wizard(isolated_config, tmp_path):
+    folder = tmp_path / "Folder name differs"
+    folder.mkdir()
+    (folder / "X.csv").write_text("1;2\n3;4\n")
+    linked = isolated_config.link_dataset(str(folder), {"name": "Chosen dataset name"})
+    assert linked.name == "Chosen dataset name"
+    assert isolated_config.get_dataset(linked.id).name == "Chosen dataset name"
+
+
 class TestDatasetLinksMigration:
     """One-shot, idempotent legacy na_policy migration over the stored JSON."""
 
