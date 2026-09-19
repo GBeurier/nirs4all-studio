@@ -14,7 +14,8 @@ const { expect } = require('@playwright/test');
 const archive = require('./smoke-archive-standalone.cjs');
 const run = promisify(execFile);
 const liveApps = new Set();
-const BUDGETS = Object.freeze({ installer: 120000, baseline_installer: 300000, launch: 30000, python_setup: 180000,
+const BUDGETS = Object.freeze({ installer: 120000, baseline_installer: 300000, api: 30000,
+  baseline_prepare: 180000, baseline_api: 120000, launch: 30000, python_setup: 180000,
   profile_setup: 60000, preview: 5000, link: 5000, playground: 10000, training: 60000, predictions: 5000 });
 
 function parseArgs(argv) {
@@ -95,10 +96,45 @@ async function streamedCommand(program, args, logRoot, timeoutMs = BUDGETS.insta
   } finally { fs.closeSync(output); fs.closeSync(errors); }
   return { stdout: /^dpkg/.test(path.basename(program)) ? fs.readFileSync(`${prefix}.stdout.log`, 'utf8') : '' };
 }
-async function baselineInstaller(version, root) {
+async function baselineHttpError(response, token) {
+  const redact = value => {
+    let text = String(value);
+    if (token) text = text.split(token).join('[REDACTED]');
+    return text.replace(/\b(?:Bearer|token)\s+\S+/gi, '[REDACTED]')
+      .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)/g, '[REDACTED]')
+      .replace(/[\x00-\x1f\x7f]+/g, ' ');
+  };
+  const headers = ['x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset',
+    'x-ratelimit-resource', 'retry-after', 'x-github-request-id']
+    .flatMap(name => response.headers.has(name) ? [`${name}=${redact(response.headers.get(name)).slice(0, 128)}`] : []);
+  const chunks = [];
+  // Keep diagnostics bounded, with enough lookahead to redact a credential crossing
+  // the displayed prefix. Never drain an arbitrarily large error response.
+  let remaining = 4096 + Buffer.byteLength(token || '');
+  const reader = response.body?.getReader();
+  if (reader) {
+    try {
+      while (remaining > 0) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = Buffer.from(value).subarray(0, remaining);
+        chunks.push(chunk); remaining -= chunk.length;
+      }
+    } catch { chunks.push(Buffer.from(' [response body unavailable]')); }
+    finally { await reader.cancel().catch(() => {}); }
+  }
+  return `HTTP ${response.status}${headers.length ? ` (${headers.join(', ')})` : ''}: ${redact(Buffer.concat(chunks).toString('utf8')).slice(0, 1024)}`;
+}
+
+async function baselineInstaller(version, root, { fetchImpl = fetch, token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN } = {}) {
   const tag = version;
-  const response = await fetch(`https://api.github.com/repos/GBeurier/nirs4all-studio/releases/tags/${tag}`, { signal: AbortSignal.timeout(30000) });
-  assert(response.ok, `Baseline release ${tag}: HTTP ${response.status}`);
+  // Credentials are restricted to this fixed GitHub API origin. Reject redirects
+  // here; installer downloads below deliberately use a separate unauthenticated call.
+  const response = await fetchImpl(`https://api.github.com/repos/GBeurier/nirs4all-studio/releases/tags/${encodeURIComponent(tag)}`, {
+    signal: AbortSignal.timeout(30000), redirect: 'error',
+    headers: { Accept: 'application/vnd.github+json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!response.ok) throw new Error(`Baseline release ${tag}: ${await baselineHttpError(response, token)}`);
   const release = await response.json();
   assert(release.published_at && !release.draft, 'Baseline must already be published');
   const assets = release.assets.filter(asset => installerMatch(asset.name));
@@ -107,7 +143,7 @@ async function baselineInstaller(version, root) {
   const checksum = release.assets.find(entry => entry.name === `${asset.name}.sha256`);
   assert(checksum, 'Baseline installer must have a published checksum');
   for (const entry of [asset, checksum]) {
-    const download = await fetch(entry.browser_download_url, { signal: AbortSignal.timeout(180000) });
+    const download = await fetchImpl(entry.browser_download_url, { signal: AbortSignal.timeout(180000) });
     assert(download.ok && download.body);
     await pipeline(Readable.fromWeb(download.body), fs.createWriteStream(path.join(root, entry.name), { flags: 'wx' }));
     assert.equal(fs.statSync(path.join(root, entry.name)).size, entry.size);
@@ -138,14 +174,41 @@ function fixture(root) {
   return folder;
 }
 
-async function api(env, route, method = 'GET', body) {
-  const response = await fetch(`http://127.0.0.1:${env.NIRS4ALL_BACKEND_PORT}/api${route}`, {
-    method, headers: { 'Content-Type': 'application/json', 'X-Nirs4all-Session': env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30000),
-  });
-  const text = await response.text();
+async function api(env, route, method = 'GET', body, { timeoutMs = BUDGETS.api, fetchImpl = fetch } = {}) {
+  const start = performance.now();
+  let response, text;
+  try {
+    response = await fetchImpl(`http://127.0.0.1:${env.NIRS4ALL_BACKEND_PORT}/api${route}`, {
+      method, headers: { 'Content-Type': 'application/json', 'X-Nirs4all-Session': env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(timeoutMs),
+    });
+    text = await response.text();
+  } catch (error) {
+    // Do not print headers, request bodies or raw network errors containing credentials.
+    throw new Error(`${method} ${route}: ${error.name || 'RequestError'} after ${Math.round(performance.now() - start)} ms (timeout ${timeoutMs} ms)`);
+  }
   assert(response.ok, `${method} ${route}: HTTP ${response.status}: ${text.slice(0, 1500)}`);
   return JSON.parse(text);
+}
+
+function createBaselineApi(env, proof, { now = () => performance.now(), request = api } = {}) {
+  const deadline = now() + BUDGETS.baseline_prepare;
+  proof.preparation_requests = [];
+  return async (route, method = 'GET', body) => {
+    const remaining = Math.floor(deadline - now());
+    assert(remaining > 0, `Baseline preparation exceeded ${BUDGETS.baseline_prepare} ms before ${method} ${route}`);
+    const timeoutMs = Math.min(BUDGETS.baseline_api, remaining);
+    const entry = { method, route, timeout_ms: timeoutMs, success: false };
+    proof.preparation_requests.push(entry);
+    console.log(`Baseline preparation: ${method} ${route} (remaining ${remaining} ms, request ${timeoutMs} ms)`);
+    const start = now();
+    try {
+      const result = await request(env, route, method, body, { timeoutMs });
+      assert(now() <= deadline, `Baseline preparation exceeded ${BUDGETS.baseline_prepare} ms at ${method} ${route}`);
+      entry.success = true;
+      return result;
+    } finally { entry.duration_ms = now() - start; }
+  };
 }
 
 async function launch(installed, profile, proof, actualWindowsProfile = false) {
@@ -427,20 +490,23 @@ async function qualifyMigration(candidate, version, root, proof, data) {
   try {
     // Old-release setup is preparation. Candidate setup is exercised separately without bypasses.
     await expect.poll(() => api(context.env, '/health').then(() => true).catch(() => false), { timeout: BUDGETS.python_setup }).toBe(true);
-    await api(context.env, '/workspace/create', 'POST', { path: workspace, name: 'Upgrade preservation', create_dir: true });
-    await api(context.env, '/workspace/select', 'POST', { path: workspace });
-    await api(context.env, '/app/settings', 'PUT', { ui_preferences: { language: 'en', theme: 'dark', developer_mode: true } });
-    const detected = await api(context.env, '/datasets/detect-unified', 'POST', { path: data });
-    const linked = await api(context.env, '/datasets/link', 'POST', { path: data, config: { name: 'Preserved spectra', files: detected.files,
+    // Historical backend performance is not a candidate budget. Keep authentic
+    // profile writes, but cap all these requests by one shared preparation deadline.
+    const baselineApi = createBaselineApi(context.env, proof.baseline);
+    await baselineApi('/workspace/create', 'POST', { path: workspace, name: 'Upgrade preservation', create_dir: true });
+    await baselineApi('/workspace/select', 'POST', { path: workspace });
+    await baselineApi('/app/settings', 'PUT', { ui_preferences: { language: 'en', theme: 'dark', developer_mode: true } });
+    const detected = await baselineApi('/datasets/detect-unified', 'POST', { path: data });
+    const linked = await baselineApi('/datasets/link', 'POST', { path: data, config: { name: 'Preserved spectra', files: detected.files,
       global_params: { delimiter: ';', decimal_separator: '.', has_header: true, na_policy: 'auto' } } });
     assert(linked.success && linked.dataset?.id);
-    await api(context.env, '/config/skip-setup', 'POST');
+    await baselineApi('/config/skip-setup', 'POST');
     await context.page.evaluate(async () => {
       await window.electronApi.setTelemetryConsent(false);
       localStorage.setItem('nirs4all-telemetry-consent', 'declined');
       localStorage.setItem('nirs4all-telemetry-consent-decided-at', new Date().toISOString());
     });
-    preserved = { dataset_id: linked.dataset.id, preferences: (await api(context.env, '/app/settings')).ui_preferences };
+    preserved = { dataset_id: linked.dataset.id, preferences: (await baselineApi('/app/settings')).ui_preferences };
   } finally { await closeTrackedApps(); }
   // Registration alone does not create a store. Populate actual predictions with
   // the previous installer's own Python/library, while that application is closed.
@@ -593,5 +659,5 @@ async function main(argv = process.argv.slice(2)) {
   return proof;
 }
 
-module.exports = { BUDGETS, baselineInstaller, businessJourney, finishSetup, fixture, installerMatch, launch, main, parseArgs, qualifyMigration, assertSameExistingPath, snapshot, streamedCommand, timed, trackApp, closeTrackedApps };
+module.exports = { BUDGETS, api, createBaselineApi, baselineInstaller, businessJourney, finishSetup, fixture, installerMatch, launch, main, parseArgs, qualifyMigration, assertSameExistingPath, snapshot, streamedCommand, timed, trackApp, closeTrackedApps };
 if (require.main === module) main().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
