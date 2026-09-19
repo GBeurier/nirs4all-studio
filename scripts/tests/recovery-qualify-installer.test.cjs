@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { installerMatch, parseArgs, fixture, streamedCommand, timed, trackApp, closeTrackedApps } = require('../recovery-qualify-installer.cjs');
+const { BUDGETS, installerMatch, parseArgs, fixture, assertSameExistingPath, streamedCommand, timed, trackApp, closeTrackedApps } = require('../recovery-qualify-installer.cjs');
 
 test('qualification selects installers only and rejects wrong architecture', () => {
   assert(installerMatch('nirs4all-setup.exe', 'win32', 'x64'));
@@ -64,4 +64,32 @@ test('a stuck Electron close is terminated within the cleanup deadline', async (
   trackApp({ on() {}, close: () => new Promise(() => {}), process: () => ({ kill() { kills++; } }) });
   await closeTrackedApps(10);
   assert.equal(kills, 1);
+});
+
+
+test('workspace identity accepts filesystem aliases but rejects another or missing directory', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-alias-'));
+  try {
+    const workspace = path.join(root, 'Workspace conservé');
+    const alias = path.join(root, 'alias');
+    const other = path.join(root, 'Other workspace');
+    fs.mkdirSync(workspace); fs.mkdirSync(other);
+    fs.symlinkSync(workspace, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    assertSameExistingPath(alias, workspace);
+    assert.throws(() => assertSameExistingPath(other, workspace), /Workspace changed/);
+    assert.throws(() => assertSameExistingPath(path.join(root, 'missing'), workspace), /ENOENT/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('only historical installer preparation receives five minutes; the candidate remains limited to two', () => {
+  assert.equal(BUDGETS.installer, 120000, 'Fresh and populated candidate installations must keep the original budget');
+  assert.equal(BUDGETS.baseline_installer, 300000, 'Old bundled installer preparation has a separate timeout');
+});
+
+test('streamed installer commands enforce their own timeout', { timeout: 2000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'installer-timeout-'));
+  try {
+    await assert.rejects(streamedCommand(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], root, 25), /exited (?:SIGTERM|1)/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

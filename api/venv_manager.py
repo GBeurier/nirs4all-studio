@@ -34,6 +34,25 @@ APP_NAME = "nirs4all-webapp"
 APP_AUTHOR = "nirs4all"
 
 
+
+def _recovery_wheel_install_options() -> list[str]:
+    """Prefer packaged native wheels and never compile their Rust source for users."""
+    from .recommended_config import recovery_nirs4all_version
+
+    if not recovery_nirs4all_version():
+        return []
+    configured = os.environ.get("NIRS4ALL_RECOVERY_WHEEL")
+    backend_root = Path(__file__).resolve().parent.parent
+    directories = [Path(configured).parent] if configured else [
+        backend_root.parent / "python-wheels", backend_root / "vendor" / "python",
+    ]
+    options = ["--only-binary=nirs4all-io,nirs4all-core"]
+    for directory in directories:
+        if directory.is_dir():
+            options.extend(["--find-links", str(directory.resolve())])
+    return options
+
+
 def _user_data_dir(app_name: str, app_author: str | None = None) -> str:
     """Get user data directory, with fallback if platformdirs is missing."""
     portable_dir = get_portable_backend_data_dir(app_name)
@@ -343,6 +362,7 @@ class VenvManager:
             cmd.append("--force-reinstall")
         if extra_pip_args:
             cmd.extend(extra_pip_args)
+        cmd.extend(_recovery_wheel_install_options())
         cmd.append(pkg_spec)
 
         output_lines = []

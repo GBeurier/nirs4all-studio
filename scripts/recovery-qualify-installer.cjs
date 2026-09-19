@@ -14,7 +14,7 @@ const { expect } = require('@playwright/test');
 const archive = require('./smoke-archive-standalone.cjs');
 const run = promisify(execFile);
 const liveApps = new Set();
-const BUDGETS = Object.freeze({ installer: 120000, launch: 30000, python_setup: 180000,
+const BUDGETS = Object.freeze({ installer: 120000, baseline_installer: 300000, launch: 30000, python_setup: 180000,
   profile_setup: 60000, preview: 5000, link: 5000, playground: 10000, training: 60000, predictions: 5000 });
 
 function parseArgs(argv) {
@@ -50,8 +50,8 @@ function installerMatch(name, platform = process.platform, arch = process.arch) 
   return name.endsWith('.dmg') && name.includes(arch);
 }
 
-async function install(file, root) {
-  const command = (program, args) => streamedCommand(program, args, path.dirname(root));
+async function install(file, root, timeoutMs = BUDGETS.installer) {
+  const command = (program, args) => streamedCommand(program, args, path.dirname(root), timeoutMs);
   if (process.platform === 'win32') {
     await command(file, ['/S', '/allusers', `/D=${root}`]);
     assert(fs.existsSync(path.join(root, 'nirs4all Studio.exe')));
@@ -80,14 +80,14 @@ async function install(file, root) {
 
 const sha256 = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 /** Old bundled installers emit more output than execFile's default buffer. */
-async function streamedCommand(program, args, logRoot) {
+async function streamedCommand(program, args, logRoot, timeoutMs = BUDGETS.installer) {
   fs.mkdirSync(logRoot, { recursive: true });
   const prefix = path.join(logRoot, `install-${path.basename(program)}-${crypto.randomBytes(4).toString('hex')}`);
   const output = fs.openSync(`${prefix}.stdout.log`, 'w');
   const errors = fs.openSync(`${prefix}.stderr.log`, 'w');
   try {
     await new Promise((resolve, reject) => {
-      const child = spawn(program, args, { stdio: ['ignore', output, errors], timeout: BUDGETS.installer });
+      const child = spawn(program, args, { stdio: ['ignore', output, errors], timeout: timeoutMs });
       child.once('error', reject);
       child.once('exit', (code, signal) => code === 0 ? resolve() : reject(new Error(
         `${program} exited ${code ?? signal}; see ${prefix}.*.log: ${fs.readFileSync(`${prefix}.stderr.log`, 'utf8').slice(-4096)}`)));
@@ -265,6 +265,8 @@ async function verifyRuntime(context) {
   assert.equal(installedHash, sha256(wheel), 'Runtime did not install the exact library wheel carried by this installer');
   context.proof.nirs4all_version = installed.version;
   context.proof.nirs4all_wheel_sha256 = installedHash;
+  await run(info.pythonPath, ['-m', 'pip', 'check'], { timeout: 10000 });
+  context.proof.python_dependencies_consistent = true;
 }
 
 async function awaitReady(context) {
@@ -391,6 +393,13 @@ async function businessJourney(context, data) {
   return dataset;
 }
 
+function assertSameExistingPath(actual, expected) {
+  // macOS exposes its temporary directory through both /var and /private/var.
+  // Resolve real filesystem aliases without weakening case-sensitive identity.
+  assert.equal(fs.realpathSync.native(actual), fs.realpathSync.native(expected),
+    `Workspace changed: expected ${expected}, received ${actual}`);
+}
+
 function snapshot(root) {
   const entries = {};
   const visit = directory => {
@@ -408,7 +417,8 @@ async function qualifyMigration(candidate, version, root, proof, data) {
   const baseline = await baselineInstaller(version, root);
   proof.baseline = baseline;
   const installRoot = path.join(root, 'Application installée');
-  const installed = await timed(proof, 'baseline_install', BUDGETS.installer, () => install(baseline.file, installRoot));
+  const installed = await timed(proof, 'baseline_install', BUDGETS.baseline_installer,
+    () => install(baseline.file, installRoot, BUDGETS.baseline_installer));
   const profile = path.join(root, 'preserved-profile');
   const actualWindowsProfile = process.platform === 'win32';
   let context = await launch(installed, profile, proof, actualWindowsProfile);
@@ -470,7 +480,7 @@ async function qualifyMigration(candidate, version, root, proof, data) {
     await finishSetup(context, 'decline', true);
     await expect(context.page.getByRole('link', { name: 'Datasets', exact: true })).toBeVisible({ timeout: BUDGETS.python_setup });
     await verifyRuntime(context);
-    assert.equal((await api(context.env, '/workspace')).workspace.path, workspace);
+    assertSameExistingPath((await api(context.env, '/workspace')).workspace.path, workspace);
     const preferences = (await api(context.env, '/app/settings')).ui_preferences;
     for (const key of ['language', 'theme', 'developer_mode']) assert.equal(preferences[key], preserved.preferences[key], `Lost ${key}`);
     assert((await api(context.env, '/datasets')).datasets.some(entry => entry.id === preserved.dataset_id), 'Lost dataset');
@@ -538,7 +548,7 @@ async function main(argv = process.argv.slice(2)) {
       await awaitReady(reopened);
       return reopened;
     });
-    assert.equal((await api(context.env, '/workspace')).workspace.path, workspace);
+    assertSameExistingPath((await api(context.env, '/workspace')).workspace.path, workspace);
     assert.equal((await api(context.env, '/app/settings')).ui_preferences.developer_mode, true);
     assert.equal(await context.page.evaluate(() => localStorage.getItem('nirs4all-telemetry-consent')), 'declined');
     await expect(context.page.getByText(/Python Environment Setup|Checking installation|Select Compute Profile/)).not.toBeVisible();
@@ -583,5 +593,5 @@ async function main(argv = process.argv.slice(2)) {
   return proof;
 }
 
-module.exports = { BUDGETS, baselineInstaller, businessJourney, finishSetup, fixture, installerMatch, launch, main, parseArgs, qualifyMigration, snapshot, streamedCommand, timed, trackApp, closeTrackedApps };
+module.exports = { BUDGETS, baselineInstaller, businessJourney, finishSetup, fixture, installerMatch, launch, main, parseArgs, qualifyMigration, assertSameExistingPath, snapshot, streamedCommand, timed, trackApp, closeTrackedApps };
 if (require.main === module) main().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

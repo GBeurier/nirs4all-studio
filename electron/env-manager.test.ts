@@ -125,6 +125,8 @@ describe("EnvManager", () => {
       await expect(manager.ensureBackendPackages()).resolves.toBe(true);
       expect(childProcessMocks.spawn).toHaveBeenCalledTimes(1);
       expect(childProcessMocks.spawn.mock.calls[0][1]).toEqual(["-m", "pip", "install", "--prefer-binary",
+        "--only-binary=nirs4all-io,nirs4all-core", "--find-links",
+        path.join(userDataDir, "resources", "python-wheels"),
         path.join(userDataDir, "resources", "python-wheels", "nirs4all-1.0.2-py3-none-any.whl")]);
     } else {
       await expect(manager.ensureBackendPackages()).rejects.toThrow("selected shared Python environment was left unchanged");

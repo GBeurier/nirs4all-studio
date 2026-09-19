@@ -149,10 +149,14 @@ def test_library_install_uses_the_embedded_wheel_including_explicit_extras(monke
         return SimpleNamespace(stdout=io.StringIO("Successfully installed\n"), wait=lambda **kw: None, returncode=0)
 
     monkeypatch.setattr("api.venv_manager.subprocess.Popen", popen)
-    success, _, _ = manager.install_package("nirs4all", version="1.0.2", extras=["torch"])
+    success, _, _ = manager.install_package("nirs4all", version="1.0.2", extras=["torch"],
+                                           extra_pip_args=["--extra-index-url", "https://example.invalid/framework-wheels"])
     assert success
     assert commands[0][-1] == f"nirs4all[torch] @ {wheel.as_uri()}"
     assert "nirs4all==1.0.2" not in commands[0]
+    assert "--only-binary=nirs4all-io,nirs4all-core" in commands[0]
+    assert commands[0][commands[0].index("--find-links") + 1] == str(wheel.parent)
+    assert commands[0][commands[0].index("--extra-index-url") + 1] == "https://example.invalid/framework-wheels"
 
 
 def test_missing_embedded_library_never_falls_back_to_pypi(monkeypatch, tmp_path):

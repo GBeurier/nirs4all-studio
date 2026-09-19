@@ -43,7 +43,7 @@ jobs:
       - run: python -m pip install -r requirements-cpu.txt vendor/python/nirs4all-1.0.2-py3-none-any.whl pytest pytest-asyncio pytest-timeout pytest-xdist
       - name: Qualify cold concurrent imports of the installed library wheel
         run: python -I -m pytest build/recovery-library-tests --import-mode=importlib -q
-      - run: python -m pytest tests/test_workspace_manager_startup.py tests/test_recommended_config_api.py tests/test_recovery_dependency_profile.py tests/test_packaged_node_registry.py tests/test_nirs4all_release_pin.py tests/test_preview_eventloop.py tests/test_recovery_legacy_replay.py tests/test_runtime_engine.py -q
+      - run: python -m pytest tests/test_workspace_manager_startup.py tests/test_recommended_config_api.py tests/test_recovery_dependency_profile.py tests/test_packaged_node_registry.py tests/test_nirs4all_release_pin.py tests/test_preview_eventloop.py tests/test_recovery_legacy_replay.py tests/test_runtime_engine.py tests/test_macos_recovery_wheel_builder.py -q
       - run: npx vitest run electron/env-manager.test.ts electron/env-inspection.test.ts electron/python-runtime-config.test.ts electron/workspace-location.test.ts src/components/datasets/DatasetWizard/PreviewStep.test.tsx
       - run: node --test scripts/tests/recovery-qualify-installer.test.cjs
 
@@ -85,6 +85,23 @@ jobs:
         with:
           name: recovery-library-wheel
           path: vendor/python/
+      - name: Restore precompiled Mac Intel dependencies
+        if: matrix.platform == 'darwin' && matrix.arch == 'x64'
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/python/nirs4all_io-*.whl
+            vendor/python/nirs4all_core-*.whl
+            vendor/python/macos-intel-native-wheels.json
+          key: recovery-macos-intel-py311-${{ hashFiles('scripts/build-macos-recovery-wheels.py', 'build/recovery-macos-intel.json') }}
+      - name: Prepare Rust for Mac Intel dependency wheels
+        if: matrix.platform == 'darwin' && matrix.arch == 'x64'
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build missing Mac Intel wheels before packaging
+        if: matrix.platform == 'darwin' && matrix.arch == 'x64'
+        run: |
+          python -m pip install maturin==1.14.1
+          python scripts/build-macos-recovery-wheels.py --output vendor/python
       - name: Build Python recovery installer
         run: npm run release -- --platform ${{ matrix.build_platform }} --flavor cpu
         env:

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "maturin_version": "1.14.1",
+  "deployment_target": "11.0",
+  "packages": [
+    {
+      "name": "nirs4all-io",
+      "version": "0.1.18",
+      "source_url": "https://files.pythonhosted.org/packages/fc/41/815f59f990cb770a33c02afac5158568a616c3e73afa30230a9caedd6a8e/nirs4all_io-0.1.18.tar.gz",
+      "source_sha256": "d27fe7db6f405535470dcedc5a7975c2ff3c794ff740faacb8a9cf34756f780c",
+      "source_filename": "nirs4all_io-0.1.18.tar.gz",
+      "manifest_path": "bindings/python/Cargo.toml",
+      "lock_path": "bindings/python/Cargo.lock"
+    },
+    {
+      "name": "nirs4all-core",
+      "version": "0.3.30",
+      "source_url": "https://files.pythonhosted.org/packages/10/5c/b09f6440cf316822b12d4c5020d7d18e53564432b63ce048fb3f174c65a5/nirs4all_core-0.3.30.tar.gz",
+      "source_sha256": "073f234edd20cbd390a7bdfc3124ab28afff2558613d601fca9b87c5b27911e3",
+      "source_filename": "nirs4all_core-0.3.30.tar.gz",
+      "manifest_path": "bindings/python-native/Cargo.toml",
+      "lock_path": "Cargo.lock"
+    }
+  ]
+}

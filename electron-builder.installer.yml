@@ -20,7 +20,7 @@ extraResources:
   - from: vendor/python/
     to: python-wheels/
     filter:
-      - "nirs4all-1.0.2-py3-none-any.whl"
+      - "*.whl"
   - from: LICENSE
     to: LICENSE
   - from: LICENSING.md
