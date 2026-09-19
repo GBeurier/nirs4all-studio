@@ -86,10 +86,12 @@ jobs:
           src/lib/__tests__/operatorCapability.test.ts
           src/components/predictions/viewer/__tests__/PredictionViewer.outputs.test.tsx
           src/components/pipeline-editor/__tests__/paletteBranchMerge.test.ts
-      - name: Install the browser for the real results gate
-        run: npx playwright install --with-deps chromium
+      - name: Verify the runner Chrome for the real results gate
+        run: google-chrome --version
       - name: Verify edited pipelines and visible results after a model failure
         run: npx playwright test --config=playwright.recovery.config.ts
+        env:
+          RECOVERY_E2E_BROWSER_CHANNEL: chrome
       - name: Preserve browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

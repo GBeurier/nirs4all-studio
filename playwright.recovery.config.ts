@@ -18,7 +18,8 @@ export default defineConfig({
   timeout: 90000,
   globalSetup: './e2e/fixtures/recovery-setup.ts',
   reporter: [['list']],
-  use: { ...devices['Desktop Chrome'], baseURL: `http://127.0.0.1:${uiPort}`, locale: 'en-US',
+  use: { ...devices['Desktop Chrome'], channel: process.env.RECOVERY_E2E_BROWSER_CHANNEL,
+    baseURL: `http://127.0.0.1:${uiPort}`, locale: 'en-US',
     viewport: { width: 1600, height: 1100 }, screenshot: 'only-on-failure', trace: 'retain-on-failure' },
   webServer: [
     { command: `"${python}" -m uvicorn main:app --host 127.0.0.1 --port ${apiPort}`,
