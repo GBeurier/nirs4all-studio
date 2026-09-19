@@ -1,12 +1,12 @@
 {
   "schema_version": "1.2",
-  "app_version": "0.11.9",
+  "app_version": "0.11.10",
   "nirs4all": "1.0.3",
   "_note": "Python recovery: a minimal scikit-learn environment is the default; additional frameworks are installed only when selected. Existing environments and choices are preserved.",
   "profiles": {
     "cpu": {
       "label": "CPU Only",
-      "description": "Core NIRS analysis with scikit-learn and PyTorch (CPU). TensorFlow and JAX are not installed by default.",
+      "description": "Core NIRS analysis with scikit-learn. Select PyTorch or other optional frameworks below to install them; selected PyTorch models run on CPU.",
       "platforms": [
         "win32",
         "linux",

@@ -185,6 +185,7 @@ def _resolve_operator_class(name: str, step_type: str) -> Any:
         # Preserve dependency classification for callers. A missing optional
         # dependency still prevents execution and must fail preflight.
         http_exc.operator_missing_dependency = exc.missing_dependency
+        http_exc.operator_installation_hint = exc.installation_hint
         raise http_exc from exc
 
 
@@ -532,8 +533,9 @@ def check_pipeline_imports(steps: list[dict[str, Any]]) -> list[dict[str, str | 
         List of issues.  Each issue is a dict with ``step_name``, ``step_type``,
         and ``error`` keys.  An empty list means all imports succeed.
     """
-    issues: list[dict[str, str | None]] = []
+    from .operator_capabilities import pipeline_capability_issues
 
+    issues = pipeline_capability_issues(steps)
     for step in steps:
         _check_step_imports(step, issues)
 
@@ -596,6 +598,7 @@ def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str | None]
                 "class_path": str(step.get("classPath", "") or "") or None,
                 "function_path": str(step.get("functionPath", "") or "") or None,
                 "error": str(exc.detail),
+                **({"installation_hint": exc.operator_installation_hint} if getattr(exc, "operator_installation_hint", None) else {}),
             })
 
     # Recurse into children (for containers like sample_augmentation)

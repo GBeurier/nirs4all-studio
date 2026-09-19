@@ -1664,6 +1664,19 @@ class StoreAdapter:
         if not y_true_list or not y_pred_list:
             return None
 
+        def array_shape(values: list[Any]) -> tuple[int, int]:
+            is_matrix = isinstance(values[0], list)
+            width = len(values[0]) if is_matrix else 1
+            if not width or any(isinstance(row, list) != is_matrix or (is_matrix and len(row) != width) for row in values):
+                raise ValueError("Prediction arrays must be rectangular sample-by-output matrices")
+            return len(values), width
+
+        if array_shape(y_true_list) != array_shape(y_pred_list):
+            raise ValueError("Actual and predicted arrays have different sample/output shapes")
+        sample_ids = _to_json_compatible(pred.get("sample_ids"))
+        if sample_ids is not None and len(sample_ids) != len(y_true_list):
+            raise ValueError("Prediction sample identities do not match the array rows")
+
         sample_metadata = _extract_sample_metadata(
             self._store,
             prediction_id,
@@ -1675,6 +1688,7 @@ class StoreAdapter:
             "prediction_id": prediction_id,
             "y_true": y_true_list,
             "y_pred": y_pred_list,
+            "sample_ids": sample_ids,
             "n_samples": len(y_true_list),
             "partition": pred.get("partition", "unknown"),
             "model_name": pred.get("model_name", "unknown"),
@@ -1768,6 +1782,10 @@ class StoreAdapter:
             result[key] = _to_json_compatible(arrays.get(key))
 
         result["sample_indices"] = _to_json_compatible(arrays.get("sample_indices"))
+        sample_ids = arrays.get("sample_ids")
+        if sample_ids is None and prediction_row is not None:
+            sample_ids = prediction_row.get("sample_ids")
+        result["sample_ids"] = _to_json_compatible(sample_ids)
         result["sample_metadata"] = _extract_sample_metadata(
             self._store,
             prediction_id,

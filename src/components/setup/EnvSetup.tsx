@@ -1,3 +1,4 @@
+import { restartChangedPythonRuntime } from "@/lib/pythonRuntimeSwitch";
 /**
  * Unified First-Launch Setup Wizard
  *
@@ -371,6 +372,10 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
       });
 
       if (result.success) {
+        if (result.requires_restart) {
+          setInstallMessage("Restarting the Python environment...");
+          await restartChangedPythonRuntime();
+        }
         setInstallProgress(100);
         setInstallMessage(t("setupWizard.install.complete"));
         await completeSetup(selectedProfile, effectiveExtras);

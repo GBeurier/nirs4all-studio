@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from . import pipeline_canonical_branch_merge as branch_merge_editor
 from . import pipeline_canonical_generators as generator_editor
+from .neural_parameters import split_neural_parameters
 from .node_registry_loader import load_editor_registry_nodes
 from .pipeline_canonical_finetune import (
     SEARCH_SPACE_TOKEN_ALIASES,
@@ -117,7 +118,9 @@ def contains_generators(payload: Any) -> bool:
 
 def editor_steps_to_runtime_canonical(steps: list[dict[str, Any]]) -> list[Any]:
     """Convert editor steps into canonical runtime payload with comments stripped."""
-    return filter_comments(editor_to_canonical(hydrate_editor_steps(steps)))
+    from .operator_parameters import normalize_runtime_operator_parameters
+
+    return normalize_runtime_operator_parameters(filter_comments(editor_to_canonical(hydrate_editor_steps(steps))))
 
 
 def count_runtime_variants(canonical_steps: list[Any]) -> int:
@@ -402,9 +405,10 @@ class OperatorResolutionError(Exception):
     reference (the module imported but the attribute does not exist).
     """
 
-    def __init__(self, message: str, *, missing_dependency: bool = False) -> None:
+    def __init__(self, message: str, *, missing_dependency: bool = False, installation_hint: str | None = None) -> None:
         super().__init__(message)
         self.missing_dependency = missing_dependency
+        self.installation_hint = installation_hint
 
 
 def _lookup_module_attr(module: Any, attr: str, *, allow_callable: bool) -> Any | None:
@@ -452,16 +456,22 @@ def import_operator_class(class_path: str, *, allow_callable: bool = False) -> A
                 "Reinstall TabPFN through Dependencies to resolve its compatible requirements."
             )
 
+    obj = None
     try:
         module = importlib.import_module(module_path)
         obj = _lookup_module_attr(module, attr, allow_callable=allow_callable)
+        for dependency in getattr(obj, "_required_imports", ()):
+            dependency_module, _, dependency_attr = dependency.rpartition(".")
+            getattr(importlib.import_module(dependency_module), dependency_attr)
     except Exception as exc:
         # Installed packages can fail with ABI errors, missing DLLs or an
         # incompatible transitive dependency, not only ModuleNotFoundError.
+        hint = getattr(obj, "_dependency_installation_hint", None)
         raise OperatorResolutionError(
             f"Cannot import '{class_path}' in Python '{sys.executable}': "
-            f"{type(exc).__name__}: {exc}",
+            f"{type(exc).__name__}: {exc}" + (f". {hint}" if hint else ""),
             missing_dependency=isinstance(exc, ImportError),
+            installation_hint=hint,
         ) from exc
     if obj is None:
         raise OperatorResolutionError(f"Unsupported operator reference '{class_path}'")
@@ -1348,9 +1358,14 @@ def _apply_param_sweeps(payload: Any, step: dict[str, Any]) -> Any:
     # the ``params`` dict so the generator system recognises them.
     sweeps = _ensure_mapping_payload(param_sweeps)
     is_model_step = "model" in result
+    training_sweeps: dict[str, Any] = {}
+    if is_model_step:
+        reference = result["model"]
+        model_path = str(reference.get("function") or reference.get("class") or "") if isinstance(reference, dict) else str(reference)
+        sweeps, training_sweeps = split_neural_parameters(model_path, sweeps)
     single_sweep_items = list(sweeps.items())
 
-    if is_model_step and len(single_sweep_items) == 1:
+    if is_model_step and not training_sweeps and len(single_sweep_items) == 1:
         param_name, sweep = single_sweep_items[0]
         if isinstance(sweep, dict):
             sweep_type = sweep.get("type")
@@ -1373,12 +1388,13 @@ def _apply_param_sweeps(payload: Any, step: dict[str, Any]) -> Any:
 
     params_dict = _find_sweep_params_dict(result)
 
-    for param_name, sweep in sweeps.items():
+    for param_name, sweep in {**sweeps, **training_sweeps}.items():
+        destination = result.setdefault("train_params", {}) if param_name in training_sweeps else params_dict
         if not isinstance(sweep, dict):
             continue
         sweep_type = sweep.get("type")
         if sweep_type == "range":
-            params_dict[param_name] = {
+            destination[param_name] = {
                 "_range_": [
                     sweep.get("from", 0),
                     sweep.get("to", 10),
@@ -1386,7 +1402,7 @@ def _apply_param_sweeps(payload: Any, step: dict[str, Any]) -> Any:
                 ]
             }
         elif sweep_type == "log_range":
-            params_dict[param_name] = {
+            destination[param_name] = {
                 "_log_range_": [
                     sweep.get("from", 0.001),
                     sweep.get("to", 100),
@@ -1396,7 +1412,7 @@ def _apply_param_sweeps(payload: Any, step: dict[str, Any]) -> Any:
         elif sweep_type in {"or", "grid"}:
             choices = sweep.get("choices")
             if isinstance(choices, list):
-                params_dict[param_name] = {"_or_": clone_value(choices)}
+                destination[param_name] = {"_or_": clone_value(choices)}
 
     return result
 
@@ -1467,7 +1483,11 @@ def _build_train_params(step: dict[str, Any]) -> dict[str, Any] | None:
     metadata = _ensure_mapping_payload(step.get("stepMetadata"))
     metadata_train = _ensure_mapping_payload(metadata.get("trainParams"))
 
-    result = clone_value(metadata_train)
+    class_path = str(step.get("functionPath") or resolve_required_editor_class_path(
+        "model", str(step.get("name") or "UnknownModel"), step.get("classPath")
+    ))
+    _, result = split_neural_parameters(class_path, _get_exportable_step_params(step))
+    result.update(clone_value(metadata_train))
     for key, value in training_config.items():
         result[str(key)] = clone_value(value)
 
@@ -1477,7 +1497,7 @@ def _build_train_params(step: dict[str, Any]) -> dict[str, Any] | None:
 def _build_model_payload(step: dict[str, Any]) -> dict[str, Any]:
     if "functionPath" in step:
         model_payload: dict[str, Any] = {"function": step["functionPath"]}
-        params = _get_exportable_step_params(step)
+        params, _ = split_neural_parameters(str(step["functionPath"]), _get_exportable_step_params(step))
         if params:
             model_payload["params"] = params
         if step.get("framework"):
@@ -1488,7 +1508,7 @@ def _build_model_payload(step: dict[str, Any]) -> dict[str, Any]:
             str(step.get("name") or "UnknownModel"),
             step.get("classPath"),
         )
-        params = _get_exportable_step_params(step)
+        params, _ = split_neural_parameters(class_path, _get_exportable_step_params(step))
         if step.get("modelStyle") == "string" and not params:
             model_payload = class_path
         else:
@@ -1550,6 +1570,13 @@ def _convert_editor_model_to_canonical(step: dict[str, Any]) -> dict[str, Any]:
         if train_params_payload:
             finetune_payload["train_params"] = train_params_payload
 
+        model_reference = result["model"]
+        neural_path = str(model_reference.get("function") or model_reference.get("class") or "") if isinstance(model_reference, dict) else str(model_reference)
+        if isinstance(finetune_payload.get("model_params"), dict):
+            mapped, training = split_neural_parameters(neural_path, finetune_payload["model_params"])
+            finetune_payload["model_params"] = mapped
+            if training:
+                finetune_payload["train_params"] = {**training, **finetune_payload.get("train_params", {})}
         result["finetune_params"] = finetune_payload
 
     train_params = _build_train_params(step)
@@ -1639,6 +1666,12 @@ def _convert_editor_sample_filter_to_canonical(step: dict[str, Any]) -> dict[str
     config = _ensure_mapping_payload(step.get("sampleFilterConfig"))
     children = step.get("children") or []
     filters = _serialize_component_list(children)
+    # This container already owns the filter controller; its children are
+    # components, unlike standalone palette filters.
+    filters = [
+        item.get("exclude", item.get("tag", item)) if isinstance(item, dict) else item
+        for item in filters
+    ]
 
     if origin == "sample_filter":
         payload = {
@@ -1796,6 +1829,29 @@ def _convert_editor_step_to_canonical(step: dict[str, Any]) -> Any:
         str(step.get("name") or "Unknown"),
         step.get("classPath"),
     )
+    if step_type == "filter":
+        # The palette's mode selects a controller, never a constructor argument.
+        component_step = clone_value(step)
+        params = clone_value(_ensure_mapping_payload(step.get("params")))
+        filter_mode = params.pop("filter_mode", "remove")
+        if filter_mode not in {"remove", "tag"}:
+            raise ValueError(f"Unknown filter mode: {filter_mode!r}")
+        component_step["params"] = params
+        component_step.pop("canonicalWrapperKey", None)
+        keyword = "exclude" if filter_mode == "remove" else "tag"
+        return {keyword: _component_payload_from_editor(component_step, class_path)}
+    if step_type == "splitting":
+        # These options belong to the split controller, not the sklearn
+        # constructor. Keep them on the workflow step so selected metadata
+        # reaches resolve_split_groups during execution.
+        controller_keys = {"group_by", "group", "ignore_repetition", "aggregation", "y_aggregation"}
+        params = _ensure_mapping_payload(step.get("params"))
+        controller_params = {key: clone_value(value) for key, value in params.items() if key in controller_keys}
+        if controller_params:
+            component_step = clone_value(step)
+            component_step["params"] = {key: value for key, value in params.items() if key not in controller_keys}
+            component_step.pop("canonicalWrapperKey", None)
+            return {"split": _component_payload_from_editor(component_step, class_path), **controller_params}
     return _component_payload_from_editor(step, class_path)
 
 

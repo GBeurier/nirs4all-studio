@@ -19,6 +19,7 @@ from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, get_type_hints
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -397,7 +398,7 @@ async def create_pipeline(pipeline_data: PipelineCreate):
     """Create a new pipeline."""
     try:
         now = datetime.now().isoformat()
-        pipeline_id = f"pipeline_{int(datetime.now().timestamp())}"
+        pipeline_id = f"pipeline_{uuid4().hex}"
         normalized_steps = _normalize_and_validate_editor_steps(
             pipeline_data.steps,
             name=pipeline_data.name,

@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { PredictionOutputSelector } from "@/components/predictions/viewer/PredictionOutputSelector";
 import { foldLabel, foldLabelShort } from "@/lib/fold-utils";
 import type {
   ChartKind,
@@ -100,6 +101,7 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
     selectedFoldPartitions,
     chartTargets,
     chartDatasets,
+    outputCount, outputIndex, setOutputIndex,
     chartsLoading,
     chartsError,
     canCustomize,
@@ -193,6 +195,7 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
             onCustomize={handleCustomize}
             isViewerOpen={isViewerOpen}
           >
+            <PredictionOutputSelector datasets={chartDatasets} outputCount={outputCount} outputIndex={outputIndex} onOutputChange={setOutputIndex} />
             <ChainDetailChartBody
               key={chartBodyKey}
               kind={previewKind}

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
+import { createRequire } from "node:module";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -81,6 +82,7 @@ function makeTrackedProcess() {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   delete process.env.NIRS4ALL_BACKEND_PORT;
   delete process.env.VITE_DEV_SERVER_URL;
   vi.resetModules();
@@ -103,6 +105,50 @@ afterEach(() => {
 });
 
 describe("BackendManager", () => {
+  it("sets reproducible Python fingerprints before every cold backend launch", async () => {
+    makeUserDataDir();
+    vi.stubEnv("PYTHONHASHSEED", "random");
+    const { execFileSync } = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    const python = [process.env.NIRS4ALL_TEST_PYTHON, "python3.11", "python3", "python"].find(candidate => {
+      if (!candidate) return false;
+      try {
+        return execFileSync(candidate, ["-c", "import sys; print(sys.version_info >= (3, 11))"], { encoding: "utf8", timeout: 5000 }).trim() === "True";
+      } catch {
+        return false;
+      }
+    });
+    expect(python, "Python >=3.11 is required for cold-process reproducibility").toBeTruthy();
+    // Production uses CJS require for Electron interop; vi.mock only hooks ESM.
+    const require = createRequire(import.meta.url);
+    const electronPath = require.resolve("electron");
+    const previous = require.cache[electronPath];
+    require.cache[electronPath] = { exports: { app: fakeApp, BrowserWindow: fakeBrowserWindow } } as NodeJS.Module;
+    try {
+      const { BackendManager } = await import("./backend-manager");
+      const launch = () => {
+        const manager = new BackendManager();
+        const internals = manager as unknown as {
+          getBackendPath: () => { command: string; args: string[]; env: Record<string, string> };
+          spawnBackend: () => void;
+        };
+        internals.getBackendPath = () => ({ command: python!, args: [], env: { PYTHONHASHSEED: "123" } });
+        childProcessMocks.spawn.mockReturnValue(makeSpawnResult());
+        internals.spawnBackend();
+        const options = childProcessMocks.spawn.mock.calls.at(-1)?.[2];
+        expect(options.env.PYTHONHASHSEED).toBe("0");
+        // The same salted bytes primitive used by TabPFN: real independent
+        // interpreters, with the actual environment handed to spawn().
+        return execFileSync(python!, ["-c", "import json; print(json.dumps([hash(bytes(range(n))) for n in range(1, 33)]))"], {
+          encoding: "utf8", env: options.env, timeout: 5000,
+        });
+      };
+      expect(launch()).toEqual(launch());
+    } finally {
+      if (previous) require.cache[electronPath] = previous;
+      else delete require.cache[electronPath];
+    }
+  });
+
   it("terminates the previous backend before crash restart", async () => {
     makeUserDataDir();
 

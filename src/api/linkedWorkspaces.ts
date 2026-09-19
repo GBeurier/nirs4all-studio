@@ -293,9 +293,9 @@ export async function getN4AWorkspacePredictionsSummary(
 export interface PredictionScatterResponse {
   prediction_id: string;
   /** Persisted identities when supplied by the workspace reader. */
-  sample_ids?: string[] | null;
-  y_true: number[];
-  y_pred: number[];
+  sample_ids?: Array<string | number> | null;
+  y_true: number[] | number[][];
+  y_pred: number[] | number[][];
   n_samples: number;
   partition: string;
   model_name: string;

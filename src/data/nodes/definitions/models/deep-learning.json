@@ -5,7 +5,7 @@
     "type": "model",
     "classPath": "nirs4all.operators.models.pytorch.nicon.nicon",
     "description": "NICoN (NIRS Convolutional Network) — PyTorch-based",
-    "longDescription": "PyTorch-based deep convolutional neural network designed specifically for NIR spectroscopy. Requires PyTorch.",
+    "longDescription": "PyTorch-based deep convolutional neural network designed specifically for NIR spectroscopy. Requires at least 175 spectral features and PyTorch.",
     "requires": [
       "torch"
     ],
@@ -73,7 +73,7 @@
     "type": "model",
     "classPath": "nirs4all.operators.models.pytorch.nicon.nicon_classification",
     "description": "NICoN Classifier (NIRS Convolutional Network) — PyTorch-based",
-    "longDescription": "PyTorch-based deep convolutional neural network for NIR spectroscopy classification. Requires PyTorch.",
+    "longDescription": "PyTorch-based deep convolutional neural network for NIR spectroscopy classification. Requires at least 175 spectral features and PyTorch.",
     "requires": [
       "torch"
     ],
@@ -188,7 +188,7 @@
         "default": 32,
         "min": 8,
         "max": 256,
-        "description": "Number of convolutional filters",
+        "description": "Filters in the first convolutional layer",
         "sweepable": true
       },
       {
@@ -197,7 +197,7 @@
         "default": 7,
         "min": 3,
         "max": 31,
-        "description": "Convolution kernel size",
+        "description": "Kernel size of the first convolutional layer",
         "sweepable": true
       },
       {
@@ -285,7 +285,7 @@
         "default": 32,
         "min": 8,
         "max": 256,
-        "description": "Number of convolutional filters",
+        "description": "Filters in the first convolutional layer",
         "sweepable": true
       },
       {
@@ -294,7 +294,7 @@
         "default": 7,
         "min": 3,
         "max": 31,
-        "description": "Convolution kernel size",
+        "description": "Kernel size of the first convolutional layer",
         "sweepable": true
       },
       {

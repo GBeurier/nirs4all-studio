@@ -497,15 +497,17 @@ async def system_capabilities():
 async def system_operator_availability():
     """Get backend-authoritative availability for executable editor operators."""
     from .nirs4all_adapter import check_pipeline_imports
+    from .operator_capabilities import spectral_pipeline_constraint
 
     reference = _load_operator_reference()
     executable_types = {"preprocessing", "y_processing", "splitting", "model", "filter", "augmentation"}
     unavailable: list[dict[str, str | None]] = []
+    capabilities: list[dict[str, Any]] = []
     checked_count = 0
 
     for node in reference.get("nodes", []):
         node_type = str(node.get("type", "") or "")
-        if node_type not in executable_types:
+        if node_type not in executable_types and not spectral_pipeline_constraint(node_type, str(node.get("classPath", ""))):
             continue
 
         checked_count += 1
@@ -520,6 +522,11 @@ async def system_operator_availability():
             continue
 
         issue = issues[0]
+        if issue.get("issue_type") == "unsupported_operator":
+            capabilities.append({"id": node.get("id"), "type": node_type, "name": node.get("name"),
+                                 "class_path": node.get("classPath"), "level": "metadata", "available": False,
+                                 "reason": issue["error"]})
+            continue
         unavailable.append({
             "id": str(node.get("id", "") or ""),
             "name": str(node.get("name", "") or ""),
@@ -534,6 +541,7 @@ async def system_operator_availability():
         "generated_at": reference.get("generatedAt"),
         "computed_at": datetime.now().isoformat(),
         "checked_count": checked_count,
+        "capabilities": capabilities,
         "unavailable": unavailable,
     }
 

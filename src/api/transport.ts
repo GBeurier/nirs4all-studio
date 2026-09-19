@@ -9,6 +9,7 @@
  */
 
 import { createLogger } from "@/lib/logger";
+import { duringRuntimeMutation, isRuntimeMutationRequest } from "@/lib/runtimeMutationEvents";
 
 const logger = createLogger("API");
 
@@ -365,11 +366,12 @@ class ApiClient {
 
   // POST request
   async post<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
-    return this.request<T>(endpoint, {
+    const send = () => this.request<T>(endpoint, {
       method: "POST",
       body: data,
       ...options,
     });
+    return isRuntimeMutationRequest(endpoint, data) ? duringRuntimeMutation(send) : send();
   }
 
   // PUT request

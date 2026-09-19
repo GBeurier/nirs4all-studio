@@ -44,3 +44,25 @@ def compatibility_issues(package: str, installed: Mapping[str, str]) -> list[str
         elif not requirement.specifier.contains(actual):
             issues.append(f"{normalized} {version} requires {requirement_text}; installed {requirement.name} is {actual}")
     return issues
+
+
+def environment_installation_requirements(package: str, version: str | None) -> list[str]:
+    """Preserve known bounds of optional packages already installed on disk.
+
+    A later profile package must not silently undo the TabPFN sklearn bound.
+    An explicit change to TabPFN itself uses the selected version's contract.
+    """
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as installed_version
+
+    requirements = installation_requirements(package, version)
+    normalized = package.lower().replace("_", "-")
+    for name, _versions, _requirements in _COMPATIBILITY:
+        if name == normalized:
+            continue
+        try:
+            current = installed_version(name)
+        except PackageNotFoundError:
+            continue
+        requirements.extend(installation_requirements(name, current))
+    return list(dict.fromkeys(requirements))

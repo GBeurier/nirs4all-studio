@@ -976,7 +976,7 @@ export function useChainDetailPanelState({
     };
   }, [selectedPrediction, prediction]);
 
-  const { data: chartDatasets, isLoading: chartsLoading, error: chartsError } = usePartitionsData({
+  const { data: chartDatasets, isLoading: chartsLoading, error: chartsError, outputCount, outputIndex, setOutputIndex } = usePartitionsData({
     partitions: chartTargets,
     enabled: chartTargets.length > 0,
   });
@@ -1091,12 +1091,12 @@ export function useChainDetailPanelState({
   }, [arrayArtifactRef, prediction, selectedPrediction]);
 
   const chartDatasetsWithConformal = useMemo(
-    () => attachConformalIntervalsToSingleDataset(
+    () => outputCount > 1 ? chartDatasets : attachConformalIntervalsToSingleDataset(
       chartDatasets,
       conformalSummary?.rows ?? [],
       selectedConformalCoverage,
     ),
-    [chartDatasets, conformalSummary, selectedConformalCoverage],
+    [chartDatasets, conformalSummary, selectedConformalCoverage, outputCount],
   );
 
   const cvMetricRows = useMemo(
@@ -1128,6 +1128,7 @@ export function useChainDetailPanelState({
     selectedFoldPartitions,
     chartTargets,
     chartDatasets: chartDatasetsWithConformal,
+    outputCount, outputIndex, setOutputIndex,
     chartsLoading,
     chartsError,
     canCustomize,

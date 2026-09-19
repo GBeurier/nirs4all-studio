@@ -9,6 +9,9 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
+import { useMlReadiness } from "@/context/useMlReadiness";
+import { restartChangedPythonRuntime } from "@/lib/pythonRuntimeSwitch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useUpdateStatus,
@@ -28,14 +31,11 @@ import {
   restoreSnapshot,
   deleteSnapshot,
   getWebappChangelog,
-  requestRestart,
   getLastApplyResult,
   dismissLastApplyResult,
 } from "@/api/updates";
 import { getRuntimeSummary } from "@/api/system";
-import { resetBackendUrl } from "@/api/transport";
 import type { RuntimeSummaryResponse } from "@/types/settings";
-import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import { getPythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
 import {
   getCurrentRuntime,
@@ -57,6 +57,7 @@ import { UpdatesNirs4allDialog } from "./UpdatesNirs4allDialog";
 import { UpdatesWebappDialog } from "./UpdatesWebappDialog";
 
 export function UpdatesSection() {
+  const { requiresRestart } = useMlReadiness();
   const queryClient = useQueryClient();
   const { data: status, isLoading: statusLoading, error: statusError } = useUpdateStatus();
   const { data: settings, isLoading: settingsLoading } = useUpdateSettings();
@@ -130,21 +131,11 @@ export function UpdatesSection() {
   }, []);
 
   const handleRestartBackend = useCallback(async () => {
-    const electronApi = (window as unknown as Record<string, unknown>).electronApi as
-      | { restartBackend?: () => Promise<{ success: boolean }> }
-      | undefined;
-    if (electronApi?.restartBackend) {
-      const result = await electronApi.restartBackend();
-      if (result.success) {
-        resetBackendUrl();
-        setNeedsRestart(false);
-        dispatchOperatorAvailabilityInvalidated();
-        window.dispatchEvent(new CustomEvent("backend-restarted"));
-      }
-    } else {
-      await requestRestart();
+    try {
+      await restartChangedPythonRuntime();
       setNeedsRestart(false);
-      dispatchOperatorAvailabilityInvalidated();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Backend restart failed");
     }
   }, []);
 
@@ -239,7 +230,7 @@ export function UpdatesSection() {
       updateCount={updateCount}
       isChecking={checkMutation.isPending}
       onCheckNow={() => checkMutation.mutate()}
-      needsRestart={needsRestart}
+      needsRestart={needsRestart || Boolean(requiresRestart)}
       onRestartBackend={handleRestartBackend}
       runtimeDisplay={runtimeDisplay}
       isReadOnlyRuntime={isReadOnlyRuntime}

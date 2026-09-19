@@ -18,8 +18,8 @@ import {
   useMemo,
   ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getActiveRuns } from "@/api/runs";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getActiveRuns, getRun } from "@/api/runs";
 import type { RunStatus } from "@/types/runs";
 import {
   ActiveRunContext,
@@ -46,10 +46,72 @@ interface WsMessage {
 }
 
 export function ActiveRunProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  const previousActiveIds = useRef(new Set<string>());
+  const refreshResults = useCallback(() => {
+    for (const key of ["results-summary", "aggregated-predictions", "dataset-all-chains", "runs"]) {
+      void queryClient.invalidateQueries({ queryKey: [key] });
+    }
+    void queryClient.invalidateQueries({
+      predicate: (query) => query.queryKey[0] === "workspaces" && query.queryKey[2] === "scores",
+    });
+  }, [queryClient]);
   const [runProgressMap, setRunProgressMap] = useState<Map<string, RunProgressState>>(new Map());
   const [isMinimized, setIsMinimized] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const wsConnectionsRef = useRef<Map<string, WebSocket | null>>(new Map());
+  const terminalChecksRef = useRef(new Map<string, symbol>());
+
+  const resolveTerminalStatus = useCallback((runId: string) => {
+    if (terminalChecksRef.current.has(runId)) return;
+    const token = Symbol(runId);
+    terminalChecksRef.current.set(runId, token);
+
+    void queryClient.fetchQuery({
+      queryKey: ["run-terminal-status", runId],
+      queryFn: async () => {
+        const run = await getRun(runId);
+        if (run.status === "running" || run.status === "queued") {
+          throw new Error("The final run status has not been persisted yet");
+        }
+        return run;
+      },
+      retry: 2,
+      retryDelay: 1500,
+      staleTime: 0,
+    }).then((run) => {
+      if (terminalChecksRef.current.get(runId) !== token) return;
+      const error = run.datasets.flatMap(dataset => dataset.pipelines)
+        .find(pipeline => pipeline.error_message)?.error_message;
+      refreshResults();
+      setRunProgressMap((prev) => {
+        const existing = prev.get(runId);
+        if (!existing) return prev;
+        const updated = new Map(prev);
+        updated.set(runId, {
+          ...existing,
+          status: run.status,
+          progress: run.status === "completed" ? 100 : existing.progress,
+          message: error || (run.status === "completed" ? "Run completed" : run.status === "partial" ? "Run partially completed" : "Run failed"),
+          updatedAt: Date.now(),
+        });
+        return updated;
+      });
+    }).catch((error: unknown) => {
+      if (terminalChecksRef.current.get(runId) !== token) return;
+      setRunProgressMap((prev) => {
+        const existing = prev.get(runId);
+        if (!existing || (existing.status !== "running" && existing.status !== "queued")) return prev;
+        const updated = new Map(prev);
+        updated.set(runId, {
+          ...existing,
+          message: `Unable to confirm final run status: ${error instanceof Error ? error.message : "request failed"}. Open run details to retry.`,
+          updatedAt: Date.now(),
+        });
+        return updated;
+      });
+    });
+  }, [queryClient, refreshResults]);
 
   // Fetch active runs periodically
   const { data: activeRunsData, refetch: refreshActiveRuns } = useQuery({
@@ -91,6 +153,10 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
           try {
             const message: WsMessage = JSON.parse(event.data);
             if (message.channel === `job:${runId}`) {
+              if (["job_completed", "job_failed", "job_cancelled"].includes(message.type)) {
+                refreshResults();
+                resolveTerminalStatus(runId);
+              }
               setRunProgressMap((prev) => {
                 const existing = prev.get(runId);
                 if (!existing) return prev;
@@ -115,10 +181,20 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
 
                 // Handle completion
                 if (message.type === "job_completed") {
-                  newState.status = "completed";
-                  newState.progress = 100;
+                  const resultStatus = message.data?.result?.status;
+                  if (resultStatus === "completed" || resultStatus === "failed" || resultStatus === "partial") {
+                    newState.status = resultStatus;
+                    if (resultStatus === "completed") newState.progress = 100;
+                  }
+                  newState.message = "Confirming final run status...";
                 } else if (message.type === "job_failed") {
                   newState.status = "failed";
+                  newState.message = message.data?.error || message.data?.message || "Run failed";
+                } else if (message.type === "job_cancelled") {
+                  // The persisted Run contract represents cancellation as a
+                  // failed run with a cancellation reason, not as completion.
+                  newState.status = "failed";
+                  newState.message = message.data?.error || message.data?.message || "Run cancelled";
                 }
 
                 if (newState.progress === existing.progress
@@ -152,7 +228,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       wsConnectionsRef.current.delete(runId);
     });
-  }, []);
+  }, [refreshResults, resolveTerminalStatus]);
 
   // Cleanup WebSocket for completed/failed runs
   const disconnectFromRun = useCallback((runId: string) => {
@@ -167,6 +243,13 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
 
     const activeRuns = activeRunsData.runs;
     const activeRunIds = new Set(activeRuns.map(r => r.id));
+    const disappeared = [...previousActiveIds.current].filter(id => !activeRunIds.has(id));
+    if (disappeared.length) refreshResults();
+    for (const runId of disappeared) resolveTerminalStatus(runId);
+    for (const runId of activeRunIds) {
+      if (!previousActiveIds.current.has(runId)) terminalChecksRef.current.delete(runId);
+    }
+    previousActiveIds.current = activeRunIds;
 
     // Connection side effects must not run inside a React state updater.
     for (const run of activeRuns) connectToRun(run.id, run.name, run.status);
@@ -210,17 +293,8 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       // Update status and remove completed/failed runs
       for (const [runId, state] of updated) {
         if (!activeRunIds.has(runId)) {
-          // Run is no longer in active list - it has completed or failed
-          if (state.status === "running" || state.status === "queued") {
-            // Update status to completed (or failed via WebSocket)
-            updated.set(runId, {
-              ...state,
-              status: "completed",
-              progress: 100,
-              updatedAt: Date.now(),
-            });
-          }
-
+          // Absence from the active list is not proof of success. The bounded
+          // detail request above supplies the persisted terminal status.
           // Remove from map after 5 seconds (allow brief display of completion)
           const elapsed = Date.now() - state.updatedAt;
           if (elapsed > 5000 && state.status !== "running" && state.status !== "queued") {
@@ -234,19 +308,24 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
         && Array.from(updated).every(([id, state]) => prev.get(id) === state)
         ? prev : updated;
     });
-  }, [activeRunsData, connectToRun, disconnectFromRun]);
+  }, [activeRunsData, connectToRun, disconnectFromRun, refreshResults, resolveTerminalStatus]);
 
   // Cleanup on unmount
   useEffect(() => {
     const wsConnections = wsConnectionsRef.current;
+    const terminalChecks = terminalChecksRef.current;
     return () => {
+      for (const runId of terminalChecks.keys()) {
+        void queryClient.cancelQueries({ queryKey: ["run-terminal-status", runId] });
+      }
+      terminalChecks.clear();
       const connections = Array.from(wsConnections.values());
       wsConnections.clear();
       connections.forEach((ws) => {
         if (ws) ws.close();
       });
     };
-  }, []);
+  }, [queryClient]);
 
   // Convert map to array, sorted by update time
   const activeRuns = useMemo(() => Array.from(runProgressMap.values())

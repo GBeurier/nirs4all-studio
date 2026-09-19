@@ -68,3 +68,33 @@ def test_optional_operator_failure_in_nested_branch_is_not_ignored(monkeypatch):
     result = check_pipeline_imports([{"type": "flow", "subType": "branch", "branches": [[STEP]]}])
     assert len(result) == 1
     assert result[0]["step_id"] == "tabpfn"
+
+
+def test_lazy_wrapper_missing_backend_is_rejected_before_training(monkeypatch):
+    from api import runs, system
+
+    step = {"id": "aom", "type": "model", "name": "AOMPLSAomlibRegressor",
+            "classPath": "nirs4all.operators.models.sklearn.aom_pls_aomlib.AOMPLSAomlibRegressor"}
+    monkeypatch.setitem(sys.modules, "n4m.model_selection.aom_search", None)
+    issues = check_pipeline_imports([step])
+    assert len(issues) == 1
+    assert "n4m.model_selection.aom_search" in issues[0]["error"]
+    assert sys.executable in issues[0]["error"]
+    assert "nirs4all-methods native Python wheel" in issues[0]["installation_hint"]
+    monkeypatch.setattr(system, "_load_operator_reference", lambda: {"nodes": [step]})
+    preflight = asyncio.run(runs.run_preflight(runs.PreflightRequest(inline_pipeline={"name": "AOM", "steps": [step]})))
+    assert preflight["ready"] is False
+    assert "nirs4all-methods native Python wheel" in preflight["issues"][0]["message"]
+    assert "Install it via Settings" not in preflight["issues"][0]["message"]
+    availability = asyncio.run(system.system_operator_availability())
+    assert availability["unavailable"][0]["id"] == "aom"
+    assert "nirs4all-methods native Python wheel" in availability["unavailable"][0]["error"]
+
+    class AOMPLSRegressor:
+        def __init__(self):
+            pytest.fail("Checking a lazy backend must not construct or fit it")
+
+    module = ModuleType("n4m.model_selection.aom_search")
+    module.AOMPLSRegressor = AOMPLSRegressor
+    monkeypatch.setitem(sys.modules, "n4m.model_selection.aom_search", module)
+    assert check_pipeline_imports([step]) == []

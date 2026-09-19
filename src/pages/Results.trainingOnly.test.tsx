@@ -9,7 +9,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 const transport = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/api/transport', () => ({ api: transport }));
 vi.mock('@/context/useMlReadiness', () => ({ useMlReadiness: () => ({ mlReady: true, workspaceReady: true }) }));
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }) }));
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, fallback?: string | { defaultValue?: string }) => typeof fallback === 'string' ? fallback : fallback?.defaultValue ?? key }) }));
 // Closed chart/detail dialogs are outside this page load/refresh regression.
 vi.mock('@/components/predictions/ChainDetailSheet', () => ({ ChainDetailSheet: () => null }));
 vi.mock('@/components/predictions/viewer/PredictionViewer', () => ({ PredictionViewer: () => null }));
@@ -28,6 +28,40 @@ async function waitFor(assertion: () => void) {
 }
 
 afterEach(() => { vi.clearAllMocks(); localStorage.clear(); document.documentElement.classList.remove('reduce-motion'); });
+
+it('shows a results API failure and permits recovery instead of claiming an empty database', async () => {
+  document.documentElement.classList.add('reduce-motion');
+  let failing = true;
+  transport.get.mockImplementation(async (path: string) => {
+    if (path === '/workspaces') return { workspaces: [{ id: 'workspace', name: 'Workspace', is_active: true }] };
+    if (path === '/workspaces/workspace/results/summary') {
+      if (failing) throw new Error('Cannot read stored predictions');
+      return { workspace_id: 'workspace', datasets: [] };
+    }
+    throw new Error(`Unexpected API request: ${path}`);
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><TooltipProvider>
+      <Results />
+    </TooltipProvider></MemoryRouter></QueryClientProvider>); });
+    await waitFor(() => expect(container.textContent).toContain('Cannot read stored predictions'));
+    expect(container.textContent).toContain('Error loading results');
+    expect(container.textContent).not.toContain('No results found');
+    failing = false;
+    await act(async () => {
+      [...container.querySelectorAll('button')].find(button => button.textContent?.includes('Refresh'))!.click();
+    });
+    await waitFor(() => expect(container.textContent).not.toContain('Cannot read stored predictions'));
+  } finally {
+    await act(async () => root.unmount());
+    client.clear();
+    container.remove();
+  }
+});
 
 it('renders training-only models on the actual Results page and refreshes the expanded model history', async () => {
   document.documentElement.classList.add('reduce-motion');

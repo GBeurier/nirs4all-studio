@@ -94,6 +94,13 @@ export function convertMergeToEditor(step: Nirs4allMergeStep): EditorPipelineSte
     };
   }
 
+  if (merge.sources !== undefined) {
+    return { id: generateStepId(), type: "flow", subType: "merge", name: "Concatenate", params: {},
+      mergeConfig: { mode: "sources", sources: merge.sources,
+        output_as: merge.output_as as "features" | "predictions" | undefined,
+        on_missing: merge.on_missing as "warn" | "error" | "drop" | undefined } };
+  }
+
   return {
     id: generateStepId(),
     type: "flow",
@@ -127,6 +134,18 @@ export function convertEditorBranchToNirs4all(
   step: EditorPipelineStep,
   convertEditorStepToNirs4all: EditorToNirs4allStepConverter
 ): Nirs4allStep {
+  if (step.classPath === "source_branch" || step.name === "SourceBranch") {
+    const sources = step.params.sources;
+    const branches = step.branches ?? [];
+    if (!Array.isArray(sources) || !sources.length || sources.length !== branches.length) {
+      throw new Error("SourceBranch requires one source name for each branch");
+    }
+    if (sources.some(name => typeof name !== "string" || !name.trim()) || new Set(sources).size !== sources.length) {
+      throw new Error("SourceBranch source names must be nonempty and unique");
+    }
+    return { branch: { by_source: true, steps: Object.fromEntries(sources.map((name, index) =>
+      [name, branches[index].map(convertEditorStepToNirs4all)])) } };
+  }
   if (!step.branches || step.branches.length === 0) {
     return { branch: {} };
   }
@@ -155,6 +174,12 @@ export function convertEditorMergeToNirs4all(step: EditorPipelineStep): Nirs4all
   if (step.mergeConfig) {
     const config = step.mergeConfig;
 
+    if (config.sources !== undefined || config.mode === "sources") {
+      return { merge: { sources: config.sources ?? "concat",
+        ...(config.output_as ? { output_as: config.output_as } : {}),
+        ...(config.on_missing ? { on_missing: config.on_missing } : {}) } };
+    }
+
     if (config.mode && !config.predictions && !config.features) {
       return { merge: config.mode };
     }
@@ -177,8 +202,19 @@ export function convertEditorMergeToNirs4all(step: EditorPipelineStep): Nirs4all
 
   const params = step.params as Record<string, unknown>;
 
-  if (params.merge_type && !params.predictions) {
-    return { merge: params.merge_type as string };
+  if (step.classPath === "source_merge" || step.name === "MergeSources") {
+    if ((params.axis ?? "features") !== "features") {
+      throw new Error("MergeSources supports concatenating features of aligned samples only");
+    }
+    return { merge: { sources: "concat" } };
+  }
+
+  const mode = params.mode ?? params.merge_type;
+  if (mode && !params.predictions) {
+    if (!["predictions", "features", "all", "concat"].includes(String(mode))) {
+      throw new Error(`Unsupported merge mode: ${String(mode)}`);
+    }
+    return { merge: mode as string };
   }
 
   const mergeConfig: Record<string, unknown> = {};

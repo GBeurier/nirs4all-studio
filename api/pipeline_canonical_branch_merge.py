@@ -204,6 +204,16 @@ def _convert_editor_branch_to_canonical(
     serialize_editor_steps: SerializeEditorSteps,
     append_attached_comment: AppendAttachedComment,
 ) -> dict[str, Any]:
+    if step.get("classPath") == "source_branch" or step.get("name") == "SourceBranch":
+        branches = step.get("branches") or []
+        sources = ensure_mapping_payload(step.get("params")).get("sources")
+        if not isinstance(sources, list) or len(sources) != len(branches) or not sources:
+            raise ValueError("SourceBranch requires one source name for each branch")
+        if any(not isinstance(name, str) or not name.strip() for name in sources) or len(set(sources)) != len(sources):
+            raise ValueError("SourceBranch source names must be nonempty and unique")
+        return append_attached_comment({"branch": {"by_source": True, "steps": {
+            name: serialize_editor_steps(branch) for name, branch in zip(sources, branches, strict=True)
+        }}}, step)
     if step.get("branchMode") == "separation":
         separation_config = ensure_mapping_payload(step.get("separationConfig"))
         separation_kind = str(
@@ -288,8 +298,16 @@ def _convert_editor_merge_to_canonical(
         return append_attached_comment(payload, step)
 
     params = ensure_mapping_payload(step.get("params"))
-    if params.get("merge_type") and not params.get("predictions"):
-        payload = {"merge": params["merge_type"]}
+    if step.get("classPath") == "source_merge" or step.get("name") == "MergeSources":
+        if params.get("axis", "features") != "features":
+            raise ValueError("MergeSources supports concatenating features of aligned samples only")
+        return append_attached_comment({"merge": {"sources": "concat"}}, step)
+
+    merge_mode = params.get("mode", params.get("merge_type"))
+    if merge_mode and not params.get("predictions"):
+        if merge_mode not in {"predictions", "features", "all", "concat"}:
+            raise ValueError(f"Unsupported merge mode: {merge_mode!r}")
+        payload = {"merge": merge_mode}
         return append_attached_comment(payload, step)
 
     payload = {"merge": _clone_value(params)}

@@ -66,6 +66,7 @@ export interface Nirs4allSeparationBranch {
 
 export interface Nirs4allMergeStep {
   merge: string | {
+    sources?: unknown;
     predictions?: Array<{
       branch: number;
       select: string | { top_k: number };

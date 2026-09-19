@@ -40,6 +40,9 @@ interface MlStatusPayload {
   ml_loading: boolean;
   ml_error: string | null;
   workspace_ready?: boolean;
+  dependency_installing?: boolean;
+  requires_restart?: boolean;
+  restart_reason?: string | null;
 }
 
 type RendererElectronApi = NonNullable<Window["electronApi"]>;
@@ -228,6 +231,97 @@ afterEach(() => {
 });
 
 describe("MlReadinessProvider", () => {
+  it("ignores stale ready IPC after installation settles until authoritative readiness arrives", async () => {
+    let mlReadyListener: MlReadyListener | undefined;
+    const ready: MlStatusPayload = {
+      core_ready: true, ml_ready: true, ml_loading: false,
+      ml_error: null, workspace_ready: true,
+    };
+    const validation = deferred<MlStatusPayload>();
+    const getMlStatus = vi.fn<() => Promise<MlStatusPayload>>()
+      .mockResolvedValueOnce(ready)
+      .mockReturnValue(validation.promise);
+    const view = await renderProvider(createElectronApiMock({
+      getMlStatus,
+      onMlReady: cb => { mlReadyListener = cb; return () => undefined; },
+    }));
+    try {
+      expect(view.result.current?.workspaceReady).toBe(true);
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent("nirs4all-runtime-mutation", { detail: { pending: true } }));
+      });
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent("nirs4all-runtime-mutation", { detail: { pending: false } }));
+      });
+      expect(getMlStatus).toHaveBeenCalledTimes(2);
+      await act(async () => { mlReadyListener?.({ ready: true, workspaceReady: true }); });
+      expect(view.result.current?.mlReady).toBe(false);
+      expect(view.result.current?.workspaceReady).toBe(false);
+      await act(async () => {
+        validation.resolve({ ...ready, ml_ready: false, workspace_ready: false, requires_restart: true });
+      });
+      expect(view.result.current?.requiresRestart).toBe(true);
+      await act(async () => { mlReadyListener?.({ ready: true, workspaceReady: true }); });
+      expect(view.result.current?.workspaceReady).toBe(false);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("blocks a ready runtime during installation until a fresh backend is ready", async () => {
+    vi.useFakeTimers();
+    let mlReadyListener: MlReadyListener | undefined;
+    const ready: MlStatusPayload = {
+      core_ready: true, ml_ready: true, ml_loading: false,
+      ml_error: null, workspace_ready: true,
+    };
+    const getMlStatus = vi.fn<() => Promise<MlStatusPayload>>()
+      .mockResolvedValue(ready);
+    const view = await renderProvider(createElectronApiMock({
+      getMlStatus,
+      onMlReady: (cb) => {
+        mlReadyListener = cb;
+        return () => { mlReadyListener = undefined; };
+      },
+    }));
+    expect(view.result.current?.workspaceReady).toBe(true);
+    expect(mlReadyListener).toBeDefined();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("nirs4all-runtime-mutation", { detail: { pending: true } }));
+    });
+    expect(view.result.current?.mlReady).toBe(false);
+    await act(async () => {
+      mlReadyListener?.({ ready: true, workspaceReady: true });
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(view.result.current?.workspaceReady).toBe(false);
+    expect(getMlStatus).toHaveBeenCalledTimes(1);
+
+    getMlStatus.mockResolvedValue({
+      ...ready, ml_ready: false, workspace_ready: false,
+      requires_restart: true, restart_reason: "Installed packages changed",
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("nirs4all-runtime-mutation", { detail: { pending: false } }));
+    });
+    expect(view.result.current?.requiresRestart).toBe(true);
+    await act(async () => {
+      mlReadyListener?.({ ready: true, workspaceReady: true });
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(view.result.current?.mlReady).toBe(false);
+    expect(getMlStatus).toHaveBeenCalledTimes(2);
+
+    getMlStatus.mockResolvedValue(ready);
+    await act(async () => {
+      window.dispatchEvent(new Event("backend-restarted"));
+    });
+    expect(view.result.current?.requiresRestart).toBe(false);
+    expect(view.result.current?.workspaceReady).toBe(true);
+    await view.unmount();
+  });
+
   it("keeps ML readiness latched when a later poll reports false again", async () => {
     vi.useFakeTimers();
 

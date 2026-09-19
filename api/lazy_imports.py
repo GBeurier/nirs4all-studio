@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .runtime_mutation import runtime_change_status
 from .shared.logger import get_logger
 
 logger = get_logger(__name__)
@@ -41,12 +42,12 @@ _cache: dict[str, Any] = {}
 
 def is_ml_ready() -> bool:
     """Return True once all ML dependencies have been loaded."""
-    return _ml_ready
+    return _ml_ready and not runtime_change_status()["requires_restart"]
 
 
 def is_workspace_ready() -> bool:
     """Return True once the active workspace has been restored on nirs4all."""
-    return _workspace_ready
+    return _workspace_ready and not runtime_change_status()["requires_restart"]
 
 
 def set_workspace_ready(value: bool = True) -> None:
@@ -60,17 +61,24 @@ def get_ml_status() -> dict:
     elapsed = None
     if _ml_load_start_time is not None:
         elapsed = round(time.time() - _ml_load_start_time, 1)
+    changes = runtime_change_status()
     return {
-        "ml_ready": _ml_ready,
+        **changes,
+        "ml_ready": is_ml_ready(),
         "ml_loading": _ml_loading,
         "ml_error": _ml_error,
         "elapsed_seconds": elapsed,
-        "workspace_ready": _workspace_ready,
+        "workspace_ready": is_workspace_ready(),
     }
 
 
 def require_ml_ready():
     """Raise HTTP 503 if ML deps are not yet loaded."""
+    changes = runtime_change_status()
+    if changes["requires_restart"]:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail=changes["restart_reason"])
     if not _ml_ready:
         from fastapi import HTTPException
 
@@ -94,8 +102,7 @@ def get_cached(key: str, *, optional: bool = False) -> Any:
     Use optional=True to return None instead of raising when the key is missing
     but ML deps are ready (for optional dependencies like SHAP).
     """
-    if not _ml_ready:
-        require_ml_ready()
+    require_ml_ready()
     value = _cache.get(key)
     if value is None and not optional:
         from fastapi import HTTPException

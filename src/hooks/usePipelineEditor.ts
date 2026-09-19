@@ -134,6 +134,7 @@ export function usePipelineEditor(
     steps: resolvedInitialSteps,
     pipelineName: resolvedInitialName,
     isFavorite: resolvedInitialFavorite,
+    isDirty: resolvedInitialDirty,
     pipelineConfig: resolvedInitialConfig,
   } = usePipelineEditorInitialState({
     initialSteps,
@@ -150,7 +151,7 @@ export function usePipelineEditor(
   const [pipelineConfig, setPipelineConfigState] = useState<PipelineConfig>(resolvedInitialConfig);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [isFavorite, setIsFavoriteState] = useState(resolvedInitialFavorite);
-  const [isDirty, setIsDirty] = useState(false);
+  const [isDirty, setIsDirty] = useState(resolvedInitialDirty);
 
   const { clearPersistedData } = usePipelineEditorPersistence({
     pipelineId,

@@ -2089,6 +2089,10 @@ def _execute_pipeline_training(
     config = pipeline.config or {}
     steps = config.get("steps", [])
     model_name = pipeline.model or "Unknown"
+    from .operator_capabilities import pipeline_capability_issues
+    constraints = pipeline_capability_issues(steps)
+    if constraints:
+        raise ValueError("Pipeline cannot run: " + "; ".join(str(issue["error"]) for issue in constraints))
 
     try:
         import nirs4all
@@ -2183,9 +2187,9 @@ def _execute_pipeline_training(
             except HTTPException as e:
                 # HTTPException from _resolve_operator_class means a missing optional package
                 detail = str(e.detail) if hasattr(e, "detail") else str(e)
+                install_advice = "" if getattr(e, "operator_installation_hint", None) else " Install it via Settings > Advanced > Dependencies."
                 raise ValueError(
-                    f"Missing package for pipeline '{pipeline.pipeline_name}': {detail}. "
-                    f"Install it via Settings > Advanced > Dependencies."
+                    f"Missing package for pipeline '{pipeline.pipeline_name}': {detail}.{install_advice}"
                 )
             except Exception as e:
                 raise ValueError(f"Pipeline build failed: {e}")
@@ -2616,8 +2620,9 @@ async def run_preflight(request: PreflightRequest) -> dict[str, Any]:
         import_issues = check_pipeline_imports(steps)
         for issue in import_issues:
             issues.append({
-                "type": "missing_module",
-                "message": f"Pipeline '{pipeline_name}': {issue['error']}. Install it via Settings > Advanced > Dependencies.",
+                "type": issue.get("issue_type", "missing_module"),
+                "message": (f"Pipeline '{pipeline_name}': {issue['error']}" if issue.get("issue_type") == "unsupported_operator" or issue.get("installation_hint")
+                            else f"Pipeline '{pipeline_name}': {issue['error']}. Install it via Settings > Advanced > Dependencies."),
                 "details": {
                     **issue,
                     "pipeline_name": pipeline_name,

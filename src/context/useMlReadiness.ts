@@ -5,6 +5,9 @@ export interface MlReadiness {
   mlReady: boolean;
   mlLoading: boolean;
   mlError: string | null;
+  dependencyInstalling?: boolean;
+  requiresRestart?: boolean;
+  restartReason?: string | null;
   /**
    * True once nirs4all has finished restoring the active workspace at startup.
    * `mlReady` flips slightly earlier (as soon as the imports complete), so the

@@ -13,21 +13,24 @@ import { getWorkspaceResultsSummary } from "@/api/linkedWorkspaces";
 import { useMetricSelection } from "@/components/scores/useMetricSelection";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 import type { DatasetTopChains } from "@/types/runs";
+import { useMlReadiness } from "@/context/useMlReadiness";
 
 export function useResultsPageState() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const { data: workspacesData } = useLinkedWorkspacesQuery();
+  const { mlReady, workspaceReady } = useMlReadiness();
+  const { data: workspacesData, isLoading: workspacesLoading, error: workspaceError, refetch: refetchWorkspaces } = useLinkedWorkspacesQuery();
   const activeWorkspace = workspacesData?.workspaces.find((workspace) => workspace.is_active) ?? null;
 
   const {
     data: summaryData,
     isLoading,
+    error,
     refetch,
   } = useQuery({
     queryKey: ["results-summary", activeWorkspace?.id],
     queryFn: () => getWorkspaceResultsSummary(activeWorkspace!.id),
-    enabled: !!activeWorkspace,
+    enabled: !!activeWorkspace && mlReady && workspaceReady,
     staleTime: 30000,
     refetchOnMount: "always",
   });
@@ -62,9 +65,15 @@ export function useResultsPageState() {
     adaptedDatasets: datasetView.adaptedDatasets,
     datasets,
     filteredDatasets: datasetView.filteredDatasets,
-    isLoading,
+    isLoading: workspacesLoading || isLoading,
+    error: error ?? workspaceError,
     metricContext,
     refetch: async () => {
+      if (!activeWorkspace) {
+        await refetchWorkspaces();
+        return;
+      }
+      if (!mlReady || !workspaceReady) return;
       await Promise.all([
         refetch(),
         queryClient.invalidateQueries({ queryKey: ["dataset-all-chains", activeWorkspace?.id] }),

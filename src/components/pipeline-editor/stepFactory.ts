@@ -20,6 +20,8 @@ function inferSubType(type: StepType, optionName: string): StepSubType | undefin
       "Concatenate": "merge",
       "Mean": "merge",
       "Stacking": "merge",
+      "MergePredictions": "merge",
+      "MergeSources": "merge",
       "Voting": "merge",
       "SampleAugmentation": "sample_augmentation",
       "FeatureAugmentation": "feature_augmentation",
@@ -134,6 +136,8 @@ export function createStepFromOption(type: StepType, option: StepOption): Pipeli
     name: option.name,
     params: { ...option.defaultParams },
     classPath: option.classPath,
+    branchMode: option.classPath === "source_branch" ? "separation" : undefined,
+    separationConfig: option.classPath === "source_branch" ? { kind: "by_source" } : undefined,
     functionPath: option.functionPath,
     framework: option.framework,
     branches: scalarGeneratorConfig

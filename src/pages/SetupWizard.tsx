@@ -1,3 +1,4 @@
+import { restartChangedPythonRuntime } from "@/lib/pythonRuntimeSwitch";
 /**
  * First-Launch Setup Wizard
  *
@@ -179,11 +180,15 @@ export default function SetupWizard() {
       });
 
       if (result.success) {
+        if (result.requires_restart) {
+          setInstallMessage("Restarting the Python environment...");
+          await restartChangedPythonRuntime();
+        }
         setInstallProgress(100);
         setInstallMessage(t("setupWizard.install.complete"));
 
         // Mark setup as complete
-        completeSetupMutation.mutate({
+        await completeSetupMutation.mutateAsync({
           profile: selectedProfile,
           optionalPackages: extras,
         });

@@ -116,6 +116,8 @@ RUN python -c "import json, datetime; json.dump({ \
 ENV NIRS4ALL_DOCKER=true
 ENV N4A_ENGINE=legacy
 ENV PYTHONUNBUFFERED=1
+# Match desktop: TabPFN fingerprint features must survive interpreter restarts.
+ENV PYTHONHASHSEED=0
 ENV NIRS4ALL_CONFIG=/data/config
 ENV XDG_DATA_HOME=/data
 

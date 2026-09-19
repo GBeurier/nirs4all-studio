@@ -15,8 +15,8 @@ import {
   refreshDependencies,
   revertDependency,
 } from "@/api/dependencies";
-import { requestRestart } from "@/api/updates";
-import { resetBackendUrl } from "@/api/transport";
+import { restartChangedPythonRuntime } from "@/lib/pythonRuntimeSwitch";
+import { useMlReadiness } from "@/context/useMlReadiness";
 import { getRuntimeSummary } from "@/api/system";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import { getPythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
@@ -39,6 +39,7 @@ interface DependenciesManagerProps {
 }
 
 export function DependenciesManager({ compact = false }: DependenciesManagerProps) {
+  const { requiresRestart } = useMlReadiness();
   const [dependencies, setDependencies] = useState<DependenciesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -179,25 +180,20 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
   }, [loadDependencies]);
 
   const handleRestartBackend = useCallback(async () => {
-    const electronApi = (window as unknown as {
-      electronApi?: { restartBackend?: () => Promise<{ success: boolean }> };
-    }).electronApi;
-
-    if (electronApi?.restartBackend) {
-      const result = await electronApi.restartBackend();
-      if (result.success) {
-        resetBackendUrl();
-        setNeedsRestart(false);
-        dispatchOperatorAvailabilityInvalidated();
-        window.dispatchEvent(new CustomEvent("backend-restarted"));
-      }
-      return;
+    try {
+      setProcessingPackage("__restarting__");
+      await restartChangedPythonRuntime();
+      setNeedsRestart(false);
+      await loadDependencies(true);
+    } catch (err) {
+      setLastAction({
+        type: "update", package: "Python environment", success: false,
+        message: err instanceof Error ? err.message : "Backend restart failed",
+      });
+    } finally {
+      setProcessingPackage(null);
     }
-
-    await requestRestart();
-    setNeedsRestart(false);
-    dispatchOperatorAvailabilityInvalidated();
-  }, []);
+  }, [loadDependencies]);
 
   useEffect(() => {
     void loadDependencies();
@@ -244,7 +240,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       isRefreshing={isRefreshing}
       isRefreshDisabled={isRefreshing || !!processingPackage}
       lastAction={lastAction}
-      needsRestart={needsRestart}
+      needsRestart={needsRestart || Boolean(requiresRestart)}
       compact={compact}
       onRefresh={handleRefresh}
       onDismissLastAction={() => setLastAction(null)}

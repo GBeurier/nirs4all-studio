@@ -547,6 +547,9 @@ export class BackendManager {
         ? { NIRS4ALL_PORTABLE_EXE: process.env.PORTABLE_EXECUTABLE_FILE }
         : {}),
       ...extraEnv,
+      // TabPFN 2.0 uses Python's bytes hash for its fingerprint feature.
+      // Set this before interpreter startup so saved models replay across restarts.
+      PYTHONHASHSEED: "0",
     };
 
     this.process = spawn(command, args, {

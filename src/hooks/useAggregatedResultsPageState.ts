@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   getAggregatedPredictions,
@@ -35,13 +36,21 @@ const DEFAULT_AGGREGATED_RESULTS_SQL =
 
 export function useAggregatedResultsPageState() {
   const isDeveloperMode = useIsDeveloperMode();
-  const { workspaceReady } = useMlReadiness();
+  const { workspaceReady, mlReady } = useMlReadiness();
   const { data: workspacesData } = useLinkedWorkspacesQuery();
   const activeWorkspace = workspacesData?.workspaces.find((workspace) => workspace.is_active) ?? null;
 
-  const [predictions, setPredictions] = useState<ChainSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const resultsQuery = useQuery({
+    queryKey: ["aggregated-predictions", activeWorkspace?.id],
+    queryFn: () => getAggregatedPredictions(),
+    enabled: !!activeWorkspace && workspaceReady && mlReady,
+    staleTime: 30000,
+    refetchOnMount: "always",
+  });
+  const predictions = resultsQuery.data?.predictions;
+  const refetchResults = resultsQuery.refetch;
+  const loading = resultsQuery.isLoading || (!!activeWorkspace && (!workspaceReady || !mlReady));
+  const error = resultsQuery.error?.message ?? null;
   const [search, setSearch] = useState("");
   const [datasetFilter, setDatasetFilter] = useState("all");
   const [modelClassFilter, setModelClassFilter] = useState("all");
@@ -61,26 +70,11 @@ export function useAggregatedResultsPageState() {
   const [sqlResult, setSqlResult] = useState<AggregatedSQLQueryResponse | null>(null);
 
   const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const resp = await getAggregatedPredictions();
-      setPredictions(resp.predictions);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load aggregated predictions");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadData();
-    // Re-run after workspace_ready flips to replace any empty initial result
-    // that raced the backend workspace restoration phase.
-  }, [loadData, workspaceReady]);
+    if (activeWorkspace && workspaceReady && mlReady) await refetchResults();
+  }, [activeWorkspace, workspaceReady, mlReady, refetchResults]);
 
   const displayPredictions = useMemo(
-    () => collapseStandaloneRefitSummaries(predictions),
+    () => collapseStandaloneRefitSummaries(predictions ?? []),
     [predictions],
   );
 

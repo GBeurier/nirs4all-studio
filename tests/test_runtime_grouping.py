@@ -76,6 +76,31 @@ def test_prepare_pipeline_steps_with_runtime_grouping_warns_for_repetition_only(
     ]
 
 
+def test_runtime_group_selection_reaches_split_controller():
+    from nirs4all.controllers.splitters.split import resolve_split_groups
+    from nirs4all.pipeline.steps.parser import StepParser
+
+    from api.pipeline_canonical import editor_steps_to_runtime_canonical
+
+    prepared = prepare_pipeline_steps_with_runtime_grouping(
+        [{"type": "splitting", "name": "GroupKFold", "params": {"n_splits": 2}}],
+        DummyDataset(repetition=None),
+        "batch",
+    )
+    canonical = editor_steps_to_runtime_canonical(prepared.steps)
+    parsed = StepParser().parse(canonical[0])
+
+    assert isinstance(parsed.operator, GroupKFold)
+    assert parsed.operator.n_splits == 2
+    assert parsed.original_step["group_by"] == "batch"
+    groups = resolve_split_groups(
+        dataset=DummyDataset(repetition=None),
+        splitter=parsed.operator,
+        group_by=parsed.original_step["group_by"],
+    )
+    assert groups is not None
+
+
 def test_prepare_pipeline_steps_with_runtime_grouping_requires_effective_group():
     steps = [{"type": "splitting", "name": "GroupKFold", "params": {"n_splits": 2}}]
 

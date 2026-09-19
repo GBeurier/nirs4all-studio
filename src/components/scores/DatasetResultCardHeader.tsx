@@ -53,7 +53,7 @@ export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultC
       className={cn("p-3 cursor-pointer hover:bg-muted/30 transition-colors", className)}
       {...triggerProps}
     >
-      <div className="flex items-center gap-3 lg:grid lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto] lg:items-center">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto]">
         <div className="flex items-center gap-2 min-w-0">
           {expanded
             ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -79,9 +79,9 @@ export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultC
           </div>
         </div>
 
-        <div className="hidden min-w-0 md:flex lg:justify-self-stretch">
+        <div className="col-span-2 row-start-2 min-w-0 xl:col-span-1 xl:col-start-2 xl:row-start-1">
           {headerBestRow && (
-            <div className="flex min-w-0 items-center gap-2 lg:grid lg:grid-cols-[minmax(0,6rem)_minmax(0,1fr)_minmax(0,7rem)] lg:items-center">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 [&>div]:min-w-[4.5rem]">
               <div className="min-w-0 shrink-0">
                 <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   {headerSummary.bestSummaryLabel}
@@ -105,7 +105,7 @@ export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultC
           )}
         </div>
 
-        <div className="ml-auto flex items-center gap-1 shrink-0 lg:ml-0 lg:justify-self-end">
+        <div className="col-start-2 row-start-1 flex items-center justify-self-end gap-1 shrink-0 xl:col-start-3">
           {workspaceId && (
             <Button
               variant="ghost"

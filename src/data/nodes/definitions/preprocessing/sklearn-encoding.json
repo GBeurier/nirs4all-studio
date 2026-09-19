@@ -84,7 +84,7 @@
       {
         "name": "quantile_method",
         "type": "string",
-        "default": "warn",
+        "default": "linear",
         "isAdvanced": true
       },
       {

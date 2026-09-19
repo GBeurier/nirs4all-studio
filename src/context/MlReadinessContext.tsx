@@ -23,6 +23,7 @@ import {
   prefetchDatasetsList,
 } from "@/hooks/useDatasetQueries";
 import { MlReadinessContext, type MlReadiness } from "@/context/useMlReadiness";
+import { RUNTIME_MUTATION_EVENT } from "@/lib/runtimeMutationEvents";
 
 const electronApi = (
   window as unknown as {
@@ -34,6 +35,9 @@ const electronApi = (
         ml_error: string | null;
         core_ready: boolean;
         workspace_ready?: boolean;
+        dependency_installing?: boolean;
+        requires_restart?: boolean;
+        restart_reason?: string | null;
       }>;
       onMlReady?: (
         cb: (info: { ready: boolean; error?: string; workspaceReady?: boolean }) => void
@@ -59,6 +63,9 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     datasetsPrimed:
       queryClient.getQueryData(datasetQueryKeys.list()) !== undefined,
   }));
+  const [pollGeneration, setPollGeneration] = useState(0);
+  const mutationPending = useRef(false);
+  const awaitingAuthoritativeReadiness = useRef(false);
   const coreReadyFired = useRef(false);
   const workspaceReadyFired = useRef(false);
 
@@ -114,10 +121,33 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [state.datasetsPrimed, queryClient]);
 
+  // Package mutations and backend restarts begin a new readiness generation.
+  // Keep these listeners alive after warmup; readiness can become invalid later.
+  useEffect(() => {
+    const reset = (dependencyInstalling: boolean) => {
+      awaitingAuthoritativeReadiness.current = true;
+      coreReadyFired.current = false;
+      workspaceReadyFired.current = false;
+      setState(prev => ({ ...prev, mlReady: false, workspaceReady: false,
+        mlLoading: true, mlError: null, requiresRestart: false,
+        restartReason: null, dependencyInstalling }));
+      setPollGeneration(value => value + 1);
+    };
+    const mutation = (event: Event) => {
+      mutationPending.current = !!(event as CustomEvent<{ pending: boolean }>).detail?.pending;
+      reset(mutationPending.current);
+    };
+    const restarted = () => { mutationPending.current = false; reset(false); };
+    window.addEventListener(RUNTIME_MUTATION_EVENT, mutation);
+    window.addEventListener("backend-restarted", restarted);
+    return () => {
+      window.removeEventListener(RUNTIME_MUTATION_EVENT, mutation);
+      window.removeEventListener("backend-restarted", restarted);
+    };
+  }, []);
+
   // In Electron: listen for IPC notifications
   useEffect(() => {
-    if (state.workspaceReady) return;
-
     // Listen for backend status changes (core_ready)
     const cleanupStatus = electronApi?.onBackendStatusChanged?.((info) => {
       if (info.status === "running") {
@@ -129,10 +159,16 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (info.status === "starting" || info.status === "restarting") {
+      if (["starting", "restarting", "stopped"].includes(info.status)) {
+        awaitingAuthoritativeReadiness.current = true;
+        coreReadyFired.current = false;
+        workspaceReadyFired.current = false;
+        setPollGeneration(value => value + 1);
         setState((prev) => ({
           ...prev,
           coreReady: false,
+          mlReady: false, workspaceReady: false, requiresRestart: false,
+          restartReason: null, dependencyInstalling: false,
           mlLoading: true,
           mlError: null,
         }));
@@ -142,7 +178,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       if (info.status === "error") {
         setState((prev) => ({
           ...prev,
-          coreReady: false,
+          coreReady: false, mlReady: false, workspaceReady: false,
           mlLoading: false,
           mlError: "Backend failed to start",
         }));
@@ -155,8 +191,8 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     // Pages that depend on dataset/run/prediction lists must wait for #2 to
     // observe authoritative data.
     const cleanupMl = electronApi?.onMlReady?.((info) => {
-      if (info.ready) {
-        setState((prev) => ({
+      if (info.ready && !mutationPending.current && !awaitingAuthoritativeReadiness.current) {
+        setState((prev) => prev.requiresRestart || prev.dependencyInstalling ? prev : ({
           ...prev,
           coreReady: true,
           mlReady: true,
@@ -173,14 +209,14 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       cleanupStatus?.();
       cleanupMl?.();
     };
-  }, [state.workspaceReady]);
+  }, []);
 
   // Poll /api/system/readiness (works in both web and Electron mode).
   // Polls until `workspace_ready` is true — that is the last phase of the
   // backend startup, after which datasets/runs/predictions endpoints are
   // authoritative.
   useEffect(() => {
-    if (state.workspaceReady) return;
+    if (state.workspaceReady || mutationPending.current || (state.requiresRestart && !state.dependencyInstalling)) return;
 
     const apply = (status: {
       core_ready?: boolean;
@@ -188,29 +224,37 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       ml_loading?: boolean;
       ml_error?: string | null;
       workspace_ready?: boolean;
+        dependency_installing?: boolean;
+        requires_restart?: boolean;
+        restart_reason?: string | null;
     }) => {
+      if (mutationPending.current) return true;
+      if (status.ml_ready && !status.requires_restart && !status.dependency_installing) {
+        awaitingAuthoritativeReadiness.current = false;
+      }
       // Backwards compatibility: a backend that does not expose
       // `workspace_ready` (older builds) is considered ready as soon as
       // `ml_ready` is true — same semantics as before this flag existed.
       const workspaceReady =
         status.workspace_ready ??
         (status.ml_ready ? true : false);
-      setState((prev) => ({
-        // Readiness only moves backwards on explicit backend status events.
-        // Poll responses can race cleanup or transient fetch failures, so a
-        // later "false" payload must not resurrect the ML overlay after a
-        // previous successful ready signal.
-        coreReady: prev.coreReady || !!status.core_ready,
-        mlReady: prev.mlReady || !!status.ml_ready,
-        mlLoading:
-          (prev.mlReady || !!status.ml_ready)
-            ? false
-            : status.ml_loading ?? prev.mlLoading,
-        mlError: status.ml_error ?? prev.mlError,
-        workspaceReady: workspaceReady || prev.workspaceReady,
-        datasetsPrimed: prev.datasetsPrimed,
-      }));
-      return workspaceReady;
+      setState((prev) => {
+        const invalid = !!status.requires_restart || !!status.dependency_installing;
+        const next: MlReadiness = {
+          coreReady: prev.coreReady || !!status.core_ready,
+          mlReady: !invalid && (prev.mlReady || !!status.ml_ready),
+          mlLoading: invalid ? !!status.dependency_installing :
+            (prev.mlReady || !!status.ml_ready) ? false : status.ml_loading ?? prev.mlLoading,
+          mlError: status.ml_error ?? prev.mlError,
+          workspaceReady: !invalid && (workspaceReady || prev.workspaceReady),
+          datasetsPrimed: prev.datasetsPrimed,
+          dependencyInstalling: !!status.dependency_installing,
+          requiresRestart: !!status.requires_restart,
+          restartReason: status.restart_reason ?? null,
+        };
+        return Object.keys(next).every(key => prev[key as keyof MlReadiness] === next[key as keyof MlReadiness]) ? prev : next;
+      });
+      return (!status.dependency_installing && !!status.requires_restart) || workspaceReady;
     };
 
     const check = async () => {
@@ -226,6 +270,9 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
           ml_error: string | null;
           core_ready?: boolean;
           workspace_ready?: boolean;
+        dependency_installing?: boolean;
+        requires_restart?: boolean;
+        restart_reason?: string | null;
         }>("/system/readiness");
         if (disposed) return true;
         return apply(data);
@@ -260,7 +307,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       disposed = true;
       stopPolling();
     };
-  }, [state.workspaceReady]);
+  }, [state.workspaceReady, state.requiresRestart, state.dependencyInstalling, pollGeneration]);
 
   return (
     <MlReadinessContext.Provider value={state}>

@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .package_compatibility import compatibility_issues, installation_requirements
+from .runtime_mutation import runtime_change_status
 from .shared.gpu_detection import detect_gpu_hardware
 from .shared.logger import get_logger
 from .venv_manager import _user_data_dir, venv_manager
@@ -1146,7 +1147,7 @@ async def align_config(request: AlignConfigRequest):
         return AlignConfigResponse(
             success=True,
             message="All packages are already aligned with recommended config",
-            requires_restart=False,
+            requires_restart=runtime_change_status()["requires_restart"],
         )
 
     # Actually install
@@ -1204,7 +1205,7 @@ async def align_config(request: AlignConfigRequest):
     if success:
         _config_cache.set_setup_status(request.profile)
 
-    requires_restart = bool(installed_pkgs or upgraded_pkgs)
+    requires_restart = bool(installed_pkgs or upgraded_pkgs) or runtime_change_status()["requires_restart"]
 
     return AlignConfigResponse(
         success=success,

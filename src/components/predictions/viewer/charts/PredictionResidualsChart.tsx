@@ -233,6 +233,7 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
               const radius = Math.max(1, config.pointSize / 2);
               return (
                 <Scatter
+                  isAnimationActive={false}
                   key={`${dataset.predictionId}-${dataset.partition}`}
                   name={dataset.label}
                   data={points}

@@ -166,3 +166,19 @@ def skip_without_nirs4all(nirs4all_available):
     """Skip test if nirs4all is not available."""
     if not nirs4all_available:
         pytest.skip("nirs4all library not available")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_runtime_mutation_state():
+    """Each test represents its own backend process, including restart state."""
+    from api.runtime_mutation import runtime_mutation
+
+    with runtime_mutation.lock:
+        runtime_mutation.active_requests = 0
+        runtime_mutation.installing = False
+        runtime_mutation.restart_reason = None
+    yield
+    with runtime_mutation.lock:
+        runtime_mutation.active_requests = 0
+        runtime_mutation.installing = False
+        runtime_mutation.restart_reason = None

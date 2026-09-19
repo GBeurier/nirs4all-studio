@@ -129,7 +129,9 @@ def normalize_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Normalized parameters dict
     """
-    normalized = {k: v for k, v in params.items() if v is not None}
+    from ..operator_parameters import normalize_operator_parameters
+
+    normalized = normalize_operator_parameters(name, {k: v for k, v in params.items() if v is not None})
 
     # Generic: reconstruct tuple parameters from _min/_max suffix pairs.
     min_keys = [k for k in list(normalized) if k.endswith("_min")]
@@ -274,6 +276,14 @@ def instantiate_operator(
 
     params = strip_runtime_only_params(params, operator_type)
     params = normalize_params(name, params)
+    if isinstance(params.get("score_func"), dict) and "function" in params["score_func"]:
+        from nirs4all.pipeline.config.component_serialization import deserialize_component
+
+        params["score_func"] = deserialize_component(params["score_func"], strict_imports=True)
+    if name.rsplit(".", 1)[-1] == "SparseCoder" and isinstance(params.get("dictionary"), dict):
+        from nirs4all.pipeline.config.component_serialization import deserialize_component
+
+        params["dictionary"] = deserialize_component(params["dictionary"], strict_imports=True)
 
     try:
         return operator_cls(**params)

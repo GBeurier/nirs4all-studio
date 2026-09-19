@@ -4,7 +4,7 @@ import {
   getRecommendedConfig,
 } from "@/api/config";
 import { getRuntimeSummary } from "@/api/system";
-import { resetBackendUrl } from "@/api/transport";
+import { api, resetBackendUrl } from "@/api/transport";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import {
   filterPackageNamesForProfile,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/setup-config";
 import type { AlignConfigResponse } from "@/api/config";
 import type { PostSwitchValidation } from "@/types/pythonRuntime";
+import { requestRestart } from "@/api/updates";
 
 async function retryAsync<T>(fn: () => Promise<T>, attempts: number = 5): Promise<T> {
   let lastError: unknown;
@@ -112,6 +113,27 @@ export function announceBackendRestarted(): void {
   resetBackendUrl();
   dispatchOperatorAvailabilityInvalidated();
   window.dispatchEvent(new CustomEvent("backend-restarted"));
+}
+
+/** Restart after pip changed the active environment; never reuse loaded modules. */
+export async function restartChangedPythonRuntime(): Promise<void> {
+  if (window.electronApi?.restartBackend) {
+    const result = await window.electronApi.restartBackend({ skipEnsure: true });
+    if (!result.success) throw new Error(result.error || "Failed to restart the Python backend");
+  } else {
+    await requestRestart();
+  }
+  announceBackendRestarted();
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    const status = await api.get<{
+      ml_ready: boolean; workspace_ready: boolean; ml_error?: string | null; requires_restart?: boolean;
+    }>("/system/readiness").catch(() => null);
+    if (status?.ml_error && !status.requires_restart) throw new Error(status.ml_error);
+    if (status?.ml_ready && status.workspace_ready && !status.requires_restart) return;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  throw new Error("The Python backend did not become ready after restarting. Check the installation log.");
 }
 
 export async function restartBackendForRuntimeSwitch(

@@ -3,6 +3,7 @@
  */
 
 import { act } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -22,6 +23,7 @@ const developerModeState = vi.hoisted(() => ({
 
 const readinessState = vi.hoisted(() => ({
   workspaceReady: true,
+  mlReady: true,
 }));
 
 const linkedWorkspacesState = vi.hoisted(() => ({
@@ -89,6 +91,7 @@ async function renderHook<T>(hook: () => T) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const result: { current: T | undefined } = { current: undefined };
 
   function TestComponent() {
@@ -97,11 +100,14 @@ async function renderHook<T>(hook: () => T) {
   }
 
   await act(async () => {
-    root.render(<TestComponent />);
+    root.render(<QueryClientProvider client={client}><TestComponent /></QueryClientProvider>);
   });
 
   return {
     result,
+    rerender: async () => { await act(async () => {
+      root.render(<QueryClientProvider client={client}><TestComponent /></QueryClientProvider>);
+    }); },
     unmount: async () => {
       await act(async () => {
         root.unmount();
@@ -168,6 +174,7 @@ afterEach(() => {
   vi.clearAllMocks();
   developerModeState.enabled = true;
   readinessState.workspaceReady = true;
+  readinessState.mlReady = true;
   linkedWorkspacesState.result = {
     data: {
       workspaces: [
@@ -179,6 +186,29 @@ afterEach(() => {
 });
 
 describe("useAggregatedResultsPageState", () => {
+  it("waits for readiness and ignores old workspace responses after switching", async () => {
+    readinessState.mlReady = false;
+    let resolveOld!: (value: { predictions: ChainSummary[]; total: number }) => void;
+    apiMocks.getAggregatedPredictions.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }));
+    apiMocks.getAggregatedPredictions.mockResolvedValueOnce({
+      predictions: [chain({ chain_id: "new-workspace-result" })], total: 1,
+    });
+    const mounted = await renderHook(() => useAggregatedResultsPageState());
+    expect(apiMocks.getAggregatedPredictions).not.toHaveBeenCalled();
+    readinessState.mlReady = true;
+    await mounted.rerender();
+    expect(apiMocks.getAggregatedPredictions).toHaveBeenCalledTimes(1);
+    linkedWorkspacesState.result = { data: { workspaces: [{ id: "new-workspace", is_active: true }] } };
+    await mounted.rerender();
+    await waitFor(() => expect(mounted.result.current!.displayPredictions[0]?.chain_id).toBe("new-workspace-result"));
+    await act(async () => {
+      resolveOld({ predictions: [chain({ chain_id: "stale-result" })], total: 1 });
+      await Promise.resolve();
+    });
+    expect(mounted.result.current!.displayPredictions[0]?.chain_id).toBe("new-workspace-result");
+    await mounted.unmount();
+  });
+
   it("coordinates aggregated result loading, filters, sort, details, SQL, and viewer state", async () => {
     const chains = [
       chain({ chain_id: "chain-cv", model_name: "PLS", dataset_name: "Corn", model_class: "PLSRegression", metric: "rmse", cv_val_score: 0.2 }),

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .install_log import installation_log, installation_operation, redact_install_output, stream_install_process
+from .runtime_mutation import runtime_mutation
 from .shared.logger import get_logger
 from .shared.runtime_paths import get_portable_backend_data_dir
 
@@ -366,9 +367,9 @@ class VenvManager:
             cmd.extend(extra_pip_args)
         cmd.extend(_recovery_wheel_install_options())
         cmd.append(pkg_spec)
-        from .package_compatibility import installation_requirements
+        from .package_compatibility import environment_installation_requirements
 
-        compatibility_requirements = installation_requirements(package, version)
+        compatibility_requirements = environment_installation_requirements(package, version)
         cmd.extend(compatibility_requirements)
         if compatibility_requirements:
             installation_log.append(
@@ -385,7 +386,8 @@ class VenvManager:
                 progress_callback(0, line)  # pip does not expose reliable total progress
 
         try:
-            returncode = stream_install_process(cmd, on_line, timeout=600)
+            with runtime_mutation.mutation(package):
+                returncode = stream_install_process(cmd, on_line, timeout=600)
 
             if returncode != 0:
                 # Surface the real pip error: log full output and include the
@@ -520,12 +522,13 @@ class VenvManager:
             progress_callback(0, f"Uninstalling {package}...")
 
         try:
-            result = subprocess.run(
-                [str(self.python_executable), "-m", "pip", "uninstall", "-y", package],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
+            with runtime_mutation.mutation(package):
+                result = subprocess.run(
+                    [str(self.python_executable), "-m", "pip", "uninstall", "-y", package],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
             if result.returncode != 0:
                 return False, f"Uninstall failed: {result.stderr}"
         except Exception as e:

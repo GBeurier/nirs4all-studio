@@ -28,10 +28,6 @@
           {
             "value": "features",
             "label": "Merge as features"
-          },
-          {
-            "value": "average",
-            "label": "Average predictions"
           }
         ],
         "description": "How to merge branch outputs"
@@ -68,10 +64,6 @@
           {
             "value": "features",
             "label": "Concatenate features (columns)"
-          },
-          {
-            "value": "samples",
-            "label": "Concatenate samples (rows)"
           }
         ],
         "description": "Axis along which to merge"

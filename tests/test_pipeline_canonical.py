@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -798,6 +799,33 @@ def test_create_pipeline_hydrates_fresh_saved_steps(pipelines_workspace):
     assert class_path.startswith("sklearn.linear_model")
     assert class_path.endswith("Ridge")
     assert "cross_decomposition" not in class_path
+
+
+def test_two_pipeline_creations_at_same_instant_preserve_both(pipelines_workspace, monkeypatch):
+    class FixedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 19, 12, 0, 0)
+
+    monkeypatch.setattr(pipelines_api, "datetime", FixedClock)
+
+    async def create_both():
+        return await asyncio.gather(*[
+            create_pipeline(PipelineCreate(
+                name=name,
+                steps=[{"id": "ridge", "type": "model", "name": "Ridge", "params": {"alpha": alpha}}],
+            ))
+            for name, alpha in [("First model", 1.0), ("Second model", 2.0)]
+        ])
+
+    created = asyncio.run(create_both())
+    ids = [response["pipeline"]["id"] for response in created]
+    assert len(set(ids)) == 2
+    assert len(list(pipelines_workspace.glob("*.json"))) == 2
+    for response, name, alpha in zip(created, ["First model", "Second model"], [1.0, 2.0], strict=True):
+        persisted = asyncio.run(pipelines_api.get_pipeline(response["pipeline"]["id"]))["pipeline"]
+        assert persisted["name"] == name
+        assert persisted["steps"][0]["params"]["alpha"] == alpha
 
 
 def test_create_pipeline_canonicalizes_incorrect_known_model_classpath(pipelines_workspace):

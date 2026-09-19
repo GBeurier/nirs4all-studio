@@ -1,0 +1,19 @@
+[
+  {
+    "id": "model.aompls_aomlib_regressor",
+    "name": "AOMPLSAomlibRegressor",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.sklearn.aom_pls_aomlib.AOMPLSAomlibRegressor",
+    "description": "Native AOM-PLS operator and component selection (nirs4all-methods)",
+    "longDescription": "Uses the installed nirs4all-methods native global AOM selector. Internal K-fold validation selects the operator and component count. Historical AOM_lib one-SE, SPXY/holdout and built-in preprocessing options are unsupported; add preprocessing explicitly before this model.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "aom-pls", "regression", "native"],
+    "source": "nirs4all",
+    "parameters": [
+      { "name": "n_components", "type": "int", "default": 15, "min": 1, "description": "Maximum number of components searched", "sweepable": true },
+      { "name": "cv", "type": "int", "default": 5, "min": 2, "description": "Internal validation folds" },
+      { "name": "center", "type": "bool", "default": true, "description": "Center predictors and target in the native model" },
+      { "name": "random_state", "type": "int", "default": 0, "description": "Seed for shuffled internal K-fold validation" }
+    ]
+  }
+]

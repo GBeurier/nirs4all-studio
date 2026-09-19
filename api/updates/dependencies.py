@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 
 from api import updates as _u
 
+from ..runtime_mutation import runtime_change_status
 from .catalog import (
     RESTART_REQUIRED_PACKAGES,
     DependenciesResponse,
@@ -303,7 +304,7 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
             "package": request.package,
             "version": installed_version,
             "output": [*result.installed, *result.upgraded],
-            "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
+            "requires_restart": (request.package.lower() in RESTART_REQUIRED_PACKAGES or runtime_change_status()["requires_restart"]),
         }
 
     # Determine version to install based on target
@@ -358,7 +359,7 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
         "package": request.package,
         "version": installed_version,
         "output": output[-30:],  # Last 30 lines
-        "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
+        "requires_restart": (request.package.lower() in RESTART_REQUIRED_PACKAGES or runtime_change_status()["requires_restart"]),
     }
 
 
@@ -388,7 +389,7 @@ async def uninstall_dependency(request: PackageUninstallRequest) -> dict[str, An
         "success": True,
         "message": message,
         "package": request.package,
-        "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
+        "requires_restart": (request.package.lower() in RESTART_REQUIRED_PACKAGES or runtime_change_status()["requires_restart"]),
     }
 
 
@@ -425,7 +426,7 @@ async def revert_dependency(request: PackageUninstallRequest) -> dict[str, Any]:
             "package": request.package,
             "version": new_version,
             "output": [*result.installed, *result.upgraded],
-            "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
+            "requires_restart": (request.package.lower() in RESTART_REQUIRED_PACKAGES or runtime_change_status()["requires_restart"]),
         }
 
     pkg_info = None
@@ -448,7 +449,7 @@ async def revert_dependency(request: PackageUninstallRequest) -> dict[str, Any]:
     _u._dependencies_cache.invalidate()
 
     new_version = _u.venv_manager.get_package_version(request.package)
-    requires_restart = request.package.lower() in RESTART_REQUIRED_PACKAGES
+    requires_restart = (request.package.lower() in RESTART_REQUIRED_PACKAGES or runtime_change_status()["requires_restart"])
 
     return {
         "success": success,
@@ -502,7 +503,7 @@ async def update_dependency(request: PackageInstallRequest) -> dict[str, Any]:
         "package": request.package,
         "version": installed_version,
         "output": output[-30:],
-        "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
+        "requires_restart": (request.package.lower() in RESTART_REQUIRED_PACKAGES or runtime_change_status()["requires_restart"]),
     }
 
 

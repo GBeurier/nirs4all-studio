@@ -7,9 +7,14 @@
 import { useMlReadiness } from "@/context/useMlReadiness";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { restartChangedPythonRuntime } from "@/lib/pythonRuntimeSwitch";
 
 export function MlLoadingOverlay({ children }: { children: React.ReactNode }) {
-  const { mlReady, mlLoading, mlError } = useMlReadiness();
+  const { mlReady, mlLoading, mlError, requiresRestart, dependencyInstalling, restartReason } = useMlReadiness();
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
   const { t } = useTranslation();
 
   if (mlReady) return <>{children}</>;
@@ -23,11 +28,23 @@ export function MlLoadingOverlay({ children }: { children: React.ReactNode }) {
       {/* Overlay */}
       <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-50">
         <div className="flex flex-col items-center gap-4 p-8 rounded-xl bg-card border shadow-lg max-w-md text-center">
-          {mlLoading ? (
+          {requiresRestart && !dependencyInstalling ? (
+            <div role="status" className="space-y-3">
+              <h3 className="text-lg font-semibold">Restart the Python environment</h3>
+              <p className="text-sm text-muted-foreground">{restartReason || "Installed packages changed. Restart the backend before running a pipeline."}</p>
+              {restartError && <p role="alert" className="text-destructive">{restartError}</p>}
+              <Button disabled={restarting} onClick={async () => {
+                setRestarting(true); setRestartError(null);
+                try { await restartChangedPythonRuntime(); }
+                catch (error) { setRestartError(error instanceof Error ? error.message : "Restart failed"); }
+                finally { setRestarting(false); }
+              }}>{restarting ? "Restarting…" : "Restart backend"}</Button>
+            </div>
+          ) : mlLoading ? (
             <>
               <Loader2 className="h-10 w-10 animate-spin text-teal-500" />
               <h3 className="text-lg font-semibold">
-                {t("ml.loading.title", "Loading ML Engine...")}
+                {dependencyInstalling ? "Installing dependencies…" : t("ml.loading.title", "Loading ML Engine...")}
               </h3>
               <p className="text-sm text-muted-foreground">
                 {t(

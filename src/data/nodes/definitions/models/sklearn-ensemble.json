@@ -1077,7 +1077,7 @@
       {
         "name": "max_features",
         "type": "float",
-        "default": 1,
+        "default": 1.0,
         "sweepable": true
       },
       {
@@ -1246,7 +1246,7 @@
       {
         "name": "max_features",
         "type": "float",
-        "default": 1,
+        "default": 1.0,
         "sweepable": true
       },
       {

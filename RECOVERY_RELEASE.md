@@ -1,4 +1,4 @@
-# Studio 0.11.9 — Results and installation fixes
+# Studio 0.11.10 — Scientific execution and reliability fixes
 
 This patch continues the Python backend and explicit legacy execution engine from Studio 0.11.8, with the corrected nirs4all 1.0.3 library. Existing schema-5 workspaces remain supported.
 
@@ -10,6 +10,9 @@ This patch continues the Python backend and explicit legacy execution engine fro
 - Results refresh also reloads an already-expanded model history. PCA rendering, pipeline catalog availability and experiment selection are corrected.
 - Installation logs can be expanded and copied in setup and Settings. Output is bounded and secrets are redacted; package processes drain both output streams and enforce timeouts independently of output reads.
 - Optional package installation checks compatible dependencies, including the scikit-learn requirement of TabPFN 2.0.x. Dependency scanning no longer blocks the application event loop.
+- AOM-PLS now uses the native backend already distributed by `nirs4all-methods`. Its parameters are either applied by that backend or rejected explicitly.
+- Neural-network parameters are mapped to their effective architecture and training configuration. Spectra that are too short for NICoN/CNN are rejected before execution.
+- TabPFN models trained by Studio are reproducible after a backend restart. Existing models trained before this release retain their historical Python hash seed behavior.
 
 ## Installation
 

@@ -235,6 +235,7 @@ class PredictionArraysResponse(BaseModel):
     y_pred: Any | None = None
     y_proba: list[float] | list[list[float]] | None = None
     sample_indices: list[int] | None = None
+    sample_ids: list[str | int] | None = None
     weights: list[float | None] | None = None
     sample_metadata: dict[str, list[Any]] | None = None
     n_samples: int = 0
@@ -1955,6 +1956,7 @@ async def get_prediction_arrays(prediction_id: str):
             "y_pred": y_pred,
             "y_proba": y_proba,
             "sample_indices": sample_indices,
+            "sample_ids": _to_list(arrays.get("sample_ids")),
             "weights": weights,
             "sample_metadata": sample_metadata,
             "n_samples": n_samples,

@@ -17,6 +17,7 @@ import {
   type PredictionPreviewProps,
 } from "./types";
 import { usePartitionsData } from "./fetchPartitionData";
+import { PredictionOutputSelector } from "./PredictionOutputSelector";
 import { usePredictionChartConfig } from "./usePredictionChartConfig";
 import { PredictionScatterChart } from "./charts/PredictionScatterChart";
 import { PredictionResidualsChart } from "./charts/PredictionResidualsChart";
@@ -33,7 +34,7 @@ export function PredictionPreview({
     [workspaceId, header.datasetName],
   );
   const [sharedConfig] = usePredictionChartConfig({ datasetKey: configDatasetKey });
-  const { data: datasets, isLoading, error } = usePartitionsData({
+  const { data: datasets, isLoading, error, outputCount, outputIndex, setOutputIndex } = usePartitionsData({
     partitions,
     workspaceId,
     enabled: partitions.length > 0,
@@ -74,6 +75,7 @@ export function PredictionPreview({
         </Button>
       </div>
 
+      <PredictionOutputSelector datasets={datasets} outputCount={outputCount} outputIndex={outputIndex} onOutputChange={setOutputIndex} />
       {isLoading ? (
         <div className="flex h-40 items-center justify-center text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />

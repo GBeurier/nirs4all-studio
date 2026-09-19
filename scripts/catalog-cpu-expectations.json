@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "profile": "CPU with matplotlib, XGBoost and LightGBM; optional neural profiles qualified separately",
+  "note": "These are explicit limitations, not scientific successes. All other cases must execute and persist Results. New restrictions require review; failed/timeout is never allowed.",
+  "restrictions": {
+    "generator.grid": {
+      "status": "unsupported_in_studio"
+    },
+    "generator.zip": {
+      "status": "unsupported_in_studio"
+    },
+    "generator.sample": {
+      "status": "unsupported_in_studio"
+    },
+    "generator.range": {
+      "status": "unsupported_in_studio"
+    },
+    "generator.log_range": {
+      "status": "unsupported_in_studio"
+    },
+    "model.nicon": {
+      "status": "optional_profile_required"
+    },
+    "model.nicon_classifier": {
+      "status": "optional_profile_required"
+    },
+    "model.cnn1d": {
+      "status": "optional_profile_required"
+    },
+    "model.cnn1d_classifier": {
+      "status": "optional_profile_required"
+    },
+    "model.transformer": {
+      "status": "optional_profile_required"
+    },
+    "model.transformer_classifier": {
+      "status": "optional_profile_required"
+    },
+    "model.tabpfn": {
+      "status": "optional_profile_required"
+    },
+    "model.tabpfn_classifier": {
+      "status": "optional_profile_required"
+    },
+    "model.tabicl_regressor": {
+      "status": "optional_profile_required"
+    },
+    "model.tabicl_classifier": {
+      "status": "optional_profile_required"
+    },
+    "preprocessing.tsne": {
+      "status": "unsupported_in_studio"
+    },
+    "y_processing.normalizer": {
+      "status": "unsupported_in_studio"
+    },
+    "y_processing.binarizer": {
+      "status": "unsupported_in_studio"
+    },
+    "preprocessing.epo": {
+      "status": "unsupported_in_studio"
+    },
+    "preprocessing.dict_vectorizer": {
+      "status": "unsupported_in_studio"
+    },
+    "preprocessing.feature_hasher": {
+      "status": "unsupported_in_studio"
+    },
+    "preprocessing.hashing_vectorizer": {
+      "status": "unsupported_in_studio"
+    },
+    "preprocessing.label_binarizer": {
+      "status": "unsupported_in_studio"
+    },
+    "preprocessing.label_encoder": {
+      "status": "unsupported_in_studio"
+    },
+    "preprocessing.multi_label_binarizer": {
+      "status": "unsupported_in_studio"
+    },
+    "preprocessing.patch_extractor": {
+      "status": "unsupported_in_studio"
+    }
+  }
+}

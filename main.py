@@ -282,6 +282,11 @@ app = FastAPI(
 )
 
 
+from api.runtime_mutation import RuntimeMutationMiddleware
+
+app.add_middleware(RuntimeMutationMiddleware)
+
+
 # ============= Exception Handlers for Error Logging =============
 
 

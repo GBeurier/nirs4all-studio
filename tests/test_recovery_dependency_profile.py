@@ -79,12 +79,12 @@ def test_installer_only_release_remains_discoverable_after_recovery(monkeypatch)
     monkeypatch.setattr(manager, "get_webapp_version", lambda: "0.11.8")
     monkeypatch.setattr(manager, "_ensure_cache_loaded", lambda: {})
     monkeypatch.setattr(manager, "_save_cache", lambda: None)
-    url = "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.9/nirs4all-Studio-0.11.9-win-x64.exe"
+    url = "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.10/nirs4all-Studio-0.11.10-win-x64.exe"
 
     async def release(*args, **kwargs):
         return 200, json.dumps({
-            "tag_name": "0.11.9",
-            "assets": [{"name": "nirs4all-Studio-0.11.9-win-x64.exe", "browser_download_url": url}],
+            "tag_name": "0.11.10",
+            "assets": [{"name": "nirs4all-Studio-0.11.10-win-x64.exe", "browser_download_url": url}],
         })
 
     monkeypatch.setattr(manager, "_fetch_url", release)
