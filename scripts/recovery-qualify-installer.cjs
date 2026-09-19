@@ -185,7 +185,13 @@ async function api(env, route, method = 'GET', body, { timeoutMs = BUDGETS.api, 
     text = await response.text();
   } catch (error) {
     // Do not print headers, request bodies or raw network errors containing credentials.
-    throw new Error(`${method} ${route}: ${error.name || 'RequestError'} after ${Math.round(performance.now() - start)} ms (timeout ${timeoutMs} ms)`);
+    // The readiness poll still needs the machine-readable connection refusal.
+    const safeCodes = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EHOSTUNREACH',
+      'ENETUNREACH', 'EPIPE', 'EADDRNOTAVAIL', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET'];
+    const code = safeCodes.includes(error?.cause?.code) ? error.cause.code : undefined;
+    const name = ['TypeError', 'TimeoutError', 'AbortError'].includes(error?.name) ? error.name : 'RequestError';
+    throw new Error(`${method} ${route}: ${name} after ${Math.round(performance.now() - start)} ms (timeout ${timeoutMs} ms)`,
+      code ? { cause: { code } } : undefined);
   }
   assert(response.ok, `${method} ${route}: HTTP ${response.status}: ${text.slice(0, 1500)}`);
   return JSON.parse(text);
@@ -332,7 +338,7 @@ async function verifyRuntime(context) {
   context.proof.python_dependencies_consistent = true;
 }
 
-async function awaitReady(context) {
+async function awaitBackendReady(context) {
   await expect.poll(async () => {
     try {
       const readiness = await api(context.env, '/system/readiness');
@@ -344,6 +350,10 @@ async function awaitReady(context) {
       throw error;
     }
   }, { timeout: BUDGETS.launch, intervals: [100, 200, 500] }).toBe(true);
+}
+
+async function awaitReady(context) {
+  await awaitBackendReady(context);
   await expect(context.page.getByRole('link', { name: 'Datasets', exact: true })).toBeVisible({ timeout: BUDGETS.launch });
 }
 
@@ -659,5 +669,5 @@ async function main(argv = process.argv.slice(2)) {
   return proof;
 }
 
-module.exports = { BUDGETS, api, createBaselineApi, baselineInstaller, businessJourney, finishSetup, fixture, installerMatch, launch, main, parseArgs, qualifyMigration, assertSameExistingPath, snapshot, streamedCommand, timed, trackApp, closeTrackedApps };
+module.exports = { BUDGETS, api, awaitBackendReady, createBaselineApi, baselineInstaller, businessJourney, finishSetup, fixture, installerMatch, launch, main, parseArgs, qualifyMigration, assertSameExistingPath, snapshot, streamedCommand, timed, trackApp, closeTrackedApps };
 if (require.main === module) main().catch(error => { console.error(error.stack || error); process.exitCode = 1; });

@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { BUDGETS, api, createBaselineApi, baselineInstaller, installerMatch, parseArgs, fixture, assertSameExistingPath, streamedCommand, timed, trackApp, closeTrackedApps } = require('../recovery-qualify-installer.cjs');
+const http = require('node:http');
+const { BUDGETS, api, awaitBackendReady, createBaselineApi, baselineInstaller, installerMatch, parseArgs, fixture, assertSameExistingPath, streamedCommand, timed, trackApp, closeTrackedApps } = require('../recovery-qualify-installer.cjs');
 
 test('qualification selects installers only and rejects wrong architecture', () => {
   assert(installerMatch('nirs4all-setup.exe', 'win32', 'x64'));
@@ -208,4 +209,69 @@ test('candidate fetch failures identify the route and duration without printing 
     assert(!error.message.includes('private_secret'));
     return true;
   });
+});
+
+test('restart readiness retries real connection refusals until the HTTP backend is ready', { timeout: 5000 }, async () => {
+  let requests = 0;
+  const server = http.createServer((request, response) => {
+    assert.equal(request.url, '/api/system/readiness');
+    requests++;
+    response.setHeader('Content-Type', 'application/json');
+    response.end(JSON.stringify({ ml_ready: requests > 1, workspace_ready: true, ml_error: null }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+  const context = { env: { NIRS4ALL_BACKEND_PORT: port }, proof: {} };
+  await assert.rejects(api(context.env, '/system/readiness'), error => {
+    assert.deepEqual(error.cause, { code: 'ECONNREFUSED' });
+    return true;
+  });
+  const starting = new Promise(resolve => setTimeout(() => {
+    server.listen(port, '127.0.0.1', resolve);
+  }, 200));
+  try {
+    // This is the production restart poll, including real api(), fetch and expect.poll.
+    await awaitBackendReady(context);
+    assert.equal(BUDGETS.launch, 30000);
+    assert(requests >= 2, 'Readiness must wait past an HTTP response whose ML is still loading');
+    assert.deepEqual(context.proof.last_readiness, { ml_ready: true, workspace_ready: true, ml_error: null });
+  } finally {
+    await starting;
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+for (const failure of ['ml_error', 'unauthorized']) {
+  test(`restart readiness fails immediately on a real HTTP ${failure} response`, { timeout: 3000 }, async () => {
+    let requests = 0;
+    const server = http.createServer((_request, response) => {
+      requests++;
+      response.statusCode = failure === 'unauthorized' ? 401 : 200;
+      response.end(JSON.stringify({ ml_ready: false, workspace_ready: true, ml_error: 'circular import DatasetConfigs' }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const context = { env: { NIRS4ALL_BACKEND_PORT: server.address().port }, proof: {} };
+    try {
+      await assert.rejects(awaitBackendReady(context), failure === 'ml_error'
+        ? /Backend ML initialization failed: circular import DatasetConfigs/ : /HTTP 401/);
+      assert.equal(requests, 1, 'Do not retry product or authentication errors as startup delays');
+    } finally {
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+}
+
+test('network diagnostics retain only a recognized cause code and no raw cause fields', async () => {
+  for (const code of ['ECONNREFUSED', 'Bearer private_secret']) {
+    await assert.rejects(api({ NIRS4ALL_BACKEND_PORT: '1' }, '/system/readiness', 'GET', undefined, {
+      fetchImpl: async () => { throw new TypeError('private_secret', { cause: { code, message: 'private_secret', headers: 'private_secret' } }); },
+    }), error => {
+      assert.deepEqual(error.cause, code === 'ECONNREFUSED' ? { code } : undefined);
+      assert(!require('node:util').inspect(error).includes('private_secret'));
+      return true;
+    });
+  }
 });
