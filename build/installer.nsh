@@ -63,12 +63,17 @@ Function studioRestoreKnownUninstallers
   !insertmacro studioRestoreKnownUninstaller $studioPatchedUserUninstaller
 FunctionEnd
 
+; electron-builder includes this file before common.nsh/multiUser.nsh define
+; the filenames and registry keys. Expand this function only at customHeader,
+; after those definitions exist (the calls may safely reference it earlier).
+!macro customHeader
 Function studioPrepareKnownUninstallers
   InitPluginsDir
   File /oname=$PLUGINSDIR\studio-upgrade-uninstaller.exe "${UNINSTALLER_OUT_FILE}"
   !insertmacro studioRepairKnownUninstaller HKLM $studioPatchedMachineUninstaller repair_machine
   !insertmacro studioRepairKnownUninstaller HKCU $studioPatchedUserUninstaller repair_user
 FunctionEnd
+!macroend
 !endif
 !macro studioPreserveRoot ROOT BACKUP LABEL
   IfFileExists "${BACKUP}\." 0 ${LABEL}_preserve
