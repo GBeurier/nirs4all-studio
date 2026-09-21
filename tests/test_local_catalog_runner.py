@@ -65,6 +65,53 @@ def test_deep_learning_label_does_not_skip_standard_sklearn(class_path, requires
     assert result["status"] == expected
 
 
+def test_gpu_profile_executes_deep_learning_nodes():
+    spec = importlib.util.spec_from_file_location("gpu_local_catalog_runner", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result = module.plan_node({
+        "id": "model.nicon",
+        "type": "model",
+        "classPath": "nirs4all.operators.models.pytorch.nicon.nicon",
+        "isDeepLearning": True,
+        "requires": ["torch"],
+    }, "gpu")
+    assert result["status"] == "pending"
+
+
+def test_cuda_gate_only_accepts_gpu_execution_of_deep_nodes(runner, monkeypatch, tmp_path):
+    output = tmp_path / "report.json"
+    monkeypatch.setattr(sys, "argv", [
+        str(SCRIPT), "--profile", "gpu", "--execute", "--require-cuda",
+        "--node", "model.first", "--output", str(output),
+    ])
+    with pytest.raises(SystemExit) as error:
+        runner.main()
+    assert error.value.code == 2
+    assert not output.exists()
+
+
+def test_cuda_gate_marks_selected_deep_node_for_worker_enforcement(runner, monkeypatch, tmp_path):
+    monkeypatch.setattr("api.node_registry_loader.load_editor_registry_nodes", lambda: [{
+        "id": "model.deep",
+        "type": "model",
+        "classPath": "nirs4all.operators.models.pytorch.nicon.nicon",
+        "isDeepLearning": True,
+        "status": "pending",
+    }])
+    monkeypatch.setattr(runner, "plan_node", lambda node, profile: {**node, "node": node})
+    output = tmp_path / "report.json"
+    monkeypatch.setattr(sys, "argv", [
+        str(SCRIPT), "--profile", "gpu", "--execute", "--require-cuda",
+        "--node", "model.deep", "--output", str(output),
+    ])
+
+    assert runner.main() == 0
+    report = json.loads(output.read_text())
+    assert report["require_cuda"] is True
+    assert report["cases"][0]["require_cuda"] is True
+
+
 @pytest.mark.parametrize("status,module,accepted", [
     ("dependency_missing", "aompls", True),
     ("dependency_missing", "unexpected_dependency", False),

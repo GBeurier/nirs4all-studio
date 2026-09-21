@@ -63,7 +63,9 @@ def plan_node(node, profile):
                 "guard_regression": "tests/test_spectral_pipeline_capabilities.py", "scientifically_executed": False}
     needs_framework = node.get("isDeepLearning") and not str(node.get("classPath", "")).startswith("sklearn.")
     if needs_framework or node.get("requires"):
-        allowed = profile == "tabpfn" and "tabpfn" in str(node.get("classPath", "")).lower()
+        allowed = profile == "gpu" or (
+            profile == "tabpfn" and "tabpfn" in str(node.get("classPath", "")).lower()
+        )
         if not allowed:
             return {**result, "status": "optional_profile_required", "reason": node.get("requires") or "deep-learning runtime"}
     contextual = {"branch.parallel", "branch.source", "merge.sources", "merge.predictions", "container.sample_augmentation",
@@ -90,6 +92,12 @@ def missing_module_from_error(error):
             return error.name
         error = error.__cause__ or error.__context__
     return None
+
+
+def requires_deep_learning_runtime(case):
+    node = case.get("node", {})
+    class_path = str(node.get("classPath", "")).lower()
+    return bool(node.get("isDeepLearning")) and not class_path.startswith("sklearn.")
 
 
 def evaluate_policy(cases, policy):
@@ -129,6 +137,20 @@ def worker(case_path, output):
         from api.results_repository import resolve_results_repository
         from api.workspace.services import _build_results_summary_payload
 
+        torch = None
+        if case.get("require_cuda"):
+            import torch
+            assert torch.cuda.is_available(), "CUDA qualification requested but torch.cuda.is_available() is false"
+            torch.cuda.set_device(0)
+            torch.cuda.reset_peak_memory_stats(0)
+            report["cuda_runtime"] = {
+                "torch_version": torch.__version__,
+                "cuda_version": torch.version.cuda,
+                "device_index": 0,
+                "device_name": torch.cuda.get_device_name(0),
+                "device_capability": list(torch.cuda.get_device_capability(0)),
+            }
+
         distribution = importlib.metadata.distribution("nirs4all")
         report["library"] = {"version": nirs4all.__version__, "path": str(nirs4all.__file__),
                              "installation_origin": json.loads(distribution.read_text("direct_url.json") or "null"),
@@ -164,6 +186,8 @@ def worker(case_path, output):
         report["task"] = "classification" if classification else "regression"
         rng = np.random.default_rng(8301)
         feature_count = 12 if case["id"] in {"model.lasso_lars_ic", "model.ransac_regressor"} else 64
+        if case["id"] in {"model.nicon", "model.nicon_classifier", "model.cnn1d", "model.cnn1d_classifier"}:
+            feature_count = 256
         if case["id"] == "preprocessing.kernel_centerer":
             feature_count = 60
         if case["id"] == "model.quadratic_discriminant_analysis":
@@ -228,7 +252,7 @@ def worker(case_path, output):
             params = {p["name"]: p["default"] for p in node.get("parameters", []) if "default" in p}
             # Explicit cheap-fixture settings; both registry defaults and actual
             # parameters remain in the report. No invalid parameter is discarded.
-            limits = {"n_estimators": 8, "n_jobs": 1}
+            limits = {"n_estimators": 8, "n_jobs": 1, "epochs": 2}
             for key, maximum in limits.items():
                 if key in params and isinstance(params[key], (int, float)):
                     params[key] = min(params[key], maximum) if params[key] > 0 else maximum
@@ -246,8 +270,11 @@ def worker(case_path, output):
                 params["n_components"] = 8  # Explicit feasible projection for a 64-band fixture.
             if case["id"] == "splitting.predefined_split":
                 params["test_fold"] = [i % 2 for i in range(60)]
-            if "tabpfn" in str(node.get("classPath", "")).lower():
-                params.update(n_estimators=1, device="cpu", n_jobs=1)
+            class_path = str(node.get("classPath", "")).lower()
+            if "tabpfn" in class_path:
+                params.update(n_estimators=1, device="cuda" if case.get("require_cuda") else "cpu", n_jobs=1)
+            if "tabicl" in class_path:
+                params.update(n_estimators=1, device="cuda" if case.get("require_cuda") else None, n_jobs=1)
             if case["id"] == "filter.metadata":
                 params.update(column="group", values_to_exclude=["g0"])
             if case["id"] == "preprocessing.column_transformer":
@@ -351,6 +378,10 @@ def worker(case_path, output):
         else:
             assert not training_error, training_error
             assert measured and report["results_models"], "Training returned without persisted Results"
+        if case.get("require_cuda"):
+            torch.cuda.synchronize(0)
+            report["cuda_runtime"]["peak_memory_allocated_bytes"] = torch.cuda.max_memory_allocated(0)
+            assert report["cuda_runtime"]["peak_memory_allocated_bytes"] > 0, "Deep-learning node did not allocate CUDA memory"
         report["status"] = "passed"
     except ModuleNotFoundError as exc:
         report.update(status="dependency_missing", error=str(exc), missing_module=exc.name, traceback=traceback.format_exc())
@@ -392,14 +423,17 @@ def execute_case(case, directory, timeout):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--profile", choices=("cpu", "tabpfn"), default="cpu")
+    parser.add_argument("--profile", choices=("cpu", "gpu", "tabpfn"), default="cpu")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--node", action="append", default=[])
     parser.add_argument("--timeout", type=float, default=20)
     parser.add_argument("--workers", type=int, choices=(1, 2), default=2)
+    parser.add_argument("--require-cuda", action="store_true", help="Require every selected deep-learning node to allocate CUDA memory")
     parser.add_argument("--worker", type=Path)
     parser.add_argument("--policy", type=Path, help="Reviewed explicit restrictions for a full CPU qualification gate")
     args = parser.parse_args()
+    if args.require_cuda and (args.profile != "gpu" or not args.execute):
+        parser.error("--require-cuda requires --profile gpu --execute")
     if args.policy and (args.node or not args.execute):
         parser.error("--policy requires an unrestricted --execute run")
     if args.worker:
@@ -414,8 +448,15 @@ def main():
     if unknown_ids:
         parser.error("Unknown catalog node ID(s): " + ", ".join(sorted(unknown_ids)))
     requested_cases = [case for case in cases if not requested_ids or case["id"] in requested_ids]
+    if args.require_cuda:
+        non_deep_cases = [case["id"] for case in requested_cases if not requires_deep_learning_runtime(case)]
+        if non_deep_cases:
+            parser.error("--require-cuda only accepts deep-learning nodes: " + ", ".join(non_deep_cases))
+        for case in requested_cases:
+            case["require_cuda"] = True
     environment = {d.metadata["Name"]: d.version for d in importlib.metadata.distributions() if d.metadata.get("Name")}
     report = {"profile": args.profile, "python": sys.executable, "prefix": sys.prefix, "packages": environment,
+              "require_cuda": args.require_cuda,
               "started_at_unix_seconds": started_at,
               "registry_sha256": hashlib.sha256(json.dumps(nodes, sort_keys=True).encode()).hexdigest(),
               "scope": "installed library, real Studio editor/training/results; offline weights only", "cases": cases}

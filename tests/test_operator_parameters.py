@@ -94,6 +94,20 @@ def test_nested_supervised_cartesian_pipeline_executes_all_variants(tmp_path):
                 "n_pls_components": 3, "n_sampling_runs": 3, "cv_folds": 2, "random_state": 4,
             }},
         ]},
+        {
+            "model": {
+                "class": "sklearn.cross_decomposition.PLSRegression",
+                "params": {"n_components": 10, "scale": True, "max_iter": 500},
+            },
+            "finetune_params": {
+                "n_trials": 2,
+                "approach": "grouped",
+                "eval_mode": "best",
+                "model_params": {
+                    "n_components": {"type": "int", "low": 1, "high": 30, "step": 1},
+                },
+            },
+        },
         {"model": {"class": "lightgbm.LGBMRegressor"}},
         {"model": {"class": "sklearn.linear_model.Ridge"}},
     ]
@@ -109,7 +123,8 @@ def test_nested_supervised_cartesian_pipeline_executes_all_variants(tmp_path):
         refit=False,
     ) as result:
         rows = result.predictions.filter_predictions(partition="test", load_arrays=True)
-    assert len(rows) == 4
+    assert len(rows) == 8
+    assert {row["model_name"] for row in rows} == {"PLSRegression", "Ridge"}
     assert all(len(row["y_pred"]) == 12 for row in rows)
 
 

@@ -22,8 +22,12 @@ def operator(name, kind="preprocessing", module="sklearn.preprocessing"):
       for name in ("_range_", "_log_range_", "_sample_", "_grid_", "_zip_")],
     (operator("PatchExtractor", module="sklearn.feature_extraction.image"), "image height"),
     (operator("CountVectorizer", module="sklearn.feature_extraction.text"), "text"),
+    (operator("HashingVectorizer", module="sklearn.feature_extraction.text"), "text"),
     (operator("DictVectorizer", module="sklearn.feature_extraction"), "dictionaries"),
+    (operator("FeatureHasher", module="sklearn.feature_extraction"), "dictionaries"),
     (operator("LabelEncoder"), "target labels"),
+    (operator("LabelBinarizer"), "target labels"),
+    (operator("MultiLabelBinarizer"), "target labels"),
     (operator("Normalizer", "y_processing"), "original prediction units"),
     (operator("Binarizer", "y_processing"), "invertible"),
 ])
