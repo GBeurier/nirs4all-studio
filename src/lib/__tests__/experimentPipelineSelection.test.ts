@@ -59,6 +59,20 @@ describe("experimentPipelineSelection", () => {
     });
   });
 
+  it("marks pipelines recovered from run history and launches them inline", () => {
+    const historical = pipeline({ id: "history:abc", source: "history" });
+
+    expect(toExperimentPipelineOption(historical)).toMatchObject({ isHistory: true });
+    expect(getSelectedPipelineConfigs([historical], [historical.id], null)).toEqual([
+      {
+        id: "history:abc",
+        name: "PLS Pipeline",
+        steps: historical.steps,
+        source: "inline",
+      },
+    ]);
+  });
+
   it("maps pipeline graph shape into experiment option previews", () => {
     expect(
       toExperimentPipelineOption(pipeline({

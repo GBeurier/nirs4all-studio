@@ -18,6 +18,89 @@ from api.jobs.manager import Job, JobStatus, JobType
 from api.run_execution_plan import build_legacy_run_execution_plan, build_retry_run_execution_plan
 
 
+def test_historical_pipeline_list_returns_newest_unique_executable_configs(monkeypatch):
+    duplicate_steps = [{"id": "snv", "type": "preprocessing", "name": "SNV", "params": {}}]
+    ridge_steps = [{"id": "ridge", "type": "model", "name": "Ridge", "params": {"alpha": 1}}]
+
+    def historical_run(run_id, created_at, pipelines):
+        return runs_api.Run(
+            id=run_id,
+            name=run_id,
+            datasets=[
+                runs_api.DatasetRun(
+                    dataset_id="dataset-a",
+                    dataset_name="Dataset A",
+                    pipelines=pipelines,
+                )
+            ],
+            status="completed",
+            created_at=created_at,
+            completed_at=created_at,
+        )
+
+    newest = historical_run(
+        "run-new",
+        "2026-09-21T12:00:00",
+        [
+            runs_api.PipelineRun(
+                id="run-new-snv",
+                pipeline_id="saved-snv",
+                pipeline_name="SNV from display",
+                model="Unknown",
+                preprocessing="SNV",
+                split_strategy="KFold(5)",
+                status="completed",
+                config={"name": "SNV from history", "steps": duplicate_steps},
+            ),
+            runs_api.PipelineRun(
+                id="run-new-empty",
+                pipeline_id="empty",
+                pipeline_name="Empty",
+                model="Unknown",
+                preprocessing="None",
+                split_strategy="KFold(5)",
+                status="failed",
+                config={"name": "Empty", "steps": []},
+            ),
+        ],
+    )
+    older = historical_run(
+        "run-old",
+        "2026-09-20T12:00:00",
+        [
+            runs_api.PipelineRun(
+                id="run-old-snv",
+                pipeline_id="old-snv",
+                pipeline_name="Older duplicate",
+                model="Unknown",
+                preprocessing="SNV",
+                split_strategy="KFold(5)",
+                status="completed",
+                config={"name": "Older duplicate", "steps": duplicate_steps},
+            ),
+            runs_api.PipelineRun(
+                id="run-old-ridge",
+                pipeline_id="old-ridge",
+                pipeline_name="Ridge",
+                model="Ridge",
+                preprocessing="None",
+                split_strategy="KFold(5)",
+                status="completed",
+                config={"name": "Ridge history", "description": "Recovered", "steps": ridge_steps},
+            ),
+        ],
+    )
+    monkeypatch.setattr(runs_api, "_runs", {older.id: older, newest.id: newest})
+
+    pipelines = runs_api._list_historical_pipeline_configs()
+
+    assert [pipeline.name for pipeline in pipelines] == ["SNV from history", "Ridge history"]
+    assert all(pipeline.id.startswith("history:") for pipeline in pipelines)
+    assert pipelines[0].created_at == newest.created_at
+    assert pipelines[1].description == "Recovered"
+    assert pipelines[1].source == "history"
+
+
 def test_create_run_from_config_defaults_to_local_python_backend(tmp_path):
     run = runs_api._create_run_from_config(
         runs_api.ExperimentConfig(

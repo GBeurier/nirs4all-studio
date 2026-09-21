@@ -27,6 +27,7 @@ export const experimentSelectionCopy = {
   pipelineFilterFavorites: "Favorites",
   pipelineFilterPresets: "Presets",
   pipelinePresetBadge: "Preset",
+  pipelineHistoryBadge: "History",
 } as const;
 
 export interface ExperimentDatasetSelectionDetails {
@@ -47,6 +48,7 @@ export interface ExperimentDatasetSelectionDetails {
 
 export interface ExperimentPipelineSelectionBadges {
   showFavorite: boolean;
+  showHistory: boolean;
   showPreset: boolean;
 }
 
@@ -135,6 +137,7 @@ export function buildExperimentPipelineSelectionBadges(
 ): ExperimentPipelineSelectionBadges {
   return {
     showFavorite: Boolean(pipeline.favorite),
+    showHistory: Boolean(pipeline.isHistory),
     showPreset: Boolean(pipeline.preset),
   };
 }

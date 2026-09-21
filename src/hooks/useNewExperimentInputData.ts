@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { listPipelines, type PipelineInfo } from "@/api/pipelines";
+import { listRunPipelines } from "@/api/runs";
 import { useDatasetsQuery } from "@/hooks/useDatasetQueries";
 import {
   filterExperimentDatasets,
@@ -42,11 +43,46 @@ export interface UseNewExperimentFilteredInputsResult {
   filteredPipelines: ExperimentPipelineOption[];
 }
 
+function stablePipelineStepsKey(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stablePipelineStepsKey).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stablePipelineStepsKey(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
+export function mergeExperimentPipelineSources(
+  savedPipelines: PipelineInfo[],
+  historicalPipelines: PipelineInfo[],
+): PipelineInfo[] {
+  const merged = [...savedPipelines];
+  const seenSteps = new Set(savedPipelines.map((pipeline) => stablePipelineStepsKey(pipeline.steps)));
+
+  for (const pipeline of historicalPipelines) {
+    const stepsKey = stablePipelineStepsKey(pipeline.steps);
+    if (seenSteps.has(stepsKey)) continue;
+    seenSteps.add(stepsKey);
+    merged.push({ ...pipeline, source: "history" });
+  }
+
+  return merged;
+}
+
 export function useNewExperimentInputData(): NewExperimentInputData {
   const { data: datasetsData, isLoading: isLoadingDatasets, error: datasetsError } = useDatasetsQuery();
-  const { data: pipelinesData, isLoading: isLoadingPipelines, error: pipelineError } = useQuery({
+  const { data: savedPipelinesData, isLoading: isLoadingPipelines, error: pipelineError } = useQuery({
     queryKey: ["pipelines"],
     queryFn: () => listPipelines(),
+  });
+  const { data: historicalPipelinesData } = useQuery({
+    queryKey: ["run-pipelines"],
+    queryFn: () => listRunPipelines(),
   });
 
   const rawDatasets = useMemo(
@@ -58,8 +94,11 @@ export function useNewExperimentInputData(): NewExperimentInputData {
     [rawDatasets],
   );
   const rawPipelines = useMemo(
-    () => (pipelinesData?.pipelines ?? []) as PipelineInfo[],
-    [pipelinesData],
+    () => mergeExperimentPipelineSources(
+      (savedPipelinesData?.pipelines ?? []) as PipelineInfo[],
+      (historicalPipelinesData?.pipelines ?? []) as PipelineInfo[],
+    ),
+    [historicalPipelinesData, savedPipelinesData],
   );
   const pipelines = useMemo(
     () => rawPipelines.map(toExperimentPipelineOption),

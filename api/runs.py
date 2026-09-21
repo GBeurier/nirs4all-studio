@@ -369,6 +369,23 @@ class RunStatsResponse(BaseModel):
     total_pipelines: int
 
 
+class HistoricalPipelineInfo(BaseModel):
+    """Executable pipeline configuration recovered from run history."""
+    id: str
+    name: str
+    description: str | None = None
+    category: Literal["history"] = "history"
+    steps: list[dict[str, Any]]
+    created_at: str
+    updated_at: str
+    is_favorite: bool = False
+    source: Literal["history"] = "history"
+
+
+class HistoricalPipelineListResponse(BaseModel):
+    pipelines: list[HistoricalPipelineInfo]
+
+
 # ============================================================================
 # In-memory storage + File Persistence for runs
 # ============================================================================
@@ -419,6 +436,51 @@ def _ensure_runs_loaded():
                             pipeline.error_message = "Interrupted - server restarted"
             _runs[run.id] = run
     _runs_loaded = True
+
+
+def _list_historical_pipeline_configs() -> list[HistoricalPipelineInfo]:
+    """Return newest unique executable pipeline configurations from run manifests.
+
+    This deliberately reads the lightweight in-memory manifests only. Listing
+    pipelines in the experiment wizard must not trigger result-store enrichment.
+    """
+    seen_steps: set[str] = set()
+    historical: list[HistoricalPipelineInfo] = []
+
+    for run in sorted(_runs.values(), key=lambda item: item.created_at, reverse=True):
+        for dataset in run.datasets:
+            for pipeline in dataset.pipelines:
+                config = pipeline.config
+                if not isinstance(config, dict):
+                    continue
+                steps = config.get("steps")
+                if not isinstance(steps, list) or not steps:
+                    continue
+                if not all(isinstance(step, dict) for step in steps):
+                    continue
+
+                signature = json.dumps(steps, sort_keys=True, separators=(",", ":"), default=str)
+                if signature in seen_steps:
+                    continue
+                seen_steps.add(signature)
+
+                name = str(config.get("name") or pipeline.pipeline_name or "Historical pipeline")
+                description = config.get("description")
+                if description is not None:
+                    description = str(description)
+                stable_id = uuid.uuid5(uuid.NAMESPACE_URL, f"nirs4all-studio:history:{signature}").hex
+                historical.append(
+                    HistoricalPipelineInfo(
+                        id=f"history:{stable_id}",
+                        name=name,
+                        description=description,
+                        steps=steps,
+                        created_at=run.created_at,
+                        updated_at=run.completed_at or run.created_at,
+                    )
+                )
+
+    return historical
 
 
 def _get_runs_dir() -> Path | None:
@@ -2412,6 +2474,13 @@ async def list_runs(status: str = None):
 
     await asyncio.to_thread(_enrich_runs)
     return RunListResponse(runs=runs, total=len(runs))
+
+
+@router.get("/pipelines", response_model=HistoricalPipelineListResponse)
+async def list_historical_pipelines():
+    """List unique runnable pipeline configurations retained in run history."""
+    _ensure_runs_loaded()
+    return HistoricalPipelineListResponse(pipelines=_list_historical_pipeline_configs())
 
 
 @router.get("/stats", response_model=RunStatsResponse)

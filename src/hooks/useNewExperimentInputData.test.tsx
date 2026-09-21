@@ -24,7 +24,11 @@ vi.mock("@tanstack/react-query", () => ({
   useQuery: queryMocks.useQuery,
 }));
 
-import { useNewExperimentFilteredInputs, useNewExperimentInputData } from "./useNewExperimentInputData";
+import {
+  mergeExperimentPipelineSources,
+  useNewExperimentFilteredInputs,
+  useNewExperimentInputData,
+} from "./useNewExperimentInputData";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -115,6 +119,26 @@ afterEach(() => {
 });
 
 describe("useNewExperimentInputData", () => {
+  it("merges unique history pipelines after saved pipelines", () => {
+    const saved = pipeline();
+    const duplicateHistory = pipeline({
+      id: "history:duplicate",
+      name: "Earlier copy",
+      source: "history",
+    });
+    const uniqueHistory = pipeline({
+      id: "history:ridge",
+      name: "Ridge from history",
+      source: "history",
+      steps: [{ id: "ridge", name: "Ridge", type: "model", params: { alpha: 1 } }],
+    });
+
+    expect(mergeExperimentPipelineSources([saved], [duplicateHistory, uniqueHistory])).toEqual([
+      saved,
+      uniqueHistory,
+    ]);
+  });
+
   it("loads and normalizes dataset and pipeline options for the wizard", async () => {
     queryMocks.datasetsQuery.mockReturnValue({
       data: { datasets: [dataset()] },
@@ -131,6 +155,9 @@ describe("useNewExperimentInputData", () => {
 
     expect(queryMocks.useQuery).toHaveBeenCalledWith(expect.objectContaining({
       queryKey: ["pipelines"],
+    }));
+    expect(queryMocks.useQuery).toHaveBeenCalledWith(expect.objectContaining({
+      queryKey: ["run-pipelines"],
     }));
     expect(mounted.result.current!.rawDatasets).toHaveLength(1);
     expect(mounted.result.current!.datasets[0]).toMatchObject({

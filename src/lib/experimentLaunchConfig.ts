@@ -61,7 +61,7 @@ export function buildExperimentLaunchConfig({
       [];
 
     if (pipelineIssues.length === 0) {
-      if (pipeline.id === CURRENT_EDITED_PIPELINE_ID) {
+      if (pipeline.id === CURRENT_EDITED_PIPELINE_ID || pipeline.source === "inline") {
         inlinePipelines.push({ name: pipeline.name, steps: pipeline.steps });
       } else {
         pipelineIds.push(pipeline.id);

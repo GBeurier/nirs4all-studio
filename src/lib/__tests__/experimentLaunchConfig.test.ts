@@ -41,6 +41,20 @@ describe("experimentLaunchConfig", () => {
     });
   });
 
+  it("sends a pipeline recovered from history as an inline configuration", () => {
+    expect(buildExperimentLaunchConfig({
+      name: "Replay",
+      selectedDatasetIds: ["d1"],
+      selectedPipelineConfigs: [
+        { id: "history:abc", name: "Historical PLS", steps: pipeline().steps, source: "inline" },
+      ],
+      selectedGroupingPayload: { d1: null },
+    })).toMatchObject({
+      pipeline_ids: [],
+      inline_pipeline: { name: "Historical PLS", steps: pipeline().steps },
+    });
+  });
+
   it("only includes non-local execution backends in launch config", () => {
     expect(buildExperimentLaunchConfig({
       name: "Local",
