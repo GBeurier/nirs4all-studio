@@ -349,10 +349,16 @@ def _get_store() -> ResultsRepository:
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
+    def workspace_store_factory(path: Path) -> ResultsRepository:
+        # Resolve the heavy nirs4all class only if repository discovery found a
+        # legacy SQLite store. Native result reads and injected repositories do
+        # not need to wait for the ML loader.
+        return _get_workspace_store_cls()(path)
+
     try:
         return resolve_results_repository(
             Path(workspace.path),
-            workspace_store_factory=_get_workspace_store_cls(),
+            workspace_store_factory=workspace_store_factory,
         )
     except ResultsRepositoryNotFound as exc:
         raise HTTPException(
