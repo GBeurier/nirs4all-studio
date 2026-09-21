@@ -50,6 +50,11 @@ def normalize_operator_parameters(name: str, params: dict[str, Any]) -> dict[str
     """Preserve parameter meaning across JSON types and sklearn API versions."""
     name = name.rsplit(".", 1)[-1]
     result = dict(params)
+    if name == "CARS" and "n_pls_components" in result:
+        # Studio historically exposed this parameter under a UI-specific name.
+        # Canonical pipelines may nest CARS inside generators, so normalize it
+        # here (the recursive runtime boundary), not only in playground code.
+        result["n_components"] = result.pop("n_pls_components")
     if name in {"MLPRegressor", "MLPClassifier"} and "hidden_layer_sizes" in result:
         result["hidden_layer_sizes"] = _layer_sizes(result["hidden_layer_sizes"])
     if name == "SparseCoder" and isinstance(result.get("dictionary"), list):
@@ -103,13 +108,58 @@ def normalize_operator_parameters(name: str, params: dict[str, Any]) -> dict[str
     return result
 
 
-def normalize_runtime_operator_parameters(payload: Any) -> Any:
-    """Apply the adapter to canonical operators, including branches and y steps."""
+def _infer_score_function(payload: Any) -> str | None:
+    """Infer the sklearn univariate score family from unambiguous model names."""
+    model_classes: list[str] = []
+
+    def visit(value: Any, *, inside_model: bool = False) -> None:
+        if isinstance(value, list):
+            for item in value:
+                visit(item, inside_model=inside_model)
+            return
+        if not isinstance(value, dict):
+            return
+        if inside_model and isinstance(value.get("class"), str):
+            model_classes.append(value["class"].rsplit(".", 1)[-1].lower())
+        for key, child in value.items():
+            visit(child, inside_model=inside_model or key in {"model", "meta_model"})
+
+    visit(payload)
+    regression = any("regressor" in name or "regression" in name for name in model_classes)
+    classification = any("classifier" in name or "classification" in name for name in model_classes)
+    if regression and not classification:
+        return "sklearn.feature_selection.f_regression"
+    if classification and not regression:
+        return "sklearn.feature_selection.f_classif"
+    return None
+
+
+def normalize_runtime_operator_parameters(payload: Any, *, _score_function: str | None = None) -> Any:
+    """Apply the adapter to canonical operators, including nested generators."""
+    if _score_function is None:
+        _score_function = _infer_score_function(payload)
     if isinstance(payload, list):
-        return [normalize_runtime_operator_parameters(item) for item in payload]
+        return [normalize_runtime_operator_parameters(item, _score_function=_score_function) for item in payload]
     if not isinstance(payload, dict):
         return payload
-    result = {key: normalize_runtime_operator_parameters(value) for key, value in payload.items()}
+    # Studio's cartesian editor stores each stage as a list of alternatives.
+    # Older exports emitted that list verbatim, which nirs4all interprets as a
+    # sequential sub-pipeline.  Upgrade those payloads at the runtime boundary.
+    if isinstance(payload.get("_cartesian_"), list):
+        payload = {
+            **payload,
+            "_cartesian_": [
+                {"_or_": stage} if isinstance(stage, list) else stage
+                for stage in payload["_cartesian_"]
+            ],
+        }
+    result = {
+        key: normalize_runtime_operator_parameters(value, _score_function=_score_function)
+        for key, value in payload.items()
+    }
     if isinstance(result.get("class"), str) and isinstance(result.get("params"), dict):
         result["params"] = normalize_operator_parameters(result["class"], result["params"])
+        name = result["class"].rsplit(".", 1)[-1]
+        if name in _SCORE_SELECTORS and "score_func" not in result["params"] and _score_function:
+            result["params"]["score_func"] = {"function": _score_function}
     return result

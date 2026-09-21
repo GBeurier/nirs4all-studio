@@ -1729,7 +1729,16 @@ def _convert_editor_generator_to_canonical(step: dict[str, Any]) -> dict[str, An
         return result
 
     if kind == "cartesian":
-        payload = {"_cartesian_": [_serialize_branch_value(branch) for branch in branches]}
+        stages: list[Any] = []
+        for branch in branches:
+            alternatives = _serialize_editor_steps(branch)
+            # Canonical imports already represent a stage as one nested _or_
+            # node. Preserve that form instead of wrapping it twice.
+            if len(alternatives) == 1 and isinstance(alternatives[0], dict) and "_or_" in alternatives[0]:
+                stages.append(alternatives[0])
+            else:
+                stages.append({"_or_": alternatives})
+        payload = {"_cartesian_": stages}
         return _append_attached_comment(add_modifiers(payload), step)
 
     if kind == "grid":

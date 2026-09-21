@@ -32,6 +32,87 @@ def test_regression_scorer_selected_in_editor_is_callable_in_run_and_playground(
         assert operator.fit_transform(X, y).shape[1] > 0
 
 
+def test_nested_regression_pipeline_normalizes_cars_and_supervised_selector_defaults():
+    payload = [
+        {
+            "_cartesian_": [
+                [
+                    {"class": "nirs4all.operators.transforms.feature_selection.FlexibleSVD", "params": {"n_components": .95}},
+                    {"class": "sklearn.feature_selection.SelectFdr", "params": {"alpha": .05}},
+                ],
+                {
+                    "class": "nirs4all.operators.transforms.CARS",
+                    "params": {"n_pls_components": 10, "n_sampling_runs": 50},
+                },
+            ]
+        },
+        {"model": {"class": "tabpfn.TabPFNRegressor"}},
+        {"model": {"class": "lightgbm.LGBMRegressor"}},
+    ]
+
+    normalized = normalize_runtime_operator_parameters(payload)
+    selector = normalized[0]["_cartesian_"][0]["_or_"][1]
+    cars = normalized[0]["_cartesian_"][1]
+    assert selector["params"]["score_func"] == {"function": "sklearn.feature_selection.f_regression"}
+    assert cars["params"]["n_components"] == 10
+    assert "n_pls_components" not in cars["params"]
+
+    from nirs4all.pipeline.config.generator import expand_spec
+
+    expanded = expand_spec(normalized[0])
+    assert len(expanded) == 2
+    assert [variant[0]["class"].rsplit(".", 1)[-1] for variant in expanded] == [
+        "FlexibleSVD",
+        "SelectFdr",
+    ]
+
+
+def test_nested_supervised_cartesian_pipeline_executes_all_variants(tmp_path):
+    import nirs4all
+
+    rng = np.random.default_rng(11)
+    y = rng.uniform(-2, 2, 60)
+    wavelengths = np.linspace(0, 8 * np.pi, 48)
+    X = (
+        2 * np.sin(wavelengths)[None, :]
+        + 3 * y[:, None] * np.cos(2 * wavelengths)[None, :]
+        + .02 * rng.normal(size=(60, 48))
+    )
+    payload = [
+        {"class": "nirs4all.operators.transforms.StandardNormalVariate"},
+        {"class": "nirs4all.operators.transforms.OSC", "params": {"n_components": 1}},
+        {"_or_": [
+            {"class": "nirs4all.operators.transforms.WaveletDenoise", "params": {"level": 2}},
+            {"class": "nirs4all.operators.transforms.SecondDerivative"},
+        ]},
+        {"_cartesian_": [
+            [
+                {"class": "nirs4all.operators.transforms.feature_selection.FlexibleSVD", "params": {"n_components": .95}},
+                {"class": "sklearn.feature_selection.SelectFdr", "params": {"alpha": .05}},
+            ],
+            {"class": "nirs4all.operators.transforms.CARS", "params": {
+                "n_pls_components": 3, "n_sampling_runs": 3, "cv_folds": 2, "random_state": 4,
+            }},
+        ]},
+        {"model": {"class": "lightgbm.LGBMRegressor"}},
+        {"model": {"class": "sklearn.linear_model.Ridge"}},
+    ]
+
+    pipeline = normalize_runtime_operator_parameters(payload)
+    with nirs4all.run(
+        pipeline[:-2] + [pipeline[-1]],
+        (X, y, {"train": 48}),
+        engine="legacy",
+        workspace_path=tmp_path,
+        verbose=0,
+        save_charts=False,
+        refit=False,
+    ) as result:
+        rows = result.predictions.filter_predictions(partition="test", load_arrays=True)
+    assert len(rows) == 4
+    assert all(len(row["y_pred"]) == 12 for row in rows)
+
+
 def test_saved_sparse_coder_dictionary_runs_in_pipeline_and_playground():
     from nirs4all.pipeline.config.component_serialization import deserialize_component
     from sklearn.decomposition import SparseCoder

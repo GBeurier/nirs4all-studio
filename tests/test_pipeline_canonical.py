@@ -506,6 +506,33 @@ def test_export_and_reimport_pipeline_json_uses_canonical_contract(pipelines_wor
     ]
 
 
+def test_cartesian_editor_branches_serialize_as_stage_alternatives():
+    steps = [{
+        "id": "cartesian",
+        "type": "flow",
+        "subType": "generator",
+        "name": "Cartesian",
+        "generatorKind": "cartesian",
+        "params": {},
+        "branches": [
+            [
+                {"id": "snv", "type": "preprocessing", "name": "StandardNormalVariate", "params": {}},
+                {"id": "osc", "type": "preprocessing", "name": "OSC", "params": {"n_components": 1}},
+            ],
+            [{"id": "cars", "type": "preprocessing", "name": "CARS", "params": {"n_pls_components": 2}}],
+        ],
+    }]
+
+    canonical = editor_steps_to_runtime_canonical(steps)
+    stages = canonical[0]["_cartesian_"]
+    assert [len(stage["_or_"]) for stage in stages] == [2, 1]
+
+    from nirs4all.pipeline.config.generator import expand_spec
+
+    expanded = expand_spec(canonical[0])
+    assert len(expanded) == 2
+
+
 def test_preview_pipeline_import_supports_yaml_content():
     payload = _canonical_wrapper_from_payload(_load_payload(_PRESET_ADVANCED))
     yaml_content = yaml.safe_dump(payload, sort_keys=False)
