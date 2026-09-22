@@ -39,7 +39,7 @@ def publication(tmp_path):
         (expected / name).write_bytes(data)
         (downloaded / name).write_bytes(data)
         assets.append({"name": name, "state": "uploaded", "size": len(data), "digest": "sha256:" + hashlib.sha256(data).hexdigest()})
-    return {"tag_name": "0.11.10", "draft": False, "prerelease": False, "assets": assets}, expected, downloaded
+    return {"tag_name": "0.11.11", "draft": False, "prerelease": False, "assets": assets}, expected, downloaded
 
 
 def refresh_asset(release, downloaded, name):
@@ -110,10 +110,10 @@ def test_remote_tag_resolves_exact_qualified_commit(promotion, annotated):
         return {"object": {"type": "commit", "sha": "qualified"}}
 
     namespace["github_json"] = lookup
-    namespace["verify_tag"]("owner/repo", "0.11.10", "qualified")
-    assert endpoints[0] == "repos/owner/repo/git/ref/tags/0.11.10"
+    namespace["verify_tag"]("owner/repo", "0.11.11", "qualified")
+    assert endpoints[0] == "repos/owner/repo/git/ref/tags/0.11.11"
     with pytest.raises(AssertionError, match="does not identify"):
-        namespace["verify_tag"]("owner/repo", "0.11.10", "different")
+        namespace["verify_tag"]("owner/repo", "0.11.11", "different")
 
 
 def test_only_release_not_found_is_treated_as_absent(promotion, monkeypatch):
@@ -121,10 +121,10 @@ def test_only_release_not_found_is_treated_as_absent(promotion, monkeypatch):
     for status in (404, 403):
         monkeypatch.setattr(namespace["subprocess"], "run", lambda *args, **kwargs: SimpleNamespace(returncode=1, stdout=json.dumps({"status": status})))
         if status == 404:
-            assert namespace["github_json"]("repos/owner/repo/releases/tags/0.11.10", allow_missing=True) is None
+            assert namespace["github_json"]("repos/owner/repo/releases/tags/0.11.11", allow_missing=True) is None
         else:
             with pytest.raises(RuntimeError, match="403"):
-                namespace["github_json"]("repos/owner/repo/releases/tags/0.11.10", allow_missing=True)
+                namespace["github_json"]("repos/owner/repo/releases/tags/0.11.11", allow_missing=True)
 
 
 def test_existing_release_skips_all_publication_mutations_and_never_retargets(promotion):

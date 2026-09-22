@@ -210,14 +210,14 @@ jobs:
         with:
           context: .
           load: true
-          tags: nirs4all-studio:0.11.10
+          tags: nirs4all-studio:0.11.11
           cache-from: type=gha,scope=python-recovery
           cache-to: type=gha,mode=max,scope=python-recovery
       - name: Verify Python backend health and version
         shell: bash
         run: |
           trap 'docker logs recovery || true' EXIT
-          docker run -d --name recovery -p 8000:8000 -e SENTRY_DSN= nirs4all-studio:0.11.10
+          docker run -d --name recovery -p 8000:8000 -e SENTRY_DSN= nirs4all-studio:0.11.11
           for attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8000/api/system/readiness > readiness.json && python -c 'import json; assert json.load(open("readiness.json"))["ml_ready"] and json.load(open("readiness.json"))["workspace_ready"]'; then break; fi
             test "$(docker inspect -f '{{.State.Running}}' recovery)" = true
@@ -226,7 +226,7 @@ jobs:
           python -c 'import json; r=json.load(open("readiness.json")); assert r["ml_ready"] and r["workspace_ready"]'
           docker exec recovery python -c 'import nirs4all; assert nirs4all.__version__ == "1.1.2"'
           python3 scripts/qualify-python-docker.py > docker-qualification.json
-          docker save nirs4all-studio:0.11.10 | gzip > recovery-docker.tar.gz
+          docker save nirs4all-studio:0.11.11 | gzip > recovery-docker.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: recovery-docker
@@ -281,7 +281,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$QUALIFIED_SHA"
           python3 - <<'PYCODE'
           import json
-          assert json.load(open('package.json'))['version'] == '0.11.10'
+          assert json.load(open('package.json'))['version'] == '0.11.11'
           PYCODE
       - uses: actions/download-artifact@v4
         with:
@@ -353,7 +353,7 @@ jobs:
               raise AssertionError('Too many annotated tag indirections')
 
           def verify_published_assets(release, expected_root, downloaded_root):
-              assert release['tag_name'] == '0.11.10' and not release['draft'] and not release['prerelease'], 'Existing release is not the published recovery'
+              assert release['tag_name'] == '0.11.11' and not release['draft'] and not release['prerelease'], 'Existing release is not the published recovery'
               expected = {item.name: item for item in expected_root.iterdir() if item.is_file()}
               assets = release['assets']
               names = [asset['name'] for asset in assets]
@@ -376,11 +376,11 @@ jobs:
 
           if __name__ == '__main__':
               repository = os.environ['GITHUB_REPOSITORY']
-              verify_tag(repository, '0.11.10', os.environ['QUALIFIED_SHA'])
-              release = github_json(f'repos/{repository}/releases/tags/0.11.10', allow_missing=True)
+              verify_tag(repository, '0.11.11', os.environ['QUALIFIED_SHA'])
+              release = github_json(f'repos/{repository}/releases/tags/0.11.11', allow_missing=True)
               if release is not None:
                   with tempfile.TemporaryDirectory(prefix='recovery-published-') as directory:
-                      subprocess.run(['gh', 'release', 'download', '0.11.10', '--repo', repository, '--dir', directory], check=True, timeout=300)
+                      subprocess.run(['gh', 'release', 'download', '0.11.11', '--repo', repository, '--dir', directory], check=True, timeout=300)
                       verify_published_assets(release, pathlib.Path('release-assets'), pathlib.Path(directory))
                   print('Existing publication matches the qualified artifacts; no release or image will be modified.')
               with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
@@ -396,10 +396,10 @@ jobs:
         if: steps.published.outputs.exists != 'true'
         run: |
           gunzip -c candidates/recovery-docker/recovery-docker.tar.gz | docker load
-          docker tag nirs4all-studio:0.11.10 ghcr.io/gbeurier/nirs4all-studio:0.11.10
-          docker tag nirs4all-studio:0.11.10 ghcr.io/gbeurier/nirs4all-studio:latest
-          docker push ghcr.io/gbeurier/nirs4all-studio:0.11.10
+          docker tag nirs4all-studio:0.11.11 ghcr.io/gbeurier/nirs4all-studio:0.11.11
+          docker tag nirs4all-studio:0.11.11 ghcr.io/gbeurier/nirs4all-studio:latest
+          docker push ghcr.io/gbeurier/nirs4all-studio:0.11.11
           docker push ghcr.io/gbeurier/nirs4all-studio:latest
       - name: Publish the recovery release
         if: steps.published.outputs.exists != 'true'
-        run: gh release create 0.11.10 --repo "$GITHUB_REPOSITORY" --verify-tag --title 'Studio 0.11.10 — Scientific execution and reliability fixes' --notes-file RECOVERY_RELEASE.md --latest release-assets/*
+        run: gh release create 0.11.11 --repo "$GITHUB_REPOSITORY" --verify-tag --title 'Studio 0.11.11 — Pipeline execution and ecosystem integration' --notes-file RECOVERY_RELEASE.md --latest release-assets/*
