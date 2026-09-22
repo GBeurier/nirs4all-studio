@@ -42,7 +42,7 @@ jobs:
           name: recovery-library-wheel
           path: vendor/python/
           if-no-files-found: error
-      - run: python -m pip install -r requirements-cpu.txt vendor/python/nirs4all-1.1.2-py3-none-any.whl pytest pytest-asyncio pytest-timeout pytest-xdist matplotlib==3.10.1 xgboost==3.0.0 lightgbm==4.6.0
+      - run: python -m pip install -r requirements-cpu.txt vendor/python/nirs4all-1.1.3-py3-none-any.whl pytest pytest-asyncio pytest-timeout pytest-xdist matplotlib==3.10.1 xgboost==3.0.0 lightgbm==4.6.0
       - name: Test the corrected scientific results, compatibility and installation logs
         run: >-
           python -m pytest tests/test_sequential_models_integration.py
@@ -224,7 +224,7 @@ jobs:
             sleep 1
           done
           python -c 'import json; r=json.load(open("readiness.json")); assert r["ml_ready"] and r["workspace_ready"]'
-          docker exec recovery python -c 'import nirs4all; assert nirs4all.__version__ == "1.1.2"'
+          docker exec recovery python -c 'import nirs4all; assert nirs4all.__version__ == "1.1.3"'
           python3 scripts/qualify-python-docker.py > docker-qualification.json
           docker save nirs4all-studio:0.11.11 | gzip > recovery-docker.tar.gz
       - uses: actions/upload-artifact@v4
@@ -306,7 +306,7 @@ jobs:
           library_wheel = library_root / library_proof['wheel']
           assert hashlib.file_digest(library_wheel.open('rb'), 'sha256').hexdigest() == library_proof['wheel_sha256']
           assert library_proof['source_commit'] == json.loads(pathlib.Path('build/recovery-library.json').read_text())['source_commit']
-          assert all(r['nirs4all_version'] == '1.1.2' and r['nirs4all_wheel_sha256'] == library_proof['wheel_sha256'] for r in reports)
+          assert all(r['nirs4all_version'] == '1.1.3' and r['nirs4all_wheel_sha256'] == library_proof['wheel_sha256'] for r in reports)
           docker_report = json.loads((root / 'recovery-docker/docker-qualification.json').read_text())
           assert docker_report['success'] and docker_report['samples'] == 1000 and docker_report['features'] == 256
           verified = {r['installer_sha256'] for r in reports}

@@ -12,8 +12,8 @@ def test_recovery_uses_its_bundled_profile_even_with_a_newer_cached_manifest():
     newer = {"app_version": "99.0.0", "nirs4all": "99.0.0"}
     selected, source = config._select_preferred_config(newer, bundled)
     assert source == "bundled"
-    assert selected["nirs4all"] == "1.1.2"
-    assert all(profile["packages"]["nirs4all"]["min"] == "==1.1.2" for profile in selected["profiles"].values())
+    assert selected["nirs4all"] == "1.1.3"
+    assert all(profile["packages"]["nirs4all"]["min"] == "==1.1.3" for profile in selected["profiles"].values())
 
 
 def test_recovery_does_not_fetch_the_development_dependency_manifest(monkeypatch):
@@ -36,14 +36,14 @@ def test_library_update_check_stays_on_qualified_recovery_version(monkeypatch):
     from api.updates import UpdateManager
 
     manager = UpdateManager()
-    monkeypatch.setattr(manager, "get_nirs4all_version", lambda force=False: "1.1.2")
+    monkeypatch.setattr(manager, "get_nirs4all_version", lambda force=False: "1.1.3")
 
     async def unexpected_fetch(*args, **kwargs):
         raise AssertionError("Recovery must not offer a newer library independently of Studio")
 
     monkeypatch.setattr(manager, "_fetch_url", unexpected_fetch)
     result = asyncio.run(manager.check_pypi_release(force=True))
-    assert result.latest_version == "1.1.2"
+    assert result.latest_version == "1.1.3"
     assert result.update_available is False
 
 
@@ -62,7 +62,7 @@ def test_library_repair_installs_exact_recovery_version(monkeypatch):
 
     monkeypatch.setattr(updates.venv_manager, "install_package", install)
     asyncio.run(install_nirs4all(InstallRequest()))
-    assert calls[0][1]["version"] == "1.1.2"
+    assert calls[0][1]["version"] == "1.1.3"
 
 
 def test_installer_only_release_remains_discoverable_after_recovery(monkeypatch):
@@ -134,7 +134,7 @@ def test_library_install_uses_the_embedded_wheel_including_explicit_extras(monke
 
     from api.venv_manager import VenvManager
 
-    wheel = tmp_path / "dossier avec espaces" / "nirs4all-1.1.2-py3-none-any.whl"
+    wheel = tmp_path / "dossier avec espaces" / "nirs4all-1.1.3-py3-none-any.whl"
     wheel.parent.mkdir()
     wheel.write_bytes(b"fixture")
     monkeypatch.setenv("NIRS4ALL_RECOVERY_WHEEL", str(wheel))
@@ -149,12 +149,12 @@ def test_library_install_uses_the_embedded_wheel_including_explicit_extras(monke
         return SimpleNamespace(stdout=io.BytesIO(b"Successfully installed\n"), wait=lambda **kw: None, returncode=0)
 
     monkeypatch.setattr("api.venv_manager.subprocess.Popen", popen)
-    success, _, _ = manager.install_package("nirs4all", version="1.1.2", extras=["torch"],
+    success, _, _ = manager.install_package("nirs4all", version="1.1.3", extras=["torch"],
                                            extra_pip_args=["--extra-index-url", "https://example.invalid/framework-wheels"])
     assert success
     assert f"nirs4all[torch] @ {wheel.as_uri()}" in commands[0]
     assert "scikit-learn>=1.5,<1.7" in commands[0]
-    assert "nirs4all==1.1.2" not in commands[0]
+    assert "nirs4all==1.1.3" not in commands[0]
     assert "--only-binary=nirs4all-io,nirs4all-core" in commands[0]
     assert commands[0][commands[0].index("--find-links") + 1] == str(wheel.parent)
     assert commands[0][commands[0].index("--extra-index-url") + 1] == "https://example.invalid/framework-wheels"
@@ -163,7 +163,7 @@ def test_library_install_uses_the_embedded_wheel_including_explicit_extras(monke
 def test_missing_embedded_library_never_falls_back_to_pypi(monkeypatch, tmp_path):
     from api.venv_manager import VenvManager
 
-    monkeypatch.setenv("NIRS4ALL_RECOVERY_WHEEL", str(tmp_path / "nirs4all-1.1.2-py3-none-any.whl"))
+    monkeypatch.setenv("NIRS4ALL_RECOVERY_WHEEL", str(tmp_path / "nirs4all-1.1.3-py3-none-any.whl"))
     manager = VenvManager()
     monkeypatch.setattr(manager, "_is_valid_venv", lambda: True)
 
@@ -171,6 +171,6 @@ def test_missing_embedded_library_never_falls_back_to_pypi(monkeypatch, tmp_path
         raise AssertionError("Missing qualified wheel must not fall back to an index")
 
     monkeypatch.setattr("api.venv_manager.subprocess.Popen", unexpected_pip)
-    success, message, _ = manager.install_package("nirs4all", version="1.1.2")
+    success, message, _ = manager.install_package("nirs4all", version="1.1.3")
     assert not success
     assert "qualified nirs4all wheel is missing" in message
