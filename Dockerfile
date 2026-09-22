@@ -12,7 +12,7 @@
 # ── Build arguments ──
 ARG BASE_IMAGE=python:3.11-slim
 ARG INSTALL_GPU=false
-ARG NIRS4ALL_VERSION=1.0.3
+ARG NIRS4ALL_VERSION=1.1.2
 ARG PYTHON_VERSION=3.11.13
 ARG PYTHON_STANDALONE_TAG=20250828
 
@@ -41,7 +41,7 @@ RUN npm run build
 FROM ${BASE_IMAGE} AS runtime
 
 ARG INSTALL_GPU=false
-ARG NIRS4ALL_VERSION=1.0.3
+ARG NIRS4ALL_VERSION=1.1.2
 ARG PYTHON_VERSION=3.11.13
 ARG PYTHON_STANDALONE_TAG=20250828
 ENV PATH="/opt/python-build-standalone/python/bin:${PATH}"
@@ -85,7 +85,7 @@ WORKDIR /app
 COPY requirements-cpu.txt requirements-gpu.txt ./
 # Every platform consumes the exact same canonical library wheel.
 COPY vendor/python/ /app/python-wheels/
-ENV NIRS4ALL_RECOVERY_WHEEL=/app/python-wheels/nirs4all-1.0.3-py3-none-any.whl
+ENV NIRS4ALL_RECOVERY_WHEEL=/app/python-wheels/nirs4all-1.1.2-py3-none-any.whl
 RUN python -m pip install --no-cache-dir -r requirements-cpu.txt "$NIRS4ALL_RECOVERY_WHEEL" && \
     if [ "$INSTALL_GPU" = "true" ]; then \
         python -m pip install --no-cache-dir -r requirements-gpu.txt; \

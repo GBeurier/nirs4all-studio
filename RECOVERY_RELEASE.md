@@ -1,6 +1,6 @@
 # Studio 0.11.10 — Scientific execution and reliability fixes
 
-This patch continues the Python backend and explicit legacy execution engine from Studio 0.11.8, with the corrected nirs4all 1.0.3 library. Existing schema-5 workspaces remain supported.
+This patch continues the Python backend and explicit legacy execution engine from Studio 0.11.8, with the corrected nirs4all 1.1.2 library. Existing schema-5 workspaces remain supported.
 
 ## Changes
 

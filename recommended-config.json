@@ -1,7 +1,7 @@
 {
   "schema_version": "1.2",
   "app_version": "0.11.10",
-  "nirs4all": "1.0.3",
+  "nirs4all": "1.1.2",
   "_note": "Python recovery: a minimal scikit-learn environment is the default; additional frameworks are installed only when selected. Existing environments and choices are preserved.",
   "profiles": {
     "cpu": {
@@ -14,8 +14,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": "==1.0.3",
-          "recommended": "1.0.3"
+          "min": "==1.1.2",
+          "recommended": "1.1.2"
         },
         "torch": {
           "min": ">=2.1.0",
@@ -45,8 +45,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": "==1.0.3",
-          "recommended": "1.0.3"
+          "min": "==1.1.2",
+          "recommended": "1.1.2"
         }
       },
       "exclude_optionals": [
@@ -74,8 +74,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": "==1.0.3",
-          "recommended": "1.0.3"
+          "min": "==1.1.2",
+          "recommended": "1.1.2"
         },
         "torch": {
           "min": ">=2.1.0",
@@ -103,8 +103,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": "==1.0.3",
-          "recommended": "1.0.3"
+          "min": "==1.1.2",
+          "recommended": "1.1.2"
         },
         "torch": {
           "min": ">=2.1.0",

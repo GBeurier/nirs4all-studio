@@ -20,7 +20,7 @@ def test_recovery_predict_and_batch_replay_its_actual_refit_model(tmp_path, monk
     from api import predict, predictions, recommended_config
     from api.runtime_engine import engine_run_kwargs
 
-    monkeypatch.setattr(recommended_config, "recovery_nirs4all_version", lambda: "1.0.3")
+    monkeypatch.setattr(recommended_config, "recovery_nirs4all_version", lambda: "1.1.2")
     monkeypatch.setenv("N4A_ENGINE", "dag-ml")
     X = np.random.default_rng(212).normal(size=(40, 5))
     y = X[:, 0] * 2 + X[:, 1]
@@ -50,5 +50,5 @@ def test_replay_policy_only_changes_recovery_releases(monkeypatch):
 
     monkeypatch.setattr(recommended_config, "recovery_nirs4all_version", lambda: None)
     assert recovery_replay_kwargs() == {}
-    monkeypatch.setattr(recommended_config, "recovery_nirs4all_version", lambda: "1.0.3")
+    monkeypatch.setattr(recommended_config, "recovery_nirs4all_version", lambda: "1.1.2")
     assert recovery_replay_kwargs() == {"engine": "legacy"}

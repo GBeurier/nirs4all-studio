@@ -16,16 +16,16 @@ describe("pinned recovery runtime readiness", () => {
     expect(getMissingCorePackages(installed)).toEqual(["nirs4all"]);
   });
   it("requires the recovery version when an older or newer nirs4all is already installed", () => {
-    for (const version of ["0.9.3", "0.11.1", "1.0.3rc1"]) {
-      expect(getUnsatisfiedExactPins(new Map([["nirs4all", version]]))).toEqual(["nirs4all==1.0.3"]);
+    for (const version of ["0.9.3", "0.11.1", "1.1.2rc1"]) {
+      expect(getUnsatisfiedExactPins(new Map([["nirs4all", version]]))).toEqual(["nirs4all==1.1.2"]);
     }
-    expect(getUnsatisfiedExactPins(new Map([["nirs4all", "1.0.3"]]))).toEqual([]);
+    expect(getUnsatisfiedExactPins(new Map([["nirs4all", "1.1.2"]]))).toEqual([]);
   });
 });
 
 // Real metadata resolution: no fake package imports or simulated JSON responses.
 describe("Python distribution precedence", () => {
-  it.each(["1.0.3", "1.0.1"])("keeps the first sys.path distribution (%s), including normalized aliases", async (firstVersion) => {
+  it.each(["1.1.2", "1.0.1"])("keeps the first sys.path distribution (%s), including normalized aliases", async (firstVersion) => {
     const python = [process.env.NIRS4ALL_TEST_PYTHON, "python3.11", "python3", "python"].find(candidate => {
       if (!candidate) return false;
       try {
@@ -41,7 +41,7 @@ describe("Python distribution precedence", () => {
       const second = join(root, "second");
       for (const [directory, version, alias] of [
         [first, firstVersion, "Example-Package"],
-        [second, firstVersion === "1.0.3" ? "1.0.1" : "1.0.3", "example_package"],
+        [second, firstVersion === "1.1.2" ? "1.0.1" : "1.1.2", "example_package"],
       ]) {
         for (const name of ["nirs4all", alias]) {
           const info = join(directory, `${name.replaceAll("-", "_")}-${version}.dist-info`);
@@ -55,7 +55,7 @@ describe("Python distribution precedence", () => {
       expect(expected).toBe(firstVersion);
       expect(inspected?.installedPackages.get("nirs4all")).toBe(expected);
       expect(inspected?.installedPackages.get("example_package")).toBe(expected);
-      expect(getUnsatisfiedExactPins(inspected!.installedPackages)).toEqual(firstVersion === "1.0.3" ? [] : ["nirs4all==1.0.3"]);
+      expect(getUnsatisfiedExactPins(inspected!.installedPackages)).toEqual(firstVersion === "1.1.2" ? [] : ["nirs4all==1.1.2"]);
     } finally {
       vi.unstubAllEnvs();
       rmSync(root, { recursive: true, force: true });

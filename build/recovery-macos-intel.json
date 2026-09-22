@@ -5,10 +5,10 @@
   "packages": [
     {
       "name": "nirs4all-io",
-      "version": "0.1.18",
-      "source_url": "https://files.pythonhosted.org/packages/fc/41/815f59f990cb770a33c02afac5158568a616c3e73afa30230a9caedd6a8e/nirs4all_io-0.1.18.tar.gz",
-      "source_sha256": "d27fe7db6f405535470dcedc5a7975c2ff3c794ff740faacb8a9cf34756f780c",
-      "source_filename": "nirs4all_io-0.1.18.tar.gz",
+      "version": "0.2.0",
+      "source_url": "https://files.pythonhosted.org/packages/b9/9e/bcb414398d4427c3c0bb2aa2f6208ebe199e4de0a9e0df694a757cf1c387/nirs4all_io-0.2.0.tar.gz",
+      "source_sha256": "6ca497fc81b34218e531ded3cd965bc52b7f63e538d493aeeb0c2ee1a42cbdc0",
+      "source_filename": "nirs4all_io-0.2.0.tar.gz",
       "manifest_path": "bindings/python/Cargo.toml",
       "lock_path": "bindings/python/Cargo.lock",
       "module_name": "nirs4all_io._native"

@@ -81,7 +81,7 @@ def test_source_checksum_verified_before_extract_or_build(tmp_path, monkeypatch)
 
 @pytest.mark.parametrize("exported, valid", [("_PyInit__native", True), ("_PyInit_nirs4all_io_native", False)])
 def test_extension_must_export_python_project_module_name(tmp_path, monkeypatch, exported, valid):
-    package = {"name": "nirs4all-io", "version": "0.1.18", "module_name": "nirs4all_io._native"}
+    package = {"name": "nirs4all-io", "version": "0.2.0", "module_name": "nirs4all_io._native"}
     wheel = write_wheel(tmp_path, package)
     monkeypatch.setattr(builder.subprocess, "check_output", lambda *args, **kwargs: f"000000 T {exported}\n")
     if valid:

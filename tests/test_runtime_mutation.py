@@ -115,6 +115,6 @@ def test_later_profile_package_preserves_installed_tabpfn_bounds(monkeypatch):
     from api.package_compatibility import environment_installation_requirements
 
     monkeypatch.setattr("importlib.metadata.version", lambda name: "2.0.3")
-    assert environment_installation_requirements("nirs4all", "1.0.3") == ["scikit-learn>=1.5,<1.7"]
+    assert environment_installation_requirements("nirs4all", "1.1.2") == ["scikit-learn>=1.5,<1.7"]
     assert environment_installation_requirements("tabpfn", "2.0.3") == ["scikit-learn>=1.5,<1.7"]
     assert environment_installation_requirements("tabpfn", "2.1.0") == []
