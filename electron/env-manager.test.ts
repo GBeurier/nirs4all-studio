@@ -43,13 +43,13 @@ function makeUserDataDir(): string {
   (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resources;
   for (const root of [resources, dir]) {
     fs.mkdirSync(path.join(root, "python-wheels"), { recursive: true });
-    fs.writeFileSync(path.join(root, "python-wheels", "nirs4all-1.1.2-py3-none-any.whl"), "test wheel");
+    fs.writeFileSync(path.join(root, "python-wheels", "nirs4all-1.1.3-py3-none-any.whl"), "test wheel");
   }
   return dir;
 }
 
 const backendRuntimePackages = {
-  nirs4all: "1.1.2",
+  nirs4all: "1.1.3",
   fastapi: "0.111.0",
   uvicorn: "0.30.0",
   pydantic: "2.10.0",
@@ -93,7 +93,7 @@ describe("EnvManager", () => {
     const userData = makeUserDataDir();
     fs.rmSync(path.join(userData, "resources", "python-wheels"), { recursive: true });
     const { resolvePackagedRequirements } = await import("./env/provisioning");
-    expect(() => resolvePackagedRequirements(["nirs4all==1.1.2"])).toThrow("qualified nirs4all wheel is missing");
+    expect(() => resolvePackagedRequirements(["nirs4all==1.1.3"])).toThrow("qualified nirs4all wheel is missing");
     expect(childProcessMocks.spawn).not.toHaveBeenCalled();
   });
   it.each(["managed", "managed-custom", "custom"])("enforces the recovery pin without modifying a %s environment unexpectedly", async (kind) => {
@@ -115,7 +115,7 @@ describe("EnvManager", () => {
         ? JSON.stringify({ version: "3.11.11", installed: { nirs4all: installedVersion } }) : "");
     });
     childProcessMocks.spawn.mockImplementation(() => {
-      installedVersion = "1.1.2";
+      installedVersion = "1.1.3";
       const proc = Object.assign(new EventEmitter(), { pid: 1234, stderr: new PassThrough(), stdout: new PassThrough() });
       process.nextTick(() => proc.emit("close", 0));
       return proc;
@@ -128,7 +128,7 @@ describe("EnvManager", () => {
       expect(childProcessMocks.spawn.mock.calls[0][1]).toEqual(["-m", "pip", "install", "--prefer-binary",
         "--only-binary=nirs4all-io,nirs4all-core", "--find-links",
         path.join(userDataDir, "resources", "python-wheels"),
-        path.join(userDataDir, "resources", "python-wheels", "nirs4all-1.1.2-py3-none-any.whl")]);
+        path.join(userDataDir, "resources", "python-wheels", "nirs4all-1.1.3-py3-none-any.whl")]);
     } else {
       await expect(manager.ensureBackendPackages()).rejects.toThrow("selected shared Python environment was left unchanged");
       expect(childProcessMocks.spawn).not.toHaveBeenCalled();
@@ -191,7 +191,7 @@ describe("EnvManager", () => {
     childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
       const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
       if ((args[1] as string[])[1]?.includes("importlib_metadata")) {
-        callback(null, JSON.stringify({ version: "3.11.11", installed: { nirs4all: "1.1.2" } }));
+        callback(null, JSON.stringify({ version: "3.11.11", installed: { nirs4all: "1.1.3" } }));
         return;
       }
       verifyCalls += 1;
@@ -253,7 +253,7 @@ describe("EnvManager", () => {
       const code = args[1] as string[];
       const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
       if (code[1]?.includes("importlib_metadata")) {
-        callback(null, JSON.stringify({ version: "3.11.11", installed: { nirs4all: "1.1.2" } }));
+        callback(null, JSON.stringify({ version: "3.11.11", installed: { nirs4all: "1.1.3" } }));
         return;
       }
       if (Array.isArray(code) && code[1]?.includes("import uvicorn, fastapi")) {
@@ -764,7 +764,7 @@ describe("EnvManager", () => {
     childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
       const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
       callback(null, (args[1] as string[])[1]?.includes("importlib_metadata")
-        ? JSON.stringify({ version: "3.11.11", installed: { nirs4all: "1.1.2" } }) : "", "");
+        ? JSON.stringify({ version: "3.11.11", installed: { nirs4all: "1.1.3" } }) : "", "");
     });
 
     const { EnvManager } = await import("./env-manager");

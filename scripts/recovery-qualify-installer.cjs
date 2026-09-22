@@ -327,9 +327,9 @@ async function verifyRuntime(context) {
   const { stdout } = await run(info.pythonPath, ['-I', '-c',
     'import json, importlib.metadata; d = importlib.metadata.distribution("nirs4all"); print(json.dumps({"version": d.version, "origin": json.loads(d.read_text("direct_url.json") or "null")}))'], { timeout: 10000 });
   const installed = JSON.parse(stdout.trim());
-  assert.equal(installed.version, '1.1.2', 'Shipped recovery must actually execute nirs4all 1.1.2');
+  assert.equal(installed.version, '1.1.3', 'Shipped recovery must actually execute nirs4all 1.1.3');
   const resources = await context.app.evaluate(() => process.resourcesPath);
-  const wheel = path.join(resources, 'python-wheels', 'nirs4all-1.1.2-py3-none-any.whl');
+  const wheel = path.join(resources, 'python-wheels', 'nirs4all-1.1.3-py3-none-any.whl');
   const installedHash = installed.origin?.archive_info?.hashes?.sha256;
   assert.equal(installedHash, sha256(wheel), 'Runtime did not install the exact library wheel carried by this installer');
   context.proof.nirs4all_version = installed.version;

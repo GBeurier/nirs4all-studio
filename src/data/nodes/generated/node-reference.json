@@ -7959,13 +7959,11 @@
         {
           "name": "n_alphas",
           "type": "string",
-          "default": "deprecated",
           "isAdvanced": true
         },
         {
           "name": "alphas",
           "type": "string",
-          "default": "warn",
           "isAdvanced": true
         },
         {
@@ -8254,13 +8252,11 @@
         {
           "name": "n_alphas",
           "type": "string",
-          "default": "deprecated",
           "isAdvanced": true
         },
         {
           "name": "alphas",
           "type": "string",
-          "default": "warn",
           "isAdvanced": true
         },
         {
@@ -8548,7 +8544,6 @@
         {
           "name": "penalty",
           "type": "select",
-          "default": "deprecated",
           "options": [
             "l1",
             "l2",
@@ -8652,7 +8647,6 @@
         {
           "name": "l1_ratios",
           "type": "string",
-          "default": "warn",
           "isAdvanced": true
         },
         {
@@ -8675,7 +8669,6 @@
         {
           "name": "penalty",
           "type": "select",
-          "default": "deprecated",
           "options": [
             "l1",
             "l2",
@@ -8734,7 +8727,6 @@
         {
           "name": "use_legacy_attributes",
           "type": "string",
-          "default": "warn",
           "isAdvanced": true
         }
       ]
@@ -8839,13 +8831,11 @@
         {
           "name": "n_alphas",
           "type": "string",
-          "default": "deprecated",
           "isAdvanced": true
         },
         {
           "name": "alphas",
           "type": "string",
-          "default": "warn",
           "isAdvanced": true
         },
         {
@@ -8960,13 +8950,11 @@
         {
           "name": "n_alphas",
           "type": "string",
-          "default": "deprecated",
           "isAdvanced": true
         },
         {
           "name": "alphas",
           "type": "string",
-          "default": "warn",
           "isAdvanced": true
         },
         {
@@ -10198,7 +10186,6 @@
         {
           "name": "base_estimator",
           "type": "string",
-          "default": "deprecated",
           "isAdvanced": true
         }
       ]
@@ -10344,7 +10331,6 @@
         {
           "name": "base_estimator",
           "type": "string",
-          "default": "deprecated",
           "isAdvanced": true
         }
       ]

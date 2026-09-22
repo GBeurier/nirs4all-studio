@@ -64,6 +64,10 @@ def jsonable_default(value: Any) -> tuple[bool, Any]:
     """Check if a value can be serialized to JSON and return sanitized version."""
     if value is inspect._empty:
         return False, None
+    if isinstance(value, str) and value in {"deprecated", "warn"}:
+        # sklearn uses these strings as private transition sentinels. They are
+        # not user defaults and can be invalid with another supported minor.
+        return False, None
     if isinstance(value, bool):
         return True, value
     if isinstance(value, int):

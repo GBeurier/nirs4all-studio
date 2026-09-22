@@ -15,7 +15,7 @@ def test_release_workflows_embed_recommended_nirs4all_version() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
     manifest = json.loads((ROOT / "build" / "recovery-library.json").read_text(encoding="utf-8"))
 
-    assert version == "1.1.2"
+    assert version == "1.1.3"
     assert manifest["version"] == version
     assert re.fullmatch(r"[a-f0-9]{40}", manifest["source_commit"])
     assert re.fullmatch(r"[a-f0-9]{64}", manifest["source_sha256"])

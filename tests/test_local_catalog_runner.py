@@ -148,6 +148,19 @@ def test_dependency_classification_requires_typed_cause(runner):
     assert runner.missing_module_from_error(plain) == "aompls"
 
 
+def test_editor_registry_never_hydrates_sklearn_transition_sentinels():
+    from api.node_registry_loader import load_editor_registry_nodes
+
+    offenders = [
+        (node["id"], parameter["name"], parameter["default"])
+        for node in load_editor_registry_nodes()
+        for parameter in node.get("parameters", [])
+        if isinstance(parameter.get("default"), str)
+        and parameter["default"] in {"deprecated", "warn"}
+    ]
+    assert offenders == []
+
+
 @pytest.fixture
 def score_audit():
     spec = importlib.util.spec_from_file_location("catalog_score_audit", SCRIPT.with_name("audit-local-catalog-results.py"))

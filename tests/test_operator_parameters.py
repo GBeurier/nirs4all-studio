@@ -204,6 +204,25 @@ def test_historical_kbins_quantiles_keep_linear_semantics(monkeypatch):
         normalize_operator_parameters("KBinsDiscretizer", {"quantile_method": "averaged_inverted_cdf"})
 
 
+@pytest.mark.parametrize("name,params,expected", [
+    ("LogisticRegression", {"penalty": "deprecated", "multi_class": "deprecated", "C": 2}, {"C": 2}),
+    ("LogisticRegressionCV", {"penalty": "deprecated", "l1_ratios": "warn", "use_legacy_attributes": "warn"}, {}),
+    ("ColumnTransformer", {"force_int_remainder_cols": "deprecated", "remainder": "drop"}, {"remainder": "drop"}),
+])
+def test_sklearn_transition_sentinels_never_reach_estimators(name, params, expected):
+    assert normalize_operator_parameters(name, params) == expected
+
+
+@pytest.mark.parametrize("name", ["ClassifierChain", "RegressorChain"])
+def test_chain_estimator_name_tracks_supported_sklearn_runtime(monkeypatch, name):
+    estimator = {"class": "sklearn.linear_model.Ridge"}
+    historical = {"estimator": estimator, "base_estimator": "deprecated"}
+    monkeypatch.setattr(operator_parameters, "_sklearn_version", lambda: (1, 6))
+    assert normalize_operator_parameters(name, historical) == {"base_estimator": estimator}
+    monkeypatch.setattr(operator_parameters, "_sklearn_version", lambda: (1, 7))
+    assert normalize_operator_parameters(name, historical) == {"estimator": estimator}
+
+
 def test_playground_and_runtime_share_parameter_meaning():
     params = {"base": "10"}
     assert normalize_params("LogTransform", params) == {"base": 10.0}
