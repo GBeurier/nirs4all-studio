@@ -124,7 +124,7 @@ jobs:
             build_platform: mac
             arch: x64
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
