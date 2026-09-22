@@ -7502,8 +7502,7 @@
       {
         "name": "base_estimator",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       }
     ],
     "source": "sklearn",
@@ -7840,14 +7839,12 @@
       {
         "name": "n_alphas",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "alphas",
         "type": "string",
-        "isAdvanced": true,
-        "default": "warn"
+        "isAdvanced": true
       },
       {
         "name": "fit_intercept",
@@ -9763,14 +9760,12 @@
       {
         "name": "n_alphas",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "alphas",
         "type": "string",
-        "isAdvanced": true,
-        "default": "warn"
+        "isAdvanced": true
       },
       {
         "name": "fit_intercept",
@@ -10368,8 +10363,7 @@
       {
         "name": "penalty",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "C",
@@ -10476,8 +10470,7 @@
       {
         "name": "l1_ratios",
         "type": "string",
-        "isAdvanced": true,
-        "default": "warn"
+        "isAdvanced": true
       },
       {
         "name": "fit_intercept",
@@ -10500,8 +10493,7 @@
       {
         "name": "penalty",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "scoring",
@@ -10566,8 +10558,7 @@
       {
         "name": "use_legacy_attributes",
         "type": "string",
-        "isAdvanced": true,
-        "default": "warn"
+        "isAdvanced": true
       }
     ],
     "source": "sklearn",
@@ -11054,14 +11045,12 @@
       {
         "name": "n_alphas",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "alphas",
         "type": "string",
-        "isAdvanced": true,
-        "default": "warn"
+        "isAdvanced": true
       },
       {
         "name": "fit_intercept",
@@ -11210,14 +11199,12 @@
       {
         "name": "n_alphas",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "alphas",
         "type": "string",
-        "isAdvanced": true,
-        "default": "warn"
+        "isAdvanced": true
       },
       {
         "name": "fit_intercept",
@@ -12564,8 +12551,7 @@
       {
         "name": "base_estimator",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       }
     ],
     "source": "sklearn",
@@ -14089,8 +14075,7 @@
       {
         "name": "force_int_remainder_cols",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       }
     ],
     "source": "sklearn",

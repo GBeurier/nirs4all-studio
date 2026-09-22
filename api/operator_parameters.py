@@ -13,6 +13,18 @@ from typing import Any
 
 _ALPHA_GRID_MODELS = {"ElasticNetCV", "LassoCV", "MultiTaskElasticNetCV", "MultiTaskLassoCV"}
 _SCORE_SELECTORS = {"SelectFdr", "SelectFpr", "SelectFwe", "SelectKBest", "SelectPercentile", "GenericUnivariateSelect"}
+_SKLEARN_SENTINEL_PARAMETERS = {
+    "ClassifierChain": {"base_estimator": "deprecated"},
+    "ColumnTransformer": {"force_int_remainder_cols": "deprecated"},
+    "LogisticRegression": {"multi_class": "deprecated", "penalty": "deprecated"},
+    "LogisticRegressionCV": {
+        "l1_ratios": "warn",
+        "multi_class": "deprecated",
+        "penalty": "deprecated",
+        "use_legacy_attributes": "warn",
+    },
+    "RegressorChain": {"base_estimator": "deprecated"},
+}
 
 
 @lru_cache(maxsize=1)
@@ -50,6 +62,19 @@ def normalize_operator_parameters(name: str, params: dict[str, Any]) -> dict[str
     """Preserve parameter meaning across JSON types and sklearn API versions."""
     name = name.rsplit(".", 1)[-1]
     result = dict(params)
+    for parameter, sentinel in _SKLEARN_SENTINEL_PARAMETERS.get(name, {}).items():
+        if result.get(parameter) == sentinel:
+            result.pop(parameter)
+
+    if name in {"ClassifierChain", "RegressorChain"}:
+        # sklearn 1.7 renamed base_estimator to estimator. Studio keeps the
+        # current spelling in saved pipelines and adapts it to the installed
+        # runtime, including the 1.5/1.6 range required by TabPFN 2.0.
+        if _sklearn_version() < (1, 7):
+            if "estimator" in result:
+                result["base_estimator"] = result.pop("estimator")
+        elif "base_estimator" in result and "estimator" not in result:
+            result["estimator"] = result.pop("base_estimator")
     if name == "CARS" and "n_pls_components" in result:
         # Studio historically exposed this parameter under a UI-specific name.
         # Canonical pipelines may nest CARS inside generators, so normalize it

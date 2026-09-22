@@ -338,6 +338,8 @@ def safe_import_attr(path: str):
 
 
 def sanitize_default(value):
+    if isinstance(value, str) and value in {"deprecated", "warn"}:
+        return None
     if isinstance(value, bool):
         return value
     if isinstance(value, int):
