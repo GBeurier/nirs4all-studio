@@ -1,6 +1,6 @@
 {
   "schema_version": "1.2",
-  "app_version": "0.11.10",
+  "app_version": "0.11.11",
   "nirs4all": "1.1.2",
   "_note": "Python recovery: a minimal scikit-learn environment is the default; additional frameworks are installed only when selected. Existing environments and choices are preserved.",
   "profiles": {

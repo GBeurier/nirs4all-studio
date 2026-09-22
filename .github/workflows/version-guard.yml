@@ -17,7 +17,9 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Ensure package version matches latest semver tag
+      - name: Validate package version against latest semver tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -27,8 +29,32 @@ jobs:
             echo "No numeric semver tags found; package version is $version."
             exit 0
           fi
-          if [[ "$version" != "$latest_tag" ]]; then
-            echo "::error::package.json version ($version) must match latest release tag ($latest_tag)."
-            exit 1
+          if [[ "$version" == "$latest_tag" ]]; then
+            echo "package.json version matches $latest_tag."
+            exit 0
           fi
-          echo "package.json version matches $latest_tag."
+          if [[ "$EVENT_NAME" == "pull_request" ]] && node - "$version" "$latest_tag" <<'NODE'
+          const [candidate, released] = process.argv.slice(2);
+          const parse = (value) => {
+            const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value);
+            if (!match) process.exit(2);
+            return match.slice(1).map(Number);
+          };
+          const left = parse(candidate);
+          const right = parse(released);
+          for (let i = 0; i < 3; i += 1) {
+            if (left[i] > right[i]) process.exit(0);
+            if (left[i] < right[i]) process.exit(1);
+          }
+          process.exit(1);
+          NODE
+          then
+            echo "Release preparation version $version is newer than $latest_tag."
+            exit 0
+          fi
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "::error::package.json version ($version) must equal or be newer than latest release tag ($latest_tag)."
+          else
+            echo "::error::package.json version ($version) must match latest release tag ($latest_tag)."
+          fi
+          exit 1

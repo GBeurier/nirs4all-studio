@@ -1,4 +1,4 @@
-# Studio 0.11.10 — Scientific execution and reliability fixes
+# Studio 0.11.11 — Pipeline execution and ecosystem integration
 
 This patch continues the Python backend and explicit legacy execution engine from Studio 0.11.8, with the corrected nirs4all 1.1.2 library. Existing schema-5 workspaces remain supported.
 
@@ -8,6 +8,9 @@ This patch continues the Python backend and explicit legacy execution engine fro
 - Startup dataset enrichment and result access use the ML readiness cache before importing scientific dependencies.
 - Concurrent workspace openings preserve the SQLite results view, including immediately after restarting the application.
 - Results refresh also reloads an already-expanded model history. PCA rendering, pipeline catalog availability and experiment selection are corrected.
+- Pipelines opened from history or sent with **Run this pipeline** remain selected in the run wizard. Nested Cartesian stages execute each alternative with supervised targets preserved.
+- The node catalog now hides parameters unavailable in the scikit-learn version qualified with TabPFN, and marks unsupported optional nodes before execution instead of allowing late import failures.
+- The bundled Python runtime is pinned to the published `nirs4all 1.1.2`, `dag-ml 0.3.26`, `dag-ml-data 0.2.11`, `nirs4all-methods 1.0.21`, and `nirs4all-io 0.2.0` ecosystem.
 - Installation logs can be expanded and copied in setup and Settings. Output is bounded and secrets are redacted; package processes drain both output streams and enforce timeouts independently of output reads.
 - Optional package installation checks compatible dependencies, including the scikit-learn requirement of TabPFN 2.0.x. Dependency scanning no longer blocks the application event loop.
 - AOM-PLS now uses the native backend already distributed by `nirs4all-methods`. Its parameters are either applied by that backend or rejected explicitly.
