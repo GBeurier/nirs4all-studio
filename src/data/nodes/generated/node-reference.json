@@ -15957,12 +15957,6 @@
           ]
         },
         {
-          "name": "quantile_method",
-          "type": "string",
-          "default": "warn",
-          "isAdvanced": true
-        },
-        {
           "name": "dtype",
           "type": "string",
           "isAdvanced": true
@@ -17170,12 +17164,6 @@
           "name": "order",
           "type": "string",
           "default": "C",
-          "isAdvanced": true
-        },
-        {
-          "name": "handle_missing",
-          "type": "string",
-          "default": "error",
           "isAdvanced": true
         },
         {

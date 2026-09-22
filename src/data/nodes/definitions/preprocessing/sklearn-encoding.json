@@ -82,12 +82,6 @@
         ]
       },
       {
-        "name": "quantile_method",
-        "type": "string",
-        "default": "linear",
-        "isAdvanced": true
-      },
-      {
         "name": "dtype",
         "type": "string",
         "isAdvanced": true
