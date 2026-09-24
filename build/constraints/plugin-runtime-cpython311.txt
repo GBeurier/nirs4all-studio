@@ -11,8 +11,8 @@ cloudpickle==3.1.2
 colorama==0.4.6; sys_platform == "win32"
 colorlog==6.12.0
 cvmatrix==3.2.2
-dag-ml==0.3.25
-dag-ml-data==0.2.11
+dag-ml==0.3.27
+dag-ml-data==0.2.12
 duckdb==1.5.5
 greenlet==3.5.5; platform_machine == "aarch64" or (platform_machine == "ppc64le" or (platform_machine == "x86_64" or (platform_machine == "amd64" or (platform_machine == "AMD64" or (platform_machine == "win32" or platform_machine == "WIN32")))))
 h5py==3.16.0
@@ -24,10 +24,10 @@ kennard-stone==3.0.1
 Mako==1.4.1
 MarkupSafe==3.0.3
 narwhals==2.25.0
-nirs4all==1.0.1
-nirs4all-core==0.3.30
-nirs4all-io==0.1.18
-nirs4all-methods==1.0.18
+nirs4all==1.1.5
+nirs4all-core==0.3.31
+nirs4all-io==0.2.0
+nirs4all-methods==1.0.21
 nirs4all-tools==0.0.7
 # macOS Intel's last Numba wheel requires NumPy < 2.4.
 numpy==2.3.5; sys_platform == "darwin" and platform_machine == "x86_64"

@@ -255,7 +255,7 @@ function BackendConnectingScreen() {
       </p>
       <NirsSplashLoader className="w-[340px] h-[90px]" />
       <p
-        className={`mt-4 font-mono text-[11px] min-h-[16px] transition-opacity duration-[400ms] ${visible ? "opacity-100" : "opacity-0"}`}
+        className={`mt-4 font-mono text-[11px] min-h-[16px] transition-opacity [transition-duration:400ms] ${visible ? "opacity-100" : "opacity-0"}`}
         style={{ color: "#94a3b8" }}
       >
         {text.split("").map((char, i) => (

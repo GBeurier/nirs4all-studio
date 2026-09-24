@@ -24,7 +24,8 @@ use nirs4all::{
     train_dataset_package_methods_archive_v2, DatasetPackage,
     DatasetPackageMethodsArchiveV2Request, DatasetPackageMethodsProvider,
 };
-use nirs4all_io::api::{load_assembled, Input};
+// Core's DatasetPackage expects the IO types reexported by its own release.
+use nirs4all::io::api::{load_assembled, Input};
 use serde_json::{json, Map, Value};
 
 use crate::{
@@ -540,7 +541,7 @@ fn build_training_request(
 
 fn fold_contract(
     provider: &DatasetPackageMethodsProvider,
-    provenance: &[nirs4all_io::core::materialize::FoldProvenance],
+    provenance: &[nirs4all::io::core::materialize::FoldProvenance],
 ) -> Result<(Vec<Value>, BTreeMap<String, String>), NativeTrainingFailure> {
     let relations = provider.relations();
     let mut observation_samples = BTreeMap::new();
