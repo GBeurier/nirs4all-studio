@@ -43,7 +43,6 @@
       {
         "name": "base_estimator",
         "type": "string",
-        "default": "deprecated",
         "isAdvanced": true
       }
     ]
@@ -207,7 +206,6 @@
       {
         "name": "base_estimator",
         "type": "string",
-        "default": "deprecated",
         "isAdvanced": true
       }
     ]

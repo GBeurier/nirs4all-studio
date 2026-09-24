@@ -48,6 +48,9 @@ async function renderHook<T>(hook: () => T) {
 
   return {
     result,
+    rerender: async () => {
+      await act(async () => { root.render(<TestComponent />); });
+    },
     unmount: async () => {
       await act(async () => {
         root.unmount();
@@ -191,4 +194,46 @@ describe("useNewExperimentSelectionFlow", () => {
 
     await mounted.unmount();
   });
+  it("retains the requested pipeline while the catalog is loading and selects it after arrival", async () => {
+    const onEditorRedirect = vi.fn();
+    let catalog: PipelineInfo[] = [];
+    const mounted = await renderHook(() => useNewExperimentSelectionFlow(selectionFlowInput({
+      rawPipelines: catalog,
+      savedPipelineOptions: catalog.length ? savedPipelineOptions : [],
+      searchParams: new URLSearchParams("pipeline=p1"),
+      onEditorRedirect,
+    })));
+
+    expect(mounted.result.current!.selectedPipelineIds).toEqual([]);
+    expect(onEditorRedirect).not.toHaveBeenCalled();
+
+    catalog = rawPipelines;
+    await mounted.rerender();
+    expect(mounted.result.current!.selectedPipelineIds).toEqual(["p1"]);
+    expect(onEditorRedirect).toHaveBeenCalledTimes(1);
+
+    // A subsequent response must not reselect a pipeline the user deselected.
+    await act(async () => { mounted.result.current!.togglePipeline("p1"); });
+    await mounted.rerender();
+    expect(mounted.result.current!.selectedPipelineIds).toEqual([]);
+    expect(onEditorRedirect).toHaveBeenCalledTimes(1);
+    await mounted.unmount();
+  });
+
+  it("accepts the same pipeline again after a new explicit route selection", async () => {
+    const onEditorRedirect = vi.fn();
+    let searchParams = new URLSearchParams("pipeline=p1");
+    const mounted = await renderHook(() => useNewExperimentSelectionFlow(selectionFlowInput({ searchParams, onEditorRedirect })));
+    expect(mounted.result.current!.selectedPipelineIds).toEqual(["p1"]);
+    searchParams = new URLSearchParams();
+    await mounted.rerender();
+    await act(async () => { mounted.result.current!.togglePipeline("p1"); });
+    expect(mounted.result.current!.selectedPipelineIds).toEqual([]);
+    searchParams = new URLSearchParams("pipeline=p1");
+    await mounted.rerender();
+    expect(mounted.result.current!.selectedPipelineIds).toEqual(["p1"]);
+    expect(onEditorRedirect).toHaveBeenCalledTimes(2);
+    await mounted.unmount();
+  });
+
 });

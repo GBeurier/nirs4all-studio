@@ -463,8 +463,18 @@ export function DimensionReductionChart({
     );
   }
 
+  if (activeResult && nComponents < 2) {
+    return (
+      <DimensionReductionChartEmptyState
+        method={config.method}
+        error="Only one component is available. A two-axis projection requires at least two input features and two samples."
+        isUMAPLoading={isUMAPLoading}
+      />
+    );
+  }
+
   // Empty state
-  if (!activeResult || chartData.length < 3) {
+  if (!activeResult || chartData.length < 2) {
     return (
       <DimensionReductionChartEmptyState
         method={config.method}
@@ -482,8 +492,8 @@ export function DimensionReductionChart({
     <DimensionReduction2DView
       data={chartData}
       referenceData={referenceChartData}
-      xAxis={config.xAxis}
-      yAxis={config.yAxis}
+      xAxis={activeAxes.xAxis}
+      yAxis={activeAxes.yAxis}
       axisLabels={axisLabels}
       pointBaseSize={sizes.base}
       showGrid={config.showGrid}
@@ -521,10 +531,10 @@ export function DimensionReductionChart({
       containerRef={chartContainerRef}
       scatter3DRef={scatter3DRef}
       method={config.method}
-      viewMode={config.viewMode}
-      xAxis={config.xAxis}
-      yAxis={config.yAxis}
-      zAxis={config.zAxis}
+      viewMode={nComponents >= 3 ? config.viewMode : '2d'}
+      xAxis={activeAxes.xAxis}
+      yAxis={activeAxes.yAxis}
+      zAxis={activeAxes.zAxis}
       nComponents={nComponents}
       dimensionOptions={dimensionOptions}
       hasPCA={hasPCA}

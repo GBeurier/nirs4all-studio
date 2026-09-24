@@ -169,6 +169,9 @@ export interface PartitionDataset {
   label: string;
   yTrue: number[];
   yPred: number[];
+  /** Explicit selection; matrices remain cached by the fetching hook. */
+  outputIndex?: number;
+  outputCount?: number;
   nSamples: number;
   conformalCoverage?: number;
   conformalCoverageLabel?: string;

@@ -10,6 +10,7 @@ import { NoWorkspaceState, NoResultsState, CardSkeleton } from "@/components/ui/
 import { MetricSelector } from "@/components/scores/MetricSelector";
 import { DatasetResultCard } from "@/components/scores/DatasetResultCard";
 import { useResultsPageState } from "@/hooks/useResultsPageState";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -38,6 +39,15 @@ export default function Results() {
   }
 
   const activeWorkspace = state.activeWorkspace;
+
+  const errorMessage = state.error instanceof Error ? state.error.message : state.error ? String(state.error) : null;
+
+  if (!activeWorkspace && errorMessage) {
+    return <Alert variant="destructive"><AlertTitle>Error loading results</AlertTitle>
+      <AlertDescription>{errorMessage}</AlertDescription>
+      <Button variant="outline" onClick={() => { void state.refetch(); }}>Retry</Button>
+    </Alert>;
+  }
 
   // No workspace
   if (!activeWorkspace) {
@@ -92,7 +102,10 @@ export default function Results() {
 	      </div>
 
 	      {/* Dataset Cards */}
-	      {state.filteredDatasets.length === 0 ? (
+        {errorMessage && <Alert variant="destructive"><AlertTitle>Error loading results</AlertTitle>
+          <AlertDescription>{errorMessage}</AlertDescription>
+        </Alert>}
+	      {state.filteredDatasets.length === 0 && !errorMessage ? (
 	        <NoResultsState
 	          title={t("results.noResults", { defaultValue: "No results found" })}
 	          description="Run experiments to generate results."

@@ -13,7 +13,6 @@ import {
   computeDimensionReductionYRange,
   filterDimensionReductionPoints,
   formatDimensionReductionAxisLabel,
-  getDimensionReductionComponentsForVariance,
   getDimensionReductionUniqueFolds,
   type DimensionOption,
   type DimensionReductionAxes,
@@ -92,13 +91,9 @@ export function useDimensionReductionChartData({
   const hasUMAP = !!umap && !umap.error && Array.isArray(umap.coordinates) && umap.coordinates.length > 0;
   const hasPCA = !!pca && !pca.error && Array.isArray(pca.coordinates) && pca.coordinates.length > 0;
 
-  const componentsFor999Variance = useMemo(() => {
-    return getDimensionReductionComponentsForVariance(pca);
-  }, [pca]);
-
-  const nComponents = config.method === 'pca'
-    ? componentsFor999Variance
-    : (umap?.n_components ?? 0);
+  // Variance thresholds describe compression, not which axes can be explored.
+  // A dominant PC1 must not hide the other components actually computed.
+  const nComponents = activeResult?.n_components ?? 0;
 
   const dimensionOptions = useMemo(() => {
     return buildDimensionReductionOptions(config.method, nComponents);
@@ -108,11 +103,17 @@ export function useDimensionReductionChartData({
     return buildDimensionReductionVarianceExplained(config.method, pca?.explained_variance_ratio);
   }, [config.method, pca]);
 
-  const activeAxes = useMemo(() => ({
-    xAxis: config.xAxis,
-    yAxis: config.yAxis,
-    zAxis: config.zAxis,
-  }), [config.xAxis, config.yAxis, config.zAxis]);
+  const activeAxes = useMemo(() => {
+    const available = new Set(dimensionOptions.map(option => option.value));
+    const resolveAxis = (axis: string, fallback: number) => available.has(axis)
+      ? axis
+      : `dim${Math.min(fallback, Math.max(1, nComponents))}`;
+    return {
+      xAxis: resolveAxis(config.xAxis, 1),
+      yAxis: resolveAxis(config.yAxis, 2),
+      zAxis: resolveAxis(config.zAxis, 3),
+    };
+  }, [config.xAxis, config.yAxis, config.zAxis, dimensionOptions, nComponents]);
 
   const chartData = useMemo<DimensionReductionDataPoint[]>(() => {
     return buildDimensionReductionPoints({
@@ -161,10 +162,10 @@ export function useDimensionReductionChartData({
   }, [externalColorContext, y, yRange, folds, pca, metadata, selectedSamples, pinnedSamples]);
 
   const axisLabels = useMemo(() => ({
-    x: formatDimensionReductionAxisLabel(config.xAxis, config.method, varianceExplained, formatPercentage),
-    y: formatDimensionReductionAxisLabel(config.yAxis, config.method, varianceExplained, formatPercentage),
-    z: formatDimensionReductionAxisLabel(config.zAxis, config.method, varianceExplained, formatPercentage),
-  }), [config.method, config.xAxis, config.yAxis, config.zAxis, varianceExplained]);
+    x: formatDimensionReductionAxisLabel(activeAxes.xAxis, config.method, varianceExplained, formatPercentage),
+    y: formatDimensionReductionAxisLabel(activeAxes.yAxis, config.method, varianceExplained, formatPercentage),
+    z: formatDimensionReductionAxisLabel(activeAxes.zAxis, config.method, varianceExplained, formatPercentage),
+  }), [config.method, activeAxes, varianceExplained]);
 
   const metadataKeys = useMemo(() => {
     if (!metadata) return [];

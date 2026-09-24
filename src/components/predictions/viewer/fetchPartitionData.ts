@@ -5,12 +5,14 @@
  * workspace-scoped scatter endpoint via the target's `source` discriminator.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getN4AWorkspacePredictionScatter } from "@/api/linkedWorkspaces";
 import { getPredictionArrays } from "@/api/aggregatedPredictions";
 import type { PredictionArrayPayload } from "@/types/aggregated-predictions";
 import { attachConformalIntervalsToSingleDataset } from "./conformalChartData";
 import type { PartitionDataset, ViewerPartitionTarget } from "./types";
+import { coercePredictionVector, predictionOutputCount } from "./predictionOutputs";
+export { coercePredictionVector } from "./predictionOutputs";
 
 interface Options {
   partitions: ViewerPartitionTarget[];
@@ -19,74 +21,63 @@ interface Options {
   enabled?: boolean;
 }
 
-interface State {
-  data: PartitionDataset[];
-  isLoading: boolean;
-  error: string | null;
+interface FetchedPartition extends PartitionDataset {
+  rawYTrue: PredictionArrayPayload;
+  rawYPred: PredictionArrayPayload;
 }
 
-export function coercePredictionVector(payload: PredictionArrayPayload | null | undefined, targetIndex = 0): number[] {
-  if (payload == null) return [];
-  if (payload.length === 0) return [];
-  const first = payload[0];
-  if (typeof first === "number") {
-    return payload as number[];
-  }
-  const matrix = payload as number[][];
-  return matrix.map((row) => {
-    const value = row[targetIndex];
-    return typeof value === "number" ? value : Number.NaN;
-  });
+interface State {
+  data: FetchedPartition[];
+  isLoading: boolean;
+  error: string | null;
 }
 
 async function fetchOne(
   target: ViewerPartitionTarget,
   workspaceId: string | undefined,
-): Promise<PartitionDataset> {
-  const attachConformal = (dataset: PartitionDataset): PartitionDataset => {
-    if (!target.conformalRows || target.conformalRows.length === 0) return dataset;
-    return attachConformalIntervalsToSingleDataset(
-      [dataset],
-      target.conformalRows,
-      target.conformalCoverage,
-    )[0] ?? dataset;
-  };
-
-  if (target.source === "workspace") {
-    if (!workspaceId) {
-      throw new Error("workspaceId is required for workspace-source predictions");
-    }
-    const r = await getN4AWorkspacePredictionScatter(workspaceId, target.predictionId);
-    return attachConformal({
-      predictionId: target.predictionId,
-      partition: target.partition,
-      label: target.label ?? target.partition,
-      yTrue: r.y_true ?? [],
-      yPred: r.y_pred ?? [],
-      nSamples: r.n_samples ?? 0,
-      sampleIds: r.sample_ids ?? undefined,
-      sampleMetadata: r.sample_metadata ?? null,
-    });
+): Promise<FetchedPartition> {
+  if (target.source === "workspace" && !workspaceId) {
+    throw new Error("workspaceId is required for workspace-source predictions");
   }
-  const r = await getPredictionArrays(target.predictionId);
-  const targetIndex = r.target_index ?? 0;
-  const yTrue = coercePredictionVector(r.y_true, targetIndex);
-  const yPred = coercePredictionVector(r.y_pred, targetIndex);
-  return attachConformal({
+  const response = target.source === "workspace"
+    ? await getN4AWorkspacePredictionScatter(workspaceId!, target.predictionId)
+    : await getPredictionArrays(target.predictionId);
+  const rawYTrue = response.y_true ?? [];
+  const rawYPred = response.y_pred ?? [];
+  const trueOutputs = predictionOutputCount(rawYTrue);
+  const outputCount = predictionOutputCount(rawYPred);
+  if (rawYTrue.length && (rawYTrue.length !== rawYPred.length || trueOutputs !== outputCount)) {
+    throw new Error("Actual and predicted arrays have different sample/output shapes");
+  }
+  if (response.sample_ids && response.sample_ids.length !== rawYPred.length) {
+    throw new Error("Prediction sample identities do not match the array rows");
+  }
+  const dataset: FetchedPartition = {
     predictionId: target.predictionId,
     partition: target.partition,
     label: target.label ?? target.partition,
-    yTrue,
-    yPred,
-    nSamples: r.n_samples ?? yTrue.length,
-    sampleIds: r.sample_ids ?? undefined,
-    sampleMetadata: r.sample_metadata ?? null,
-  });
+    rawYTrue, rawYPred,
+    yTrue: coercePredictionVector(rawYTrue),
+    yPred: coercePredictionVector(rawYPred),
+    outputCount, outputIndex: 0,
+    nSamples: rawYPred.length,
+    sampleIds: response.sample_ids ?? undefined,
+    sampleMetadata: response.sample_metadata ?? null,
+  };
+  // Existing conformal rows describe a scalar output; never assign them to
+  // another target without an explicit target identity in that evidence.
+  if (outputCount <= 1 && target.conformalRows?.length) {
+    return { ...dataset, ...attachConformalIntervalsToSingleDataset(
+      [dataset], target.conformalRows, target.conformalCoverage,
+    )[0] };
+  }
+  return dataset;
 }
 
 /** Fetches all partitions in parallel; returns the combined state. */
-export function usePartitionsData({ partitions, workspaceId, enabled = true }: Options): State {
+export function usePartitionsData({ partitions, workspaceId, enabled = true }: Options) {
   const [state, setState] = useState<State>({ data: [], isLoading: false, error: null });
+  const [selectedOutput, setOutputIndex] = useState(0);
   // Stable signature: include conformal coverage/rows because those decorate the
   // resolved dataset used by full-screen charts and CSV exports.
   const signature = partitions
@@ -100,11 +91,14 @@ export function usePartitionsData({ partitions, workspaceId, enabled = true }: O
     }
 
     let cancelled = false;
-    setState((prev) => ({ ...prev, isLoading: true, error: null }));
+    setState({ data: [], isLoading: true, error: null });
 
     Promise.all(partitions.map((p) => fetchOne(p, workspaceId)))
       .then((results) => {
         if (cancelled) return;
+        const counts = new Set(results.filter(result => result.nSamples > 0).map(result => result.outputCount));
+        if (counts.size > 1) throw new Error("Selected partitions have different numbers of outputs");
+        setOutputIndex(0);
         setState({ data: results, isLoading: false, error: null });
       })
       .catch((err: unknown) => {
@@ -119,5 +113,14 @@ export function usePartitionsData({ partitions, workspaceId, enabled = true }: O
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature, workspaceId, enabled]);
 
-  return state;
+  const outputCount = Math.max(1, ...state.data.map(dataset => dataset.outputCount ?? 1));
+  const outputIndex = Math.min(selectedOutput, outputCount - 1);
+  const data = useMemo(() => state.data.map(dataset => ({
+    ...dataset,
+    outputIndex,
+    yTrue: coercePredictionVector(dataset.rawYTrue, outputIndex),
+    yPred: coercePredictionVector(dataset.rawYPred, outputIndex),
+  })), [state.data, outputIndex]);
+  return { ...state, data, outputCount, outputIndex, setOutputIndex };
+
 }

@@ -64,6 +64,8 @@ def jsonable_default(value: Any) -> tuple[bool, Any]:
     """Check if a value can be serialized to JSON and return sanitized version."""
     if value is inspect._empty:
         return False, None
+    if isinstance(value, str) and value in {"deprecated", "warn"}:
+        return False, None
     if isinstance(value, bool):
         return True, value
     if isinstance(value, int):

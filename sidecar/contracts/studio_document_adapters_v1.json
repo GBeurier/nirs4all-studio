@@ -201,13 +201,13 @@
     },
     {
       "path": "src/data/nodes/definitions/models/sklearn-linear.json",
-      "size": 64216,
-      "sha256": "85b302eb6825dad8e25ac5da07d108dc7b836b0504c3090ec56b5218a0c81ead"
+      "size": 63996,
+      "sha256": "7e2301608cf4d3fb2ed1f4b078c8882c478ce9ea81411eceb01acf122ac4c572"
     },
     {
       "path": "src/data/nodes/definitions/models/sklearn-meta.json",
-      "size": 5005,
-      "sha256": "726a124948acdae9a5332aa9591094f2161ad77e5abdcf116def45850bacd05f"
+      "size": 4937,
+      "sha256": "727954ca3df60e8bd173e8f47ea510471b39fbd0969b6362f1ed17af08f19d73"
     },
     {
       "path": "src/data/nodes/definitions/models/sklearn-misc.json",
@@ -291,8 +291,8 @@
     },
     {
       "path": "src/data/nodes/definitions/preprocessing/sklearn-encoding.json",
-      "size": 6469,
-      "sha256": "ab2038b6b46a301d174060336f41cbf19acff2e79dba5f396b738211dbb826b6"
+      "size": 6337,
+      "sha256": "dde8932ee5a03734f78124b9edf668c4c8fb79089a917b0f698373f0169d1f9c"
     },
     {
       "path": "src/data/nodes/definitions/preprocessing/sklearn-feature-extraction.json",
@@ -351,8 +351,8 @@
     },
     {
       "path": "src/data/nodes/generated/canonical-registry.json",
-      "size": 418499,
-      "sha256": "05d80b0f41150eecc19c0f17300dea91d0675dfe741985c9b2aa641961c27e6f"
+      "size": 418154,
+      "sha256": "996f7394660f4fe29a83159ba49ec8e7f3deb7fe2578ba0b1424519d35276f6c"
     }
   ]
 }

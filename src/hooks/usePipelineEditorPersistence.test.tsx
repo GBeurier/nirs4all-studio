@@ -41,6 +41,7 @@ describe("resolvePipelineEditorInitialState", () => {
       pipelineName: "Draft pipeline",
       pipelineConfig: { seed: 42 },
       isFavorite: true,
+      isDirty: true,
     });
   });
 
@@ -55,6 +56,7 @@ describe("resolvePipelineEditorInitialState", () => {
     expect(resolved.pipelineName).toBe("Initial pipeline");
     expect(resolved.pipelineConfig).toEqual({ verbose: 1 });
     expect(resolved.isFavorite).toBe(false);
+    expect(resolved.isDirty).toBe(false);
     expect(resolved.steps).toHaveLength(1);
     expect(resolved.steps[0]).toMatchObject({
       id: "initial-model",

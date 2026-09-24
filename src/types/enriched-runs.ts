@@ -80,6 +80,7 @@ export interface TopChainResult {
   avg_train_score: number | null;
   fold_count: number;
   scores: {
+    train?: Record<string, number>;
     val: Record<string, number>;
     test: Record<string, number>;
   };
