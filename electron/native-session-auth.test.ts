@@ -25,10 +25,11 @@ describe("native session credential injection", () => {
       requestHeaders: Record<string, string>;
       webContentsId?: number;
       webContents?: { id: number };
-      frame?: { url: string; parent?: null | object };
+      frame?: { url: string; parent?: null | object; processId?: number; routingId?: number };
     }, callback: (result: { requestHeaders: Record<string, string> }) => void) => void = () => {};
     const session = { webRequest: { onBeforeSendHeaders: (handler: typeof listener) => { listener = handler; } } } as unknown as Session;
-    const window = { webContents: { id: 7, getURL: () => `${entry}#/datasets` } } as unknown as BrowserWindow;
+    const window = { webContents: { id: 7, getURL: () => `${entry}#/datasets`,
+      mainFrame: { processId: 11, routingId: 13 } } } as unknown as BrowserWindow;
     installNativeSessionAuth(session, () => window, entry, () => ({ "X-Nirs4all-Session": "private" }));
     const headersFor = (details: Record<string, unknown>) => {
       let headers: Record<string, string> = {};
@@ -37,6 +38,12 @@ describe("native session credential injection", () => {
     };
     expect(headersFor({ frame: undefined })).toEqual({ "X-Nirs4all-Session": "private" });
     expect(headersFor({ webContentsId: undefined, webContents: { id: 7 }, frame: undefined }))
+      .toEqual({ "X-Nirs4all-Session": "private" });
+    expect(headersFor({ webContentsId: undefined,
+      frame: { url: entry, parent: null, processId: 11, routingId: 13 } }))
+      .toEqual({ "X-Nirs4all-Session": "private" });
+    expect(headersFor({ webContentsId: 0,
+      frame: { url: entry, parent: null, processId: 11, routingId: 13 } }))
       .toEqual({ "X-Nirs4all-Session": "private" });
     expect(headersFor({ frame: { url: "file:///C:/untrusted.html", parent: null } }))
       .toEqual({ "X-Nirs4all-Session": "private" });
