@@ -215,10 +215,11 @@ function removeBytecode(runtimeRoot) {
  * prevents runtime writes. Test/example sources need no startup acceleration.
  */
 function compileRuntimeBytecode(runtimeRoot, platform = process.platform) {
-  const script = `import compileall,py_compile,re,sys
-root=sys.argv[1]
+  const script = `import compileall,pathlib,py_compile,re,sys
+root=pathlib.Path(sys.argv[1])
+library=root/'Lib' if (root/'Lib').is_dir() else next(root.glob('lib/python3.*'))
 excluded=re.compile(r"[/\\\\](tests?|testing|examples|benchmarks|studio_document_adapters)[/\\\\]")
-ok=compileall.compile_dir(root,quiet=1,workers=1 if sys.platform == "win32" else 2,rx=excluded,stripdir=root,prependdir="python-runtime/python",invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
+ok=compileall.compile_dir(str(library),quiet=1,workers=1 if sys.platform == "win32" else 2,rx=excluded,stripdir=root,prependdir="python-runtime/python",invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
 raise SystemExit(0 if ok else 1)`;
   const result = spawnSync(bundledPython(runtimeRoot, platform), ["-I", "-S", "-B", "-c", script, runtimeRoot], {
     encoding: "utf8", windowsHide: true, timeout: 180000, maxBuffer: 2 * 1024 * 1024,
