@@ -218,13 +218,13 @@ function compileRuntimeBytecode(runtimeRoot, platform = process.platform) {
   const script = `import compileall,py_compile,re,sys
 root=sys.argv[1]
 excluded=re.compile(r"[/\\\\](tests?|testing|examples|benchmarks|studio_document_adapters)[/\\\\]")
-ok=compileall.compile_dir(root,quiet=1,workers=2,rx=excluded,stripdir=root,prependdir="python-runtime/python",invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
+ok=compileall.compile_dir(root,quiet=1,workers=1 if sys.platform == "win32" else 2,rx=excluded,stripdir=root,prependdir="python-runtime/python",invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
 raise SystemExit(0 if ok else 1)`;
   const result = spawnSync(bundledPython(runtimeRoot, platform), ["-I", "-S", "-B", "-c", script, runtimeRoot], {
     encoding: "utf8", windowsHide: true, timeout: 180000, maxBuffer: 2 * 1024 * 1024,
   });
   if (result.error || result.status !== 0) {
-    throw new Error(`Runtime bytecode compilation failed: ${result.error?.message ?? result.stderr ?? result.stdout}`);
+    throw new Error(`Runtime bytecode compilation failed (status ${result.status}, signal ${result.signal}): ${[result.error?.message, result.stderr, result.stdout].filter(Boolean).join("\n")}`);
   }
 }
 
