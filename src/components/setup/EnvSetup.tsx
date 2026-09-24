@@ -16,6 +16,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { InstallationLogPanel } from "@/components/setup/InstallationLogPanel";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "@/lib/motion";
 import {
@@ -533,6 +534,11 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
             )}
           </motion.div>
         </AnimatePresence>
+        <InstallationLogPanel
+          active={currentStep === "env-progress" && !error}
+          backendEnabled={false}
+          error={error}
+        />
       </div>
     </div>
   );

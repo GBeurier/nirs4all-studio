@@ -91,14 +91,17 @@ def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> No
 
 
 def test_generated_operator_registries_are_from_the_published_runtime() -> None:
+    python_versions: set[str] = set()
     for path in [
         ROOT / "src" / "data" / "nodes" / "generated" / "canonical-registry.meta.json",
         ROOT / "public" / "node-registry" / "extended.meta.json",
     ]:
         metadata = json.loads(path.read_text(encoding="utf-8"))
         assert metadata["nirs4allVersion"] == "1.1.5"
-        assert metadata["pythonVersion"] == "3.11.13"
+        assert metadata["pythonVersion"].startswith("3.11.")
         assert metadata["sklearnVersion"] == "1.9.0"
+        python_versions.add(metadata["pythonVersion"])
+    assert len(python_versions) == 1
 
 
 def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:

@@ -5,7 +5,7 @@
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OPERATOR_AVAILABILITY_INVALIDATED_EVENT } from "@/lib/pipelineOperatorAvailability";
+import { OPERATOR_AVAILABILITY_INVALIDATED_EVENT, writeCachedOperatorAvailability } from "@/lib/pipelineOperatorAvailability";
 import type { OperatorAvailabilityResponse } from "@/api/system";
 import { OperatorAvailabilityProvider } from "./OperatorAvailabilityContext";
 import { useOperatorAvailability } from "./useOperatorAvailability";
@@ -98,6 +98,25 @@ afterEach(() => {
 });
 
 describe("OperatorAvailabilityProvider", () => {
+  it("rechecks cached missing operators when reopening the editor after installation", async () => {
+    const node = { id: "model.tabpfn", name: "TabPFNRegressor", type: "model", classPath: "tabpfn.TabPFNRegressor" };
+    writeCachedOperatorAvailability({
+      computed_at: "2026-04-17T00:00:00Z", checked_count: 1,
+      unavailable: [{ id: node.id, name: node.name, type: node.type, class_path: node.classPath, error: "No module named tabpfn" }],
+    });
+    const fresh: OperatorAvailabilityResponse = { computed_at: "2026-09-19T00:00:00Z", checked_count: 1, unavailable: [] };
+    mocks.getOperatorAvailability.mockResolvedValue(fresh);
+    const view = await renderProvider();
+    try {
+      await waitFor(() => {
+        expect(mocks.getOperatorAvailability).toHaveBeenCalledTimes(1);
+        expect(view.result.current?.getNodeAvailability(node).available).toBe(true);
+      });
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("retries transient availability failures and clears the banner on success", async () => {
     vi.useFakeTimers();
 

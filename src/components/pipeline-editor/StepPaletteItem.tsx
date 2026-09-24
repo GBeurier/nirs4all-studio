@@ -41,6 +41,7 @@ export function DraggableStep({
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `palette-${stepType}-${option.name}`,
+    disabled: isUnavailable,
     data: {
       type: "palette-item" as const,
       stepType,
@@ -58,7 +59,10 @@ export function DraggableStep({
           ref={setNodeRef}
           {...listeners}
           {...attributes}
-          onDoubleClick={onDoubleClick}
+          aria-disabled={isUnavailable}
+          onDoubleClick={() => {
+            if (!isUnavailable) onDoubleClick();
+          }}
           initial={false}
           animate={{
             opacity: isDragging ? 0.4 : 1,
@@ -68,12 +72,14 @@ export function DraggableStep({
           whileTap={{ scale: 0.98 }}
           transition={{ duration: 0.15 }}
           className={`
-            flex items-center gap-2 p-2 rounded-md border cursor-grab active:cursor-grabbing
+            flex items-center gap-2 p-2 rounded-md border
             transition-colors select-none overflow-hidden w-full border-box
             ${colors.border} ${colors.bg} ${colors.hover}
             ${isDragging ? "ring-2 ring-primary shadow-lg" : ""}
             ${option.isDeepLearning ? "border-l-2 border-l-violet-500" : ""}
-            ${isUnavailable ? "border-dashed border-amber-500/60 bg-amber-50/70 opacity-75 dark:bg-amber-950/20" : ""}
+            ${isUnavailable
+              ? "cursor-not-allowed border-dashed border-amber-500/60 bg-amber-50/70 opacity-75 dark:bg-amber-950/20"
+              : "cursor-grab active:cursor-grabbing"}
           `}
         >
           <GripVertical className="h-3 w-3 flex-shrink-0 text-muted-foreground/50" />

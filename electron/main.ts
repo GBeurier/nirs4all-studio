@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import type { BrowserWindow as BrowserWindowInstance } from "electron";
 import type { ErrorEvent as SentryErrorEvent } from "@sentry/electron/main";
 import { EnvManager } from "./env-manager";
+import { getInstallLog, subscribeInstallLog } from "./env/install-log";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { ensureDesktopWorkspace } from "./default-workspace";
 import { resolveDocumentsDirectory } from "./workspace-location";
@@ -544,6 +545,13 @@ ipcMain.handle("backend:restart", (_event, _options) =>
 // IPC Handlers for Python environment management
 ipcMain.handle("env:getStatus", () => {
   return envManager.getStatus();
+});
+
+ipcMain.handle("env:getInstallLog", () => getInstallLog());
+subscribeInstallLog((snapshot) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("env:installLog", snapshot);
+  }
 });
 
 ipcMain.handle("env:isReady", () => {

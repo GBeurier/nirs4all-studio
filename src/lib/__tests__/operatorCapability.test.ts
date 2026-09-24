@@ -110,3 +110,14 @@ describe("operatorCapability", () => {
     }]);
   });
 });
+
+it('keeps a spectral transformer available when only its target-processing use is constrained', () => {
+  const report = { capabilities: [{
+    id: 'y_processing.normalizer', type: 'y_processing', class_path: 'sklearn.preprocessing.Normalizer',
+    level: 'metadata' as const, available: false, reason: 'Target transform is not invertible',
+  }], unavailable: [] };
+  expect(resolveOperatorCapability({ type: 'preprocessing', classPath: 'sklearn.preprocessing.Normalizer' }, report).executable).toBe(true);
+  const target = resolveOperatorCapability({ type: 'y_processing', classPath: 'sklearn.preprocessing.Normalizer' }, report);
+  expect(target.executable).toBe(false);
+  expect(target.reason).toBe('Target transform is not invertible');
+});
