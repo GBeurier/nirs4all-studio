@@ -134,7 +134,10 @@ async function api(env, route, method = 'GET', body) {
     method, headers: { 'Content-Type': 'application/json', 'X-Nirs4all-Session': env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30000),
   });
-  assert(response.ok, `${method} ${route}: HTTP ${response.status}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => 'response body unavailable');
+    assert.fail(`${method} ${route}: HTTP ${response.status}: ${ui.sanitizeDiagnostic(detail, [], 1200)}`);
+  }
   return response.json();
 }
 
@@ -239,7 +242,9 @@ async function main(argv = process.argv.slice(2)) {
   const profile = path.join(root, 'upgrade-profile');
   const data = fixture(root);
   const candidateData = fixture(path.join(root, 'candidate'));
-  const workspace = path.join(root, 'Workspace conservé');
+  // Keep the Windows workspace fixture ASCII to isolate recovery-release
+  // workspace setup. The dataset fixture still exercises Unicode paths.
+  const workspace = path.join(root, options.platform === 'win32' ? 'Preserved workspace' : 'Workspace conservé');
   const baseline = JSON.parse(process.env.INSTALLER_BASELINE || 'null');
   let envOverrides;
   if (options.platform === 'win32' && baseline) {
