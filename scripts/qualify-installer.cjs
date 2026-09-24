@@ -152,7 +152,7 @@ async function seedBaseline(installed, platform, profile, data, workspace, envOv
       ...(!actualWindowsProfile ? [`--user-data-dir=${path.join(profile, 'electron-user-data')}`] : [])],
     timeout: BUDGETS.baselineLaunch });
   try {
-    if (!nativeBaseline) await preparePythonRecoveryBaseline(app);
+    const recoveryPage = nativeBaseline ? null : await preparePythonRecoveryBaseline(app);
     await expect.poll(async () => api(env, '/health').then(() => true).catch(() => false), { timeout: BUDGETS.baselineLaunch }).toBe(true);
     await api(env, '/workspace/create', 'POST', { path: workspace, name: 'Upgrade preservation', create_dir: true });
     await api(env, '/workspace/select', 'POST', { path: workspace });
@@ -161,6 +161,15 @@ async function seedBaseline(installed, platform, profile, data, workspace, envOv
     const linked = await api(env, '/datasets/link', 'POST', { path: data, config: { name: 'Preserved spectra', files: detected.files,
       global_params: { delimiter: ';', decimal_separator: '.', has_header: true, na_policy: 'auto' } } });
     assert(linked.success && linked.dataset?.id, 'Baseline dataset was not registered');
+    if (recoveryPage) {
+      // Linking a dataset in 0.11.11 does not open its scientific Store v5.
+      // Initialize it through that release's installed library so the
+      // migration also proves preservation of genuine store bytes.
+      const info = await recoveryPage.evaluate(() => window.electronApi.getEnvInfo());
+      assert(info?.pythonPath && fs.existsSync(info.pythonPath), 'Recovery baseline has no managed Python');
+      await streamedCommand(info.pythonPath, ['-I', '-B', '-c',
+        'import pathlib,sqlite3,sys; from nirs4all.pipeline.storage import WorkspaceStore; root=pathlib.Path(sys.argv[1]); store=WorkspaceStore(root); store.close(); db=sqlite3.connect(root/"store.sqlite"); assert db.execute("PRAGMA user_version").fetchone()[0] == 5; db.close()', workspace], profile);
+    }
     await api(env, '/config/skip-setup', 'POST');
     // Save consent using the real renderer storage, so reopening must not prompt again.
     for (const page of app.windows()) {
@@ -201,6 +210,7 @@ async function preparePythonRecoveryBaseline(app) {
   } finally { clearTimeout(timer); }
   assert(setup?.success, `Recovery baseline Python setup failed: ${String(setup?.error || 'unknown').slice(0, 500)}`);
   await page.evaluate(() => window.electronApi.markWizardComplete(true));
+  return page;
 }
 
 function fileSnapshot(root) {
