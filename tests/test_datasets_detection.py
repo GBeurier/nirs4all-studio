@@ -322,7 +322,9 @@ def test_configured_library_record_keeps_source_params_and_fold_settings(tmp_pat
         "train_x_filter": [0, 1], "repetition": "sample_id", "aggregate": "sample_id",
         "aggregate_method": "median", "folds": [{"train": [0], "test": [1]}],
     }
-    assert configure_dataset({"record": {"path": str(tmp_path), "config": config}}) == config
+    expected = {**config, "global_params": {"delimiter": ",", "has_header": False, "na_policy": "abort", "na": {"policy": "abort"}},
+                "train_group_params": {"has_header": True, "na_policy": "ignore", "na": {"policy": "ignore"}}}
+    assert configure_dataset({"record": {"path": str(tmp_path), "config": config}}) == expected
 
 
 def test_legacy_flat_dataset_record_still_translates_root_parsing(tmp_path: Path):
@@ -333,6 +335,26 @@ def test_legacy_flat_dataset_record_still_translates_root_parsing(tmp_path: Path
     }}})
     assert config["global_params"]["delimiter"] == ","
     assert config["global_params"]["has_header"] is False
+
+
+def test_scientific_run_config_loads_with_nirs4all_115(tmp_path: Path):
+    from nirs4all.data.config import DatasetConfigs
+
+    from api.library_documents import configure_dataset
+
+    (tmp_path / "Xtrain.csv").write_text("1000;1100\n1;2\n3;4\n5;6\n7;8\n")
+    (tmp_path / "Ytrain.csv").write_text("target\n1\n2\n3\n4\n")
+    record = {"path": str(tmp_path), "name": "Science loader", "config": {
+        "files": [
+            {"path": "Xtrain.csv", "type": "X", "split": "train"},
+            {"path": "Ytrain.csv", "type": "Y", "split": "train", "overrides": {"signal_type": "auto", "header_unit": "text"}},
+        ],
+        "na_policy": "auto", "header_unit": "nm", "delimiter": ";",
+    }}
+    config = configure_dataset({"record": record, "scientific_run": True})
+    assert "na" not in config["global_params"]
+    assert "signal_type" not in config["train_y_params"]
+    assert DatasetConfigs(config).get_dataset_at(0).num_samples == 4
 
 
 @pytest.mark.parametrize("with_globals", [False, True])

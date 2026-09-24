@@ -232,7 +232,10 @@ impl ScientificRequestResolver {
         let root = value
             .as_object()
             .ok_or(ScientificResolveError::CatalogueInvalid)?;
-        if root.get("schema_version").and_then(Value::as_u64) != Some(2) {
+        let current_schema = root.get("schema_version").and_then(Value::as_u64) == Some(2);
+        let recovery_schema = !root.contains_key("schema_version")
+            && root.get("version").and_then(Value::as_str) == Some("1.0");
+        if !current_schema && !recovery_schema {
             return Err(ScientificResolveError::CatalogueInvalid);
         }
         let datasets = root
@@ -941,6 +944,24 @@ mod tests {
         assert_eq!(payload["pipeline"]["cross_validation"]["n_splits"], 3);
         assert_eq!(payload["options"]["random_state"], 42);
         assert!(serde_json::to_vec(&payload).unwrap().len() < 65_536);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recovery_catalogue_without_schema_version_remains_runnable() {
+        let (root, config, workspace) = fixture("recovery-catalogue");
+        let path = config.join(DATASET_LINKS_FILE);
+        let mut links: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        links.as_object_mut().unwrap().remove("schema_version");
+        fs::write(&path, serde_json::to_vec(&links).unwrap()).unwrap();
+        let resolver = ScientificRequestResolver::new(&config);
+        assert!(resolver.is_configured());
+        assert!(resolver
+            .resolve(&submission(&workspace, "local-python"))
+            .is_ok());
+        links["version"] = json!("unexpected");
+        fs::write(&path, serde_json::to_vec(&links).unwrap()).unwrap();
+        assert!(!resolver.is_configured());
         fs::remove_dir_all(root).unwrap();
     }
 

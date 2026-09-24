@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { expect } = require('@playwright/test');
-const BUDGETS = Object.freeze({ preview: 5000, link: 5000, playground: 10000, training: 60000, predictions: 5000 });
+const BUDGETS = Object.freeze({ preview: 5000, link: 5000, playground: 10000, training: 60000, history: 10000, predictions: 5000 });
 async function timed(proof, phase, budget, callback) {
   const start = performance.now();
   const result = await callback();
@@ -101,6 +101,14 @@ async function businessJourney(context, data) {
     return result;
   });
   proof.training = { id: training.id || training.job_id, status: training.status, requested_engine: 'dag-ml', fallback: false };
+
+  await timed(proof, 'historical_pipeline_recovery', BUDGETS.history, async () => {
+    const listing = await api(env, '/runs/pipelines');
+    const historical = listing.pipelines?.find(pipeline => pipeline.name.startsWith('Release PLS qualification')
+      && pipeline.source === 'history' && pipeline.steps?.some(step => step.name === 'PLSRegression'));
+    assert(historical?.steps?.length > 0, 'A trained Store v5 pipeline was not available to the new experiment wizard');
+    proof.historical_pipeline = { id: historical.id, steps: historical.steps.length };
+  });
 
   await timed(proof, 'nonempty_predictions_ui', BUDGETS.predictions, async () => {
     const stored = await api(env, '/aggregated-predictions');

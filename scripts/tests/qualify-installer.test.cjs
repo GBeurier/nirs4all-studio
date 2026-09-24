@@ -3,7 +3,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { fileSnapshot, fixture, parseArgs, timed } = require('../qualify-installer.cjs');
+const { baselineBackendEnvironment, fileSnapshot, fixture, parseArgs, timed } = require('../qualify-installer.cjs');
+
+test('populated upgrade reaches the real backend of the public Python recovery installer', () => {
+  const source = { NIRS4ALL_NATIVE_SIDECAR_PORT: '49152', NIRS4ALL_OFFLINE: '1' };
+  const layout = { nativeSidecarPath: '/missing/native/studio-sidecar' };
+  const oldEnvironment = baselineBackendEnvironment(source, layout, () => false);
+  assert.equal(oldEnvironment.NIRS4ALL_BACKEND_PORT, '49152');
+  assert.equal(oldEnvironment.NIRS4ALL_NATIVE_SIDECAR_PORT, '49152');
+  assert.equal(oldEnvironment.NIRS4ALL_OFFLINE, undefined);
+  assert.deepEqual(baselineBackendEnvironment(source, layout, () => true), source);
+});
 
 test('rejects cross-platform installation and incomplete arguments before launching', () => {
   assert.throws(() => parseArgs(['--installer', 'app.exe', '--output', 'proof.json', '--platform', process.platform === 'linux' ? 'win32' : 'linux']), /actual target OS/);

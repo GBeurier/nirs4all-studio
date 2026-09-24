@@ -101,6 +101,20 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
     """Expose library-resolved references for Rust's subsequent confinement check."""
     from nirs4all.api.dataset_documents import normalize_dataset_document
 
+    def finish(config: dict[str, Any]) -> dict[str, Any]:
+        if document.get("scientific_run") is not True:
+            return config
+        # nirs4all 1.1.5's run loader accepts na_policy/na_fill_config, while
+        # the native IO preview accepts the corresponding nested `na` object.
+        # The scientific request must not pass `na` through to pandas.read_csv.
+        return {
+            key: {param: value for param, value in entry.items()
+                  if param != "na" and (param != "signal_type" or key.endswith("_x_params"))}
+            if (key == "global_params" or key.endswith("_params")) and isinstance(entry, dict)
+            else entry
+            for key, entry in config.items()
+        }
+
     if "record" in document:
         record = document["record"]
         if not isinstance(record, dict):
@@ -120,12 +134,12 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("Dataset auto-detection requires an authorized directory")
             normalized = normalize_dataset_document(root)
             normalized["name"] = record.get("name") or normalized["name"]
-            return normalized
+            return finish(normalized)
         # Translation preserves library-owned fields and idempotently bridges
         # legacy flat NA policies for both new wizard and existing records.
         if config.get("files") or config.get("train_x") or config.get("test_x"):
             config = build_nirs4all_config_from_stored(record)
-        return normalize_dataset_document(config, base_dir=record.get("path"))
+        return finish(normalize_dataset_document(config, base_dir=record.get("path")))
     config = build_nirs4all_config(
         files=document.get("files", []),
         parsing=document.get("parsing", {}),
@@ -135,7 +149,7 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         task_type=document.get("task_type"),
         dataset_name=document.get("name"),
     )
-    return normalize_dataset_document(config, base_dir=document.get("path"))
+    return finish(normalize_dataset_document(config, base_dir=document.get("path")))
 
 
 def adapt_document(operation: str, document: dict[str, Any]) -> Any:

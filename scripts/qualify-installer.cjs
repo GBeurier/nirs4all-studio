@@ -14,7 +14,7 @@ const ui = require('./smoke-first-launch-ui.cjs');
 const { sha256File, parseChecksumSidecar } = require('./finalize-release-assets.cjs');
 
 // Product budgets, deliberately separate from GitHub's infrastructure timeout.
-const BUDGETS = Object.freeze({ install: 120000, launch: 30000, preview: 5000, link: 5000, navigation: 3000 });
+const BUDGETS = Object.freeze({ install: 120000, baselineSetup: 300000, baselineLaunch: 180000, launch: 30000, preview: 5000, link: 5000, navigation: 3000 });
 
 function parseArgs(argv) {
   const options = {};
@@ -140,12 +140,20 @@ async function api(env, route, method = 'GET', body) {
 
 /** Setup of the old release is fixture preparation, not candidate qualification. */
 async function seedBaseline(installed, platform, profile, data, workspace, envOverrides) {
-  const env = { ...archive.buildSandboxEnv(platform, profile, await freePort(), BUDGETS.launch), ...envOverrides };
   const layout = archive.resolveLaunchLayout(installed, platform, 'nirs4all Studio');
+  const nativeBaseline = fs.existsSync(layout.nativeSidecarPath);
+  const env = baselineBackendEnvironment(
+    { ...archive.buildSandboxEnv(platform, profile, await freePort(), BUDGETS.baselineLaunch), ...envOverrides },
+    layout,
+  );
+  const actualWindowsProfile = platform === 'win32' && Boolean(envOverrides);
   const app = await electron.launch({ executablePath: layout.executablePath, cwd: layout.appRoot, env,
-    args: platform === 'linux' ? ['--no-sandbox'] : [], timeout: BUDGETS.launch });
+    args: [...(platform === 'linux' ? ['--no-sandbox'] : []),
+      ...(!actualWindowsProfile ? [`--user-data-dir=${path.join(profile, 'electron-user-data')}`] : [])],
+    timeout: BUDGETS.baselineLaunch });
   try {
-    await expect.poll(async () => api(env, '/health').then(() => true).catch(() => false), { timeout: BUDGETS.launch }).toBe(true);
+    if (!nativeBaseline) await preparePythonRecoveryBaseline(app);
+    await expect.poll(async () => api(env, '/health').then(() => true).catch(() => false), { timeout: BUDGETS.baselineLaunch }).toBe(true);
     await api(env, '/workspace/create', 'POST', { path: workspace, name: 'Upgrade preservation', create_dir: true });
     await api(env, '/workspace/select', 'POST', { path: workspace });
     await api(env, '/app/settings', 'PUT', { ui_preferences: { language: 'en', theme: 'dark', developer_mode: true } });
@@ -166,6 +174,33 @@ async function seedBaseline(installed, platform, profile, data, workspace, envOv
     }
     return { dataset_id: linked.dataset.id, workspace, preferences: (await api(env, '/app/settings')).ui_preferences };
   } finally { await app.close(); }
+}
+
+function baselineBackendEnvironment(env, layout, exists = fs.existsSync) {
+  // Recovery installers before the unified sidecar use BackendManager's
+  // Python HTTP port. Give both product lines the same isolated test port.
+  if (exists(layout.nativeSidecarPath)) return env;
+  const legacy = { ...env, NIRS4ALL_BACKEND_PORT: env.NIRS4ALL_NATIVE_SIDECAR_PORT, PYTHONNOUSERSITE: '1', SENTRY_DSN: '' };
+  for (const key of ['NIRS4ALL_OFFLINE', 'VIRTUAL_ENV', 'PYTHONPATH', 'NIRS4ALL_PYTHON_PATH']) delete legacy[key];
+  return legacy;
+}
+
+async function preparePythonRecoveryBaseline(app) {
+  let page;
+  await expect.poll(() => {
+    page = app.windows().find(window => /index\.html/.test(window.url()));
+    return Boolean(page);
+  }, { timeout: BUDGETS.baselineLaunch }).toBe(true);
+  let timer;
+  let setup;
+  try {
+    setup = await Promise.race([
+      page.evaluate(() => window.electronApi.startEnvSetup()),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Recovery baseline Python setup timed out')), BUDGETS.baselineSetup); }),
+    ]);
+  } finally { clearTimeout(timer); }
+  assert(setup?.success, `Recovery baseline Python setup failed: ${String(setup?.error || 'unknown').slice(0, 500)}`);
+  await page.evaluate(() => window.electronApi.markWizardComplete(true));
 }
 
 function fileSnapshot(root) {
@@ -193,6 +228,7 @@ async function main(argv = process.argv.slice(2)) {
   const installRoot = path.join(root, 'Application installée');
   const profile = path.join(root, 'upgrade-profile');
   const data = fixture(root);
+  const candidateData = fixture(path.join(root, 'candidate'));
   const workspace = path.join(root, 'Workspace conservé');
   const baseline = JSON.parse(process.env.INSTALLER_BASELINE || 'null');
   let envOverrides;
@@ -234,7 +270,7 @@ async function main(argv = process.argv.slice(2)) {
           assert(datasets.datasets.some(d => d.id === preserved.dataset_id), 'Upgrade lost linked dataset');
           assert.equal(await page.evaluate(() => localStorage.getItem('nirs4all-telemetry-consent')), 'declined');
           await expect(page.getByText(/Checking installation|Retry verification/i)).not.toBeVisible();
-        }, journeys: context => journeys(context, proof, data) });
+        }, journeys: context => journeys(context, proof, candidateData) });
     } else {
       await ui.main({ config, timings: proof.timings, journeys: context => journeys(context, proof, data) });
     }
@@ -251,5 +287,5 @@ async function main(argv = process.argv.slice(2)) {
   return proof;
 }
 
-module.exports = { BUDGETS, fileSnapshot, fixture, parseArgs, timed, main };
+module.exports = { BUDGETS, baselineBackendEnvironment, fileSnapshot, fixture, parseArgs, seedBaseline, timed, main };
 if (require.main === module) main().catch(error => { console.error(ui.sanitizeDiagnostic(error.stack || error)); process.exitCode = 1; });

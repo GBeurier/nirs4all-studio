@@ -34,14 +34,21 @@ def _file_type_to_key_suffix(file_type: str) -> str | None:
     return mapping.get(file_type)
 
 
-def _with_native_na_params(params: dict[str, Any]) -> dict[str, Any]:
-    """Keep oracle NA fields and expose the equivalent native IO contract."""
-    if "na_policy" not in params and "na_fill_config" not in params:
-        return params
-    native_na = {"policy": params.get("na_policy") or "auto"}
-    if params.get("na_fill_config"):
-        native_na["fill"] = params["na_fill_config"]
-    return {**params, "na": native_na}
+def _with_library_na_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Keep the Python and native IO NA representations in sync."""
+    result = {key: value for key, value in params.items() if key != "na"}
+    native_na = params.get("na")
+    if isinstance(native_na, dict):
+        if native_na.get("policy") is not None:
+            result.setdefault("na_policy", native_na["policy"])
+        if native_na.get("fill") is not None:
+            result.setdefault("na_fill_config", native_na["fill"])
+    if "na_policy" in result or "na_fill_config" in result:
+        native = {"policy": result.get("na_policy") or "auto"}
+        if result.get("na_fill_config"):
+            native["fill"] = result["na_fill_config"]
+        result["na"] = native
+    return result
 
 
 def _na_policy(params: dict[str, Any], default: str | None = "auto") -> str | None:
@@ -52,9 +59,11 @@ def _na_policy(params: dict[str, Any], default: str | None = "auto") -> str | No
 def _normalize_library_loading_params(config: dict[str, Any]) -> dict[str, Any]:
     """Bridge NA fields without dropping library-owned dataset settings."""
     result = dict(config)
+    if isinstance(config.get("global_params"), dict):
+        result["global_params"] = _with_library_na_params(config["global_params"])
     for key, value in config.items():
         if key.endswith("_params") and isinstance(value, dict):
-            result[key] = _with_native_na_params(value)
+            result[key] = _with_library_na_params(value)
     for split in ("train", "test"):
         if not result.get(f"{split}_group"):
             continue
@@ -67,7 +76,7 @@ def _normalize_library_loading_params(config: dict[str, Any]) -> dict[str, Any]:
                     effective_policy = policy
         if effective_policy == "auto":
             key = f"{split}_group_params"
-            result[key] = _with_native_na_params({**result.get(key, {}), "na_policy": "ignore"})
+            result[key] = _with_library_na_params({**result.get(key, {}), "na_policy": "ignore"})
     return result
 
 
@@ -116,7 +125,8 @@ def build_nirs4all_config(
     na_policy = _na_policy(parsing, None)
     if na_policy:
         global_params["na_policy"] = na_policy
-        na_fill_config = parsing.get("na_fill_config")
+        native_na = parsing.get("na")
+        na_fill_config = parsing.get("na_fill_config") or (native_na.get("fill") if isinstance(native_na, dict) else None)
         if na_fill_config:
             global_params["na_fill_config"] = na_fill_config
 
@@ -129,7 +139,7 @@ def build_nirs4all_config(
     if signal_type and signal_type != "auto":
         x_specific_params["signal_type"] = signal_type
 
-    config: dict[str, Any] = {"global_params": _with_native_na_params(global_params)}
+    config: dict[str, Any] = {"global_params": _with_library_na_params(global_params)}
     resolve_base = Path(base_path) if base_path else None
 
     # Map files to nirs4all keys
@@ -184,7 +194,7 @@ def build_nirs4all_config(
         elif overrides:
             config[params_key] = overrides
         if params_key in config:
-            config[params_key] = _with_native_na_params(config[params_key])
+            config[params_key] = _with_library_na_params(config[params_key])
 
     # Aggregation → aggregate / aggregate_method / repetition
     if aggregation and aggregation.get("enabled") and aggregation.get("column"):

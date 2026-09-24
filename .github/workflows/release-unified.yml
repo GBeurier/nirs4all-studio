@@ -383,7 +383,7 @@ jobs:
           done
 
       - name: Qualify actual installer, populated upgrade and user journeys
-        timeout-minutes: 12
+        timeout-minutes: 20
         env:
           INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['linux-x64']) }}
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
@@ -565,7 +565,7 @@ jobs:
           }
 
       - name: Qualify actual installer, populated upgrade and user journeys
-        timeout-minutes: 12
+        timeout-minutes: 20
         env:
           INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['windows-x64']) }}
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
@@ -792,7 +792,7 @@ jobs:
           done
 
       - name: Qualify actual installer, populated upgrade and user journeys
-        timeout-minutes: 12
+        timeout-minutes: 20
         env:
           INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['macos-x64']) }}
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
@@ -1014,7 +1014,7 @@ jobs:
           done
 
       - name: Qualify actual installer, populated upgrade and user journeys
-        timeout-minutes: 12
+        timeout-minutes: 20
         env:
           INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['macos-arm64']) }}
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
