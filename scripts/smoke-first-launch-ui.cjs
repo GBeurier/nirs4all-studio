@@ -48,6 +48,23 @@ async function withDiagnosticTimeout(promise) {
   }
 }
 
+async function closeApplication(app) {
+  let timer;
+  try {
+    await Promise.race([
+      app.close(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Electron close timed out")), 5000);
+      }),
+    ]);
+  } catch (error) {
+    app.process().kill("SIGKILL");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function recordHttpFailure(response, record, sanitize) {
   if (response.status() < 400) return;
   const summary = `HTTP ${response.status()} ${response.request().method()} ${diagnosticUrl(response.url())}`;
@@ -202,7 +219,7 @@ async function main(options = {}) {
     await expect(reloadedToggle).toHaveAttribute("aria-checked", "true", { timeout: config.timeoutMs });
     console.log("Developer mode saved without a workspace and survived renderer reload.");
 
-    await app.close();
+    await closeApplication(app);
     app = undefined;
     const restarted = await launch();
     const restartedToggle = await openAdvanced(restarted);
@@ -228,7 +245,7 @@ async function main(options = {}) {
     }
     throw new Error(sanitizeDiagnostic(error.stack || error, secrets, 8000));
   } finally {
-    if (app) await app.close();
+    if (app) await closeApplication(app).catch(error => console.error(error));
     if (!options.sandboxRoot && !config.keepSandbox) await archive.cleanupSandboxRoot(sandbox);
   }
 }

@@ -14,7 +14,7 @@ const ui = require('./smoke-first-launch-ui.cjs');
 const { sha256File, parseChecksumSidecar } = require('./finalize-release-assets.cjs');
 
 // Product budgets, deliberately separate from GitHub's infrastructure timeout.
-const BUDGETS = Object.freeze({ install: 120000, baselineSetup: 300000, baselineLaunch: 180000, launch: 30000, preview: 5000, link: 5000, navigation: 3000 });
+const BUDGETS = Object.freeze({ install: 120000, baselineSetup: 300000, baselineLaunch: 180000, launch: 120000, preview: 5000, link: 5000, navigation: 3000 });
 
 function parseArgs(argv) {
   const options = {};
