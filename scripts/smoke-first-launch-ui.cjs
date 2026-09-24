@@ -241,6 +241,13 @@ async function main(options = {}) {
       for (const page of app.windows()) {
         console.error("Current page:", diagnosticUrl(page.url()));
         console.error(sanitizeDiagnostic(await page.locator("body").innerText({ timeout: 1000 }).catch(() => ""), secrets, 8000));
+        const logPath = await page.evaluate(() => window.electronApi?.getLogPath?.()).catch(() => null);
+        if (logPath && fs.existsSync(logPath)) {
+          const authLines = fs.readFileSync(logPath, "utf8").split(/\r?\n/)
+            .filter(line => line.includes("Native session authentication skipped"))
+            .slice(-4);
+          console.error("Native auth diagnostics:", authLines.join("\n") || "hook did not report a rejected API request");
+        }
       }
     }
     throw new Error(sanitizeDiagnostic(error.stack || error, secrets, 8000));

@@ -36,9 +36,13 @@ export function installNativeSessionAuth(
     // while still requiring the current main document to be Studio.
     const mainDocumentIsStudio = Boolean(window &&
       isStudioDocument(window.webContents.getURL(), entrypoint));
-    const hasOwner = details.webContentsId !== undefined || details.webContents !== undefined;
+    const sameMainFrame = Boolean(window && details.frame &&
+      details.frame.processId === window.webContents.mainFrame.processId &&
+      details.frame.routingId === window.webContents.mainFrame.routingId);
+    const hasNumericOwner = details.webContentsId !== undefined && details.webContentsId !== 0;
+    const hasOwner = hasNumericOwner || details.webContents !== undefined || sameMainFrame;
     const ownerMatches = Boolean(window && hasOwner &&
-      (details.webContentsId === undefined || details.webContentsId === window.webContents.id) &&
+      (!hasNumericOwner || details.webContentsId === window.webContents.id) &&
       (details.webContents === undefined || details.webContents.id === window.webContents.id));
     const frameMatches = !details.frame || isStudioDocument(details.frame.url, entrypoint) ||
       (details.frame.parent === null && mainDocumentIsStudio);
@@ -51,7 +55,7 @@ export function installNativeSessionAuth(
       smokeDiagnosticsRemaining -= 1;
       // Test-only metadata: never print the credential or request URL.
       console.error("Native session authentication skipped", {
-        hasOwner, ownerMatches, mainDocumentIsStudio, frameMatches,
+        hasOwner, ownerMatches, sameMainFrame, mainDocumentIsStudio, frameMatches,
         hasFrame: Boolean(details.frame), resourceType: details.resourceType,
         sidecarRecognized: Boolean(Object.keys(sessionHeaders(details.url)).length),
       });
