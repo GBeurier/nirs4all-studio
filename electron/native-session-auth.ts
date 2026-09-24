@@ -30,8 +30,13 @@ export function installNativeSessionAuth(
       if (key.toLowerCase() === "x-nirs4all-session") delete headers[key];
     }
     const window = currentWindow();
+    // Windows can omit frame.url for renderer fetches from a file: document.
+    // In that case the owning WebContents' current URL is the document we
+    // already navigated and checked. A supplied frame URL remains authoritative
+    // so an unrelated subframe cannot borrow the main document's credential.
+    const documentUrl = details.frame?.url || window?.webContents.getURL() || "";
     if (window && details.webContentsId === window.webContents.id &&
-        isStudioDocument(details.frame?.url ?? "", entrypoint)) {
+        isStudioDocument(documentUrl, entrypoint)) {
       Object.assign(headers, sessionHeaders(details.url));
     }
     callback({ requestHeaders: headers });
