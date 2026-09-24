@@ -38,7 +38,7 @@ export class PredictionsPage extends BasePage {
     this.predictionsTable = page.locator('table');
     this.predictionRows = page.locator('table tbody tr');
     this.emptyState = page.getByText(/no predictions/i);
-    this.noWorkspaceState = page.getByText(/no workspace|link.*workspace/i);
+    this.noWorkspaceState = page.getByRole('heading', { name: 'No workspace linked', exact: true });
 
     // Stats
     this.totalPredictions = page.locator('text=Total Predictions').locator('..').locator('.font-bold, .text-2xl').first();

@@ -34,7 +34,7 @@ export class RunsPage extends BasePage {
     this.runCards = page.locator('[data-testid="run-card"]');
     this.runRows = page.locator('[data-testid="run-row"]');
     this.emptyState = page.getByText(/no runs/i);
-    this.noWorkspaceState = page.getByText(/no workspace|link.*workspace/i);
+    this.noWorkspaceState = page.getByRole('heading', { name: 'No workspace linked', exact: true });
 
     // Stats - look for stat values near their labels
     this.runningCount = page.locator('text=Running').locator('..').locator('.font-bold, .text-2xl').first();

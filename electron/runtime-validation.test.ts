@@ -18,7 +18,7 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
   let executable: string;
   let sitePackages: string;
   const versions: Record<string, string> = {
-    nirs4all: "1.0.1", duckdb: "1.5.5", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1",
+    nirs4all: "1.1.5", duckdb: "1.5.5", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1",
   };
   const metadata = (name: string, extra = "") => `Metadata-Version: 2.1\nName: ${name}\nVersion: ${versions[name]}\n${extra}`;
   const metadataPath = (name: string) => path.join(sitePackages, `${name}-${versions[name]}.dist-info`, "METADATA");

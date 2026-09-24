@@ -773,7 +773,7 @@
     "name": "AOMPLSAomlibRegressor",
     "type": "model",
     "classPath": "nirs4all.operators.models.sklearn.aom_pls_aomlib.AOMPLSAomlibRegressor",
-    "description": "sklearn-compatible wrapper around ``aompls.AOMPLSCompact`` (AOM_lib).",
+    "description": "Native global AOM-PLS selector with the historical nirs4all class path.",
     "parameters": [
       {
         "name": "n_components",
@@ -2054,6 +2054,12 @@
         "type": "bool",
         "isAdvanced": true,
         "default": true
+      },
+      {
+        "name": "n_points",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
       }
     ],
     "source": "nirs4all",

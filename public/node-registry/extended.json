@@ -11226,6 +11226,12 @@
         "type": "bool",
         "isAdvanced": true,
         "default": true
+      },
+      {
+        "name": "n_points",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
       }
     ],
     "source": "nirs4all",

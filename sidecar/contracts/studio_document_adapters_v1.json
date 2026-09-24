@@ -96,8 +96,8 @@
     },
     {
       "path": "api/shared/filter_catalogue.py",
-      "size": 8789,
-      "sha256": "da4b902196606fd385c9bc06920e8e1855072e15e21b16e30c9b25a5e4b0a111"
+      "size": 8788,
+      "sha256": "a652f9a6eb276e71409bdb516849ce899e61863e0d094ffc82cd20b66ae90cdc"
     },
     {
       "path": "api/shared/json_safe.py",
@@ -351,8 +351,8 @@
     },
     {
       "path": "src/data/nodes/generated/canonical-registry.json",
-      "size": 418374,
-      "sha256": "00488d43491c46242da64173614683a249bf1c1d4ba02f6f6508ec45e7bac9a8"
+      "size": 418499,
+      "sha256": "05d80b0f41150eecc19c0f17300dea91d0675dfe741985c9b2aa641961c27e6f"
     }
   ]
 }

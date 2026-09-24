@@ -263,6 +263,7 @@ class TestTrainingRefitEmission:
         with patch("api.training._dispatch_refit_notification") as mock_dispatch:
             _send_refit_started("job123", total_steps=3, description="Refitting...")
             mock_dispatch.assert_called_once()
+            mock_dispatch.call_args.args[0].close()
 
     def test_send_refit_step(self):
         from api.training import _send_refit_step
@@ -270,6 +271,7 @@ class TestTrainingRefitEmission:
         with patch("api.training._dispatch_refit_notification") as mock_dispatch:
             _send_refit_step("job123", 1, 3, "Preprocessing", "preprocessing")
             mock_dispatch.assert_called_once()
+            mock_dispatch.call_args.args[0].close()
 
     def test_send_refit_progress(self):
         from api.training import _send_refit_progress
@@ -277,6 +279,7 @@ class TestTrainingRefitEmission:
         with patch("api.training._dispatch_refit_notification") as mock_dispatch:
             _send_refit_progress("job123", 50.0, "Training...")
             mock_dispatch.assert_called_once()
+            mock_dispatch.call_args.args[0].close()
 
     def test_send_refit_completed(self):
         from api.training import _send_refit_completed
@@ -284,6 +287,7 @@ class TestTrainingRefitEmission:
         with patch("api.training._dispatch_refit_notification") as mock_dispatch:
             _send_refit_completed("job123", score=0.95, metrics={"r2": 0.95})
             mock_dispatch.assert_called_once()
+            mock_dispatch.call_args.args[0].close()
 
     def test_send_refit_failed(self):
         from api.training import _send_refit_failed
@@ -291,12 +295,17 @@ class TestTrainingRefitEmission:
         with patch("api.training._dispatch_refit_notification") as mock_dispatch:
             _send_refit_failed("job123", "Error", "traceback...")
             mock_dispatch.assert_called_once()
+            mock_dispatch.call_args.args[0].close()
 
     def test_send_refit_started_handles_import_error(self):
         """Verify graceful handling when websocket module is unavailable."""
         from api.training import _send_refit_started
 
-        with patch("api.training._dispatch_refit_notification", side_effect=ImportError):
+        def raise_import_error(coro):
+            coro.close()
+            raise ImportError
+
+        with patch("api.training._dispatch_refit_notification", side_effect=raise_import_error):
             # Should not raise
             _send_refit_started("job123")
 

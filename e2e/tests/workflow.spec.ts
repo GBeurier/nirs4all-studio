@@ -135,9 +135,9 @@ test.describe('Workflow - Pipeline Editor', () => {
 
     await expect(page).toHaveURL(/pipelines\/new/);
 
-    // Pipeline editor should be visible - check for various possible elements
-    const editorVisible = await page.locator('[data-testid="pipeline-canvas"], [data-testid="step-palette"]').isVisible().catch(() => false);
-    const hasEditorContent = await page.getByText(/add.*step|drag.*drop|pipeline|preprocessing|model/i).isVisible().catch(() => false);
-    expect(editorVisible || hasEditorContent).toBe(true);
+    // Assert stable, user-visible editor landmarks. The previous broad text
+    // locator matched several elements and failed in Playwright strict mode.
+    await expect(page.getByRole('heading', { name: 'Components', exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder('Search...', { exact: true })).toBeVisible();
   });
 });

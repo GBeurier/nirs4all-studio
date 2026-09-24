@@ -5031,13 +5031,13 @@ mod tests {
         BundleId, ConformalMultiTargetPolicy, ConformalSmallSamplePolicy, DataBinding, GraphSpec,
         RunId, TrainingDataIdentity, TrainingRequest, TRAINING_REQUEST_SCHEMA_VERSION,
     };
+    use nirs4all::io::core::materialize::{
+        AssembledDataset, Cell, Column, FoldProvenance, Frame, IdentityProvenance, Matrix,
+        PartitionBlock,
+    };
     use nirs4all::{
         train_dataset_package_methods_conformal_archive_v2, DatasetPackage,
         DatasetPackageMethodsConformalArchiveV2Request, DatasetPackageMethodsProvider,
-    };
-    use nirs4all_io::core::materialize::{
-        AssembledDataset, Cell, Column, FoldProvenance, Frame, IdentityProvenance, Matrix,
-        PartitionBlock,
     };
     use sha2::{Digest, Sha256};
     use std::{
@@ -8852,7 +8852,7 @@ mod tests {
         assert_eq!(readiness["ml_ready"], false);
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.3.30+libn4m-abi-2.5:{methods_sha256}")
+            format!("nirs4all-core@0.3.31+libn4m-abi-2.5:{methods_sha256}")
         );
         let expected = [
             [1.636_363_636_363_636_5, 13.272_727_272_727_273],
