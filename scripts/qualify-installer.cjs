@@ -244,10 +244,17 @@ async function main(argv = process.argv.slice(2)) {
   const profile = path.join(root, 'upgrade-profile');
   const data = fixture(root);
   const candidateData = fixture(path.join(root, 'candidate'));
-  // Keep the Windows workspace fixture ASCII to isolate recovery-release
-  // workspace setup. The dataset fixture still exercises Unicode paths.
-  const workspace = path.join(root, options.platform === 'win32' ? 'Preserved workspace' : 'Workspace conservé');
   const baseline = JSON.parse(process.env.INSTALLER_BASELINE || 'null');
+  // The public Windows recovery release rejects persistent workspace links
+  // under the OS temp directory. Place only that workspace in the disposable
+  // runner's checkout parent; its app profile still uses the real known folders.
+  if (options.platform === 'win32' && baseline) {
+    assert(process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_WORKSPACE,
+      'Windows baseline workspace requires a disposable GitHub Actions runner');
+  }
+  const workspace = options.platform === 'win32' && baseline
+    ? fs.mkdtempSync(path.join(path.dirname(process.env.GITHUB_WORKSPACE), 'studio-upgrade-workspace-'))
+    : path.join(root, 'Workspace conservé');
   let envOverrides;
   if (options.platform === 'win32' && baseline) {
     // NSIS resolves $APPDATA through Windows known folders, independently of
@@ -299,7 +306,10 @@ async function main(argv = process.argv.slice(2)) {
     fs.mkdirSync(path.dirname(options.output), { recursive: true });
     fs.writeFileSync(options.output, JSON.stringify(proof, null, 2));
     // Keep a failed isolated profile for diagnosis; never touch real user state.
-    if (proof.success) fs.rmSync(root, { recursive: true, force: true });
+    if (proof.success) {
+      fs.rmSync(root, { recursive: true, force: true });
+      if (options.platform === 'win32' && baseline) fs.rmSync(workspace, { recursive: true, force: true });
+    }
   }
   return proof;
 }
