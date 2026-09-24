@@ -24,20 +24,37 @@ export function installNativeSessionAuth(
   entrypoint: string,
   sessionHeaders: (url: string) => Record<string, string>,
 ): void {
+  let smokeDiagnosticsRemaining = 4;
   session.webRequest.onBeforeSendHeaders((details, callback) => {
     const headers = { ...details.requestHeaders };
     for (const key of Object.keys(headers)) {
       if (key.toLowerCase() === "x-nirs4all-session") delete headers[key];
     }
     const window = currentWindow();
-    // Windows can omit frame.url for renderer fetches from a file: document.
-    // In that case the owning WebContents' current URL is the document we
-    // already navigated and checked. A supplied frame URL remains authoritative
-    // so an unrelated subframe cannot borrow the main document's credential.
-    const documentUrl = details.frame?.url || window?.webContents.getURL() || "";
-    if (window && details.webContentsId === window.webContents.id &&
-        isStudioDocument(documentUrl, entrypoint)) {
+    // Electron leaves both the numeric ID and frame metadata optional. On
+    // Windows file: renderers, use whichever ownership metadata it supplies,
+    // while still requiring the current main document to be Studio.
+    const mainDocumentIsStudio = Boolean(window &&
+      isStudioDocument(window.webContents.getURL(), entrypoint));
+    const hasOwner = details.webContentsId !== undefined || details.webContents !== undefined;
+    const ownerMatches = Boolean(window && hasOwner &&
+      (details.webContentsId === undefined || details.webContentsId === window.webContents.id) &&
+      (details.webContents === undefined || details.webContents.id === window.webContents.id));
+    const frameMatches = !details.frame || isStudioDocument(details.frame.url, entrypoint) ||
+      (details.frame.parent === null && mainDocumentIsStudio);
+    if (ownerMatches && mainDocumentIsStudio && frameMatches) {
       Object.assign(headers, sessionHeaders(details.url));
+    }
+    if (process.env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN &&
+        smokeDiagnosticsRemaining > 0 && /\/api\//.test(details.url) &&
+        !Object.keys(headers).some(key => key.toLowerCase() === "x-nirs4all-session")) {
+      smokeDiagnosticsRemaining -= 1;
+      // Test-only metadata: never print the credential or request URL.
+      console.error("Native session authentication skipped", {
+        hasOwner, ownerMatches, mainDocumentIsStudio, frameMatches,
+        hasFrame: Boolean(details.frame), resourceType: details.resourceType,
+        sidecarRecognized: Boolean(Object.keys(sessionHeaders(details.url)).length),
+      });
     }
     callback({ requestHeaders: headers });
   });

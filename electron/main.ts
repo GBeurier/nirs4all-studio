@@ -310,6 +310,11 @@ async function createWindow() {
     show: false, // Show after ready-to-show
   });
 
+  // Authenticate requests in the actual renderer session before loadFile or
+  // loadURL. The renderer never receives the sidecar session credential.
+  installNativeSessionAuth(mainWindow.webContents.session, () => mainWindow,
+    STUDIO_ENTRYPOINT, (url) => nativeSidecarManager.sessionHeaders(url));
+
   // Show main window and close splash when ready
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (!isStudioDocument(url, STUDIO_ENTRYPOINT)) event.preventDefault();
@@ -672,11 +677,6 @@ app.whenReady().then(async () => {
 
   // Show splash screen immediately (gives visual feedback during startup)
   splashWindow = createSplashWindow();
-
-  // Authenticate HTTP and WebSocket handshakes in the main process. The
-  // renderer receives neither the token nor a reusable credential-bearing URL.
-  installNativeSessionAuth(electron.session.defaultSession, () => mainWindow,
-    STUDIO_ENTRYPOINT, (url) => nativeSidecarManager.sessionHeaders(url));
 
   // Validate persisted runtime state before we decide whether startup can reuse
   // it. This clears stale custom/portable paths instead of failing later in a
