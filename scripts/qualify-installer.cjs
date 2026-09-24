@@ -90,8 +90,10 @@ async function streamedCommand(program, args, logRoot) {
   return { stdout: /^dpkg/.test(path.basename(program)) ? fs.readFileSync(`${prefix}.stdout.log`, 'utf8') : '' };
 }
 async function downloadBaseline(plan, root) {
+  const token = process.env.BASELINE_GITHUB_TOKEN;
   const response = await fetch(`https://api.github.com/repos/GBeurier/nirs4all-studio/releases/tags/${plan.version}`,
-    { signal: AbortSignal.timeout(30000) });
+    { headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'nirs4all-studio-installer-qualification',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}) }, signal: AbortSignal.timeout(30000) });
   assert(response.ok, `Baseline release HTTP ${response.status}`);
   const release = await response.json();
   assert(!release.draft && !release.prerelease && release.published_at);

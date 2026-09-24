@@ -327,6 +327,7 @@ function buildSandboxEnv(platformId, sandboxRoot, port, timeoutMs = DEFAULT_TIME
     [ARCHIVE_SMOKE_SESSION_TOKEN_ENV]: crypto.randomBytes(32).toString("hex"),
   };
   delete env.NIRS4ALL_BACKEND_PORT;
+  delete env.BASELINE_GITHUB_TOKEN;
 
   if (platformId === "win32") {
     const userProfile = path.join(sandboxRoot, "UserProfile");
