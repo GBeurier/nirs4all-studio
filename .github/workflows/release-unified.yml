@@ -385,6 +385,7 @@ jobs:
       - name: Qualify actual installer, populated upgrade and user journeys
         timeout-minutes: 20
         env:
+          BASELINE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['linux-x64']) }}
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
         run: |
@@ -567,6 +568,7 @@ jobs:
       - name: Qualify actual installer, populated upgrade and user journeys
         timeout-minutes: 20
         env:
+          BASELINE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['windows-x64']) }}
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
         shell: pwsh
@@ -794,6 +796,7 @@ jobs:
       - name: Qualify actual installer, populated upgrade and user journeys
         timeout-minutes: 20
         env:
+          BASELINE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['macos-x64']) }}
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
         run: |
@@ -1016,6 +1019,7 @@ jobs:
       - name: Qualify actual installer, populated upgrade and user journeys
         timeout-minutes: 20
         env:
+          BASELINE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INSTALLER_BASELINE: ${{ toJSON(fromJSON(needs.prepare.outputs.installer_baselines)['macos-arm64']) }}
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
         run: |
