@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { installNativeSessionAuth, isStudioDocument } from "./native-session-auth";
 import type { BrowserWindow, Session } from "electron";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 describe("native session document identity", () => {
   it("accepts packaged router hashes without trusting unrelated file origins", () => {
@@ -14,6 +18,22 @@ describe("native session document identity", () => {
     expect(isStudioDocument(`${entry}/runs`, entry)).toBe(true);
     for (const url of ["http://localhost:5174", "http://localhost.attacker:5173", "http://user@localhost:5173", "null", "invalid"]) {
       expect(isStudioDocument(url, entry)).toBe(false);
+    }
+  });
+  it.skipIf(process.platform === "win32")("accepts two file URLs for the same physical Studio document", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-document-"));
+    try {
+      const actual = path.join(root, "actual");
+      const alias = path.join(root, "alias");
+      fs.mkdirSync(actual);
+      fs.writeFileSync(path.join(actual, "index.html"), "studio");
+      fs.symlinkSync(actual, alias, "dir");
+      const entry = pathToFileURL(path.join(actual, "index.html")).href;
+      expect(isStudioDocument(pathToFileURL(path.join(alias, "index.html")).href, entry)).toBe(true);
+      fs.writeFileSync(path.join(actual, "untrusted.html"), "other");
+      expect(isStudioDocument(pathToFileURL(path.join(alias, "untrusted.html")).href, entry)).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 });
