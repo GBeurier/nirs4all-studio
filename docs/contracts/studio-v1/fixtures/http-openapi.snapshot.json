@@ -20949,6 +20949,37 @@
             ]
           }
         },
+        "/api/runs/pipelines": {
+          "get": {
+            "description": "List pipelines retained in runs by the explicit diagnostic backend.",
+            "operationId": "list_historical_pipelines_api_runs_pipelines_get",
+            "responses": {
+              "200": {
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "additionalProperties": {
+                        "items": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "title": "Response List Historical Pipelines Api Runs Pipelines Get",
+                      "type": "object"
+                    }
+                  }
+                },
+                "description": "Successful Response"
+              }
+            },
+            "summary": "List Historical Pipelines",
+            "tags": [
+              "runs",
+              "runs"
+            ]
+          }
+        },
         "/api/runs/preflight": {
           "post": {
             "description": "Check if all requirements are met before starting a run.\n\nVerifies that:\n- All pipeline operator classes can be imported (no missing packages)\n- The configured Python matches the running backend interpreter\n\nReturns:\n    ``ready: true`` if all checks pass, otherwise ``ready: false`` with a\n    list of issues describing what is missing.\n\nIssue types:\n    - ``env_mismatch``: Electron is configured for a different Python than\n      the running backend. User should restart the backend.\n    - ``not_found``: A referenced ``pipeline_id`` does not exist in the\n      workspace.\n    - ``missing_module``: An operator class cannot be imported because a\n      required package is not installed.  Issue ``details`` contains\n      ``step_name``, ``step_type``, and ``error``.",
@@ -47773,6 +47804,37 @@
               }
             },
             "summary": "Cancel Workspace Execution Job Record",
+            "tags": [
+              "runs",
+              "runs"
+            ]
+          }
+        },
+        "/api/runs/pipelines": {
+          "get": {
+            "description": "List pipelines retained in runs by the explicit diagnostic backend.",
+            "operationId": "list_historical_pipelines_api_runs_pipelines_get",
+            "responses": {
+              "200": {
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "additionalProperties": {
+                        "items": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "title": "Response List Historical Pipelines Api Runs Pipelines Get",
+                      "type": "object"
+                    }
+                  }
+                },
+                "description": "Successful Response"
+              }
+            },
+            "summary": "List Historical Pipelines",
             "tags": [
               "runs",
               "runs"

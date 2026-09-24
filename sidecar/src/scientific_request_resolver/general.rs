@@ -70,7 +70,7 @@ fn normalize_documents(
         ScientificRequestResolver::confine_dataset_config(&mut record, &root)?;
         bounded(&record, MAX_DOCUMENT_BYTES)?;
         roots.push(root);
-        requests.push(json!({"operation":"dataset.configure", "payload":{"record":record}}));
+        requests.push(json!({"operation":"dataset.configure", "payload":{"record":record,"scientific_run":true}}));
     }
     for (id, inline) in &selection.pipelines {
         let document = match inline {
@@ -573,6 +573,21 @@ mod tests {
             canonical_root.join("dataset/x.csv")
         );
         assert!(request["dataset"].get("X").is_none());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn saved_general_request_accepts_recovery_catalogue_version() {
+        let (root, config, workspace) = fixture("general-recovery-catalogue");
+        let path = config.join("dataset_links.json");
+        let mut links: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        links.as_object_mut().unwrap().remove("schema_version");
+        fs::write(&path, serde_json::to_vec(&links).unwrap()).unwrap();
+        let request = ScientificRequestResolver::new(config)
+            .resolve_general(&submission(&workspace, "local-python"), adapter)
+            .unwrap();
+        assert_eq!(request["engine"], "dag-ml");
+        assert!(request["dataset"]["train_x"].as_str().is_some());
         fs::remove_dir_all(root).unwrap();
     }
 
