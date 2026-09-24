@@ -39,7 +39,7 @@ export interface DatasetResultViewerHeader {
 
 export interface DatasetResultHeaderSummary {
   bestRow: ScoreCardRow | undefined;
-  bestContext: Extract<ScoreCardType, 'refit' | 'crossval'>;
+  bestContext: ScoreCardType;
   bestSummaryLabel: string;
   delta: number | null;
   deltaDirection: 'up' | 'down';
@@ -62,6 +62,7 @@ export function normalizeAllChainEntry(chain: AllChainEntry, runId?: string): To
     avg_train_score: chain.cv_train_score,
     fold_count: chain.cv_fold_count,
     scores: {
+      train: chain.cv_scores?.train ?? {},
       val: chain.cv_scores?.val ?? {},
       test: chain.cv_scores?.test ?? {},
     },
@@ -197,8 +198,14 @@ export function buildDatasetResultHeaderSummary({
   chains: TopChainResult[];
   metric: string | null;
 }): DatasetResultHeaderSummary {
-  const bestRow = scoreRows[0];
-  const bestContext = bestRow?.cardType === 'refit' ? 'refit' : 'crossval';
+  const bestTraining = scoreRows.filter(row => row.cardType === 'train' && row.primaryTrainScore != null)
+    .sort((a, b) => isLowerBetter(metric)
+      ? a.primaryTrainScore! - b.primaryTrainScore!
+      : b.primaryTrainScore! - a.primaryTrainScore!)[0];
+  const bestRow = scoreRows.find(row => row.cardType === 'refit' && !row.syntheticRefit && row.primaryTestScore != null)
+    ?? scoreRows.find(row => row.cardType === 'crossval' && row.primaryValScore != null)
+    ?? bestTraining ?? scoreRows[0];
+  const bestContext = bestRow?.cardType ?? 'crossval';
   const topRefitRow = scoreRows.find((row) => row.cardType === 'refit' && !row.syntheticRefit);
   const pairedCvRow = topRefitRow?.children?.find((child) => child.cardType === 'crossval');
   const lowerBetter = isLowerBetter(metric);
@@ -211,7 +218,7 @@ export function buildDatasetResultHeaderSummary({
   return {
     bestRow,
     bestContext,
-    bestSummaryLabel: bestRow?.syntheticRefit ? 'CV estimate' : (bestContext === 'refit' ? 'Best Refit' : 'Best CV'),
+    bestSummaryLabel: bestRow?.syntheticRefit ? 'CV estimate' : bestContext === 'refit' ? 'Best Refit' : bestContext === 'train' ? 'Best Training' : 'Best CV',
     delta,
     deltaDirection: lowerBetter ? 'down' : 'up',
     topChain: bestRow ? chains.find((chain) => chain.chain_id === bestRow.chainId) ?? null : null,

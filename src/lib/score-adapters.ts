@@ -100,6 +100,9 @@ function buildCrossvalRow(
   const hasSummaryScores = variant === "raw";
   const cvValScores = hasSummaryScores ? coerceScoreMap(chain.scores?.val) : {};
   const cvTestScores = hasSummaryScores ? coerceScoreMap(chain.scores?.test) : {};
+  const trainingOnly = chain.fold_count === 0 && safeNumber(chain.avg_train_score) != null
+    && safeNumber(chain.avg_val_score) == null && safeNumber(chain.avg_test_score) == null
+    && Object.keys(cvValScores).length === 0 && Object.keys(cvTestScores).length === 0;
 
   return {
     id: `cv-${cvSourceChainId(chain)}${foldVariantSuffix(variant)}`,
@@ -110,14 +113,15 @@ function buildCrossvalRow(
     modelClass: chain.model_class,
     preprocessings: chain.preprocessings || null,
     bestParams: displayParams(chain),
-    cardType: "crossval",
-    foldId: foldVariantId("avg", variant),
+    cardType: trainingOnly ? "train" : "crossval",
+    foldId: trainingOnly ? "" : foldVariantId("avg", variant),
+    partition: trainingOnly ? "train" : undefined,
     foldCount: chain.fold_count,
     metric,
     taskType,
     testScores: cvTestScores,
     valScores: cvValScores,
-    trainScores: {},
+    trainScores: hasSummaryScores ? coerceScoreMap(chain.scores?.train) : {},
     avgValScores: cvValScores,
     avgTestScores: cvTestScores,
     primaryTestScore: hasSummaryScores ? safeNumber(chain.avg_test_score) : null,

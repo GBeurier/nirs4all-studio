@@ -32,6 +32,8 @@ vi.mock("@/hooks/useDatasetQueries", () => ({
   useLinkedWorkspacesQuery: () => linkedWorkspacesState.result,
 }));
 
+vi.mock("@/context/useMlReadiness", () => ({ useMlReadiness: () => ({ mlReady: true, workspaceReady: true }) }));
+
 import { useResultsPageState } from "./useResultsPageState";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })

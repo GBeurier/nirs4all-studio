@@ -120,14 +120,14 @@ export function DimensionReductionHeaderControls({
 
         {nComponents >= 2 && (
           <>
-            <DimensionReductionAxisSelect value={xAxis} options={dimensionOptions} onChange={onXAxisChange} />
+            <DimensionReductionAxisSelect label="X axis" value={xAxis} options={dimensionOptions} onChange={onXAxisChange} />
             <span className="text-xs text-muted-foreground">vs</span>
-            <DimensionReductionAxisSelect value={yAxis} options={dimensionOptions} onChange={onYAxisChange} />
+            <DimensionReductionAxisSelect label="Y axis" value={yAxis} options={dimensionOptions} onChange={onYAxisChange} />
 
             {viewMode === '3d' && nComponents >= 3 && (
               <>
                 <span className="text-xs text-muted-foreground">vs</span>
-                <DimensionReductionAxisSelect value={zAxis} options={dimensionOptions} onChange={onZAxisChange} />
+                <DimensionReductionAxisSelect label="Z axis" value={zAxis} options={dimensionOptions} onChange={onZAxisChange} />
               </>
             )}
           </>
@@ -169,19 +169,21 @@ export function DimensionReductionHeaderControls({
 }
 
 interface DimensionReductionAxisSelectProps {
+  label: string;
   value: string;
   options: DimensionOption[];
   onChange: (axis: string) => void;
 }
 
 function DimensionReductionAxisSelect({
+  label,
   value,
   options,
   onChange,
 }: DimensionReductionAxisSelectProps) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="h-7 w-16 text-xs">
+      <SelectTrigger aria-label={label} className="h-7 w-16 text-xs">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

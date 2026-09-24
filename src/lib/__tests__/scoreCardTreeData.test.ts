@@ -61,7 +61,7 @@ function prediction(overrides: Partial<PartitionPrediction> = {}): PartitionPred
 }
 
 describe('score card tree data helpers', () => {
-  it('partitions top-level rows into refit and crossval sections', () => {
+  it('preserves top-level training rows alongside refit and crossval sections', () => {
     const refit = row({ id: 'refit', cardType: 'refit' });
     const crossval = row({ id: 'crossval', cardType: 'crossval' });
     const train = row({ id: 'train', cardType: 'train' });
@@ -69,6 +69,7 @@ describe('score card tree data helpers', () => {
     expect(partitionScoreCardRows([crossval, train, refit])).toEqual({
       refitRows: [refit],
       cvRows: [crossval],
+      trainRows: [train],
     });
   });
 

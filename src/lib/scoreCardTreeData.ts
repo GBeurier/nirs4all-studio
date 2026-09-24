@@ -12,6 +12,7 @@ export type ScoreCardFoldVariant = 'raw' | 'aggregated';
 export interface ScoreCardTreeSections {
   refitRows: ScoreCardRow[];
   cvRows: ScoreCardRow[];
+  trainRows: ScoreCardRow[];
 }
 
 export interface ModelTreeDisplayData {
@@ -30,9 +31,11 @@ export function partitionScoreCardRows(rows: ScoreCardRow[]): ScoreCardTreeSecti
       sections.refitRows.push(row);
     } else if (row.cardType === 'crossval') {
       sections.cvRows.push(row);
+    } else if (row.cardType === 'train') {
+      sections.trainRows.push(row);
     }
     return sections;
-  }, { refitRows: [], cvRows: [] });
+  }, { refitRows: [], cvRows: [], trainRows: [] });
 }
 
 export function getScoreCardCrossvalChildren(row: ScoreCardRow): ScoreCardRow[] {

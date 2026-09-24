@@ -1935,8 +1935,7 @@
       {
         "name": "criterion",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "min_samples_split",
@@ -2074,8 +2073,7 @@
       {
         "name": "criterion",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "min_samples_split",
@@ -3724,8 +3722,7 @@
       {
         "name": "penalty",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "C",
@@ -3833,8 +3830,7 @@
       {
         "name": "l1_ratios",
         "type": "string",
-        "isAdvanced": true,
-        "default": "warn"
+        "isAdvanced": true
       },
       {
         "name": "fit_intercept",
@@ -3857,14 +3853,12 @@
       {
         "name": "penalty",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "scoring",
         "type": "string",
-        "isAdvanced": true,
-        "default": "warn"
+        "isAdvanced": true
       },
       {
         "name": "solver",
@@ -3923,8 +3917,7 @@
       {
         "name": "use_legacy_attributes",
         "type": "string",
-        "isAdvanced": true,
-        "default": "warn"
+        "isAdvanced": true
       }
     ],
     "source": "sklearn",
@@ -4763,8 +4756,7 @@
       {
         "name": "probability",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "tol",
@@ -7013,8 +7005,7 @@
       {
         "name": "probability",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "tol",
@@ -12279,14 +12270,12 @@
       {
         "name": "shuffle",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       },
       {
         "name": "random_state",
         "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "isAdvanced": true
       }
     ],
     "source": "sklearn",

@@ -185,16 +185,12 @@
         "isAdvanced": true
       },
       {
-        "name": "n_alphas",
-        "type": "string",
-        "default": "deprecated",
-        "isAdvanced": true
-      },
-      {
         "name": "alphas",
-        "type": "string",
-        "default": "warn",
-        "isAdvanced": true
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true,
+        "min": 1,
+        "description": "Number of values in the automatically generated regularization grid"
       },
       {
         "name": "fit_intercept",
@@ -542,16 +538,12 @@
         "isAdvanced": true
       },
       {
-        "name": "n_alphas",
-        "type": "string",
-        "default": "deprecated",
-        "isAdvanced": true
-      },
-      {
         "name": "alphas",
-        "type": "string",
-        "default": "warn",
-        "isAdvanced": true
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true,
+        "min": 1,
+        "description": "Number of values in the automatically generated regularization grid"
       },
       {
         "name": "fit_intercept",
@@ -896,7 +888,6 @@
       {
         "name": "penalty",
         "type": "select",
-        "default": "deprecated",
         "options": [
           {
             "value": "l1",
@@ -1042,7 +1033,6 @@
       {
         "name": "l1_ratios",
         "type": "string",
-        "default": "warn",
         "isAdvanced": true
       },
       {
@@ -1065,7 +1055,6 @@
       {
         "name": "penalty",
         "type": "select",
-        "default": "deprecated",
         "options": [
           {
             "value": "l1",
@@ -1157,7 +1146,6 @@
       {
         "name": "use_legacy_attributes",
         "type": "string",
-        "default": "warn",
         "isAdvanced": true
       }
     ],
@@ -1276,16 +1264,12 @@
         "isAdvanced": true
       },
       {
-        "name": "n_alphas",
-        "type": "string",
-        "default": "deprecated",
-        "isAdvanced": true
-      },
-      {
         "name": "alphas",
-        "type": "string",
-        "default": "warn",
-        "isAdvanced": true
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true,
+        "min": 1,
+        "description": "Number of values in the automatically generated regularization grid"
       },
       {
         "name": "fit_intercept",
@@ -1415,16 +1399,12 @@
         "isAdvanced": true
       },
       {
-        "name": "n_alphas",
-        "type": "string",
-        "default": "deprecated",
-        "isAdvanced": true
-      },
-      {
         "name": "alphas",
-        "type": "string",
-        "default": "warn",
-        "isAdvanced": true
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true,
+        "min": 1,
+        "description": "Number of values in the automatically generated regularization grid"
       },
       {
         "name": "fit_intercept",

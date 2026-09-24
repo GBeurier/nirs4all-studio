@@ -23,6 +23,7 @@ interface PipelineEditorInitialState {
   pipelineName: string;
   pipelineConfig: PipelineConfig;
   isFavorite: boolean;
+  isDirty: boolean;
 }
 
 interface UsePipelineEditorInitialStateOptions {
@@ -59,6 +60,7 @@ export function resolvePipelineEditorInitialState({
     pipelineName: persistedState?.pipelineName ?? initialName,
     pipelineConfig: persistedState?.config ?? initialConfig,
     isFavorite: persistedState?.isFavorite ?? false,
+    isDirty: persistedState?.isDirty ?? false,
   };
 }
 

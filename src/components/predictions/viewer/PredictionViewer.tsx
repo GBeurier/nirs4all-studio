@@ -21,6 +21,7 @@ import {
 } from "./PredictionViewerConformalToolbar";
 import { PredictionViewerExportToolbar } from "./PredictionViewerExportToolbar";
 import { PredictionViewerHeader } from "./PredictionViewerHeader";
+import { PredictionOutputSelector } from "./PredictionOutputSelector";
 import { PredictionViewerKindToolbar } from "./PredictionViewerKindToolbar";
 import { usePredictionChartConfig } from "./usePredictionChartConfig";
 import { usePartitionsData } from "./fetchPartitionData";
@@ -89,7 +90,7 @@ export function PredictionViewer({
     [partitions, selectedConformalCoverage],
   );
 
-  const { data: allDatasets, isLoading, error } = usePartitionsData({
+  const { data: allDatasets, isLoading, error, outputCount, outputIndex, setOutputIndex } = usePartitionsData({
     partitions: conformalPartitions,
     workspaceId,
     enabled: open && partitions.length > 0,
@@ -117,7 +118,7 @@ export function PredictionViewer({
     }));
   }, [open, config.colorMode, config.metadataKey, coloration.metadataColumns, setConfig]);
 
-  const baseFilename = buildPredictionViewerBaseFilename(header, kind);
+  const baseFilename = buildPredictionViewerBaseFilename(header, kind) + (outputCount > 1 ? `_output-${outputIndex + 1}` : "");
 
   const handleExportPng = () => {
     if (!chartRef.current) return;
@@ -128,7 +129,9 @@ export function PredictionViewer({
   const handleExportCsv = () => {
     const csvExport = buildPredictionViewerCsvExport(kind, visibleDatasets, config);
     if (!csvExport) return;
-    exportRowsCsv(csvExport.rows, csvExport.columns, `${baseFilename}.csv`);
+    const rows = outputCount > 1 ? csvExport.rows.map(row => ({ output: `Output ${outputIndex + 1}`, ...row })) : csvExport.rows;
+    const columns = outputCount > 1 ? ["output", ...csvExport.columns] : csvExport.columns;
+    exportRowsCsv(rows, columns, `${baseFilename}.csv`);
   };
 
   const toggleVisible = (partition: string) => {
@@ -188,12 +191,14 @@ export function PredictionViewer({
           resolvedMetadataType={coloration.metadataType}
         />
 
-        <PredictionViewerConformalToolbar
+        <PredictionOutputSelector datasets={visibleDatasets} outputCount={outputCount} outputIndex={outputIndex} onOutputChange={setOutputIndex} />
+
+        {outputCount <= 1 && <PredictionViewerConformalToolbar
           datasets={visibleDatasets}
           onSelectedCoverageChange={setSelectedConformalCoverage}
           partitions={conformalPartitions}
           selectedCoverage={selectedConformalCoverage}
-        />
+        />}
 
         {legendVisible && (
           <div className="border-b px-5 py-2">
@@ -212,6 +217,7 @@ export function PredictionViewer({
           taskKind={taskKind}
         />
 
+        {outputCount > 1 && <p className="px-5 text-xs">Metrics below are calculated for Output {outputIndex + 1} across visible partitions.</p>}
         <MetricsStrip taskKind={taskKind} datasets={visibleDatasets} />
       </DialogContent>
     </Dialog>
