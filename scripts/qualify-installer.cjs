@@ -280,7 +280,7 @@ async function main(argv = process.argv.slice(2)) {
     if (preserved) {
       await ui.main({ config, sandboxRoot: profile, existingProfile: true, envOverrides, timings: proof.timings,
         inspectProfile: async ({ page, env }) => {
-          assert.equal((await api(env, '/workspace')).workspace.path, preserved.workspace);
+          assert.equal(fs.realpathSync((await api(env, '/workspace')).workspace.path), fs.realpathSync(preserved.workspace));
           const prefs = (await api(env, '/app/settings')).ui_preferences;
           for (const key of ['language', 'theme', 'developer_mode']) assert.equal(prefs[key], preserved.preferences[key], `Lost preference ${key}`);
           const datasets = await api(env, '/datasets');
