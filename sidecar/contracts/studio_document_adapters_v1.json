@@ -206,8 +206,8 @@
     },
     {
       "path": "src/data/nodes/definitions/models/sklearn-meta.json",
-      "size": 4937,
-      "sha256": "727954ca3df60e8bd173e8f47ea510471b39fbd0969b6362f1ed17af08f19d73"
+      "size": 4724,
+      "sha256": "9e05c202c75ee3d18a17b93587b964dd9734464a593a5cc5a6e0f7eb67bfe0aa"
     },
     {
       "path": "src/data/nodes/definitions/models/sklearn-misc.json",
