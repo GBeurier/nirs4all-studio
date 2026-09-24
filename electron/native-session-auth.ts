@@ -1,4 +1,24 @@
 import type { BrowserWindow, Session } from "electron";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+function realDocumentPath(url: URL): string | null {
+  try {
+    const file = fileURLToPath(url);
+    try {
+      return fs.realpathSync.native(file);
+    } catch {
+      // Electron can read inside app.asar, while the OS realpath syscall can
+      // only resolve the archive itself. Resolve that physical prefix first.
+      const archive = /^(.*?\.asar)(?:[\\/](.*))$/i.exec(file);
+      if (!archive) return null;
+      return path.join(fs.realpathSync.native(archive[1]), archive[2]);
+    }
+  } catch {
+    return null;
+  }
+}
 
 /** Match the actual Studio document, not arbitrary pages in the same window. */
 export function isStudioDocument(candidate: string, entrypoint: string): boolean {
@@ -7,8 +27,14 @@ export function isStudioDocument(candidate: string, entrypoint: string): boolean
     const application = new URL(entrypoint);
     if (document.username || document.password) return false;
     if (application.protocol === "file:") {
-      return document.protocol === "file:" && document.host === application.host &&
-        document.pathname === application.pathname;
+      if (document.protocol !== "file:" || document.host !== application.host) return false;
+      if (document.pathname === application.pathname) return true;
+      const actual = realDocumentPath(document);
+      const expected = realDocumentPath(application);
+      if (!actual || !expected) return false;
+      return process.platform === "win32"
+        ? actual.toLowerCase() === expected.toLowerCase()
+        : actual === expected;
     }
     return (application.protocol === "http:" || application.protocol === "https:") &&
       document.origin === application.origin;
@@ -58,6 +84,8 @@ export function installNativeSessionAuth(
         hasOwner, ownerMatches, sameMainFrame, mainDocumentIsStudio, frameMatches,
         hasFrame: Boolean(details.frame), resourceType: details.resourceType,
         sidecarRecognized: Boolean(Object.keys(sessionHeaders(details.url)).length),
+        mainPath: (() => { try { return new URL(window?.webContents.getURL() ?? "").pathname; } catch { return "[invalid]"; } })(),
+        expectedPath: (() => { try { return new URL(entrypoint).pathname; } catch { return "[invalid]"; } })(),
       });
     }
     callback({ requestHeaders: headers });
