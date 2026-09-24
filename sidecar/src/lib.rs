@@ -4255,17 +4255,19 @@ pub fn serve(host: &str, port: u16) -> std::io::Result<()> {
         Arc::new(http_access::HttpAccessPolicy::from_environment().map_err(std::io::Error::other)?);
     let listener = TcpListener::bind((host, port))?;
     let address = listener.local_addr()?;
-    println!(
-        "STUDIO_SIDECAR_READY {{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"host\":\"{}\",\"port\":{}}}",
-        address.ip(),
-        address.port()
-    );
+    // Acquiring the packaged scientific host can take longer on a cold
+    // installation. Do not invite clients before the request loop is ready.
     let state = Arc::new(Mutex::new(SidecarState::from_environment()));
     let websocket_manager = state
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .native_jobs
         .websocket_manager();
+    println!(
+        "STUDIO_SIDECAR_READY {{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"host\":\"{}\",\"port\":{}}}",
+        address.ip(),
+        address.port()
+    );
     let limits = ServerLimits::default();
     let connections = Arc::new(ConnectionGate {
         active: AtomicUsize::new(0),
