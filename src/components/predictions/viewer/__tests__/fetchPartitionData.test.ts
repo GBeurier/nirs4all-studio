@@ -19,8 +19,12 @@ describe("coercePredictionVector", () => {
     expect(coercePredictionVector([[1, 10], [2, 20]])).toEqual([1, 2]);
   });
 
-  it("preserves row positions for missing or non-numeric target cells", () => {
-    const payload = [[1, 10], [2], [3, "bad" as unknown as number]];
+  it("preserves row positions for non-numeric target cells", () => {
+    const payload = [[1, 10], [2, Number.NaN], [3, "bad" as unknown as number]];
     expect(coercePredictionVector(payload, 1)).toEqual([10, Number.NaN, Number.NaN]);
+  });
+
+  it("rejects missing target cells instead of mixing output columns", () => {
+    expect(() => coercePredictionVector([[1, 10], [2]], 1)).toThrow(/rectangular/);
   });
 });

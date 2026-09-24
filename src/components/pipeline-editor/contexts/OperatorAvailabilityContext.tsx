@@ -146,11 +146,10 @@ export function OperatorAvailabilityProvider({
   }, []);
 
   useEffect(() => {
-    if (operatorAvailability) {
-      return;
-    }
+    // Persisted results are only an initial display snapshot. The Python
+    // environment may have changed since the previous editor session.
     void refreshOperatorAvailability();
-  }, [operatorAvailability, operatorRetryToken, refreshOperatorAvailability]);
+  }, [operatorRetryToken, refreshOperatorAvailability]);
 
   useEffect(() => {
     if (!operatorsError) {

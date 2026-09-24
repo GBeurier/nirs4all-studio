@@ -205,6 +205,8 @@ interface ElectronApi {
    * Python environment management
    */
   getEnvStatus(): Promise<string>;
+  getInstallLog?(): Promise<import("./installLog").InstallLogSnapshot>;
+  onInstallLog?(callback: (snapshot: import("./installLog").InstallLogSnapshot) => void): () => void;
   isEnvReady(): Promise<boolean>;
   getEnvInfo(): Promise<{
     status: string;

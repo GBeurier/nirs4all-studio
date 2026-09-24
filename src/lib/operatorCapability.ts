@@ -123,6 +123,8 @@ function matchesEntry(
   node: OperatorCapabilityNode,
   entry: OperatorCapabilityEntry | LegacyUnavailableOperatorEntry,
 ): boolean {
+  // One sklearn class can be valid for spectra but invalid for target replay.
+  if (node.type && entry.type && normalizeText(node.type) !== normalizeText(entry.type)) return false;
   if (node.id && entry.id && normalizeText(node.id) === normalizeText(entry.id)) {
     return true;
   }
