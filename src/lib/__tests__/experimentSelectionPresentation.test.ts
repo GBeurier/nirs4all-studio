@@ -175,6 +175,7 @@ describe("experimentSelectionPresentation", () => {
     ]);
     expect(buildExperimentPipelineSelectionBadges(pipeline)).toEqual({
       showFavorite: false,
+      showHistory: false,
       showPreset: true,
     });
     expect(pipelineDetails).toEqual({

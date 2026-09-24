@@ -14,6 +14,7 @@ export interface PipelineInfo {
   created_at: string;
   updated_at: string;
   is_favorite?: boolean;
+  source?: "saved" | "history";
 }
 
 // Note: This is a minimal type for API transport. The full pipeline step type

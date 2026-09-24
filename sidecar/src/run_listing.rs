@@ -1,6 +1,7 @@
 //! Workspace-scoped run discovery combines immutable history with actual jobs.
 use crate::{workspace_store::WorkspaceStoreReadError, HttpRequest, HttpResponse, SidecarState};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
@@ -8,7 +9,10 @@ use std::{
 };
 
 pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<HttpResponse> {
-    if !matches!(request.path.as_str(), "/api/runs" | "/api/runs/stats") {
+    if !matches!(
+        request.path.as_str(),
+        "/api/runs" | "/api/runs/stats" | "/api/runs/pipelines"
+    ) {
         return None;
     }
     if request.method != "GET" {
@@ -18,11 +22,129 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
             "GET",
         ));
     }
-    let result = read(state, request);
+    let result = if request.path == "/api/runs/pipelines" {
+        read_historical_pipelines(state, request)
+    } else {
+        read(state, request)
+    };
     Some(match result {
         Ok(value) => HttpResponse::json(200, value.to_string()),
         Err(response) => response,
     })
+}
+
+fn read_historical_pipelines(
+    runtime: &Arc<Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Result<Value, HttpResponse> {
+    if request.query.is_some() {
+        return Err(HttpResponse::json(
+            400,
+            json!({"detail":"Historical pipelines do not accept query fields"}).to_string(),
+        ));
+    }
+    let (settings, host) = {
+        let state = runtime
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        (state.app_settings.clone(), state.scientific_host.clone())
+    };
+    let active = settings.active_linked_workspace_access().map_err(|error| {
+        crate::app_settings_storage_error("resolve active pipeline history workspace", &error)
+    })?;
+    let Some(workspace) = active else {
+        return Ok(json!({"pipelines":[]}));
+    };
+    let summaries = workspace.store().map_or_else(
+        || crate::workspace_store::read_run_summaries(workspace.path(), 500, 0),
+        |store| crate::workspace_store::read_run_summaries_from_connection(&store, 500, 0),
+    );
+    let summaries = match summaries {
+        Ok(rows) => rows,
+        Err(WorkspaceStoreReadError::StoreNotFound) => return Ok(json!({"pipelines":[]})),
+        Err(error) => return Err(crate::workspace_store_read_error_response(&error)),
+    };
+    let mut seen = HashSet::new();
+    let mut pipelines = Vec::new();
+    let mut truncated = false;
+    for summary in summaries {
+        let summary = summary.response();
+        let Some(run_id) = summary["id"].as_str() else {
+            continue;
+        };
+        let detail = workspace
+            .store()
+            .map_or_else(
+                || crate::workspace_store::read_run_detail_projection(workspace.path(), run_id),
+                |store| {
+                    crate::workspace_store::read_run_detail_projection_from_connection(
+                        &store, run_id,
+                    )
+                },
+            )
+            .map_err(|error| crate::workspace_store_read_error_response(&error))?;
+        let Some(detail) = detail else { continue };
+        for pipeline in detail["pipelines"].as_array().into_iter().flatten() {
+            let Some(template) = historical_template(pipeline) else {
+                continue;
+            };
+            let Ok(signature) = serde_json::to_vec(template) else {
+                continue;
+            };
+            if signature.len() > 32 * 1024 || !seen.insert(signature.clone()) {
+                continue;
+            }
+            if pipelines.len() == 100 {
+                truncated = true;
+                break;
+            }
+            let Some(host) = &host else {
+                return Err(HttpResponse::json(
+                    503,
+                    json!({"detail":"Historical pipeline conversion requires the configured library host"})
+                        .to_string(),
+                ));
+            };
+            let Ok(converted) =
+                host.adapt_document("pipeline.import", &json!({"payload":template}))
+            else {
+                continue;
+            };
+            let Some(steps) = converted["steps"].as_array() else {
+                continue;
+            };
+            if steps.is_empty() || steps.iter().any(|step| !step.is_object()) {
+                continue;
+            }
+            let id = format!("history:{:x}", Sha256::digest(signature));
+            let created_at = pipeline["created_at"].as_str().unwrap_or_default();
+            pipelines.push(json!({
+                "id":id,
+                "name":pipeline["name"].as_str().unwrap_or("Historical pipeline"),
+                "description":"Recovered from run history",
+                "category":"history",
+                "source":"history",
+                "steps":steps,
+                "created_at":created_at,
+                "updated_at":pipeline["completed_at"].as_str().unwrap_or(created_at),
+            }));
+        }
+        if truncated {
+            break;
+        }
+    }
+    Ok(json!({"pipelines":pipelines,"truncated":truncated}))
+}
+
+fn historical_template(pipeline: &Value) -> Option<&Value> {
+    pipeline
+        .get("original_template")
+        .filter(|value| value.is_array() || value.is_object())
+        .or_else(|| {
+            pipeline
+                .get("expanded_config")
+                .filter(|value| value.is_array() || value.is_object())
+        })
 }
 
 fn read(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Result<Value, HttpResponse> {
@@ -209,6 +331,34 @@ fn compose(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn historical_pipeline_source_reads_schema_five_and_falls_back_to_expanded_config() {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let workspace = std::env::temp_dir().join(format!(
+            "n4a-historical-pipelines-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&workspace).unwrap();
+        fs::write(
+            workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5_summary.sqlite"),
+        )
+        .unwrap();
+        let summaries = crate::workspace_store::read_run_summaries(&workspace, 100, 0).unwrap();
+        let run_id = summaries[0].response()["id"].as_str().unwrap().to_owned();
+        let detail = crate::workspace_store::read_run_detail_projection(&workspace, &run_id)
+            .unwrap()
+            .unwrap();
+        let pipeline = &detail["pipelines"][0];
+        assert!(pipeline["original_template"].is_null());
+        assert!(historical_template(pipeline).unwrap().is_array());
+        assert_eq!(historical_template(&json!({"expanded_config":"bad"})), None);
+        fs::remove_dir_all(workspace).unwrap();
+    }
     #[test]
     fn filters_are_closed_and_duplicate_keys_are_rejected() {
         for query in ["status=bad", "status=running&status=queued", "limit=2"] {

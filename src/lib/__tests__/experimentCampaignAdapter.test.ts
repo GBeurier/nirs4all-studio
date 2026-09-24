@@ -168,6 +168,23 @@ describe("experimentCampaignAdapter", () => {
     ]);
   });
 
+  it("keeps history pipeline configurations inline in campaign specs", () => {
+    const campaign = buildExperimentCampaignSpec({
+      name: "Replay",
+      selectedDatasetIds: ["d1"],
+      selectedPipelineConfigs: [
+        { id: "history:abc", name: "Historical PLS", steps: pipeline().steps, source: "inline" },
+      ],
+      selectedGroupingPayload: { d1: null },
+    });
+
+    expect(campaign.pipelines[0]).toMatchObject({
+      id: "history:abc",
+      name: "Historical PLS",
+      source: "inline",
+    });
+  });
+
   it("passes optional execution backends through campaign spec construction", () => {
     const campaign = buildExperimentCampaignSpec({
       name: "Cluster Experiment",

@@ -181,6 +181,29 @@ describe("NewExperiment selection steps", () => {
     });
   });
 
+  it("labels runnable pipelines recovered from run history", async () => {
+    const { container, root } = await render(
+      <NewExperimentPipelineSelectionStep
+        availablePipelineCount={1}
+        filteredPipelines={[{ ...pipeline, id: "history:abc", preset: false, favorite: false, isHistory: true }]}
+        isLoading={false}
+        pipelineError={null}
+        pipelineFilter="all"
+        pipelineSearch=""
+        selectedPipelineIds={[]}
+        onPipelineFilterChange={vi.fn()}
+        onPipelineSearchChange={vi.fn()}
+        onTogglePipeline={vi.fn()}
+      />,
+    );
+
+    expect(container.textContent).toContain("History");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("renders pipeline empty-search state separately from empty catalog state", async () => {
     const { container, root } = await render(
       <NewExperimentPipelineSelectionStep

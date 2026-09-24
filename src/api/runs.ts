@@ -23,6 +23,7 @@ import type {
 } from "@/types/runs";
 import type { PipelineExecutionRobustnessLaunchPayload } from "@/lib/pipelineExecutionContract";
 import type { NativeExperimentLaunchPayload } from "@/lib/experimentExecutionAdapter";
+import type { PipelineInfo } from "./pipelines";
 
 export interface PredictionRecord {
   id: string;
@@ -42,6 +43,10 @@ export async function listPredictions(): Promise<{
 
 export async function listRuns(): Promise<RunListResponse> {
   return api.get("/runs");
+}
+
+export async function listRunPipelines(): Promise<{ pipelines: PipelineInfo[] }> {
+  return api.get("/runs/pipelines");
 }
 
 export async function getRun(runId: string): Promise<Run> {

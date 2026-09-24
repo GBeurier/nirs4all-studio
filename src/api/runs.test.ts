@@ -7,6 +7,7 @@ import {
   getRunExecutionBackends,
   getRunExecutionJobRecord,
   getWorkspaceExecutionJobRecord,
+  listRunPipelines,
   listRunExecutionJobRecords,
 } from "./runs";
 import {
@@ -28,6 +29,15 @@ afterEach(() => {
 });
 
 describe("runs API execution job records", () => {
+  it("lists lightweight pipeline configurations recovered from run history", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ pipelines: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listRunPipelines();
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/runs/pipelines", expect.any(Object));
+  });
+
   it("reads execution backend capabilities", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
       default_backend: "local-python",
