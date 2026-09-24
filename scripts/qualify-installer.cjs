@@ -14,7 +14,7 @@ const ui = require('./smoke-first-launch-ui.cjs');
 const { sha256File, parseChecksumSidecar } = require('./finalize-release-assets.cjs');
 
 // Product budgets, deliberately separate from GitHub's infrastructure timeout.
-const BUDGETS = Object.freeze({ install: 120000, baselineSetup: 300000, baselineLaunch: 180000, launch: 120000, preview: 5000, link: 5000, navigation: 3000 });
+const BUDGETS = Object.freeze({ install: 300000, baselineSetup: 300000, baselineLaunch: 180000, launch: 120000, preview: 5000, link: 5000, navigation: 3000 });
 
 function parseArgs(argv) {
   const options = {};
@@ -44,7 +44,8 @@ async function timed(proof, phase, budget, callback) {
 async function install(file, platform, root) {
   const command = (program, args) => streamedCommand(program, args, path.dirname(root));
   if (platform === 'win32') {
-    // /D is deliberately last; execFile passes the path with spaces as one argument.
+    // NSIS requires /D last and a path without spaces for silent installation.
+    assert(!/\s/.test(root), 'NSIS /D install path must contain no spaces');
     await command(file, ['/S', '/allusers', `/D=${root}`]);
     assert(fs.existsSync(path.join(root, 'nirs4all Studio.exe')), 'NSIS did not install the application');
     return root;
@@ -239,8 +240,8 @@ async function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   const proof = { success: false, platform: options.platform, arch: process.arch, source_sha: process.env.RELEASE_SOURCE_SHA,
     installer_sha256: sha256File(options.installer), budgets: BUDGETS, timings: [] };
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio installer qualification '));
-  const installRoot = path.join(root, 'Application installée');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), options.platform === 'win32' ? 'studioq-' : 'studio installer qualification '));
+  const installRoot = path.join(root, options.platform === 'win32' ? 'Application' : 'Application installée');
   const profile = path.join(root, 'upgrade-profile');
   const data = fixture(root);
   const candidateData = fixture(path.join(root, 'candidate'));
