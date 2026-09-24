@@ -48,13 +48,13 @@ async function withDiagnosticTimeout(promise) {
   }
 }
 
-async function closeApplication(app) {
+async function closeApplication(app, timeoutMs = 30000) {
   let timer;
   try {
     await Promise.race([
       app.close(),
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error("Electron close timed out")), 5000);
+        timer = setTimeout(() => reject(new Error("Electron close timed out")), timeoutMs);
       }),
     ]);
   } catch (error) {
@@ -245,7 +245,7 @@ async function main(options = {}) {
     }
     throw new Error(sanitizeDiagnostic(error.stack || error, secrets, 8000));
   } finally {
-    if (app) await closeApplication(app).catch(error => console.error(error));
+    if (app) await closeApplication(app, 5000).catch(error => console.error(error));
     if (!options.sandboxRoot && !config.keepSandbox) await archive.cleanupSandboxRoot(sandbox);
   }
 }
