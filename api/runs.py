@@ -377,6 +377,39 @@ _runs_loaded: bool = False  # Track if runs have been loaded from disk
 _current_workspace_path: str | None = None  # Track which workspace runs were loaded for
 
 
+def _list_historical_pipeline_configs() -> list[dict[str, Any]]:
+    """Return unique editor pipelines from the diagnostic backend's run manifests."""
+    seen_steps: set[str] = set()
+    historical: list[dict[str, Any]] = []
+    for run in sorted(_runs.values(), key=lambda item: item.created_at, reverse=True):
+        for dataset in run.datasets:
+            for pipeline in dataset.pipelines:
+                config = pipeline.config
+                if not isinstance(config, dict):
+                    continue
+                steps = config.get("steps")
+                if not isinstance(steps, list) or not steps or not all(isinstance(step, dict) for step in steps):
+                    continue
+                signature = json.dumps(steps, sort_keys=True, separators=(",", ":"), default=str)
+                if len(signature) > 32 * 1024 or signature in seen_steps:
+                    continue
+                seen_steps.add(signature)
+                historical.append({
+                    "id": f"history:{uuid.uuid5(uuid.NAMESPACE_URL, f'nirs4all-studio:history:{signature}').hex}",
+                    "name": str(config.get("name") or pipeline.pipeline_name or "Historical pipeline"),
+                    "description": str(config["description"]) if config.get("description") is not None else None,
+                    "category": "history",
+                    "source": "history",
+                    "steps": steps,
+                    "created_at": run.created_at,
+                    "updated_at": run.completed_at or run.created_at,
+                    "is_favorite": False,
+                })
+                if len(historical) == 100:
+                    return historical
+    return historical
+
+
 def reset_runs_cache():
     """Reset the runs cache. Should be called when workspace changes."""
     global _runs, _runs_loaded, _current_workspace_path
@@ -2400,6 +2433,13 @@ async def list_runs(status: str = None):
         _attach_workspace_robustness_artifacts(run)
         _attach_workspace_tuning_artifacts(run)
     return RunListResponse(runs=runs, total=len(runs))
+
+
+@router.get("/pipelines")
+async def list_historical_pipelines() -> dict[str, list[dict[str, Any]]]:
+    """List pipelines retained in runs by the explicit diagnostic backend."""
+    _ensure_runs_loaded()
+    return {"pipelines": _list_historical_pipeline_configs()}
 
 
 @router.get("/stats", response_model=RunStatsResponse)

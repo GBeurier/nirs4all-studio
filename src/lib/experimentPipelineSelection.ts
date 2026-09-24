@@ -35,12 +35,14 @@ export interface ExperimentPipelineOption {
   refitNodeCount: number;
   maxDepth: number;
   isCurrentEdited?: true;
+  isHistory?: true;
 }
 
 export interface SelectedPipelineConfig {
   id: string;
   name: string;
   steps: unknown[];
+  source?: "saved" | "inline";
 }
 
 function buildExperimentPipelineGraphFields(
@@ -90,6 +92,7 @@ export function toExperimentPipelineOption(pipeline: PipelineInfo): ExperimentPi
     name: pipeline.name,
     preset: pipeline.category === "preset",
     favorite: pipeline.is_favorite || false,
+    ...(pipeline.source === "history" ? { isHistory: true as const } : {}),
     ...graphFields,
   };
 }
@@ -130,6 +133,7 @@ export function getSelectedPipelineConfigs(
       id: pipeline.id,
       name: pipeline.name,
       steps: pipeline.steps as PipelineStep[] as unknown[],
+      ...(pipeline.source === "history" ? { source: "inline" as const } : {}),
     }));
 
   if (selectedPipelineIds.includes(CURRENT_EDITED_PIPELINE_ID) && currentEditedPipeline) {

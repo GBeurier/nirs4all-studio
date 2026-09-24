@@ -40,6 +40,9 @@ export function NewExperimentPipelineOptionCard({
         {badges.showPreset && (
           <Badge variant="outline" className="text-xs">{experimentSelectionCopy.pipelinePresetBadge}</Badge>
         )}
+        {badges.showHistory && (
+          <Badge variant="secondary" className="text-xs">{experimentSelectionCopy.pipelineHistoryBadge}</Badge>
+        )}
       </div>
       <code className="text-sm text-muted-foreground">{details.stepSummaryLabel}</code>
       <NewExperimentSelectionDetailChips labels={detailChipLabels} />

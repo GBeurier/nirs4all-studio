@@ -56,7 +56,7 @@ function toCampaignPipelineRef(pipeline: SelectedPipelineConfig): CampaignPipeli
   return buildCampaignPipelineRefFromSteps({
     id: pipeline.id,
     name: pipeline.name,
-    source: pipeline.id === CURRENT_EDITED_PIPELINE_ID ? "inline" : "saved",
+    source: pipeline.source ?? (pipeline.id === CURRENT_EDITED_PIPELINE_ID ? "inline" : "saved"),
     steps: pipeline.steps,
   });
 }

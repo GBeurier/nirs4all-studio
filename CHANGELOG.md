@@ -10,6 +10,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.12.0] — 2026-09-24
+
+### Changed
+
+- Restore the Rust sidecar as the default product backend after the public
+  Python recovery releases. Scientific execution uses `nirs4all 1.1.5`,
+  `nirs4all-core 0.3.31`, `dag-ml 0.3.27`, `dag-ml-data 0.2.12`, and
+  `nirs4all-io 0.2.0`. Python remains a bounded library and document plugin
+  host; its HTTP backend is available only through the explicit diagnostic mode.
+- Keep the native Methods library at ABI 2.5 (`nirs4all-methods 1.0.18`) as
+  required by Core 0.3.31. The Python plugin can use Methods 1.0.21; native ABI
+  2.6 will require a compatible Core release.
+
+### Fixed
+
+- Carry the recovery UI fixes into the native line: multioutput predictions,
+  honest training-only scores, result refresh, PCA axes, pipeline selection,
+  operator availability, and scikit-learn 1.9 parameter defaults.
+- Make unique pipelines retained in Store v5 run history selectable and runnable
+  in the experiment wizard. Keep the explicit Python diagnostic route aligned.
+- Refresh the pipeline catalogue after imports and edits so the run wizard sees
+  changes immediately.
+- Drain, bound, redact, and expose installation logs during setup.
+
+### Distribution
+
+- Version 0.12.0 succeeds the public 0.11.11 installers. Stable release
+  qualification uses each platform's latest public installer as its populated
+  upgrade baseline before publishing replacement installers.
+
+---
+
 ## [0.11.7] — 2026-09-17
 
 Version 0.11.6 was an unpublished candidate, blocked by its Linux qualification.
