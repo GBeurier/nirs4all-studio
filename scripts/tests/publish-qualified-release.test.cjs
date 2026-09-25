@@ -55,6 +55,10 @@ function github(options, behavior = {}) {
       }
       if (endpoint === "releases?per_page=100") {
         assert.deepEqual(args.slice(2), ["--paginate", "--slurp"]);
+        if (state.release && behavior.visibilityLagReads > 0) {
+          behavior.visibilityLagReads--;
+          return JSON.stringify([[], []]);
+        }
         return JSON.stringify([[], state.release ? [state.release] : []]);
       }
       if (endpoint === "releases/99/assets?per_page=100") {
@@ -132,6 +136,15 @@ test("creates a draft, uploads exactly one asset at a time and publishes last", 
   assert.equal(remote.state.mutations.at(-1), "publish");
   assert(remote.state.mutations.slice(1, 5).every((name) => name.endsWith(".sha256")));
   assert.equal(remote.state.mutations.length, 10);
+});
+
+test("waits for a newly created draft to appear in GitHub's release list", async (t) => {
+  const options = fixture(t);
+  const remote = github(options, { absent: true, draftHidden: true, visibilityLagReads: 2 });
+  const result = await publishQualifiedRelease(options, remote.dependencies);
+  assert.equal(result.published, true);
+  assert.deepEqual(remote.state.waits.slice(0, 2), [2000, 2000]);
+  assert.equal(remote.state.mutations.filter(name => name === "create-draft").length, 1);
 });
 
 test("resumes verified draft assets without uploading them again", async (t) => {
