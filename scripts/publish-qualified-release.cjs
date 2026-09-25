@@ -188,7 +188,12 @@ async function publishQualifiedRelease(options, dependencies = {}) {
       // The response may have been lost after creation. Reconcile by immutable tag.
       log(`Draft creation did not return success (${ghFailureDiagnostic(error)}); checking its identity before continuing.`);
     }
-    release = await lookupRelease();
+    // GitHub can acknowledge draft creation before its by-tag and list APIs
+    // expose it. Reconcile the same immutable tag with bounded backoff.
+    for (let attempt = 0; attempt < 6 && !release; attempt++) {
+      if (attempt) await wait(2000);
+      release = await lookupRelease();
+    }
     if (!release) throw new Error("Could not create the release draft");
   }
   assertRelease(release);
