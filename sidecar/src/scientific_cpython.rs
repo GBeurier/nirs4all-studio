@@ -1787,7 +1787,7 @@ fn run_scientific_process_with_timeout(
         .join()
         .map_err(|_| ScientificCpythonUnavailable::ProcessFailed)?;
     let (stdout, stdout_exceeded) = join_reader(stdout_reader)?;
-    let (_, stderr_exceeded) = join_reader(stderr_reader)?;
+    let (stderr, stderr_exceeded) = join_reader(stderr_reader)?;
     if stdout_exceeded {
         return Err(ScientificCpythonUnavailable::StdoutTooLarge);
     }
@@ -1800,8 +1800,16 @@ fn run_scientific_process_with_timeout(
     if timed_out {
         return Err(ScientificCpythonUnavailable::TimedOut);
     }
-    stdin_result.map_err(|_| ScientificCpythonUnavailable::ProcessFailed)?;
-    if !status.success() {
+    if stdin_result.is_err() || !status.success() {
+        // The public job contract intentionally exposes only a stable error
+        // code. During disposable CI installer qualification, retain the
+        // bounded worker diagnostic so platform failures can be identified.
+        if std::env::var("CI").as_deref() == Ok("1") {
+            eprintln!(
+                "Scientific CPython worker exited with {status}: {}",
+                bounded_process_diagnostic(&stderr)
+            );
+        }
         return Err(ScientificCpythonUnavailable::ProcessFailed);
     }
     let response = validate_worker_response(&request, &stdout, &expected_job_id)?;
