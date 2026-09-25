@@ -243,10 +243,16 @@ async function main(options = {}) {
         console.error(sanitizeDiagnostic(await page.locator("body").innerText({ timeout: 1000 }).catch(() => ""), secrets, 8000));
         const logPath = await page.evaluate(() => window.electronApi?.getLogPath?.()).catch(() => null);
         if (logPath && fs.existsSync(logPath)) {
-          const authLines = fs.readFileSync(logPath, "utf8").split(/\r?\n/)
+          const logLines = fs.readFileSync(logPath, "utf8").split(/\r?\n/);
+          const authLines = logLines
             .filter(line => line.includes("Native session authentication skipped"))
             .slice(-4);
           console.error("Native auth diagnostics:", authLines.join("\n") || "hook did not report a rejected API request");
+          const workerIndex = logLines.findLastIndex(line => line.includes("Scientific CPython worker exited"));
+          if (workerIndex >= 0) {
+            console.error("Scientific worker diagnostic:",
+              sanitize(logLines.slice(workerIndex, workerIndex + 24).join("\n")).slice(0, 8000));
+          }
         }
       }
     }
