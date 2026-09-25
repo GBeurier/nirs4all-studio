@@ -130,6 +130,15 @@ if sys.platform == "win32":
 sys.addaudithook(deny_product_network)
 if sys.argv[1]:
     sys.path.insert(0,sys.argv[1])
+    if sys.platform == "win32":
+        from pathlib import Path
+        # Rust's canonicalized package path retains Windows' \\?\ prefix.
+        # Match sys.prefix to that same attested runtime spelling so the
+        # library's own prefix containment check sees equivalent paths.
+        runtime_prefix=str(Path(sys.argv[1]).parent.parent)
+        if not os.path.samefile(runtime_prefix,sys.prefix):
+            raise RuntimeError("scientific runtime prefix changed")
+        sys.prefix=runtime_prefix
 raw=sys.stdin.buffer.read(33554433)
 if len(raw)>33554432:
     raise RuntimeError("scientific request exceeds stdin budget")
