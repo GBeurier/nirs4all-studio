@@ -1804,7 +1804,7 @@ fn run_scientific_process_with_timeout(
         // The public job contract intentionally exposes only a stable error
         // code. During disposable CI installer qualification, retain the
         // bounded worker diagnostic so platform failures can be identified.
-        if std::env::var("CI").as_deref() == Ok("1") {
+        if matches!(std::env::var("CI").as_deref(), Ok("true" | "1")) {
             eprintln!(
                 "Scientific CPython worker exited with {status}: {}",
                 bounded_process_diagnostic(&stderr)
