@@ -31,6 +31,7 @@ import {
   createNodeRegistry,
   CustomNodeStorage,
   mergeNodeDefinitions,
+  n4mNodes,
   type NodeDefinition as JsonNodeDefinition,
   type NodeType,
 } from "@/data/nodes";
@@ -224,9 +225,10 @@ export function NodeRegistryProvider({ children }: NodeRegistryProviderProps) {
     ];
 
     // Extended registry is append-only, but curated/custom nodes win when an
-    // operator already exists under another ID or class-path alias.
+    // operator already exists under another ID or class-path alias. The n4m
+    // nodes are distinct operators (own names and `n4m:` tokens), appended as-is.
     const mergedNodes = extendedMode
-      ? mergeNodeDefinitions(preferredNodes, extendedNodes ?? [])
+      ? [...mergeNodeDefinitions(preferredNodes, extendedNodes ?? []), ...n4mNodes]
       : preferredNodes;
 
     const mergedRegistry = new NodeRegistry(mergedNodes, {

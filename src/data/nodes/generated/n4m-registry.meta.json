@@ -1,0 +1,15 @@
+{
+  "nodeCount": 200,
+  "abi": "2.13.0",
+  "generator": {
+    "script": "scripts/generate-n4m-registry.mjs",
+    "format": "NodeDefinition[]"
+  },
+  "countsByType": {
+    "model": 50,
+    "preprocessing": 98,
+    "augmentation": 39,
+    "filter": 4,
+    "splitting": 9
+  }
+}

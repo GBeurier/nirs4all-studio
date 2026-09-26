@@ -32,7 +32,7 @@ export interface NodeDefinition {
   /** Full class path for nirs4all */
   classPath?: string;
   /** Source of the definition */
-  source?: "builtin" | "custom" | "nirs4all" | "sklearn" | "editor";
+  source?: "builtin" | "custom" | "nirs4all" | "sklearn" | "editor" | "n4m";
   /** Legacy class paths for backwards compatibility */
   legacyClassPaths?: string[];
   /** Whether this is a container node */

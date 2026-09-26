@@ -59,7 +59,9 @@ The pipeline editor's palette of "nodes" (preprocessing / model / splitting / y-
 1. **Generate** (Python, under `scripts/`, introspect nirs4all): `generate_registry.py`, `generate_extended_registry.py`; `.cjs` helpers `curate-canonical-nodes.cjs` (+ `curation-rules.json`) and `generate-node-reference.cjs` curate/derive the editor artifacts.
 2. **Artifacts:** `public/node-registry/extended.json` (runtime palette served to the browser); `src/data/nodes/generated/canonical-registry.json` + `node-reference.json` (generated); `src/data/nodes/definitions/<category>/` (curated editor definitions).
 3. **Consume:** frontend via `src/data/nodes/NodeRegistry.ts` (`createNodeRegistry`; user/custom nodes in `src/data/nodes/custom/`); backend via `api/node_registry_loader.py`, which merges `definitions/` with `generated/canonical-registry.json` — and deliberately does NOT treat `node-reference.json` as the source of truth (that artifact is stale for some DL regressors/classifiers).
-4. **Validate** (green gate): `npm run validate:nodes` checks every `public/node-registry/*.json` against `src/data/nodes/schema/{node,parameter}.schema.json`. Node ids must match `type.snake_case`.
+4. **Validate** (green gate): `npm run validate:nodes` checks every `public/node-registry/*.json` and `src/data/nodes/generated/n4m-registry.json` against `src/data/nodes/schema/{node,parameter}.schema.json`. Node ids must match `type.snake_case`.
+
+**Native n4m nodes** come from the nirs4all-methods manifest, not from introspection: `npm run generate:n4m-registry` projects the checked-in `src/data/nodes/generated/n4m-manifest.json` (`--cli <n4m_cli>` or `N4M_CLI` refreshes it first) through `nirs4all-ui/nodeRegistry` into `n4m-registry.json` (`npm run check:n4m-registry` fails on drift). These nodes have `source: "n4m"`, an `(n4m)` name suffix and a `classPath` equal to the portable `n4m:<method_id>` token, which the serializer emits unchanged; the palette appends them in Extended mode and the class-path resolver always knows them.
 
 When you add or change a node, regenerate the artifacts and then run `validate:nodes`.
 

@@ -83,4 +83,5 @@ export {
   augmentationNodes,
   containerNodes,
   miscNodes,
+  n4mNodes,
 } from './definitions';
