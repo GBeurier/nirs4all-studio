@@ -77,9 +77,10 @@ export type GeneratorKind = "or" | "cartesian" | "grid" | "zip" | "chain" | "sam
 export type ContainerType = "branches" | "children";
 
 /**
- * Source of node definition.
+ * Source of node definition. "n4m" nodes are generated from the nirs4all-methods
+ * manifest and serialize as `n4m:<method_id>` tokens.
  */
-export type NodeSource = "nirs4all" | "sklearn" | "custom";
+export type NodeSource = "nirs4all" | "sklearn" | "custom" | "n4m";
 
 /**
  * Container organization types.

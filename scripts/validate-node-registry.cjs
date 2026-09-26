@@ -7,7 +7,7 @@
  *
  * If [path] is a directory, validates all *.json files in it.
  * If [path] is a file, validates just that file.
- * Defaults to: public/node-registry
+ * Defaults to: public/node-registry and src/data/nodes/generated/n4m-registry.json
  */
 
 const fs = require('fs');
@@ -183,12 +183,16 @@ function main() {
   const schemaPath = path.join(repoRoot, 'src', 'data', 'nodes', 'schema', 'node.schema.json');
   const paramSchemaPath = path.join(repoRoot, 'src', 'data', 'nodes', 'schema', 'parameter.schema.json');
 
-  const target = process.argv[2]
-    ? path.resolve(process.argv[2])
-    : path.join(repoRoot, 'public', 'node-registry');
+  const targets = process.argv[2]
+    ? [path.resolve(process.argv[2])]
+    : [
+      path.join(repoRoot, 'public', 'node-registry'),
+      path.join(repoRoot, 'src', 'data', 'nodes', 'generated', 'n4m-registry.json'),
+    ];
+  const existingTargets = targets.filter((target) => fs.existsSync(target));
 
-  if (!fs.existsSync(target)) {
-    console.log(`ℹ️ No registry path found: ${target}`);
+  if (existingTargets.length === 0) {
+    console.log(`ℹ️ No registry path found: ${targets.join(', ')}`);
     process.exit(0);
   }
 
@@ -199,16 +203,16 @@ function main() {
     globalThis.__N4A_VALID_PARAM_TYPES = paramTypes;
   }
 
-  const files = listJsonFiles(target);
+  const files = existingTargets.flatMap(listJsonFiles);
   if (files.length === 0) {
-    console.log(`ℹ️ No .json files to validate in: ${target}`);
+    console.log(`ℹ️ No .json files to validate in: ${existingTargets.join(', ')}`);
     process.exit(0);
   }
 
   console.log('🔍 Validating node registry files...');
   console.log(`📋 Loaded schema from: ${path.relative(repoRoot, schemaPath)}`);
   console.log(`📋 Loaded parameter schema from: ${path.relative(repoRoot, paramSchemaPath)}`);
-  console.log(`📁 Target: ${path.relative(repoRoot, target)}`);
+  console.log(`📁 Target: ${existingTargets.map((target) => path.relative(repoRoot, target)).join(', ')}`);
 
   let hasErrors = false;
 

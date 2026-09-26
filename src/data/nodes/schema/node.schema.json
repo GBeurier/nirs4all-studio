@@ -216,7 +216,7 @@
     },
     "source": {
       "type": "string",
-      "enum": ["nirs4all", "sklearn", "custom", "editor"],
+      "enum": ["nirs4all", "sklearn", "custom", "editor", "n4m"],
       "description": "Source of the node definition"
     },
     "version": {

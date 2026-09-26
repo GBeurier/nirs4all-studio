@@ -6,8 +6,12 @@ import modelNodes from "@/data/nodes/definitions/models";
 import yProcessingNodes from "@/data/nodes/definitions/y-processing";
 import filterNodes from "@/data/nodes/definitions/filters";
 import augmentationNodes from "@/data/nodes/definitions/augmentation";
+import { n4mNodes } from "@/data/nodes/definitions";
 import { parametersToDefaultParams, type NodeDefinition } from "@/data/nodes/types";
 import { castParamRecord } from "./pipelineValueUtils";
+
+/** Portable nirs4all-methods operator tokens: `n4m:<method_id>`. */
+const N4M_OPERATOR_TOKEN_PREFIX = "n4m:";
 
 export interface ResolvedClassInfo {
   name: string;
@@ -29,6 +33,7 @@ export const SUPPORTED_OPERATOR_NODES: NodeDefinition[] = [
   ...yProcessingNodes,
   ...filterNodes,
   ...augmentationNodes,
+  ...n4mNodes,
 ];
 
 /**
@@ -83,7 +88,7 @@ export function getClassNameFromPath(classPath: string): string {
 }
 
 export function isFunctionModelPath(reference?: string): boolean {
-  if (!reference || !reference.includes(".")) {
+  if (!reference || !reference.includes(".") || reference.startsWith(N4M_OPERATOR_TOKEN_PREFIX)) {
     return false;
   }
 
@@ -309,6 +314,9 @@ export function resolveConfiguredClassPath(
   classPath?: string
 ): string {
   const explicit = classPath?.trim();
+  if (explicit?.startsWith(N4M_OPERATOR_TOKEN_PREFIX)) {
+    return explicit;
+  }
   if (type !== "model" && explicit?.includes(".")) {
     return explicit;
   }

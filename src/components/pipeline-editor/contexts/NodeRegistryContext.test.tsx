@@ -86,6 +86,7 @@ vi.mock("@/data/nodes", () => ({
     }),
   },
   mergeNodeDefinitions: (preferred: unknown[], extended: unknown[]) => [...preferred, ...extended],
+  n4mNodes: [],
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
