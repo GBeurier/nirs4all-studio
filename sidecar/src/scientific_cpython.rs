@@ -1599,16 +1599,16 @@ fn validated_windows_system_root(
     if !requested.is_absolute() {
         return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
     }
-    let metadata = fs::symlink_metadata(&requested)
+    let metadata = fs::symlink_metadata(requested)
         .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let canonical = fs::canonicalize(&trusted)
+    let canonical = fs::canonicalize(trusted)
         .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
     let system32 = canonical.join("System32");
     if metadata.file_type().is_symlink()
         || !metadata.is_dir()
         || !system32.is_dir()
         || canonical.components().count() != 3
-        || !same_file::is_same_file(&requested, &trusted)
+        || !same_file::is_same_file(requested, trusted)
             .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?
     {
         return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
