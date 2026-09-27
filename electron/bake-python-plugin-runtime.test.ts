@@ -145,15 +145,15 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "bcea63bf6fdee8d08f2c65f3cd0cf994258b2b4c",
+      source_commit: "e4d93f39aabc924aaee3ca14b348b0a1348a3a25",
       wheel_sha256:
-        "d8af69437ecac1c814ec6d5ce22e8e8d5de758e0ebd1ac5131ae3383cd1e3fd0",
-      distribution_version: "1.1.5",
+        "1dbbfe6dbd0ce997e2b363cfde37bfd1d09cedbbca68c7897cd68781ef478078",
+      distribution_version: "1.2.1",
       installed_manifest_sha256:
-        "6d945c597c4c7c3f927acfc4e0b298577afec85c4dba64cc0f20d5af4a6022ce",
+        "cca188e9cb0fd479d883f0a887abe98f085ac33469bc78694ec7e72f84bcb263",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "86be4bc2b8f3158c32fb0466c5f949a8fea6fc4b33ca86339995ce1f6937cdb6",
+        sha256: "a2289d90c59012e73afb14d4075c4b45ecd135c9cb438e1a4a0cd18c7ec2b230",
       },
       platform: "linux",
       arch: "x64",
@@ -183,7 +183,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "86be4bc2b8f3158c32fb0466c5f949a8fea6fc4b33ca86339995ce1f6937cdb6",
+      "a2289d90c59012e73afb14d4075c4b45ecd135c9cb438e1a4a0cd18c7ec2b230",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -202,8 +202,8 @@ describe("plugin-only CPython runtime", () => {
         expect(target.get(name), `${name} must be installed in every packaged host`).toBe(version);
       }
     }
-    expect(linux.get("nirs4all")).toBe("1.1.5");
-    expect(linux.get("nirs4all-core")).toBe("0.3.31");
+    expect(linux.get("nirs4all")).toBe("1.2.1");
+    expect(linux.get("nirs4all-core")).toBe("0.3.36");
     expect(linux.get("scikit-learn")).toBe("1.9.0");
     expect(linux.has("colorama")).toBe(false);
     expect(linux.has("tzdata")).toBe(false);

@@ -36,7 +36,7 @@ const TARGETS = Object.freeze({
 function assertMethodsBuildIdentityConfigured(sourcePath, expectedSha256) {
   if (sourcePath === null || expectedSha256 === null) {
     throw new Error(
-      `Native Methods ABI 2.5 is required: set ${METHODS_BUILD_SOURCE_ENV} and ${METHODS_BUILD_SHA256_ENV}`,
+      `Native Methods ABI 2.13 is required: set ${METHODS_BUILD_SOURCE_ENV} and ${METHODS_BUILD_SHA256_ENV}`,
     );
   }
 }
@@ -254,7 +254,7 @@ async function buildNativeSidecar({
   });
   if (methodsLibraryPath === null) {
     throw new Error(
-      `Native Methods ABI 2.5 is required: set ${METHODS_BUILD_SOURCE_ENV} and ${METHODS_BUILD_SHA256_ENV}`,
+      `Native Methods ABI 2.13 is required: set ${METHODS_BUILD_SOURCE_ENV} and ${METHODS_BUILD_SHA256_ENV}`,
     );
   }
   const contract = writeRuntimeContract({

@@ -120,7 +120,7 @@ function targetConfig(platform, arch) {
   if (platform === "linux" && arch === "x64") {
     return {
       preset: "ci-linux-gcc12-release",
-      libraryPattern: /^libn4m\.so\.2\.5\.0$/,
+      libraryPattern: /^libn4m\.so\.2\.13\.0$/,
       cliParts: ["cpp", "cli", "n4m_cli"],
       configureExtra: [],
       buildExtra: [],
@@ -130,7 +130,7 @@ function targetConfig(platform, arch) {
   if (platform === "darwin" && ["x64", "arm64"].includes(arch)) {
     return {
       preset: "ci-macos-clang-release",
-      libraryPattern: /^libn4m\.2\.5\.0\.dylib$/,
+      libraryPattern: /^libn4m\.2\.13\.0\.dylib$/,
       cliParts: ["cpp", "cli", "n4m_cli"],
       configureExtra: [
         `-DCMAKE_OSX_ARCHITECTURES=${arch === "x64" ? "x86_64" : "arm64"}`,
@@ -273,7 +273,7 @@ function buildAndAttest({
     capture: true,
   });
   if (!new RegExp(`abi_version\\s*:\\s*${METHODS_ABI_MAJOR}\\.${METHODS_ABI_MINOR}\\.0`).test(abiInfo)) {
-    throw new Error("Built Methods CLI did not report ABI 2.5.0");
+    throw new Error(`Built Methods CLI did not report ABI ${METHODS_ABI_MAJOR}.${METHODS_ABI_MINOR}.0`);
   }
   run(cliPath, ["--selfcheck"], { cwd: source.sourceRoot, env: cliEnv, capture: true });
   if (platform === "darwin") {

@@ -54,12 +54,12 @@ const MAX_ARCHIVE_REF_BYTES: usize = 240;
 const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
-const CORE_PROJECT_VERSION: &str = "0.3.31";
+const CORE_PROJECT_VERSION: &str = "0.3.36";
 const METHODS_ABI_MAJOR: u32 = 2;
-const METHODS_ABI_MINOR: u32 = 5;
-const METHODS_SOURCE_COMMIT: &str = "a9faae2909c71a833bb7f3b208dc20548cf01588";
-const METHODS_SOURCE_TREE: &str = "5c39dde72afab2ff725ff7b1b53e69a17b9bf865";
-const METHODS_PROJECT_VERSION: &str = "1.0.18";
+const METHODS_ABI_MINOR: u32 = 13;
+const METHODS_SOURCE_COMMIT: &str = "89ddb7ac26a6d569e2ef85454062d51ce5d9fb83";
+const METHODS_SOURCE_TREE: &str = "5730350eedeac7736914a1c9296441455ddfe917";
+const METHODS_PROJECT_VERSION: &str = "1.1.1";
 const WINDOWS_NATIVE_LINKAGE_PROFILE: &str = "studio-msvc-static-crt-v1";
 const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
 
@@ -141,7 +141,7 @@ pub struct CoreArchiveV2PredictionExecutor {
 
 impl CoreArchiveV2PredictionExecutor {
     /// Acquire one exact packaged libn4m identity before advertising the
-    /// capability. The packaged contract fixes ABI 2.5 and this preflight
+    /// capability. The packaged contract fixes ABI 2.13 and this preflight
     /// attests its exact bytes. Core snapshots and re-attests those bytes, then
     /// the n4m binding performs the ABI compatibility call during execution.
     pub fn acquire(
@@ -1834,11 +1834,11 @@ mod tests {
             size: 1,
             sha256: "b".repeat(64),
             abi_major: 2,
-            abi_minor: 5,
+            abi_minor: 13,
         };
         assert_eq!(
             core_methods_executor_identity(&methods),
-            format!("nirs4all-core@0.3.31+libn4m-abi-2.5:{}", "b".repeat(64))
+            format!("nirs4all-core@0.3.36+libn4m-abi-2.13:{}", "b".repeat(64))
         );
     }
 
@@ -1951,7 +1951,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "immutable nirs4all-core 970f59e snapshot exposing nirs4all 0.3.31 and n4m 0.1.4"
+            "immutable nirs4all-core ae0bfe9 snapshot exposing nirs4all 0.3.36 and n4m 0.2.0"
         );
     }
 }
