@@ -10,7 +10,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [0.13.1] — 2026-09-27
+## [0.13.2] — 2026-09-27
+
+### Fixed
+
+- Installer qualification compares the preserved workspace by directory
+  identity: on Windows the native sidecar reports verbatim canonical paths
+  (`\\?\D:\...`), which failed the 0.13.1 Windows upgrade check although it
+  was the same directory.
+
+### Release note
+
+- Supersedes the 0.13.1 tag, whose installers were never published. Contents
+  are otherwise those of 0.13.1 and 0.13.0 below.
+
+---
+
+## [0.13.1] — 2026-09-27 (unpublished tag)
 
 ### Fixed
 

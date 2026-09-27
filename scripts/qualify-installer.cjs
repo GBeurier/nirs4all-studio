@@ -224,6 +224,11 @@ async function preparePythonRecoveryBaseline(app) {
   return page;
 }
 
+function sameDirectory(a, b) {
+  const [x, y] = [a, b].map(file => fs.statSync(file, { bigint: true }));
+  return x.isDirectory() && x.dev === y.dev && x.ino === y.ino;
+}
+
 function fileSnapshot(root) {
   const result = {};
   function visit(dir) {
@@ -293,7 +298,9 @@ async function main(argv = process.argv.slice(2)) {
     if (preserved) {
       await ui.main({ config, sandboxRoot: profile, existingProfile: true, envOverrides, timings: proof.timings,
         inspectProfile: async ({ page, env }) => {
-          assert.equal(fs.realpathSync((await api(env, '/workspace')).workspace.path), fs.realpathSync(preserved.workspace));
+          // Same directory, not the same spelling: the native sidecar reports
+          // canonical paths, which are verbatim (\\?\D:\...) on Windows.
+          assert(sameDirectory((await api(env, '/workspace')).workspace.path, preserved.workspace), 'Upgrade changed the active workspace');
           const prefs = (await api(env, '/app/settings')).ui_preferences;
           for (const key of ['language', 'theme', 'developer_mode']) assert.equal(prefs[key], preserved.preferences[key], `Lost preference ${key}`);
           const datasets = await api(env, '/datasets');
