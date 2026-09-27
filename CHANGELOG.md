@@ -10,6 +10,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.14.0] — 2026-09-27
+
+### Changed
+
+- Ship `nirs4all 1.3.0` in the bounded CPython plugin closure, with
+  `nirs4all-methods 1.2.1`, `pls4all 1.2.1`, `nirs4all-core 0.4.0`,
+  `dag-ml 0.3.30`, `dag-ml-data 0.2.12` and `nirs4all-io 0.2.0`. Pipelines of
+  n4m role steps now run on DAG-ML's callback-free Methods lane, and
+  `exclude(..., keep_in_oof=True)` fits its filters inside each fold's train
+  rows, so validation targets no longer shape a fold's training set. The
+  recommended profiles require `nirs4all >= 1.3.0`.
+- Build the Rust sidecar against `nirs4all-core 0.4.0` and `dag-ml 0.3.30`
+  (single `n4m 0.3.0` binding). The embedded native Methods library moves to
+  `nirs4all-methods 1.2.1` (ABI 2.14: native role pipeline, input-view
+  validation, shared label contract); the Archive V2 executor identity
+  becomes `nirs4all-core@0.4.0+libn4m-abi-2.14:<sha256>`. Historical Archive
+  V2 models remain predictable.
+- Regenerate the n4m node registry from the ABI 2.14 manifest: seeds are
+  optional (no default of 0), and the operator registries record
+  nirs4all 1.3.0.
+
+---
+
 ## [0.13.5] — 2026-09-27
 
 ### Fixed
