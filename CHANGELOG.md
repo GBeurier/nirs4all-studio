@@ -10,7 +10,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [0.13.0] — 2026-09-27
+## [0.13.1] — 2026-09-27
+
+### Fixed
+
+- Installer qualification opens the baseline's scientific Store v5 through its
+  own runtime for native baselines too (0.12.0 is the first native baseline);
+  the 0.13.0 release stopped at "Baseline workspace has no real store".
+
+### Release note
+
+- Supersedes the 0.13.0 tag, whose installers were never published. Contents
+  are otherwise those of 0.13.0 below.
+
+---
+
+## [0.13.0] — 2026-09-27 (unpublished tag)
 
 ### Added
 

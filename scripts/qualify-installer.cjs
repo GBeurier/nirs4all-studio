@@ -167,15 +167,20 @@ async function seedBaseline(installed, platform, profile, data, workspace, envOv
     const linked = await api(env, '/datasets/link', 'POST', { path: data, config: { name: 'Preserved spectra', files: detected.files,
       global_params: { delimiter: ';', decimal_separator: '.', has_header: true, na_policy: 'auto' } } });
     assert(linked.success && linked.dataset?.id, 'Baseline dataset was not registered');
+    // Linking a dataset does not open the scientific Store v5 (neither in the
+    // 0.11.x recovery releases nor in the native 0.12 baseline). Initialize it
+    // through the baseline's own installed library — its managed Python, or
+    // the bundled runtime of a native baseline — so the upgrade also proves
+    // preservation of genuine store bytes.
+    let baselinePython;
     if (recoveryPage) {
-      // Linking a dataset in 0.11.11 does not open its scientific Store v5.
-      // Initialize it through that release's installed library so the
-      // migration also proves preservation of genuine store bytes.
-      const info = await recoveryPage.evaluate(() => window.electronApi.getEnvInfo());
-      assert(info?.pythonPath && fs.existsSync(info.pythonPath), 'Recovery baseline has no managed Python');
-      await streamedCommand(info.pythonPath, ['-I', '-B', '-c',
-        'import pathlib,sqlite3,sys; from nirs4all.pipeline.storage import WorkspaceStore; root=pathlib.Path(sys.argv[1]); store=WorkspaceStore(root); store.close(); db=sqlite3.connect(root/"store.sqlite"); assert db.execute("PRAGMA user_version").fetchone()[0] == 5; db.close()', workspace], profile);
+      baselinePython = (await recoveryPage.evaluate(() => window.electronApi.getEnvInfo()))?.pythonPath;
+    } else {
+      baselinePython = layout.bundledPythonCandidates.find(candidate => fs.existsSync(candidate)) ?? layout.bundledPythonPath;
     }
+    assert(baselinePython && fs.existsSync(baselinePython), 'Baseline has no Python runtime to open its store');
+    await streamedCommand(baselinePython, ['-I', '-B', '-c',
+      'import pathlib,sqlite3,sys; from nirs4all.pipeline.storage import WorkspaceStore; root=pathlib.Path(sys.argv[1]); store=WorkspaceStore(root); store.close(); db=sqlite3.connect(root/"store.sqlite"); assert db.execute("PRAGMA user_version").fetchone()[0] == 5; db.close()', workspace], profile);
     await api(env, '/config/skip-setup', 'POST');
     // Save consent using the real renderer storage, so reopening must not prompt again.
     for (const page of app.windows()) {
