@@ -152,10 +152,25 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
     return finish(normalize_dataset_document(config, base_dir=document.get("path")))
 
 
+def plain_windows_path(value: str) -> str:
+    """Drop the verbatim prefix of a Windows path (``\\\\?\\D:\\...``, ``\\\\?\\UNC\\...``).
+
+    The native sidecar reports canonical Windows paths in verbatim form; SQLite
+    file URIs built from them (``Path.as_uri()``) get ``?`` as their authority.
+    """
+    if value.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + value[8:]
+    if value.startswith("\\\\?\\") and value[5:6] == ":":
+        return value[4:]
+    return value
+
+
 def adapt_document(operation: str, document: dict[str, Any]) -> Any:
     """Dispatch a bounded library adapter; never own HTTP or schedule jobs."""
     if not isinstance(document, dict):
         raise ValueError("Document must be a JSON object")
+    if isinstance(document.get("workspace_path"), str):
+        document = {**document, "workspace_path": plain_windows_path(document["workspace_path"])}
     if operation in {"playground.operators", "playground.presets", "spectra.data", "spectra.stats"}:
         from .library_playground_views import playground_view
 
