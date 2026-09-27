@@ -225,6 +225,11 @@ async function preparePythonRecoveryBaseline(app) {
 }
 
 function sameDirectory(a, b) {
+  // Windows paths may come back verbatim (\\?\D:\..., \\?\UNC\...) and in another case.
+  const plain = file => process.platform === 'win32'
+    ? path.resolve(file.replace(/^\\\\\?\\UNC\\/i, '\\\\').replace(/^\\\\\?\\/, '')).toLowerCase()
+    : fs.realpathSync(file);
+  if (plain(a) === plain(b)) return true;
   const [x, y] = [a, b].map(file => fs.statSync(file, { bigint: true }));
   return x.isDirectory() && x.dev === y.dev && x.ino === y.ino;
 }
@@ -300,7 +305,8 @@ async function main(argv = process.argv.slice(2)) {
         inspectProfile: async ({ page, env }) => {
           // Same directory, not the same spelling: the native sidecar reports
           // canonical paths, which are verbatim (\\?\D:\...) on Windows.
-          assert(sameDirectory((await api(env, '/workspace')).workspace.path, preserved.workspace), 'Upgrade changed the active workspace');
+          const active = (await api(env, '/workspace')).workspace.path;
+          assert(sameDirectory(active, preserved.workspace), `Upgrade changed the active workspace: ${active} (expected ${preserved.workspace})`);
           const prefs = (await api(env, '/app/settings')).ui_preferences;
           for (const key of ['language', 'theme', 'developer_mode']) assert.equal(prefs[key], preserved.preferences[key], `Lost preference ${key}`);
           const datasets = await api(env, '/datasets');

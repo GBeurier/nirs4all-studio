@@ -10,7 +10,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [0.13.4] — 2026-09-27
+## [0.13.5] — 2026-09-27
+
+### Fixed
+
+- Installer qualification compares the preserved Windows workspace by its
+  plain path (verbatim prefix and case ignored) before falling back to file
+  identity, and reports both paths when they differ.
+
+### Release note
+
+- Supersedes the 0.13.4 tag, whose installers were never published. Contents
+  are otherwise those of 0.13.4 and earlier 0.13 entries below.
+
+---
+
+## [0.13.4] — 2026-09-27 (unpublished tag)
 
 ### Fixed
 
