@@ -99,9 +99,9 @@ describe("native Methods product build", () => {
         "src",
       );
       fs.mkdirSync(libraryRoot, { recursive: true });
-      const realLibrary = path.join(libraryRoot, "libn4m.so.2.13.0");
-      fs.writeFileSync(realLibrary, "abi-2.13");
-      fs.symlinkSync("libn4m.so.2.13.0", path.join(libraryRoot, "libn4m.so"));
+      const realLibrary = path.join(libraryRoot, "libn4m.so.2.14.0");
+      fs.writeFileSync(realLibrary, "abi-2.14");
+      fs.symlinkSync("libn4m.so.2.14.0", path.join(libraryRoot, "libn4m.so"));
 
       expect(
         methodsBuild.resolveBuiltLibrary(
@@ -119,11 +119,11 @@ describe("native Methods product build", () => {
     try {
       const environmentPath = path.join(root, "github-env");
       methodsBuild.appendGitHubEnvironment(environmentPath, {
-        libraryPath: "/build/libn4m.so.2.13.0",
+        libraryPath: "/build/libn4m.so.2.14.0",
         sha256: "a".repeat(64),
       });
       expect(fs.readFileSync(environmentPath, "utf8")).toBe(
-        `NIRS4ALL_BUILD_METHODS_LIBRARY=/build/libn4m.so.2.13.0\n` +
+        `NIRS4ALL_BUILD_METHODS_LIBRARY=/build/libn4m.so.2.14.0\n` +
           `NIRS4ALL_BUILD_METHODS_DIRECTORY=/build\n` +
           `NIRS4ALL_BUILD_METHODS_SHA256=${"a".repeat(64)}\n`,
       );

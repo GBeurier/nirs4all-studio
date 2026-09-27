@@ -1,6 +1,6 @@
 {
   "nodeCount": 200,
-  "abi": "2.13.0",
+  "abi": "2.14.0",
   "generator": {
     "script": "scripts/generate-n4m-registry.mjs",
     "format": "NodeDefinition[]"

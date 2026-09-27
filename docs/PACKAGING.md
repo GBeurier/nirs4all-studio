@@ -129,10 +129,10 @@ Phase 2 installers and all-in-one archives build this payload with
 `scripts/bake-python-plugin-runtime.cjs`. This is a separate product profile;
 it does not invoke `bake-standalone-backend.cjs`, copy `api/`, `websocket/`, or
 `main.py`, or install the shared FastAPI backend dependency set. It downloads
-the immutable published `nirs4all 1.2.1` wheel associated with source commit
-`e4d93f39aabc924aaee3ca14b348b0a1348a3a25` from its exact PyPI file URL (or
+the immutable published `nirs4all 1.3.0` wheel associated with source commit
+`dceb21978dddb98683004248dbce378ffadf01b8` from its exact PyPI file URL (or
 accepts that exact wheel for an offline build), verifies SHA-256
-`1dbbfe6dbd0ce997e2b363cfde37bfd1d09cedbbca68c7897cd68781ef478078`,
+`9d6878dfcab7a301e952e274c2bd61501ef8dc44d657753a9264c24cd6d9252e`,
 and rejects FastAPI, Starlette, Uvicorn, Sentry's FastAPI integration, and the
 Uvicorn server transitive set. `PLUGIN_RUNTIME_READY.json` freezes the exact
 `library-plugin-host-only` role. The older generic `RUNTIME_READY.json` never
@@ -148,16 +148,16 @@ cannot silently change the Studio payload.
 Every installer/release gate invokes `native-runtime-contract.cjs` with
 `--require-bundled-python-plugin` and `--require-bundled-methods`. The sidecar
 builder likewise refuses to emit a product tree unless the build supplies one
-content-addressed native Methods library at ABI 2.13. Therefore a standard
+content-addressed native Methods library at ABI 2.14. Therefore a standard
 installer or all-in-one archive cannot silently publish either capability as
 `mode: unavailable`.
 
 The `nirs4all-methods` Python wheel in the constrained CPython closure is not
 the qualifying input for Studio's native dispatch library. Every release job
-separately checks out commit `89ddb7ac26a6d569e2ef85454062d51ce5d9fb83`,
+separately checks out commit `b8b942aea291102d974bb68eb09013f3453b0a86`,
 compiles and tests that source through `.github/actions/build-native-methods`,
 stages the resulting `libn4m`/`n4m.dll`, and requires the archive/sidecar smoke
-to exercise the attested ABI 2.13 library before an artifact can pass.
+to exercise the attested ABI 2.14 library before an artifact can pass.
 
 Windows builds make both Studio-owned native binaries independent of a
 machine-wide Visual C++ Redistributable: Methods is configured with CMake's
@@ -412,11 +412,11 @@ Every public conversion execution path rechecks this attestation immediately
 before spawn. Windows packages use the sidecar's internal Job Object launcher;
 it joins a kill-on-close job before creating CPython, so descendants cannot race
 the containment boundary or request breakaway.
-The image does embed the exact `nirs4all-methods` ABI 2.13 library and its
+The image does embed the exact `nirs4all-methods` ABI 2.14 library and its
 `STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
 independent of the plugin host. CI supplies that library through a local
-BuildKit context built and tested from the published `nirs4all-methods` 1.1.1
-commit `89ddb7ac26a6d569e2ef85454062d51ce5d9fb83`, never from an
+BuildKit context built and tested from the published `nirs4all-methods` 1.2.1
+commit `b8b942aea291102d974bb68eb09013f3453b0a86`, never from an
 unverified URL. The image build verifies both the complete CPython closure and
 the Methods digest before the runtime stage is assembled.
 
