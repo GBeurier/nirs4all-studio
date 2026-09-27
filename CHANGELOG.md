@@ -10,7 +10,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [0.13.3] — 2026-09-27
+## [0.13.4] — 2026-09-27
+
+### Fixed
+
+- Regenerated the document-adapter source attestation for the 0.13.3 adapter
+  change; the 0.13.3 release stopped before building installers.
+
+### Release note
+
+- Supersedes the 0.13.3 tag, which was never published. Contents are
+  otherwise those of 0.13.3 and earlier 0.13 entries below.
+
+---
+
+## [0.13.3] — 2026-09-27 (unpublished tag)
 
 ### Fixed
 
