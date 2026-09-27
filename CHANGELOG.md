@@ -10,6 +10,42 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.13.0] — 2026-09-27
+
+### Added
+
+- Native n4m nodes in the pipeline editor. `npm run generate:n4m-registry`
+  projects the nirs4all-methods manifest (Methods 1.1.1, ABI 2.13) through
+  `nirs4all-ui` into typed preprocessing, model, filter, splitting and
+  augmentation nodes. They carry an `(n4m)` name suffix, appear in Extended
+  mode, and `npm run check:n4m-registry` fails on manifest or registry drift.
+- Portable n4m tokens. An n4m node serializes as `n4m:<method_id>` and
+  re-imports unchanged, so the same pipeline step is understood by the Python,
+  R and WASM runtimes that implement the generic Methods roles.
+
+### Changed
+
+- Ship the scientific runtime that executes `n4m:<method_id>` tokens:
+  `nirs4all 1.2.1` with `nirs4all-methods 1.1.1`, `pls4all 1.1.1`,
+  `nirs4all-core 0.3.36`, `dag-ml 0.3.28`, `dag-ml-data 0.2.12` and
+  `nirs4all-io 0.2.0` in the bounded CPython plugin closure. The recommended
+  profiles now require `nirs4all >= 1.2.1`.
+- Build the Rust sidecar against `nirs4all-core 0.3.36` and `dag-ml 0.3.28`,
+  which share a single `n4m 0.2.0` binding. The embedded native Methods
+  library moves to `nirs4all-methods 1.1.1` (ABI 2.13), the ABI that Core
+  0.3.36 requires; the Archive V2 executor identity becomes
+  `nirs4all-core@0.3.36+libn4m-abi-2.13:<sha256>`. Historical Archive V2
+  models remain predictable.
+- Vendor `nirs4all-ui 0.1.14`, which provides the n4m manifest projection.
+
+### Fixed
+
+- Remove needless borrows reported by clippy 1.98 in the Windows sidecar build.
+- Make the release publication and scientific-journey checks tolerate runner
+  latency and delayed draft-release visibility.
+
+---
+
 ## [0.12.0] — 2026-09-24
 
 ### Changed
