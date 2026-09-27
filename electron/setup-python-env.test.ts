@@ -115,10 +115,10 @@ describe("setup-python-env", () => {
       "utf8",
     );
     expect(setupSource).toContain(
-      'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.2.1-py3-none-any.whl";',
+      'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.3.0-py3-none-any.whl";',
     );
     expect(setupSource).toContain(
-      'const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/4c/1a/25903a60683e271e17c49ef84fb9f1092b2a2e71cdf2ea7c1ed3ec6c3772/nirs4all-1.2.1-py3-none-any.whl";',
+      'const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/e7/83/1ba013925a45c40be2c0e23d98ed1dfab8e4a40f859616534114f1341487/nirs4all-1.3.0-py3-none-any.whl";',
     );
     expect(setupSource).not.toContain("PLUGIN_SOURCE_EPOCH");
     expect(setupSource).not.toContain("pip\",\n        \"wheel\",\n        \"--no-deps\",\n        \"--no-build-isolation\",\n        \"--wheel-dir\",\n        wheelDir");

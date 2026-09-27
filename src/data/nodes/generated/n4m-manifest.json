@@ -1,5 +1,5 @@
 {
-  "abi": "2.13.0",
+  "abi": "2.14.0",
   "methods": [
     {
       "method_id": "aom_pop.aom_chain_fixed_fit",
@@ -36,7 +36,8 @@
           "default": null,
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -45,7 +46,8 @@
           "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "chain_params",
@@ -54,7 +56,8 @@
           "default": [],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "head",
@@ -66,7 +69,8 @@
           "choices": [
             "ridge",
             "pls"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "param",
@@ -75,7 +79,8 @@
           "default": 0.1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -84,7 +89,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -93,7 +99,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -102,7 +109,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -111,7 +119,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "moment_policy",
@@ -124,7 +133,8 @@
             "auto",
             "materialized",
             "force"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -177,7 +187,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_kinds",
@@ -202,7 +213,8 @@
           ],
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -228,7 +240,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "chain_params",
@@ -265,7 +278,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "pls_components",
@@ -276,7 +290,8 @@
           ],
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ridge_lambdas",
@@ -290,7 +305,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -299,7 +315,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -308,7 +325,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -317,7 +335,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -356,7 +375,8 @@
           "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_kinds",
@@ -365,7 +385,8 @@
           "default": null,
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -374,7 +395,8 @@
           "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "chain_params",
@@ -383,7 +405,8 @@
           "default": [],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -392,7 +415,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ridge_lambdas",
@@ -406,7 +430,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "pls_components",
@@ -415,7 +440,8 @@
           "default": [],
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "heads",
@@ -428,7 +454,8 @@
             "ridge",
             "pls",
             "ridge_pls"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -437,7 +464,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -446,7 +474,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -455,7 +484,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -464,7 +494,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "moment_policy",
@@ -477,7 +508,8 @@
             "auto",
             "materialized",
             "force"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -516,7 +548,8 @@
           "default": 3,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_kinds",
@@ -535,7 +568,8 @@
           ],
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -555,7 +589,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_params",
@@ -581,7 +616,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -590,7 +626,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -599,7 +636,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -608,7 +646,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -617,7 +656,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -626,7 +666,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -675,7 +716,8 @@
           ],
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -695,7 +737,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_params",
@@ -721,7 +764,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "pls_components",
@@ -732,7 +776,8 @@
           ],
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -741,7 +786,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "block_scaling",
@@ -753,7 +799,8 @@
           "choices": [
             "rms",
             "none"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -762,7 +809,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -771,7 +819,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -819,7 +868,8 @@
           ],
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -839,7 +889,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_params",
@@ -865,7 +916,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "gating_mode",
@@ -877,7 +929,8 @@
           "choices": [
             "hard",
             "soft"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -926,7 +979,8 @@
           ],
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -946,7 +1000,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_params",
@@ -972,7 +1027,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "pls_components",
@@ -983,7 +1039,8 @@
           ],
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ridge_lambdas",
@@ -997,7 +1054,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -1006,7 +1064,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "block_scaling",
@@ -1018,7 +1077,8 @@
           "choices": [
             "rms",
             "none"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -1027,7 +1087,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -1069,7 +1130,8 @@
           "choices": [
             "compact",
             "wide"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -1078,7 +1140,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ridge_lambdas",
@@ -1092,7 +1155,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "pls_components",
@@ -1101,7 +1165,8 @@
           "default": [],
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "heads",
@@ -1114,7 +1179,8 @@
             "ridge",
             "pls",
             "ridge_pls"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -1123,7 +1189,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -1132,7 +1199,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -1141,7 +1209,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -1150,7 +1219,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "moment_policy",
@@ -1163,7 +1233,8 @@
             "auto",
             "materialized",
             "force"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -1204,7 +1275,8 @@
           "choices": [
             "pls",
             "ridge"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "fast",
@@ -1213,7 +1285,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_components",
@@ -1222,7 +1295,8 @@
           "default": 25,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alphas",
@@ -1231,7 +1305,8 @@
           "default": [],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -1240,7 +1315,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "branches",
@@ -1253,7 +1329,8 @@
           ],
           "min": 0,
           "max": 2,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_depth",
@@ -1262,7 +1339,8 @@
           "default": 1,
           "min": 1,
           "max": 3,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "rank",
@@ -1271,7 +1349,8 @@
           "default": 200,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -1304,7 +1383,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "meta_weights",
@@ -1313,7 +1393,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "meta_intercept",
@@ -1322,7 +1403,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -1364,7 +1446,8 @@
           "choices": [
             "compact",
             "wide"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -1373,7 +1456,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "components",
@@ -1386,7 +1470,8 @@
           ],
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alphas",
@@ -1402,7 +1487,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "std_penalty",
@@ -1411,7 +1497,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "gap_penalty",
@@ -1420,7 +1507,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -1429,7 +1517,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -1438,7 +1527,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -1447,7 +1537,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -1456,7 +1547,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -1495,7 +1587,8 @@
           "default": 3,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_kinds",
@@ -1514,7 +1607,8 @@
           ],
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -1534,7 +1628,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_params",
@@ -1560,7 +1655,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -1569,7 +1665,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -1578,7 +1675,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -1587,7 +1685,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -1596,7 +1695,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -1605,7 +1705,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -1654,7 +1755,8 @@
           ],
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -1674,7 +1776,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_params",
@@ -1700,7 +1803,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alphas",
@@ -1714,7 +1818,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -1723,7 +1828,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "active_top_m",
@@ -1732,7 +1838,8 @@
           "default": 20,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "active_diversity_threshold",
@@ -1741,7 +1848,8 @@
           "default": 0.98,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "active_score_method",
@@ -1754,7 +1862,8 @@
             "norm",
             "kta",
             "blend"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "active_max_per_family",
@@ -1763,7 +1872,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "keep_identity",
@@ -1772,7 +1882,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "block_scaling",
@@ -1784,7 +1895,8 @@
           "choices": [
             "rms",
             "none"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -1793,7 +1905,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -1802,7 +1915,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -1844,7 +1958,8 @@
           "choices": [
             "compact",
             "wide"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -1853,7 +1968,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ridge_lambdas",
@@ -1867,7 +1983,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "regularizer",
@@ -1876,7 +1993,8 @@
           "default": 0.01,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -1885,7 +2003,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -1894,7 +2013,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -1903,7 +2023,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -1912,7 +2033,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -1961,7 +2083,8 @@
           ],
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -1981,7 +2104,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_params",
@@ -2007,7 +2131,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -2016,7 +2141,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ridge_lambdas",
@@ -2030,7 +2156,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -2039,7 +2166,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -2048,7 +2176,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -2057,7 +2186,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -2066,7 +2196,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "moment_policy",
@@ -2079,7 +2210,8 @@
             "auto",
             "materialized",
             "force"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -2128,7 +2260,8 @@
           ],
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -2148,7 +2281,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_params",
@@ -2174,7 +2308,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alphas",
@@ -2188,7 +2323,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -2197,7 +2333,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "mkl_top_k",
@@ -2206,7 +2343,8 @@
           "default": 6,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "block_scaling",
@@ -2218,7 +2356,8 @@
           "choices": [
             "rms",
             "none"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -2227,7 +2366,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -2236,7 +2376,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -2285,7 +2426,8 @@
           ],
           "min": 0,
           "max": 18,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "param_offsets",
@@ -2305,7 +2447,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "op_params",
@@ -2331,7 +2474,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alphas",
@@ -2345,7 +2489,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -2354,7 +2499,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "block_scaling",
@@ -2366,7 +2512,8 @@
           "choices": [
             "rms",
             "none"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -2375,7 +2522,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -2384,7 +2532,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -2426,7 +2575,8 @@
           "choices": [
             "compact",
             "wide"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -2435,7 +2585,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "heads",
@@ -2448,7 +2599,8 @@
             "ridge",
             "pls",
             "ridge_pls"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -2483,7 +2635,8 @@
           "default": -0.05,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "offset_max",
@@ -2492,7 +2645,8 @@
           "default": 0.05,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "slope_min",
@@ -2501,7 +2655,8 @@
           "default": -0.01,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "slope_max",
@@ -2510,16 +2665,18 @@
           "default": 0.01,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -2554,7 +2711,8 @@
           "default": 0.05,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_path_length",
@@ -2563,16 +2721,18 @@
           "default": 0.1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -2611,7 +2771,8 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "coeff_max",
@@ -2624,16 +2785,18 @@
           ],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -2674,7 +2837,8 @@
             "pbs",
             "silicon_ccd",
             "generic_nir"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "effect_strength",
@@ -2683,7 +2847,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "noise_amplification",
@@ -2692,7 +2857,8 @@
           "default": 0.02,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "include_baseline_distortion",
@@ -2701,16 +2867,18 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -2745,7 +2913,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "stray_light",
@@ -2754,7 +2923,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "edge_curvature",
@@ -2763,7 +2933,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "truncated_peaks",
@@ -2772,7 +2943,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "overall_strength",
@@ -2781,7 +2953,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "detector_model",
@@ -2796,16 +2969,18 @@
             "pbs",
             "silicon_ccd",
             "generic_nir"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -2840,7 +3015,8 @@
           "default": 0.02,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "curvature_type",
@@ -2854,7 +3030,8 @@
             "smile",
             "frown",
             "asymmetric"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "asymmetry",
@@ -2863,7 +3040,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "edge_focus",
@@ -2872,16 +3050,18 @@
           "default": 0.7,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -2916,7 +3096,8 @@
           "default": 0.001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "edge_enhancement",
@@ -2925,7 +3106,8 @@
           "default": 2,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "edge_width",
@@ -2934,7 +3116,8 @@
           "default": 0.1,
           "min": 0,
           "max": 0.5,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "include_peak_truncation",
@@ -2943,16 +3126,18 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -2987,7 +3172,8 @@
           "default": 0.5,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "amplitude_min",
@@ -2996,7 +3182,8 @@
           "default": 0.01,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "amplitude_max",
@@ -3005,7 +3192,8 @@
           "default": 0.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "width_min",
@@ -3014,7 +3202,8 @@
           "default": 50,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "width_max",
@@ -3023,7 +3212,8 @@
           "default": 200,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "left_edge",
@@ -3032,7 +3222,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "right_edge",
@@ -3041,16 +3232,18 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3085,7 +3278,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "use_aw_range",
@@ -3094,7 +3288,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "aw_low",
@@ -3103,7 +3298,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "aw_high",
@@ -3112,7 +3308,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "reference_water_activity",
@@ -3121,7 +3318,8 @@
           "default": 0.5,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "free_water_fraction",
@@ -3130,7 +3328,8 @@
           "default": 0.3,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "bound_water_shift",
@@ -3139,7 +3338,8 @@
           "default": 25,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "moisture_content",
@@ -3148,7 +3348,8 @@
           "default": 0.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "enable_shift",
@@ -3157,7 +3358,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "enable_intensity",
@@ -3166,16 +3368,18 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3210,7 +3414,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "use_temp_range",
@@ -3219,7 +3424,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "temp_low",
@@ -3228,7 +3434,8 @@
           "default": -5,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "temp_high",
@@ -3237,7 +3444,8 @@
           "default": 5,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "enable_shift",
@@ -3246,7 +3454,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "enable_intensity",
@@ -3255,7 +3464,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "enable_broadening",
@@ -3264,7 +3474,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "region_specific",
@@ -3273,16 +3484,18 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3317,7 +3530,8 @@
           "default": 0.2,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "k_neighbors",
@@ -3326,16 +3540,18 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3370,16 +3586,18 @@
           "default": 0.2,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3414,16 +3632,18 @@
           "default": 0.01,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3458,7 +3678,8 @@
           "default": 0.001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "noise_signal_dep",
@@ -3467,16 +3688,18 @@
           "default": 0.01,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3511,16 +3734,18 @@
           "default": 0.01,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3555,7 +3780,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_spikes_max",
@@ -3564,7 +3790,8 @@
           "default": 3,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "amplitude_min",
@@ -3573,7 +3800,8 @@
           "default": -0.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "amplitude_max",
@@ -3582,16 +3810,18 @@
           "default": 0.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3630,7 +3860,8 @@
             "multiply",
             "add",
             "subtract"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "operator_range_min",
@@ -3639,7 +3870,8 @@
           "default": 0.97,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "operator_range_max",
@@ -3648,16 +3880,18 @@
           "default": 1.03,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3692,7 +3926,8 @@
           "default": 2,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "y_factor",
@@ -3701,16 +3936,18 @@
           "default": 3,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3745,7 +3982,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "slope_std",
@@ -3754,7 +3992,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "gain_std",
@@ -3763,7 +4002,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "variation_scope",
@@ -3775,16 +4015,18 @@
           "choices": [
             "sample",
             "batch"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3819,7 +4061,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "width_low",
@@ -3828,7 +4071,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "width_high",
@@ -3837,7 +4081,8 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "noise_std",
@@ -3846,7 +4091,8 @@
           "default": 0.05,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "probability",
@@ -3855,7 +4101,8 @@
           "default": 0,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "variation_scope",
@@ -3867,16 +4114,18 @@
           "choices": [
             "sample",
             "batch"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -3911,7 +4160,8 @@
           "default": 0.9,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "mult_high",
@@ -3920,7 +4170,8 @@
           "default": 1.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "add_low",
@@ -3929,7 +4180,8 @@
           "default": -0.05,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "add_high",
@@ -3938,7 +4190,8 @@
           "default": 0.05,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "polynomial_order",
@@ -3947,7 +4200,8 @@
           "default": 2,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "polynomial_strength",
@@ -3956,7 +4210,8 @@
           "default": 0.02,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "correlation",
@@ -3965,16 +4220,18 @@
           "default": 0.3,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4009,7 +4266,8 @@
           "default": 5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "use_fwhm_range",
@@ -4018,7 +4276,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "fwhm_low",
@@ -4027,7 +4286,8 @@
           "default": 3,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "fwhm_high",
@@ -4036,7 +4296,8 @@
           "default": 8,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "variation_scope",
@@ -4048,16 +4309,18 @@
           "choices": [
             "sample",
             "batch"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4092,7 +4355,8 @@
           "default": 50,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "size_variation_um",
@@ -4101,7 +4365,8 @@
           "default": 15,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "use_size_range",
@@ -4110,7 +4375,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "size_range_low_um",
@@ -4119,7 +4385,8 @@
           "default": 5,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "size_range_high_um",
@@ -4128,7 +4395,8 @@
           "default": 500,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "reference_size_um",
@@ -4137,7 +4405,8 @@
           "default": 50,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "wavelength_exponent",
@@ -4146,7 +4415,8 @@
           "default": 1.5,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "size_effect_strength",
@@ -4155,7 +4425,8 @@
           "default": 0.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "include_path_length",
@@ -4164,7 +4435,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "path_length_sensitivity",
@@ -4173,16 +4445,18 @@
           "default": 0.5,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4217,7 +4491,8 @@
           "default": -0.05,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "a_high",
@@ -4226,7 +4501,8 @@
           "default": 0.05,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "b_low",
@@ -4235,7 +4511,8 @@
           "default": 0.9,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "b_high",
@@ -4244,16 +4521,18 @@
           "default": 1.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4288,7 +4567,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_bands_hi",
@@ -4297,7 +4577,8 @@
           "default": 3,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "bw_lo",
@@ -4306,7 +4587,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "bw_hi",
@@ -4315,7 +4597,8 @@
           "default": 15,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "mode",
@@ -4327,16 +4610,18 @@
           "choices": [
             "zero",
             "interp"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4371,7 +4656,8 @@
           "default": 3,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "bw_lo",
@@ -4380,7 +4666,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "bw_hi",
@@ -4389,7 +4676,8 @@
           "default": 15,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "gain_lo",
@@ -4398,7 +4686,8 @@
           "default": 0.9,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "gain_hi",
@@ -4407,7 +4696,8 @@
           "default": 1.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "offset_lo",
@@ -4416,7 +4706,8 @@
           "default": -0.01,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "offset_hi",
@@ -4425,16 +4716,18 @@
           "default": 0.01,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4469,7 +4762,8 @@
           "default": 0.05,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "mode",
@@ -4481,16 +4775,18 @@
           "choices": [
             "zero",
             "interp"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4525,7 +4821,8 @@
           "default": 0.5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "sigma_hi",
@@ -4534,7 +4831,8 @@
           "default": 1.5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "kernel_width",
@@ -4543,16 +4841,18 @@
           "default": 9,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4587,7 +4887,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "width_lo",
@@ -4596,7 +4897,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "width_hi",
@@ -4605,16 +4907,18 @@
           "default": 15,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4649,7 +4953,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "gain_lo",
@@ -4658,7 +4963,8 @@
           "default": 0.9,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "gain_hi",
@@ -4667,16 +4973,18 @@
           "default": 1.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4711,7 +5019,8 @@
           "default": 0.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "amount_hi",
@@ -4720,7 +5029,8 @@
           "default": 0.5,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "sigma",
@@ -4729,7 +5039,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "kernel_width",
@@ -4738,16 +5049,18 @@
           "default": 11,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4782,7 +5095,8 @@
           "default": -1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "uniform",
@@ -4791,16 +5105,18 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4832,10 +5148,11 @@
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4870,7 +5187,8 @@
           "default": 3,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "perturbation_density",
@@ -4879,7 +5197,8 @@
           "default": 0.05,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "perturbation_range_min",
@@ -4888,7 +5207,8 @@
           "default": -0.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "perturbation_range_max",
@@ -4897,16 +5217,18 @@
           "default": 0.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4941,7 +5263,8 @@
           "default": -1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "uniform",
@@ -4950,16 +5273,18 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -4994,7 +5319,8 @@
           "default": -1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "perturbation_intensity",
@@ -5003,16 +5329,18 @@
           "default": 0.005,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5047,7 +5375,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_shift",
@@ -5056,16 +5385,18 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5100,7 +5431,8 @@
           "default": -1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "shift_hi",
@@ -5109,16 +5441,18 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5153,7 +5487,8 @@
           "default": 0.99,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "stretch_hi",
@@ -5162,16 +5497,18 @@
           "default": 1.01,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5204,7 +5541,8 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5260,7 +5598,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -5269,7 +5608,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -5278,7 +5618,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -5287,7 +5628,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -5296,7 +5638,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5329,7 +5672,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -5338,7 +5682,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -5347,7 +5692,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -5356,7 +5702,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -5365,7 +5712,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alpha",
@@ -5374,7 +5722,8 @@
           "default": 0.05,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5436,7 +5785,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "top_k",
@@ -5445,7 +5795,8 @@
           "default": -1,
           "min": -1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5486,7 +5837,8 @@
           "choices": [
             "hat",
             "pca"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "threshold_multiplier",
@@ -5495,7 +5847,8 @@
           "default": 2,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "absolute_threshold",
@@ -5504,7 +5857,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_components",
@@ -5513,7 +5867,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center",
@@ -5522,7 +5877,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5560,7 +5916,8 @@
           "default": 0.1,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_zero_ratio",
@@ -5569,7 +5926,8 @@
           "default": 0.5,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_variance",
@@ -5578,7 +5936,8 @@
           "default": 1e-8,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_value",
@@ -5587,7 +5946,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_value",
@@ -5596,7 +5956,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "check_inf",
@@ -5605,7 +5966,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5644,7 +6006,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "top_k",
@@ -5653,7 +6016,8 @@
           "default": -1,
           "min": -1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5697,7 +6061,8 @@
             "pca_leverage",
             "isolation_forest",
             "lof"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "threshold",
@@ -5706,7 +6071,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_components",
@@ -5715,7 +6081,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "contamination",
@@ -5724,16 +6091,18 @@
           "default": 0.1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_estimators",
@@ -5742,7 +6111,8 @@
           "default": 100,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_samples",
@@ -5751,7 +6121,8 @@
           "default": 256,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5794,7 +6165,8 @@
             "zscore",
             "percentile",
             "mad"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "threshold",
@@ -5803,7 +6175,8 @@
           "default": 1.5,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "lower_percentile",
@@ -5812,7 +6185,8 @@
           "default": 1,
           "min": 0,
           "max": 100,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "upper_percentile",
@@ -5821,7 +6195,8 @@
           "default": 99,
           "min": 0,
           "max": 100,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5860,7 +6235,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         }
       ]
     },
@@ -5900,7 +6276,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "max_iter",
@@ -5909,7 +6286,8 @@
           "default": 500,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5949,7 +6327,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -5988,7 +6367,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_estimators",
@@ -5997,16 +6377,18 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6045,7 +6427,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_estimators",
@@ -6054,7 +6437,8 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "learning_rate",
@@ -6063,7 +6447,8 @@
           "default": 0.1,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6102,7 +6487,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_estimators",
@@ -6111,7 +6497,8 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "features_per_subspace",
@@ -6120,16 +6507,18 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6167,7 +6556,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_iter",
@@ -6176,7 +6566,8 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tol",
@@ -6185,7 +6576,8 @@
           "default": 1e-10,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6223,7 +6615,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "family",
@@ -6236,7 +6629,8 @@
             "gaussian",
             "poisson",
             "binomial"
-          ]
+          ],
+          "recorded": true
         },
         {
           "name": "max_iter",
@@ -6245,7 +6639,8 @@
           "default": 100,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tol",
@@ -6254,7 +6649,8 @@
           "default": 1e-10,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6293,7 +6689,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_neighbors",
@@ -6302,7 +6699,8 @@
           "default": null,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "mode",
@@ -6314,7 +6712,8 @@
           "choices": [
             "weighted",
             "knn"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -6353,7 +6752,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6392,7 +6792,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6431,7 +6832,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_x_orthogonal",
@@ -6440,7 +6842,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_y_orthogonal",
@@ -6449,7 +6852,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6487,7 +6891,8 @@
           "default": 1,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "n_unique_per_block",
@@ -6496,7 +6901,8 @@
           "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         }
       ]
     },
@@ -6535,7 +6941,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6574,7 +6981,8 @@
           "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6613,7 +7021,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "gamma",
@@ -6622,7 +7031,8 @@
           "default": 0.5,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6661,7 +7071,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "kernel",
@@ -6675,7 +7086,8 @@
             "rbf",
             "polynomial",
             "sigmoid"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "gamma",
@@ -6684,7 +7096,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "coef0",
@@ -6693,7 +7106,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "degree",
@@ -6702,7 +7116,8 @@
           "default": 3,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -6744,7 +7159,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "center_x",
@@ -6753,7 +7169,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "scale_x",
@@ -6762,7 +7179,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "center_y",
@@ -6771,7 +7189,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "scale_y",
@@ -6780,7 +7199,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         }
       ]
     },
@@ -6822,7 +7242,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         }
       ]
     },
@@ -6864,7 +7285,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "solver",
@@ -6882,7 +7304,8 @@
             "svd",
             "power",
             "randomized_svd"
-          ]
+          ],
+          "recorded": true
         },
         {
           "name": "center_x",
@@ -6891,7 +7314,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "scale_x",
@@ -6900,7 +7324,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "center_y",
@@ -6909,7 +7334,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "scale_y",
@@ -6918,7 +7344,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         }
       ]
     },
@@ -6957,7 +7384,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tau",
@@ -6966,7 +7394,8 @@
           "default": 0.5,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7005,7 +7434,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -7014,7 +7444,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -7023,7 +7454,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -7032,7 +7464,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7071,7 +7504,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ridge_lambda",
@@ -7080,7 +7514,8 @@
           "default": 0.1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -7089,7 +7524,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -7098,7 +7534,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -7107,7 +7544,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -7116,7 +7554,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7155,7 +7594,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "huber_k",
@@ -7164,7 +7604,8 @@
           "default": 1.345,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_irls_iter",
@@ -7173,7 +7614,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -7182,7 +7624,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -7191,7 +7634,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -7200,7 +7644,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -7209,7 +7654,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7248,7 +7694,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -7257,7 +7704,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -7266,7 +7714,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -7275,7 +7724,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -7284,7 +7734,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7323,7 +7774,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "l1_lambda",
@@ -7332,7 +7784,8 @@
           "default": 0.05,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "fusion_lambda",
@@ -7341,7 +7794,8 @@
           "default": 0.05,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7380,7 +7834,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "group_lambda",
@@ -7389,7 +7844,8 @@
           "default": 0.05,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7428,7 +7884,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "sparsity_lambda",
@@ -7437,7 +7894,8 @@
           "default": 0.05,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7476,7 +7934,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "sparsity_lambda",
@@ -7485,7 +7944,8 @@
           "default": 0.05,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7524,7 +7984,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alpha",
@@ -7533,7 +7994,8 @@
           "default": 0.5,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7572,7 +8034,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "length_scale",
@@ -7581,7 +8044,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "noise_level",
@@ -7590,7 +8054,8 @@
           "default": 0.001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7628,7 +8093,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7670,7 +8136,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "window_size",
@@ -7679,7 +8146,8 @@
           "default": null,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         }
       ]
     },
@@ -7718,7 +8186,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "mode_j",
@@ -7727,7 +8196,8 @@
           "default": null,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "mode_k",
@@ -7736,7 +8206,8 @@
           "default": null,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         }
       ]
     },
@@ -7775,7 +8246,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "di_lambda",
@@ -7784,7 +8256,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7850,7 +8323,8 @@
           "default": 2,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7888,7 +8362,8 @@
           "default": [],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "interval_size",
@@ -7897,7 +8372,8 @@
           "default": 32,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_shift",
@@ -7906,7 +8382,8 @@
           "default": 5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7944,7 +8421,8 @@
           "default": [],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -7982,7 +8460,8 @@
           "default": [],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "interval_size",
@@ -7991,7 +8470,8 @@
           "default": 32,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_shift",
@@ -8000,7 +8480,8 @@
           "default": 5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8038,7 +8519,8 @@
           "default": [],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_shift",
@@ -8047,7 +8529,8 @@
           "default": 5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8085,7 +8568,8 @@
           "default": 1000000,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_iter",
@@ -8094,7 +8578,8 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tol",
@@ -8103,7 +8588,8 @@
           "default": 0.001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8141,7 +8627,8 @@
           "default": 100000,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_iter",
@@ -8150,7 +8637,8 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tol",
@@ -8159,7 +8647,8 @@
           "default": 0.001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8197,7 +8686,8 @@
           "default": 1000000,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "p",
@@ -8206,7 +8696,8 @@
           "default": 0.01,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_iter",
@@ -8215,7 +8706,8 @@
           "default": 50,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tol",
@@ -8224,7 +8716,8 @@
           "default": 0.001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8262,7 +8755,8 @@
           "default": 100,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "lam_1",
@@ -8271,7 +8765,8 @@
           "default": 0.5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "lam_2",
@@ -8280,7 +8775,8 @@
           "default": 0.5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_iter",
@@ -8289,7 +8785,8 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tol",
@@ -8298,7 +8795,8 @@
           "default": 0.001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8336,7 +8834,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8374,7 +8873,8 @@
           "default": 1000000,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "p",
@@ -8383,7 +8883,8 @@
           "default": 0.01,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "lam_1",
@@ -8392,7 +8893,8 @@
           "default": 0.0001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "polyorder",
@@ -8401,7 +8903,8 @@
           "default": 2,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "diff_order",
@@ -8410,7 +8913,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_iter",
@@ -8419,7 +8923,8 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tol",
@@ -8428,7 +8933,8 @@
           "default": 0.001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8466,7 +8972,8 @@
           "default": 2,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_iter",
@@ -8475,7 +8982,8 @@
           "default": 250,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tol",
@@ -8484,7 +8992,8 @@
           "default": 0.001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8522,7 +9031,8 @@
           "default": 2,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_iter",
@@ -8531,7 +9041,8 @@
           "default": 250,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tol",
@@ -8540,7 +9051,8 @@
           "default": 0.001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8578,7 +9090,8 @@
           "default": 20,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "smooth_half_window",
@@ -8587,7 +9100,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8625,7 +9139,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "score_weight",
@@ -8634,7 +9149,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "fit_intercept",
@@ -8643,7 +9159,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "ridge",
@@ -8652,7 +9169,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8690,7 +9208,8 @@
           "default": 20,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8728,7 +9247,8 @@
           "default": 1,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "delta",
@@ -8737,7 +9257,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8775,7 +9296,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "edge_order",
@@ -8784,7 +9306,8 @@
           "default": 2,
           "min": 1,
           "max": 2,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8822,7 +9345,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "gap",
@@ -8831,7 +9355,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "derivative_order",
@@ -8840,7 +9365,8 @@
           "default": 1,
           "min": 0,
           "max": 2,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "delta",
@@ -8849,7 +9375,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8887,7 +9414,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "polyorder",
@@ -8896,7 +9424,8 @@
           "default": 2,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "deriv",
@@ -8905,7 +9434,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "delta",
@@ -8914,7 +9444,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "mode",
@@ -8929,7 +9460,8 @@
             "nearest",
             "wrap",
             "interp"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "cval",
@@ -8938,7 +9470,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -8976,7 +9509,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "edge_order",
@@ -8985,7 +9519,8 @@
           "default": 2,
           "min": 1,
           "max": 2,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9023,7 +9558,8 @@
           "default": 5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9061,7 +9597,8 @@
           "default": 5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9099,7 +9636,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9137,7 +9675,8 @@
           "default": 1,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale",
@@ -9146,7 +9685,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9184,7 +9724,8 @@
           "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "end",
@@ -9193,7 +9734,8 @@
           "default": null,
           "min": -1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9231,7 +9773,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "strategy",
@@ -9243,7 +9786,8 @@
           "choices": [
             "uniform",
             "quantile"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -9281,7 +9825,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9319,7 +9864,8 @@
           "default": null,
           "min": -1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9357,7 +9903,8 @@
           "default": [],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "method",
@@ -9370,7 +9917,8 @@
             "linear",
             "nearest",
             "cubic"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "crop_min",
@@ -9379,7 +9927,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "crop_max",
@@ -9388,7 +9937,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "use_crop",
@@ -9397,7 +9947,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "fill_value",
@@ -9406,7 +9957,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "bounds_error",
@@ -9415,7 +9967,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "extrapolate",
@@ -9424,7 +9977,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tgt_min",
@@ -9433,7 +9987,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tgt_step",
@@ -9442,7 +9997,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "tgt_n",
@@ -9451,7 +10007,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9517,7 +10074,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "offset",
@@ -9526,7 +10084,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "auto_offset",
@@ -9535,7 +10094,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_value",
@@ -9544,7 +10104,8 @@
           "default": 1e-8,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9582,7 +10143,8 @@
           "default": -1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "feature_max",
@@ -9591,7 +10153,8 @@
           "default": 1,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9661,7 +10224,8 @@
             "sum",
             "abs_sum",
             "trapz"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -9699,7 +10263,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9765,7 +10330,8 @@
           "default": 11,
           "min": 3,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "pad_mode",
@@ -9778,7 +10344,8 @@
             "reflect",
             "edge",
             "constant"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "constant_value",
@@ -9787,7 +10354,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9825,7 +10393,8 @@
           "default": 32,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "reference",
@@ -9834,7 +10403,8 @@
           "default": [],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "eps",
@@ -9843,7 +10413,8 @@
           "default": 1e-12,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9909,7 +10480,8 @@
           "default": 32,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "reference",
@@ -9918,7 +10490,8 @@
           "default": [],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "eps",
@@ -9927,7 +10500,8 @@
           "default": 1e-12,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -9965,7 +10539,8 @@
           "default": 32,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ddof",
@@ -9974,7 +10549,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "eps",
@@ -9983,7 +10559,8 @@
           "default": 1e-12,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10021,7 +10598,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "with_scale",
@@ -10030,7 +10608,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "k",
@@ -10039,7 +10618,8 @@
           "default": 1.4826,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10077,7 +10657,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "with_std",
@@ -10086,7 +10667,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ddof",
@@ -10095,7 +10677,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10133,7 +10716,8 @@
           "default": 1e-12,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10171,7 +10755,8 @@
           "default": [],
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ddof",
@@ -10180,7 +10765,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "eps",
@@ -10189,7 +10775,8 @@
           "default": 1e-12,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10255,7 +10842,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10293,7 +10881,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "epsilon",
@@ -10302,7 +10891,8 @@
           "default": 1e-10,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10368,7 +10958,8 @@
           "default": false,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "epsilon",
@@ -10377,7 +10968,8 @@
           "default": 1e-10,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "clip_negative",
@@ -10386,7 +10978,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10424,7 +11017,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "order",
@@ -10433,7 +11027,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "mode",
@@ -10448,7 +11043,8 @@
             "nearest",
             "mirror",
             "wrap"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "cval",
@@ -10457,7 +11053,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "truncate",
@@ -10466,7 +11063,8 @@
           "default": 4,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10504,7 +11102,8 @@
           "default": null,
           "min": 3,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alphas",
@@ -10513,7 +11112,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "sigmas",
@@ -10522,7 +11122,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10560,7 +11161,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "ridge",
@@ -10569,7 +11171,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10607,7 +11210,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "fit_intercept",
@@ -10616,7 +11220,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "ridge",
@@ -10625,7 +11230,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10663,7 +11269,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "ridge",
@@ -10672,7 +11279,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "trim_quantile",
@@ -10681,7 +11289,8 @@
           "default": 0.9,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_iter",
@@ -10690,7 +11299,8 @@
           "default": 3,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -10789,7 +11399,8 @@
             "db4",
             "sym4",
             "coif1"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "mode",
@@ -10802,7 +11413,8 @@
             "periodization",
             "symmetric",
             "zero"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -10845,7 +11457,8 @@
             "db4",
             "sym4",
             "coif1"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "mode",
@@ -10858,7 +11471,8 @@
             "periodization",
             "symmetric",
             "zero"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "level",
@@ -10867,7 +11481,8 @@
           "default": 3,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "threshold_mode",
@@ -10879,7 +11494,8 @@
           "choices": [
             "soft",
             "hard"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "noise_estimator",
@@ -10891,7 +11507,8 @@
           "choices": [
             "median",
             "std"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -10934,7 +11551,8 @@
             "db4",
             "sym4",
             "coif1"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "mode",
@@ -10947,7 +11565,8 @@
             "periodization",
             "symmetric",
             "zero"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "max_level",
@@ -10956,7 +11575,8 @@
           "default": 3,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "entropy",
@@ -10968,7 +11588,8 @@
           "choices": [
             "energy",
             "histogram"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -11011,7 +11632,8 @@
             "db4",
             "sym4",
             "coif1"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "mode",
@@ -11024,7 +11646,8 @@
             "periodization",
             "symmetric",
             "zero"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "max_level",
@@ -11033,7 +11656,8 @@
           "default": 2,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_components",
@@ -11042,7 +11666,8 @@
           "default": 5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11085,7 +11710,8 @@
             "db4",
             "sym4",
             "coif1"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "mode",
@@ -11098,7 +11724,8 @@
             "periodization",
             "symmetric",
             "zero"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "max_level",
@@ -11107,7 +11734,8 @@
           "default": 2,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_components",
@@ -11116,7 +11744,8 @@
           "default": 5,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11155,7 +11784,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "interval_width",
@@ -11164,7 +11794,8 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_intervals",
@@ -11173,7 +11804,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -11182,7 +11814,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11221,7 +11854,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_steps",
@@ -11230,7 +11864,8 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_features",
@@ -11239,7 +11874,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -11248,7 +11884,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11287,7 +11924,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_iterations",
@@ -11296,7 +11934,8 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_features",
@@ -11305,7 +11944,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -11314,7 +11954,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11353,7 +11994,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "noise_features",
@@ -11362,16 +12004,18 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "noise_seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_ensembles",
@@ -11380,7 +12024,8 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "vote_threshold",
@@ -11389,7 +12034,8 @@
           "default": 0.5,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -11398,7 +12044,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11437,7 +12084,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_generations",
@@ -11446,7 +12094,8 @@
           "default": 30,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "population_size",
@@ -11455,7 +12104,8 @@
           "default": 40,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_features",
@@ -11464,7 +12114,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_features",
@@ -11473,7 +12124,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "mutation_rate",
@@ -11482,7 +12134,8 @@
           "default": 0.05,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -11491,16 +12144,18 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11538,7 +12193,8 @@
           "default": 32,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "step",
@@ -11547,7 +12203,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11586,7 +12243,8 @@
           "default": null,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "n_components",
@@ -11595,7 +12253,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_iterations",
@@ -11604,7 +12263,8 @@
           "default": 20,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "damping",
@@ -11613,7 +12273,8 @@
           "default": 0.5,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "weight_floor",
@@ -11622,7 +12283,8 @@
           "default": 0.000001,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -11631,7 +12293,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11670,7 +12333,8 @@
           "default": null,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_components",
@@ -11679,7 +12343,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_iterations",
@@ -11688,7 +12353,8 @@
           "default": 100,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "window_size",
@@ -11697,7 +12363,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "initial_intervals",
@@ -11706,7 +12373,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -11715,16 +12383,18 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11763,7 +12433,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_rounds",
@@ -11772,7 +12443,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -11781,16 +12453,18 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11829,7 +12503,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_swarm",
@@ -11838,7 +12513,8 @@
           "default": 30,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_iterations",
@@ -11847,7 +12523,8 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "w",
@@ -11856,7 +12533,8 @@
           "default": 0.729,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "c1",
@@ -11865,7 +12543,8 @@
           "default": 1.494,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "c2",
@@ -11874,7 +12553,8 @@
           "default": 1.494,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "v_max",
@@ -11883,7 +12563,8 @@
           "default": 4,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -11892,16 +12573,18 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -11940,7 +12623,8 @@
           "default": null,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "n_components",
@@ -11949,7 +12633,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_iterations",
@@ -11958,7 +12643,8 @@
           "default": 100,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "initial_size",
@@ -11967,7 +12653,8 @@
           "default": 20,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_size",
@@ -11976,7 +12663,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_size",
@@ -11985,7 +12673,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -11994,16 +12683,18 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12042,7 +12733,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_permutations",
@@ -12051,16 +12743,18 @@
           "default": 200,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "randomization_seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alpha",
@@ -12069,7 +12763,8 @@
           "default": 0.05,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12108,7 +12803,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_steps",
@@ -12117,7 +12813,8 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_features",
@@ -12126,7 +12823,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "remove_count",
@@ -12135,7 +12833,8 @@
           "default": 1,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -12144,7 +12843,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12183,7 +12883,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_iterations",
@@ -12192,7 +12893,8 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_features",
@@ -12201,7 +12903,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "sample_fraction",
@@ -12210,7 +12913,8 @@
           "default": 0.8,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -12219,16 +12923,18 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12267,7 +12973,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_steps",
@@ -12276,7 +12983,8 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_features",
@@ -12285,7 +12993,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "shave_fraction",
@@ -12294,7 +13003,8 @@
           "default": 0.2,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -12303,7 +13013,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12342,7 +13053,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "interval_width",
@@ -12351,7 +13063,8 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "combination_size",
@@ -12360,7 +13073,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -12369,7 +13083,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12408,7 +13123,8 @@
           "default": null,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "n_components",
@@ -12417,7 +13133,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12456,7 +13173,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_components",
@@ -12465,7 +13183,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_selected",
@@ -12474,7 +13193,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -12483,7 +13203,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12522,7 +13243,8 @@
           "default": null,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "n_components",
@@ -12531,7 +13253,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -12540,7 +13263,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12579,7 +13303,8 @@
           "default": null,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_components",
@@ -12588,7 +13313,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_selected",
@@ -12597,7 +13323,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -12606,7 +13333,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12645,7 +13373,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "noise_features",
@@ -12654,16 +13383,18 @@
           "default": 50,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "noise_seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_features",
@@ -12672,7 +13403,8 @@
           "default": -1,
           "min": -1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -12681,7 +13413,8 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12720,7 +13453,8 @@
           "default": null,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "n_components",
@@ -12729,7 +13463,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "rank_method",
@@ -12742,7 +13477,8 @@
             "vip",
             "coefficient",
             "selectivity_ratio"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -12781,7 +13517,8 @@
           "default": null,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_components",
@@ -12790,7 +13527,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "vip_threshold",
@@ -12799,7 +13537,8 @@
           "default": 0.3,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12838,7 +13577,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_iterations",
@@ -12847,7 +13587,8 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_submodels",
@@ -12856,7 +13597,8 @@
           "default": 60,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ratio_kept",
@@ -12865,7 +13607,8 @@
           "default": 0.1,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "threshold",
@@ -12874,7 +13617,8 @@
           "default": 0.5,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "floor_probability",
@@ -12883,7 +13627,8 @@
           "default": 0.05,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "cv",
@@ -12892,16 +13637,18 @@
           "default": 3,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12940,7 +13687,8 @@
           "default": null,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": true
         },
         {
           "name": "n_components",
@@ -12949,7 +13697,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "normalize",
@@ -12958,7 +13707,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -12997,7 +13747,8 @@
           "default": 2,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "normalize",
@@ -13006,7 +13757,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "score_threshold",
@@ -13015,7 +13767,8 @@
           "default": 0,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "threshold_factor",
@@ -13024,7 +13777,8 @@
           "default": 1,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "min_selected",
@@ -13033,7 +13787,8 @@
           "default": 0,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13068,7 +13823,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_bins",
@@ -13077,7 +13833,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "strategy",
@@ -13089,7 +13846,8 @@
           "choices": [
             "uniform",
             "quantile"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "shuffle",
@@ -13098,16 +13856,18 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13142,16 +13902,18 @@
           "default": 0.25,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "n_bins",
@@ -13160,7 +13922,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "strategy",
@@ -13172,7 +13935,8 @@
           "choices": [
             "uniform",
             "quantile"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -13207,7 +13971,8 @@
           "default": 0.25,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13242,16 +14007,18 @@
           "default": 0.25,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "max_iter",
@@ -13260,7 +14027,8 @@
           "default": 100,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13295,16 +14063,18 @@
           "default": 0.25,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13339,7 +14109,8 @@
           "default": 0.25,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13374,7 +14145,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "y_metric",
@@ -13387,7 +14159,8 @@
             "x_only",
             "euclidean",
             "hamming"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -13422,7 +14195,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "y_metric",
@@ -13435,7 +14209,8 @@
             "x_only",
             "euclidean",
             "hamming"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "aggregation",
@@ -13447,7 +14222,8 @@
           "choices": [
             "mean",
             "median"
-          ]
+          ],
+          "recorded": false
         }
       ]
     },
@@ -13482,16 +14258,18 @@
           "default": 0.25,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13524,7 +14302,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alpha",
@@ -13533,7 +14312,8 @@
           "default": 0.05,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13589,7 +14369,8 @@
           "default": 5,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "alpha",
@@ -13598,7 +14379,8 @@
           "default": 0.05,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13631,7 +14413,8 @@
           "default": 0.7,
           "min": 0,
           "max": 1,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13664,7 +14447,8 @@
           "default": 5,
           "min": 2,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "ridge_lambdas",
@@ -13678,7 +14462,8 @@
           ],
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "pls_components",
@@ -13693,7 +14478,8 @@
           ],
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "heads",
@@ -13706,7 +14492,8 @@
             "ridge",
             "pls",
             "ridge_pls"
-          ]
+          ],
+          "recorded": false
         },
         {
           "name": "center_x",
@@ -13715,7 +14502,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_x",
@@ -13724,7 +14512,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "center_y",
@@ -13733,7 +14522,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "scale_y",
@@ -13742,7 +14532,8 @@
           "default": true,
           "min": null,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     },
@@ -13775,7 +14566,8 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "k_neighbors",
@@ -13784,16 +14576,18 @@
           "default": 10,
           "min": 1,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         },
         {
           "name": "seed",
           "type": "int",
           "required": false,
-          "default": 0,
+          "default": null,
           "min": 0,
           "max": null,
-          "choices": []
+          "choices": [],
+          "recorded": false
         }
       ]
     }
