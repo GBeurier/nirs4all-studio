@@ -10,7 +10,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [0.13.2] — 2026-09-27
+## [0.13.3] — 2026-09-27
+
+### Fixed
+
+- Windows: results and predictions of a workspace selected through the native
+  sidecar failed with `invalid uri authority: %3F`. The sidecar reports
+  canonical paths in verbatim form (`\\?\D:\...`, also persisted by 0.12.0),
+  and read-only SQLite URIs built from them got `?` as authority. The library
+  adapters now receive the plain path.
+
+### Release note
+
+- Supersedes the 0.13.2 tag, whose installers were never published. Contents
+  are otherwise those of 0.13.2, 0.13.1 and 0.13.0 below.
+
+---
+
+## [0.13.2] — 2026-09-27 (unpublished tag)
 
 ### Fixed
 

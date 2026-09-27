@@ -96,3 +96,17 @@ def test_aggregated_chain_detail_and_real_arrays_with_live_writer(tmp_path: Path
         assert arrays["sample_indices"] == [8, 3, 2]
         with pytest.raises(ValueError, match="not_found"):
             read_aggregated_results("results.arrays", {**base, "prediction_id": "missing"})
+
+
+def test_verbatim_windows_workspace_paths_reach_the_library_plain(monkeypatch):
+    import api.library_aggregated_results as aggregated
+    from api.library_documents import adapt_document, plain_windows_path
+
+    assert plain_windows_path("\\\\?\\D:\\a\\ws") == "D:\\a\\ws"
+    assert plain_windows_path("\\\\?\\UNC\\srv\\share\\ws") == "\\\\srv\\share\\ws"
+    assert plain_windows_path("\\\\?\\Volume{0}\\ws") == "\\\\?\\Volume{0}\\ws"
+    assert plain_windows_path("/home/ws") == "/home/ws"
+    seen = {}
+    monkeypatch.setattr(aggregated, "read_aggregated_results", lambda operation, document: seen.update(document) or {})
+    adapt_document("results.chains", {"workspace_path": "\\\\?\\D:\\a\\ws"})
+    assert seen["workspace_path"] == "D:\\a\\ws"
