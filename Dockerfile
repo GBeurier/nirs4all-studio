@@ -59,7 +59,7 @@ RUN test -n "${NIRS4ALL_METHODS_SHA256}" \
     && mkdir -p backend/native /contract-scripts
 COPY --from=python-plugin-runtime /product/backend/ backend/
 COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/studio-sidecar
-COPY --from=methods-runtime /libn4m.so.2.5.0 backend/native/libn4m.so
+COPY --from=methods-runtime /libn4m.so.2.13.0 backend/native/libn4m.so
 COPY --from=studio-document-adapter-sources / /
 COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/
 COPY build/constraints/plugin-runtime-cpython311.txt /build/constraints/plugin-runtime-cpython311.txt

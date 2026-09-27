@@ -12,15 +12,15 @@ const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
 const MAX_PYTHON_CLOSURE_FILES = 100_000;
 const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
-const PLUGIN_SOURCE_COMMIT = "bcea63bf6fdee8d08f2c65f3cd0cf994258b2b4c";
-const PLUGIN_WHEEL_SHA256 = "d8af69437ecac1c814ec6d5ce22e8e8d5de758e0ebd1ac5131ae3383cd1e3fd0";
+const PLUGIN_SOURCE_COMMIT = "e4d93f39aabc924aaee3ca14b348b0a1348a3a25";
+const PLUGIN_WHEEL_SHA256 = "1dbbfe6dbd0ce997e2b363cfde37bfd1d09cedbbca68c7897cd68781ef478078";
 const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
 const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
 const METHODS_ABI_MAJOR = 2;
-const METHODS_ABI_MINOR = 5;
-const METHODS_SOURCE_COMMIT = "a9faae2909c71a833bb7f3b208dc20548cf01588";
-const METHODS_SOURCE_TREE = "5c39dde72afab2ff725ff7b1b53e69a17b9bf865";
-const METHODS_PROJECT_VERSION = "1.0.18";
+const METHODS_ABI_MINOR = 13;
+const METHODS_SOURCE_COMMIT = "89ddb7ac26a6d569e2ef85454062d51ce5d9fb83";
+const METHODS_SOURCE_TREE = "5730350eedeac7736914a1c9296441455ddfe917";
+const METHODS_PROJECT_VERSION = "1.1.1";
 const WINDOWS_NATIVE_RUNTIME_LINKAGE = {
   profile: "studio-msvc-static-crt-v1",
   methods_cmake_runtime: "MultiThreaded",
@@ -394,9 +394,9 @@ function verifyPluginMarker(
     marker.source_commit !== PLUGIN_SOURCE_COMMIT ||
     marker.wheel_sha256 !== PLUGIN_WHEEL_SHA256 ||
     marker.distribution !== "nirs4all" ||
-    marker.distribution_version !== "1.1.5" ||
+    marker.distribution_version !== "1.2.1" ||
     marker.installed_manifest_sha256 !==
-      "6d945c597c4c7c3f927acfc4e0b298577afec85c4dba64cc0f20d5af4a6022ce" ||
+      "cca188e9cb0fd479d883f0a887abe98f085ac33469bc78694ec7e72f84bcb263" ||
     conversionTools?.source_commit !== TOOLS_SOURCE_COMMIT ||
     conversionTools?.wheel_sha256 !== TOOLS_WHEEL_SHA256 ||
     conversionTools?.distribution !== "nirs4all-tools" ||
