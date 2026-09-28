@@ -7,7 +7,7 @@
  * - Targets: Target distribution and statistics
  * - Raw Data: Paginated data table
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -43,6 +43,8 @@ import {
 } from "@/hooks/useDatasetQueries";
 import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
 import { getDatasetTaskLabel } from "@/lib/datasetTask";
+import { getMultimodalDatasetSummary, isStudioMultimodalDatasetDocument } from "@/lib/multimodalDatasetSummary";
+import { MultimodalDatasetOverview } from "@/components/datasets/MultimodalDatasetOverview";
 import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
 
 const containerVariants = {
@@ -76,18 +78,20 @@ export default function DatasetDetail() {
   // shared with DatasetQuickView, so navigating between Datasets ↔ Detail
   // reuses already-fetched data instead of re-hitting the backend.
   const datasetQuery = useDatasetQuery(id);
-  const previewQuery = useDatasetPreviewQuery(id, 100);
-
   const dataset = datasetQuery.data ?? null;
+  const descriptor = dataset?.config?.dataset_document;
+  const multimodal = useMemo(() => getMultimodalDatasetSummary(descriptor), [descriptor]);
+  const hasMultimodalDocument = isStudioMultimodalDatasetDocument(descriptor);
+  const previewQuery = useDatasetPreviewQuery(id, 100, !!dataset && !hasMultimodalDocument);
   const loading = datasetQuery.isLoading;
   const error =
     datasetQuery.error instanceof Error ? datasetQuery.error.message : null;
   const preview = previewQuery.data ?? null;
-  const waitingForWorkspace = !!id && !workspaceReady && !preview;
+  const waitingForWorkspace = !!id && !workspaceReady && !preview && !hasMultimodalDocument;
   const previewLoading =
-    waitingForWorkspace || previewQuery.isLoading || (previewQuery.isFetching && !preview);
+    !hasMultimodalDocument && (waitingForWorkspace || previewQuery.isLoading || (previewQuery.isFetching && !preview));
   const previewError =
-    previewQuery.error instanceof Error
+    hasMultimodalDocument ? null : previewQuery.error instanceof Error
       ? previewQuery.error.message
       : preview?.error ?? null;
   const loadDataset = () => {
@@ -133,6 +137,13 @@ export default function DatasetDetail() {
     );
   }
 
+  if (hasMultimodalDocument && !multimodal) {
+    return <div role="alert" className="space-y-4 py-16 text-center">
+      <p className="text-destructive">This multimodal dataset descriptor cannot be displayed.</p>
+      <Button variant="outline" onClick={() => navigate("/datasets")}>Back to datasets</Button>
+    </div>;
+  }
+
   const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
   const repetitionColumnWarning = getRepeatIndexColumnWarning(repetitionColumn);
   const taskLabel = getDatasetTaskLabel(dataset.task_type, {
@@ -144,8 +155,13 @@ export default function DatasetDetail() {
     {
       title: t("datasets.info.samples"),
       icon: Layers,
-      value: formatNumber(dataset.num_samples),
+      value: formatNumber(multimodal?.samples ?? dataset.num_samples),
       detail: (() => {
+        if (multimodal) {
+          return Object.entries(multimodal.partitions)
+            .map(([name, count]) => `${formatNumber(count)} ${name}`)
+            .join(" · ") || "No partitions declared";
+        }
         const trainCount = preview?.summary?.train_samples ?? dataset.train_samples;
         const testCount = preview?.summary?.test_samples ?? dataset.test_samples;
         if (testCount != null && testCount > 0) {
@@ -155,26 +171,26 @@ export default function DatasetDetail() {
       })(),
     },
     {
-      title: t("datasets.info.features"),
+      title: multimodal ? "Sources" : t("datasets.info.features"),
       icon: Hash,
-      value: formatNumber(dataset.num_features),
-      detail: preview?.summary?.header_unit
+      value: multimodal ? String(multimodal.sources.length) : formatNumber(dataset.num_features),
+      detail: multimodal ? "Typed sources" : preview?.summary?.header_unit
         ? `Header: ${preview.summary.header_unit}`
         : "Feature count",
     },
     {
-      title: t("datasets.info.spectralRange"),
+      title: multimodal ? "Alignment" : t("datasets.info.spectralRange"),
       icon: BarChart3,
-      value: preview?.spectra_preview
+      value: multimodal ? multimodal.alignment : preview?.spectra_preview
         ? `${Math.min(...preview.spectra_preview.wavelengths).toFixed(0)}-${Math.max(...preview.spectra_preview.wavelengths).toFixed(0)}`
         : "--",
-      detail: preview?.summary?.signal_type ?? "Preview pending",
+      detail: multimodal ? "Declared source alignment" : preview?.summary?.signal_type ?? "Preview pending",
     },
     {
       title: t("datasets.info.targets"),
       icon: Target,
-      value: String(dataset.targets?.length || 0),
-      detail: dataset.default_target || "No default target",
+      value: String(multimodal?.targets.length ?? dataset.targets?.length ?? 0),
+      detail: multimodal?.targets.join(", ") || dataset.default_target || "No default target",
     },
   ];
 
@@ -247,18 +263,18 @@ export default function DatasetDetail() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                <Button variant="outline" onClick={loadPreview} disabled={previewLoading}>
+                {!hasMultimodalDocument && <Button variant="outline" onClick={loadPreview} disabled={previewLoading}>
                   <RefreshCw className={`mr-2 h-4 w-4 ${previewLoading ? "animate-spin" : ""}`} />
                   Refresh Preview
-                </Button>
-                <Button variant="outline" asChild>
+                </Button>}
+                {!hasMultimodalDocument && <Button variant="outline" asChild>
                   <Link
                     to={`/playground?datasetId=${encodeURIComponent(dataset.id)}&datasetName=${encodeURIComponent(dataset.name)}`}
                   >
                     <Play className="mr-2 h-4 w-4" />
                     Open Playground
                   </Link>
-                </Button>
+                </Button>}
                 <Button asChild>
                   <Link to="/datasets">
                     <ArrowLeft className="mr-2 h-4 w-4" />
@@ -289,17 +305,18 @@ export default function DatasetDetail() {
 
       {/* Tabs */}
       <motion.div variants={itemVariants}>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={multimodal ? "overview" : activeTab} onValueChange={setActiveTab}>
           <Card className="border-border/70 bg-card/70 shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Dataset Views</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-xl bg-muted/30 p-2 lg:grid-cols-4">
+              <TabsList className={`grid h-auto w-full gap-2 rounded-xl bg-muted/30 p-2 ${multimodal ? "grid-cols-1" : "grid-cols-2 lg:grid-cols-4"}`}>
                 <TabsTrigger value="overview" className="gap-2 rounded-lg py-2.5">
                   <Info className="h-4 w-4" />
                   Overview
                 </TabsTrigger>
+                {!multimodal && <>
                 <TabsTrigger value="spectra" className="gap-2 rounded-lg py-2.5">
                   <BarChart3 className="h-4 w-4" />
                   Spectra
@@ -312,15 +329,18 @@ export default function DatasetDetail() {
                   <Table className="h-4 w-4" />
                   Raw Data
                 </TabsTrigger>
+                </>}
               </TabsList>
             </CardContent>
           </Card>
 
           <div className="mt-6">
             <TabsContent value="overview" className="m-0">
-              <DatasetOverviewTab dataset={dataset} preview={preview} />
+              {multimodal ? <MultimodalDatasetOverview summary={multimodal} />
+                : <DatasetOverviewTab dataset={dataset} preview={preview} />}
             </TabsContent>
 
+            {!multimodal && <>
             <TabsContent value="spectra" className="m-0">
               <DatasetSpectraTab
                 preview={preview}
@@ -349,6 +369,7 @@ export default function DatasetDetail() {
                 onRefresh={loadPreview}
               />
             </TabsContent>
+            </>}
           </div>
         </Tabs>
       </motion.div>

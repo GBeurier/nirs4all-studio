@@ -278,7 +278,8 @@ export function useDatasetQuery(id: string | undefined) {
  */
 export function useDatasetPreviewQuery(
   id: string | undefined,
-  maxSamples: number = 100
+  maxSamples: number = 100,
+  enabled: boolean = true,
 ) {
   const { workspaceReady } = useMlReadiness();
   return useQuery<PreviewDataResponse>({
@@ -290,7 +291,7 @@ export function useDatasetPreviewQuery(
       }
       return result;
     },
-    enabled: !!id && workspaceReady,
+    enabled: !!id && workspaceReady && enabled,
     ...baseOptions,
   });
 }

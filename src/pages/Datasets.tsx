@@ -44,6 +44,7 @@ import {
 import {
   resolveDatasetDrop,
 } from "@/lib/datasetDrop";
+import { isStudioMultimodalDatasetDocument } from "@/lib/multimodalDatasetSummary";
 import type { Dataset, DatasetGroup } from "@/types/datasets";
 import {
   DatasetsHeader,
@@ -367,9 +368,11 @@ export default function Datasets() {
                   bestScore={datasetScores.get(dataset.id) ?? null}
                   onSelect={(ds) => setQuickViewDataset(ds)}
                   onPreview={(ds) => setQuickViewDataset(ds)}
-                  onEdit={() => handleEditDataset(dataset)}
+                  onEdit={isStudioMultimodalDatasetDocument(dataset.config?.dataset_document)
+                    ? undefined : () => handleEditDataset(dataset)}
                   onDelete={() => handleDeleteDataset(dataset)}
-                  onRefresh={() => datasetActions.refreshDatasetById(dataset.id)}
+                  onRefresh={isStudioMultimodalDatasetDocument(dataset.config?.dataset_document)
+                    ? undefined : () => datasetActions.refreshDatasetById(dataset.id)}
                   onAssignGroup={(ds, groupId) => datasetActions.assignGroup(ds, groupId)}
                 />
               ))}
