@@ -15,6 +15,8 @@ import numpy as np
 from .shared.json_safe import sanitize_dict
 
 MAX_MODELS = 10000
+MAX_MULTIMODAL_DESCRIPTOR_BYTES = 1024 * 1024
+MULTIMODAL_DATASET_SCHEMA = "nirs4all.studio-multimodal-dataset.v1"
 
 
 def available_models(document: dict[str, Any]) -> dict[str, Any]:
@@ -86,6 +88,8 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
     partitions = None
     reader = None
     sample_labels = None
+    target_mask = None
+    multimodal = False
     if source == "array":
         data = np.asarray(document["spectra"], dtype=float)
         if data.ndim != 2 or not all(data.shape) or not np.isfinite(data).all():
@@ -99,21 +103,41 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
                 max_input_bytes=document.get("max_input_bytes", 512 * 1024 * 1024),
             )
         else:
-            data, reader = load_dataset_for_analysis(
-                document["config"], load_limits=document.get("load_limits"),
-                max_input_bytes=document.get("max_input_bytes", 512 * 1024 * 1024),
-            )
+            config = document["config"]
+            if isinstance(config, dict) and config.get("schema") == MULTIMODAL_DATASET_SCHEMA:
+                import json
+
+                from nirs4all.api.studio_scientific_general import _inline_dataset_arrays
+
+                if (set(config) != {"schema", "cohort"} or not isinstance(config["cohort"], dict)
+                        or len(json.dumps(config, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")) > MAX_MULTIMODAL_DESCRIPTOR_BYTES):
+                    raise ValueError("Invalid or oversized multimodal dataset descriptor")
+                if document.get("model_source") != "bundle" or not document.get("archive_fingerprint"):
+                    raise ValueError("Multimodal prediction requires a fingerprinted exported bundle")
+                data = _inline_dataset_arrays(config)
+                multimodal = True
+                reader = {"source": "inline_multimodal", "schema": MULTIMODAL_DATASET_SCHEMA}
+            else:
+                data, reader = load_dataset_for_analysis(
+                    config, load_limits=document.get("load_limits"),
+                    max_input_bytes=document.get("max_input_bytes", 512 * 1024 * 1024),
+                )
         partition = document.get("partition") or "all"
         if partition not in {"all", "train", "val", "test"}:
             raise ValueError("Invalid prediction partition")
         # Replay the unchanged scientific dataset, then select storage rows.
         # Never truncate labels or manufacture positional wire identifiers.
-        partitions = data.index_column("partition", {})
+        if multimodal:
+            partitions = ["test" if value == "predict" else value for value in data.partitions]
+            targets = None if data.y is None else np.asarray(data.y)
+            target_mask = None if data.y is None else np.asarray(data.target_mask, dtype=bool)
+        else:
+            partitions = data.index_column("partition", {})
+            loaded_targets = np.asarray(data.y({}))
+            targets = loaded_targets if loaded_targets.size else None
         selected = np.ones(len(partitions), dtype=bool) if partition == "all" else np.asarray(partitions) == partition
         if not selected.any():
             raise ValueError("Requested partition contains no samples")
-        loaded_targets = np.asarray(data.y({}))
-        targets = loaded_targets if loaded_targets.size else None
     else:
         raise ValueError("Unknown general prediction data source")
     if document.get("model_source") == "chain":
@@ -130,6 +154,8 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Unknown general prediction model source")
     metadata = result.metadata
     ids = metadata["sample_ids"]
+    if multimodal and list(ids) != list(data.sample_ids):
+        raise ValueError("Prediction rows do not match the multimodal cohort identities")
     values = np.asarray(result.y_pred).reshape(len(ids), -1)
     names = metadata["target_names"]
     if values.shape[1] != len(names) or not np.isfinite(values).all():
@@ -140,6 +166,8 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
         values = values[selected]
         if targets is not None:
             targets = targets[selected]
+        if target_mask is not None:
+            target_mask = target_mask[selected]
         ids = [value for value, keep in zip(ids, selected, strict=True) if keep]
         partitions = [value for value, keep in zip(partitions, selected, strict=True) if keep]
         if sample_labels is not None:
@@ -154,9 +182,12 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
         target_matrix = targets.reshape(len(values), -1)
         if target_matrix.shape[1] == len(names):
             actual = target_matrix[:, output_index]
-            if np.isfinite(actual).all():
+            observed = target_mask is None or np.asarray(target_mask).reshape(len(values), -1)[:, output_index].all()
+            if observed and np.isfinite(actual).all():
                 task_type = detect_task_type(actual).value
                 metrics = eval_multi(actual, predictions, task_type)
+            elif not observed:
+                actual = None
     return sanitize_dict({
         "predictions": predictions.tolist(), "prediction_matrix": values.tolist(), "target_names": names,
         "output_index": output_index, "num_samples": len(values), "model_name": result.model_name,

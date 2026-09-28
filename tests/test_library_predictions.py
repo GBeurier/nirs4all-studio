@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -134,6 +135,72 @@ def test_replaced_general_bundle_is_refused_before_pickle(trained, monkeypatch):
     with pytest.raises(ValueError, match="source archive changed"):
         run_prediction({"workspace_path": str(root), "model_id": "exports/fitted.n4a", "model_source": "bundle",
                         "bundle_path": str(path), "archive_fingerprint": fingerprint, "data_source": "array", "spectra": X[:3].tolist()})
+
+
+def test_multimodal_prediction_reconstructs_ragged_missing_cohort_without_fit(tmp_path, monkeypatch):
+    import nirs4all.pipeline.dagml.general_archive as archive
+    from nirs4all_io import MultimodalDataset, RaggedSeriesSource, TensorSource
+
+    ids = ["sample-b", "sample-a", "sample-c"]
+    series = RaggedSeriesSource(
+        np.array([[1.0], [2.0], [3.0], [4.0]]), np.array([0, 1, 3, 4]), ids,
+        time_coordinates=np.array([0.0, 0.0, 1.0, 0.0]), channel_names=["sensor"],
+        presence_mask=[True, False, True],
+    )
+    cohort = MultimodalDataset({
+        "signal": TensorSource(np.array([[1.0], [2.0], [3.0]]), ids, representation_id="signal_1d"),
+        "series": series,
+    }, sample_ids=ids, partitions=["predict", "test", "train"], source_alignment="left")
+    descriptor = {"schema": "nirs4all.studio-multimodal-dataset.v1", "cohort": cohort.to_dict()}
+    observed = []
+
+    def replay(path, data, *, expected_archive_fingerprint):
+        assert path == str(tmp_path / "exports" / "captured.n4a")
+        assert expected_archive_fingerprint == "sha256:" + "a" * 64
+        assert isinstance(data, MultimodalDataset)
+        assert list(data.sample_ids) == ids
+        assert data.sources["series"].presence_mask.tolist() == [True, False, True]
+        assert data.sources["series"].offsets.tolist() == [0, 1, 3, 4]
+        observed.append(data)
+        return SimpleNamespace(y_pred=np.array([10.0, 20.0, 30.0]),
+                               metadata={"sample_ids": ids, "target_names": ["y"], "training_performed": False},
+                               model_name="captured", preprocessing_steps=[])
+
+    monkeypatch.setattr(archive, "predict_general_archive", replay)
+    monkeypatch.setattr("sklearn.pipeline.Pipeline.fit", lambda *args, **kwargs: pytest.fail("prediction retrained"))
+    payload = {"workspace_path": str(tmp_path), "model_id": "exports/captured.n4a", "model_source": "bundle",
+               "bundle_path": str(tmp_path / "exports" / "captured.n4a"), "archive_fingerprint": "sha256:" + "a" * 64,
+               "data_source": "dataset", "config": descriptor, "partition": "test"}
+    output = run_prediction(payload)
+    assert len(observed) == 1
+    assert output["sample_ids"] == ["sample-b", "sample-a"]
+    assert output["predictions"] == [10.0, 20.0]
+    assert output["partitions"] == ["test", "test"]
+    assert output["actual_values"] is None
+    assert output["metrics"] is None
+    assert output["runtime"]["reader"]["source"] == "inline_multimodal"
+    json.dumps(output, allow_nan=False)
+
+    # serde_json counts compact UTF-8 bytes. Ordinary json.dumps spacing would
+    # reject this exact-boundary document before the scientific loader sees it.
+    boundary = {"schema": descriptor["schema"], "cohort": {"padding": ""}}
+    def compact(value):
+        return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+
+    boundary["cohort"]["padding"] = "x" * (1024 * 1024 - len(compact(boundary)))
+    assert len(compact(boundary)) == 1024 * 1024
+    assert len(json.dumps(boundary).encode("utf-8")) > 1024 * 1024
+    monkeypatch.setattr("nirs4all.api.studio_scientific_general._inline_dataset_arrays", lambda _: observed[0])
+    assert run_prediction({**payload, "config": boundary})["sample_ids"] == ["sample-b", "sample-a"]
+
+    for invalid in [
+        {**descriptor, "extra": True},
+        {"schema": descriptor["schema"], "cohort": {"padding": "x" * (1024 * 1024)}},
+    ]:
+        with pytest.raises(ValueError, match="descriptor"):
+            run_prediction({**payload, "config": invalid})
+    with pytest.raises(ValueError, match="fingerprinted exported bundle"):
+        run_prediction({**payload, "model_source": "chain"})
 
 
 @pytest.mark.parametrize("kind", ["csv", "numeric_header", "no_header", "xlsx"])
