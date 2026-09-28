@@ -89,4 +89,27 @@ describe("datasetCatalog", () => {
       maxFeatures: 256,
     });
   });
+
+  it("uses linked multimodal cohort counts instead of stale flat-file metadata", () => {
+    const linked: Dataset = {
+      ...datasets[0], num_samples: 999, num_features: 999,
+      config: { dataset_document: {
+        schema: "nirs4all.studio-multimodal-dataset.v1",
+        cohort: {
+          schema: "nirs4all.multimodal-dataset", schema_version: 1,
+          sample_ids: ["s1", "s2"],
+          sources: [{ name: "nir", sample_ids: ["s1", "s2"], representation_id: "signal_1d",
+            array: { shape: [2, 3] } }],
+          partitions: { values: ["train", "predict"] },
+        },
+      } } as Dataset["config"],
+    };
+    expect(getDatasetCatalogStats([linked])).toEqual({
+      totalSamples: 2, hasFeatureCounts: false, minFeatures: 0, maxFeatures: 0,
+    });
+    expect(getFilteredSortedDatasets({
+      datasets: [linked, datasets[1]], groups, searchQuery: "", filterGroup: "all",
+      sortField: "num_samples", sortDirection: "asc",
+    }).map((dataset) => dataset.id)).toEqual(["b", "a"]);
+  });
 });

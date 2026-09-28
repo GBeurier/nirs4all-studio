@@ -1,4 +1,5 @@
 import type { Dataset, DatasetGroup } from "@/types/datasets";
+import { getMultimodalDatasetSummary, isStudioMultimodalDatasetDocument } from "@/lib/multimodalDatasetSummary";
 
 export type DatasetSortField = "name" | "linked_at" | "num_samples" | "group";
 export type DatasetSortDirection = "asc" | "desc";
@@ -36,6 +37,14 @@ function firstGroupName(groups: DatasetGroup[], datasetId: string): string {
   return getAssignedDatasetGroups(groups, datasetId)[0]?.name ?? "\uffff";
 }
 
+function datasetSampleCount(dataset: Dataset): number {
+  const document = dataset.config?.dataset_document;
+  if (isStudioMultimodalDatasetDocument(document)) {
+    return getMultimodalDatasetSummary(document)?.samples ?? 0;
+  }
+  return dataset.num_samples || 0;
+}
+
 export function getFilteredSortedDatasets(query: DatasetCatalogQuery): Dataset[] {
   const normalizedSearch = query.searchQuery.trim().toLowerCase();
 
@@ -66,7 +75,7 @@ export function getFilteredSortedDatasets(query: DatasetCatalogQuery): Dataset[]
           comparison = dateValue(a.linked_at) - dateValue(b.linked_at);
           break;
         case "num_samples":
-          comparison = (a.num_samples || 0) - (b.num_samples || 0);
+          comparison = datasetSampleCount(a) - datasetSampleCount(b);
           break;
         case "group":
           comparison = firstGroupName(query.groups, a.id).localeCompare(
@@ -81,10 +90,11 @@ export function getFilteredSortedDatasets(query: DatasetCatalogQuery): Dataset[]
 
 export function getDatasetCatalogStats(datasets: Dataset[]): DatasetCatalogStats {
   const totalSamples = datasets.reduce(
-    (sum, dataset) => sum + (dataset.num_samples || 0),
+    (sum, dataset) => sum + datasetSampleCount(dataset),
     0,
   );
   const featureCounts = datasets
+    .filter((dataset) => !isStudioMultimodalDatasetDocument(dataset.config?.dataset_document))
     .map((dataset) => dataset.num_features)
     .filter((value): value is number => value != null && value > 0);
 

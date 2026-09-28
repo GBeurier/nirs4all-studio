@@ -10,7 +10,9 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "@/lib/motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getMultimodalDatasetSummary, isStudioMultimodalDatasetDocument } from "@/lib/multimodalDatasetSummary";
+import { MultimodalDatasetOverview } from "./MultimodalDatasetOverview";
 import { buildTargetHistogramData } from "./charts/targetHistogramData";
 import { getPartitionTheme } from "./partitionTheme";
 import { useDatasetPreviewQuery } from "@/hooks/useDatasetQueries";
@@ -50,6 +52,9 @@ export function DatasetQuickView({
   const { workspaceReady } = useMlReadiness();
   const [selectedSource, setSelectedSource] = useState(0);
   const [partition, setPartition] = useState<PartitionKey>("all");
+  const descriptor = dataset?.config?.dataset_document;
+  const multimodal = useMemo(() => getMultimodalDatasetSummary(descriptor), [descriptor]);
+  const hasMultimodalDocument = isStudioMultimodalDatasetDocument(descriptor);
 
   const {
     data: preview,
@@ -57,7 +62,7 @@ export function DatasetQuickView({
     isFetching,
     error: queryError,
     refetch,
-  } = useDatasetPreviewQuery(dataset?.id, 100);
+  } = useDatasetPreviewQuery(dataset?.id, 100, !!dataset && !hasMultimodalDocument);
 
   const { waitingForWorkspace, loading, error } = deriveQuickViewLoadState({
     datasetId: dataset?.id,
@@ -115,21 +120,26 @@ export function DatasetQuickView({
       >
         <div className="max-h-[calc(100vh-6rem)] rounded-xl border border-border bg-card overflow-hidden flex flex-col">
           <DatasetQuickViewHeader dataset={dataset} onClose={onClose} />
-          <DatasetQuickViewStats dataset={dataset} counts={counts} />
+          <DatasetQuickViewStats dataset={dataset} counts={counts} multimodal={multimodal} />
 
-          <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <Tabs key={dataset.id} defaultValue="overview" className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="px-4 pt-2 pb-0 border-b border-border bg-muted/20 flex-shrink-0">
-              <TabsList className="w-full grid grid-cols-3 bg-transparent h-10 p-0 border-none">
+              <TabsList className={`w-full grid ${hasMultimodalDocument ? "grid-cols-1" : "grid-cols-3"} bg-transparent h-10 p-0 border-none`}>
                 <DatasetQuickViewTabTrigger value="overview">Overview</DatasetQuickViewTabTrigger>
+                {!hasMultimodalDocument && <>
                 <DatasetQuickViewTabTrigger value="spectra">Spectra</DatasetQuickViewTabTrigger>
                 <DatasetQuickViewTabTrigger value="targets">Targets & Labels</DatasetQuickViewTabTrigger>
+                </>}
               </TabsList>
             </div>
 
             <div className="flex-1 min-h-0 relative">
               <ScrollArea className="absolute inset-0 h-full w-full">
                 <div className="p-4 space-y-4">
-                  <DatasetQuickViewOverviewTab
+                  {hasMultimodalDocument ? <TabsContent value="overview" className="m-0">{multimodal
+                    ? <MultimodalDatasetOverview summary={multimodal} />
+                    : <p role="alert" className="text-sm text-destructive">This multimodal dataset descriptor cannot be displayed.</p>}
+                  </TabsContent> : <DatasetQuickViewOverviewTab
                     dataset={dataset}
                     preview={preview}
                     spectraData={spectraData}
@@ -139,7 +149,8 @@ export function DatasetQuickView({
                     loading={loading}
                     error={error}
                     onRetry={() => refetch()}
-                  />
+                  />}
+                  {!hasMultimodalDocument && <>
                   <DatasetQuickViewSpectraTab
                     preview={preview}
                     loading={loading}
@@ -167,6 +178,7 @@ export function DatasetQuickView({
                     testCount={testCount}
                     partitionTheme={partitionTheme}
                   />
+                  </>}
                 </div>
               </ScrollArea>
             </div>
@@ -174,7 +186,7 @@ export function DatasetQuickView({
 
           <DatasetQuickViewFooter
             dataset={dataset}
-            onEdit={onEdit}
+            onEdit={hasMultimodalDocument ? undefined : onEdit}
             onOpenDetails={(selectedDataset) => navigate(`/datasets/${selectedDataset.id}`)}
           />
         </div>

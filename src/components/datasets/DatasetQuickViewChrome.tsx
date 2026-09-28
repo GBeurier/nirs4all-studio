@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Dataset } from "@/types/datasets";
+import type { MultimodalDatasetSummary } from "@/lib/multimodalDatasetSummary";
 import {
   formatNumber,
   type QuickViewCounts,
@@ -39,19 +40,24 @@ export function DatasetQuickViewHeader({
 export function DatasetQuickViewStats({
   dataset,
   counts,
+  multimodal,
 }: {
   dataset: Dataset;
   counts: QuickViewCounts;
+  multimodal?: MultimodalDatasetSummary | null;
 }) {
   const { numSamples, numFeatures, nSources, trainCount, testCount } = counts;
+  const partitionCounts = multimodal && Object.entries(multimodal.partitions)
+    .map(([name, count]) => `${name}: ${formatNumber(count)}`)
+    .join(" · ");
 
   return (
     <div className="grid grid-cols-4 gap-2 p-4 border-b border-border flex-shrink-0">
       <div className="text-center">
         <Layers className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-        <p className="text-sm font-semibold">{formatNumber(numSamples)}</p>
+        <p className="text-sm font-semibold">{formatNumber(multimodal?.samples ?? numSamples)}</p>
         <p className="text-xs text-muted-foreground">Samples</p>
-        {testCount != null && testCount > 0 && (
+        {multimodal ? (partitionCounts && <p className="text-[10px] text-muted-foreground tabular-nums">{partitionCounts}</p>) : testCount != null && testCount > 0 && (
           <p className="text-[10px] text-muted-foreground tabular-nums">
             {formatNumber(trainCount)} / {formatNumber(testCount)}
           </p>
@@ -59,17 +65,17 @@ export function DatasetQuickViewStats({
       </div>
       <div className="text-center">
         <Hash className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-        <p className="text-sm font-semibold">{formatNumber(numFeatures)}</p>
-        <p className="text-xs text-muted-foreground">Features</p>
+        <p className="text-sm font-semibold">{multimodal ? multimodal.alignment : formatNumber(numFeatures)}</p>
+        <p className="text-xs text-muted-foreground">{multimodal ? "Alignment" : "Features"}</p>
       </div>
       <div className="text-center">
         <Target className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-        <p className="text-sm font-semibold">{dataset.targets?.length || "--"}</p>
+        <p className="text-sm font-semibold">{multimodal ? multimodal.targets.length : dataset.targets?.length || "--"}</p>
         <p className="text-xs text-muted-foreground">Targets</p>
       </div>
       <div className="text-center">
         <Database className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-        <p className="text-sm font-semibold">{nSources}</p>
+        <p className="text-sm font-semibold">{multimodal?.sources.length ?? nSources}</p>
         <p className="text-xs text-muted-foreground">Sources</p>
       </div>
     </div>

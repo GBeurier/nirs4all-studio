@@ -164,6 +164,8 @@ export interface AggregationConfig {
  * CSV parsing configuration
  */
 export interface DatasetConfig {
+  /** Linked typed cohort descriptor; scientific validation occurs when used. */
+  dataset_document?: unknown;
   /** User-selected display name, preserved when a wizard creates the dataset. */
   name?: string;
   delimiter: string;

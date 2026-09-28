@@ -34,6 +34,7 @@ import {
 import { DatasetStatusBadge } from "./DatasetStatusBadge";
 import { openFolderInExplorer } from "@/api/system";
 import { getDatasetTaskLabel } from "@/lib/datasetTask";
+import { getMultimodalDatasetSummary } from "@/lib/multimodalDatasetSummary";
 import { formatScore } from "@/lib/scores";
 import type { Dataset, DatasetGroup, DatasetVersionStatus } from "@/types/datasets";
 
@@ -99,6 +100,7 @@ export function DatasetCard({
 }: DatasetCardProps) {
   const versionStatus = (dataset.version_status || "unchecked") as DatasetVersionStatus;
   const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
+  const multimodal = getMultimodalDatasetSummary(dataset.config?.dataset_document);
 
   // Find assigned groups (multi-group support)
   const assignedGroups = groups.filter((g) =>
@@ -245,9 +247,14 @@ export function DatasetCard({
             Samples
           </span>
           <span className="font-semibold text-foreground font-mono tabular-nums text-sm mt-0.5">
-            {formatNumber(dataset.num_samples)}
+            {formatNumber(multimodal?.samples ?? dataset.num_samples)}
           </span>
-          {dataset.test_samples != null && dataset.test_samples > 0 ? (
+          {multimodal ? (
+            <span className="text-[10px] text-muted-foreground tabular-nums font-mono truncate max-w-[96px]"
+              title={Object.entries(multimodal.partitions).map(([name, count]) => `${name}: ${count}`).join(" · ")}>
+              {Object.entries(multimodal.partitions).map(([name, count]) => `${name}: ${count}`).join(" · ")}
+            </span>
+          ) : dataset.test_samples != null && dataset.test_samples > 0 ? (
             <span className="text-[10px] text-muted-foreground tabular-nums font-mono">
               {formatNumber(dataset.train_samples)} / {formatNumber(dataset.test_samples)}
             </span>
@@ -261,13 +268,13 @@ export function DatasetCard({
         {/* Features */}
         <div className="flex flex-col items-end leading-tight min-w-0">
           <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
-            Features
+            {multimodal ? "Sources" : "Features"}
           </span>
           <span className="font-semibold text-foreground font-mono tabular-nums text-sm mt-0.5">
-            {formatNumber(dataset.num_features)}
+            {multimodal ? multimodal.sources.length : formatNumber(dataset.num_features)}
           </span>
           {(() => {
-            const perSource = formatPerSource(dataset.num_features);
+            const perSource = multimodal ? null : formatPerSource(dataset.num_features);
             if (perSource) {
               return (
                 <span
@@ -289,9 +296,9 @@ export function DatasetCard({
           </span>
           <span
             className="font-semibold text-foreground text-sm mt-0.5 truncate max-w-[96px]"
-            title={taskLabel}
+            title={multimodal?.task ?? taskLabel}
           >
-            {taskLabel}
+            {multimodal?.task ?? taskLabel}
           </span>
           <span className="text-[10px] text-transparent select-none">·</span>
         </div>
