@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { getRunExecutionBackends } from "@/api/runs";
+import { createRunGroup, getRunExecutionBackends } from "@/api/runs";
 import {
   buildNewExperimentExecutionEnvironment,
   DEFAULT_NEW_EXPERIMENT_EXECUTION_ENVIRONMENT,
@@ -47,8 +47,22 @@ export function useNewExperimentExecutionEnvironment(): NewExperimentExecutionEn
     getNewExperimentExecutionEnvironmentBridge(),
   );
   const backendCapabilities = executionBackends?.backends;
-  if (!bridge && !backendCapabilities?.length) return DEFAULT_NEW_EXPERIMENT_EXECUTION_ENVIRONMENT;
+  const electronApi = typeof window !== "undefined" ? window.electronApi : undefined;
+  const { data: nativeLocalTransport } = useQuery({
+    queryKey: ["renderer-transport", "POST /runs/run-groups"],
+    queryFn: () => electronApi!.preselectRendererTransport({ kind: "http", method: "POST", path: "/runs/run-groups" }),
+    enabled: Boolean(electronApi?.isElectron && electronApi.preselectRendererTransport),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const nativeLocalReady = nativeLocalTransport?.target === "native-sidecar";
+  const nativeLocal = nativeLocalReady
+    ? { submitNativeLocalRun: createRunGroup } : {};
+  if (!bridge && !backendCapabilities?.length && !nativeLocalReady) {
+    return DEFAULT_NEW_EXPERIMENT_EXECUTION_ENVIRONMENT;
+  }
   return buildNewExperimentExecutionEnvironment({
+    ...nativeLocal,
     ...(bridge ?? {}),
     executionBackendCapabilities: backendCapabilities ?? bridge?.executionBackendCapabilities,
   });

@@ -5,6 +5,7 @@ import {
   buildNativeExperimentLaunchPayload,
   CLUSTER_EXPERIMENT_EXECUTION_ADAPTER,
   LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
+  NATIVE_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
 } from "../experimentExecutionAdapter";
 import {
   buildExperimentLaunchPayloadDiagnostics,
@@ -56,6 +57,22 @@ const strictCampaignSpecs: CampaignSinglePairSplitSpecResult = {
 };
 
 describe("experimentLaunchPayload", () => {
+  it("signs the local backend into the native Electron payload", () => {
+    const plan = buildExperimentLaunchPayloadPlan({
+      executionAdapter: NATIVE_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
+      legacyConfig,
+      strictCampaignSpecs: {
+        ...strictCampaignSpecs,
+        splitSpecs: strictCampaignSpecs.splitSpecs.map((spec) => ({
+          ...spec, campaign: { ...spec.campaign, executionBackend: "local-python" as const },
+        })),
+      },
+    });
+    expect(plan.currentSubmissionKind).toBe("native_payload");
+    expect(plan.nativePayload.legacyConfig.execution_backend).toBe("local-python");
+    expect(plan.strictCampaignPayloadActivation.canUseStrictPayload).toBe(true);
+  });
+
   it("keeps legacy launches on the current ExperimentConfig payload", () => {
     expect(buildExperimentLaunchPayloadPlan({
       executionAdapter: LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,

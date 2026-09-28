@@ -87,7 +87,9 @@ export default function NewExperiment() {
     executionAdapter: planFlow.executionAdapterResolution.adapter,
     launchSubmitters: executionEnvironment.launchSubmitters,
     onGroupingBlockingError: () => setCurrentStep(NEW_EXPERIMENT_RUNTIME_GROUPING_STEP),
-    onRunCreated: (runId) => navigate(`/runs/${runId}`),
+    onRunCreated: (runId) => navigate(
+      planFlow.executionAdapterResolution.adapter.id === "native-local" ? "/runs" : `/runs/${runId}`,
+    ),
   });
 
   return (

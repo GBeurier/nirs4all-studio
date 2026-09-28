@@ -32,6 +32,9 @@ export function getRuntimeGroupingRequirementBadge(
   }
 
   if (hasRequiredSplitters) {
+    if (groupingState.embeddedGroups) {
+      return { label: "Using cohort groups", variant: "outline" };
+    }
     return { label: "Optional with repetition", variant: "outline" };
   }
 

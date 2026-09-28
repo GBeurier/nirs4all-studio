@@ -10,7 +10,7 @@ import {
   WORKSPACE_PREDICTION_PUBLICATION_KEYWORD_IDS,
 } from "@/ui/keywordRegistry";
 
-export type ExperimentExecutionAdapterId = "legacy-local" | "cluster" | "wasm-local";
+export type ExperimentExecutionAdapterId = "legacy-local" | "native-local" | "cluster" | "wasm-local";
 export const NATIVE_EXPERIMENT_LAUNCH_PAYLOAD_VERSION = "studio.native-launch-payload.v1" as const;
 
 export type NativeExperimentLaunchPayloadVersion = typeof NATIVE_EXPERIMENT_LAUNCH_PAYLOAD_VERSION;
@@ -24,6 +24,13 @@ export interface ExperimentPreflightRequest {
 export interface LegacyRunExperimentLaunchSubmission {
   kind: "legacy-run";
   config: ExperimentConfig;
+}
+
+export interface NativeLocalExperimentLaunchSubmission {
+  kind: "native-local-run";
+  requestedBackend: "local-python";
+  config: ExperimentConfig;
+  nativePayload: NativeExperimentLaunchPayload;
 }
 
 export interface NativeExperimentLaunchPayloadManifest {
@@ -81,14 +88,17 @@ export interface WasmLocalExperimentLaunchSubmission {
 
 export type ExperimentLaunchSubmission =
   | LegacyRunExperimentLaunchSubmission
+  | NativeLocalExperimentLaunchSubmission
   | ClusterExperimentLaunchSubmission
   | WasmLocalExperimentLaunchSubmission;
 
 export type SubmitLegacyRun = (config: ExperimentConfig) => Promise<Run>;
+export type SubmitNativeLocalRun = (payload: NativeExperimentLaunchPayload) => Promise<Run>;
 export type SubmitClusterRun = (payload: NativeExperimentLaunchPayload) => Promise<Run>;
 export type SubmitWasmLocalRun = (payload: NativeExperimentLaunchPayload) => Promise<Run>;
 
 export interface SubmitExperimentLaunchSubmissionOptions {
+  submitNativeLocalRun?: SubmitNativeLocalRun;
   submitClusterRun?: SubmitClusterRun;
   submitWasmLocalRun?: SubmitWasmLocalRun;
 }
@@ -97,7 +107,7 @@ export interface ExperimentExecutionAdapter {
   id: ExperimentExecutionAdapterId;
   label: string;
   nativeBackends: CampaignExecutionBackend[];
-  buildPreflightRequest: (config: ExperimentConfig) => ExperimentPreflightRequest;
+  buildPreflightRequest?: (config: ExperimentConfig) => ExperimentPreflightRequest;
   buildLaunchSubmission: (
     config: ExperimentConfig,
     nativePayload?: NativeExperimentLaunchPayload,
@@ -139,6 +149,13 @@ export function buildLegacyLocalExperimentLaunchSubmission(
     kind: "legacy-run",
     config,
   };
+}
+
+export function buildNativeLocalExperimentLaunchSubmission(
+  config: ExperimentConfig,
+  nativePayload = buildNativeExperimentLaunchPayload(config),
+): NativeLocalExperimentLaunchSubmission {
+  return { kind: "native-local-run", requestedBackend: "local-python", config, nativePayload };
 }
 
 function getNativePayloadLegacyPipelineCount(config: ExperimentConfig): number {
@@ -238,6 +255,9 @@ export function buildExperimentPreflightRequest(
   adapter: ExperimentExecutionAdapter,
   config: ExperimentConfig,
 ): ExperimentPreflightRequest {
+  if (!adapter.buildPreflightRequest) {
+    throw new Error(`${adapter.label} validates the campaign during native submission.`);
+  }
   return adapter.buildPreflightRequest(config);
 }
 
@@ -256,6 +276,10 @@ export function submitExperimentLaunchSubmission(
 ): Promise<Run> {
   if (submission.kind === "legacy-run") {
     return submitLegacyRun(submission.config);
+  }
+
+  if (submission.kind === "native-local-run" && options.submitNativeLocalRun) {
+    return options.submitNativeLocalRun(submission.nativePayload);
   }
 
   if (submission.kind === "cluster-run" && options.submitClusterRun) {
@@ -285,6 +309,13 @@ export const LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapt
   nativeBackends: ["local-python"],
   buildPreflightRequest: buildLegacyLocalExperimentPreflightRequest,
   buildLaunchSubmission: buildLegacyLocalExperimentLaunchSubmission,
+};
+
+export const NATIVE_LOCAL_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = {
+  id: "native-local",
+  label: "Native local run API",
+  nativeBackends: ["local-python"],
+  buildLaunchSubmission: buildNativeLocalExperimentLaunchSubmission,
 };
 
 export const CLUSTER_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = {

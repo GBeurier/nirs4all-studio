@@ -40,6 +40,10 @@ describe("runtimeGroupingPresentation", () => {
       label: "Optional with repetition",
       variant: "outline",
     });
+    expect(getRuntimeGroupingRequirementBadge({ ...baseGroupingState, embeddedGroups: true }, true)).toEqual({
+      label: "Using cohort groups",
+      variant: "outline",
+    });
 
     expect(getRuntimeGroupingRequirementBadge(baseGroupingState, false)).toEqual({
       label: "Optional",

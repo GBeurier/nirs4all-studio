@@ -67,6 +67,29 @@ describe("runtimeSplitGrouping", () => {
     expect(state.blockingMessage).toBe(RUNTIME_GROUPING_COPY.requiredBlocking);
   });
 
+  it("accepts groups embedded in a typed cohort for a group-required splitter", () => {
+    const selection = {
+      hasSplitters: true, hasRequiredSplitters: true, hasOptionalSplitters: false,
+      hasPersistedGroupConflict: false, conflictingPipelines: [],
+    };
+    const dataset = {
+      metadata_columns: [],
+      config: { dataset_document: {
+        schema: "nirs4all.studio-multimodal-dataset.v1",
+        cohort: { schema: "nirs4all.multimodal-dataset", schema_version: 1,
+          sample_ids: ["a", "b", "c"], groups: { shape: [3], values: ["g1", "g1", "g2"] } },
+      } },
+    };
+    const state = evaluateDatasetRuntimeGrouping(dataset, selection, null);
+    expect(state.embeddedGroups).toBe(true);
+    expect(state.requiresExplicitGroup).toBe(false);
+    expect(state.hasBlockingError).toBe(false);
+    expect(evaluateDatasetRuntimeGrouping({ ...dataset, config: { dataset_document: {
+      ...dataset.config.dataset_document,
+      cohort: { ...dataset.config.dataset_document.cohort, groups: { shape: [2], values: ["g1"] } },
+    } } }, selection, null).hasBlockingError).toBe(true);
+  });
+
   it("keeps runtime group_by optional for optional splitters without repetition", () => {
     const state = evaluateDatasetRuntimeGrouping(
       { metadata_columns: ["batch", "year"], repetitionColumn: null },

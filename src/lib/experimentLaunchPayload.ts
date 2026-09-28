@@ -254,6 +254,9 @@ function withExecutionAdapterBackend(
   executionAdapter: ExperimentExecutionAdapter,
 ): ExperimentConfig {
   const executionBackend = executionAdapter.nativeBackends[0];
+  if (executionAdapter.id === "native-local") {
+    return { ...legacyConfig, execution_backend: "local-python" };
+  }
   if (executionBackend === "local-python" || legacyConfig.execution_backend === executionBackend) {
     return legacyConfig;
   }

@@ -106,6 +106,11 @@ export function useNewExperimentLaunchFlow({
       return;
     }
 
+    if (!executionAdapter.buildPreflightRequest) {
+      submitLaunchPayloadPlan(buildLaunchPayloadPlan());
+      return;
+    }
+
     let currentLaunchPayloadPlan = buildLaunchPayloadPlan();
     let launchConfig = currentLaunchPayloadPlan.legacyConfig;
     try {

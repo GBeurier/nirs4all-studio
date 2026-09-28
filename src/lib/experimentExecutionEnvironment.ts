@@ -1,10 +1,12 @@
 import {
   CLUSTER_EXPERIMENT_EXECUTION_ADAPTER,
   DEFAULT_EXPERIMENT_EXECUTION_ADAPTERS,
+  NATIVE_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
   WASM_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
   type ExperimentExecutionAdapter,
   type ExperimentExecutionAdapterId,
   type SubmitClusterRun,
+  type SubmitNativeLocalRun,
   type SubmitExperimentLaunchSubmissionOptions,
   type SubmitWasmLocalRun,
 } from "./experimentExecutionAdapter";
@@ -66,6 +68,7 @@ export interface NewExperimentExecutionEnvironment {
 
 export interface BuildNewExperimentExecutionEnvironmentOptions {
   executionBackendCapabilities?: readonly RunExecutionBackendCapability[];
+  submitNativeLocalRun?: SubmitNativeLocalRun;
   submitClusterRun?: SubmitClusterRun;
   submitWasmLocalRun?: SubmitWasmLocalRun;
   workspacePredictionPublicationBackends?: readonly NewExperimentNativeExecutionBackend[];
@@ -126,6 +129,7 @@ export function normalizeNewExperimentExecutionEnvironmentOptions(
     options.workspacePredictionPublicationBackends,
   );
   const submitClusterRun = options.submitClusterRun;
+  const submitNativeLocalRun = options.submitNativeLocalRun;
   const submitWasmLocalRun = options.submitWasmLocalRun;
 
   if (executionBackendCapabilities) {
@@ -139,6 +143,9 @@ export function normalizeNewExperimentExecutionEnvironmentOptions(
   if (typeof submitClusterRun === "function") {
     normalized.submitClusterRun = submitClusterRun as SubmitClusterRun;
   }
+  if (typeof submitNativeLocalRun === "function") {
+    normalized.submitNativeLocalRun = submitNativeLocalRun as SubmitNativeLocalRun;
+  }
 
   if (typeof submitWasmLocalRun === "function") {
     normalized.submitWasmLocalRun = submitWasmLocalRun as SubmitWasmLocalRun;
@@ -147,6 +154,7 @@ export function normalizeNewExperimentExecutionEnvironmentOptions(
   return normalized.executionBackendCapabilities
     || normalized.workspacePredictionPublicationBackends
     || normalized.submitClusterRun
+    || normalized.submitNativeLocalRun
     || normalized.submitWasmLocalRun
     ? normalized
     : undefined;
@@ -448,7 +456,8 @@ export function buildNewExperimentExecutionEnvironment(
   const executionBackendCapabilities = options.executionBackendCapabilities ?? [];
 
   if (
-    !options.submitClusterRun
+    !options.submitNativeLocalRun
+    && !options.submitClusterRun
     && !options.submitWasmLocalRun
     && executionBackendCapabilities.length === 0
     && !options.workspacePredictionPublicationBackends?.length
@@ -457,9 +466,13 @@ export function buildNewExperimentExecutionEnvironment(
   }
 
   const availableExecutionAdapters: ExperimentExecutionAdapter[] = [
+    ...(options.submitNativeLocalRun ? [NATIVE_LOCAL_EXPERIMENT_EXECUTION_ADAPTER] : []),
     ...DEFAULT_EXPERIMENT_EXECUTION_ADAPTERS,
   ];
   const launchSubmitters: SubmitExperimentLaunchSubmissionOptions = {};
+  if (options.submitNativeLocalRun) {
+    launchSubmitters.submitNativeLocalRun = options.submitNativeLocalRun;
+  }
   const clusterCapability = getCapabilityByBackend(executionBackendCapabilities, "cluster");
   const wasmLocalCapability = getCapabilityByBackend(executionBackendCapabilities, "wasm-local");
 
