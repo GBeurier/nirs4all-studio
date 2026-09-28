@@ -4772,6 +4772,7 @@ fn read_http_request_with_access(
 fn http_body_limit(path: &str) -> usize {
     match path {
         "/api/datasets/upload" | "/api/datasets/preview-upload" => dataset_import::MAX_UPLOAD_BYTES,
+        "/api/datasets/import-multimodal" => document_cpython::MAX_DOCUMENT_BYTES,
         "/api/predict" | "/api/predict/file" => matrix_limits::MAX_PREDICTION_BODY_BYTES,
         ARCHIVE_V2_PREDICTION_ROUTE
         | ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE

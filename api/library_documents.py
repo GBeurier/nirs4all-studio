@@ -208,7 +208,7 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         from .library_predictions import adapt_prediction
 
         return adapt_prediction(operation, document)
-    if operation in {"dataset.preview", "dataset.stats", "dataset.inspect_format"}:
+    if operation in {"dataset.preview", "dataset.stats", "dataset.inspect_format", "dataset.inspect_multimodal"}:
         from .library_dataset_inspection import inspect_dataset_document
 
         return inspect_dataset_document(operation, document)

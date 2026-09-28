@@ -2,6 +2,7 @@ import { useCallback } from "react";
 
 import {
   linkDataset,
+  importMultimodalDataset,
   refreshDataset,
   unlinkDataset,
   updateDatasetConfig,
@@ -33,6 +34,15 @@ export function useDatasetCatalogActions(groups: DatasetGroup[]) {
       if (!result.success) {
         throw new Error("Failed to link dataset");
       }
+      await invalidateDatasets();
+    },
+    [invalidateDatasets],
+  );
+
+  const addMultimodalDataset = useCallback(
+    async (name: string, document: Record<string, unknown>) => {
+      const result = await importMultimodalDataset(name, document);
+      if (!result.success) throw new Error("Failed to import multimodal dataset");
       await invalidateDatasets();
     },
     [invalidateDatasets],
@@ -128,6 +138,7 @@ export function useDatasetCatalogActions(groups: DatasetGroup[]) {
   );
 
   return {
+    addMultimodalDataset,
     refreshAll,
     addDataset,
     saveDatasetConfig,

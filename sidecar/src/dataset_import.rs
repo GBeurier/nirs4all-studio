@@ -38,7 +38,10 @@ impl From<(u16, String)> for ImportError {
 pub fn owns_path(path: &str) -> bool {
     matches!(
         path,
-        "/api/datasets/upload" | "/api/datasets/preview-upload" | "/api/datasets/link"
+        "/api/datasets/upload"
+            | "/api/datasets/preview-upload"
+            | "/api/datasets/link"
+            | "/api/datasets/import-multimodal"
     ) || path
         .strip_prefix("/api/datasets/")
         .and_then(|tail| tail.split_once('/'))
@@ -66,6 +69,12 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
     // metadata. A configured-but-invalid host never falls back to that path.
     if host.is_none() && request.path == "/api/datasets/link" {
         return None;
+    }
+    if host.is_none() && request.path == "/api/datasets/import-multimodal" {
+        return Some(HttpResponse::json(
+            503,
+            json!({"detail":"Attested scientific runtime unavailable"}).to_string(),
+        ));
     }
     Some(handle(&settings, request, &|operation, payload| {
         host.as_ref()
@@ -325,7 +334,24 @@ fn link(
     if config.as_object().is_some_and(serde_json::Map::is_empty) && path.is_file() {
         config = json!({"train_x":path});
     }
-    let inspection = inspect(root, &config, 5, adapt)?;
+    let inspection = if let Some(descriptor) = config.get("dataset_document") {
+        if config.as_object().is_none_or(|fields| fields.len() != 1) {
+            return Err("Multimodal dataset config cannot mix file settings".into());
+        }
+        let inspection = adapt(
+            "dataset.inspect_multimodal",
+            &json!({"dataset_document": descriptor}),
+        )?;
+        if inspection["success"] != true {
+            return Err(inspection["error"]
+                .as_str()
+                .unwrap_or("Multimodal inspection failed")
+                .into());
+        }
+        inspection
+    } else {
+        inspect(root, &config, 5, adapt)?
+    };
     refresh_id
         .map_or_else(
             || workspace_documents::link_inspected_dataset(settings, &request.body, &inspection),
@@ -334,12 +360,92 @@ fn link(
         .map_err(ImportError::from)
 }
 
+fn import_multimodal(
+    settings: &AppSettingsStore,
+    request: &HttpRequest,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+) -> Result<Value, ImportError> {
+    if request.query.is_some() {
+        return Err("Multimodal import does not accept query fields".into());
+    }
+    let body = object(&request.body)?;
+    if body.as_object().is_none_or(|fields| {
+        fields
+            .keys()
+            .any(|field| !["name", "dataset_document"].contains(&field.as_str()))
+    }) {
+        return Err("Unknown multimodal import field".into());
+    }
+    let descriptor = body
+        .get("dataset_document")
+        .ok_or("Multimodal descriptor is missing")?;
+    let name = body
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|value| {
+            !value.trim().is_empty() && value.len() <= 256 && !value.chars().any(char::is_control)
+        })
+        .ok_or("Invalid dataset name")?;
+    if descriptor.as_object().is_none_or(|fields| {
+        fields.len() != 2
+            || fields.get("schema").and_then(Value::as_str)
+                != Some("nirs4all.studio-multimodal-dataset.v1")
+            || fields.get("cohort").and_then(Value::as_object).is_none()
+    }) || serde_json::to_vec(descriptor)
+        .map_err(|error| error.to_string())?
+        .len()
+        > 1024 * 1024
+    {
+        return Err("Invalid or oversized multimodal dataset descriptor".into());
+    }
+    let directory = tempfile::Builder::new()
+        .prefix("multimodal-")
+        .tempdir_in(import_parent(settings)?)
+        .map_err(|error| error.to_string())?;
+    let root = directory
+        .path()
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let path = root.join("dataset.json");
+    let mut file = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&path)
+        .map_err(|error| error.to_string())?;
+    file.write_all(&serde_json::to_vec(descriptor).map_err(|error| error.to_string())?)
+        .and_then(|()| file.sync_all())
+        .map_err(|error| error.to_string())?;
+    drop(file);
+    let config = json!({"dataset_document": descriptor});
+    let inspection = adapt(
+        "dataset.inspect_multimodal",
+        &json!({"dataset_document": descriptor}),
+    )?;
+    if inspection["success"] != true {
+        return Err(inspection["error"]
+            .as_str()
+            .unwrap_or("Multimodal inspection failed")
+            .into());
+    }
+    let record = json!({"path": root, "name": name, "config": config});
+    let result = workspace_documents::link_inspected_dataset(
+        settings,
+        &serde_json::to_vec(&record).map_err(|error| error.to_string())?,
+        &inspection,
+    )
+    .map_err(ImportError::from)?;
+    let _persisted = directory.keep();
+    Ok(result)
+}
+
 fn handle(
     settings: &AppSettingsStore,
     request: &HttpRequest,
     adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
 ) -> HttpResponse {
-    let result = if request.path.ends_with("upload") {
+    let result = if request.path == "/api/datasets/import-multimodal" {
+        import_multimodal(settings, request, adapt)
+    } else if request.path.ends_with("upload") {
         upload(settings, request, adapt)
     } else {
         link(settings, request, adapt)

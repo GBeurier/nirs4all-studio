@@ -57,6 +57,155 @@ fn adapter(operation: &str, value: &Value) -> Result<Value, String> {
 }
 
 #[test]
+fn multimodal_import_links_a_typed_cohort_only_after_scientific_inspection() {
+    let (_root, settings) = workspace();
+    let descriptor = json!({"schema":"nirs4all.studio-multimodal-dataset.v1",
+        "cohort":{"schema":"nirs4all.multimodal-dataset","schema_version":1,
+            "sample_ids":["s1","s2"],"sources":[]}});
+    let body = json!({"name":"Typed cohort","dataset_document":descriptor});
+    let request = HttpRequest {
+        method: "POST".into(),
+        path: "/api/datasets/import-multimodal".into(),
+        query: None,
+        headers: BTreeMap::new(),
+        body: body.to_string().into_bytes(),
+    };
+    let response = handle(&settings, &request, &|operation, value| {
+        assert_eq!(operation, "dataset.inspect_multimodal");
+        assert_eq!(value["dataset_document"], descriptor);
+        Ok(
+            json!({"success":true,"summary":{"num_samples":2,"num_features":0,
+            "train_samples":2,"test_samples":0,"n_sources":1,
+            "has_targets":false,"has_metadata":false}}),
+        )
+    });
+    assert_eq!(response.status, 200, "{}", response.body);
+    let result: Value = serde_json::from_str(&response.body).unwrap();
+    let dataset = &result["dataset"];
+    assert_eq!(dataset["name"], "Typed cohort");
+    assert_eq!(dataset["config"]["dataset_document"], descriptor);
+    let path = Path::new(dataset["path"].as_str().unwrap());
+    assert!(path.is_dir());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&fs::read(path.join("dataset.json")).unwrap()).unwrap(),
+        descriptor
+    );
+    assert_eq!(
+        workspace_documents::linked_dataset(&settings, dataset["id"].as_str().unwrap()).unwrap(),
+        *dataset
+    );
+    let refresh = HttpRequest {
+        method: "POST".into(),
+        path: format!("/api/datasets/{}/refresh", dataset["id"].as_str().unwrap()),
+        query: None,
+        headers: BTreeMap::new(),
+        body: Vec::new(),
+    };
+    let refreshed = handle(&settings, &refresh, &|operation, value| {
+        assert_eq!(operation, "dataset.inspect_multimodal");
+        assert_eq!(value["dataset_document"], descriptor);
+        Ok(
+            json!({"success":true,"summary":{"num_samples":2,"num_features":0,
+            "train_samples":2,"test_samples":0,"n_sources":1}}),
+        )
+    });
+    assert_eq!(refreshed.status, 200, "{}", refreshed.body);
+}
+
+#[test]
+fn multimodal_import_rejects_invalid_or_failed_inspection_without_publishing() {
+    let (_root, settings) = workspace();
+    for descriptor in [
+        json!({"schema":"wrong","cohort":{}}),
+        json!({"schema":"nirs4all.studio-multimodal-dataset.v1","cohort":{},"extra":true}),
+    ] {
+        let request = HttpRequest {
+            method: "POST".into(),
+            path: "/api/datasets/import-multimodal".into(),
+            query: None,
+            headers: BTreeMap::new(),
+            body: json!({"name":"Bad","dataset_document":descriptor})
+                .to_string()
+                .into_bytes(),
+        };
+        let response = handle(&settings, &request, &|_, _| {
+            panic!("Invalid descriptor reached the library")
+        });
+        assert_eq!(response.status, 400);
+    }
+    let request = HttpRequest {
+        method: "POST".into(),
+        path: "/api/datasets/import-multimodal".into(),
+        query: None,
+        headers: BTreeMap::new(),
+        body: json!({"name":"\ninvalid", "dataset_document": {
+            "schema":"nirs4all.studio-multimodal-dataset.v1","cohort":{}
+        }})
+        .to_string()
+        .into_bytes(),
+    };
+    let response = handle(&settings, &request, &|_, _| {
+        panic!("Invalid name reached the library")
+    });
+    assert_eq!(response.status, 400);
+    let descriptor = json!({"schema":"nirs4all.studio-multimodal-dataset.v1","cohort":{}});
+    let request = HttpRequest {
+        method: "POST".into(),
+        path: "/api/datasets/import-multimodal".into(),
+        query: None,
+        headers: BTreeMap::new(),
+        body: json!({"name":"Bad","dataset_document":descriptor})
+            .to_string()
+            .into_bytes(),
+    };
+    let response = handle(&settings, &request, &|_, _| Err("Invalid cohort".into()));
+    assert_eq!(response.status, 400);
+    let parent = import_parent(&settings).unwrap();
+    assert_eq!(fs::read_dir(parent).unwrap().count(), 0);
+    let listing = workspace_documents::route(&settings, "GET", "/api/datasets", b"").unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&listing.body).unwrap()["total"],
+        0
+    );
+}
+
+#[test]
+fn multimodal_import_reserves_catalogue_capacity_for_other_datasets() {
+    let (_root, settings) = workspace();
+    let descriptor = json!({"schema":"nirs4all.studio-multimodal-dataset.v1",
+        "cohort":{"values": vec![0u8; 115_000]}});
+    assert!(serde_json::to_vec(&descriptor).unwrap().len() < 1024 * 1024);
+    let request = HttpRequest {
+        method: "POST".into(),
+        path: "/api/datasets/import-multimodal".into(),
+        query: None,
+        headers: BTreeMap::new(),
+        body: json!({"name":"Oversized catalogue", "dataset_document":descriptor})
+            .to_string()
+            .into_bytes(),
+    };
+    let response = handle(&settings, &request, &|operation, _| {
+        assert_eq!(operation, "dataset.inspect_multimodal");
+        Ok(
+            json!({"success":true,"summary":{"num_samples":1,"num_features":0,
+            "train_samples":1,"test_samples":0,"n_sources":1}}),
+        )
+    });
+    assert_eq!(response.status, 413, "{}", response.body);
+    assert!(response.body.contains("insufficient catalogue space"));
+    assert_eq!(
+        fs::read_dir(import_parent(&settings).unwrap())
+            .unwrap()
+            .count(),
+        0
+    );
+    assert_eq!(
+        workspace_documents::catalogue(&settings).unwrap()["datasets"],
+        json!([])
+    );
+}
+
+#[test]
 fn rejects_paths_duplicates_and_unselected_files_before_adapter() {
     let (_root, settings) = workspace();
     let metadata = json!({"files":[{"path":"X.csv","type":"X","split":"train"}],"parsing":{}});

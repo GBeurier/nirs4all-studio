@@ -324,7 +324,7 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
   )) {
     return { name: "playground", capability: "playground_routes", requiresPythonHost: true };
   }
-  if (!query && method === "POST" && (["/datasets/upload", "/datasets/preview-upload"].includes(pathname) ||
+  if (!query && method === "POST" && (["/datasets/upload", "/datasets/preview-upload", "/datasets/import-multimodal"].includes(pathname) ||
       identifierPath("/datasets/", "/refresh").test(pathname))) {
     return { name: "dataset-import", capability: "dataset_import_routes", requiresPythonHost: true };
   }

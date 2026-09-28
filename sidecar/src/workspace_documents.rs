@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 use crate::{settings::AppSettingsStore, websocket_transport::rfc3339_now, HttpResponse};
 
 pub const MAX_DOCUMENT_BYTES: u64 = 2 * 1024 * 1024;
+const MULTIMODAL_CATALOGUE_RESERVE_BYTES: u64 = 256 * 1024;
 const MAX_PIPELINES: usize = 256;
 pub static DOCUMENT_LOCK: Mutex<()> = Mutex::new(());
 pub type DocumentResult<T> = Result<T, (u16, String)>;
@@ -184,6 +185,18 @@ pub fn save_catalogue(settings: &AppSettingsStore, catalogue: &Value) -> Documen
     )
 }
 
+fn ensure_multimodal_catalogue_capacity(catalogue: &Value) -> DocumentResult<()> {
+    if serde_json::to_vec_pretty(catalogue).map_err(storage)?.len() as u64
+        > MAX_DOCUMENT_BYTES - MULTIMODAL_CATALOGUE_RESERVE_BYTES
+    {
+        return Err((
+            413,
+            "Multimodal descriptor leaves insufficient catalogue space".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn link_dataset(settings: &AppSettingsStore, body: &[u8]) -> DocumentResult<Value> {
     link_dataset_with_inspection(settings, body, None)
 }
@@ -255,6 +268,9 @@ fn link_dataset_with_inspection(
         apply_inspection(&mut dataset, inspection)?;
     }
     datasets.push(dataset.clone());
+    if config.get("dataset_document").is_some() {
+        ensure_multimodal_catalogue_capacity(&catalogue)?;
+    }
     save_catalogue(settings, &catalogue)?;
     Ok(json!({"success": true, "dataset": dataset}))
 }
@@ -362,6 +378,10 @@ fn dataset_record(
         return Ok(json!({"success": true}));
     }
     let update = request(body)?;
+    let replaces_multimodal = update
+        .get("config")
+        .and_then(|config| config.get("dataset_document"))
+        .is_some();
     let dataset = &mut datasets[index];
     for field in [
         "name",
@@ -406,6 +426,9 @@ fn dataset_record(
     }
     string(dataset, "name")?;
     let response = json!({"success": true, "dataset": dataset});
+    if replaces_multimodal {
+        ensure_multimodal_catalogue_capacity(&catalogue)?;
+    }
     save_catalogue(settings, &catalogue)?;
     Ok(response)
 }

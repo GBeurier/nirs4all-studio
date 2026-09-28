@@ -169,6 +169,7 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
             | "dataset.preview"
             | "dataset.stats"
             | "dataset.inspect_format"
+            | "dataset.inspect_multimodal"
             | "results.chain_steps"
             | "results.pipeline_steps"
             | "results.chains"

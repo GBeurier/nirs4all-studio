@@ -1,8 +1,24 @@
 # Dataset import and metadata
 
 Rust owns `POST /api/datasets/upload`, `/api/datasets/preview-upload`,
-`/api/datasets/link`, and `/api/datasets/{id}/refresh`. Upload and inspection
+`/api/datasets/import-multimodal`, `/api/datasets/link`, and `/api/datasets/{id}/refresh`. Upload and inspection
 run outside the global route mutex. No Python HTTP service is started.
+
+Typed multimodal import accepts JSON `{name, dataset_document}` where the
+document is the closed `nirs4all.studio-multimodal-dataset.v1` wrapper around
+a self-contained `MultimodalDataset.to_dict()` cohort. The browser selects a
+JSON file; Rust limits the compact descriptor to 1 MiB, writes its exact
+content under workspace `imports/multimodal-*/dataset.json`, and keeps the
+containing **directory** as the catalogue path. The attested adapter calls the
+published `nirs4all_io.MultimodalDataset.from_dict` contract to validate the
+cohort, then projects catalogue counts before the link is published.
+The pretty-printed catalogue must also fit within its 2 MiB document limit
+with 256 KiB reserved for further links and groups; large inline cohorts are
+refused before publication even when their compact JSON is under 1 MiB.
+This import neither generates data nor reads external references from the
+descriptor. A failed inspection removes the temporary directory and leaves
+the catalogue unchanged. The packaged product requires the scientific host;
+the optional Python HTTP diagnostic backend does not expose this route.
 
 Multipart uploads contain repeated `files` parts and one JSON `metadata`
 part. The legacy preview-only `metadata` query is accepted when the body
