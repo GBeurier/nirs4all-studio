@@ -378,10 +378,31 @@ fn dataset_record(
         let updates = config
             .as_object()
             .ok_or_else(|| invalid("Dataset config must be an object"))?;
-        let current = dataset["config"]
-            .as_object_mut()
-            .ok_or_else(|| storage("Stored dataset config is invalid"))?;
-        current.extend(updates.clone());
+        if let Some(descriptor) = updates.get("dataset_document") {
+            if updates.len() != 1
+                || descriptor.get("schema").and_then(Value::as_str)
+                    != Some("nirs4all.studio-multimodal-dataset.v1")
+                || descriptor.as_object().is_none_or(|value| value.len() != 2)
+                || descriptor
+                    .get("cohort")
+                    .and_then(Value::as_object)
+                    .is_none()
+                || serde_json::to_vec(descriptor).map_err(storage)?.len() > 1024 * 1024
+            {
+                return Err(invalid("Invalid multimodal dataset descriptor"));
+            }
+            dataset["config"] = config.clone();
+        } else {
+            let current = dataset["config"]
+                .as_object_mut()
+                .ok_or_else(|| storage("Stored dataset config is invalid"))?;
+            if current.contains_key("dataset_document") && !updates.is_empty() {
+                return Err(invalid(
+                    "Multimodal dataset config cannot mix file settings",
+                ));
+            }
+            current.extend(updates.clone());
+        }
     }
     string(dataset, "name")?;
     let response = json!({"success": true, "dataset": dataset});
@@ -748,6 +769,54 @@ pub fn owns_path(path: &str) -> bool {
 mod tests {
     use super::*;
     use crate::{route_request_with_body, SidecarState};
+
+    #[test]
+    fn saved_descriptor_replaces_flat_config_through_dataset_update() {
+        let root = tempfile::tempdir().unwrap();
+        let dataset_root = root.path().join("dataset");
+        fs::create_dir_all(&dataset_root).unwrap();
+        let state = SidecarState::with_app_settings_dir(root.path().join("config"));
+        let linked = link_dataset(
+            &state.app_settings,
+            json!({"path": dataset_root, "config": {"train_x": "old.csv"}})
+                .to_string()
+                .as_bytes(),
+        )
+        .unwrap();
+        let id = linked["dataset"]["id"].as_str().unwrap();
+        let descriptor =
+            json!({"schema": "nirs4all.studio-multimodal-dataset.v1", "cohort": {"samples": []}});
+        let saved = dataset_record(
+            &state.app_settings,
+            "PUT",
+            id,
+            json!({"config": {"dataset_document": descriptor}})
+                .to_string()
+                .as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            saved["dataset"]["config"],
+            json!({"dataset_document": descriptor})
+        );
+        assert_eq!(
+            dataset_record(&state.app_settings, "GET", id, &[],).unwrap()["dataset"]["config"],
+            json!({"dataset_document": descriptor})
+        );
+        assert_eq!(
+            dataset_record(
+                &state.app_settings,
+                "PUT",
+                id,
+                json!({"config": {"dataset_document": descriptor, "train_x": "x.csv"}})
+                    .to_string()
+                    .as_bytes(),
+            )
+            .unwrap_err()
+            .0,
+            400
+        );
+    }
 
     #[test]
     fn workspace_preferences_preserve_nested_defaults_extensions_and_restart() {

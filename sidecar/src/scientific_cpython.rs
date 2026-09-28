@@ -1848,7 +1848,10 @@ fn validate_worker_response(
     ) {
         validate_library_facade_response(request_schema.unwrap_or_default(), &response)?;
     } else {
-        validate_scientific_response(&response)?;
+        let authorized_workspace = (request_schema == Some("nirs4all.studio-scientific-job.v2"))
+            .then(|| request["options"]["workspace_path"].as_str().map(Path::new))
+            .flatten();
+        validate_scientific_response(&response, authorized_workspace)?;
     }
     let response_id = if matches!(
         request_schema,
@@ -2275,11 +2278,14 @@ fn validate_request_options(value: &Value) -> Result<(), ScientificCpythonUnavai
     Ok(())
 }
 
-fn validate_scientific_response(response: &Value) -> Result<(), ScientificCpythonUnavailable> {
+fn validate_scientific_response(
+    response: &Value,
+    authorized_workspace: Option<&Path>,
+) -> Result<(), ScientificCpythonUnavailable> {
     if response.get("schema").and_then(Value::as_str)
         == Some("nirs4all.studio-scientific-job-result.v2")
     {
-        return validate_general_response(response);
+        return validate_general_response(response, authorized_workspace);
     }
     let root = exact_object(response, &["schema", "job_id", "engine", "result"])
         .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
@@ -2397,10 +2403,14 @@ fn validate_general_request(
     Ok(())
 }
 
-fn validate_general_response(response: &Value) -> Result<(), ScientificCpythonUnavailable> {
+fn validate_general_response(
+    response: &Value,
+    authorized_workspace: Option<&Path>,
+) -> Result<(), ScientificCpythonUnavailable> {
     let invalid = ScientificCpythonUnavailable::MalformedResponse;
     let root =
         exact_object(response, &["schema", "job_id", "engine", "result"]).map_err(|_| invalid)?;
+    let archive_result = root["result"].get("archive_path").is_some();
     let result = exact_object(
         &root["result"],
         &[
@@ -2415,7 +2425,11 @@ fn validate_general_response(response: &Value) -> Result<(), ScientificCpythonUn
             "model_names",
             "dataset_names",
             "native_score_sets_available",
-        ],
+        ]
+        .iter()
+        .copied()
+        .chain(archive_result.then_some("archive_path"))
+        .collect::<Vec<_>>(),
     )
     .map_err(|_| invalid)?;
     if root["engine"] != "dag-ml"
@@ -2424,7 +2438,8 @@ fn validate_general_response(response: &Value) -> Result<(), ScientificCpythonUn
             .as_str()
             .is_some_and(|path| Path::new(path).is_absolute())
         || !result["prediction_count"].is_u64()
-        || result["native_score_sets_available"] != true
+        || (!archive_result && result["native_score_sets_available"] != true)
+        || (archive_result && !result["native_score_sets_available"].is_boolean())
         || !result["metric"]
             .as_str()
             .is_some_and(|metric| !metric.is_empty() && metric.len() <= 256)
@@ -2443,12 +2458,41 @@ fn validate_general_response(response: &Value) -> Result<(), ScientificCpythonUn
         "dataset_names",
     ] {
         let values = result[field].as_array().ok_or(invalid)?;
-        if (field == "run_ids" && values.is_empty())
+        if (field == "run_ids" && values.is_empty() && !archive_result)
             || values.iter().any(|value| {
                 !value.as_str().is_some_and(|text| {
                     !text.is_empty() && text.len() <= 4096 && !text.chars().any(char::is_control)
                 })
             })
+        {
+            return Err(invalid);
+        }
+    }
+    if archive_result {
+        if !result["run_ids"].as_array().is_some_and(Vec::is_empty)
+            || !result["native_results_dirs"]
+                .as_array()
+                .is_some_and(Vec::is_empty)
+        {
+            return Err(invalid);
+        }
+        let workspace = authorized_workspace.ok_or(invalid)?;
+        let workspace = fs::canonicalize(workspace).map_err(|_| invalid)?;
+        if result["workspace_path"].as_str().map(Path::new) != Some(workspace.as_path()) {
+            return Err(invalid);
+        }
+        let archive = result["archive_path"]
+            .as_str()
+            .map(Path::new)
+            .ok_or(invalid)?;
+        if !archive.is_absolute() || archive.extension().is_none_or(|ext| ext != "n4a") {
+            return Err(invalid);
+        }
+        let canonical_archive = fs::canonicalize(archive).map_err(|_| invalid)?;
+        let metadata = fs::symlink_metadata(archive).map_err(|_| invalid)?;
+        if canonical_archive != archive
+            || !canonical_archive.starts_with(&workspace)
+            || !metadata.is_file()
         {
             return Err(invalid);
         }
@@ -2570,9 +2614,73 @@ mod tests {
             "run_ids":["run-1"], "workspace_path":workspace, "native_results_dirs":[workspace.join("results/run-1")],
             "metric":"rmse", "validation_score":null, "evaluations":[], "chart_reports":[], "prediction_count":10,
             "model_names":["Ridge"], "dataset_names":["a"], "native_score_sets_available":true}});
-        validate_scientific_response(&response).unwrap();
+        validate_scientific_response(&response, Some(&workspace)).unwrap();
         response["result"]["native_score_sets_available"] = serde_json::json!(false);
-        assert!(validate_scientific_response(&response).is_err());
+        assert!(validate_scientific_response(&response, Some(&workspace)).is_err());
+    }
+
+    #[test]
+    fn general_archive_response_is_confined_to_the_authorized_workspace() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = directory.path().join("workspace");
+        fs::create_dir(&workspace).unwrap();
+        let archive = workspace.join("multimodal.n4a");
+        fs::write(&archive, b"archive").unwrap();
+        let response = serde_json::json!({
+            "schema":"nirs4all.studio-scientific-job-result.v2", "job_id":"general-run", "engine":"dag-ml",
+            "result":{
+                "run_ids":[], "workspace_path":workspace, "native_results_dirs":[],
+                "archive_path":archive, "metric":"rmse", "validation_score":null,
+                "evaluations":[], "chart_reports":[], "prediction_count":0,
+                "model_names":[], "dataset_names":[], "native_score_sets_available":false
+            }
+        });
+        assert!(validate_scientific_response(&response, Some(&workspace)).is_ok());
+        let mut with_native_scores = response.clone();
+        with_native_scores["result"]["native_score_sets_available"] = serde_json::json!(true);
+        assert!(validate_scientific_response(&with_native_scores, Some(&workspace)).is_ok());
+
+        let mut invalid = response.clone();
+        invalid["result"]["run_ids"] = serde_json::json!(["run-1"]);
+        assert!(validate_scientific_response(&invalid, Some(&workspace)).is_err());
+        invalid = response.clone();
+        invalid["result"]["native_results_dirs"] = serde_json::json!([workspace.join("results")]);
+        assert!(validate_scientific_response(&invalid, Some(&workspace)).is_err());
+        invalid = response.clone();
+        invalid["result"]
+            .as_object_mut()
+            .unwrap()
+            .remove("archive_path");
+        assert!(validate_scientific_response(&invalid, Some(&workspace)).is_err());
+        invalid = response.clone();
+        invalid["result"]["workspace_path"] = serde_json::json!(directory.path());
+        assert!(validate_scientific_response(&invalid, Some(&workspace)).is_err());
+
+        let outside = directory.path().join("outside.n4a");
+        fs::write(&outside, b"archive").unwrap();
+        for path in [
+            outside,
+            workspace.join("missing.n4a"),
+            workspace.join("../workspace/multimodal.n4a"),
+            workspace.clone(),
+        ] {
+            invalid = response.clone();
+            invalid["result"]["archive_path"] = serde_json::json!(path);
+            assert!(validate_scientific_response(&invalid, Some(&workspace)).is_err());
+        }
+        let wrong_extension = workspace.join("multimodal.zip");
+        fs::write(&wrong_extension, b"archive").unwrap();
+        invalid = response.clone();
+        invalid["result"]["archive_path"] = serde_json::json!(wrong_extension);
+        assert!(validate_scientific_response(&invalid, Some(&workspace)).is_err());
+        #[cfg(unix)]
+        {
+            let symlink = workspace.join("alias.n4a");
+            std::os::unix::fs::symlink(&archive, &symlink).unwrap();
+            invalid = response;
+            invalid["result"]["archive_path"] = serde_json::json!(symlink);
+            assert!(validate_scientific_response(&invalid, Some(&workspace)).is_err());
+        }
     }
     #[test]
     fn document_batch_and_inspection_have_distinct_bounded_wire_budgets() {
@@ -2911,10 +3019,10 @@ done"#,
                 "prediction_count": 4
             }
         });
-        validate_scientific_response(&response).unwrap();
+        validate_scientific_response(&response, None).unwrap();
         response["workspace"] = serde_json::json!({"path": "/forbidden"});
         assert_eq!(
-            validate_scientific_response(&response),
+            validate_scientific_response(&response, None),
             Err(ScientificCpythonUnavailable::MalformedResponse)
         );
     }

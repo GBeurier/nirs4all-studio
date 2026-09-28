@@ -16,6 +16,22 @@ an explicit canonical object, not an opaque folder/config path. References are
 resolved beneath that dataset's catalogue root both before and after adaptation,
 including metadata, folds, nested sources and partition index files. An adapter
 must resolve folder auto-detection through the library normalizer before returning.
+An existing saved dataset record may instead contain only
+`config.dataset_document` with the exact outer shape
+`{"schema":"nirs4all.studio-multimodal-dataset.v1","cohort":{...}}`.
+`PUT /api/datasets/{id}` with that sole config field replaces a saved flat
+config, so a previously linked record can hold the descriptor without mixed
+file and inline settings. Returning that record to a flat file config currently
+requires deleting and relinking it.
+The 1 MiB inline descriptor is passed through `dataset.configure` and must be
+returned unchanged. Rust checks the stored marker, closed outer shape, size,
+and adapter equality; the scientific Python host owns reconstruction and
+validation of the `MultimodalDataset.to_dict()` cohort. This path still requires
+an existing catalogue record with an authorized directory. Studio does not yet
+create these records in the UI, inspect their contents, catalogue the exported
+archive, or use them for prediction. The scientific host does export a native
+`.n4a` into the authorized workspace when such a record runs. Flat file dataset
+records continue through normal path checks.
 Rust reads saved pipeline/catalogue JSON through capability-rooted bounded handles.
 Document payloads are limited to 2 MiB and final scientific requests to 8 MiB;
 these limits do not bound the number of rows/features in the underlying dataset.
@@ -33,6 +49,14 @@ for this transport. `test_size`, grouping, robustness and UI-level CV overrides
 still require explicit library-owned translations; this resolver does not claim
 to implement them or accept-and-ignore them. Their rejection is a remaining
 integration limitation, not a scientific feature completion.
+
+The V2 result may report a multimodal archive through `result.archive_path`.
+This form requires empty `run_ids` and `native_results_dirs`; the other summary
+fields retain their usual types. Rust accepts the archive only when it is an
+existing regular `.n4a` file at a canonical path beneath the authorized
+workspace from the submitted request, and `result.workspace_path` must equal
+that canonical workspace. A result without `archive_path` keeps the
+existing requirement for nonempty run IDs and available native score sets.
 
 Path validation is not an OS sandbox for approved scientific Python operators.
 Canonical paths passed to subsequent processes can be replaced after validation;

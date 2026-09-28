@@ -10,6 +10,8 @@ use super::{
 
 const MAX_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_GENERAL_BYTES: usize = 8 * 1024 * 1024;
+const MAX_MULTIMODAL_DESCRIPTOR_BYTES: usize = 1024 * 1024;
+const MULTIMODAL_DATASET_SCHEMA: &str = "nirs4all.studio-multimodal-dataset.v1";
 
 pub(super) fn resolve(
     resolver: &ScientificRequestResolver,
@@ -57,7 +59,7 @@ fn normalize_documents(
     adapt: impl Fn(&[Value]) -> Result<Vec<Value>, String>,
 ) -> Result<(Vec<Value>, Vec<Value>), ScientificResolveError> {
     let mut requests = Vec::new();
-    let mut roots = Vec::new();
+    let mut dataset_checks = Vec::new();
     for id in &selection.datasets {
         let mut record = resolver.read_dataset(id)?;
         let root = record
@@ -65,11 +67,30 @@ fn normalize_documents(
             .and_then(Value::as_str)
             .and_then(|path| canonical_directory(Path::new(path)).ok())
             .ok_or(ScientificResolveError::DatasetInvalid)?;
+        // An inline cohort contains data, not file references. Keep it out of
+        // the flat-file path walker, then require the adapter to echo exactly
+        // the authorized document before it reaches the scientific host.
+        let descriptor = record
+            .get_mut("config")
+            .and_then(Value::as_object_mut)
+            .and_then(|config| config.remove("dataset_document"));
+        if let Some(ref descriptor) = descriptor {
+            validate_multimodal_descriptor(descriptor)?;
+            if record["config"]
+                .as_object()
+                .is_none_or(|config| !config.is_empty())
+            {
+                return Err(ScientificResolveError::DatasetInvalid);
+            }
+        }
         // Inspect supplied references before a document adapter can read a
         // legacy configuration file. Recheck its returned canonical config.
         ScientificRequestResolver::confine_dataset_config(&mut record, &root)?;
+        if let Some(ref descriptor) = descriptor {
+            record["config"]["dataset_document"] = descriptor.clone();
+        }
         bounded(&record, MAX_DOCUMENT_BYTES)?;
-        roots.push(root);
+        dataset_checks.push((root, descriptor));
         requests.push(json!({"operation":"dataset.configure", "payload":{"record":record,"scientific_run":true}}));
     }
     for (id, inline) in &selection.pipelines {
@@ -93,15 +114,22 @@ fn normalize_documents(
     bounded(&json!(normalized), MAX_GENERAL_BYTES)?;
     let mut normalized = normalized.into_iter();
     let mut datasets = Vec::new();
-    for root in roots {
+    for (root, descriptor) in dataset_checks {
         let mut dataset = normalized
             .next()
             .ok_or(ScientificResolveError::DatasetInvalid)?;
         if !dataset.is_object() {
             return Err(ScientificResolveError::DatasetInvalid);
         }
-        reject_implicit_folders(&dataset)?;
-        ScientificRequestResolver::confine_dataset_config(&mut dataset, &root)?;
+        if let Some(descriptor) = descriptor {
+            validate_multimodal_descriptor(&dataset)?;
+            if dataset != descriptor {
+                return Err(ScientificResolveError::DatasetInvalid);
+            }
+        } else {
+            reject_implicit_folders(&dataset)?;
+            ScientificRequestResolver::confine_dataset_config(&mut dataset, &root)?;
+        }
         datasets.push(dataset);
     }
     let mut pipelines = Vec::new();
@@ -121,6 +149,23 @@ fn normalize_documents(
         pipelines.push(pipeline.clone());
     }
     Ok((datasets, pipelines))
+}
+
+fn validate_multimodal_descriptor(value: &Value) -> Result<(), ScientificResolveError> {
+    let document = value
+        .as_object()
+        .ok_or(ScientificResolveError::DatasetInvalid)?;
+    if document.len() != 2
+        || document.get("schema").and_then(Value::as_str) != Some(MULTIMODAL_DATASET_SCHEMA)
+        || document.get("cohort").and_then(Value::as_object).is_none()
+        || serde_json::to_vec(value)
+            .map_err(|_| ScientificResolveError::DatasetInvalid)?
+            .len()
+            > MAX_MULTIMODAL_DESCRIPTOR_BYTES
+    {
+        return Err(ScientificResolveError::DatasetInvalid);
+    }
+    Ok(())
 }
 
 struct Selection {
@@ -545,6 +590,76 @@ mod tests {
             })),
             _ => Err("unexpected operation".into()),
         }
+    }
+
+    #[test]
+    fn saved_multimodal_document_reaches_v2_job_unchanged() {
+        let (root, config, workspace) = fixture("general-multimodal");
+        let links_path = config.join(DATASET_LINKS_FILE);
+        let mut links: Value = serde_json::from_slice(&fs::read(&links_path).unwrap()).unwrap();
+        let descriptor = json!({
+            "schema": MULTIMODAL_DATASET_SCHEMA,
+            "cohort": {"samples": [{"id": "s1", "spectra": [1.0, 2.0]}]}
+        });
+        links["datasets"][0]["config"] = json!({"dataset_document": descriptor});
+        fs::write(&links_path, serde_json::to_vec(&links).unwrap()).unwrap();
+        let request = ScientificRequestResolver::new(config)
+            .resolve_general(
+                &submission(&workspace, "local-python"),
+                |operation, payload| {
+                    if operation == "dataset.configure" {
+                        assert_eq!(payload["record"]["config"]["dataset_document"], descriptor);
+                        Ok(payload["record"]["config"]["dataset_document"].clone())
+                    } else {
+                        adapter(operation, payload)
+                    }
+                },
+            )
+            .unwrap();
+        assert_eq!(request["dataset"], descriptor);
+        assert_eq!(request["schema"], "nirs4all.studio-scientific-job.v2");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn multimodal_document_rejects_mixed_config_and_adapter_changes() {
+        let (root, config, workspace) = fixture("general-multimodal-invalid");
+        let links_path = config.join(DATASET_LINKS_FILE);
+        let mut links: Value = serde_json::from_slice(&fs::read(&links_path).unwrap()).unwrap();
+        let descriptor = json!({"schema": MULTIMODAL_DATASET_SCHEMA, "cohort": {"samples": []}});
+        links["datasets"][0]["config"] = json!({"dataset_document": descriptor});
+        fs::write(&links_path, serde_json::to_vec(&links).unwrap()).unwrap();
+        let resolver = ScientificRequestResolver::new(&config);
+        let input = submission(&workspace, "local-python");
+        assert_eq!(
+            resolver.resolve_general(&input, |operation, payload| {
+                if operation == "dataset.configure" {
+                    Ok(json!({"schema": MULTIMODAL_DATASET_SCHEMA, "cohort": {"samples": [1]}}))
+                } else {
+                    adapter(operation, payload)
+                }
+            }),
+            Err(ScientificResolveError::DatasetInvalid)
+        );
+        links["datasets"][0]["config"]["train_x"] = json!("x.csv");
+        fs::write(&links_path, serde_json::to_vec(&links).unwrap()).unwrap();
+        assert_eq!(
+            resolver.resolve_general(&input, |_, _| panic!(
+                "mixed config must fail before adapter"
+            )),
+            Err(ScientificResolveError::DatasetInvalid)
+        );
+        links["datasets"][0]["config"] = json!({"dataset_document": {
+            "schema": MULTIMODAL_DATASET_SCHEMA, "cohort": {}, "extra": true
+        }});
+        fs::write(&links_path, serde_json::to_vec(&links).unwrap()).unwrap();
+        assert_eq!(
+            resolver.resolve_general(&input, |_, _| panic!(
+                "open descriptor must fail before adapter"
+            )),
+            Err(ScientificResolveError::DatasetInvalid)
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -357,6 +357,21 @@ def test_scientific_run_config_loads_with_nirs4all_115(tmp_path: Path):
     assert DatasetConfigs(config).get_dataset_at(0).num_samples == 4
 
 
+def test_scientific_run_preserves_saved_multimodal_dataset_document(tmp_path: Path):
+    from api.library_documents import configure_dataset
+
+    descriptor = {
+        "schema": "nirs4all.studio-multimodal-dataset.v1",
+        "cohort": {"samples": [{"id": "sample-1", "signals": [1.0, 2.0]}]},
+    }
+    record = {"path": str(tmp_path), "config": {"dataset_document": descriptor}}
+    assert configure_dataset({"record": record, "scientific_run": True}) == descriptor
+    with pytest.raises(ValueError, match="Invalid multimodal dataset descriptor"):
+        configure_dataset({"record": {"path": str(tmp_path), "config": {
+            "dataset_document": {**descriptor, "extra": True},
+        }}, "scientific_run": True})
+
+
 @pytest.mark.parametrize("with_globals", [False, True])
 def test_existing_library_configs_preserve_na_and_repetitions_on_reload(tmp_path: Path, with_globals: bool):
     from api.library_dataset_inspection import inspect_dataset_document

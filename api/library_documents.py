@@ -122,6 +122,13 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         config = record.get("config") or {}
         if not isinstance(config, dict):
             raise ValueError("Dataset config must be an object")
+        # The inline cohort is reconstructed by the scientific host. Keep this
+        # document intact; flat file configurations still use normalization.
+        if "dataset_document" in config:
+            descriptor = config["dataset_document"]
+            if not isinstance(descriptor, dict) or descriptor.get("schema") != "nirs4all.studio-multimodal-dataset.v1" or not isinstance(descriptor.get("cohort"), dict) or set(descriptor) != {"schema", "cohort"}:
+                raise ValueError("Invalid multimodal dataset descriptor")
+            return descriptor
         if not config:
             path = record.get("path")
             if not isinstance(path, str) or not path:
