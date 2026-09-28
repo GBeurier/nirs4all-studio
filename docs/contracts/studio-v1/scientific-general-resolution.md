@@ -28,9 +28,9 @@ returned unchanged. Rust checks the stored marker, closed outer shape, size,
 and adapter equality; the scientific Python host owns reconstruction and
 validation of the `MultimodalDataset.to_dict()` cohort. This path still requires
 an existing catalogue record with an authorized directory. Studio does not yet
-create these records in the UI, inspect their contents, catalogue the exported
-archive, or use them for prediction. The scientific host does export a native
-`.n4a` into the authorized workspace when such a record runs. Flat file dataset
+create these records in the UI, inspect their contents, or use them for prediction.
+The scientific host exports a native `.n4a` into `exports/` beneath the authorized
+workspace, where the existing general-model catalogue can discover it. Flat file dataset
 records continue through normal path checks.
 Rust reads saved pipeline/catalogue JSON through capability-rooted bounded handles.
 Document payloads are limited to 2 MiB and final scientific requests to 8 MiB;
