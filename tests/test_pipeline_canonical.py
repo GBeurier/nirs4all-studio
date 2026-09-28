@@ -198,6 +198,46 @@ def test_shared_separation_branch_roundtrips_to_list_steps():
     assert editor_to_canonical(editor_steps) == source
 
 
+def test_by_source_stacking_keeps_missing_policy_and_bare_transformer():
+    source = [
+        {
+            "branch": {
+                "by_source": True,
+                "missing_source_policy": "zero_with_indicator",
+                "steps": {
+                    "image": [
+                        {"class": "nirs4all.operators.models.multimodal.TensorPCA", "params": {"n_components": 1}},
+                        {"model": {"class": "sklearn.linear_model.Ridge", "params": {"alpha": 1.0}}},
+                    ],
+                },
+            },
+        },
+        {"merge": "predictions"},
+        "sklearn.linear_model.Ridge",
+    ]
+
+    editor_steps = canonical_to_editor(source)
+
+    assert editor_steps[0]["separationConfig"]["missing_source_policy"] == "zero_with_indicator"
+    assert editor_steps[0]["branches"][0][0]["componentStyle"] == "class_dict"
+    assert editor_steps[0]["branches"][0][1]["modelStyle"] == "class_dict"
+    assert editor_to_canonical(editor_steps) == source
+
+
+def test_imported_bare_model_keeps_new_model_options():
+    editor_step = canonical_to_editor(["sklearn.linear_model.Ridge"])[0]
+    editor_step["customName"] = "Tuned Ridge"
+    editor_step["trainingConfig"] = {"epochs": 4}
+    editor_step["finetuneConfig"] = {"enabled": True, "n_trials": 3}
+
+    canonical = editor_to_canonical([editor_step])[0]
+
+    assert canonical["model"] == {"class": "sklearn.linear_model.Ridge"}
+    assert canonical["name"] == "Tuned Ridge"
+    assert canonical["train_params"] == {"epochs": 4}
+    assert canonical["finetune_params"]["n_trials"] == 3
+
+
 def test_canonical_to_editor_resolves_saved_chain_short_class_names():
     editor_steps = canonical_to_editor(
         [

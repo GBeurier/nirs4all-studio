@@ -1762,6 +1762,22 @@ def _convert_editor_step_to_canonical(step: dict[str, Any]) -> Any:
             return {"_comment": str(_ensure_mapping_payload(step.get("params")).get("text") or "")}
 
     if step_type == "model":
+        model_metadata = _ensure_mapping_payload(step.get("stepMetadata"))
+        has_model_options = bool(
+            step.get("customName")
+            or model_metadata.get("customName")
+            or _ensure_mapping_payload(step.get("finetuneConfig")).get("enabled")
+            or _build_train_params(step)
+            or step.get("functionPath")
+            or step.get("framework")
+        )
+        if "componentStyle" in step and "modelStyle" not in step and not has_model_options:
+            class_path = resolve_required_editor_class_path(
+                step_type,
+                str(step.get("name") or "Unknown"),
+                step.get("classPath"),
+            )
+            return _component_payload_from_editor(step, class_path)
         return _convert_editor_model_to_canonical(step)
 
     if step_type == "y_processing":
