@@ -28,10 +28,20 @@ returned unchanged. Rust checks the stored marker, closed outer shape, size,
 and adapter equality; the scientific Python host owns reconstruction and
 validation of the `MultimodalDataset.to_dict()` cohort. This path still requires
 an existing catalogue record with an authorized directory. Studio does not yet
-create these records in the UI, inspect their contents, or use them for prediction.
+create these records in the UI or inspect their contents.
 The scientific host exports a native `.n4a` into `exports/` beneath the authorized
-workspace, where the existing general-model catalogue can discover it. Flat file dataset
-records continue through normal path checks.
+workspace, where the existing general-model catalogue can discover it. A linked
+inline cohort can be used for general prediction only with a selected fingerprinted
+bundle from that confined exports catalogue. Rust checks the 1 MiB descriptor and
+exact `dataset.configure` echo without passing the cohort through the flat-file
+path walker. The scientific host reconstructs it with the library's bounded
+multimodal array loader, replays the captured archive without fitting, and keeps
+cohort sample IDs and requested partitions in the response. Ragged and absent
+sources stay in their IO-owned representation. Flat file dataset records continue
+through normal path checks. The current prediction route selects a target axis
+with `output_index`; it does not yet pass a named `output=` binding for archives
+with multiple independent outputs. The IO `predict` partition is reported as
+`test`, matching the library's prediction partition mapping.
 Rust reads saved pipeline/catalogue JSON through capability-rooted bounded handles.
 Document payloads are limited to 2 MiB and final scientific requests to 8 MiB;
 these limits do not bound the number of rows/features in the underlying dataset.

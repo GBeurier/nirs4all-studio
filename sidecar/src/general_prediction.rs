@@ -19,6 +19,25 @@ use crate::scientific_request_resolver::ScientificRequestResolver;
 const MAX_ENTRIES: usize = 10000;
 const MAX_ARCHIVE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_CATALOGUE_MODEL_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+const MAX_MULTIMODAL_DESCRIPTOR_BYTES: usize = 1024 * 1024;
+const MULTIMODAL_DATASET_SCHEMA: &str = "nirs4all.studio-multimodal-dataset.v1";
+
+fn validate_multimodal_descriptor(value: &Value) -> Result<(), String> {
+    let document = value
+        .as_object()
+        .ok_or("Invalid multimodal dataset descriptor")?;
+    if document.len() != 2
+        || document.get("schema").and_then(Value::as_str) != Some(MULTIMODAL_DATASET_SCHEMA)
+        || document.get("cohort").and_then(Value::as_object).is_none()
+        || serde_json::to_vec(value)
+            .map_err(|error| error.to_string())?
+            .len()
+            > MAX_MULTIMODAL_DESCRIPTOR_BYTES
+    {
+        return Err("Invalid or oversized multimodal dataset descriptor".into());
+    }
+    Ok(())
+}
 
 fn text<'a>(value: &'a Value, key: &str) -> Result<&'a str, String> {
     value
@@ -167,6 +186,7 @@ fn model_payload(workspace: &Path, request: &Value) -> Result<Value, String> {
 }
 
 /// Resolve one array or linked dataset before invoking scientific prediction.
+#[allow(clippy::too_many_lines)] // Closed source variants share one fingerprinted model selection.
 pub fn prediction_payload(
     workspace: &Path,
     request: &Value,
@@ -228,11 +248,44 @@ pub fn prediction_payload(
                 return Err("Dataset catalogue identity mismatch".into());
             }
             let directory = root(Path::new(text(&record, "path")?))?;
-            ScientificRequestResolver::confine_dataset_config(&mut record["config"], &directory)
+            let inline = record["config"].get("dataset_document").cloned();
+            let config = if let Some(descriptor) = inline {
+                if record["config"]
+                    .as_object()
+                    .is_none_or(|config| config.len() != 1)
+                {
+                    return Err(
+                        "Multimodal dataset cannot mix inline and file configuration".into(),
+                    );
+                }
+                validate_multimodal_descriptor(&descriptor)?;
+                if payload["model_source"] != "bundle"
+                    || request.get("archive_fingerprint") != payload.get("archive_fingerprint")
+                {
+                    return Err(
+                        "Multimodal prediction requires a fingerprinted exported bundle".into(),
+                    );
+                }
+                // An inline cohort has no scientific file references. Avoid
+                // the flat-file walker and require the exact authorized echo.
+                record["config"] = json!({"dataset_document":&descriptor});
+                let configured = adapt("dataset.configure", &json!({"record":record}))?;
+                validate_multimodal_descriptor(&configured)?;
+                if configured != descriptor {
+                    return Err("Multimodal dataset adapter changed the authorized cohort".into());
+                }
+                configured
+            } else {
+                ScientificRequestResolver::confine_dataset_config(
+                    &mut record["config"],
+                    &directory,
+                )
                 .map_err(|error| format!("{error:?}"))?;
-            let mut config = adapt("dataset.configure", &json!({"record":record}))?;
-            ScientificRequestResolver::confine_dataset_config(&mut config, &directory)
-                .map_err(|error| format!("{error:?}"))?;
+                let mut configured = adapt("dataset.configure", &json!({"record":record}))?;
+                ScientificRequestResolver::confine_dataset_config(&mut configured, &directory)
+                    .map_err(|error| format!("{error:?}"))?;
+                configured
+            };
             let partition = request
                 .get("partition")
                 .and_then(Value::as_str)
@@ -416,6 +469,63 @@ mod tests {
             &|_, _| panic!("unsafe input reached document adapter")
         )
         .is_err());
+    }
+
+    #[test]
+    fn inline_cohort_requires_exact_adapter_echo_and_fingerprinted_export() {
+        let root = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("exports")).unwrap();
+        std::fs::write(root.path().join("exports/model.n4a"), b"captured").unwrap();
+        let fingerprint = archive_record(root.path(), Path::new("exports/model.n4a")).unwrap()
+            ["fingerprint"]
+            .clone();
+        let descriptor = json!({"schema":MULTIMODAL_DATASET_SCHEMA,"cohort":{"sample_ids":["a"]}});
+        let record =
+            json!({"id":"linked","path":data.path(),"config":{"dataset_document":descriptor}});
+        let request = json!({"model_id":"exports/model.n4a","model_source":"bundle",
+            "archive_fingerprint":fingerprint,"data_source":"dataset","dataset_id":"linked"});
+        let echo = |operation: &str, input: &Value| {
+            assert_eq!(operation, "dataset.configure");
+            Ok(input["record"]["config"]["dataset_document"].clone())
+        };
+        let resolved =
+            prediction_payload(root.path(), &request, &|_| Ok(record.clone()), &echo).unwrap();
+        assert_eq!(resolved["config"], descriptor);
+        assert_eq!(resolved["archive_fingerprint"], fingerprint);
+        let mut changed = descriptor;
+        changed["cohort"]["sample_ids"] = json!(["b"]);
+        assert!(
+            prediction_payload(root.path(), &request, &|_| Ok(record.clone()), &|_, _| Ok(
+                changed.clone()
+            ))
+            .is_err()
+        );
+        for invalid in [
+            json!({"schema":MULTIMODAL_DATASET_SCHEMA,"cohort":{},"extra":true}),
+            json!({"schema":"wrong","cohort":{}}),
+            json!({"schema":MULTIMODAL_DATASET_SCHEMA,"cohort":{"padding":"x".repeat(MAX_MULTIMODAL_DESCRIPTOR_BYTES)}}),
+        ] {
+            let mut record = record.clone();
+            record["config"]["dataset_document"] = invalid;
+            assert!(prediction_payload(
+                root.path(),
+                &request,
+                &|_| Ok(record.clone()),
+                &|_, _| panic!("invalid cohort reached adapter")
+            )
+            .is_err());
+        }
+        let mut chain = request.clone();
+        chain["model_source"] = json!("chain");
+        chain["model_id"] = json!("chain1");
+        assert!(prediction_payload(root.path(), &chain, &|_| Ok(record.clone()), &echo).is_err());
+        let mut unbound = request;
+        unbound
+            .as_object_mut()
+            .unwrap()
+            .remove("archive_fingerprint");
+        assert!(prediction_payload(root.path(), &unbound, &|_| Ok(record.clone()), &echo).is_err());
     }
 
     #[test]
