@@ -318,6 +318,17 @@ pinned SHA-256 identities. Every transitive scientific dependency comes from
 the attested `nirs4all` wheel closure; the bake fails closed if that published
 closure is incomplete or differs from its recorded hashes.
 
+For a **local pre-release multimodal qualification**, copy
+`backend-dist/python-runtime/python` outside the Studio checkout, prepare an
+existing typed `nirs4all.studio-scientific-job.v2` request JSON, and run
+`python3 scripts/qualify-multimodal-candidate.py --runtime-copy <copy> --nirs-wheel <wheel> --io-wheel <wheel> --request <json>`.
+The script verifies each wheel's RECORD, extracts both into a temporary overlay
+under the copied interpreter, checks their import origins, then runs, exports and
+replays the cohort without fitting. It leaves the signed Studio runtime and
+release pins untouched. Its result is **not** Rust-sidecar or Electron
+qualification; published wheel identities and the full installed-app path
+must be attested separately before release.
+
 ## CI/CD Pipeline
 
 The release workflow is `.github/workflows/release-unified.yml`.
