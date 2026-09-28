@@ -1,5 +1,6 @@
 export type DatasetGroupingFieldsInput = {
   config?: {
+    dataset_document?: unknown;
     aggregation?: {
       enabled?: boolean;
       column?: string;
@@ -11,6 +12,26 @@ export type DatasetGroupingFieldsInput = {
   metadataColumns?: string[];
   repetitionColumn?: string | null;
 };
+
+/** A typed cohort may supply split groups directly, without a metadata column. */
+export function hasEmbeddedCohortGroups(dataset: DatasetGroupingFieldsInput | null | undefined): boolean {
+  const document = dataset?.config?.dataset_document;
+  if (!document || typeof document !== "object" || Array.isArray(document)) return false;
+  const typed = document as Record<string, unknown>;
+  if (typed.schema !== "nirs4all.studio-multimodal-dataset.v1") return false;
+  const cohort = typed.cohort;
+  if (!cohort || typeof cohort !== "object" || Array.isArray(cohort)) return false;
+  const value = cohort as Record<string, unknown>;
+  if (value.schema !== "nirs4all.multimodal-dataset" || value.schema_version !== 1
+      || !Array.isArray(value.sample_ids)) return false;
+  const groups = value.groups;
+  if (!groups || typeof groups !== "object" || Array.isArray(groups)) return false;
+  const array = groups as Record<string, unknown>;
+  const count = value.sample_ids.length;
+  return count > 0 && Array.isArray(array.shape) && array.shape.length === 1 && array.shape[0] === count
+    && Array.isArray(array.values) && array.values.length === count
+    && array.values.every((group) => typeof group === "string" || typeof group === "number");
+}
 
 export function getDatasetRepetitionColumn(
   dataset: Pick<DatasetGroupingFieldsInput, "config" | "repetitionColumn"> | null | undefined,

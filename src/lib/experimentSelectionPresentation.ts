@@ -102,7 +102,9 @@ export function buildExperimentDatasetSelectionDetails(
     splitLabel: dataset.testSamples != null && dataset.testSamples > 0
       ? `(${dataset.trainSamples?.toLocaleString() ?? "—"} train · ${dataset.testSamples.toLocaleString()} test)`
       : null,
-    featureLabel: `${dataset.features} features`,
+    featureLabel: dataset.multimodalSummary
+      ? formatCount(dataset.multimodalSummary.sources.length, "modality", "modalities")
+      : `${dataset.features} features`,
     sourceLabel: formatOptionalCount(dataset.sourceCount, "source"),
     sourceModeLabel: formatDatasetSourceModeLabel(dataset.isMultiSource),
     representationLabel: formatCount(dataset.representationCount, "representation"),

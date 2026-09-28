@@ -14,11 +14,13 @@ import {
   buildLegacyLocalExperimentLaunchSubmission,
   buildLegacyLocalExperimentPreflightRequest,
   buildNativeExperimentLaunchPayload,
+  buildNativeLocalExperimentLaunchSubmission,
   buildWasmLocalExperimentLaunchSubmission,
   CLUSTER_EXPERIMENT_EXECUTION_ADAPTER,
   DEFAULT_EXPERIMENT_EXECUTION_ADAPTERS,
   getRunPreflightArgs,
   LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
+  NATIVE_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
   NATIVE_EXPERIMENT_LAUNCH_PAYLOAD_VERSION,
   resolveExperimentExecutionAdapter,
   submitExperimentLaunchSubmission,
@@ -57,7 +59,7 @@ describe("experimentExecutionAdapter", () => {
         },
       ],
     });
-    expect(LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.buildPreflightRequest(config)).toEqual(
+    expect(LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.buildPreflightRequest!(config)).toEqual(
       buildLegacyLocalExperimentPreflightRequest(config),
     );
     expect(LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.buildLaunchSubmission(config)).toEqual(
@@ -66,7 +68,7 @@ describe("experimentExecutionAdapter", () => {
   });
 
   it("normalizes missing additional inline pipelines to an empty list", () => {
-    expect(LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.buildPreflightRequest({
+    expect(LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.buildPreflightRequest!({
       name: "Experiment",
       dataset_ids: ["d1"],
       pipeline_ids: ["p1"],
@@ -75,6 +77,18 @@ describe("experimentExecutionAdapter", () => {
       inlinePipeline: undefined,
       inlinePipelines: [],
     });
+  });
+
+  it("submits a native local run through its configured transport", async () => {
+    const config: ExperimentConfig = { name: "Native", dataset_ids: ["d1"], pipeline_ids: ["p1"] };
+    const payload = buildNativeExperimentLaunchPayload(config);
+    const submission = buildNativeLocalExperimentLaunchSubmission(config, payload);
+    expect(NATIVE_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.buildLaunchSubmission(config, payload)).toEqual(submission);
+    const sent: unknown[] = [];
+    await submitExperimentLaunchSubmission(submission, async () => { throw new Error("legacy route used"); }, {
+      submitNativeLocalRun: async (value) => { sent.push(value); return { id: "native-run" } as never; },
+    });
+    expect(sent).toEqual([payload]);
   });
 
   it("prepares adapter preflight requests and run-preflight arguments", () => {
@@ -130,10 +144,10 @@ describe("experimentExecutionAdapter", () => {
       config,
       nativePayload: buildNativeExperimentLaunchPayload(config),
     });
-    expect(CLUSTER_EXPERIMENT_EXECUTION_ADAPTER.buildPreflightRequest(config)).toEqual(
+    expect(CLUSTER_EXPERIMENT_EXECUTION_ADAPTER.buildPreflightRequest!(config)).toEqual(
       buildLegacyLocalExperimentPreflightRequest(config),
     );
-    expect(WASM_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.buildPreflightRequest(config)).toEqual(
+    expect(WASM_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.buildPreflightRequest!(config)).toEqual(
       buildLegacyLocalExperimentPreflightRequest(config),
     );
     expect(CLUSTER_EXPERIMENT_EXECUTION_ADAPTER.buildLaunchSubmission(config)).toEqual(

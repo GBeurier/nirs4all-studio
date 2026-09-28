@@ -81,6 +81,11 @@ export function NewExperimentRuntimeGroupingDatasetCard({
           <code>{groupingState.repetitionColumn}</code>
         </div>
       )}
+      {groupingState.embeddedGroups && hasRequiredSplitters && (
+        <p className="text-xs text-muted-foreground">
+          This cohort provides split groups directly; no additional group_by is required.
+        </p>
+      )}
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         {RUNTIME_GROUPING_COPY.legacyGroupDeprecation}
       </p>

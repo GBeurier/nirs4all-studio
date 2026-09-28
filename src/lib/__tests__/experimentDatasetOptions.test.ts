@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Dataset } from "@/types/datasets";
 import { DATASET_SCHEMA_REF_VERSION } from "@/lib/datasetSchema";
 import { toExperimentDatasetOption } from "@/lib/experimentDatasetOptions";
+import { buildExperimentDatasetSelectionDetails } from "@/lib/experimentSelectionPresentation";
 
 function dataset(overrides: Partial<Dataset> = {}): Dataset {
   return {
@@ -73,5 +74,29 @@ describe("experimentDatasetOptions", () => {
         },
       },
     })).aggregationLabel).toBe("Aggregation: mean by sample_id");
+  });
+
+  it("shows typed cohort targets and modalities in the run selector", () => {
+    const option = toExperimentDatasetOption(dataset({
+      num_samples: 2,
+      num_features: 0,
+      default_target: undefined,
+      config: {
+        delimiter: ",", decimal_separator: ".", has_header: true,
+        dataset_document: {
+          schema: "nirs4all.studio-multimodal-dataset.v1",
+          cohort: { schema: "nirs4all.multimodal-dataset", schema_version: 1,
+            sample_ids: ["a", "b"], source_alignment: "strict", task_type: "regression",
+            target_names: ["protein"], partitions: { values: ["train", "test"] },
+            sources: [{ name: "nir", representation_id: "signal_1d", sample_ids: ["a", "b"], array: { shape: [2, 3] } }],
+          },
+        },
+      },
+    }));
+    expect(option).toMatchObject({ samples: 2, target: "protein", targetCount: 1,
+      dataViewLabel: "Typed multimodal cohort", dataViewTaskType: "regression" });
+    expect(buildExperimentDatasetSelectionDetails(option)).toMatchObject({
+      featureLabel: "1 modality", targetLabel: "Target: protein",
+    });
   });
 });

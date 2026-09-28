@@ -4,6 +4,7 @@ import type { PipelineStep } from "@/api/pipelines";
 import {
   getDatasetMetadataColumns,
   getDatasetRepetitionColumn,
+  hasEmbeddedCohortGroups,
   type DatasetGroupingFieldsInput,
 } from "./datasetGroupingFields";
 
@@ -34,6 +35,7 @@ export interface SelectedPipelinesRuntimeGrouping {
 
 export interface DatasetRuntimeGroupingState {
   repetitionColumn: string | null;
+  embeddedGroups?: boolean;
   metadataColumns: string[];
   selectedGroupBy: string | null;
   requiresExplicitGroup: boolean;
@@ -169,6 +171,7 @@ export function evaluateDatasetRuntimeGrouping(
   selectedGroupBy: string | null | undefined,
 ): DatasetRuntimeGroupingState {
   const repetitionColumn = getDatasetRepetitionColumn(dataset);
+  const embeddedGroups = hasEmbeddedCohortGroups(dataset);
   const metadataColumns = getDatasetMetadataColumns(dataset);
   const cleanedGroupBy = typeof selectedGroupBy === "string" && selectedGroupBy.trim()
     ? selectedGroupBy.trim()
@@ -177,6 +180,7 @@ export function evaluateDatasetRuntimeGrouping(
   if (!selection.hasSplitters) {
     return {
       repetitionColumn,
+      embeddedGroups,
       metadataColumns,
       selectedGroupBy: cleanedGroupBy,
       requiresExplicitGroup: false,
@@ -190,6 +194,7 @@ export function evaluateDatasetRuntimeGrouping(
   if (cleanedGroupBy && !metadataColumns.includes(cleanedGroupBy)) {
     return {
       repetitionColumn,
+      embeddedGroups,
       metadataColumns,
       selectedGroupBy: cleanedGroupBy,
       requiresExplicitGroup: false,
@@ -200,12 +205,13 @@ export function evaluateDatasetRuntimeGrouping(
     };
   }
 
-  const requiresExplicitGroup = selection.hasRequiredSplitters && !repetitionColumn;
+  const requiresExplicitGroup = selection.hasRequiredSplitters && !repetitionColumn && !embeddedGroups;
   const missingRequiredGroup = requiresExplicitGroup && !cleanedGroupBy;
   const noMetadataColumns = metadataColumns.length === 0;
 
   return {
     repetitionColumn,
+    embeddedGroups,
     metadataColumns,
     selectedGroupBy: cleanedGroupBy,
     requiresExplicitGroup,

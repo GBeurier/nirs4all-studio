@@ -7,11 +7,12 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getRunExecutionBackends } from "@/api/runs";
+import { createRunGroup, getRunExecutionBackends } from "@/api/runs";
 import {
   CLUSTER_EXPERIMENT_EXECUTION_ADAPTER,
   DEFAULT_EXPERIMENT_EXECUTION_ADAPTERS,
   LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
+  resolveExperimentExecutionAdapter,
   WASM_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
 } from "@/lib/experimentExecutionAdapter";
 import { DEFAULT_NEW_EXPERIMENT_EXECUTION_ENVIRONMENT } from "@/lib/experimentExecutionEnvironment";
@@ -22,6 +23,7 @@ import {
 import type { RunExecutionBackendCapability } from "@/types/runs";
 
 vi.mock("@/api/runs", () => ({
+  createRunGroup: vi.fn(),
   getRunExecutionBackends: vi.fn(),
 }));
 
@@ -109,6 +111,8 @@ const backendCapabilities: RunExecutionBackendCapability[] = [
 
 afterEach(() => {
   delete window.nirs4allStudioExecutionEnvironment;
+  Reflect.deleteProperty(window, "electronApi");
+  vi.mocked(createRunGroup).mockReset();
   vi.mocked(getRunExecutionBackends).mockReset();
 });
 
@@ -129,6 +133,34 @@ describe("useNewExperimentExecutionEnvironment", () => {
       expect.objectContaining({ backend: "wasm-local", status: "not_configured" }),
     ]);
 
+    await mounted.unmount();
+  });
+
+  it("selects the native local adapter when Electron owns the renderer", async () => {
+    vi.mocked(getRunExecutionBackends).mockRejectedValue(new Error("offline"));
+    Object.defineProperty(window, "electronApi", { configurable: true, value: {
+      isElectron: true,
+      preselectRendererTransport: vi.fn(async () => ({ target: "native-sidecar" })),
+    } });
+    const mounted = await renderHook(useNewExperimentExecutionEnvironment);
+    await flushAsyncUpdates();
+    expect(mounted.result.current!.availableExecutionAdapters[0].id).toBe("native-local");
+    expect(resolveExperimentExecutionAdapter("local-python", {
+      availableAdapters: mounted.result.current!.availableExecutionAdapters,
+    }).adapter.id).toBe("native-local");
+    expect(mounted.result.current!.launchSubmitters.submitNativeLocalRun).toBeDefined();
+    await mounted.unmount();
+  });
+
+  it("keeps the legacy local adapter when Electron rejects the native route", async () => {
+    vi.mocked(getRunExecutionBackends).mockRejectedValue(new Error("offline"));
+    Object.defineProperty(window, "electronApi", { configurable: true, value: {
+      isElectron: true,
+      preselectRendererTransport: vi.fn(async () => ({ target: "reject" })),
+    } });
+    const mounted = await renderHook(useNewExperimentExecutionEnvironment);
+    await flushAsyncUpdates();
+    expect(mounted.result.current!.availableExecutionAdapters[0].id).toBe("legacy-local");
     await mounted.unmount();
   });
 
