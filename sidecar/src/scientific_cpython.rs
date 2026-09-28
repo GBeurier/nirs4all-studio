@@ -10,7 +10,7 @@ use std::{
     collections::BTreeMap,
     fs::{self, File},
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -2469,33 +2469,52 @@ fn validate_general_response(
         }
     }
     if archive_result {
-        if !result["run_ids"].as_array().is_some_and(Vec::is_empty)
-            || !result["native_results_dirs"]
-                .as_array()
-                .is_some_and(Vec::is_empty)
-        {
-            return Err(invalid);
-        }
-        let workspace = authorized_workspace.ok_or(invalid)?;
-        let workspace = fs::canonicalize(workspace).map_err(|_| invalid)?;
-        if result["workspace_path"].as_str().map(Path::new) != Some(workspace.as_path()) {
-            return Err(invalid);
-        }
-        let archive = result["archive_path"]
-            .as_str()
-            .map(Path::new)
-            .ok_or(invalid)?;
-        if !archive.is_absolute() || archive.extension().is_none_or(|ext| ext != "n4a") {
-            return Err(invalid);
-        }
-        let canonical_archive = fs::canonicalize(archive).map_err(|_| invalid)?;
-        let metadata = fs::symlink_metadata(archive).map_err(|_| invalid)?;
-        if canonical_archive != archive
-            || !canonical_archive.starts_with(&workspace)
-            || !metadata.is_file()
-        {
-            return Err(invalid);
-        }
+        validate_general_archive_path(&root["result"], authorized_workspace)?;
+    }
+    Ok(())
+}
+
+fn validate_general_archive_path(
+    result: &Value,
+    authorized_workspace: Option<&Path>,
+) -> Result<(), ScientificCpythonUnavailable> {
+    let invalid = ScientificCpythonUnavailable::MalformedResponse;
+    if !result["run_ids"].as_array().is_some_and(Vec::is_empty)
+        || !result["native_results_dirs"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    {
+        return Err(invalid);
+    }
+    let workspace = authorized_workspace.ok_or(invalid)?;
+    let workspace = fs::canonicalize(workspace).map_err(|_| invalid)?;
+    let reported_workspace = result["workspace_path"]
+        .as_str()
+        .map(Path::new)
+        .ok_or(invalid)?;
+    if fs::canonicalize(reported_workspace).map_err(|_| invalid)? != workspace {
+        return Err(invalid);
+    }
+    let archive = result["archive_path"]
+        .as_str()
+        .map(Path::new)
+        .ok_or(invalid)?;
+    if !archive.is_absolute() || archive.extension().is_none_or(|ext| ext != "n4a") {
+        return Err(invalid);
+    }
+    let relative_archive = archive
+        .strip_prefix(reported_workspace)
+        .map_err(|_| invalid)?;
+    if relative_archive
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(invalid);
+    }
+    let canonical_archive = fs::canonicalize(archive).map_err(|_| invalid)?;
+    let metadata = fs::symlink_metadata(archive).map_err(|_| invalid)?;
+    if canonical_archive != workspace.join(relative_archive) || !metadata.is_file() {
+        return Err(invalid);
     }
     Ok(())
 }
