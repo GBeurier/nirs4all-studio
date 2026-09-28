@@ -7,6 +7,7 @@ import {
   Filter,
   FlaskConical,
   FolderOpen,
+  FileJson,
   Grid3x3,
   HardDrive,
   Layers,
@@ -58,6 +59,8 @@ interface DatasetsHeaderProps {
   onOpenGroups: () => void;
   onOpenSynthetic: () => void;
   onOpenWizard: () => void;
+  onOpenMultimodalImport: () => void;
+  hasWorkspace: boolean;
 }
 
 export function DatasetsHeader({
@@ -65,6 +68,8 @@ export function DatasetsHeader({
   onOpenGroups,
   onOpenSynthetic,
   onOpenWizard,
+  onOpenMultimodalImport,
+  hasWorkspace,
 }: DatasetsHeaderProps) {
   const { t } = useTranslation();
 
@@ -77,6 +82,10 @@ export function DatasetsHeader({
         </p>
       </div>
       <div className="flex gap-2">
+        <Button variant="outline" disabled={!hasWorkspace} onClick={onOpenMultimodalImport}>
+          <FileJson className="mr-2 h-4 w-4" />
+          {t("datasets.multimodalImport.button")}
+        </Button>
         <Button variant="outline" onClick={onOpenGroups}>
           <Tags className="mr-2 h-4 w-4" />
           {t("datasets.groups")}

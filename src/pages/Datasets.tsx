@@ -45,6 +45,7 @@ import {
   resolveDatasetDrop,
 } from "@/lib/datasetDrop";
 import { isStudioMultimodalDatasetDocument } from "@/lib/multimodalDatasetSummary";
+import { ImportMultimodalDialog } from "@/components/datasets/ImportMultimodalDialog";
 import type { Dataset, DatasetGroup } from "@/types/datasets";
 import {
   DatasetsHeader,
@@ -159,6 +160,7 @@ export default function Datasets() {
 
   // Modal state
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [multimodalImportOpen, setMultimodalImportOpen] = useState(false);
   const [syntheticDialogOpen, setSyntheticDialogOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
@@ -254,6 +256,8 @@ export default function Datasets() {
           onOpenGroups={() => setGroupsModalOpen(true)}
           onOpenSynthetic={() => setSyntheticDialogOpen(true)}
           onOpenWizard={() => setWizardOpen(true)}
+          onOpenMultimodalImport={() => setMultimodalImportOpen(true)}
+          hasWorkspace={Boolean(workspacePath)}
         />
       </motion.div>
 
@@ -435,6 +439,11 @@ export default function Datasets() {
         isDragging={isDragging}
         dropType={dropType}
         itemCount={itemCount}
+      />
+      <ImportMultimodalDialog
+        open={multimodalImportOpen}
+        onOpenChange={setMultimodalImportOpen}
+        onImport={datasetActions.addMultimodalDataset}
       />
     </motion.div>
   );

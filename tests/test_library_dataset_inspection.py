@@ -38,3 +38,23 @@ def test_reader_failure_propagates_without_retry(monkeypatch):
     monkeypatch.setattr(library, "preview_dataset", fail)
     with pytest.raises(ValueError, match="native shape budget"):
         inspect_dataset_document("dataset.preview", {"config": {"train_x": "/authorized/X.csv"}})
+
+
+def test_multimodal_inspection_refuses_extra_fields():
+    descriptor = {"schema": "nirs4all.studio-multimodal-dataset.v1", "cohort": {}}
+    with pytest.raises(ValueError, match="Unexpected"):
+        inspect_dataset_document("dataset.inspect_multimodal", {"dataset_document": descriptor, "path": "/etc"})
+
+
+def test_multimodal_inspection_restores_real_typed_cohort():
+    import numpy as np
+    from nirs4all_io import MultimodalDataset, TensorSource
+
+    cohort = MultimodalDataset({"nir": TensorSource(np.array([[1.0], [2.0]]), ["a", "b"], representation_id="signal_1d")},
+                               sample_ids=["a", "b"], partitions=["train", "test"])
+    result = inspect_dataset_document("dataset.inspect_multimodal", {"dataset_document": {
+        "schema": "nirs4all.studio-multimodal-dataset.v1", "cohort": cohort.to_dict(),
+    }})
+    assert result["summary"]["num_samples"] == 2
+    assert result["summary"]["train_samples"] == 1
+    assert result["summary"]["test_samples"] == 1

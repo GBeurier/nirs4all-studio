@@ -62,6 +62,17 @@ export async function linkDataset(
   return api.post("/datasets/link", { path, config });
 }
 
+/** Import a self-contained typed cohort for multimodal training and replay. */
+export async function importMultimodalDataset(
+  name: string,
+  datasetDocument: Record<string, unknown>,
+): Promise<{ success: boolean; dataset: DatasetInfo }> {
+  return api.post("/datasets/import-multimodal", {
+    name,
+    dataset_document: datasetDocument,
+  });
+}
+
 export async function unlinkDataset(
   datasetId: string
 ): Promise<{ success: boolean }> {
