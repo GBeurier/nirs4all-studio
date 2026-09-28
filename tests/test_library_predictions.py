@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import zipfile
 from types import SimpleNamespace
 
 import numpy as np
@@ -12,6 +13,20 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from api.library_predictions import available_models, run_prediction
+
+
+def test_catalogue_marks_multimodal_archive_from_manifest_without_loading_model(tmp_path):
+    path = tmp_path / "exports" / "captured.n4a"
+    path.parent.mkdir()
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("manifest.json", json.dumps({
+            "source_type": "dagml_native", "multimodal_host": {"schema": "nirs4all.multimodal-host.v1"},
+        }))
+    catalogue = available_models({"workspace_path": str(tmp_path), "exports": [{
+        "id": "exports/captured.n4a", "path": str(path), "size": path.stat().st_size,
+        "fingerprint": "sha256:" + "a" * 64,
+    }]})
+    assert catalogue["models"][0]["input_kind"] == "multimodal"
 
 
 @pytest.fixture

@@ -98,3 +98,12 @@ it("keeps uploaded labels distinct from execution IDs in the accessible results 
   await waitFor(() => expect(container.querySelector("tbody")?.textContent).toContain("execution-stable-idsample A3"));
   expect(container.querySelector("thead")?.textContent).toContain("Execution sample IDUploaded sample labelprotein");
 });
+
+it("identifies a multimodal archive and hides file-only controls", async () => {
+  mocks.catalogue.mockResolvedValue({ models: [{ ...model, input_kind: "multimodal" }], total: 1 });
+  const { container } = await renderPanel();
+  await waitFor(() => expect(container.querySelectorAll("#general-model option")).toHaveLength(2));
+  expect(container.querySelector("#general-model option:last-child")?.textContent).toContain("multimodal");
+  await selectModel(container);
+  expect(container.textContent).not.toContain("Uploaded file header");
+});

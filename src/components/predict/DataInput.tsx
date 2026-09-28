@@ -36,6 +36,7 @@ import {
   buildDataInputModelReadModel,
   buildDataInputSourceTabs,
   buildDataSourceConfig,
+  compatiblePredictionDatasets,
   getDataInputCanSubmit,
   isAcceptedDataInputFile,
 } from "./DataInputData";
@@ -71,15 +72,19 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
   const { data: datasetsData } = useDatasetsQuery();
   const datasets = datasetsData?.datasets ?? [];
   const isModelSelected = model != null;
-  const sourceTabs = buildDataInputSourceTabs(isModelSelected);
+  const multimodalOnly = model?.input_kind === "multimodal";
+  const activeTab = multimodalOnly ? "dataset" : tab;
+  const sourceTabs = buildDataInputSourceTabs(isModelSelected, multimodalOnly);
+  const compatibleDatasets = compatiblePredictionDatasets(datasets, model);
+  const selectedDatasetId = compatibleDatasets.some((dataset) => dataset.id === datasetId) ? datasetId : "";
   const modelReadModel = buildDataInputModelReadModel(model);
-  const datasetReadModel = buildDataInputDatasetReadModel(datasets);
+  const datasetReadModel = buildDataInputDatasetReadModel(compatibleDatasets);
   const fileReadModel = buildDataInputFileReadModel(file);
   const canSubmit = getDataInputCanSubmit({
     isModelSelected,
     isLoading,
-    tab,
-    datasetId,
+    tab: activeTab,
+    datasetId: selectedDatasetId,
     file,
     pasteText,
   });
@@ -103,8 +108,8 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
     if (!model) return;
 
     const result = buildDataSourceConfig({
-      tab,
-      datasetId,
+      tab: activeTab,
+      datasetId: selectedDatasetId,
       partition,
       file,
       pasteText,
@@ -168,7 +173,7 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <Tabs value={tab} onValueChange={(value) => setTab(value as DataInputTab)}>
+        <Tabs value={activeTab} onValueChange={(value) => setTab(value as DataInputTab)}>
           <TabsList
             className="grid w-full"
             style={{ gridTemplateColumns: `repeat(${sourceTabs.length}, minmax(0, 1fr))` }}
@@ -190,7 +195,7 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {DATA_INPUT_FIELD_LABELS.dataset}
                 </p>
-                <Select value={datasetId} onValueChange={setDatasetId} disabled={!isModelSelected}>
+                <Select value={selectedDatasetId} onValueChange={setDatasetId} disabled={!isModelSelected}>
                   <SelectTrigger>
                     <SelectValue placeholder={t("predict.data.dataset.select")} />
                   </SelectTrigger>
@@ -203,7 +208,7 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {datasetReadModel.availabilityLabel}
+                  {multimodalOnly ? `${datasetReadModel.options.length} linked multimodal dataset${datasetReadModel.options.length === 1 ? "" : "s"} available.` : datasetReadModel.availabilityLabel}
                 </p>
               </div>
 
@@ -224,7 +229,7 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {DATA_INPUT_PARTITION_HINT}
+                  {multimodalOnly ? "Test includes the declared predict partition; All replays every sample." : DATA_INPUT_PARTITION_HINT}
                 </p>
               </div>
             </div>

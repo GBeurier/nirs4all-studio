@@ -22,6 +22,7 @@ export interface AvailableModel {
   archive_fingerprint?: string;
   artifact_fingerprint?: string;
   target_names?: string[];
+  input_kind?: "flat" | "multimodal";
 }
 
 export interface AvailableModelsResponse {

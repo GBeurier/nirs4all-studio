@@ -66,6 +66,7 @@ def available_models(document: dict[str, Any]) -> dict[str, Any]:
             "prediction_metric": None, "prediction_score": None, "execution_profile": "captured_general",
             "archive_fingerprint": record["fingerprint"], "artifact_scope": "full_training_refit", "cv_artifacts_available": False,
             "target_names": manifest.get("target_names", ["y"]),
+            "input_kind": "multimodal" if isinstance(manifest.get("multimodal_host"), dict) else "flat",
         })
     return sanitize_dict({"models": models, "total": len(models)})
 
