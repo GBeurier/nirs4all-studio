@@ -2,3 +2,4 @@
 /fuzz/artifacts/
 /fuzz/corpus/
 /fuzz/target/
+/fuzz/Cargo.lock
