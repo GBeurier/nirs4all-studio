@@ -73,7 +73,7 @@ export function GeneralPredictionPanel() {
                 setOutcome(null); setOutputIndex(0); prediction.reset();
               }}>
               <option value="">Choose a trained model</option>
-              {catalogue.data?.models.map((item) => <option key={modelKey(item)} value={modelKey(item)}>{item.name} · {item.dataset_name ?? item.source} · {item.id}</option>)}
+              {catalogue.data?.models.map((item) => <option key={modelKey(item)} value={modelKey(item)}>{item.name} · {item.dataset_name ?? item.source} · {item.id}{item.input_kind === "multimodal" ? " · multimodal" : ""}</option>)}
             </select>
             {(model?.target_names?.length ?? 0) > 1 && <label className="block text-sm">Displayed target
               <select aria-label="Displayed target" className="ml-3 rounded-md border bg-background p-2" value={outputIndex} disabled={prediction.isPending}
@@ -85,14 +85,14 @@ export function GeneralPredictionPanel() {
           </CardContent>
         </Card>
         {error && <p role="alert" className="text-sm text-destructive">{errorMessage(error)}</p>}
-        <label className="block text-sm">Uploaded file header
+        {model?.input_kind !== "multimodal" && <label className="block text-sm">Uploaded file header
           <select aria-label="Uploaded file header" className="ml-3 rounded-md border bg-background p-2" value={fileHeader}
             disabled={prediction.isPending} onChange={(event) => setFileHeader(event.target.value)}>
             <option value="yes">First row contains column names</option>
             <option value="no">No header — first row is a sample</option>
             <option value="auto">Auto-detect (numeric headers can be ambiguous)</option>
           </select>
-        </label>
+        </label>}
         <DataInput model={model} isLoading={prediction.isPending} onRunPrediction={(input) => {
           if (model && workspaceId) prediction.mutate({ selected: model, input, workspace: workspaceId, target: outputIndex });
         }} />

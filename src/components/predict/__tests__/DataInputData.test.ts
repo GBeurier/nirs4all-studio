@@ -6,12 +6,14 @@ import {
   buildDataInputModelReadModel,
   buildDataInputSourceTabs,
   buildDataSourceConfig,
+  compatiblePredictionDatasets,
   formatDataInputPartitionLabel,
   getDataInputCanSubmit,
   isAcceptedDataInputFile,
   parsePastedSpectra,
 } from "../DataInputData";
 import type { AvailableModel } from "@/types/predict";
+import type { Dataset } from "@/types/datasets";
 
 function model(overrides: Partial<AvailableModel> = {}): AvailableModel {
   return {
@@ -42,6 +44,25 @@ describe("DataInputData", () => {
       ["upload", false],
       ["paste", false],
     ]);
+    expect(buildDataInputSourceTabs(true, true).map((source) => source.id)).toEqual(["dataset"]);
+  });
+
+  it("offers only linked typed cohorts for a multimodal archive", () => {
+    const flat = { id: "flat", name: "Flat", path: "/flat", linked_at: "" } as Dataset;
+    const typed = { ...flat, id: "typed", config: { dataset_document: {
+      schema: "nirs4all.studio-multimodal-dataset.v1", cohort: {
+        schema: "nirs4all.multimodal-dataset", schema_version: 1,
+        sample_ids: ["s1"], sources: [{ name: "nir", sample_ids: ["s1"],
+          representation_id: "signal_1d", array: { shape: [1, 3] } }],
+        partitions: { values: ["predict"] },
+      },
+    } } } as Dataset;
+    const invalid = { ...typed, id: "invalid", config: { dataset_document: {
+      schema: "nirs4all.studio-multimodal-dataset.v1", cohort: {},
+    } } } as Dataset;
+    expect(compatiblePredictionDatasets([flat, typed, invalid], model())).toEqual([flat]);
+    expect(compatiblePredictionDatasets([flat, typed, invalid], model({ input_kind: "multimodal", source: "bundle" })))
+      .toEqual([typed]);
   });
 
   it("builds dataset, partition, and file labels", () => {

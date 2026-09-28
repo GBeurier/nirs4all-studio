@@ -1,6 +1,8 @@
 import { getPredictionMetricLabel } from "@/lib/predict-metrics";
 import { formatMetricValue } from "@/lib/scores";
+import { getMultimodalDatasetSummary, isStudioMultimodalDatasetDocument } from "@/lib/multimodalDatasetSummary";
 import type { AvailableModel } from "@/types/predict";
+import type { Dataset } from "@/types/datasets";
 
 export type DataSourceConfig =
   | { type: "dataset"; datasetId: string; partition: string }
@@ -114,11 +116,18 @@ const ACCEPTED_DATA_INPUT_EXTENSIONS = [".csv", ".xlsx", ".xls"] as const;
 const MODEL_SCORE_PILL_CLASS = "rounded-full bg-background px-2.5 py-1 font-medium text-foreground";
 const MODEL_METADATA_PILL_CLASS = "rounded-full bg-background px-2.5 py-1 text-muted-foreground";
 
-export function buildDataInputSourceTabs(isModelSelected: boolean): DataInputSourceTab[] {
-  return DATA_INPUT_SOURCE_DEFINITIONS.map((source) => ({
+export function buildDataInputSourceTabs(isModelSelected: boolean, multimodalOnly = false): DataInputSourceTab[] {
+  return DATA_INPUT_SOURCE_DEFINITIONS.filter((source) => !multimodalOnly || source.id === "dataset").map((source) => ({
     ...source,
     disabled: !isModelSelected,
   }));
+}
+
+export function compatiblePredictionDatasets(datasets: readonly Dataset[], model: AvailableModel | null): Dataset[] {
+  if (model?.input_kind === "multimodal") {
+    return datasets.filter((dataset) => getMultimodalDatasetSummary(dataset.config?.dataset_document) !== null);
+  }
+  return datasets.filter((dataset) => !isStudioMultimodalDatasetDocument(dataset.config?.dataset_document));
 }
 
 export function buildDataInputDatasetReadModel(
