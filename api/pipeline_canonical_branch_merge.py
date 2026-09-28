@@ -72,6 +72,8 @@ def _convert_branch_to_editor(
                 separation_config["filter"] = _clone_value(branch_data[key])
             elif key == "by_source":
                 separation_config["enabled"] = bool(branch_data.get("by_source", True))
+                if "missing_source_policy" in branch_data:
+                    separation_config["missing_source_policy"] = _clone_value(branch_data["missing_source_policy"])
             break
 
         separation_steps = branch_data.get("steps")
@@ -218,6 +220,8 @@ def _convert_editor_branch_to_canonical(
             branch_payload[separation_kind] = _clone_value(separation_config.get("filter"))
         elif separation_kind == "by_source":
             branch_payload["by_source"] = True
+            if "missing_source_policy" in separation_config:
+                branch_payload["missing_source_policy"] = _clone_value(separation_config["missing_source_policy"])
 
         branches = step.get("branches") or []
         metadata_list = step.get("branchMetadata") or []

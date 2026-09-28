@@ -61,8 +61,8 @@
     },
     {
       "path": "api/pipeline_canonical_branch_merge.py",
-      "size": 11655,
-      "sha256": "087340a81daa8d5550c55bcec4178eb2e922c27b7a2c0868949643d900de18cf"
+      "size": 12006,
+      "sha256": "efbd774a194547ecb3bc5fbb478283541cf226d48f1f1cffe4b8c953da9a0cc3"
     },
     {
       "path": "api/pipeline_canonical_finetune.py",
@@ -76,8 +76,8 @@
     },
     {
       "path": "api/pipeline_canonical.py",
-      "size": 67147,
-      "sha256": "b71074de3b145b36d568251e9015bd60a61c05e6a0efbf1aab09162dd9c6ab3d"
+      "size": 67902,
+      "sha256": "d9f14a9f4ec42957d3fe38b9d19af269549feaed94adc4a16c808eb86f89eef5"
     },
     {
       "path": "api/shared/__init__.py",
