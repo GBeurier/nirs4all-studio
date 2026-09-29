@@ -14,12 +14,12 @@ const ui = require('./smoke-first-launch-ui.cjs');
 const { sha256File, parseChecksumSidecar } = require('./finalize-release-assets.cjs');
 
 // Product budgets, deliberately separate from GitHub's infrastructure timeout.
-const BUDGETS = Object.freeze({ install: 300000, baselineSetup: 300000, baselineLaunch: 180000, launch: 120000, preview: 5000, link: 5000, navigation: 3000 });
+const BUDGETS = Object.freeze({ install: 300000, baselineSetup: 300000, baselineLaunch: 180000, launch: 120000, multimodal: 360000, preview: 5000, link: 5000, navigation: 3000 });
 
 function parseArgs(argv) {
   const options = {};
   for (let i = 0; i < argv.length; i += 2) {
-    assert(['--installer', '--platform', '--previous-version', '--output'].includes(argv[i]), `Unknown option ${argv[i]}`);
+    assert(['--installer', '--platform', '--previous-version', '--output', '--multimodal-provider-script'].includes(argv[i]), `Unknown option ${argv[i]}`);
     assert(argv[i + 1], `Missing value for ${argv[i]}`);
     options[argv[i].slice(2)] = argv[i + 1];
   }
@@ -29,6 +29,10 @@ function parseArgs(argv) {
   assert(['linux', 'win32', 'darwin'].includes(options.platform));
   options.installer = path.resolve(options.installer);
   options.output = path.resolve(options.output);
+  if (options['multimodal-provider-script']) {
+    options['multimodal-provider-script'] = path.resolve(options['multimodal-provider-script']);
+    assert(fs.statSync(options['multimodal-provider-script']).isFile(), 'Multimodal provider script is not a file');
+  }
   return options;
 }
 
@@ -75,20 +79,20 @@ async function install(file, platform, root) {
   }
 }
 
-async function streamedCommand(program, args, logRoot) {
+async function streamedCommand(program, args, logRoot, env = process.env, timeoutMs = BUDGETS.install) {
   fs.mkdirSync(logRoot, { recursive: true });
   const prefix = path.join(logRoot, `install-${path.basename(program)}-${require('node:crypto').randomBytes(4).toString('hex')}`);
   const output = fs.openSync(`${prefix}.stdout.log`, 'w');
   const errors = fs.openSync(`${prefix}.stderr.log`, 'w');
   try {
     await new Promise((resolve, reject) => {
-      const child = spawn(program, args, { stdio: ['ignore', output, errors], timeout: BUDGETS.install });
+      const child = spawn(program, args, { stdio: ['ignore', output, errors], timeout: timeoutMs, env });
       child.once('error', reject);
       child.once('exit', (code, signal) => code === 0 ? resolve() : reject(new Error(
         `${program} exited ${code ?? signal}; see ${prefix}.*.log: ${fs.readFileSync(`${prefix}.stderr.log`, 'utf8').slice(-4096)}`)));
     });
   } finally { fs.closeSync(output); fs.closeSync(errors); }
-  return { stdout: /^dpkg/.test(path.basename(program)) ? fs.readFileSync(`${prefix}.stdout.log`, 'utf8') : '' };
+  return { stdout: fs.readFileSync(`${prefix}.stdout.log`, 'utf8') };
 }
 async function downloadBaseline(plan, root) {
   const token = process.env.BASELINE_GITHUB_TOKEN;
@@ -316,6 +320,21 @@ async function main(argv = process.argv.slice(2)) {
         }, journeys: context => journeys(context, proof, candidateData) });
     } else {
       await ui.main({ config, timings: proof.timings, journeys: context => journeys(context, proof, data) });
+    }
+    if (options['multimodal-provider-script']) {
+      const layout = archive.resolveLaunchLayout(installed, options.platform, 'nirs4all Studio');
+      assert(fs.existsSync(layout.bundledPythonPath), 'Installed candidate has no bundled Python host');
+      const provider = await timed(proof, 'multimodal_installed_provider', BUDGETS.multimodal, () =>
+        streamedCommand(layout.bundledPythonPath, ['-I', '-B', options['multimodal-provider-script']], root, {
+          ...process.env,
+          N4A_SMOKE_ROOT: path.join(root, 'installed-provider-smoke'),
+          N4A_FULL_HPO_MATRIX: '1',
+        }, BUDGETS.multimodal));
+      assert.match(provider.stdout, /INSTALLED_GENERATED_HPO_MATRIX_OK 45\b/,
+        'Installed candidate did not complete the multimodal provider HPO matrix');
+      await timed(proof, 'multimodal_installed_ui', BUDGETS.multimodal, () =>
+        require('./smoke-multimodal-ui.cjs').main(config));
+      proof.multimodal = { provider_hpo_combinations: 45, installed_ui_replay_without_fit: true };
     }
     proof.success = true;
   } catch (error) {
