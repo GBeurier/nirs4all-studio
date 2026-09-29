@@ -363,7 +363,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          marker="$(python -c 'from pathlib import Path; paths = list(Path("release").rglob("PLUGIN_RUNTIME_READY.json")); assert len(paths) == 1, paths; print(paths[0])')"
+          marker="$(python -c 'from pathlib import Path; paths = list(Path("release").rglob("PLUGIN_RUNTIME_READY.json")); assert len(paths) == 1, paths; print(paths[0].as_posix())')"
           resources="$(dirname "$(dirname "$(dirname "$marker")")")"
           test -f "$resources/app.asar"
           node scripts/verify-packaged-plugin-identity.cjs "$resources"
