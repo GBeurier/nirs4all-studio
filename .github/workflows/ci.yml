@@ -339,6 +339,7 @@ jobs:
           npx electron-builder --config electron-builder.installer.yml --linux --dir
           test -x release/linux-unpacked/resources/backend/native/studio-sidecar
           node scripts/native-runtime-contract.cjs --backend-root release/linux-unpacked/resources/backend --artifact-boundary-root release/linux-unpacked --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          node scripts/verify-packaged-plugin-identity.cjs release/linux-unpacked/resources
           release/linux-unpacked/resources/backend/native/studio-sidecar --smoke-readiness
           echo "Electron build test passed"
 
