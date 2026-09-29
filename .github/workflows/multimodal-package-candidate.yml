@@ -209,3 +209,216 @@ jobs:
             ${{ runner.temp }}/candidate-deb.sha256
             ${{ runner.temp }}/multimodal-installer-upgrade-proof.json
           retention-days: 7
+
+  desktop-package:
+    name: Candidate installer — ${{ matrix.label }}
+    needs: linux-package
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            runner: windows-2022
+            platform: win32
+            arch: x64
+            target: x86_64-pc-windows-msvc
+            builder: win
+            extension: exe
+            baseline: windows-x64
+            site_packages: backend-dist/python-runtime/python/Lib/site-packages
+            packaged_site_packages: python-runtime/python/Lib/site-packages
+            python_host: backend-dist/python-runtime/python/python.exe
+          - label: macOS x64
+            runner: macos-15-intel
+            platform: darwin
+            arch: x64
+            target: x86_64-apple-darwin
+            builder: mac
+            extension: dmg
+            baseline: macos-x64
+            site_packages: backend-dist/python-runtime/python/lib/python3.11/site-packages
+            packaged_site_packages: python-runtime/python/lib/python3.11/site-packages
+            python_host: backend-dist/python-runtime/python/bin/python3
+          - label: macOS arm64
+            runner: macos-14
+            platform: darwin
+            arch: arm64
+            target: aarch64-apple-darwin
+            builder: mac
+            extension: dmg
+            baseline: macos-arm64
+            site_packages: backend-dist/python-runtime/python/lib/python3.11/site-packages
+            packaged_site_packages: python-runtime/python/lib/python3.11/site-packages
+            python_host: backend-dist/python-runtime/python/bin/python3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all
+          ref: b6efb5c40d9ad26d13e487c298435ee2fd2582e8
+          path: candidate-nirs
+      - uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-io
+          ref: e84eb3eda73629dddc1b7f8335f8481d142ea9ac
+          path: candidate-io
+      - uses: actions/checkout@v4
+        with:
+          repository: GBeurier/dag-ml
+          ref: 9d7273a718aff7c1e511dc8708b13e7bfe8f5613
+          path: candidate-dag
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          npm ci
+          python -m pip install setuptools==84.0.0 wheel==0.48.0 packaging==26.3 build==1.6.1 maturin==1.14.1
+      - name: Build exact native candidate wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir candidate-wheels
+          cd candidate-nirs
+          python -m build --wheel --no-isolation --outdir ../candidate-wheels
+          cd ../candidate-io
+          python -m maturin build --locked --release -m bindings/python/Cargo.toml --interpreter python --out ../candidate-wheels
+          cd ../candidate-dag
+          python scripts/prepare_python_candidate.py
+          python scripts/validate_release_metadata.py
+          python -m maturin build --locked --release -m crates/dag-ml-py/Cargo.toml --interpreter python --out ../candidate-wheels
+      - name: Prepare disposable candidate version and verify wheel identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s scripts -p 'test_candidate_wheel_manifest.py'
+          test "$(git -C candidate-nirs rev-parse HEAD)" = b6efb5c40d9ad26d13e487c298435ee2fd2582e8
+          mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
+          mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
+          mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
+          test "${#nirs_wheels[@]}" -eq 1
+          test "${#dag_wheels[@]}" -eq 1
+          test "${#io_wheels[@]}" -eq 1
+          nirs_manifest="$(python scripts/candidate_wheel_manifest.py "${nirs_wheels[0]}")"
+          node scripts/prepare-multimodal-package-candidate.cjs \
+            --nirs-wheel "${nirs_wheels[0]}" \
+            --nirs-source-commit b6efb5c40d9ad26d13e487c298435ee2fd2582e8 \
+            --nirs-installed-manifest-sha256 "$nirs_manifest" \
+            --dag-version 0.3.31.dev0 --io-version 0.2.1.dev0 \
+            --app-version 0.14.1-dev.0
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          for wheel in sorted(Path('candidate-wheels').glob('*.whl')):
+              print(hashlib.sha256(wheel.read_bytes()).hexdigest(), wheel)
+          PY
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: ${{ matrix.platform }}
+          arch: ${{ matrix.arch }}
+      - name: Bake and verify candidate runtime
+        shell: bash
+        env:
+          PIP_FIND_LINKS: ${{ github.workspace }}/candidate-wheels
+        run: |
+          set -euo pipefail
+          mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
+          mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
+          mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
+          node scripts/bake-python-plugin-runtime.cjs --plugin-wheel "${nirs_wheels[0]}" --dag-wheel "${dag_wheels[0]}" --io-wheel "${io_wheels[0]}"
+          python scripts/verify-installed-candidate-wheels.py "${{ matrix.site_packages }}" "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
+          node scripts/build-native-sidecar.cjs --target "${{ matrix.target }}"
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" --require-bundled-python-plugin --require-bundled-methods
+          N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-${{ matrix.baseline }}" N4A_FULL_HPO_MATRIX=1 \
+            "${{ matrix.python_host }}" -I -B \
+            "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
+      - name: Build nonpublishing installer
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          set -euo pipefail
+          npm run build:electron
+          npx electron-builder --config electron-builder.installer.yml --${{ matrix.builder }} --publish never
+      - name: Verify exact packaged wheel bytes and native identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t markers < <(find release -type f -name PLUGIN_RUNTIME_READY.json -print)
+          test "${#markers[@]}" -eq 1
+          resources="$(dirname "$(dirname "$(dirname "${markers[0]}")")")"
+          test -f "$resources/app.asar"
+          node scripts/verify-packaged-plugin-identity.cjs "$resources"
+          node scripts/native-runtime-contract.cjs \
+            --backend-root "$resources/backend" --artifact-boundary-root "$(dirname "$resources")" \
+            --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" \
+            --require-bundled-python-plugin --require-bundled-methods
+          mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
+          mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
+          mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
+          python scripts/verify-installed-candidate-wheels.py \
+            "$resources/backend/${{ matrix.packaged_site_packages }}" \
+            "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
+      - name: Resolve public installer for populated upgrade
+        id: baseline
+        uses: actions/github-script@v7
+        env:
+          BASELINE_PLATFORM: ${{ matrix.baseline }}
+        with:
+          script: |
+            const { installerBaselines } = require('./scripts/installer-baselines.cjs');
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner, repo: context.repo.repo, per_page: 100,
+            });
+            const baseline = installerBaselines(releases, '0.14.1-dev.0')[process.env.BASELINE_PLATFORM];
+            if (!baseline) throw new Error(`No public ${process.env.BASELINE_PLATFORM} installer to test the upgrade`);
+            core.setOutput('plan', JSON.stringify(baseline));
+            core.setOutput('version', baseline.version);
+      - name: Install exact candidate and qualify populated upgrade and user journeys
+        shell: bash
+        timeout-minutes: 45
+        env:
+          INSTALLER_BASELINE: ${{ steps.baseline.outputs.plan }}
+          BASELINE_VERSION: ${{ steps.baseline.outputs.version }}
+          BASELINE_GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mapfile -t installers < <(find release -maxdepth 1 -name '*.${{ matrix.extension }}' -print)
+          test "${#installers[@]}" -eq 1
+          python - "${installers[0]}" <<'PY'
+          import hashlib
+          from pathlib import Path
+          import sys
+          installer = Path(sys.argv[1])
+          digest = hashlib.sha256(installer.read_bytes()).hexdigest()
+          Path(f'{installer}.sha256').write_text(f'{digest}  {installer.name}\n', encoding='ascii')
+          PY
+          node scripts/qualify-installer.cjs \
+            --installer "${installers[0]}" --platform "${{ matrix.platform }}" \
+            --previous-version "$BASELINE_VERSION" \
+            --output "$RUNNER_TEMP/multimodal-installer-upgrade-proof.json"
+      - name: Retain nonpublishing candidate and product proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multimodal-${{ matrix.baseline }}-candidate
+          path: |
+            release/*.${{ matrix.extension }}
+            release/*.sha256
+            ${{ runner.temp }}/multimodal-installer-upgrade-proof.json
+          if-no-files-found: warn
+          retention-days: 7
