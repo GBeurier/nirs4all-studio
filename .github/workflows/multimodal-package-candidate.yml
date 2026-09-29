@@ -11,6 +11,8 @@ on:
       - scripts/prepare-multimodal-package-candidate.cjs
       - scripts/verify-packaged-plugin-identity.cjs
       - scripts/verify-installed-candidate-wheels.py
+      - scripts/candidate_wheel_manifest.py
+      - scripts/test_candidate_wheel_manifest.py
 
 permissions:
   contents: read
@@ -73,6 +75,7 @@ jobs:
       - name: Prepare disposable Studio version and exact plugin pins
         shell: bash
         run: |
+          python -m unittest discover -s scripts -p 'test_candidate_wheel_manifest.py'
           test "$(git -C candidate-nirs rev-parse HEAD)" = b6efb5c40d9ad26d13e487c298435ee2fd2582e8
           mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
           mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
@@ -80,10 +83,11 @@ jobs:
           test "${#nirs_wheels[@]}" -eq 1
           test "${#dag_wheels[@]}" -eq 1
           test "${#io_wheels[@]}" -eq 1
+          nirs_manifest="$(python scripts/candidate_wheel_manifest.py "${nirs_wheels[0]}")"
           node scripts/prepare-multimodal-package-candidate.cjs \
             --nirs-wheel "${nirs_wheels[0]}" \
             --nirs-source-commit b6efb5c40d9ad26d13e487c298435ee2fd2582e8 \
-            --nirs-installed-manifest-sha256 7c9bb7f15297f7be4190000b46bced4ae16de9d3ccfc1406c6b434d519bbe9e0 \
+            --nirs-installed-manifest-sha256 "$nirs_manifest" \
             --dag-version 0.3.31.dev0 --io-version 0.2.1.dev0 \
             --app-version 0.14.1-dev.0 | tee "$RUNNER_TEMP/candidate-pins.json"
           sha256sum "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}" | tee "$RUNNER_TEMP/candidate-wheels.sha256"
