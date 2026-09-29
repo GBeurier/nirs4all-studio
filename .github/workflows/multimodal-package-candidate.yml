@@ -125,6 +125,9 @@ jobs:
           test -f "$candidate_root/resources/app.asar"
           node scripts/verify-packaged-plugin-identity.cjs "$candidate_root/resources"
           node scripts/native-runtime-contract.cjs --backend-root "$candidate_root/resources/backend" --artifact-boundary-root "$candidate_root" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          env -u PYTHONPATH N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-extracted" N4A_FULL_HPO_MATRIX=1 \
+            "$candidate_root/resources/backend/python-runtime/python/bin/python3" -I \
+            "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
           sudo chown root:root "$candidate_root/chrome-sandbox"
           sudo chmod 4755 "$candidate_root/chrome-sandbox"
           xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$candidate_root" --platform linux
@@ -146,6 +149,9 @@ jobs:
           test -x "$installed_root/nirs4all-webapp"
           node scripts/verify-packaged-plugin-identity.cjs "$installed_root/resources"
           node scripts/native-runtime-contract.cjs --backend-root "$installed_root/resources/backend" --artifact-boundary-root "$installed_root" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          env -u PYTHONPATH N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-installed" N4A_FULL_HPO_MATRIX=1 \
+            "$installed_root/resources/backend/python-runtime/python/bin/python3" -I \
+            "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
           xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
           xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
       - name: Retain nonpublishing candidate and identity proof
