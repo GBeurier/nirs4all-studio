@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: multimodal-package-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   linux-package:
     runs-on: ubuntu-latest
