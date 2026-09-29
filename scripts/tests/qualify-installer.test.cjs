@@ -18,6 +18,8 @@ test('populated upgrade reaches the real backend of the public Python recovery i
 test('rejects cross-platform installation and incomplete arguments before launching', () => {
   assert.throws(() => parseArgs(['--installer', 'app.exe', '--output', 'proof.json', '--platform', process.platform === 'linux' ? 'win32' : 'linux']), /actual target OS/);
   assert.throws(() => parseArgs(['--installer', 'app.exe']), /proof output/);
+  const parsed = parseArgs(['--installer', 'app.exe', '--output', 'proof.json', '--multimodal-provider-script', __filename]);
+  assert.equal(parsed['multimodal-provider-script'], __filename);
 });
 
 test('representative fixture has 1000 spectra, 256 variables and an accented spaced path', () => {

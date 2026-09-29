@@ -84,8 +84,8 @@ async function journey({ page, env }, workspace) {
   console.log('PACKAGED_MULTIMODAL_UI_OK import run archive replay 4 predictions no fit');
 }
 
-async function main() {
-  const config = archive.assertValidConfig(archive.parseArgs());
+async function main(installedConfig) {
+  const config = installedConfig || archive.assertValidConfig(archive.parseArgs());
   const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-multimodal-ui-'));
   let passed = false;
   try {

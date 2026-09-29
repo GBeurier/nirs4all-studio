@@ -11,6 +11,7 @@ on:
       - scripts/prepare-multimodal-package-candidate.cjs
       - scripts/verify-packaged-plugin-identity.cjs
       - scripts/verify-installed-candidate-wheels.py
+      - scripts/qualify-installer.cjs
       - scripts/candidate_wheel_manifest.py
       - scripts/test_candidate_wheel_manifest.py
       - scripts/smoke-multimodal-ui.cjs
@@ -34,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 3029741711a8df90ed6ffee6f36f8ff64aa87259
+          ref: 22902524078669c99eb5b9070a0498c058fc3cc3
           path: candidate-nirs
       - uses: actions/checkout@v4
         with:
@@ -78,7 +79,7 @@ jobs:
         shell: bash
         run: |
           python -m unittest discover -s scripts -p 'test_candidate_wheel_manifest.py'
-          test "$(git -C candidate-nirs rev-parse HEAD)" = 3029741711a8df90ed6ffee6f36f8ff64aa87259
+          test "$(git -C candidate-nirs rev-parse HEAD)" = 22902524078669c99eb5b9070a0498c058fc3cc3
           mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
           mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
           mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
@@ -88,7 +89,7 @@ jobs:
           nirs_manifest="$(python scripts/candidate_wheel_manifest.py "${nirs_wheels[0]}")"
           node scripts/prepare-multimodal-package-candidate.cjs \
             --nirs-wheel "${nirs_wheels[0]}" \
-            --nirs-source-commit 3029741711a8df90ed6ffee6f36f8ff64aa87259 \
+            --nirs-source-commit 22902524078669c99eb5b9070a0498c058fc3cc3 \
             --nirs-installed-manifest-sha256 "$nirs_manifest" \
             --dag-version 0.3.31.dev0 --io-version 0.2.1.dev0 \
             --app-version 0.14.1-dev.0 | tee "$RUNNER_TEMP/candidate-pins.json"
@@ -115,6 +116,14 @@ jobs:
           python scripts/verify-installed-candidate-wheels.py backend-dist/python-runtime/python/lib/python3.11/site-packages "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+      - name: Retain canonical pure-Python tools wheel for desktop candidates
+        uses: actions/upload-artifact@v4
+        with:
+          name: multimodal-tools-wheel
+          path: build/.python-cache/studio-python-tools-wheel/nirs4all_tools-*.whl
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
       - name: Build nonpublishing DEB
         run: |
           npm run build:electron
@@ -259,7 +268,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 3029741711a8df90ed6ffee6f36f8ff64aa87259
+          ref: 22902524078669c99eb5b9070a0498c058fc3cc3
           path: candidate-nirs
       - uses: actions/checkout@v4
         with:
@@ -286,6 +295,11 @@ jobs:
         run: |
           npm ci
           python -m pip install setuptools==84.0.0 wheel==0.48.0 packaging==26.3 build==1.6.1 maturin==1.14.1
+      - name: Retrieve canonical tools wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: multimodal-tools-wheel
+          path: candidate-tools-wheel
       - name: Build exact native candidate wheels
         shell: bash
         run: |
@@ -305,7 +319,7 @@ jobs:
           set -euo pipefail
           python -m unittest discover -s scripts -p 'test_candidate_wheel_manifest.py'
           python -m unittest discover -s scripts -p 'test_verify_installed_candidate_wheels.py'
-          test "$(git -C candidate-nirs rev-parse HEAD)" = 3029741711a8df90ed6ffee6f36f8ff64aa87259
+          test "$(git -C candidate-nirs rev-parse HEAD)" = 22902524078669c99eb5b9070a0498c058fc3cc3
           shopt -s nullglob
           nirs_wheels=(candidate-wheels/nirs4all-*.whl)
           dag_wheels=(candidate-wheels/dag_ml-*.whl)
@@ -316,7 +330,7 @@ jobs:
           nirs_manifest="$(python scripts/candidate_wheel_manifest.py "${nirs_wheels[0]}")"
           node scripts/prepare-multimodal-package-candidate.cjs \
             --nirs-wheel "${nirs_wheels[0]}" \
-            --nirs-source-commit 3029741711a8df90ed6ffee6f36f8ff64aa87259 \
+            --nirs-source-commit 22902524078669c99eb5b9070a0498c058fc3cc3 \
             --nirs-installed-manifest-sha256 "$nirs_manifest" \
             --dag-version 0.3.31.dev0 --io-version 0.2.1.dev0 \
             --app-version 0.14.1-dev.0
@@ -341,10 +355,12 @@ jobs:
           nirs_wheels=(candidate-wheels/nirs4all-*.whl)
           dag_wheels=(candidate-wheels/dag_ml-*.whl)
           io_wheels=(candidate-wheels/nirs4all_io-*.whl)
+          tools_wheels=(candidate-tools-wheel/nirs4all_tools-*.whl)
           test "${#nirs_wheels[@]}" -eq 1
           test "${#dag_wheels[@]}" -eq 1
           test "${#io_wheels[@]}" -eq 1
-          node scripts/bake-python-plugin-runtime.cjs --plugin-wheel "${nirs_wheels[0]}" --dag-wheel "${dag_wheels[0]}" --io-wheel "${io_wheels[0]}"
+          test "${#tools_wheels[@]}" -eq 1
+          node scripts/bake-python-plugin-runtime.cjs --plugin-wheel "${nirs_wheels[0]}" --dag-wheel "${dag_wheels[0]}" --io-wheel "${io_wheels[0]}" --tools-wheel "${tools_wheels[0]}"
           python scripts/verify-installed-candidate-wheels.py "${{ matrix.site_packages }}" "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
           node scripts/build-native-sidecar.cjs --target "${{ matrix.target }}"
           node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" --require-bundled-python-plugin --require-bundled-methods
@@ -435,6 +451,7 @@ jobs:
           node scripts/qualify-installer.cjs \
             --installer "${installers[0]}" --platform "${{ matrix.platform }}" \
             --previous-version "$BASELINE_VERSION" \
+            --multimodal-provider-script "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py" \
             --output "$RUNNER_TEMP/multimodal-installer-upgrade-proof.json"
       - name: Retain nonpublishing candidate and product proof
         if: always()
