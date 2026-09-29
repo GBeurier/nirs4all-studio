@@ -34,12 +34,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: b6efb5c40d9ad26d13e487c298435ee2fd2582e8
+          ref: 3029741711a8df90ed6ffee6f36f8ff64aa87259
           path: candidate-nirs
       - uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all-io
-          ref: e84eb3eda73629dddc1b7f8335f8481d142ea9ac
+          ref: 5a887788089568955e7011ad0036264dd3f6e979
           path: candidate-io
       - uses: actions/checkout@v4
         with:
@@ -78,7 +78,7 @@ jobs:
         shell: bash
         run: |
           python -m unittest discover -s scripts -p 'test_candidate_wheel_manifest.py'
-          test "$(git -C candidate-nirs rev-parse HEAD)" = b6efb5c40d9ad26d13e487c298435ee2fd2582e8
+          test "$(git -C candidate-nirs rev-parse HEAD)" = 3029741711a8df90ed6ffee6f36f8ff64aa87259
           mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
           mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
           mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
@@ -88,7 +88,7 @@ jobs:
           nirs_manifest="$(python scripts/candidate_wheel_manifest.py "${nirs_wheels[0]}")"
           node scripts/prepare-multimodal-package-candidate.cjs \
             --nirs-wheel "${nirs_wheels[0]}" \
-            --nirs-source-commit b6efb5c40d9ad26d13e487c298435ee2fd2582e8 \
+            --nirs-source-commit 3029741711a8df90ed6ffee6f36f8ff64aa87259 \
             --nirs-installed-manifest-sha256 "$nirs_manifest" \
             --dag-version 0.3.31.dev0 --io-version 0.2.1.dev0 \
             --app-version 0.14.1-dev.0 | tee "$RUNNER_TEMP/candidate-pins.json"
@@ -259,12 +259,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: b6efb5c40d9ad26d13e487c298435ee2fd2582e8
+          ref: 3029741711a8df90ed6ffee6f36f8ff64aa87259
           path: candidate-nirs
       - uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all-io
-          ref: e84eb3eda73629dddc1b7f8335f8481d142ea9ac
+          ref: 5a887788089568955e7011ad0036264dd3f6e979
           path: candidate-io
       - uses: actions/checkout@v4
         with:
@@ -305,7 +305,7 @@ jobs:
           set -euo pipefail
           python -m unittest discover -s scripts -p 'test_candidate_wheel_manifest.py'
           python -m unittest discover -s scripts -p 'test_verify_installed_candidate_wheels.py'
-          test "$(git -C candidate-nirs rev-parse HEAD)" = b6efb5c40d9ad26d13e487c298435ee2fd2582e8
+          test "$(git -C candidate-nirs rev-parse HEAD)" = 3029741711a8df90ed6ffee6f36f8ff64aa87259
           shopt -s nullglob
           nirs_wheels=(candidate-wheels/nirs4all-*.whl)
           dag_wheels=(candidate-wheels/dag_ml-*.whl)
@@ -316,7 +316,7 @@ jobs:
           nirs_manifest="$(python scripts/candidate_wheel_manifest.py "${nirs_wheels[0]}")"
           node scripts/prepare-multimodal-package-candidate.cjs \
             --nirs-wheel "${nirs_wheels[0]}" \
-            --nirs-source-commit b6efb5c40d9ad26d13e487c298435ee2fd2582e8 \
+            --nirs-source-commit 3029741711a8df90ed6ffee6f36f8ff64aa87259 \
             --nirs-installed-manifest-sha256 "$nirs_manifest" \
             --dag-version 0.3.31.dev0 --io-version 0.2.1.dev0 \
             --app-version 0.14.1-dev.0
