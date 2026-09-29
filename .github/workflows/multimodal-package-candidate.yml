@@ -130,6 +130,24 @@ jobs:
           xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$candidate_root" --platform linux
           xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$candidate_root" --platform linux
           sha256sum "${debs[0]}" | tee "$RUNNER_TEMP/candidate-deb.sha256"
+      - name: Install the actual candidate DEB and repeat first launch
+        shell: bash
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          mapfile -t debs < <(find release -maxdepth 1 -name '*.deb' -print)
+          test "${#debs[@]}" -eq 1
+          candidate_version="$(dpkg-deb -f "${debs[0]}" Version)"
+          dpkg --compare-versions "$candidate_version" gt 0.14.0
+          sudo apt-get install -y "$(realpath "${debs[0]}")"
+          package_name="$(dpkg-deb -f "${debs[0]}" Package)"
+          test "$(dpkg-query -W -f='${Version}' "$package_name")" = "$candidate_version"
+          installed_root='/opt/nirs4all Studio'
+          test -x "$installed_root/nirs4all-webapp"
+          node scripts/verify-packaged-plugin-identity.cjs "$installed_root/resources"
+          node scripts/native-runtime-contract.cjs --backend-root "$installed_root/resources/backend" --artifact-boundary-root "$installed_root" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
+          xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
       - name: Retain nonpublishing candidate and identity proof
         if: success()
         uses: actions/upload-artifact@v4
