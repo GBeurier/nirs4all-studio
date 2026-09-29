@@ -130,7 +130,7 @@ jobs:
           node scripts/verify-packaged-plugin-identity.cjs "$candidate_root/resources"
           node scripts/native-runtime-contract.cjs --backend-root "$candidate_root/resources/backend" --artifact-boundary-root "$candidate_root" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
           env -u PYTHONPATH N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-extracted" N4A_FULL_HPO_MATRIX=1 \
-            "$candidate_root/resources/backend/python-runtime/python/bin/python3" -I \
+            "$candidate_root/resources/backend/python-runtime/python/bin/python3" -I -B \
             "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
           sudo chown root:root "$candidate_root/chrome-sandbox"
           sudo chmod 4755 "$candidate_root/chrome-sandbox"
@@ -154,10 +154,40 @@ jobs:
           node scripts/verify-packaged-plugin-identity.cjs "$installed_root/resources"
           node scripts/native-runtime-contract.cjs --backend-root "$installed_root/resources/backend" --artifact-boundary-root "$installed_root" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
           env -u PYTHONPATH N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-installed" N4A_FULL_HPO_MATRIX=1 \
-            "$installed_root/resources/backend/python-runtime/python/bin/python3" -I \
+            "$installed_root/resources/backend/python-runtime/python/bin/python3" -I -B \
             "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
           xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
           xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
+      - name: Resolve the latest public Linux installer for upgrade qualification
+        id: baseline
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { installerBaselines } = require('./scripts/installer-baselines.cjs');
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner, repo: context.repo.repo, per_page: 100,
+            });
+            const baseline = installerBaselines(releases, '0.14.1-dev.0')['linux-x64'];
+            if (!baseline) throw new Error('No public Linux installer to test the upgrade');
+            core.setOutput('plan', JSON.stringify(baseline));
+            core.setOutput('version', baseline.version);
+      - name: Qualify populated upgrade from the public Linux installer
+        shell: bash
+        timeout-minutes: 45
+        env:
+          INSTALLER_BASELINE: ${{ steps.baseline.outputs.plan }}
+          BASELINE_VERSION: ${{ steps.baseline.outputs.version }}
+          BASELINE_GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mapfile -t debs < <(find release -maxdepth 1 -name '*.deb' -print)
+          test "${#debs[@]}" -eq 1
+          sha256sum "${debs[0]}" > "${debs[0]}.sha256"
+          xvfb-run -a node scripts/qualify-installer.cjs \
+            --installer "${debs[0]}" --platform linux \
+            --previous-version "$BASELINE_VERSION" \
+            --output "$RUNNER_TEMP/multimodal-installer-upgrade-proof.json"
       - name: Retain nonpublishing candidate and identity proof
         if: success()
         uses: actions/upload-artifact@v4
@@ -170,4 +200,5 @@ jobs:
             ${{ runner.temp }}/candidate-dag-commit.txt
             ${{ runner.temp }}/candidate-io-commit.txt
             ${{ runner.temp }}/candidate-deb.sha256
+            ${{ runner.temp }}/multimodal-installer-upgrade-proof.json
           retention-days: 7
