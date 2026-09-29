@@ -19,6 +19,8 @@
  *   --runtime-only               Build only the embedded python runtime payload + build_info.json
  *   --build-mode <id>            build_info.json mode value (default: installer)
  *   --plugin-wheel <path>        Exact pinned wheel for studio-python-plugin-runtime
+ *   --dag-wheel <path>           Exact local DAG-ML wheel for a plugin-runtime candidate
+ *   --io-wheel <path>            Exact local nirs4all-io wheel for a plugin-runtime candidate
  *   --tools-wheel <path>         Exact pinned nirs4all-tools wheel for the stdio converter
  *   --local-nirs4all             Install nirs4all from local source instead of PyPI
  *   --local-nirs4all-path <path> Local nirs4all source path (default: ../nirs4all, then ./nirs4all-lib)
@@ -104,6 +106,8 @@ let localNirs4allPath = "";
 let localDagMlPath = "";
 let localDagMlDataPath = "";
 let pluginWheel = "";
+let dagWheel = "";
+let ioWheel = "";
 let toolsWheel = "";
 
 for (let i = 0; i < args.length; i++) {
@@ -133,6 +137,10 @@ for (let i = 0; i < args.length; i++) {
     localDagMlDataPath = path.resolve(args[++i]);
   } else if (args[i] === "--plugin-wheel" && args[i + 1]) {
     pluginWheel = path.resolve(args[++i]);
+  } else if (args[i] === "--dag-wheel" && args[i + 1]) {
+    dagWheel = path.resolve(args[++i]);
+  } else if (args[i] === "--io-wheel" && args[i + 1]) {
+    ioWheel = path.resolve(args[++i]);
   } else if (args[i] === "--tools-wheel" && args[i + 1]) {
     toolsWheel = path.resolve(args[++i]);
   }
@@ -175,6 +183,16 @@ try {
   }
   if (pluginWheel && !fs.existsSync(pluginWheel)) {
     throw new Error(`Plugin wheel not found: ${pluginWheel}`);
+  }
+  if (dagWheel || ioWheel) {
+    if (!pluginOnly || !pluginWheel || !dagWheel || !ioWheel) {
+      throw new Error("Exact DAG-ML and IO wheels require the plugin-only runtime and its nirs4all wheel");
+    }
+    for (const [name, wheel] of [["dag_ml-", dagWheel], ["nirs4all_io-", ioWheel]]) {
+      if (!path.basename(wheel).startsWith(name) || !wheel.endsWith(".whl") || !fs.existsSync(wheel)) {
+        throw new Error(`Exact candidate wheel is missing or misnamed: ${wheel}`);
+      }
+    }
   }
   if (toolsWheel && !fs.existsSync(toolsWheel)) {
     throw new Error(`Tools wheel not found: ${toolsWheel}`);
@@ -931,6 +949,12 @@ async function main() {
         retries: 2,
         label: "install exact wheel build toolchain",
       });
+    }
+    if (dagWheel && ioWheel) {
+      await runCommandWithRetries(runtimePython, buildPluginRuntimeInstallArgs([dagWheel, ioWheel], {
+        constraintsFile,
+        extraPipArgs: ["--no-deps"],
+      }), {}, { label: "install exact DAG-ML and IO candidate wheels" });
     }
     if (pluginWheel) {
       selectedPluginWheel = pluginWheel;
