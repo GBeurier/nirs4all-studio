@@ -4,6 +4,13 @@ name: Multimodal package candidate (nonpublishing)
 # them into a disposable Studio checkout. Production pins on main stay stable.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/multimodal-package-candidate.yml
+      - scripts/prepare-multimodal-package-candidate.cjs
+      - scripts/verify-packaged-plugin-identity.cjs
+      - scripts/verify-installed-candidate-wheels.py
 
 permissions:
   contents: read
