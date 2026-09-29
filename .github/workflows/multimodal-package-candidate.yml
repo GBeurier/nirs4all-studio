@@ -1,0 +1,134 @@
+name: Multimodal package candidate (nonpublishing)
+
+# Build the three Python candidates from immutable source commits, then bake
+# them into a disposable Studio checkout. Production pins on main stay stable.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all
+          ref: b6efb5c40d9ad26d13e487c298435ee2fd2582e8
+          path: candidate-nirs
+      - uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-io
+          ref: e84eb3eda73629dddc1b7f8335f8481d142ea9ac
+          path: candidate-io
+      - uses: actions/checkout@v4
+        with:
+          repository: GBeurier/dag-ml
+          ref: 1f87d5911c291cb7553facc7db5be1b46a4eb562
+          path: candidate-dag
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Install product build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgirepository1.0-dev libcairo2-dev gir1.2-gtk-3.0 gir1.2-webkit2-4.1 upx-ucl xvfb
+          npm ci
+          python -m pip install setuptools==84.0.0 wheel==0.48.0 packaging==26.3 build==1.6.1 maturin==1.14.1
+      - name: Build exact candidate wheels
+        shell: bash
+        run: |
+          mkdir candidate-wheels
+          cd candidate-nirs
+          python -m build --wheel --no-isolation --outdir ../candidate-wheels
+          cd ../candidate-io
+          python -m maturin build --locked --release -m bindings/python/Cargo.toml --interpreter python --out ../candidate-wheels
+          cd ../candidate-dag
+          python scripts/prepare_python_candidate.py
+          python scripts/validate_release_metadata.py
+          python -m maturin build --locked --release -m crates/dag-ml-py/Cargo.toml --interpreter python --out ../candidate-wheels
+      - name: Prepare disposable Studio version and exact plugin pins
+        shell: bash
+        run: |
+          test "$(git -C candidate-nirs rev-parse HEAD)" = b6efb5c40d9ad26d13e487c298435ee2fd2582e8
+          mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
+          mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
+          mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
+          test "${#nirs_wheels[@]}" -eq 1
+          test "${#dag_wheels[@]}" -eq 1
+          test "${#io_wheels[@]}" -eq 1
+          node scripts/prepare-multimodal-package-candidate.cjs \
+            --nirs-wheel "${nirs_wheels[0]}" \
+            --nirs-source-commit b6efb5c40d9ad26d13e487c298435ee2fd2582e8 \
+            --nirs-installed-manifest-sha256 7c9bb7f15297f7be4190000b46bced4ae16de9d3ccfc1406c6b434d519bbe9e0 \
+            --dag-version 0.3.31.dev0 --io-version 0.2.1.dev0 \
+            --app-version 0.14.1-dev.0 | tee "$RUNNER_TEMP/candidate-pins.json"
+          sha256sum "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}" | tee "$RUNNER_TEMP/candidate-wheels.sha256"
+          git -C candidate-dag rev-parse HEAD | tee "$RUNNER_TEMP/candidate-dag-commit.txt"
+          git -C candidate-io rev-parse HEAD | tee "$RUNNER_TEMP/candidate-io-commit.txt"
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: linux
+          arch: x64
+      - name: Bake candidate Python and native Rust runtime
+        shell: bash
+        env:
+          PIP_FIND_LINKS: ${{ github.workspace }}/candidate-wheels
+        run: |
+          mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
+          mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
+          mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
+          test "${#nirs_wheels[@]}" -eq 1
+          test "${#dag_wheels[@]}" -eq 1
+          test "${#io_wheels[@]}" -eq 1
+          node scripts/bake-python-plugin-runtime.cjs --plugin-wheel "${nirs_wheels[0]}" --dag-wheel "${dag_wheels[0]}" --io-wheel "${io_wheels[0]}"
+          python scripts/verify-installed-candidate-wheels.py backend-dist/python-runtime/python/lib/python3.11/site-packages "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
+          node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+      - name: Build nonpublishing DEB
+        run: |
+          npm run build:electron
+          npx electron-builder --config electron-builder.installer.yml --linux deb --publish never
+      - name: Verify exact packaged plugin and first launch
+        shell: bash
+        timeout-minutes: 20
+        run: |
+          mapfile -t debs < <(find release -maxdepth 1 -name '*.deb' -print)
+          test "${#debs[@]}" -eq 1
+          mkdir -p "$RUNNER_TEMP/candidate-extracted"
+          dpkg-deb -x "${debs[0]}" "$RUNNER_TEMP/candidate-extracted"
+          candidate_root="$RUNNER_TEMP/candidate-extracted/opt/nirs4all Studio"
+          test -f "$candidate_root/resources/app.asar"
+          node scripts/verify-packaged-plugin-identity.cjs "$candidate_root/resources"
+          node scripts/native-runtime-contract.cjs --backend-root "$candidate_root/resources/backend" --artifact-boundary-root "$candidate_root" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          sudo chown root:root "$candidate_root/chrome-sandbox"
+          sudo chmod 4755 "$candidate_root/chrome-sandbox"
+          xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$candidate_root" --platform linux
+          xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$candidate_root" --platform linux
+          sha256sum "${debs[0]}" | tee "$RUNNER_TEMP/candidate-deb.sha256"
+      - name: Retain nonpublishing candidate and identity proof
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multimodal-linux-deb-candidate
+          path: |
+            release/*.deb
+            ${{ runner.temp }}/candidate-pins.json
+            ${{ runner.temp }}/candidate-wheels.sha256
+            ${{ runner.temp }}/candidate-dag-commit.txt
+            ${{ runner.temp }}/candidate-io-commit.txt
+            ${{ runner.temp }}/candidate-deb.sha256
+          retention-days: 7

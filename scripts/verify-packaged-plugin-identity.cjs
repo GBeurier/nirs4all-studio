@@ -34,10 +34,13 @@ function verifyPackagedPluginIdentity(resourcesPath, options = {}) {
   const markerPath = path.join(resources, "backend", "python-runtime", "PLUGIN_RUNTIME_READY.json");
   const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
   const bundle = asar.extractFile(path.join(resources, "app.asar"), "dist-electron/main.cjs").toString("utf8");
+  const sidecarPath = path.join(resources, "backend", "native", platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar");
+  const sidecar = fs.readFileSync(sidecarPath);
   for (const field of ["source_commit", "wheel_sha256", "distribution_version", "installed_manifest_sha256"]) {
     const value = marker[field];
     assert.equal(typeof value, "string", `Missing plugin marker ${field}`);
     assert.ok(bundle.includes(JSON.stringify(value)), `Packaged Electron does not contain plugin ${field} ${value}`);
+    assert.ok(sidecar.includes(Buffer.from(value, "utf8")), `Packaged Rust sidecar does not contain plugin ${field} ${value}`);
   }
 
   const runtime = loadRuntimeVerifier()({ resourcesPath: resources, platform, arch });

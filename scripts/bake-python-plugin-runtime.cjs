@@ -513,6 +513,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
     constraints: PLUGIN_CONSTRAINTS_PATH,
     pluginWheel: "",
+    dagWheel: "",
+    ioWheel: "",
     toolsWheel: "",
     verifyOnly: false,
     finalizeExisting: false,
@@ -523,6 +525,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--cache-dir") options.cacheDir = path.resolve(argv[++index]);
     else if (arg === "--constraints") options.constraints = path.resolve(argv[++index]);
     else if (arg === "--plugin-wheel") options.pluginWheel = path.resolve(argv[++index]);
+    else if (arg === "--dag-wheel") options.dagWheel = path.resolve(argv[++index]);
+    else if (arg === "--io-wheel") options.ioWheel = path.resolve(argv[++index]);
     else if (arg === "--tools-wheel") options.toolsWheel = path.resolve(argv[++index]);
     else if (arg === "--verify-only") options.verifyOnly = true;
     else if (arg === "--finalize-existing") options.finalizeExisting = true;
@@ -544,6 +548,8 @@ function runSetup(options) {
   ];
   if (options.constraints) args.push("--constraints", options.constraints);
   if (options.pluginWheel) args.push("--plugin-wheel", options.pluginWheel);
+  if (options.dagWheel) args.push("--dag-wheel", options.dagWheel);
+  if (options.ioWheel) args.push("--io-wheel", options.ioWheel);
   if (options.toolsWheel) args.push("--tools-wheel", options.toolsWheel);
   const result = spawnSync(process.execPath, args, { stdio: "inherit", windowsHide: true });
   if (result.status !== 0) throw new Error(`Plugin runtime setup failed with code ${result.status}`);
