@@ -2689,14 +2689,13 @@ mod tests {
         }
         let wrong_extension = workspace.join("multimodal.zip");
         fs::write(&wrong_extension, b"archive").unwrap();
-        invalid = response.clone();
+        invalid = response;
         invalid["result"]["archive_path"] = serde_json::json!(wrong_extension);
         assert!(validate_scientific_response(&invalid, Some(&workspace)).is_err());
         #[cfg(unix)]
         {
             let symlink = workspace.join("alias.n4a");
             std::os::unix::fs::symlink(&archive, &symlink).unwrap();
-            invalid = response;
             invalid["result"]["archive_path"] = serde_json::json!(symlink);
             assert!(validate_scientific_response(&invalid, Some(&workspace)).is_err());
         }
