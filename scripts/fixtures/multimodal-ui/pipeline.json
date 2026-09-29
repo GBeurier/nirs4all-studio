@@ -1,0 +1,181 @@
+{
+  "id": "pipeline_163605_1790601538070540273",
+  "created_at": "2026-09-28T13:18:58.070Z",
+  "description": "",
+  "category": "user",
+  "is_favorite": false,
+  "name": "Four modality fixed",
+  "steps": [
+    {
+      "classPath": "sklearn.model_selection.GroupKFold",
+      "componentStyle": "class_dict",
+      "id": "step-90a14824bf3f",
+      "name": "GroupKFold",
+      "params": {
+        "n_splits": 3
+      },
+      "type": "splitting"
+    },
+    {
+      "branchMetadata": [
+        {
+          "name": "series",
+          "value": "series"
+        },
+        {
+          "name": "metadata",
+          "value": "metadata"
+        },
+        {
+          "name": "image",
+          "value": "image"
+        },
+        {
+          "name": "nir",
+          "value": "nir"
+        }
+      ],
+      "branchMode": "separation",
+      "branches": [
+        [
+          {
+            "classPath": "nirs4all.operators.transforms.sequence.SequenceSummary",
+            "componentStyle": "string",
+            "id": "step-506d16d37bbd",
+            "name": "SequenceSummary",
+            "params": {},
+            "type": "preprocessing"
+          },
+          {
+            "classPath": "sklearn.linear_model.Ridge",
+            "componentStyle": "class_dict",
+            "id": "step-89a78fde7abc",
+            "name": "Ridge",
+            "params": {
+              "alpha": 0.3
+            },
+            "type": "model"
+          }
+        ],
+        [
+          {
+            "classPath": "sklearn.compose._column_transformer.ColumnTransformer",
+            "componentStyle": "class_dict",
+            "id": "step-8264418ded26",
+            "name": "ColumnTransformer",
+            "params": {
+              "transformers": [
+                [
+                  "numeric",
+                  "sklearn.preprocessing._data.StandardScaler",
+                  [
+                    0
+                  ]
+                ],
+                [
+                  "category",
+                  {
+                    "class": "sklearn.preprocessing._encoders.OneHotEncoder",
+                    "params": {
+                      "handle_unknown": "ignore",
+                      "sparse_output": false
+                    }
+                  },
+                  [
+                    1
+                  ]
+                ]
+              ]
+            },
+            "type": "preprocessing"
+          },
+          {
+            "classPath": "sklearn.linear_model.Ridge",
+            "componentStyle": "class_dict",
+            "id": "step-08e013425662",
+            "name": "Ridge",
+            "params": {
+              "alpha": 0.4
+            },
+            "type": "model"
+          }
+        ],
+        [
+          {
+            "classPath": "nirs4all.operators.models.multimodal.TensorPCA",
+            "componentStyle": "class_dict",
+            "id": "step-3ff68c64f5ca",
+            "name": "TensorPCA",
+            "params": {
+              "n_components": 1
+            },
+            "type": "model"
+          },
+          {
+            "classPath": "sklearn.linear_model.Ridge",
+            "componentStyle": "class_dict",
+            "id": "step-d3389b61daa6",
+            "name": "Ridge",
+            "params": {
+              "alpha": 0.2
+            },
+            "type": "model"
+          }
+        ],
+        [
+          {
+            "classPath": "sklearn.preprocessing.StandardScaler",
+            "componentStyle": "string",
+            "id": "step-1042321759f7",
+            "name": "StandardScaler",
+            "params": {},
+            "type": "preprocessing"
+          },
+          {
+            "classPath": "sklearn.linear_model.Ridge",
+            "componentStyle": "class_dict",
+            "id": "step-67d4202306b3",
+            "name": "Ridge",
+            "params": {
+              "alpha": 0.1
+            },
+            "type": "model"
+          }
+        ]
+      ],
+      "id": "step-0ec01f282fd3",
+      "name": "Branch by source",
+      "params": {},
+      "separationConfig": {
+        "enabled": true,
+        "kind": "by_source",
+        "missing_source_policy": "zero_with_indicator"
+      },
+      "subType": "branch",
+      "type": "flow"
+    },
+    {
+      "id": "step-b0efc70afa29",
+      "mergeConfig": {
+        "mode": "predictions"
+      },
+      "name": "Stacking",
+      "params": {
+        "merge_type": "predictions"
+      },
+      "subType": "merge",
+      "type": "flow"
+    },
+    {
+      "classPath": "sklearn.linear_model.Ridge",
+      "componentStyle": "class_dict",
+      "id": "step-f3a5254e487e",
+      "name": "Ridge",
+      "params": {
+        "alpha": 0.5
+      },
+      "type": "model"
+    }
+  ],
+  "updated_at": "2026-09-28T13:18:58.070Z"
+}

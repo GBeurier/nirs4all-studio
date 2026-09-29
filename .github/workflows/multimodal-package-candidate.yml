@@ -13,6 +13,8 @@ on:
       - scripts/verify-installed-candidate-wheels.py
       - scripts/candidate_wheel_manifest.py
       - scripts/test_candidate_wheel_manifest.py
+      - scripts/smoke-multimodal-ui.cjs
+      - scripts/fixtures/multimodal-ui/**
 
 permissions:
   contents: read
@@ -134,7 +136,7 @@ jobs:
             "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
           sudo chown root:root "$candidate_root/chrome-sandbox"
           sudo chmod 4755 "$candidate_root/chrome-sandbox"
-          xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$candidate_root" --platform linux
+          N4A_SMOKE_ELECTRON_NO_SANDBOX=1 xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$candidate_root" --platform linux
           xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$candidate_root" --platform linux
           sha256sum "${debs[0]}" | tee "$RUNNER_TEMP/candidate-deb.sha256"
       - name: Install the actual candidate DEB and repeat first launch
@@ -156,8 +158,13 @@ jobs:
           env -u PYTHONPATH N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-installed" N4A_FULL_HPO_MATRIX=1 \
             "$installed_root/resources/backend/python-runtime/python/bin/python3" -I -B \
             "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
-          xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
+          N4A_SMOKE_ELECTRON_NO_SANDBOX=1 xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
           xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
+      - name: Qualify four-source import, run, archive and replay in installed UI
+        timeout-minutes: 20
+        run: |
+          xvfb-run -a node scripts/smoke-multimodal-ui.cjs \
+            --extracted-root '/opt/nirs4all Studio' --platform linux --timeout-ms 360000
       - name: Resolve the latest public Linux installer for upgrade qualification
         id: baseline
         uses: actions/github-script@v7
