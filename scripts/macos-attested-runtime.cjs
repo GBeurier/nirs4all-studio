@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { spawnSync } = require("node:child_process");
+const { createHash } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -25,6 +26,11 @@ const MACH_O_MAGICS = new Set([
   "feedface",
   "feedfacf",
 ]);
+const SIGNING_ATTESTATION_FILE = "macos-signing-attestation.json";
+
+function sha256File(filePath) {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
 
 function isMachO(filePath) {
   const descriptor = fs.openSync(filePath, "r");
@@ -240,13 +246,24 @@ function prepareMacosAttestedRuntime({
     throw new Error("Packaged macOS runtime contains no attested Mach-O members");
   }
   if (signingIdentity) {
+    const signedMembers = [];
     for (const filePath of machOs) {
+      const before = sha256File(filePath);
       signMachOImpl(filePath, {
         identity: signingIdentity,
         entitlementsPath,
         keychainFile,
       });
+      signedMembers.push({
+        path: path.relative(backendRoot, filePath).split(path.sep).join("/"),
+        pre_sign_sha256: before,
+        post_sign_sha256: sha256File(filePath),
+      });
     }
+    fs.writeFileSync(
+      path.join(backendRoot, "native", SIGNING_ATTESTATION_FILE),
+      `${JSON.stringify({ schema_version: 1, members: signedMembers }, null, 2)}\n`,
+    );
   }
 
   writeRuntimeContractImpl({
@@ -293,6 +310,7 @@ Object.assign(module.exports, {
   collectAttestedMachOs,
   isMachO,
   MACOS_ATTESTED_SIGN_IGNORE,
+  SIGNING_ATTESTATION_FILE,
   normalizeMacArch,
   prepareMacosAttestedRuntime,
   resolveElectronBuilderSigningIdentity,

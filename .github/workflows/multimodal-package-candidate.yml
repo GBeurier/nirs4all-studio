@@ -304,10 +304,12 @@ jobs:
         run: |
           set -euo pipefail
           python -m unittest discover -s scripts -p 'test_candidate_wheel_manifest.py'
+          python -m unittest discover -s scripts -p 'test_verify_installed_candidate_wheels.py'
           test "$(git -C candidate-nirs rev-parse HEAD)" = b6efb5c40d9ad26d13e487c298435ee2fd2582e8
-          mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
-          mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
-          mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
+          shopt -s nullglob
+          nirs_wheels=(candidate-wheels/nirs4all-*.whl)
+          dag_wheels=(candidate-wheels/dag_ml-*.whl)
+          io_wheels=(candidate-wheels/nirs4all_io-*.whl)
           test "${#nirs_wheels[@]}" -eq 1
           test "${#dag_wheels[@]}" -eq 1
           test "${#io_wheels[@]}" -eq 1
@@ -335,9 +337,13 @@ jobs:
           PIP_FIND_LINKS: ${{ github.workspace }}/candidate-wheels
         run: |
           set -euo pipefail
-          mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
-          mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
-          mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
+          shopt -s nullglob
+          nirs_wheels=(candidate-wheels/nirs4all-*.whl)
+          dag_wheels=(candidate-wheels/dag_ml-*.whl)
+          io_wheels=(candidate-wheels/nirs4all_io-*.whl)
+          test "${#nirs_wheels[@]}" -eq 1
+          test "${#dag_wheels[@]}" -eq 1
+          test "${#io_wheels[@]}" -eq 1
           node scripts/bake-python-plugin-runtime.cjs --plugin-wheel "${nirs_wheels[0]}" --dag-wheel "${dag_wheels[0]}" --io-wheel "${io_wheels[0]}"
           python scripts/verify-installed-candidate-wheels.py "${{ matrix.site_packages }}" "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
           node scripts/build-native-sidecar.cjs --target "${{ matrix.target }}"
@@ -357,21 +363,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t markers < <(find release -type f -name PLUGIN_RUNTIME_READY.json -print)
-          test "${#markers[@]}" -eq 1
-          resources="$(dirname "$(dirname "$(dirname "${markers[0]}")")")"
+          marker="$(python -c 'from pathlib import Path; paths = list(Path("release").rglob("PLUGIN_RUNTIME_READY.json")); assert len(paths) == 1, paths; print(paths[0])')"
+          resources="$(dirname "$(dirname "$(dirname "$marker")")")"
           test -f "$resources/app.asar"
           node scripts/verify-packaged-plugin-identity.cjs "$resources"
           node scripts/native-runtime-contract.cjs \
             --backend-root "$resources/backend" --artifact-boundary-root "$(dirname "$resources")" \
             --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" \
             --require-bundled-python-plugin --require-bundled-methods
-          mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
-          mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
-          mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
-          python scripts/verify-installed-candidate-wheels.py \
-            "$resources/backend/${{ matrix.packaged_site_packages }}" \
-            "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
+          shopt -s nullglob
+          nirs_wheels=(candidate-wheels/nirs4all-*.whl)
+          dag_wheels=(candidate-wheels/dag_ml-*.whl)
+          io_wheels=(candidate-wheels/nirs4all_io-*.whl)
+          test "${#nirs_wheels[@]}" -eq 1
+          test "${#dag_wheels[@]}" -eq 1
+          test "${#io_wheels[@]}" -eq 1
+          if [ "${{ matrix.platform }}" = darwin ] && [ -f "$resources/backend/native/macos-signing-attestation.json" ]; then
+            python scripts/verify-installed-candidate-wheels.py \
+              --macos-signing-attestation "$resources/backend/native/macos-signing-attestation.json" \
+              "$resources/backend/${{ matrix.packaged_site_packages }}" \
+              "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
+          elif [ "${{ matrix.arch }}" = arm64 ]; then
+            echo 'macOS arm64 candidate is missing its native signing attestation' >&2
+            exit 1
+          else
+            python scripts/verify-installed-candidate-wheels.py \
+              "$resources/backend/${{ matrix.packaged_site_packages }}" \
+              "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
+          fi
+          host_python="${{ matrix.python_host }}"
+          packaged_python="$resources/backend/${host_python#backend-dist/}"
+          N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-packaged-${{ matrix.baseline }}" N4A_FULL_HPO_MATRIX=1 \
+            "$packaged_python" -I -B \
+            "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
       - name: Resolve public installer for populated upgrade
         id: baseline
         uses: actions/github-script@v7
@@ -397,7 +421,8 @@ jobs:
           RELEASE_SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          mapfile -t installers < <(find release -maxdepth 1 -name '*.${{ matrix.extension }}' -print)
+          shopt -s nullglob
+          installers=(release/*.${{ matrix.extension }})
           test "${#installers[@]}" -eq 1
           python - "${installers[0]}" <<'PY'
           import hashlib

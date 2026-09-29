@@ -10,6 +10,7 @@ const require = createRequire(import.meta.url);
 const macRuntime = require("../scripts/macos-attested-runtime.cjs") as {
   isMachO(filePath: string): boolean;
   MACOS_ATTESTED_SIGN_IGNORE: readonly string[];
+  SIGNING_ATTESTATION_FILE: string;
   signMachO(
     filePath: string,
     options: {
@@ -154,6 +155,18 @@ describe("macOS attested packaged runtime", () => {
         python: digest(pythonPath),
         extension: digest(extensionPath),
         methods: digest(methodsPath),
+      });
+      const signingAttestation = JSON.parse(fs.readFileSync(
+        path.join(backendRoot, "native", macRuntime.SIGNING_ATTESTATION_FILE),
+        "utf8",
+      ));
+      expect(signingAttestation.schema_version).toBe(1);
+      expect(signingAttestation.members).toContainEqual({
+        path: "python-runtime/python/lib/python3.11/site-packages/native.so",
+        pre_sign_sha256: createHash("sha256").update(Buffer.concat([
+          Buffer.from("feedfacf", "hex"), Buffer.from("extension-before-sign"),
+        ])).digest("hex"),
+        post_sign_sha256: digest(extensionPath),
       });
       expect(fs.readFileSync(textPath, "utf8")).toBe("print('not code signed')\n");
       expect(digest(sidecarPath)).toBe(sidecarBefore);
