@@ -161,7 +161,7 @@ def main() -> int:
         result = json.loads(qualified.stdout)
     else:
         checks = qualified.stdout.splitlines()
-        required = ("INSTALLED_CV_ARCHIVE_OK", "INSTALLED_HPO_ARCHIVE_OK", "INSTALLED_PROGRESS_RESUME_OK")
+        required = ("INSTALLED_XY_ASSEMBLY_OK", "INSTALLED_CV_ARCHIVE_OK", "INSTALLED_HPO_ARCHIVE_OK", "INSTALLED_PROGRESS_RESUME_OK")
         if any(not any(line.startswith(marker) for line in checks) for marker in required):
             raise RuntimeError(f"provider smoke omitted a required check: {checks}")
         result = {"provider_mode": args.provider_mode, "checks": checks}
