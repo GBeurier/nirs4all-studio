@@ -675,7 +675,11 @@ async function smokeArchiveStandalone(rawConfig) {
   console.log(`Sandbox:        ${sandboxRoot}`);
   console.log(`Sidecar port:   ${port}`);
 
-  const child = spawn(launchLayout.executablePath, [], {
+  // An extracted package on a hosted runner may lack a usable setuid zygote.
+  // Opt in only for that candidate smoke; normal launches still exercise it.
+  const launchArgs = config.platform === "linux" && process.env.N4A_SMOKE_ELECTRON_NO_SANDBOX === "1"
+    ? ["--no-sandbox"] : [];
+  const child = spawn(launchLayout.executablePath, launchArgs, {
     cwd: launchLayout.appRoot,
     env,
     stdio: ["ignore", "pipe", "pipe"],
