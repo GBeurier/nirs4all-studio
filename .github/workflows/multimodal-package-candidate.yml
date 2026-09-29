@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: GBeurier/dag-ml
-          ref: 1f87d5911c291cb7553facc7db5be1b46a4eb562
+          ref: 9d7273a718aff7c1e511dc8708b13e7bfe8f5613
           path: candidate-dag
       - uses: actions/setup-node@v4
         with:
