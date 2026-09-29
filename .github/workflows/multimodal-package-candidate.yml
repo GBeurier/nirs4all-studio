@@ -101,6 +101,13 @@ jobs:
         with:
           platform: linux
           arch: x64
+      - name: Retain canonical nirs4all wheel for desktop candidates
+        uses: actions/upload-artifact@v4
+        with:
+          name: multimodal-nirs-wheel
+          path: candidate-wheels/nirs4all-*.whl
+          if-no-files-found: error
+          retention-days: 7
       - name: Bake candidate Python and native Rust runtime
         shell: bash
         env:
@@ -300,14 +307,32 @@ jobs:
         with:
           name: multimodal-tools-wheel
           path: candidate-tools-wheel
+      - name: Retrieve canonical nirs4all wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: multimodal-nirs-wheel
+          path: candidate-wheels
       - name: Build exact native candidate wheels
         shell: bash
         run: |
           set -euo pipefail
-          mkdir candidate-wheels
-          cd candidate-nirs
-          python -m build --wheel --no-isolation --outdir ../candidate-wheels
-          cd ../candidate-io
+          shopt -s nullglob
+          nirs_wheels=(candidate-wheels/nirs4all-*.whl)
+          test "${#nirs_wheels[@]}" -eq 1
+          python - "${nirs_wheels[0]}" <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          import sys
+          from zipfile import ZipFile
+          contract = json.loads(Path('sidecar/contracts/studio_scientific_cpython_host_v1.json').read_text())
+          with ZipFile(sys.argv[1]) as wheel:
+              payload = wheel.read('nirs4all/api/studio_scientific.py')
+          digest = hashlib.sha256(payload).hexdigest()
+          assert digest == contract['selected_callable_sha256'], f'Candidate callable digest mismatch: {digest}'
+          print(f'Canonical nirs4all callable SHA-256: {digest}')
+          PY
+          cd candidate-io
           python -m maturin build --locked --release -m bindings/python/Cargo.toml --interpreter python --out ../candidate-wheels
           cd ../candidate-dag
           python scripts/prepare_python_candidate.py
