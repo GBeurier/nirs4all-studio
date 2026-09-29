@@ -66,6 +66,20 @@ fn test_directory() -> PathBuf {
     ))
 }
 
+fn remove_test_directory(root: PathBuf) {
+    #[cfg(windows)]
+    for _ in 0..20 {
+        match fs::remove_dir_all(&root) {
+            Ok(()) => return,
+            Err(error) if error.raw_os_error() == Some(32) => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(error) => panic!("could not remove test directory: {error}"),
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn write_settings(config: &Path, workspaces: &Value) {
     fs::create_dir_all(config).unwrap();
     fs::write(
@@ -231,7 +245,7 @@ fn exact_store_v5_accepts_committed_wal_and_rejects_legacy() {
     assert_eq!(busy_body["reason"], "python_plugin_host_unconfigured");
     drop(writer);
 
-    fs::remove_dir_all(root).unwrap();
+    remove_test_directory(root);
 }
 
 #[test]
@@ -264,7 +278,8 @@ fn verified_store_cannot_reach_native_target_without_a_configured_host() {
     assert_eq!(response["error"]["code"], "python_plugin_unavailable");
     assert_eq!(response["error"]["details"], json!({}));
 
-    fs::remove_dir_all(root).unwrap();
+    drop(state);
+    remove_test_directory(root);
 }
 
 #[cfg(unix)]
@@ -341,7 +356,7 @@ fn preflighted_store_v5_routes_through_owner_host_and_rust_composition() {
         }
     }
 
-    fs::remove_dir_all(root).unwrap();
+    remove_test_directory(root);
 }
 
 #[cfg(unix)]
@@ -384,5 +399,5 @@ fn owner_stderr_and_resolved_workspace_path_never_reach_the_http_response() {
         "python_plugin_process_failed"
     );
 
-    fs::remove_dir_all(root).unwrap();
+    remove_test_directory(root);
 }
