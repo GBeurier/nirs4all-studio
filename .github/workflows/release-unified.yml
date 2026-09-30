@@ -22,6 +22,11 @@ on:
         required: false
         default: false
         type: boolean
+      include_macos_x64:
+        description: 'Also qualify and publish the optional Intel Mac installer'
+        required: false
+        default: false
+        type: boolean
 
 env:
   APP_NAME: nirs4all Studio
@@ -53,6 +58,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
       skip_docker: ${{ steps.flags.outputs.skip_docker }}
+      include_macos_x64: ${{ steps.flags.outputs.include_macos_x64 }}
       # Tag-push releases are public and must fail closed on signing.
       # workflow_dispatch is used for smoke testing (often without secrets) and
       # is allowed to build unsigned. `push` only fires on tags here (see `on:`).
@@ -190,6 +196,7 @@ jobs:
         id: flags
         run: |
           echo "skip_docker=${{ inputs.skip_docker || 'false' }}" >> $GITHUB_OUTPUT
+          echo "include_macos_x64=${{ inputs.include_macos_x64 || vars.STUDIO_INCLUDE_MACOS_X64 == 'true' }}" >> $GITHUB_OUTPUT
 
   # Run the required checks on the exact Studio commit and pinned library refs.
   # A tag or manual dispatch must not bypass the PR quality gate.
@@ -604,6 +611,7 @@ jobs:
   installer-macos-x64:
     name: Installer — macOS x64
     needs: [prepare, pinned-plugin-wheels]
+    if: needs.prepare.outputs.include_macos_x64 == 'true'
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -1132,7 +1140,8 @@ jobs:
       needs.quality.result == 'success' &&
       needs.installer-linux.result == 'success' &&
       needs.installer-windows.result == 'success' &&
-      needs.installer-macos-x64.result == 'success' &&
+      ((needs.prepare.outputs.include_macos_x64 == 'true' && needs.installer-macos-x64.result == 'success') ||
+       (needs.prepare.outputs.include_macos_x64 == 'false' && needs.installer-macos-x64.result == 'skipped')) &&
       needs.installer-macos-arm64.result == 'success' &&
       (needs.prepare.outputs.skip_docker == 'true' || needs.docker.result == 'success')
     runs-on: ubuntu-latest
@@ -1167,7 +1176,8 @@ jobs:
           node scripts/finalize-release-assets.cjs \
             release \
             '${{ needs.prepare.outputs.version }}' \
-            false
+            false \
+            '${{ needs.prepare.outputs.include_macos_x64 }}'
 
           echo "## Release Assets" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -1244,6 +1254,12 @@ jobs:
           *Commit: ${{ github.sha }}*
           NOTES
 
+          if [ '${{ needs.prepare.outputs.include_macos_x64 }}' != 'true' ]; then
+            sed -i '/| \*\*macOS\*\* | Intel (x64) |/d' release_notes.md
+            sed -i 's/macOS 12+ (Intel or Apple Silicon)/macOS 12+ (Apple Silicon)/' release_notes.md
+            printf '\nIntel Mac installers are deferred for this release.\n' >> release_notes.md
+          fi
+
       - name: Download the tested Docker image
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'
         uses: actions/download-artifact@v4
@@ -1292,7 +1308,8 @@ jobs:
           node scripts/publish-qualified-release.cjs \
             release \
             '${{ needs.prepare.outputs.version }}' \
-            false
+            false \
+            '${{ needs.prepare.outputs.include_macos_x64 }}'
 
       - name: Release summary
         run: |
