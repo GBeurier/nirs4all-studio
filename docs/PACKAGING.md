@@ -565,4 +565,3 @@ The updater prefers asset names containing `all-in-one`. Do not publish generic 
 ## See Also
 
 - [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md)
-- [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
