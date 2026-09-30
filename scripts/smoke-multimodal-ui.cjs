@@ -62,7 +62,9 @@ async function journey({ page, env }, workspace) {
   await page.getByRole('button', { name: 'Submit Native Payload' }).click();
   await expect.poll(async () => (await api(env, '/runs')).runs?.[0]?.status,
     { timeout: 180000, intervals: [1000, 2000, 3000] }).toBe('completed');
-  await expect(page.getByText('UI multimodal fixture x Four modality fixed', { exact: false }).first()).toBeVisible();
+  // The renderer refreshes its run list every 10 seconds after the API reports completion.
+  await expect(page.getByText('UI multimodal fixture x Four modality fixed', { exact: false }).first())
+    .toBeVisible({ timeout: 30000 });
   assert(fs.readdirSync(path.join(workspace, 'exports')).some(name => name.endsWith('.n4a')),
     'The installed UI run did not export a multimodal archive');
 
