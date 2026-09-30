@@ -11,15 +11,16 @@ const PAYLOAD_SUFFIXES = Object.freeze([
   ".zip",
 ]);
 
-function expectedPublishedNames(version, includeAllInOne = false) {
+function expectedPublishedNames(version, includeAllInOne = false, includeMacosX64 = true) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`Release version is invalid: ${version}`);
   }
   if (includeAllInOne) throw new Error("All-in-one publication is disabled; publish installers only");
+  if (typeof includeMacosX64 !== "boolean") throw new Error("Explicit macOS Intel inclusion flag must be boolean");
   const installers = [
     `nirs4all.Studio-${version}-linux-amd64.deb`,
     `nirs4all.Studio-${version}-mac-arm64.dmg`,
-    `nirs4all.Studio-${version}-mac-x64.dmg`,
+    ...(includeMacosX64 ? [`nirs4all.Studio-${version}-mac-x64.dmg`] : []),
     `nirs4all.Studio-${version}-win-x64.exe`,
   ];
   return installers.sort();
@@ -168,14 +169,15 @@ function finalizeReleaseAssets(releaseRoot, expectedNames = null) {
 }
 
 function main(argv = process.argv.slice(2)) {
-  if (argv.length !== 3 || !["true", "false"].includes(argv[2])) {
+  if (![3, 4].includes(argv.length) || !["true", "false"].includes(argv[2]) ||
+    (argv.length === 4 && !["true", "false"].includes(argv[3]))) {
     throw new Error(
-      "Usage: node scripts/finalize-release-assets.cjs <release-root> <version> <include-all-in-one:true|false>",
+      "Usage: node scripts/finalize-release-assets.cjs <release-root> <version> <include-all-in-one:true|false> [include-macos-x64:true|false]",
     );
   }
   const records = finalizeReleaseAssets(
     path.resolve(argv[0]),
-    expectedPublishedNames(argv[1], argv[2] === "true"),
+    expectedPublishedNames(argv[1], argv[2] === "true", argv[3] !== "false"),
   );
   for (const record of records) {
     process.stdout.write(`${record.digest}  ${record.publishedName}\n`);

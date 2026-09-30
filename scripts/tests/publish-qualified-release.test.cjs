@@ -7,12 +7,12 @@ const yaml = require("js-yaml");
 const { expectedPublishedNames, sha256File } = require("../finalize-release-assets.cjs");
 const { ghFailureDiagnostic, publishQualifiedRelease, releaseManifest } = require("../publish-qualified-release.cjs");
 
-function fixture(t) {
+function fixture(t, includeMacosX64 = true) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-publisher-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const releaseRoot = path.join(root, "release");
   fs.mkdirSync(releaseRoot);
-  for (const name of expectedPublishedNames("0.11.7")) {
+  for (const name of expectedPublishedNames("0.11.7", false, includeMacosX64)) {
     const file = path.join(releaseRoot, name);
     fs.writeFileSync(file, `qualified product bytes: ${name}\n`);
     fs.writeFileSync(`${file}.sha256`, `${sha256File(file)}  ${name}\n`);
@@ -20,11 +20,11 @@ function fixture(t) {
   const notesPath = path.join(root, "notes.md");
   fs.writeFileSync(notesPath, "Qualified release\n");
   return { repo: "owner/studio", tag: "0.11.7", version: "0.11.7", sha: "b".repeat(40),
-    prerelease: false, includeAllInOne: false, releaseRoot, notesPath };
+    prerelease: false, includeAllInOne: false, includeMacosX64, releaseRoot, notesPath };
 }
 
 function github(options, behavior = {}) {
-  const manifest = releaseManifest(options.releaseRoot, options.version, options.includeAllInOne);
+  const manifest = releaseManifest(options.releaseRoot, options.version, options.includeAllInOne, options.includeMacosX64);
   let nextId = 100;
   const state = {
     release: behavior.absent ? null : { id: 99, tag_name: options.tag, draft: true,
@@ -300,7 +300,36 @@ test("unified workflow invokes the sequential publisher only for immutable tag r
   assert(!job.steps.some((entry) => entry.uses?.startsWith("softprops/action-gh-release")));
   assert.match(job.if, /needs\.installer-windows\.result == 'success'/);
   assert.match(job.if, /needs\.installer-linux\.result == 'success'/);
+  assert.match(step.run, /needs\.prepare\.outputs\.include_macos_x64/);
+  const preparation = job.steps.find((entry) => entry.run?.includes("scripts/finalize-release-assets.cjs"));
+  assert.match(preparation.run, /needs\.prepare\.outputs\.include_macos_x64/);
   assert(!job.if.includes('skip_all_in_one'));
+});
+
+test("an explicitly deferred Intel Mac publishes only the three required installers", async (t) => {
+  const options = fixture(t, false);
+  assert.throws(() => releaseManifest(options.releaseRoot, options.version, false), /inventory is incomplete/);
+  const remote = github(options);
+  const result = await publishQualifiedRelease(options, remote.dependencies);
+  assert.equal(result.assets, 6);
+  assert.equal(remote.state.assets.length, 6);
+  assert(remote.state.assets.every((asset) => !asset.name.includes("mac-x64")));
+});
+
+test("deferring Intel never permits a missing required installer or an unexpected Intel payload", async (t) => {
+  const options = fixture(t, false);
+  const dependencies = { gh: async () => assert.fail("invalid inventory must fail before GitHub"), log: () => {} };
+  await assert.rejects(publishQualifiedRelease({ ...options, includeMacosX64: "false" }, dependencies), /flag must be boolean/);
+  const windows = path.join(options.releaseRoot, `nirs4all.Studio-${options.version}-win-x64.exe`);
+  fs.unlinkSync(windows);
+  fs.unlinkSync(`${windows}.sha256`);
+  await assert.rejects(publishQualifiedRelease(options, dependencies), /inventory is incomplete/);
+  fs.writeFileSync(windows, "qualified Windows bytes");
+  fs.writeFileSync(`${windows}.sha256`, `${sha256File(windows)}  ${path.basename(windows)}\n`);
+  const intel = path.join(options.releaseRoot, `nirs4all.Studio-${options.version}-mac-x64.dmg`);
+  fs.writeFileSync(intel, "unexpected Intel bytes");
+  fs.writeFileSync(`${intel}.sha256`, `${sha256File(intel)}  ${path.basename(intel)}\n`);
+  await assert.rejects(publishQualifiedRelease(options, dependencies), /inventory is incomplete/);
 });
 
 test("diagnostic preserves HTTP failure while excluding headers, URLs and credential values", () => {

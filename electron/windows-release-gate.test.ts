@@ -42,9 +42,28 @@ describe('installer product qualification and publication', () => {
       for (const result of ['failure', 'cancelled', 'skipped']) {
         const expression = release.jobs.release.if.replace(/always\(\)/g, 'true')
           .replace(/needs\.prepare\.outputs\.skip_docker/g, '\'false\'')
+          .replace(/needs\.prepare\.outputs\.include_macos_x64/g, '\'true\'')
           .replace(/needs\.([\w-]+)\.result/g, (_: string, job: string) => JSON.stringify(job === failed ? result : 'success'));
         expect(runInNewContext(expression), `${failed}: ${result}`).toBe(false);
       }
+    }
+  });
+
+  it('allows an explicitly skipped Intel installer while all required products remain blocking', () => {
+    expect(release.on.workflow_dispatch.inputs.include_macos_x64.default).toBe(false);
+    expect(release.jobs['installer-macos-x64'].if).toBe("needs.prepare.outputs.include_macos_x64 == 'true'");
+    const evaluate = (failed?: string, result = 'failure') => runInNewContext(release.jobs.release.if
+      .replace(/always\(\)/g, 'true')
+      .replace(/needs\.prepare\.outputs\.skip_docker/g, '\'false\'')
+      .replace(/needs\.prepare\.outputs\.include_macos_x64/g, '\'false\'')
+      .replace(/needs\.([\w-]+)\.result/g, (_: string, job: string) => JSON.stringify(
+        job === failed ? result : job === 'installer-macos-x64' ? 'skipped' : 'success')));
+    expect(evaluate()).toBe(true);
+    for (const failed of ['quality', 'installer-windows', 'installer-linux', 'installer-macos-arm64', 'docker', 'installer-macos-x64']) {
+      for (const result of ['failure', 'cancelled']) expect(evaluate(failed, result)).toBe(false);
+    }
+    for (const failed of ['quality', 'installer-windows', 'installer-linux', 'installer-macos-arm64', 'docker']) {
+      expect(evaluate(failed, 'skipped')).toBe(false);
     }
   });
 });
