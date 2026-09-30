@@ -28,7 +28,7 @@ function dependencies(job: Job): string[] { return typeof job.needs === "string"
 function releaseGate(job: string, results: Record<string, string> = {}, flags: Record<string, string> = {}): boolean {
   const expression = release.jobs[job].if!
     .replace(/always\(\)/g, "true")
-    .replace(/needs\.prepare\.outputs\.([\w_]+)/g, (_, flag: string) => JSON.stringify(flags[flag] ?? "false"))
+    .replace(/needs\.prepare\.outputs\.([\w_]+)/g, (_, flag: string) => JSON.stringify(flags[flag] ?? (flag === "include_macos_x64" ? "true" : "false")))
     .replace(/needs\.([\w-]+)\.result/g, (_, dependency: string) => {
       expect(dependencies(release.jobs[job])).toContain(dependency);
       return JSON.stringify(results[dependency] ?? "success");
@@ -163,6 +163,10 @@ describe("CI release protection graph", () => {
     }
     expect(releaseGate("docker", {}, { skip_docker: "true" })).toBe(false);
     expect(releaseGate("release", { docker: "skipped" }, { skip_docker: "true" })).toBe(true);
+    expect(releaseGate("release", { "installer-macos-x64": "skipped" }, { include_macos_x64: "false" })).toBe(true);
+    for (const outcome of ["failure", "cancelled", "success"]) {
+      expect(releaseGate("release", { "installer-macos-x64": outcome }, { include_macos_x64: "false" })).toBe(false);
+    }
   });
 
   it.skipIf(process.platform === "win32")("promotes the exact tested Docker candidate and reserves latest for stable releases", () => {
