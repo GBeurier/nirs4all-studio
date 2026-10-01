@@ -483,7 +483,7 @@ fn event_size_is_refused_before_any_unpublishable_state_mutation() {
     );
     let unchanged = runtime.get_at("bounded", now).unwrap();
     assert!(unchanged.progress.abs() < f64::EPSILON);
-    assert!(unchanged.progress_message.is_empty());
+    assert_eq!(unchanged.progress_message, "");
 }
 
 #[test]

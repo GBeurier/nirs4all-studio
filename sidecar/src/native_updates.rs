@@ -2404,7 +2404,7 @@ mod tests {
                 last = bucket;
             }
         }
-        assert!(!published.is_empty());
+        assert_ne!(published, Vec::<u8>::new());
         assert_eq!(published.last(), Some(&80));
         assert!(published.windows(2).all(|pair| pair[0] < pair[1]));
         assert!(

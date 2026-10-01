@@ -43,7 +43,7 @@ fn fresh_isolated_cpython_matches_the_direct_owner_oracle_without_mutation() {
         .output()
         .unwrap();
     assert!(oracle.status.success());
-    assert!(oracle.stderr.is_empty());
+    assert_eq!(oracle.stderr, [] as [u8; 0]);
     let expected: Value = serde_json::from_slice(&oracle.stdout).unwrap();
     assert_eq!(actual, expected);
 

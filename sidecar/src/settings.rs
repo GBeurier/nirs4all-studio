@@ -1589,7 +1589,10 @@ mod tests {
         let path = directory.join("dataset_links.json");
         let store = AppSettingsStore::new(&directory);
 
-        assert!(store.dataset_links().unwrap().is_empty());
+        assert_eq!(
+            store.dataset_links().unwrap(),
+            Vec::<DatasetLinkIdentity>::new()
+        );
         for malformed in [
             b"not-json".as_slice(),
             br"[]".as_slice(),
@@ -1597,7 +1600,10 @@ mod tests {
             br#"{"datasets": [{"id": "valid"}, 7]}"#.as_slice(),
         ] {
             fs::write(&path, malformed).unwrap();
-            assert!(store.dataset_links().unwrap().is_empty());
+            assert_eq!(
+                store.dataset_links().unwrap(),
+                Vec::<DatasetLinkIdentity>::new()
+            );
         }
         fs::remove_dir_all(directory).unwrap();
     }
