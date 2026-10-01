@@ -40,7 +40,7 @@ fn real_tools_dry_run_uses_bounded_stdio_and_keeps_the_source_immutable() {
     assert!(command[4].contains("runpy.run_module(\"nirs4all_tools\""));
     let output = runtime.run(&request).unwrap();
     assert_eq!(output.return_code, 0);
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, "");
     assert!(output.stdout.contains("would_preserve_opaque"));
     assert!(!request.output_path.exists());
 

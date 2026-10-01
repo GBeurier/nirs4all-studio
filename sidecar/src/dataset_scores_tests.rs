@@ -90,10 +90,7 @@ fn cv_is_not_refit_and_missing_metric_or_train_only_is_not_ranked() {
     let mut scores = Accumulator::default();
     scores.consume(source(None, Some(999.0), Some(999.0)));
     scores.consume(source(Some("rmse"), None, None));
-    assert!(scores.finish("w", &[])["datasets"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert_eq!(scores.finish("w", &[])["datasets"], serde_json::json!([]));
     let mut scores = Accumulator::default();
     scores.consume(source(Some("rmse"), Some(0.7), None));
     // A smaller CV-test/train value must not be promoted to final-test.
