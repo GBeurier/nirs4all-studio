@@ -21,7 +21,7 @@ const BACKEND_COMMON_PACKAGES = Object.freeze([
 ]);
 
 const BACKEND_TRANSITION_TOOL_PACKAGES = Object.freeze([
-  "nirs4all-tools>=0.0.5",
+  "nirs4all-tools>=0.0.8",
 ]);
 
 module.exports = {

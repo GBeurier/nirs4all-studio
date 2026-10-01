@@ -12,10 +12,10 @@ const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
 const MAX_PYTHON_CLOSURE_FILES = 100_000;
 const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
-const PLUGIN_SOURCE_COMMIT = "dceb21978dddb98683004248dbce378ffadf01b8";
-const PLUGIN_WHEEL_SHA256 = "9d6878dfcab7a301e952e274c2bd61501ef8dc44d657753a9264c24cd6d9252e";
-const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
-const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
+const PLUGIN_SOURCE_COMMIT = "faba4a3f28a1bb1aab024b718056e0e0b93e8149";
+const PLUGIN_WHEEL_SHA256 = "e99ea71939527ec401a05784eb51f577bdfa1f2a5527c301840856dcbdd81aa3";
+const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
+const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
 const METHODS_ABI_MAJOR = 2;
 const METHODS_ABI_MINOR = 14;
 const METHODS_SOURCE_COMMIT = "b8b942aea291102d974bb68eb09013f3453b0a86";
@@ -394,15 +394,15 @@ function verifyPluginMarker(
     marker.source_commit !== PLUGIN_SOURCE_COMMIT ||
     marker.wheel_sha256 !== PLUGIN_WHEEL_SHA256 ||
     marker.distribution !== "nirs4all" ||
-    marker.distribution_version !== "1.3.0" ||
+    marker.distribution_version !== "1.3.3" ||
     marker.installed_manifest_sha256 !==
-      "36e5a7a91a8572ec2e15423fb4456740f82812720a25c52cb42183f3873dd1ba" ||
+      "7af7022c83165fc7f5790da826f3d9f1e4c39bdc06c04cdcd0b48384a0d4f8b3" ||
     conversionTools?.source_commit !== TOOLS_SOURCE_COMMIT ||
     conversionTools?.wheel_sha256 !== TOOLS_WHEEL_SHA256 ||
     conversionTools?.distribution !== "nirs4all-tools" ||
-    conversionTools?.distribution_version !== "0.0.7" ||
+    conversionTools?.distribution_version !== "0.0.8" ||
     conversionTools?.installed_manifest_sha256 !==
-      "cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07" ||
+      "92069ded823ffd1e291b4c8272b46e8b247ed5b619734e1ebf5ad3f612774ac8" ||
     conversionTools?.module !== "nirs4all_tools" ||
     conversionTools?.cli !== "python -I -B -m nirs4all_tools" ||
     readers?.duckdb !== "1.5.5" ||

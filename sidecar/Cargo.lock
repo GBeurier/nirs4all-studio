@@ -1467,9 +1467,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all-io"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4706c95b35690ddb5b92a4fdd2cc37a4093fb5c24f3828321f68b6ae997c98f5"
+checksum = "ee56ea8be3d388e35895ede9eef6d745d96e83716ee98585e313396be389295b"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -1479,7 +1479,7 @@ dependencies = [
  "flate2",
  "glob",
  "indexmap",
- "nirs4all-io-core 0.2.0",
+ "nirs4all-io-core 0.2.2",
  "parquet",
  "regex",
  "same-file",
@@ -1508,9 +1508,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all-io-core"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3178aa9481a311a48ab26f7b2028ef58f6409a72e6823997723f016a2fdd0479"
+checksum = "6f8009593a15a495c27cfc3b04fa7b5d5535d3ad7d43548cea6de6b01ce6f7a1"
 dependencies = [
  "csv",
  "indexmap",
@@ -2239,7 +2239,7 @@ dependencies = [
  "dag-ml-core",
  "flate2",
  "nirs4all",
- "nirs4all-io 0.2.0",
+ "nirs4all-io 0.2.2",
  "nix",
  "notify",
  "percent-encoding",

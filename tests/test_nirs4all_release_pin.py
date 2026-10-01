@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -15,10 +16,10 @@ def test_sidecar_resolves_selected_native_releases() -> None:
     locked = tomllib.loads((ROOT / "sidecar" / "Cargo.lock").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
     assert dependencies["nirs4all"] == "=0.4.0"
-    assert dependencies["nirs4all-io"] == "=0.2.0"
+    assert dependencies["nirs4all-io"] == "=0.2.2"
     assert manifest["dev-dependencies"]["dag-ml-core"] == "=0.3.30"
     packages = {(package["name"], package["version"]) for package in locked["package"]}
-    assert {("nirs4all", "0.4.0"), ("nirs4all-io", "0.2.0"), ("dag-ml", "0.3.30"),
+    assert {("nirs4all", "0.4.0"), ("nirs4all-io", "0.2.2"), ("dag-ml", "0.3.30"),
             ("dag-ml-core", "0.3.30"), ("dag-ml-data", "0.2.12"), ("n4m", "0.3.0")} <= packages
     # Core, DAG-ML and the Methods binding must share one libn4m loader.
     assert [version for name, version in packages if name == "n4m"] == ["0.3.0"]
@@ -29,24 +30,33 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     version = config["nirs4all"]
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
 
-    assert version == "1.3.0"
+    assert version == "1.3.3"
     ref = re.search(r"^  NIRS4ALL_LIBRARY_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert ref is not None
     assert source is not None
-    assert ref.group(1) == source.group(1) == "dceb21978dddb98683004248dbce378ffadf01b8"
-    wheel_url = re.search(r"^  NIRS4ALL_WHEEL_URL: (https://files\.pythonhosted\.org/.+/nirs4all-1\.3\.0-py3-none-any\.whl)$", workflow, re.MULTILINE)
+    assert ref.group(1) == source.group(1) == "faba4a3f28a1bb1aab024b718056e0e0b93e8149"
+    wheel_url = re.search(r"^  NIRS4ALL_WHEEL_URL: (https://files\.pythonhosted\.org/.+/nirs4all-1\.3\.3-py3-none-any\.whl)$", workflow, re.MULTILINE)
     wheel_sha = re.search(r"^  NIRS4ALL_WHEEL_SHA256: ([0-9a-f]{64})$", workflow, re.MULTILINE)
     assert wheel_url is not None
     assert wheel_sha is not None
-    assert wheel_sha.group(1) == "9d6878dfcab7a301e952e274c2bd61501ef8dc44d657753a9264c24cd6d9252e"
+    assert wheel_sha.group(1) == "e99ea71939527ec401a05784eb51f577bdfa1f2a5527c301840856dcbdd81aa3"
+    parsed = yaml.safe_load(workflow)
+    validation = next(step["run"] for step in parsed["jobs"]["prepare"]["steps"]
+                      if step.get("name") == "Validate pinned runtime dependency refs")
+    # Execute the production shell guard: valid published bytes must be accepted,
+    # while an earlier wheel must be rejected before any builds start.
+    environment = {key: str(value) for key, value in parsed["env"].items()}
+    assert subprocess.run(["bash", "-c", validation], env=environment, capture_output=True).returncode == 0
+    environment["NIRS4ALL_WHEEL_URL"] = wheel_url.group(1).replace("nirs4all-1.3.3-", "nirs4all-1.3.0-")
+    assert subprocess.run(["bash", "-c", validation], env=environment, capture_output=True).returncode != 0
     assert f"ref: {version}" not in workflow
 
     dag_ref = re.search(r"^  DAG_ML_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     dag_source = re.search(r"^  DAG_ML_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert dag_ref is not None
     assert dag_source is not None
-    assert dag_ref.group(1) == dag_source.group(1) == "29907331d3f6befdcca5168be223cda7d668eece"
+    assert dag_ref.group(1) == dag_source.group(1) == "f2ba03fa4df0d6d3f630aa402585490b9e982825"
 
     data_ref = re.search(r"^  DAG_ML_DATA_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     data_source = re.search(
@@ -66,7 +76,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     )
     assert tools_ref is not None
     assert tools_source is not None
-    assert tools_ref.group(1) == tools_source.group(1) == "88c2bc1e29603049cdbf1a1080a35845edf2f3c9"
+    assert tools_ref.group(1) == tools_source.group(1) == "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8"
 
 
 def test_recommended_profiles_use_single_nirs4all_version() -> None:
@@ -78,7 +88,7 @@ def test_recommended_profiles_use_single_nirs4all_version() -> None:
         if package is None:
             continue
         assert package["recommended"] == version
-        assert package["min"] == ">=1.3.0"
+        assert package["min"] == ">=1.3.3"
 
 
 def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> None:
@@ -87,9 +97,16 @@ def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> No
     assert "  pinned-plugin-wheels:\n" in workflow
     assert workflow.count("needs: [prepare, pinned-plugin-wheels]") == 4
     assert workflow.count("name: Download canonical plugin wheels") == 4
-    assert workflow.count("--plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.3.0-py3-none-any.whl") == 4
-    assert workflow.count("--tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl") == 4
-    assert 'curl --fail --location --proto "=https" --tlsv1.2' in workflow
+    assert workflow.count("--plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.3.3-py3-none-any.whl") == 4
+    assert workflow.count("--tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl") == 4
+    parsed = yaml.safe_load(workflow)
+    acquisition = next(step["run"] for step in parsed["jobs"]["pinned-plugin-wheels"]["steps"]
+                       if step.get("name") == "Acquire and verify canonical public wheels")
+    assert acquisition.count('curl --fail --location --proto "=https" --tlsv1.2') == 2
+    assert '"$NIRS4ALL_WHEEL_URL"' in acquisition
+    assert '"$NIRS4ALL_TOOLS_WHEEL_URL"' in acquisition
+    assert "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310" in acquisition
+    assert "pip wheel" not in acquisition
 
 
 def test_generated_operator_registries_are_from_the_published_runtime() -> None:
@@ -112,11 +129,11 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
 
     assert "node scripts/verify-plugin-runtime-reproducibility.cjs" in workflow
     assert "plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json" in workflow
-    assert "nirs4all==1.3.0" in constraints
+    assert "nirs4all==1.3.3" in constraints
     assert "nirs4all-core==0.4.0" in constraints
     assert "nirs4all-methods==1.2.1" in constraints
     assert "pls4all==1.2.1" in constraints
-    assert "dag-ml==0.3.30" in constraints
+    assert "dag-ml==0.3.32" in constraints
     assert "scikit-learn==1.9.0" in constraints
 
 
@@ -141,6 +158,13 @@ def test_release_installed_upgrade_is_blocking_and_checksums_use_basenames() -> 
         qualification = next(i for i, step in enumerate(steps) if "scripts/qualify-installer.cjs" in step.get("run", ""))
         upload = next(i for i, step in enumerate(steps) if step.get("name") == "Upload artifacts")
         assert qualification < upload
+        qualifier = steps[qualification]["run"]
+        assert qualifier.count("--multimodal-provider-script _deps/nirs4all-qualification/tests/qualification/installed_multimodal_provider.py") == 1
+        sdk_checkout = next(i for i, step in enumerate(steps)
+                            if step.get("with", {}).get("repository") == "GBeurier/nirs4all")
+        assert sdk_checkout < qualification
+        assert steps[sdk_checkout]["with"]["ref"] == "faba4a3f28a1bb1aab024b718056e0e0b93e8149"
+        assert steps[sdk_checkout]["with"]["path"] == "_deps/nirs4all-qualification"
         assert not steps[qualification].get("continue-on-error", False)
         assert "INSTALLER_BASELINE" in steps[qualification]["env"]
         checksum = next(step["run"] for step in steps if step.get("name") == "Generate checksums")
