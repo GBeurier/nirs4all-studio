@@ -64,14 +64,14 @@ const PRUNED_LAUNCHER_RECORD_PREFIXES = Object.freeze([
   "../../../bin/",
   "../../../Scripts/",
 ]);
-const PLUGIN_SOURCE_COMMIT = "dceb21978dddb98683004248dbce378ffadf01b8";
-const PLUGIN_WHEEL_FILENAME = "nirs4all-1.3.0-py3-none-any.whl";
-const PLUGIN_WHEEL_SHA256 = "9d6878dfcab7a301e952e274c2bd61501ef8dc44d657753a9264c24cd6d9252e";
-const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/e7/83/1ba013925a45c40be2c0e23d98ed1dfab8e4a40f859616534114f1341487/nirs4all-1.3.0-py3-none-any.whl";
-const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
-const TOOLS_SOURCE_EPOCH = "1788346349";
-const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
-const TOOLS_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all-tools.git@${TOOLS_SOURCE_COMMIT}`;
+const PLUGIN_SOURCE_COMMIT = "faba4a3f28a1bb1aab024b718056e0e0b93e8149";
+const PLUGIN_WHEEL_FILENAME = "nirs4all-1.3.3-py3-none-any.whl";
+const PLUGIN_WHEEL_SHA256 = "e99ea71939527ec401a05784eb51f577bdfa1f2a5527c301840856dcbdd81aa3";
+const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/5d/df/df6573ed9e3648ba7f415a88020fd50449e4185fda12247292e1c9c74d38/nirs4all-1.3.3-py3-none-any.whl";
+const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
+const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";
+const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
+const TOOLS_WHEEL_URL = "https://files.pythonhosted.org/packages/10/19/68649801e059cf243393585e75a7ca125cddde202d12f555eed1baeb159a/nirs4all_tools-0.0.8-py3-none-any.whl";
 const WHEEL_BUILD_TOOLCHAIN = Object.freeze([
   "setuptools==84.0.0",
   "wheel==0.48.0",
@@ -993,21 +993,8 @@ async function main() {
     if (toolsWheel) {
       selectedToolsWheel = toolsWheel;
     } else {
-      for (const entry of fs.readdirSync(toolsWheelDir)) {
-        if (entry.endsWith(".whl")) fs.rmSync(path.join(toolsWheelDir, entry), { force: true });
-      }
-      await runCommandWithRetries(runtimePython, [
-        "-I", "-m", "pip", "wheel", "--no-deps", "--no-build-isolation", "--wheel-dir", toolsWheelDir, TOOLS_SOURCE_URL,
-      ], { env: buildDeterministicWheelEnv(TOOLS_SOURCE_EPOCH) }, {
-        retries: isWindows ? 3 : 1,
-        label: "build pinned nirs4all-tools wheel",
-      });
-      const wheels = fs.readdirSync(toolsWheelDir)
-        .filter((entry) => /^nirs4all_tools-.*\.whl$/i.test(entry));
-      if (wheels.length !== 1) {
-        throw new Error(`Pinned tools build produced ${wheels.length} nirs4all-tools wheels`);
-      }
-      selectedToolsWheel = path.join(toolsWheelDir, wheels[0]);
+      selectedToolsWheel = path.join(toolsWheelDir, TOOLS_WHEEL_FILENAME);
+      await downloadFile(TOOLS_WHEEL_URL, selectedToolsWheel);
     }
     const actualToolsWheelSha256 = sha256File(selectedToolsWheel);
     if (actualToolsWheelSha256 !== TOOLS_WHEEL_SHA256) {
@@ -1118,8 +1105,8 @@ async function main() {
     );
     if (pluginOnly) {
       await removePrunedLauncherRecordRows(runtimePython, backendDist);
-      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.3.0");
-      await restorePinnedWheelRecord(runtimePython, backendDist, selectedToolsWheel, "nirs4all_tools", "0.0.7");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.3.3");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedToolsWheel, "nirs4all_tools", "0.0.8");
       console.log("  Restored both exact pinned wheel RECORDs after isolated installation");
     }
     console.log("");

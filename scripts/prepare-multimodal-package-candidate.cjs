@@ -8,14 +8,14 @@ const { spawnSync } = require("node:child_process");
 
 const root = path.join(__dirname, "..");
 const STABLE = Object.freeze({
-  app: "0.14.0",
-  nirs: "1.3.0",
-  dag: "0.3.30",
-  io: "0.2.0",
-  source: "dceb21978dddb98683004248dbce378ffadf01b8",
-  wheel: "9d6878dfcab7a301e952e274c2bd61501ef8dc44d657753a9264c24cd6d9252e",
-  manifest: "36e5a7a91a8572ec2e15423fb4456740f82812720a25c52cb42183f3873dd1ba",
-  constraints: "f9d9efed00541f4bf9790e12da8e69a5a3fe75e4c6128a77b78a4a2e35567871",
+  app: "0.14.1",
+  nirs: "1.3.3",
+  dag: "0.3.32",
+  io: "0.2.2",
+  source: "faba4a3f28a1bb1aab024b718056e0e0b93e8149",
+  wheel: "e99ea71939527ec401a05784eb51f577bdfa1f2a5527c301840856dcbdd81aa3",
+  manifest: "7af7022c83165fc7f5790da826f3d9f1e4c39bdc06c04cdcd0b48384a0d4f8b3",
+  constraints: "6ee474ea179d107f3f2eca2190218132cef8b8c0e686bb0abdca5adcefa59b9f",
 });
 
 function sha256(bytes) {

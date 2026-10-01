@@ -41,11 +41,11 @@ fn checked_in_contract_matches_the_rust_route_and_process_bounds() {
     );
     assert_eq!(
         contract["converter"]["qualified_identity"]["version"],
-        "0.0.7"
+        "0.0.8"
     );
     assert_eq!(
         contract["converter"]["qualified_identity"]["source_commit"],
-        "88c2bc1e29603049cdbf1a1080a35845edf2f3c9"
+        "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8"
     );
     assert_eq!(
         contract["converter"]["qualified_identity"]["readers"]["duckdb"]["version"],

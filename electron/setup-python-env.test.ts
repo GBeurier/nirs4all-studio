@@ -94,7 +94,7 @@ describe("setup-python-env", () => {
     ]);
   });
 
-  it("downloads the published plugin wheel and normalizes the remaining pinned source build", () => {
+  it("downloads both published wheels and preserves deterministic source-build helpers", () => {
     expect(
       setupPythonEnvModule.buildDeterministicWheelEnv("1788621086", {
         EXISTING: "preserved",
@@ -115,16 +115,21 @@ describe("setup-python-env", () => {
       "utf8",
     );
     expect(setupSource).toContain(
-      'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.3.0-py3-none-any.whl";',
+      'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.3.3-py3-none-any.whl";',
     );
     expect(setupSource).toContain(
-      'const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/e7/83/1ba013925a45c40be2c0e23d98ed1dfab8e4a40f859616534114f1341487/nirs4all-1.3.0-py3-none-any.whl";',
+      'const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/5d/df/df6573ed9e3648ba7f415a88020fd50449e4185fda12247292e1c9c74d38/nirs4all-1.3.3-py3-none-any.whl";',
     );
     expect(setupSource).not.toContain("PLUGIN_SOURCE_EPOCH");
     expect(setupSource).not.toContain("pip\",\n        \"wheel\",\n        \"--no-deps\",\n        \"--no-build-isolation\",\n        \"--wheel-dir\",\n        wheelDir");
     expect(setupSource).toContain(
-      "env: buildDeterministicWheelEnv(TOOLS_SOURCE_EPOCH)",
+      'const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";',
     );
+    expect(setupSource).toContain(
+      'const TOOLS_WHEEL_URL = "https://files.pythonhosted.org/packages/10/19/68649801e059cf243393585e75a7ca125cddde202d12f555eed1baeb159a/nirs4all_tools-0.0.8-py3-none-any.whl";',
+    );
+    expect(setupSource).toContain("await downloadFile(TOOLS_WHEEL_URL, selectedToolsWheel)");
+    expect(setupSource).not.toContain("TOOLS_SOURCE_URL");
   });
 
   it("adds --no-compile when building bundled standalone pip installs", () => {

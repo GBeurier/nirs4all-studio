@@ -39,10 +39,10 @@
     "cli": "python -I -B -c <same-process-attest-and-runpy-bootstrap> -- legacy migrate",
     "spawn_identity_binding": "the interpreter regular-file SHA-256 captured from the packaged-qualified host is rechecked around every preflight and immediately before spawn; the launched interpreter then repeats the exact wheel, platform-neutral installed manifest, every RECORD member, DuckDB, and PyArrow functional attestation before runpy executes nirs4all_tools in that same process",
     "qualified_identity": {
-      "source_commit": "88c2bc1e29603049cdbf1a1080a35845edf2f3c9",
-      "version": "0.0.7",
-      "wheel_sha256": "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819",
-      "installed_manifest_sha256": "cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07",
+      "source_commit": "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
+      "version": "0.0.8",
+      "wheel_sha256": "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310",
+      "installed_manifest_sha256": "92069ded823ffd1e291b4c8272b46e8b247ed5b619734e1ebf5ad3f612774ac8",
       "readers": {
         "duckdb": {
           "version": "1.5.5",

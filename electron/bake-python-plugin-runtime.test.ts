@@ -145,24 +145,24 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "dceb21978dddb98683004248dbce378ffadf01b8",
+      source_commit: "faba4a3f28a1bb1aab024b718056e0e0b93e8149",
       wheel_sha256:
-        "9d6878dfcab7a301e952e274c2bd61501ef8dc44d657753a9264c24cd6d9252e",
-      distribution_version: "1.3.0",
+        "e99ea71939527ec401a05784eb51f577bdfa1f2a5527c301840856dcbdd81aa3",
+      distribution_version: "1.3.3",
       installed_manifest_sha256:
-        "36e5a7a91a8572ec2e15423fb4456740f82812720a25c52cb42183f3873dd1ba",
+        "7af7022c83165fc7f5790da826f3d9f1e4c39bdc06c04cdcd0b48384a0d4f8b3",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "f9d9efed00541f4bf9790e12da8e69a5a3fe75e4c6128a77b78a4a2e35567871",
+        sha256: "6ee474ea179d107f3f2eca2190218132cef8b8c0e686bb0abdca5adcefa59b9f",
       },
       platform: "linux",
       arch: "x64",
       conversion_tools: {
-        source_commit: "88c2bc1e29603049cdbf1a1080a35845edf2f3c9",
+        source_commit: "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
         wheel_sha256:
-          "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819",
+          "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310",
         distribution: "nirs4all-tools",
-        distribution_version: "0.0.7",
+        distribution_version: "0.0.8",
         module: "nirs4all_tools",
         readers: { duckdb: "1.5.5", pyarrow: "25.0.1" },
         functional_probes: {
@@ -183,7 +183,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "f9d9efed00541f4bf9790e12da8e69a5a3fe75e4c6128a77b78a4a2e35567871",
+      "6ee474ea179d107f3f2eca2190218132cef8b8c0e686bb0abdca5adcefa59b9f",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -202,7 +202,7 @@ describe("plugin-only CPython runtime", () => {
         expect(target.get(name), `${name} must be installed in every packaged host`).toBe(version);
       }
     }
-    expect(linux.get("nirs4all")).toBe("1.3.0");
+    expect(linux.get("nirs4all")).toBe("1.3.3");
     expect(linux.get("nirs4all-core")).toBe("0.4.0");
     expect(linux.get("scikit-learn")).toBe("1.9.0");
     expect(linux.has("colorama")).toBe(false);

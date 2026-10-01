@@ -21,7 +21,7 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
 // The managed runtime is a bounded Rust -> Python stdio plugin host. Keep its
 // package list exact and intentionally small: Python HTTP/control-plane
 // dependencies live in python-http-runtime-config.cjs, which is source/dev only.
-const PLUGIN_DISTRIBUTION_VERSION = "1.3.0";
+const PLUGIN_DISTRIBUTION_VERSION = "1.3.3";
 const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
   "duckdb==1.5.5",
   "pyarrow==25.0.1",
