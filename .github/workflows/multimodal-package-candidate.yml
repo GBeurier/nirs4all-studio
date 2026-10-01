@@ -1,21 +1,10 @@
 name: Multimodal package candidate (nonpublishing)
 
-# Build the three Python candidates from immutable source commits, then bake
-# them into a disposable Studio checkout. Production pins on main stay stable.
+# Historical manual reproducer: build the three Python development candidates
+# from the retained immutable commits in a disposable Studio checkout.
+# Current stable release qualification and publication use release-unified.yml.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/multimodal-package-candidate.yml
-      - scripts/prepare-multimodal-package-candidate.cjs
-      - scripts/verify-packaged-plugin-identity.cjs
-      - scripts/verify-installed-candidate-wheels.py
-      - scripts/qualify-installer.cjs
-      - scripts/candidate_wheel_manifest.py
-      - scripts/test_candidate_wheel_manifest.py
-      - scripts/smoke-multimodal-ui.cjs
-      - scripts/fixtures/multimodal-ui/**
 
 permissions:
   contents: read
