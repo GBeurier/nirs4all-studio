@@ -1,5 +1,5 @@
 {
-  "abi": "2.14.0",
+  "abi": "2.17.0",
   "methods": [
     {
       "method_id": "aom_pop.aom_chain_fixed_fit",
@@ -10185,6 +10185,55 @@
         "fold_ids": "none"
       },
       "params": []
+    },
+    {
+      "method_id": "preprocessing.scaling.standard_scale",
+      "fq_name": "n4m.transform.scaling.standard_scale",
+      "kind": "estimator",
+      "roles": [
+        "transformer"
+      ],
+      "node_kinds": [
+        "transform"
+      ],
+      "capabilities": [
+        "transform",
+        "serializable"
+      ],
+      "state_format": "components",
+      "inputs": {
+        "y": "optional",
+        "labels": "none",
+        "sample_weight": "none",
+        "groups": "none",
+        "feature_groups": "none",
+        "blocks": "none",
+        "axis": "none",
+        "target_domain": "none",
+        "fold_ids": "none"
+      },
+      "params": [
+        {
+          "name": "with_mean",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        },
+        {
+          "name": "with_std",
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "min": null,
+          "max": null,
+          "choices": [],
+          "recorded": false
+        }
+      ]
     },
     {
       "method_id": "preprocessing.scatter.area_normalization",

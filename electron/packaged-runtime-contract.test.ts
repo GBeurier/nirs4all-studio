@@ -105,11 +105,11 @@ function makeResources(): {
     product_backend: "rust-sidecar",
     transport: "bounded-cpython-stdio-v1",
     http_listener: "forbidden",
-    source_commit: "faba4a3f28a1bb1aab024b718056e0e0b93e8149",
-    wheel_sha256: "e99ea71939527ec401a05784eb51f577bdfa1f2a5527c301840856dcbdd81aa3",
+    source_commit: "41ee99f188e6d4cad2bdc9c254597a0ff94ab67b",
+    wheel_sha256: "2c2c2206cdfc8c8e58c826ee931333e6da753d57c281453e77c3bc165b63cd68",
     distribution: "nirs4all",
-    distribution_version: "1.3.3",
-    installed_manifest_sha256: "7af7022c83165fc7f5790da826f3d9f1e4c39bdc06c04cdcd0b48384a0d4f8b3",
+    distribution_version: "1.4.0",
+    installed_manifest_sha256: "9f70da8d24b3359a0dd9a79454b09e1b2166aa1e29ae1b629ac9d46e2df9fe59",
     conversion_tools: {
       source_commit: "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
       wheel_sha256: "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310",
@@ -168,11 +168,11 @@ function makeResources(): {
       methods_library: {
         mode: "unavailable",
         member: null,
-        abi: { major: 2, minor: 14 },
+        abi: { major: 2, minor: 17 },
         source: {
-          commit: "b8b942aea291102d974bb68eb09013f3453b0a86",
-          tree: "737178058bed3135d5b33de77388a1b709c7696c",
-          project_version: "1.2.1",
+          commit: "dcc570b3647f77cf0428dd346078f442ed5cd032",
+          tree: "4b711a5cf7b0fb1e10a6ed99e1202bdd89917c42",
+          project_version: "1.3.2",
         },
       },
     }),
@@ -426,7 +426,7 @@ describe("packaged runtime contract", () => {
       "STUDIO_RUNTIME_CONTRACT.json",
     );
     const methodsPath = path.join(backendRoot, "native", "libn4m.so");
-    const methods = Buffer.from("libn4m-abi-2.14");
+    const methods = Buffer.from("libn4m-abi-2.17");
     fs.writeFileSync(methodsPath, methods);
     const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
     contract.methods_library = {
@@ -436,11 +436,11 @@ describe("packaged runtime contract", () => {
         size: methods.length,
         sha256: digest(methods),
       },
-      abi: { major: 2, minor: 14 },
+      abi: { major: 2, minor: 17 },
       source: {
-        commit: "b8b942aea291102d974bb68eb09013f3453b0a86",
-        tree: "737178058bed3135d5b33de77388a1b709c7696c",
-        project_version: "1.2.1",
+        commit: "dcc570b3647f77cf0428dd346078f442ed5cd032",
+        tree: "4b711a5cf7b0fb1e10a6ed99e1202bdd89917c42",
+        project_version: "1.3.2",
       },
     };
     fs.writeFileSync(contractPath, JSON.stringify(contract));

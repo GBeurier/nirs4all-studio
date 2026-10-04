@@ -9613,6 +9613,52 @@
     }
   },
   {
+    "id": "preprocessing.n4m_preprocessing_scaling_standard_scale",
+    "name": "Standard Scale (n4m)",
+    "type": "preprocessing",
+    "description": "Native nirs4all-methods transformer (preprocessing.scaling.standard_scale).",
+    "category": "Scaling",
+    "classPath": "n4m:preprocessing.scaling.standard_scale",
+    "source": "n4m",
+    "tags": [
+      "n4m",
+      "transformer",
+      "scaling"
+    ],
+    "parameters": [
+      {
+        "name": "with_mean",
+        "label": "With Mean",
+        "type": "bool",
+        "required": false,
+        "default": true
+      },
+      {
+        "name": "with_std",
+        "label": "With Std",
+        "type": "bool",
+        "required": false,
+        "default": true
+      }
+    ],
+    "n4m": {
+      "methodId": "preprocessing.scaling.standard_scale",
+      "kind": "estimator",
+      "role": "transformer",
+      "capabilities": [
+        "transform",
+        "serializable"
+      ],
+      "fitInputs": [
+        {
+          "input": "y",
+          "requirement": "optional",
+          "label": "targets"
+        }
+      ]
+    }
+  },
+  {
     "id": "preprocessing.n4m_preprocessing_scatter_area_normalization",
     "name": "Area Normalization (n4m)",
     "type": "preprocessing",
