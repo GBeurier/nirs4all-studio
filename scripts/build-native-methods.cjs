@@ -120,7 +120,7 @@ function targetConfig(platform, arch) {
   if (platform === "linux" && arch === "x64") {
     return {
       preset: "ci-linux-gcc12-release",
-      libraryPattern: /^libn4m\.so\.2\.14\.0$/,
+      libraryPattern: new RegExp(`^libn4m\\.so\\.${METHODS_ABI_MAJOR}\\.${METHODS_ABI_MINOR}\\.0$`),
       cliParts: ["cpp", "cli", "n4m_cli"],
       configureExtra: [],
       buildExtra: [],
@@ -130,7 +130,7 @@ function targetConfig(platform, arch) {
   if (platform === "darwin" && ["x64", "arm64"].includes(arch)) {
     return {
       preset: "ci-macos-clang-release",
-      libraryPattern: /^libn4m\.2\.14\.0\.dylib$/,
+      libraryPattern: new RegExp(`^libn4m\\.${METHODS_ABI_MAJOR}\\.${METHODS_ABI_MINOR}\\.0\\.dylib$`),
       cliParts: ["cpp", "cli", "n4m_cli"],
       configureExtra: [
         `-DCMAKE_OSX_ARCHITECTURES=${arch === "x64" ? "x86_64" : "arm64"}`,

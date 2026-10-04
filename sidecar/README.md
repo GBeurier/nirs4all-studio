@@ -352,8 +352,8 @@ Methods commit `48ad1e5a50844f68c2b99e93b02ad6a3b491c07b` under
 `sidecar/vendor/n4m-48ad1e5/`. The vendored-source verification scripts reject
 inventory drift and check exact repository trees, crate trees, package versions,
 and registry checksums. These directories are immutable release evidence of that earlier train only;
-Cargo resolves the current published train (DagML 0.3.30, Data 0.2.12, IO 0.2.0,
-Methods/n4m 0.3.0 at ABI 2.14, and Core 0.4.0) from the registry.
+Cargo resolves the current published train (DagML 0.3.34, Data 0.2.12, IO 0.2.4,
+Methods/n4m 0.4.0 at ABI 2.17, and Core 0.4.1) from the registry.
 Run the Core gate against the qualified ABI 2.5 Methods library:
 
 ```sh
