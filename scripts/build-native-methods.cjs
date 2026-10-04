@@ -122,7 +122,10 @@ function targetConfig(platform, arch) {
       preset: "ci-linux-gcc12-release",
       libraryPattern: new RegExp(`^libn4m\\.so\\.${METHODS_ABI_MAJOR}\\.${METHODS_ABI_MINOR}\\.0$`),
       cliParts: ["cpp", "cli", "n4m_cli"],
-      configureExtra: [],
+      // GCC 12 misdiagnoses two initializer-list vector assignments in the
+      // pinned upstream multimodal test at -O3. Keep building and running all
+      // tests; demote only this diagnostic from -Werror on the Linux runner.
+      configureExtra: ["-DCMAKE_CXX_FLAGS=-Wno-error=array-bounds"],
       buildExtra: [],
       ctestExtra: [],
     };

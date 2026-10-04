@@ -69,6 +69,8 @@ describe("native Methods product build", () => {
     expect(methodsBuild.targetConfig("linux", "x64")).toMatchObject({
       preset: "ci-linux-gcc12-release",
       cliParts: ["cpp", "cli", "n4m_cli"],
+      configureExtra: ["-DCMAKE_CXX_FLAGS=-Wno-error=array-bounds"],
+      ctestExtra: [],
     });
     expect(methodsBuild.targetConfig("win32", "x64")).toMatchObject({
       preset: "ci-windows-msvc-release",
