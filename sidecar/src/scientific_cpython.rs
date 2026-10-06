@@ -2795,7 +2795,7 @@ mod tests {
             .next()
             .unwrap();
         let script = format!(
-            "{helper}\nresponse={{'schema':'nirs4all.studio-library-error.v1','request_id':'multiline','error':{{'code':'dataset_load_failed','message':bounded_library_error_message(ValueError('validation\\nfailed\\t'+'é'*5000+'\\u0085'))}}}}\nprint(json.dumps(response,ensure_ascii=False))"
+            "{helper}\nresponse={{'schema':'nirs4all.studio-library-error.v1','request_id':'multiline','error':{{'code':'dataset_load_failed','message':bounded_library_error_message(ValueError('validation\\nfailed\\t'+'é'*5000+'\\u0085'))}}}}\nsys.stdout.buffer.write(json.dumps(response,ensure_ascii=False).encode('utf-8'))"
         );
         let python = if cfg!(windows) { "python" } else { "python3" };
         let output = Command::new(python)
