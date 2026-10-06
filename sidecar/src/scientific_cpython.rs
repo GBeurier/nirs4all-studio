@@ -1392,27 +1392,12 @@ fn collect_runtime_snapshot(
     // One bounded pool for the whole inventory, not one pool per directory.
     let workers = file_paths.len().clamp(1, 8);
     let chunk_size = file_paths.len().div_ceil(workers).max(1);
-    let mut files = std::thread::scope(|scope| {
-        let handles: Vec<_> = file_paths
-            .chunks(chunk_size)
-            .map(|chunk| {
-                scope.spawn(move || {
-                    chunk
-                        .iter()
-                        .map(|path| windows_runtime_entry(path, runtime_root, false))
-                        .collect::<Result<Vec<_>, _>>()
-                })
-            })
-            .collect();
-        let mut result = Vec::with_capacity(file_paths.len());
-        for handle in handles {
-            result.extend(
-                handle
-                    .join()
-                    .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)??,
-            );
-        }
-        Ok::<_, ScientificCpythonUnavailable>(result)
+    let chunks: Vec<_> = file_paths.chunks(chunk_size).collect();
+    let mut files = collect_snapshot_worker_results(chunks.len(), |index| {
+        chunks[index]
+            .iter()
+            .map(|path| windows_runtime_entry(path, runtime_root, false))
+            .collect()
     })?;
     for (path, before) in directory_paths.iter().zip(&directories) {
         if windows_runtime_entry(path, runtime_root, true)? != *before {
@@ -1422,6 +1407,47 @@ fn collect_runtime_snapshot(
     directories.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(RuntimeSnapshot { directories, files })
+}
+
+// Join every started worker explicitly even when an earlier worker failed.
+// Neither an OS spawn refusal nor a worker panic may unwind the validator mutex.
+#[cfg(any(windows, test))]
+fn collect_snapshot_worker_results<T: Send>(
+    worker_count: usize,
+    operation: impl Fn(usize) -> Result<Vec<T>, ScientificCpythonUnavailable> + Sync,
+) -> Result<Vec<T>, ScientificCpythonUnavailable> {
+    if worker_count > 8 {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(worker_count);
+        let mut failure = None;
+        for index in 0..worker_count {
+            let operation = &operation;
+            if let Ok(handle) = std::thread::Builder::new()
+                .name(format!("studio-snapshot-{index}"))
+                .spawn_scoped(scope, move || operation(index))
+            {
+                handles.push(handle);
+            } else {
+                failure = Some(ScientificCpythonUnavailable::RuntimeContractTampered);
+                break;
+            }
+        }
+        let mut values = Vec::new();
+        for handle in handles {
+            match handle.join() {
+                Ok(Ok(result)) => values.extend(result),
+                Ok(Err(error)) => {
+                    failure.get_or_insert(error);
+                }
+                Err(_) => {
+                    failure.get_or_insert(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+            }
+        }
+        failure.map_or_else(|| Ok(values), Err)
+    })
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -2818,6 +2844,39 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn snapshot_worker_failure_joins_later_panics_without_poisoning_validator() {
+        let validated = Mutex::new(());
+        let completed = std::sync::atomic::AtomicBool::new(false);
+        let guard = validated.lock().unwrap();
+        let result = collect_snapshot_worker_results::<u8>(3, |index| match index {
+            0 => Err(ScientificCpythonUnavailable::RuntimeContractTampered),
+            1 => panic!("synthetic snapshot worker failure"),
+            _ => {
+                completed.store(true, Ordering::SeqCst);
+                Ok(vec![2])
+            }
+        });
+        assert_eq!(
+            result,
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+        assert!(
+            completed.load(Ordering::SeqCst),
+            "All started workers must be joined"
+        );
+        drop(guard);
+        assert!(!validated.is_poisoned());
+        assert_eq!(
+            collect_snapshot_worker_results(2, |index| Ok(vec![index])).unwrap(),
+            vec![0, 1]
+        );
+        assert_eq!(
+            collect_snapshot_worker_results::<u8>(9, |_| panic!("No unbounded spawn")),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+    }
 
     #[cfg(unix)]
     #[test]
