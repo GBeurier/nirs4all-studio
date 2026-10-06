@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const { expectedPublishedNames, sha256File } = require('./finalize-release-assets.cjs');
+const { expectedPublishedNames, sha256File, finalizeReleaseAssets } = require('./finalize-release-assets.cjs');
 const { publishQualifiedRelease, releaseManifest } = require('./publish-qualified-release.cjs');
 const execFileAsync = promisify(execFile);
 const REPO = 'GBeurier/nirs4all-studio';
@@ -25,7 +25,7 @@ function positive(value, label) { assert(Number.isSafeInteger(value) && value > 
 function digest(value, label) { assert(typeof value === 'string' && /^[0-9a-f]{64}$/.test(value), `Invalid ${label}`); }
 function validateManifest(value) {
   closed(value, ['schema', 'version', 'source_sha', 'release_run_id', 'ci_run_id', 'e2e_run_id', 'version_run_id',
-    'artifacts', 'files', 'docker', 'notes_sha256'], 'Reviewed manifest');
+    'artifacts', 'producer_files', 'files', 'docker', 'notes_sha256'], 'Reviewed manifest');
   assert.equal(value.schema, 'nirs4all.studio.reviewed-promotion.v1');
   assert.equal(value.version, VERSION);
   assert(typeof value.source_sha === 'string' && /^[0-9a-f]{40}$/.test(value.source_sha), 'Invalid immutable runtime SHA');
@@ -42,6 +42,12 @@ function validateManifest(value) {
   assert.equal(new Set(Object.values(value.artifacts).map(item => item.id)).size, 4, 'Artifact IDs must be distinct');
   const expected = expectedPublishedNames(VERSION, false, false).flatMap(name => [name, `${name}.sha256`]).sort();
   assert(Array.isArray(value.files), 'Missing reviewed files');
+  const producers = expected.map(name => name.replace('nirs4all.Studio-', 'nirs4all Studio-'));
+  assert(Array.isArray(value.producer_files), 'Missing reviewed producer files');
+  assert.deepEqual(value.producer_files.map(item => item.name).sort(), producers.sort(), 'Exactly six reviewed producer files required');
+  for (const file of value.producer_files) {
+    closed(file, ['name', 'size', 'sha256'], 'Producer file'); positive(file.size, 'producer size'); digest(file.sha256, 'producer SHA256');
+  }
   assert.deepEqual(value.files.map(item => item.name).sort(), expected, 'Exactly three installers and their checksums are required');
   for (const file of value.files) {
     closed(file, ['name', 'size', 'sha256'], 'File'); positive(file.size, 'file size'); digest(file.sha256, 'file SHA256');
@@ -100,6 +106,19 @@ async function verifyGates(manifest, api) {
   assert(['ahead', 'identical'].includes(ancestry.status) && ancestry.merge_base_commit?.sha === m.source_sha,
     'Reviewed runtime must be integrated into current main');
 }
+function stageProducerPayloads(manifest, root, folders) {
+  const m = validateManifest(manifest);
+  for (const expected of m.producer_files) {
+    const matches = folders.map(folder => path.join(folder, expected.name)).filter(file => fs.existsSync(file));
+    assert.equal(matches.length, 1, `Missing/ambiguous producer file: ${expected.name}`);
+    const source = matches[0]; assert.equal(plainFile(source).size, expected.size);
+    assert.equal(sha256File(source), expected.sha256, `Reviewed producer bytes differ: ${expected.name}`);
+    fs.copyFileSync(source, path.join(root, 'release', expected.name), fs.constants.COPYFILE_EXCL);
+  }
+  // Existing release behavior: unchanged installer bytes, normalized public
+  // basenames, and regenerated sidecars whose exact bytes are reviewed too.
+  finalizeReleaseAssets(path.join(root, 'release'), expectedPublishedNames(VERSION, false, false));
+}
 function plainFile(file) { const stat = fs.lstatSync(file); assert(stat.isFile() && !stat.isSymbolicLink(), 'Payload must be a regular non-symlink file'); return stat; }
 function verifyPayloads(manifest, root, notes) {
   const m = validateManifest(manifest);
@@ -130,13 +149,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   for (const [key, artifact] of Object.entries(manifest.artifacts)) {
     const folder = path.join(root, key);
     await command('gh', ['run', 'download', String(manifest.release_run_id), '-R', REPO, '--name', artifact.name, '--dir', folder]);
-    if (key !== 'docker') {
-      for (const expected of manifest.files) if (fs.existsSync(path.join(folder, expected.name))) {
-        const source = path.join(folder, expected.name); plainFile(source);
-        fs.copyFileSync(source, path.join(root, 'release', expected.name), fs.constants.COPYFILE_EXCL);
-      }
-    }
   }
+  stageProducerPayloads(manifest, root, ['linux', 'windows', 'macos'].map(key => path.join(root, key)));
   verifyPayloads(manifest, root, NOTES);
   await command('docker', ['load', '--input', path.join(root, 'docker', 'studio-image.tar')]);
   const image = JSON.parse(await command('docker', ['image', 'inspect', 'nirs4all-studio:native-release-candidate']));
@@ -160,8 +174,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     await command('docker', ['push', `${repository}:${label}`]);
   }
   await publishQualifiedRelease({ repo: REPO, tag: VERSION, version: VERSION, sha: manifest.source_sha,
-    prerelease: false, includeAllInOne: false, includeMacosX64: false, releaseRoot: path.join(root, 'release'), notesPath: NOTES });
+    prerelease: false, includeAllInOne: false, includeMacosX64: false, releaseRoot: path.join(root, 'release'), notesPath: NOTES, reviewedNotesSha256: manifest.notes_sha256 });
   console.log('Published only the exact reviewed Studio 0.15.1 installers and Docker image');
 }
 if (require.main === module) main().catch(error => { console.error(error.cmd ? 'Reviewed promotion command failed' : error.message); process.exitCode = 1; });
-module.exports = { ARTIFACT_NAMES, CI_JOBS, RELEASE_JOBS, validateManifest, verifyGates, verifyPayloads, main };
+module.exports = { ARTIFACT_NAMES, CI_JOBS, RELEASE_JOBS, validateManifest, verifyGates, stageProducerPayloads, verifyPayloads, main };

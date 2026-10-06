@@ -28,7 +28,7 @@ function github(options, behavior = {}) {
   let nextId = 100;
   const state = {
     release: behavior.absent ? null : { id: 99, tag_name: options.tag, draft: true,
-      prerelease: options.prerelease, target_commitish: "main" },
+      prerelease: options.prerelease, target_commitish: "main", body: fs.readFileSync(options.notesPath, "utf8") },
     assets: [], calls: [], mutations: [], waits: [], attempts: new Map(), active: 0, maxActive: 0, deletedAssets: [],
   };
   state.asset = (entry) => ({ id: nextId++, name: entry.name, size: entry.size,
@@ -83,11 +83,15 @@ function github(options, behavior = {}) {
         return "";
       }
       if (endpoint === "releases/99") {
-        if (args.length === 2) return JSON.stringify(state.release);
-        assert.deepEqual(args.slice(2), ["--method", "PATCH", "--field", "draft=false"]);
+        if (args.length === 2) { behavior.beforeReleaseRead?.(state); return JSON.stringify(state.release); }
+        const fields = ["--method", "PATCH", "--field", "draft=false"];
+        if (options.reviewedNotesSha256 !== undefined) fields.push("--raw-field", `body=${fs.readFileSync(options.notesPath, "utf8")}`);
+        assert.deepEqual(args.slice(2), fields);
         state.mutations.push("publish");
         assert.equal(state.assets.length, manifest.length, "publication must be last after all assets");
         for (const entry of manifest) assert.equal(state.assets.find((a) => a.name === entry.name)?.digest, `sha256:${entry.sha256}`);
+        behavior.beforePublish?.(state);
+        if (options.reviewedNotesSha256 !== undefined) state.release.body = args.at(-1).slice("body=".length);
         if (!behavior.publishFails) state.release.draft = false;
         if (behavior.publishFails || behavior.publishResponseLost) throw new Error("publish response lost");
         return JSON.stringify(state.release);
@@ -98,7 +102,7 @@ function github(options, behavior = {}) {
         "--verify-tag", "--target", options.sha, "--title", `nirs4all Studio ${options.version}`,
         "--notes-file", options.notesPath, "--draft", ...(options.prerelease ? ["--prerelease"] : [])]);
       state.mutations.push("create-draft");
-      state.release = { id: 99, tag_name: options.tag, draft: true, prerelease: options.prerelease };
+      state.release = { id: 99, tag_name: options.tag, draft: true, prerelease: options.prerelease, body: fs.readFileSync(options.notesPath, "utf8") };
       if (behavior.createResponseLost) throw new Error("create response lost");
       return "created";
     }
@@ -590,4 +594,24 @@ test("an uploaded payload with its qualified SHA survives an upstream error with
   assert.deepEqual(remote.state.deletedAssets, []);
   assert.equal(remote.state.mutations.length, 2);
   assert.equal(remote.state.mutations.at(-1), "publish");
+});
+
+test('strict reviewed notes reject mismatched drafts and changes during uploads', async t => {
+  for (const phase of ['initial', 'upload']) {
+    const options = fixture(t); options.reviewedNotesSha256 = sha256File(options.notesPath);
+    const behavior = phase === 'upload' ? { beforeList(state) { if (state.assets.length) state.release.body = 'Unreviewed replacement'; } } : {};
+    const { dependencies, state } = github(options, behavior);
+    if (phase === 'initial') state.release.body = 'Unreviewed existing draft';
+    await assert.rejects(publishQualifiedRelease(options, dependencies), /notes do not match review/);
+    assert.equal(state.release.draft, true); assert(!state.mutations.includes('publish'));
+  }
+});
+test('strict reviewed notes bind publication atomically and support fresh drafts', async t => {
+  for (const absent of [false, true]) {
+    const options = fixture(t); options.reviewedNotesSha256 = sha256File(options.notesPath);
+    const { dependencies, state } = github(options, { absent, beforePublish(current) { current.release.body = 'Concurrent unreviewed text'; } });
+    await publishQualifiedRelease(options, dependencies);
+    assert.equal(state.release.draft, false);
+    assert.equal(state.release.body, fs.readFileSync(options.notesPath, 'utf8'));
+  }
 });
