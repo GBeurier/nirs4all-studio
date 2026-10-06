@@ -31,6 +31,33 @@ use crate::scientific_request_resolver::ScientificRequestResolver;
 #[path = "warm_library_host.rs"]
 mod warm_library_host;
 
+/// Disposable CI timing only: static phase names, no scientific data or paths.
+pub(crate) struct BoundaryTiming {
+    phase: &'static str,
+    started: Option<Instant>,
+}
+
+impl BoundaryTiming {
+    pub(crate) fn start(phase: &'static str) -> Self {
+        Self {
+            phase,
+            started: matches!(std::env::var("CI").as_deref(), Ok("true" | "1")).then(Instant::now),
+        }
+    }
+}
+
+impl Drop for BoundaryTiming {
+    fn drop(&mut self) {
+        if let Some(started) = self.started {
+            eprintln!(
+                "Studio boundary timing phase={} elapsed_us={}",
+                self.phase,
+                started.elapsed().as_micros()
+            );
+        }
+    }
+}
+
 pub const SCIENTIFIC_CPYTHON_HOST_CONTRACT: &str =
     include_str!("../contracts/studio_scientific_cpython_host_v1.json");
 pub const SCIENTIFIC_CPYTHON_EXECUTOR_ID: &str = "cpython-stdio-v1";
@@ -430,6 +457,11 @@ impl CpythonScientificJobExecutor {
     }
 
     pub(crate) fn adapt_document(&self, operation: &str, payload: &Value) -> Result<Value, String> {
+        let _timing = BoundaryTiming::start(match operation {
+            "dataset.configure" => "document_configure",
+            "dataset.preview" => "document_preview",
+            _ => "document_other",
+        });
         let (Some(host), Some(callable), Some(runtime)) = (
             &self.identity,
             &self.callable_identity,
@@ -437,7 +469,10 @@ impl CpythonScientificJobExecutor {
         ) else {
             return Err("Attested document library host unavailable".into());
         };
-        crate::document_cpython::verify(&runtime.site_packages)?;
+        {
+            let _timing = BoundaryTiming::start("adapter_verify_before");
+            crate::document_cpython::verify(&runtime.site_packages)?;
+        }
         let request = crate::document_cpython::request(operation, payload)?;
         let bytes = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
         let response = self
@@ -456,7 +491,10 @@ impl CpythonScientificJobExecutor {
                 },
             )
             .map_err(|error| error.reason().to_owned())?;
-        crate::document_cpython::verify(&runtime.site_packages)?;
+        {
+            let _timing = BoundaryTiming::start("adapter_verify_after");
+            crate::document_cpython::verify(&runtime.site_packages)?;
+        }
         if response["success"] == true {
             Ok(response["result"].clone())
         } else {
@@ -1261,6 +1299,7 @@ fn collect_runtime_inventory(
 fn collect_runtime_snapshot(
     runtime_root: &Path,
 ) -> Result<RuntimeSnapshot, ScientificCpythonUnavailable> {
+    let _timing = BoundaryTiming::start("runtime_snapshot");
     let mut pending = vec![runtime_root.to_path_buf()];
     let mut directories = Vec::new();
     let mut files = Vec::new();
@@ -1358,6 +1397,7 @@ fn windows_runtime_entry(
 fn collect_runtime_snapshot(
     runtime_root: &Path,
 ) -> Result<RuntimeSnapshot, ScientificCpythonUnavailable> {
+    let _timing = BoundaryTiming::start("runtime_snapshot");
     let mut pending = vec![runtime_root.to_path_buf()];
     let mut directories = Vec::new();
     let mut directory_paths = Vec::new();
