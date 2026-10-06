@@ -49,7 +49,9 @@ impl BoundaryTiming {
 impl Drop for BoundaryTiming {
     fn drop(&mut self) {
         if let Some(started) = self.started {
-            eprintln!(
+            // Diagnostic I/O failure must not change the guarded operation.
+            let _ = writeln!(
+                std::io::stderr().lock(),
                 "Studio boundary timing phase={} elapsed_us={}",
                 self.phase,
                 started.elapsed().as_micros()
