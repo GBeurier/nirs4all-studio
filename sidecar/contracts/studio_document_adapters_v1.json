@@ -256,8 +256,8 @@
     },
     {
       "path": "src/data/nodes/definitions/preprocessing/derivatives.json",
-      "size": 6015,
-      "sha256": "5724b5b2a183a2c781ecd91d10daa2653096876416e0e2b9a39ca85a11dfa09b"
+      "size": 6244,
+      "sha256": "810f55fbe593d440473a3132c921c42348cb8888cff6ce96fb85fa66272c0cdb"
     },
     {
       "path": "src/data/nodes/definitions/preprocessing/feature-ops.json",
@@ -351,8 +351,8 @@
     },
     {
       "path": "src/data/nodes/generated/canonical-registry.json",
-      "size": 418154,
-      "sha256": "996f7394660f4fe29a83159ba49ec8e7f3deb7fe2578ba0b1424519d35276f6c"
+      "size": 418354,
+      "sha256": "ba1acc9e1937615c60f8f120bc6e6416a6040a1424a8539773e20f9a24b3035a"
     }
   ]
 }

@@ -52,12 +52,12 @@ pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_HOST_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
-pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.0";
+pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.2";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
-    "9f70da8d24b3359a0dd9a79454b09e1b2166aa1e29ae1b629ac9d46e2df9fe59";
+    "fbe9eafe4d3f646151e32f9eb0d63fcd7d6ad50c1d6c27a955820cf75ec7997a";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
-    "2c2c2206cdfc8c8e58c826ee931333e6da753d57c281453e77c3bc165b63cd68";
-pub const SCIENTIFIC_SOURCE_COMMIT: &str = "41ee99f188e6d4cad2bdc9c254597a0ff94ab67b";
+    "f8222fc8f81a03be7b1e027f26b96ec046e23c0e4aca1fea3ccf6454a611e7f6";
+pub const SCIENTIFIC_SOURCE_COMMIT: &str = "9591e430f19809de0cb86fe27e0a413f403340f9";
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
 
@@ -116,7 +116,7 @@ except Exception as error:
     distribution_record_sha256=None
     distribution_files_verified=False
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"2c2c2206cdfc8c8e58c826ee931333e6da753d57c281453e77c3bc165b63cd68","source_commit":"41ee99f188e6d4cad2bdc9c254597a0ff94ab67b"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"f8222fc8f81a03be7b1e027f26b96ec046e23c0e4aca1fea3ccf6454a611e7f6","source_commit":"9591e430f19809de0cb86fe27e0a413f403340f9"},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,socket,sys
@@ -144,14 +144,14 @@ if len(raw)>33554432:
     raise RuntimeError("scientific request exceeds stdin budget")
 request=json.loads(raw)
 distribution=importlib.metadata.distribution("nirs4all")
-if distribution.version != "1.4.0":
+if distribution.version != "1.4.2":
     raise RuntimeError("scientific distribution version changed")
 record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
 record_path=distribution.locate_file(record_entry) if record_entry else None
 record_bytes=open(record_path,"rb").read() if record_path else b""
 record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
 manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-if hashlib.sha256(manifest_bytes).hexdigest() != "9f70da8d24b3359a0dd9a79454b09e1b2166aa1e29ae1b629ac9d46e2df9fe59":
+if hashlib.sha256(manifest_bytes).hexdigest() != "fbe9eafe4d3f646151e32f9eb0d63fcd7d6ad50c1d6c27a955820cf75ec7997a":
     raise RuntimeError("scientific distribution identity changed")
 for _,encoded,size in record_rows:
     if "=" not in encoded or (size and not size.isdigit()):

@@ -215,7 +215,7 @@
     "name": "Derivate",
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.scalers.Derivate",
-    "description": "nirs4all preprocessing Derivate",
+    "description": "Finite-difference spectral derivative along wavelengths (axis=1).",
     "category": "Derivatives",
     "tags": [
       "derivative",
@@ -236,6 +236,13 @@
         "type": "int",
         "default": 1,
         "isAdvanced": true
+      },
+      {
+        "name": "axis",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true,
+        "description": "Axis for differentiation: 1 = wavelengths, 0 = samples."
       }
     ]
   }

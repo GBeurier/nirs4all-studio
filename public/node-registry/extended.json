@@ -7868,7 +7868,7 @@
     "id": "preprocessing.derivate",
     "name": "Derivate",
     "type": "preprocessing",
-    "description": "Derivative along sample axis",
+    "description": "Finite-difference spectral derivative along wavelengths (axis=1).",
     "parameters": [
       {
         "name": "order",
@@ -7887,6 +7887,12 @@
         "type": "bool",
         "isAdvanced": true,
         "default": true
+      },
+      {
+        "name": "axis",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 1
       }
     ],
     "source": "nirs4all",

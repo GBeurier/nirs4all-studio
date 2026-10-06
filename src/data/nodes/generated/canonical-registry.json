@@ -2415,7 +2415,7 @@
     "name": "Derivate",
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.scalers.Derivate",
-    "description": "nirs4all preprocessing Derivate",
+    "description": "Finite-difference spectral derivative along wavelengths (axis=1).",
     "parameters": [
       {
         "name": "order",
@@ -2434,6 +2434,12 @@
         "type": "bool",
         "isAdvanced": true,
         "default": true
+      },
+      {
+        "name": "axis",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 1
       }
     ],
     "source": "nirs4all",
@@ -3499,7 +3505,7 @@
     "name": "SPlitSplitter",
     "type": "splitting",
     "classPath": "nirs4all.operators.splitters.splitters.SPlitSplitter",
-    "description": "Implements the SPlit sampling.",
+    "description": "Implements SPlit sampling for reciprocal integer test fractions.",
     "parameters": [
       {
         "name": "test_size",
@@ -4473,7 +4479,7 @@
     "name": "ScatterSimulationMSC",
     "type": "augmentation",
     "classPath": "nirs4all.operators.augmentation.spectral.ScatterSimulationMSC",
-    "description": "Simulates scatter variation: x_aug = a + b * x",
+    "description": "Simulates scatter variation: x_aug = x + a + (b - 1) * reference.",
     "parameters": [
       {
         "name": "reference_mode",

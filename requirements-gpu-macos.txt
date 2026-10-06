@@ -9,4 +9,4 @@
 torch>=2.1.0
 
 # nirs4all with macOS GPU support
-# Install with: pip install nirs4all[macos-gpu]
+# Install with: pip install nirs4all[macos-gpu]==1.4.2 -c build/constraints/plugin-runtime-cpython311.txt

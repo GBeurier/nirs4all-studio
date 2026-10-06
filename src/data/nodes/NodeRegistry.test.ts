@@ -14,6 +14,7 @@ import {
 } from "@/data/nodes/NodeRegistryIndex";
 import { allNodes } from "@/data/nodes/definitions";
 import type { NodeDefinition } from "@/data/nodes/types";
+import extendedNodes from "../../../public/node-registry/extended.json";
 
 const makeNode = (overrides: Partial<NodeDefinition>): NodeDefinition => ({
   id: "splitting.example",
@@ -400,6 +401,39 @@ describe("NodeRegistryIndex", () => {
 });
 
 describe("NodeRegistry - mergeNodeDefinitions", () => {
+  it.each(["standard", "extended"])(
+    "exposes Derivate's spectral axis in the effective %s registry",
+    (mode) => {
+      const baseRegistry = createNodeRegistry();
+      const registry = mode === "extended"
+        ? new NodeRegistry(mergeNodeDefinitions(
+          baseRegistry.getAll(),
+          extendedNodes as NodeDefinition[]
+        ))
+        : baseRegistry;
+      const derivate = registry.getByClassPath(
+        "nirs4all.operators.transforms.scalers.Derivate"
+      );
+
+      expect(derivate?.id).toBe("preprocessing.derivate");
+      expect(registry.getAll().filter((node) => node.name === "Derivate")).toHaveLength(1);
+      expect(derivate?.parameters.find((parameter) => parameter.name === "axis")).toMatchObject({
+        type: "int",
+        default: 1,
+        isAdvanced: true,
+        description: "Axis for differentiation: 1 = wavelengths, 0 = samples.",
+      });
+      expect(registry.getDefaultParams("preprocessing.derivate")).toEqual({
+        order: 1,
+        delta: 1,
+        axis: 1,
+      });
+      expect(derivate?.description).toBe(
+        "Finite-difference spectral derivative along wavelengths (axis=1)."
+      );
+    }
+  );
+
   it("skips extended duplicates that match a preferred legacy class path", () => {
     const preferred = [
       makeNode({

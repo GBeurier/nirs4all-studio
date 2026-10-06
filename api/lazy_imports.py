@@ -11,6 +11,7 @@ import importlib
 import sys
 import threading
 import time
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -18,9 +19,10 @@ from .shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Add nirs4all to path if needed (done once, early — no actual import)
+# Preserve any discoverable SDK; use sibling sources only when absent.
+# Checking the spec keeps startup lazy and never masks a broken SDK import.
 _nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if _nirs4all_path.exists() and str(_nirs4all_path) not in sys.path:
+if "nirs4all" not in sys.modules and find_spec("nirs4all") is None and _nirs4all_path.exists() and str(_nirs4all_path) not in sys.path:
     sys.path.insert(0, str(_nirs4all_path))
 
 # --- State flags ---

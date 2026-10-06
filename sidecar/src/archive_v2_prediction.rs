@@ -54,7 +54,7 @@ const MAX_ARCHIVE_REF_BYTES: usize = 240;
 const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
-const CORE_PROJECT_VERSION: &str = "0.4.1";
+const CORE_PROJECT_VERSION: &str = "0.4.2";
 const METHODS_ABI_MAJOR: u32 = 2;
 const METHODS_ABI_MINOR: u32 = 17;
 const METHODS_SOURCE_COMMIT: &str = "dcc570b3647f77cf0428dd346078f442ed5cd032";
@@ -1838,7 +1838,7 @@ mod tests {
         };
         assert_eq!(
             core_methods_executor_identity(&methods),
-            format!("nirs4all-core@0.4.1+libn4m-abi-2.17:{}", "b".repeat(64))
+            format!("nirs4all-core@0.4.2+libn4m-abi-2.17:{}", "b".repeat(64))
         );
     }
 
@@ -1951,7 +1951,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "locked registry nirs4all 0.4.1 and n4m 0.4.0"
+            "locked registry nirs4all 0.4.2 and n4m 0.4.0"
         );
     }
 }

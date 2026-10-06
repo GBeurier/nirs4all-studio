@@ -313,7 +313,7 @@ class TestExecutionFailures:
     def test_partial_failure_in_experiment(
         self,
         workspace_with_data: Path,
-        client: TestClient,
+        workspace_client: TestClient,
         monkeypatch,
     ):
         """Test experiment where one pipeline fails but others complete."""
@@ -334,9 +334,6 @@ class TestExecutionFailures:
         (workspace_with_data / "pipelines" / "failing_pipeline.json").write_text(
             json.dumps(failing_pipeline, indent=2)
         )
-
-        # Select workspace
-        client.post("/api/workspace/select", json={"path": str(workspace_with_data)})
 
         # Mock nirs4all for test_pls but let failing_pipeline fail
         call_count = {"count": 0}
@@ -363,7 +360,7 @@ class TestExecutionFailures:
         monkeypatch.setattr("nirs4all.run", selective_mock, raising=False)
 
         # Create experiment with both pipelines
-        response = client.post("/api/runs", json={
+        response = workspace_client.post("/api/runs", json={
             "config": {
                 "name": "Partial Failure Experiment",
                 "dataset_ids": ["test_dataset"],
@@ -374,7 +371,7 @@ class TestExecutionFailures:
 
         run_id = _assert_created(response, "Experiment creation")["id"]
 
-        tracker = RunProgressTracker(client, run_id)
+        tracker = RunProgressTracker(workspace_client, run_id)
         tracker.poll_until_complete(timeout=60.0)
 
         run = tracker.get_run_details()
@@ -386,6 +383,7 @@ class TestExecutionFailures:
 
         # At least one should have failed
         assert "failed" in statuses, f"Expected at least one failure, got: {statuses}"
+        assert "completed" in statuses, f"Expected at least one completion, got: {statuses}"
 
 
 class TestMalformedPipelineConfig:

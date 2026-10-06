@@ -27,6 +27,7 @@ import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Callable, Literal, cast
 
@@ -121,9 +122,9 @@ def _count_tested_pipeline_variants(result: Any, fallback: int = 1) -> int:
 
     return len(variant_ids) if variant_ids else safe_fallback
 
-# Add nirs4all to path if needed
+# Preserve the configured SDK; sibling sources are an absent-package fallback.
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if nirs4all_path.exists() and str(nirs4all_path) not in sys.path:
+if "nirs4all" not in sys.modules and find_spec("nirs4all") is None and nirs4all_path.exists() and str(nirs4all_path) not in sys.path:
     sys.path.insert(0, str(nirs4all_path))
 
 router = APIRouter(prefix="/runs", tags=["runs"])
