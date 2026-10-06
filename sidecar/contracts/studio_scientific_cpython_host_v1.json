@@ -6,10 +6,10 @@
   "required_implementation": "cpython",
   "minimum_python_version": "3.11",
   "required_callable": "nirs4all.studio_scientific_job_v1",
-  "selected_source_commit": "9591e430f19809de0cb86fe27e0a413f403340f9",
-  "selected_wheel_sha256": "f8222fc8f81a03be7b1e027f26b96ec046e23c0e4aca1fea3ccf6454a611e7f6",
-  "selected_distribution_version": "1.4.2",
-  "selected_installed_manifest_sha256": "fbe9eafe4d3f646151e32f9eb0d63fcd7d6ad50c1d6c27a955820cf75ec7997a",
+  "selected_source_commit": "71b046a3076e2d15bf0f2296a4c59ac071d435af",
+  "selected_wheel_sha256": "abbb9ba66caee59ac8299e2aa4213d6bc98c76c9e05ed46fae3338dfd4cfa98b",
+  "selected_distribution_version": "1.4.3",
+  "selected_installed_manifest_sha256": "5e75355ce74660cb3965cf1cc7f35b20c0514bb2c4fa06a5e0cf1f14eb9d5329",
   "selected_callable_sha256": "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19",
   "distribution_identity": "exact_source_and_wheel_plus_platform-neutral_installed_manifest; every closure member is cryptographically verified at acquisition and the child verifies the immutable RECORD identity",
   "runtime_discovery": "packaged_contract_only",
@@ -42,6 +42,6 @@
   "windows_process_tree": "sidecar_launcher_assigned_to_kill_on_close_job_before_cpython_spawn",
   "publication_status": "published",
   "public_registry_verified": true,
-  "selected_wheel_url": "https://files.pythonhosted.org/packages/d8/2a/71fac81549f92625731b3c973e158f1bc6131411386b147dbba47c2dbae9/nirs4all-1.4.2-py3-none-any.whl",
+  "selected_wheel_url": "https://files.pythonhosted.org/packages/2c/1f/98551edfe7d8ab083afcaad8771f75774baac1ae6d8c143ea266f471f498/nirs4all-1.4.3-py3-none-any.whl",
   "source_ref_role": "exact_final_sdk_commit; wheel_payload_verified_against_git_commit_and_local_source; actual_pypi_json_and_wheel_bytes_verified"
 }

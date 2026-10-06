@@ -37,12 +37,12 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     version = config["nirs4all"]
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
 
-    assert version == "1.4.2"
+    assert version == "1.4.3"
     ref = re.search(r"^  NIRS4ALL_LIBRARY_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert ref is not None
     assert source is not None
-    assert ref.group(1) == source.group(1) == "9591e430f19809de0cb86fe27e0a413f403340f9"
+    assert ref.group(1) == source.group(1) == "71b046a3076e2d15bf0f2296a4c59ac071d435af"
     parsed = yaml.safe_load(workflow)
     contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
     assert parsed["env"]["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
@@ -149,7 +149,7 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
 
     assert "node scripts/verify-plugin-runtime-reproducibility.cjs" in workflow
     assert "plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json" in workflow
-    assert "nirs4all==1.4.2" in constraints
+    assert "nirs4all==1.4.3" in constraints
     assert "nirs4all-core==0.4.2" in constraints
     assert "nirs4all-io==0.2.5" in constraints
     assert "dag-ml-data==0.2.13" in constraints
@@ -185,7 +185,7 @@ def test_release_installed_upgrade_is_blocking_and_checksums_use_basenames() -> 
         sdk_checkout = next(i for i, step in enumerate(steps)
                             if step.get("with", {}).get("repository") == "GBeurier/nirs4all")
         assert sdk_checkout < qualification
-        assert steps[sdk_checkout]["with"]["ref"] == "9591e430f19809de0cb86fe27e0a413f403340f9"
+        assert steps[sdk_checkout]["with"]["ref"] == "71b046a3076e2d15bf0f2296a4c59ac071d435af"
         assert steps[sdk_checkout]["with"]["path"] == "_deps/nirs4all-qualification"
         assert not steps[qualification].get("continue-on-error", False)
         assert "INSTALLER_BASELINE" in steps[qualification]["env"]
