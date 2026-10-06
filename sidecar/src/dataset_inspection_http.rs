@@ -394,7 +394,7 @@ fn handle(
                 let mut config = adapt("dataset.configure", &document)?;
                 ScientificRequestResolver::confine_dataset_config(&mut config, &root)
                     .map_err(|error| format!("{error:?}"))?;
-                service.preview(&config, count(&body, "max_samples", 100)?, adapt)
+                service.preview_configured(&config, count(&body, "max_samples", 100)?, adapt)
             }
             _ => Err("Unknown dataset inspection operation".into()),
         }
@@ -551,9 +551,10 @@ mod tests {
             ),
             &|operation, payload| {
                 if operation == "dataset.configure" {
-                    if payload.get("record").is_some() {
-                        return Ok(payload["record"]["config"].clone());
-                    }
+                    assert!(
+                        payload.get("record").is_none(),
+                        "Wizard normalizer must run once"
+                    );
                     assert_eq!(
                         Path::new(payload["files"][0]["path"].as_str().unwrap())
                             .canonicalize()
@@ -579,6 +580,37 @@ mod tests {
         assert_eq!(response.status, 200, "{}", response.body);
         let body: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(body["summary"]["num_samples"], 2);
+    }
+
+    #[test]
+    fn normalized_preview_rejects_escaping_or_non_object_adapter_result() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let path = root.path().join("Xtrain.csv");
+        let escaping = outside.path().join("Xtrain.csv");
+        std::fs::write(&path, "a\n1\n").unwrap();
+        std::fs::write(&escaping, "a\n2\n").unwrap();
+        let settings = AppSettingsStore::new(root.path().join("settings"));
+        for config in [json!(null), json!({"train_x":escaping})] {
+            let response = handle(
+                &settings,
+                &request(
+                    "preview",
+                    &json!({
+                        "path":root.path(), "files":[{"path":path,"type":"X","split":"train"}],
+                        "parsing":{},"max_samples":10
+                    }),
+                ),
+                &|operation, _| {
+                    assert_eq!(
+                        operation, "dataset.configure",
+                        "No preview after invalid config"
+                    );
+                    Ok(config.clone())
+                },
+            );
+            assert_eq!(response.status, 400, "{}", response.body);
+        }
     }
 
     #[test]
