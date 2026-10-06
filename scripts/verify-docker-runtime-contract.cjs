@@ -74,8 +74,13 @@ requireText(
 );
 requireText(
   dockerfile,
-  "COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/",
+  "COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/python-runtime-config.cjs /contract-scripts/",
   "complete native contract verifier module graph",
+);
+requireText(
+  dockerfile,
+  "COPY recommended-config.json /recommended-config.json",
+  "recommended SDK version for native contract verifier",
 );
 requireText(
   dockerfile,
