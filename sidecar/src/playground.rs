@@ -41,23 +41,33 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         (state.app_settings.clone(), state.scientific_host.clone())
     };
-    Some(dispatch(&settings, request, &|document| {
-        host.as_ref().map_or_else(
-            || {
-                Err(LibraryFacadeError {
-                    code: "host_unavailable".into(),
-                    message: "Attested Playground library host unavailable".into(),
-                })
-            },
-            |host| host.invoke_library_facade(document),
-        )
-    }))
+    Some(dispatch(
+        &settings,
+        request,
+        &|document| {
+            host.as_ref().map_or_else(
+                || {
+                    Err(LibraryFacadeError {
+                        code: "host_unavailable".into(),
+                        message: "Attested Playground library host unavailable".into(),
+                    })
+                },
+                |host| host.invoke_library_facade(document),
+            )
+        },
+        &|operation, payload| {
+            host.as_ref()
+                .ok_or_else(|| "Attested dataset document adapter unavailable".to_owned())?
+                .adapt_document(operation, payload)
+        },
+    ))
 }
 
 fn dispatch(
     settings: &AppSettingsStore,
     request: &HttpRequest,
     invoke: &impl Fn(&Value) -> Result<Value, LibraryFacadeError>,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
 ) -> HttpResponse {
     let required_method = if request.path == "/api/playground/capabilities"
         || request
@@ -74,7 +84,7 @@ fn dispatch(
     if request.body.len() > MAX_REQUEST_BYTES {
         return error(413, "Playground request exceeds 8 MiB");
     }
-    let prepared = match prepare(settings, request) {
+    let prepared = match prepare(settings, request, adapt) {
         Ok(value) => value,
         Err((status, detail)) => return error(status, &detail),
     };
@@ -107,7 +117,11 @@ struct Prepared {
     projection: Projection,
 }
 
-fn prepare(settings: &AppSettingsStore, request: &HttpRequest) -> Result<Prepared, (u16, String)> {
+fn prepare(
+    settings: &AppSettingsStore,
+    request: &HttpRequest,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+) -> Result<Prepared, (u16, String)> {
     if request.query.is_some() {
         return Err((400, "Playground route does not accept query fields".into()));
     }
@@ -121,13 +135,13 @@ fn prepare(settings: &AppSettingsStore, request: &HttpRequest) -> Result<Prepare
         ),
         "/api/playground/execute-dataset" => (
             "execute",
-            prepare_dataset_execute(settings, parse_object(&request.body)?)?,
+            prepare_dataset_execute(settings, parse_object(&request.body)?, adapt)?,
             Projection::Result,
         ),
         "/api/playground/pca" | "/api/playground/repetitions" => {
             let mut body = parse_object(&request.body)?;
             body.entry("partition").or_insert_with(|| json!("train"));
-            let mut payload = prepare_dataset_execute(settings, body)?;
+            let mut payload = prepare_dataset_execute(settings, body, adapt)?;
             let field = if request.path.ends_with("/pca") {
                 "pca"
             } else {
@@ -180,7 +194,7 @@ fn prepare(settings: &AppSettingsStore, request: &HttpRequest) -> Result<Prepare
         }
         path if path.starts_with("/api/playground/metadata-columns/") => {
             let id = path.trim_start_matches("/api/playground/metadata-columns/");
-            let dataset = confined_dataset(settings, id)?;
+            let dataset = confined_dataset(settings, id, adapt)?;
             (
                 "metadata_columns",
                 json!({"dataset":{"config":dataset},"partition":"train","max_unique_values":200}),
@@ -223,12 +237,13 @@ fn prepare_inline_execute(mut body: Map<String, Value>) -> Result<Value, (u16, S
 fn prepare_dataset_execute(
     settings: &AppSettingsStore,
     mut body: Map<String, Value>,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
 ) -> Result<Value, (u16, String)> {
     let dataset_id = body
         .remove("dataset_id")
         .and_then(|value| value.as_str().map(str::to_owned))
         .ok_or_else(|| (400, "Missing dataset_id".into()))?;
-    let config = confined_dataset(settings, &dataset_id)?;
+    let config = confined_dataset(settings, &dataset_id, adapt)?;
     let partition = body.remove("partition").unwrap_or_else(|| json!("all"));
     let source_index = body
         .remove("source_index")
@@ -251,8 +266,12 @@ fn prepare_dataset_execute(
     Ok(payload)
 }
 
-pub fn confined_dataset(settings: &AppSettingsStore, id: &str) -> Result<Value, (u16, String)> {
-    let mut record =
+pub fn confined_dataset(
+    settings: &AppSettingsStore,
+    id: &str,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+) -> Result<Value, (u16, String)> {
+    let record =
         crate::workspace_documents::linked_dataset(settings, id).map_err(|detail| (404, detail))?;
     let root = record
         .get("path")
@@ -260,13 +279,28 @@ pub fn confined_dataset(settings: &AppSettingsStore, id: &str) -> Result<Value, 
         .and_then(|value| Path::new(value).canonicalize().ok())
         .filter(|path| path.is_dir())
         .ok_or_else(|| (400, "Linked dataset directory is unavailable".into()))?;
-    ScientificRequestResolver::confine_dataset_config(&mut record, &root)
+    translated_dataset_config(record, &root, adapt)
+}
+
+fn translated_dataset_config(
+    mut record: Value,
+    root: &Path,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+) -> Result<Value, (u16, String)> {
+    ScientificRequestResolver::confine_dataset_config(&mut record, root)
         .map_err(|_| (400, "Linked dataset config escaped its directory".into()))?;
-    record
-        .get("config")
-        .filter(|value| value.is_object())
-        .cloned()
-        .ok_or_else(|| (400, "Linked dataset has no canonical config".into()))
+    let mut config = adapt("dataset.configure", &json!({"record": record}))
+        .map_err(|_| (400, "Linked dataset config translation failed".into()))?;
+    if !config.is_object() {
+        return Err((400, "Dataset adapter returned no explicit config".into()));
+    }
+    ScientificRequestResolver::confine_dataset_config(&mut config, root).map_err(|_| {
+        (
+            400,
+            "Translated dataset config escaped its directory".into(),
+        )
+    })?;
+    Ok(config)
 }
 
 fn parse_object(body: &[u8]) -> Result<Map<String, Value>, (u16, String)> {
@@ -419,6 +453,7 @@ mod tests {
                     "operation":"execute","result":{"success":true}
                 }))
             },
+            &|_, _| unreachable!("inline requests must not translate datasets"),
         );
         assert_eq!(response.status, 200, "{}", response.body);
         assert_eq!(
@@ -447,6 +482,7 @@ mod tests {
                     invocations.fetch_add(1, Ordering::SeqCst);
                     unreachable!("invalid inline requests must not acquire the library host")
                 },
+                &|_, _| unreachable!("inline requests must not translate datasets"),
             );
             assert_eq!(response.status, 400, "{}", response.body);
             assert_eq!(invocations.load(Ordering::SeqCst), 0, "{body}");
@@ -472,6 +508,7 @@ mod tests {
                     message: "Attested Playground library host unavailable".into(),
                 })
             },
+            &|_, _| unreachable!("inline requests must not translate datasets"),
         );
         assert_eq!(response.status, 503, "{}", response.body);
         assert_eq!(invocations.load(Ordering::SeqCst), 1);
@@ -491,6 +528,7 @@ mod tests {
                     message: "canonical declaration required".into(),
                 })
             },
+            &|_, _| unreachable!("inline requests must not translate datasets"),
         );
         assert_eq!(response.status, 400);
         assert!(response.body.contains("canonical declaration required"));
@@ -511,8 +549,45 @@ mod tests {
                     "result": {"valid": true, "steps": []},
                 }))
             },
+            &|_, _| unreachable!("inline requests must not translate datasets"),
         );
         assert_eq!(response.status, 500);
         assert!(response.body.contains("wrong response identity"));
+    }
+    #[test]
+    fn linked_wizard_configuration_uses_attested_adapter_and_rechecks_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("Xtrain.csv");
+        std::fs::write(&file, "1000;1100\n1;2\n3;4\n").unwrap();
+        let record = json!({"path":root.path(),"config":{"files":[{"path":file,"type":"X","split":"train"}],"aggregation":{"enabled":false,"method":"mean"}}});
+        let result =
+            translated_dataset_config(record.clone(), root.path(), &|operation, payload| {
+                assert_eq!(operation, "dataset.configure");
+                assert_eq!(payload["record"]["config"]["aggregation"]["enabled"], false);
+                Ok(json!({"train_x":payload["record"]["config"]["files"][0]["path"]}))
+            })
+            .unwrap();
+        assert_eq!(result["train_x"], json!(file.canonicalize().unwrap()));
+        assert!(
+            translated_dataset_config(record.clone(), root.path(), &|_, _| Err(
+                "unavailable".into()
+            ))
+            .is_err()
+        );
+        assert!(
+            translated_dataset_config(record.clone(), root.path(), &|_, _| Ok(json!([]))).is_err()
+        );
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        assert!(translated_dataset_config(record, root.path(), &|_, _| Ok(
+            json!({"train_x":outside.path()})
+        ))
+        .is_err());
+        let unsafe_record = json!({"config":{"train_x":outside.path()}});
+        assert!(
+            translated_dataset_config(unsafe_record, root.path(), &|_, _| panic!(
+                "escape must fail before adapter"
+            ))
+            .is_err()
+        );
     }
 }
