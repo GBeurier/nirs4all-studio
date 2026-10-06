@@ -4593,12 +4593,7 @@ fn handle_connection_with_access(
                 };
                 return write_access_response(&mut stream, response, accepted_origin.as_deref());
             }
-            let waiting = (request.path == "/api/system/readiness")
-                .then(|| scientific_cpython::BoundaryTiming::start("readiness_state_lock_wait"));
             let mut state = state.lock().expect("sidecar state mutex poisoned");
-            drop(waiting);
-            let _readiness_timing = (request.path == "/api/system/readiness")
-                .then(|| scientific_cpython::BoundaryTiming::start("readiness_route"));
             route_http_request(&mut state, &request)
         }
         Err(error) => request_read_error_response(error)?,
@@ -5131,11 +5126,15 @@ mod tests {
         entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         // The same owners used by preview can be cloned while readiness is
         // still validating, and control routes retain immediate availability.
-        let concurrent = state.try_lock().map(|mut state| {
-            let owners = (state.app_settings.clone(), state.scientific_host.clone());
-            let response = route_request(&mut state, "GET", "/api/health");
-            (owners, response.status)
-        });
+        let concurrent = state.try_lock().map_or_else(
+            |_| None,
+            |mut state| {
+                let owners = (state.app_settings.clone(), state.scientific_host.clone());
+                let response = route_request(&mut state, "GET", "/api/health");
+                drop(state);
+                Some((owners, response.status))
+            },
+        );
         release_tx.send(()).unwrap();
         let result = worker.join().unwrap();
         let (_, status) = concurrent.expect("readiness must not hold the route lock");
