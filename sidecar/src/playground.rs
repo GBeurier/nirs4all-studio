@@ -576,7 +576,12 @@ mod tests {
                 Ok(json!({"train_x":payload["record"]["config"]["files"][0]["path"]}))
             })
             .unwrap();
-        assert_eq!(result["train_x"], json!(file.canonicalize().unwrap()));
+        assert_eq!(
+            Path::new(result["train_x"].as_str().unwrap())
+                .canonicalize()
+                .unwrap(),
+            file.canonicalize().unwrap()
+        );
         assert_eq!(
             translated_dataset_config(record.clone(), root.path(), &|_, _| Err((
                 503,
