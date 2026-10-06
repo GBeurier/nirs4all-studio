@@ -436,6 +436,48 @@ pub struct SidecarState {
     native_updater: native_updates::NativeUpdater,
 }
 
+/// Clone owners while holding the route lock, then validate the same runtime
+/// outside it. Scientific requests retain their own before/after attestation.
+struct ReadinessSnapshot {
+    started_at: Instant,
+    app_settings: AppSettingsStore,
+    native_jobs: Arc<NativeJobRuntime>,
+    scientific_host: Option<Arc<scientific_cpython::CpythonScientificJobExecutor>>,
+    native_prediction_ready: bool,
+    native_training_ready: bool,
+}
+
+impl ReadinessSnapshot {
+    fn from_state(state: &SidecarState) -> Self {
+        Self {
+            started_at: state.started_at,
+            app_settings: state.app_settings.clone(),
+            native_jobs: Arc::clone(&state.native_jobs),
+            scientific_host: state.scientific_host.clone(),
+            native_prediction_ready: state.archive_v2_prediction.is_selected(),
+            native_training_ready: state.native_archive_training.is_some(),
+        }
+    }
+
+    fn to_json(&self) -> String {
+        let ml_ready = self.scientific_host.as_deref().map_or_else(
+            || self.native_jobs.execution_selected(),
+            scientific_cpython::CpythonScientificJobExecutor::library_facades_available,
+        );
+        json!({
+            "core_ready": true,
+            "elapsed_seconds": self.started_at.elapsed().as_secs_f64(),
+            "ml_error": if ml_ready { None } else { self.native_jobs.execution_unavailability_reason() },
+            "ml_loading": false,
+            "ml_ready": ml_ready,
+            "workspace_ready": self.app_settings.workspace_catalogue_ready(),
+            "native_prediction_ready": self.native_prediction_ready,
+            "native_training_ready": self.native_training_ready,
+        })
+        .to_string()
+    }
+}
+
 impl Default for SidecarState {
     fn default() -> Self {
         Self {
@@ -776,21 +818,7 @@ impl SidecarState {
     pub fn legacy_readiness_json(&self) -> String {
         // Playground and initial setup do not require a saved dataset catalogue.
         // Keep the stricter request resolver requirement on saved job execution.
-        let ml_ready = self.scientific_host.as_deref().map_or_else(
-            || self.native_jobs.execution_selected(),
-            scientific_cpython::CpythonScientificJobExecutor::library_facades_available,
-        );
-        json!({
-            "core_ready": true,
-            "elapsed_seconds": self.started_at.elapsed().as_secs_f64(),
-            "ml_error": if ml_ready { None } else { self.native_jobs.execution_unavailability_reason() },
-            "ml_loading": false,
-            "ml_ready": ml_ready,
-            "workspace_ready": self.app_settings.workspace_catalogue_ready(),
-            "native_prediction_ready": self.archive_v2_prediction.is_selected(),
-            "native_training_ready": self.native_archive_training.is_some(),
-        })
-        .to_string()
+        ReadinessSnapshot::from_state(self).to_json()
     }
 
     fn create_control_job(&mut self) -> Result<ControlJob, ()> {
@@ -2141,7 +2169,8 @@ fn route_workspace_workflows_without_global_lock(
     state: &std::sync::Arc<std::sync::Mutex<SidecarState>>,
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
-    workspace_upgrade::route(state, request)
+    route_readiness_without_global_lock(state, request)
+        .or_else(|| workspace_upgrade::route(state, request))
         .or_else(|| route_runtime_diagnostics_without_global_lock(state, request))
         .or_else(|| route_workspace_transition_without_global_lock(state, request))
         .or_else(|| recommended_config_http::route(state, request))
@@ -4316,6 +4345,33 @@ fn handle_connection_with_limits(
     )
 }
 
+fn render_readiness_without_global_lock(
+    state: &Arc<Mutex<SidecarState>>,
+    render: impl FnOnce(&ReadinessSnapshot) -> String,
+) -> String {
+    let snapshot = {
+        let waiting = scientific_cpython::BoundaryTiming::start("readiness_state_lock_wait");
+        let state = state.lock().expect("sidecar state mutex poisoned");
+        drop(waiting);
+        ReadinessSnapshot::from_state(&state)
+    };
+    let _timing = scientific_cpython::BoundaryTiming::start("readiness_route");
+    render(&snapshot)
+}
+
+fn route_readiness_without_global_lock(
+    state: &Arc<Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    if request.method != "GET" || request.path != "/api/system/readiness" {
+        return None;
+    }
+    Some(HttpResponse::json(
+        200,
+        render_readiness_without_global_lock(state, ReadinessSnapshot::to_json),
+    ))
+}
+
 fn route_documents_without_global_lock(
     state: &Arc<Mutex<SidecarState>>,
     request: &HttpRequest,
@@ -5054,6 +5110,42 @@ mod tests {
         thread,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn readiness_validation_releases_route_lock_and_preserves_payload() {
+        let state = Arc::new(Mutex::new(SidecarState::default()));
+        let mut expected: Value =
+            serde_json::from_str(&state.lock().unwrap().legacy_readiness_json()).unwrap();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker_state = Arc::clone(&state);
+        let worker = thread::spawn(move || {
+            render_readiness_without_global_lock(&worker_state, |snapshot| {
+                // Hold the validation/render boundary deterministically. This
+                // models a slow runtime guard without replacing that guard.
+                entered_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                snapshot.to_json()
+            })
+        });
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        // The same owners used by preview can be cloned while readiness is
+        // still validating, and control routes retain immediate availability.
+        let concurrent = state.try_lock().map(|mut state| {
+            let owners = (state.app_settings.clone(), state.scientific_host.clone());
+            let response = route_request(&mut state, "GET", "/api/health");
+            (owners, response.status)
+        });
+        release_tx.send(()).unwrap();
+        let result = worker.join().unwrap();
+        let (_, status) = concurrent.expect("readiness must not hold the route lock");
+        assert_eq!(status, 200);
+        let mut actual: Value = serde_json::from_str(&result).unwrap();
+        expected.as_object_mut().unwrap().remove("elapsed_seconds");
+        actual.as_object_mut().unwrap().remove("elapsed_seconds");
+        assert_eq!(actual, expected);
+        assert_eq!(actual["ml_ready"], false);
+    }
 
     fn write_strict_v2_store(workspace: &Path) {
         fs::create_dir_all(workspace).unwrap();
