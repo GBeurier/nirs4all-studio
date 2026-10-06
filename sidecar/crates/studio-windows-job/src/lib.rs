@@ -34,7 +34,19 @@ mod imp {
         pub changed: i64,
     }
 
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    pub struct FileEntryStamp {
+        pub stamp: FileChangeStamp,
+        pub is_directory: bool,
+    }
+
     pub fn file_change_stamp(path: &std::path::Path) -> io::Result<FileChangeStamp> {
+        file_entry_stamp(path).map(|entry| entry.stamp)
+    }
+
+    /// Authoritative type and change identity from the same non-following handle.
+    /// Directory enumeration metadata is never used as a change marker.
+    pub fn file_entry_stamp(path: &std::path::Path) -> io::Result<FileEntryStamp> {
         use std::{
             fs::OpenOptions,
             os::windows::{fs::OpenOptionsExt, io::AsRawHandle},
@@ -79,12 +91,19 @@ mod imp {
         if id_ok == 0 {
             return Err(io::Error::last_os_error());
         }
-        Ok(FileChangeStamp {
-            volume: identity.VolumeSerialNumber,
-            file_id: u128::from_le_bytes(identity.FileId.Identifier),
-            size: file.metadata()?.len(),
-            modified: basic.LastWriteTime,
-            changed: basic.ChangeTime,
+        let metadata = file.metadata()?;
+        if !metadata.is_file() && !metadata.is_dir() {
+            return Err(io::Error::other("runtime entry is not a file or directory"));
+        }
+        Ok(FileEntryStamp {
+            stamp: FileChangeStamp {
+                volume: identity.VolumeSerialNumber,
+                file_id: u128::from_le_bytes(identity.FileId.Identifier),
+                size: metadata.len(),
+                modified: basic.LastWriteTime,
+                changed: basic.ChangeTime,
+            },
+            is_directory: metadata.is_dir(),
         })
     }
 
@@ -188,7 +207,10 @@ mod imp {
     }
 }
 
-pub use imp::{file_change_stamp, system_windows_directory, FileChangeStamp, KillOnCloseJob};
+pub use imp::{
+    file_change_stamp, file_entry_stamp, system_windows_directory, FileChangeStamp, FileEntryStamp,
+    KillOnCloseJob,
+};
 
 #[cfg(test)]
 mod tests {

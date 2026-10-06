@@ -389,6 +389,27 @@ impl DatasetInspection {
             return Err("max_samples must be positive".into());
         }
         let config = self.config(config, adapt)?;
+        self.preview_configured(&config, max_samples, adapt)
+    }
+
+    /// Preview an already normalized config without invoking the normalizer again.
+    /// # Errors
+    /// Rejects non-object configs, escaping paths and invalid sample limits.
+    pub(crate) fn preview_configured(
+        &self,
+        config: &Value,
+        max_samples: usize,
+        adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    ) -> Result<Value, String> {
+        if max_samples == 0 {
+            return Err("max_samples must be positive".into());
+        }
+        if !config.is_object() {
+            return Err("Dataset adapter returned no explicit config".into());
+        }
+        let mut config = config.clone();
+        ScientificRequestResolver::confine_dataset_config(&mut config, &self.root)
+            .map_err(|error| format!("{error:?}"))?;
         adapt(
             "dataset.preview",
             &json!({"config":config,"max_samples":max_samples,

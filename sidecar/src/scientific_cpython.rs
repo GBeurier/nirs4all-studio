@@ -1257,6 +1257,7 @@ fn collect_runtime_inventory(
     Ok((directories, files))
 }
 
+#[cfg(not(windows))]
 fn collect_runtime_snapshot(
     runtime_root: &Path,
 ) -> Result<RuntimeSnapshot, ScientificCpythonUnavailable> {
@@ -1326,17 +1327,23 @@ fn runtime_path_snapshot(
     })
 }
 
+// Windows must open every entry: directory timestamps can remain stale while
+// a hard-link writer is open. Parallelism changes scheduling, never the marker.
 #[cfg(windows)]
-fn runtime_path_snapshot(
+fn windows_runtime_entry(
     path: &Path,
-    relative: &Path,
-    metadata: &fs::Metadata,
+    runtime_root: &Path,
+    expected_directory: bool,
 ) -> Result<RuntimePathSnapshot, ScientificCpythonUnavailable> {
-    let stamp = studio_windows_job::file_change_stamp(path)
+    let entry = studio_windows_job::file_entry_stamp(path)
         .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    if stamp.size != metadata.len() || stamp.changed <= 0 {
+    if entry.is_directory != expected_directory || entry.stamp.changed <= 0 {
         return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
     }
+    let relative = path
+        .strip_prefix(runtime_root)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    let stamp = entry.stamp;
     Ok(RuntimePathSnapshot {
         relative_path: manifest_relative_path(relative)?,
         size: stamp.size,
@@ -1345,6 +1352,76 @@ fn runtime_path_snapshot(
         modified_nanos: i128::from(stamp.modified) * 100,
         changed_nanos: i128::from(stamp.changed) * 100,
     })
+}
+
+#[cfg(windows)]
+fn collect_runtime_snapshot(
+    runtime_root: &Path,
+) -> Result<RuntimeSnapshot, ScientificCpythonUnavailable> {
+    let mut pending = vec![runtime_root.to_path_buf()];
+    let mut directories = Vec::new();
+    let mut directory_paths = Vec::new();
+    let mut file_paths = Vec::new();
+    while let Some(directory) = pending.pop() {
+        // Stamp before discovery and again after file sampling: inventory races
+        // remain fail-closed even though metadata work is scheduled in parallel.
+        directories.push(windows_runtime_entry(&directory, runtime_root, true)?);
+        directory_paths.push(directory.clone());
+        for entry in fs::read_dir(&directory)
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?
+        {
+            let entry = entry.map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+            let kind = entry
+                .file_type()
+                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+            if kind.is_dir() {
+                if directories.len() + pending.len() >= 100_000 {
+                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+                pending.push(entry.path());
+            } else if kind.is_file() {
+                if file_paths.len() >= 100_000 {
+                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+                file_paths.push(entry.path());
+            } else {
+                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+            }
+        }
+    }
+    // One bounded pool for the whole inventory, not one pool per directory.
+    let workers = file_paths.len().clamp(1, 8);
+    let chunk_size = file_paths.len().div_ceil(workers).max(1);
+    let mut files = std::thread::scope(|scope| {
+        let handles: Vec<_> = file_paths
+            .chunks(chunk_size)
+            .map(|chunk| {
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .map(|path| windows_runtime_entry(path, runtime_root, false))
+                        .collect::<Result<Vec<_>, _>>()
+                })
+            })
+            .collect();
+        let mut result = Vec::with_capacity(file_paths.len());
+        for handle in handles {
+            result.extend(
+                handle
+                    .join()
+                    .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)??,
+            );
+        }
+        Ok::<_, ScientificCpythonUnavailable>(result)
+    })?;
+    for (path, before) in directory_paths.iter().zip(&directories) {
+        if windows_runtime_entry(path, runtime_root, true)? != *before {
+            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+        }
+    }
+    directories.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok(RuntimeSnapshot { directories, files })
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -2600,6 +2677,146 @@ fn read_bounded(mut reader: impl Read, limit: usize) -> std::io::Result<(Vec<u8>
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    fn serial_windows_snapshot(
+        runtime_root: &Path,
+    ) -> Result<RuntimeSnapshot, ScientificCpythonUnavailable> {
+        let mut pending = vec![runtime_root.to_path_buf()];
+        let mut directories = Vec::new();
+        let mut files = Vec::new();
+        while let Some(directory) = pending.pop() {
+            let relative = directory
+                .strip_prefix(runtime_root)
+                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+            let metadata = fs::symlink_metadata(&directory)
+                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+            }
+            directories.push(serial_windows_path_snapshot(
+                &directory, relative, &metadata,
+            )?);
+            let entries = fs::read_dir(&directory)
+                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+            for entry in entries {
+                let entry =
+                    entry.map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+                let path = entry.path();
+                let metadata = fs::symlink_metadata(&path)
+                    .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+                if metadata.file_type().is_symlink() {
+                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+                if metadata.is_dir() {
+                    if directories.len() + pending.len() >= 100_000 {
+                        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                    }
+                    pending.push(path);
+                } else if metadata.is_file() {
+                    if files.len() >= 100_000 {
+                        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                    }
+                    let relative = path
+                        .strip_prefix(runtime_root)
+                        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+                    files.push(serial_windows_path_snapshot(&path, relative, &metadata)?);
+                } else {
+                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+            }
+        }
+        directories.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+        files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+        Ok(RuntimeSnapshot { directories, files })
+    }
+
+    #[cfg(windows)]
+    fn serial_windows_path_snapshot(
+        path: &Path,
+        relative: &Path,
+        metadata: &fs::Metadata,
+    ) -> Result<RuntimePathSnapshot, ScientificCpythonUnavailable> {
+        let stamp = studio_windows_job::file_change_stamp(path)
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+        if stamp.size != metadata.len() || stamp.changed <= 0 {
+            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+        }
+        Ok(RuntimePathSnapshot {
+            relative_path: manifest_relative_path(relative)?,
+            size: stamp.size,
+            device: stamp.volume,
+            inode: stamp.file_id,
+            modified_nanos: i128::from(stamp.modified) * 100,
+            changed_nanos: i128::from(stamp.changed) * 100,
+        })
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_snapshot_matches_serial_and_detects_open_hard_link_edit() {
+        use std::io::{Seek, SeekFrom, Write};
+        let runtime = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        for directory in 0..16 {
+            let root = runtime.path().join(format!("directory-{directory}"));
+            fs::create_dir(&root).unwrap();
+            for file in 0..16 {
+                fs::write(root.join(format!("member-{file}.py")), b"VALUE=1\n").unwrap();
+            }
+        }
+        let baseline = collect_runtime_snapshot(runtime.path()).unwrap();
+        assert_eq!(baseline, serial_windows_snapshot(runtime.path()).unwrap());
+        let member = runtime.path().join("directory-0/member-0.py");
+        let modified = fs::metadata(&member).unwrap().modified().unwrap();
+        let link = outside.path().join("external-writer.py");
+        fs::hard_link(&member, &link).unwrap();
+        // Obtain a fresh baseline after the link itself changed ChangeTime.
+        let baseline = collect_runtime_snapshot(runtime.path()).unwrap();
+        let mut writer = fs::OpenOptions::new().write(true).open(&link).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        writer.seek(SeekFrom::Start(0)).unwrap();
+        writer.write_all(b"VALUE=2\n").unwrap();
+        writer.flush().unwrap();
+        writer
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        // Optimized snapshot FIRST: a serial handle must not refresh a stale
+        // directory index before the implementation under test samples it.
+        let changed = collect_runtime_snapshot(runtime.path()).unwrap();
+        assert_ne!(baseline, changed);
+        assert_eq!(changed, serial_windows_snapshot(runtime.path()).unwrap());
+        drop(writer);
+        let replacement = runtime.path().join("directory-0/replacement.py");
+        fs::write(&replacement, b"VALUE=2\n").unwrap();
+        fs::remove_file(&member).unwrap();
+        fs::rename(&replacement, &member).unwrap();
+        assert_ne!(changed, collect_runtime_snapshot(runtime.path()).unwrap());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_snapshot_rejects_directory_junction() {
+        let runtime = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let junction = runtime.path().join("escaping-junction");
+        let status = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&junction)
+            .arg(outside.path())
+            .output()
+            .unwrap();
+        assert!(
+            status.status.success(),
+            "{}",
+            String::from_utf8_lossy(&status.stderr)
+        );
+        assert_eq!(
+            collect_runtime_snapshot(runtime.path()),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+        fs::remove_dir(junction).unwrap();
+    }
+
     use super::*;
 
     #[cfg(unix)]
