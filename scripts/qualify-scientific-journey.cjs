@@ -49,7 +49,11 @@ async function businessJourney(context, data) {
   const inspector = await page.context().newCDPSession(page);
   await inspector.send('Network.enable', { maxResourceBufferSize: 64 * 1024 * 1024, maxTotalBufferSize: 128 * 1024 * 1024 });
   await timed(proof, 'playground_transform_ui', BUDGETS.playground, async () => {
+    const initialResponsePromise = page.waitForResponse(response => response.url().includes('/playground/execute-dataset')
+      && response.request().method() === 'POST', { timeout: BUDGETS.playground });
     await page.evaluate(({ id, name }) => { window.location.hash = `/playground?datasetId=${encodeURIComponent(id)}&datasetName=${encodeURIComponent(name)}`; }, dataset);
+    const initialResponse = await initialResponsePromise;
+    if (!initialResponse.ok()) assert.fail(`Initial Playground dataset execution: HTTP ${initialResponse.status()}: ${await initialResponse.text()}`);
     await page.getByRole('button', { name: /Search operators/ }).click();
     await page.getByPlaceholder('Search operators...').fill('SNV');
     const responsePromise = page.waitForResponse(response => response.url().includes('/playground/execute')
