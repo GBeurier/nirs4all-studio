@@ -1,0 +1,65 @@
+name: Publish reviewed Studio 0.15.1
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Verify reviewed immutable artifacts, or publish those exact bytes
+        type: choice
+        options: [verify, publish]
+        default: verify
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: reviewed-studio-0.15.1
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: inputs.mode == 'verify'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify reviewed sources, live gates, installer hashes and exact Docker image
+        run: node scripts/promote-reviewed-0151.cjs verify
+
+  publish:
+    if: inputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+      packages: write
+    env:
+      # Tag creation with this sole token does not trigger push workflows.
+      # Do not substitute a PAT: release-unified would then rebuild concurrently.
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish only the reviewed exact installers and tested Docker image
+        run: node scripts/promote-reviewed-0151.cjs publish
