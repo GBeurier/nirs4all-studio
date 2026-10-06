@@ -4,11 +4,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { expectedPublishedNames, sha256File } = require('../finalize-release-assets.cjs');
-const { ARTIFACT_NAMES, CI_JOBS, RELEASE_JOBS, validateManifest, verifyGates, verifyPayloads } = require('../promote-reviewed-0151.cjs');
+const { ARTIFACT_NAMES, CI_JOBS, RELEASE_JOBS, validateManifest, verifyGates, stageProducerPayloads, verifyPayloads } = require('../promote-reviewed-0151.cjs');
 function candidate() {
   return { schema: 'nirs4all.studio.reviewed-promotion.v1', version: '0.15.1', source_sha: 'a'.repeat(40),
     release_run_id: 100, ci_run_id: 101, e2e_run_id: 102, version_run_id: 103,
     artifacts: Object.fromEntries(Object.entries(ARTIFACT_NAMES).map(([key, name], index) => [key, { id: 200 + index, name, digest: `sha256:${'b'.repeat(64)}` }])),
+    producer_files: expectedPublishedNames('0.15.1', false, false).flatMap(name => [name, `${name}.sha256`]).map(name => ({ name: name.replace('nirs4all.Studio-', 'nirs4all Studio-'), size: 1, sha256: 'c'.repeat(64) })),
     files: expectedPublishedNames('0.15.1', false, false).flatMap(name => [name, `${name}.sha256`]).map(name => ({ name, size: 1, sha256: 'c'.repeat(64) })),
     docker: { size: 1, sha256: 'd'.repeat(64), image_id: `sha256:${'e'.repeat(64)}` }, notes_sha256: 'f'.repeat(64) };
 }
@@ -81,5 +82,34 @@ test('payload hashes, sizes, sidecars, Docker tar and release notes must equal r
     const file = path.join(root, 'release', m.files[0].name); const saved = fs.readFileSync(file);
     fs.writeFileSync(file, 'changed'); assert.throws(() => verifyPayloads(m, root, notes)); fs.writeFileSync(file, saved);
     fs.unlinkSync(tar); fs.symlinkSync(notes, tar); assert.throws(() => verifyPayloads(m, root, notes), /non-symlink/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('real producer space-names normalize without rebuilding; both producer and public hashes bound', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reviewed0151-producers-'));
+  try {
+    const folders = ['linux', 'windows', 'macos'].map(key => path.join(root, key));
+    for (const folder of [...folders, path.join(root, 'release')]) fs.mkdirSync(folder);
+    const m = candidate();
+    for (const item of m.producer_files.filter(file => !file.name.endsWith('.sha256'))) {
+      const folder = folders[item.name.endsWith('.deb') ? 0 : item.name.endsWith('.exe') ? 1 : 2];
+      const file = path.join(folder, item.name); fs.writeFileSync(file, `exact reviewed installer ${item.name}`);
+      fs.writeFileSync(`${file}.sha256`, `${sha256File(file)}  ${item.name}\n`);
+    }
+    for (const item of m.producer_files) {
+      const file = folders.map(folder => path.join(folder, item.name)).find(file => fs.existsSync(file));
+      item.size = fs.statSync(file).size; item.sha256 = sha256File(file);
+    }
+    stageProducerPayloads(m, root, folders);
+    for (const name of expectedPublishedNames('0.15.1', false, false)) {
+      const producer = m.producer_files.find(item => item.name === name.replace('nirs4all.Studio-', 'nirs4all Studio-'));
+      assert.equal(sha256File(path.join(root, 'release', name)), producer.sha256, 'Installer binary must remain byte-identical');
+      assert.equal(fs.readFileSync(path.join(root, 'release', `${name}.sha256`), 'utf8'), `${producer.sha256}  ${name}\n`);
+    }
+    // A producer mutation is rejected before normalization/publication.
+    fs.rmSync(path.join(root, 'release'), { recursive: true }); fs.mkdirSync(path.join(root, 'release'));
+    const producer = m.producer_files[0];
+    const file = folders.map(folder => path.join(folder, producer.name)).find(file => fs.existsSync(file));
+    fs.appendFileSync(file, 'tampered'); assert.throws(() => stageProducerPayloads(m, root, folders));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

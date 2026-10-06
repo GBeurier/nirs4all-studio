@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { promisify, stripVTControlCharacters } = require("node:util");
@@ -125,6 +126,17 @@ async function publishQualifiedRelease(options, dependencies = {}) {
     throw new Error("All-in-one publication is disabled; publish installers only");
   }
   const manifest = releaseManifest(path.resolve(releaseRoot), version, includeAllInOne, includeMacosX64);
+  let reviewedNotes;
+  if (options.reviewedNotesSha256 !== undefined) {
+    if (!/^[0-9a-f]{64}$/.test(options.reviewedNotesSha256)) throw new Error("Invalid reviewed notes SHA256");
+    // Optional strict promotion contract; other release callers retain their API.
+    const bytes = fs.readFileSync(notesPath);
+    if (crypto.createHash("sha256").update(bytes).digest("hex") !== options.reviewedNotesSha256) {
+      throw new Error("Local release notes do not match review");
+    }
+    reviewedNotes = bytes.toString("utf8");
+    if (!Buffer.from(reviewedNotes, "utf8").equals(bytes)) throw new Error("Reviewed notes must be valid UTF-8");
+  }
   const apiRoot = `repos/${repo}`;
   const api = async (endpoint, args = []) => {
     try {
@@ -172,6 +184,9 @@ async function publishQualifiedRelease(options, dependencies = {}) {
       release.tag_name !== tag || release.prerelease !== prerelease ||
       typeof release.draft !== "boolean") {
       throw new Error("Release identity, tag or prerelease status changed");
+    }
+    if (reviewedNotes !== undefined && release.body !== reviewedNotes) {
+      throw new Error("Remote release notes do not match review");
     }
   };
 
@@ -320,7 +335,11 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   if (wasDraft) {
     // This must be the final mutation: no verified payload is ever replaced or deleted.
     try {
-      await api(`releases/${releaseId}`, ["--method", "PATCH", "--field", "draft=false"]);
+      const fields = ["--method", "PATCH", "--field", "draft=false"];
+      // Bind the reviewed body in the same PATCH that makes the draft public,
+      // closing the reread-to-publication window for a concurrent notes change.
+      if (reviewedNotes !== undefined) fields.push("--raw-field", `body=${reviewedNotes}`);
+      await api(`releases/${releaseId}`, fields);
     } catch (error) {
       // Publication can also succeed before a lost response; verify rather than retry blindly.
       log(`Publication did not return success (${ghFailureDiagnostic(error)}); checking final release visibility.`);
