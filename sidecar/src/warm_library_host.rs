@@ -24,6 +24,7 @@ use std::{
 };
 
 const MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
+const MAX_WORKER_DIAGNOSTIC_BYTES: usize = 4096;
 
 /// Filesystem notifications invalidate the installation validation, not user
 /// requests. Unsupported watchers retain exhaustive request-time validation.
@@ -131,6 +132,8 @@ pub(super) struct Worker {
     stdin: Option<ChildStdin>,
     responses: Receiver<Result<Vec<u8>, ScientificCpythonUnavailable>>,
     stderr_bytes: Arc<AtomicUsize>,
+    stderr_tail: Arc<Mutex<Vec<u8>>>,
+    stderr_reader: Option<std::thread::JoinHandle<()>>,
     completed: usize,
     generation: Option<usize>,
     _scratch: ScratchDirectory,
@@ -265,13 +268,20 @@ impl Worker {
         });
         let stderr_bytes = Arc::new(AtomicUsize::new(0));
         let diagnostic_size = stderr_bytes.clone();
-        std::thread::spawn(move || {
+        let stderr_tail = Arc::new(Mutex::new(Vec::new()));
+        let diagnostic_tail = stderr_tail.clone();
+        let stderr_reader = std::thread::spawn(move || {
             let mut buffer = [0_u8; 8192];
             while let Ok(count) = stderr.read(&mut buffer) {
                 if count == 0 {
                     break;
                 }
                 diagnostic_size.fetch_add(count, Ordering::AcqRel);
+                if let Ok(mut tail) = diagnostic_tail.lock() {
+                    tail.extend_from_slice(&buffer[..count]);
+                    let excess = tail.len().saturating_sub(MAX_WORKER_DIAGNOSTIC_BYTES);
+                    tail.drain(..excess);
+                }
             }
         });
         Ok(Self {
@@ -279,6 +289,8 @@ impl Worker {
             stdin: Some(stdin),
             responses,
             stderr_bytes,
+            stderr_tail,
+            stderr_reader: Some(stderr_reader),
             completed: 0,
             generation: None,
             _scratch: scratch,
@@ -312,6 +324,9 @@ impl Worker {
         };
         if output.is_err() {
             let _ = terminate_worker(&mut self.child);
+            if let Some(reader) = self.stderr_reader.take() {
+                let _ = reader.join();
+            }
         }
         let written = write_complete.recv_timeout(timeout.saturating_sub(started.elapsed()));
         if written.is_err() {
@@ -415,7 +430,26 @@ impl CpythonScientificJobExecutor {
                     })();
                     // Never retry an executed request: mutations may have completed.
                     // A later request receives a fresh, independently attested worker.
-                    if result.is_err() {
+                    if let Err(error) = result.as_ref() {
+                        // Match the one-shot host: disposable CI retains a bounded
+                        // diagnostic; the public response remains a stable refusal.
+                        if matches!(std::env::var("CI").as_deref(), Ok("true" | "1")) {
+                            let diagnostic = slot
+                                .as_ref()
+                                .and_then(|worker| {
+                                    worker
+                                        .stderr_tail
+                                        .lock()
+                                        .ok()
+                                        .map(|tail| super::bounded_process_diagnostic(&tail))
+                                })
+                                .unwrap_or_else(|| "(worker unavailable)".into());
+                            eprintln!(
+                                "Scientific CPython interactive worker failed ({}): {}",
+                                error.reason(),
+                                diagnostic
+                            );
+                        }
                         slot.take();
                     }
                     return result;
@@ -446,6 +480,19 @@ mod tests {
             .stderr(Stdio::piped())
             .process_group(0);
         Worker::spawn_command(command, scratch).unwrap()
+    }
+
+    #[test]
+    fn interactive_failure_retains_only_a_bounded_stderr_tail() {
+        let mut worker = worker("import sys\nsys.stdin.buffer.readline()\nsys.stderr.write('x'*10000+'hidden-facade-cause')\nsys.stderr.flush()\nraise SystemExit(1)");
+        assert_eq!(
+            worker.exchange(b"{}", Duration::from_secs(2)),
+            Err(ScientificCpythonUnavailable::OutputReadFailed)
+        );
+        let tail = worker.stderr_tail.lock().unwrap();
+        assert_eq!(tail.len(), MAX_WORKER_DIAGNOSTIC_BYTES);
+        assert!(tail.ends_with(b"hidden-facade-cause"));
+        assert_eq!(worker.completed, 0);
     }
 
     #[test]

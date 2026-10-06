@@ -394,10 +394,24 @@ impl CpythonScientificJobExecutor {
                 &bytes,
                 SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
             )
-            .map_err(|error| fail(error.reason(), "Scientific library facade failed"))?;
+            .map_err(|error| {
+                if matches!(std::env::var("CI").as_deref(), Ok("true" | "1")) {
+                    eprintln!("Scientific library facade unavailable: {}", error.reason());
+                }
+                fail(error.reason(), "Scientific library facade failed")
+            })?;
         if response.get("schema").and_then(Value::as_str)
             == Some("nirs4all.studio-library-error.v1")
         {
+            if matches!(std::env::var("CI").as_deref(), Ok("true" | "1")) {
+                // Log only the closed refusal code, never the request or message.
+                eprintln!(
+                    "Scientific library facade refused: {}",
+                    response["error"]["code"]
+                        .as_str()
+                        .unwrap_or("library_refused")
+                );
+            }
             return Err(LibraryFacadeError {
                 code: response["error"]["code"]
                     .as_str()
