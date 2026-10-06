@@ -92,7 +92,12 @@ impl RuntimeChanges {
             .validated
             .lock()
             .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-        if !self.healthy.load(Ordering::Acquire) || *validated != Some(generation) {
+        // Windows may coalesce a same-size write followed by restored mtime into
+        // no directory notification. Its FILE_BASIC_INFO.ChangeTime snapshot is
+        // still authoritative; check it on every boundary while retaining the
+        // cryptographic hash cache for unchanged installations.
+        if cfg!(windows) || !self.healthy.load(Ordering::Acquire) || *validated != Some(generation)
+        {
             verify_packaged_runtime_identity(runtime)?;
             if self.generation.load(Ordering::Acquire) != generation {
                 return Err(ScientificCpythonUnavailable::RuntimeContractTampered);

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -464,4 +465,26 @@ describe("packaged runtime contract", () => {
       methodsLibraryError: expect.stringContaining("integrity mismatch"),
     });
   });
+});
+
+
+it("loads the Docker contract verifier from only its staged module closure", () => {
+  const project = process.cwd();
+  const dockerfile = fs.readFileSync(path.join(project, "Dockerfile"), "utf8");
+  const stage = dockerfile.split("AS native-runtime-contract")[1].split("\nFROM ")[0];
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-docker-contract-"));
+  tempDirs.push(root);
+  fs.mkdirSync(path.join(root, "contract-scripts"));
+  const scripts = stage.match(/^COPY (.+) \/contract-scripts\/$/m);
+  expect(scripts).not.toBeNull();
+  for (const source of scripts![1].split(" ")) {
+    fs.copyFileSync(path.join(project, source), path.join(root, "contract-scripts", path.basename(source)));
+  }
+  if (stage.includes("COPY recommended-config.json /recommended-config.json")) {
+    fs.copyFileSync(path.join(project, "recommended-config.json"), path.join(root, "recommended-config.json"));
+  }
+  const contract = path.join(root, "contract-scripts/native-runtime-contract.cjs");
+  const result = spawnSync(process.execPath, ["-e", "const c=require(process.argv[1]); if(typeof c.writeRuntimeContract!=='function'||typeof c.verifyRuntimeContract!=='function')process.exit(2)", contract], { encoding: "utf8", cwd: root });
+  expect(result.stderr).toBe("");
+  expect(result.status).toBe(0);
 });
