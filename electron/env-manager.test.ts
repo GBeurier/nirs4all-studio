@@ -169,6 +169,8 @@ describe("EnvManager", () => {
 
   it("repairs missing packages without routing pip installs through a shell", async () => {
     const userDataDir = makeUserDataDir();
+    const network = await import("./env/network-probe");
+    vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(true);
     const settingsPath = path.join(userDataDir, "env-settings.json");
     const pythonPath = path.join(userDataDir, "runtime", "python.exe");
 
@@ -226,6 +228,8 @@ describe("EnvManager", () => {
 
   it("repairs a runtime that is missing the bounded nirs4all plugin entrypoint", async () => {
     const userDataDir = makeUserDataDir();
+    const network = await import("./env/network-probe");
+    vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(true);
     const settingsPath = path.join(userDataDir, "env-settings.json");
     const pythonPath = path.join(userDataDir, "runtime", "python.exe");
 
@@ -282,7 +286,7 @@ describe("EnvManager", () => {
     const installArgs = childProcessMocks.spawn.mock.calls
       .filter(([, args]) => Array.isArray(args) && args.includes("install"))
       .flatMap(([, args]) => args as string[]);
-    expect(installArgs).toContain("nirs4all==1.4.0");
+    expect(installArgs).toContain("nirs4all==1.4.2");
     expect(installArgs.join(" ").toLowerCase()).not.toMatch(
       /fastapi|uvicorn|python-multipart|sentry-sdk/,
     );
@@ -311,7 +315,7 @@ describe("EnvManager", () => {
     ).rejects.toThrow('Failed to start command "python.exe -m venv C:\\temp\\venv": spawn EPERM');
   });
 
-  it("does not auto-install missing core packages when selecting an existing Python", async () => {
+  it.each(["0.9.3", "1.4.0"])("does not auto-install missing core packages when selecting Python with nirs4all %s", async (version) => {
     const userDataDir = makeUserDataDir();
     const pythonPath = path.join(userDataDir, "external-env", "python.exe");
 
@@ -323,7 +327,7 @@ describe("EnvManager", () => {
       callback(null, JSON.stringify({
         version: "3.11.7",
         installed: {
-          nirs4all: "0.9.3",
+          nirs4all: version,
         },
       }));
     });
@@ -355,7 +359,7 @@ describe("EnvManager", () => {
         installed: inspectCalls === 1
           ? { nirs4all: "0.9.3" }
           : {
-              nirs4all: "1.4.0",
+              nirs4all: "1.4.2",
               duckdb: "1.5.5",
               pyarrow: "25.0.1",
               shap: "0.47.1",
@@ -438,7 +442,7 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.8",
           installed: {
-            nirs4all: "1.4.0",
+            nirs4all: "1.4.2",
             duckdb: "1.5.5",
             pyarrow: "25.0.1",
             shap: "0.47.1",
@@ -504,7 +508,7 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.7",
           installed: {
-            nirs4all: "1.4.0",
+            nirs4all: "1.4.2",
             duckdb: "1.5.5",
             pyarrow: "25.0.1",
             shap: "0.47.1",

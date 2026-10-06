@@ -11,6 +11,7 @@ import importlib
 import inspect
 import json
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 
 import numpy as np
@@ -21,16 +22,18 @@ webapp_root = Path(__file__).parent.parent
 if str(webapp_root) not in sys.path:
     sys.path.insert(0, str(webapp_root))
 
-# Also ensure nirs4all library is importable from normal and RC worktree layouts.
-for nirs4all_path in (
-    webapp_root.parent / "nirs4all",
-    webapp_root.parent / "RC-v1-nirs4all-python",
-    webapp_root.parent.parent / "nirs4all",
-):
-    if nirs4all_path.exists():
-        if str(nirs4all_path) not in sys.path:
-            sys.path.insert(0, str(nirs4all_path))
-        break
+# Preserve the discoverable SDK during collection; checkouts are only an
+# absent-package fallback for normal and RC worktree layouts.
+if "nirs4all" not in sys.modules and find_spec("nirs4all") is None:
+    for nirs4all_path in (
+        webapp_root.parent / "nirs4all",
+        webapp_root.parent / "RC-v1-nirs4all-python",
+        webapp_root.parent.parent / "nirs4all",
+    ):
+        if nirs4all_path.exists():
+            if str(nirs4all_path) not in sys.path:
+                sys.path.insert(0, str(nirs4all_path))
+            break
 
 from api.shared.pipeline_service import get_valid_params, normalize_params  # noqa: E402
 

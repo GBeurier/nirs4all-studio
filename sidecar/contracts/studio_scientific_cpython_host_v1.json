@@ -6,16 +6,20 @@
   "required_implementation": "cpython",
   "minimum_python_version": "3.11",
   "required_callable": "nirs4all.studio_scientific_job_v1",
-  "selected_source_commit": "41ee99f188e6d4cad2bdc9c254597a0ff94ab67b",
-  "selected_wheel_sha256": "2c2c2206cdfc8c8e58c826ee931333e6da753d57c281453e77c3bc165b63cd68",
-  "selected_distribution_version": "1.4.0",
-  "selected_installed_manifest_sha256": "9f70da8d24b3359a0dd9a79454b09e1b2166aa1e29ae1b629ac9d46e2df9fe59",
+  "selected_source_commit": "9591e430f19809de0cb86fe27e0a413f403340f9",
+  "selected_wheel_sha256": "f8222fc8f81a03be7b1e027f26b96ec046e23c0e4aca1fea3ccf6454a611e7f6",
+  "selected_distribution_version": "1.4.2",
+  "selected_installed_manifest_sha256": "fbe9eafe4d3f646151e32f9eb0d63fcd7d6ad50c1d6c27a955820cf75ec7997a",
   "selected_callable_sha256": "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19",
   "distribution_identity": "exact_source_and_wheel_plus_platform-neutral_installed_manifest; every closure member is cryptographically verified at acquisition and the child verifies the immutable RECORD identity",
   "runtime_discovery": "packaged_contract_only",
   "runtime_closure": "exact_path_size_sha256_inventory_without_symlinks_or_special_files",
   "runtime_revalidation": "path_device_inode_size_mtime_ns_ctime_ns_snapshot_before_spawn_after_spawn_and_after_exit; full_sha256_inventory_on_snapshot_drift_or_when_platform_change_time_is_unavailable",
-  "python_flags": ["-I", "-S", "-B"],
+  "python_flags": [
+    "-I",
+    "-S",
+    "-B"
+  ],
   "site_packages": "single_explicit_content_addressed_packaged_directory",
   "stdlib_gui": "tkinter_and__tkinter_pruned_from_headless_plugin_closure",
   "maximum_stdin_bytes": 65536,
@@ -35,5 +39,9 @@
   "studio_payload_resolver_implemented": true,
   "scientific_execution_capability": "unix_process_group_or_windows_kill_on_close_job_with_exact_host_callable_io_and_saved_slice_preflight",
   "windows_capability": true,
-  "windows_process_tree": "sidecar_launcher_assigned_to_kill_on_close_job_before_cpython_spawn"
+  "windows_process_tree": "sidecar_launcher_assigned_to_kill_on_close_job_before_cpython_spawn",
+  "publication_status": "published",
+  "public_registry_verified": true,
+  "selected_wheel_url": "https://files.pythonhosted.org/packages/d8/2a/71fac81549f92625731b3c973e158f1bc6131411386b147dbba47c2dbae9/nirs4all-1.4.2-py3-none-any.whl",
+  "source_ref_role": "exact_final_sdk_commit; wheel_payload_verified_against_git_commit_and_local_source; actual_pypi_json_and_wheel_bytes_verified"
 }

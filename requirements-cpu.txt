@@ -24,6 +24,6 @@ platformdirs>=4.0.0
 sentry-sdk[fastapi]>=2.0.0
 
 # nirs4all core (CPU-only installation)
-# Install with: pip install nirs4all
+# Install with: pip install nirs4all==1.4.2 -c build/constraints/plugin-runtime-cpython311.txt
 # This installs sklearn-based functionality without GPU dependencies
 nirs4all-tools>=0.0.8

@@ -546,7 +546,7 @@ NIRS4ALL_OPERATORS = {
         "type": "preprocessing",
         "category": "derivatives",
         "name": "Derivate",
-        "description": "Derivative along sample axis",
+        "description": "Finite-difference spectral derivative along wavelengths (axis=1).",
     },
     # Preprocessing - transforms
     "nirs4all.operators.transforms.nirs.Haar": {

@@ -145,15 +145,15 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "41ee99f188e6d4cad2bdc9c254597a0ff94ab67b",
+      source_commit: "9591e430f19809de0cb86fe27e0a413f403340f9",
       wheel_sha256:
-        "2c2c2206cdfc8c8e58c826ee931333e6da753d57c281453e77c3bc165b63cd68",
-      distribution_version: "1.4.0",
+        "f8222fc8f81a03be7b1e027f26b96ec046e23c0e4aca1fea3ccf6454a611e7f6",
+      distribution_version: "1.4.2",
       installed_manifest_sha256:
-        "9f70da8d24b3359a0dd9a79454b09e1b2166aa1e29ae1b629ac9d46e2df9fe59",
+        "fbe9eafe4d3f646151e32f9eb0d63fcd7d6ad50c1d6c27a955820cf75ec7997a",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "2e4b1f1f61ceae48d370676de6f7aab36281cfb46953752d5e2a080bce794a60",
+        sha256: "e742b96e1208321876fe43a9669594decf7f6a69e4316086489451d6eeac6b5d",
       },
       platform: "linux",
       arch: "x64",
@@ -183,7 +183,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "2e4b1f1f61ceae48d370676de6f7aab36281cfb46953752d5e2a080bce794a60",
+      "e742b96e1208321876fe43a9669594decf7f6a69e4316086489451d6eeac6b5d",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -202,8 +202,17 @@ describe("plugin-only CPython runtime", () => {
         expect(target.get(name), `${name} must be installed in every packaged host`).toBe(version);
       }
     }
-    expect(linux.get("nirs4all")).toBe("1.4.0");
-    expect(linux.get("nirs4all-core")).toBe("0.4.1");
+    expect(linux.get("nirs4all")).toBe("1.4.2");
+    expect(linux.get("nirs4all-core")).toBe("0.4.2");
+    for (const target of [linux, linuxArm, macArm, macIntel, windows]) {
+      for (const [name, version] of Object.entries({
+        "nirs4all": "1.4.2", "dag-ml": "0.3.37", "dag-ml-data": "0.2.13",
+        "nirs4all-core": "0.4.2", "nirs4all-io": "0.2.5",
+        "nirs4all-methods": "1.3.2", "pls4all": "1.3.2",
+      })) {
+        expect(target.get(name), `${name} cohort pin must match on every platform`).toBe(version);
+      }
+    }
     expect(linux.get("scikit-learn")).toBe("1.9.0");
     expect(linux.has("colorama")).toBe(false);
     expect(linux.has("tzdata")).toBe(false);
