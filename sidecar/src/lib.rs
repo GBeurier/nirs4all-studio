@@ -4537,7 +4537,12 @@ fn handle_connection_with_access(
                 };
                 return write_access_response(&mut stream, response, accepted_origin.as_deref());
             }
+            let waiting = (request.path == "/api/system/readiness")
+                .then(|| scientific_cpython::BoundaryTiming::start("readiness_state_lock_wait"));
             let mut state = state.lock().expect("sidecar state mutex poisoned");
+            drop(waiting);
+            let _readiness_timing = (request.path == "/api/system/readiness")
+                .then(|| scientific_cpython::BoundaryTiming::start("readiness_route"));
             route_http_request(&mut state, &request)
         }
         Err(error) => request_read_error_response(error)?,

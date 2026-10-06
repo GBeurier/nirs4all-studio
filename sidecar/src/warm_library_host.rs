@@ -88,11 +88,14 @@ impl RuntimeChanges {
         &self,
         runtime: &PackagedRuntimeIdentity,
     ) -> Result<usize, ScientificCpythonUnavailable> {
+        let _timing = super::BoundaryTiming::start("runtime_validation_total");
         let generation = self.generation.load(Ordering::Acquire);
+        let waiting = super::BoundaryTiming::start("runtime_validation_lock_wait");
         let mut validated = self
             .validated
             .lock()
             .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+        drop(waiting);
         // Windows may coalesce a same-size write followed by restored mtime into
         // no directory notification. Its FILE_BASIC_INFO.ChangeTime snapshot is
         // still authoritative; check it on every boundary while retaining the
@@ -410,10 +413,12 @@ impl CpythonScientificJobExecutor {
                         let remaining = timeout
                             .checked_sub(start.elapsed())
                             .ok_or(ScientificCpythonUnavailable::TimedOut)?;
-                        let output = slot
-                            .as_mut()
-                            .expect("created worker")
-                            .exchange(input, remaining)?;
+                        let output = {
+                            let _timing = super::BoundaryTiming::start("worker_exchange");
+                            slot.as_mut()
+                                .expect("created worker")
+                                .exchange(input, remaining)?
+                        };
                         if let Some(changes) = &runtime.changes {
                             if changes.validate(runtime)? != generation.unwrap_or_default() {
                                 // The response was produced across a runtime update.
