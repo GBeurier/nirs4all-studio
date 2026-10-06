@@ -1,8 +1,10 @@
 //! Rust-owned HTTP orchestration for the attested Playground library facade.
 
 use crate::{
-    scientific_cpython::LibraryFacadeError, scientific_request_resolver::ScientificRequestResolver,
-    settings::AppSettingsStore, HttpRequest, HttpResponse, SidecarState,
+    scientific_cpython::{CpythonScientificJobExecutor, LibraryFacadeError},
+    scientific_request_resolver::ScientificRequestResolver,
+    settings::AppSettingsStore,
+    HttpRequest, HttpResponse, SidecarState,
 };
 use serde_json::{json, Map, Value};
 use std::{
@@ -55,11 +57,7 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
                 |host| host.invoke_library_facade(document),
             )
         },
-        &|operation, payload| {
-            host.as_ref()
-                .ok_or_else(|| "Attested dataset document adapter unavailable".to_owned())?
-                .adapt_document(operation, payload)
-        },
+        &|operation, payload| adapt_dataset_document(host.as_deref(), operation, payload),
     ))
 }
 
@@ -67,7 +65,7 @@ fn dispatch(
     settings: &AppSettingsStore,
     request: &HttpRequest,
     invoke: &impl Fn(&Value) -> Result<Value, LibraryFacadeError>,
-    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, (u16, String)>,
 ) -> HttpResponse {
     let required_method = if request.path == "/api/playground/capabilities"
         || request
@@ -120,7 +118,7 @@ struct Prepared {
 fn prepare(
     settings: &AppSettingsStore,
     request: &HttpRequest,
-    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, (u16, String)>,
 ) -> Result<Prepared, (u16, String)> {
     if request.query.is_some() {
         return Err((400, "Playground route does not accept query fields".into()));
@@ -237,7 +235,7 @@ fn prepare_inline_execute(mut body: Map<String, Value>) -> Result<Value, (u16, S
 fn prepare_dataset_execute(
     settings: &AppSettingsStore,
     mut body: Map<String, Value>,
-    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, (u16, String)>,
 ) -> Result<Value, (u16, String)> {
     let dataset_id = body
         .remove("dataset_id")
@@ -269,7 +267,7 @@ fn prepare_dataset_execute(
 pub fn confined_dataset(
     settings: &AppSettingsStore,
     id: &str,
-    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, (u16, String)>,
 ) -> Result<Value, (u16, String)> {
     let record =
         crate::workspace_documents::linked_dataset(settings, id).map_err(|detail| (404, detail))?;
@@ -282,15 +280,26 @@ pub fn confined_dataset(
     translated_dataset_config(record, &root, adapt)
 }
 
+pub fn adapt_dataset_document(
+    host: Option<&CpythonScientificJobExecutor>,
+    operation: &str,
+    payload: &Value,
+) -> Result<Value, (u16, String)> {
+    let host = host
+        .filter(|host| host.library_facades_available())
+        .ok_or_else(|| (503, "Attested dataset document adapter unavailable".into()))?;
+    host.adapt_document(operation, payload)
+        .map_err(|_| (400, "Linked dataset config translation failed".into()))
+}
+
 fn translated_dataset_config(
     mut record: Value,
     root: &Path,
-    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, (u16, String)>,
 ) -> Result<Value, (u16, String)> {
     ScientificRequestResolver::confine_dataset_config(&mut record, root)
         .map_err(|_| (400, "Linked dataset config escaped its directory".into()))?;
-    let mut config = adapt("dataset.configure", &json!({"record": record}))
-        .map_err(|_| (400, "Linked dataset config translation failed".into()))?;
+    let mut config = adapt("dataset.configure", &json!({"record": record}))?;
     if !config.is_object() {
         return Err((400, "Dataset adapter returned no explicit config".into()));
     }
@@ -568,11 +577,14 @@ mod tests {
             })
             .unwrap();
         assert_eq!(result["train_x"], json!(file.canonicalize().unwrap()));
-        assert!(
-            translated_dataset_config(record.clone(), root.path(), &|_, _| Err(
+        assert_eq!(
+            translated_dataset_config(record.clone(), root.path(), &|_, _| Err((
+                503,
                 "unavailable".into()
-            ))
-            .is_err()
+            )))
+            .unwrap_err()
+            .0,
+            503
         );
         assert!(
             translated_dataset_config(record.clone(), root.path(), &|_, _| Ok(json!([]))).is_err()
@@ -589,5 +601,75 @@ mod tests {
             ))
             .is_err()
         );
+    }
+    #[test]
+    fn linked_dataset_routes_keep_host_unavailability_as_http_503() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = root.path().join("settings");
+        let workspace = root.path().join("workspace");
+        let dataset = root.path().join("dataset");
+        std::fs::create_dir(&dataset).unwrap();
+        std::fs::write(dataset.join("Xtrain.csv"), "1000;1100\n1;2\n3;4\n").unwrap();
+        let state = Arc::new(Mutex::new(SidecarState::with_app_settings_dir(&settings)));
+        let app_settings = state.lock().unwrap().app_settings.clone();
+        let document = |path: &str, body: Value| {
+            let response = crate::workspace_documents::route(
+                &app_settings,
+                "POST",
+                path,
+                body.to_string().as_bytes(),
+            )
+            .unwrap();
+            assert_eq!(response.status, 200, "{}", response.body);
+            serde_json::from_str::<Value>(&response.body).unwrap()
+        };
+        document(
+            "/api/workspace/create",
+            json!({"path":workspace,"name":"Playground witness"}),
+        );
+        document("/api/workspace/select", json!({"path":workspace}));
+        let linked = document(
+            "/api/datasets/link",
+            json!({"path":dataset,"config":{"files":[{"path":"Xtrain.csv","type":"X","split":"train"}],"aggregation":{"enabled":false,"method":"mean"}}}),
+        );
+        let id = linked["dataset"]["id"].as_str().unwrap();
+        let unavailable = CpythonScientificJobExecutor::acquire_with_config_dir(
+            root.path().join("missing-python"),
+            &settings,
+        );
+        assert!(!unavailable.library_facades_available());
+        assert_eq!(
+            adapt_dataset_document(Some(&unavailable), "dataset.configure", &json!({}))
+                .unwrap_err()
+                .0,
+            503
+        );
+        for path in [
+            "/api/playground/execute-dataset",
+            "/api/playground/pca",
+            "/api/playground/repetitions",
+        ] {
+            let response =
+                route(&state, &request(path, "POST", &json!({"dataset_id":id}))).unwrap();
+            assert_eq!(response.status, 503, "{path}: {}", response.body);
+        }
+        let response = route(
+            &state,
+            &request(
+                &format!("/api/playground/metadata-columns/{id}"),
+                "GET",
+                &json!({}),
+            ),
+        )
+        .unwrap();
+        assert_eq!(response.status, 503, "{}", response.body);
+        for path in [
+            format!("/api/spectra/{id}"),
+            format!("/api/spectra/{id}/stats"),
+        ] {
+            let response =
+                crate::playground_views::route(&state, &request(&path, "GET", &json!({}))).unwrap();
+            assert_eq!(response.status, 503, "{path}: {}", response.body);
+        }
     }
 }

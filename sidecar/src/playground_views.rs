@@ -53,9 +53,7 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
             return Some(error(400, "Invalid dataset identifier".into()));
         }
         match crate::playground::confined_dataset(&settings, &id, &|operation, document| {
-            host.as_ref()
-                .ok_or_else(|| "Attested dataset document adapter unavailable".to_owned())?
-                .adapt_document(operation, document)
+            crate::playground::adapt_dataset_document(host.as_deref(), operation, document)
         }) {
             Ok(config) => {
                 payload["config"] = config;
