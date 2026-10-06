@@ -120,6 +120,9 @@ print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1"
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,socket,sys
+def bounded_library_error_message(error):
+    sanitized="".join(" " if ord(char)<32 or 127<=ord(char)<=159 else char for char in str(error))
+    return sanitized.encode("utf-8")[:4000].decode("utf-8",errors="ignore")
 def deny_product_network(event,args):
     if event == "socket.bind":
         raise RuntimeError("CPython library host cannot own a listening socket")
@@ -201,7 +204,7 @@ with contextlib.redirect_stdout(sys.stderr):
         try:
             response=facade(request)
         except StudioScientificJobError as error:
-            response={"schema":"nirs4all.studio-library-error.v1","request_id":request.get("request_id"),"error":{"code":error.code,"message":str(error).encode("utf-8")[:4000].decode("utf-8",errors="ignore")}}
+            response={"schema":"nirs4all.studio-library-error.v1","request_id":request.get("request_id"),"error":{"code":error.code,"message":bounded_library_error_message(error)}}
     else:
         if len(raw)>65536:
             raise RuntimeError("scientific V1 request exceeds stdin budget")
@@ -2783,6 +2786,46 @@ mod tests {
         .unwrap();
         assert!(EXECUTION_SCRIPT.contains("studio_synthetic_dataset_job_v1 as facade"));
         assert!(EXECUTION_SCRIPT.contains("studio_playground_job_v1 as facade"));
+    }
+
+    #[test]
+    fn worker_serializes_multiline_library_refusals_without_relaxing_validation() {
+        let helper = EXECUTION_SCRIPT
+            .split("def deny_product_network")
+            .next()
+            .unwrap();
+        let script = format!(
+            "{helper}\nresponse={{'schema':'nirs4all.studio-library-error.v1','request_id':'multiline','error':{{'code':'dataset_load_failed','message':bounded_library_error_message(ValueError('validation\\nfailed\\t'+'é'*5000+'\\u0085'))}}}}\nprint(json.dumps(response,ensure_ascii=False))"
+        );
+        let output = Command::new("python3")
+            .args(["-I", "-S", "-c", &script])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let request = serde_json::json!({"schema":"nirs4all.studio-playground-job.v1","request_id":"multiline"});
+        let response = validate_worker_response(&request, &output.stdout, "multiline").unwrap();
+        let message = response["error"]["message"].as_str().unwrap();
+        assert!(message.starts_with("validation failed "));
+        assert!(message.len() <= 4000);
+        assert!(!message.chars().any(char::is_control));
+        let mut invalid = response.clone();
+        invalid["error"]["message"] = serde_json::json!("validation\nfailed");
+        assert_eq!(
+            validate_worker_response(
+                &request,
+                &serde_json::to_vec(&invalid).unwrap(),
+                "multiline"
+            ),
+            Err(ScientificCpythonUnavailable::MalformedResponse)
+        );
+        assert_eq!(
+            validate_worker_response(&request, &output.stdout, "wrong-id"),
+            Err(ScientificCpythonUnavailable::MalformedResponse)
+        );
     }
 
     #[test]
