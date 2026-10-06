@@ -492,6 +492,7 @@ mod tests {
         let tail = worker.stderr_tail.lock().unwrap();
         assert_eq!(tail.len(), MAX_WORKER_DIAGNOSTIC_BYTES);
         assert!(tail.ends_with(b"hidden-facade-cause"));
+        drop(tail);
         assert_eq!(worker.completed, 0);
     }
 
