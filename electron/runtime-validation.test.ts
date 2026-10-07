@@ -18,10 +18,10 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
   let executable: string;
   let sitePackages: string;
   const versions: Record<string, string> = {
-    nirs4all: "1.4.6", duckdb: "1.5.5", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1",
+    nirs4all: "1.4.6", "nirs4all-formats": "0.2.11", duckdb: "1.5.5", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1",
   };
   const metadata = (name: string, extra = "") => `Metadata-Version: 2.1\nName: ${name}\nVersion: ${versions[name]}\n${extra}`;
-  const metadataPath = (name: string) => path.join(sitePackages, `${name}-${versions[name]}.dist-info`, "METADATA");
+  const metadataPath = (name: string) => path.join(sitePackages, `${name.replaceAll("-", "_")}-${versions[name]}.dist-info`, "METADATA");
 
   beforeAll(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-runtime-validation-"));
@@ -34,7 +34,7 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
     for (const name of Object.keys(versions)) {
       fs.mkdirSync(path.dirname(metadataPath(name)), { recursive: true });
       fs.writeFileSync(metadataPath(name), metadata(name));
-      fs.writeFileSync(path.join(sitePackages, `${name}.py`), name === "nirs4all"
+      fs.writeFileSync(path.join(sitePackages, `${name.replaceAll("-", "_")}.py`), name === "nirs4all"
         ? "def studio_scientific_job_v1(): pass\ndef studio_scientific_job_v2(): pass\n" : "");
     }
   });
@@ -43,6 +43,16 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
 
   it("accepts importable packages with coherent installed dependencies", async () => {
     await expect(validatePythonRuntime(executable)).resolves.toBeUndefined();
+  });
+
+  it("refuses Formats with missing distribution metadata even when its code remains", async () => {
+    fs.rmSync(path.dirname(metadataPath("nirs4all-formats")), { recursive: true });
+    await expect(validatePythonRuntime(executable)).rejects.toThrow(/No package metadata was found for nirs4all-formats/);
+  });
+
+  it("refuses missing Formats package code even when its installed metadata remains", async () => {
+    fs.rmSync(path.join(sitePackages, "nirs4all_formats.py"));
+    await expect(validatePythonRuntime(executable)).rejects.toThrow(/No module named 'nirs4all_formats'/);
   });
 
   it("refuses missing package code even when its installed metadata remains", async () => {
