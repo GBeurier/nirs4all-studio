@@ -164,6 +164,17 @@ describe("setup-python-env", () => {
     ]);
   });
 
+  it("installs the required Formats distribution rather than only constraining its optional version", () => {
+    const { PLUGIN_SUPPORT_PACKAGES } = require("../scripts/python-runtime-config.cjs") as {
+      PLUGIN_SUPPORT_PACKAGES: string[];
+    };
+    const args = setupPythonEnvModule.buildPluginRuntimeInstallArgs(PLUGIN_SUPPORT_PACKAGES, {
+      constraintsFile: "build/constraints/plugin-runtime-cpython311.txt",
+    });
+    expect(args).toContain("nirs4all-formats==0.2.11");
+    expect(args).toContain("build/constraints/plugin-runtime-cpython311.txt");
+  });
+
   it("installs torch separately with the Linux CPU wheel index for the standalone CPU bundle scope", () => {
     const phases = setupPythonEnvModule.getDependencyInstallPhases("cpu", "linux");
 
