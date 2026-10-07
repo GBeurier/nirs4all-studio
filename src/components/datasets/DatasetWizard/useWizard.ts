@@ -109,6 +109,7 @@ export interface WizardContextType {
   prevStep: () => void;
   reset: () => void;
   canProceed: () => boolean;
+  beginInspection: () => () => void;
   workspaceDefaults: ParsingOptions | null;
   isLoadingDefaults: boolean;
   reloadDefaults: () => Promise<void>;

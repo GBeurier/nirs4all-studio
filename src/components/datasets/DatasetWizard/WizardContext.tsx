@@ -255,6 +255,23 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
   const [workspaceDefaults, setWorkspaceDefaults] = useState<ParsingOptions | null>(null);
   const [isLoadingDefaults, setIsLoadingDefaults] = useState(true);
   const hasInitialized = useRef(false);
+  const inspections = useRef(new Set<symbol>());
+  const [inspectionCount, setInspectionCount] = useState(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const beginInspection = useCallback(() => {
+    const token = Symbol();
+    inspections.current.add(token);
+    setInspectionCount(inspections.current.size);
+    return () => {
+      if (inspections.current.delete(token) && mounted.current) {
+        setInspectionCount(inspections.current.size);
+      }
+    };
+  }, []);
 
   // Load workspace defaults on mount
   const loadDefaults = useCallback(async () => {
@@ -311,11 +328,12 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
   }, []);
 
   const nextStep = useCallback(() => {
+    if (inspectionCount || state.isValidating) return;
     const currentIndex = STEP_ORDER.indexOf(state.step);
     if (currentIndex < STEP_ORDER.length - 1) {
       dispatch({ type: "SET_STEP", payload: STEP_ORDER[currentIndex + 1] });
     }
-  }, [state.step]);
+  }, [state.step, state.isValidating, inspectionCount]);
 
   const prevStep = useCallback(() => {
     const currentIndex = STEP_ORDER.indexOf(state.step);
@@ -330,6 +348,9 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
   }, [workspaceDefaults]);
 
   const canProceed = useCallback(() => {
+    // Configuration inspections must settle before their dependent preview.
+    // Back and Cancel remain available; no timer substitutes for completion.
+    if (inspectionCount || state.isValidating) return false;
     // Check if we're in web mode (files selected but no filesystem path)
     const isWebMode = state.fileBlobs.size > 0;
 
@@ -348,7 +369,7 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
       default:
         return false;
     }
-  }, [state]);
+  }, [state, inspectionCount]);
 
   return (
     <WizardContext.Provider
@@ -360,6 +381,7 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
         prevStep,
         reset,
         canProceed,
+        beginInspection,
         workspaceDefaults,
         isLoadingDefaults,
         reloadDefaults: loadDefaults,

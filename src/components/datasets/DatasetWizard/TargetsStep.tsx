@@ -4,7 +4,7 @@
  * Displays auto-detected columns with their inferred types.
  * Allows overriding task type per column.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { Repeat } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -67,7 +67,8 @@ const FOLD_SOURCE_OPTIONS: { value: FoldSource; label: string }[] = [
 ];
 
 export function TargetsStep() {
-  const { state, dispatch } = useWizard();
+  const { state, dispatch, beginInspection } = useWizard();
+  const requestRevision = useRef(0);
   const [showAggregation, setShowAggregation] = useState(state.aggregation.enabled);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,12 +77,18 @@ export function TargetsStep() {
 
   // Load target columns from Y file
   const loadTargetColumns = useCallback(async () => {
+    const revision = ++requestRevision.current;
+    const publishColumns = (columns: DetectedColumn[]) => {
+      if (revision === requestRevision.current) setDetectedColumns(columns);
+    };
     const yFiles = state.files.filter((f) => f.type === "Y");
     if (yFiles.length === 0) {
-      setDetectedColumns([]);
+      publishColumns([]);
+      setLoading(false);
       return;
     }
 
+    const finishInspection = beginInspection();
     setLoading(true);
     setError(null);
 
@@ -105,12 +112,12 @@ export function TargetsStep() {
             if (rows.length > 1) {
               const headerRow = rows[0];
               const dataRows = rows.slice(1);
-              setDetectedColumns(parseColumnsFromData(headerRow, dataRows, effectiveDecimalSep));
+              publishColumns(parseColumnsFromData(headerRow, dataRows, effectiveDecimalSep));
               return;
             }
           }
         }
-        setError("Could not read Y file content");
+        if (revision === requestRevision.current) setError("Could not read Y file content");
         return;
       }
 
@@ -128,35 +135,37 @@ export function TargetsStep() {
           mean: col.mean,
           inferred_task_type: (col.task_type || "regression") as TaskType,
         }));
-        setDetectedColumns(cols);
+        publishColumns(cols);
       } else if (result.column_names && result.column_names.length > 0 && result.sample_data) {
         // Fallback: parse sample_data ourselves
         const decimalSep = result.detected_decimal || state.parsing?.decimal_separator || ".";
         const cols = parseColumnsFromData(result.column_names, result.sample_data, decimalSep);
-        setDetectedColumns(cols);
+        publishColumns(cols);
       } else {
         // No columns detected
-        setDetectedColumns([]);
+        publishColumns([]);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to detect columns");
+      if (revision === requestRevision.current) setError(e instanceof Error ? e.message : "Failed to detect columns");
     } finally {
-      setLoading(false);
+      if (revision === requestRevision.current) setLoading(false);
+      finishInspection();
     }
-  }, [state.files, state.basePath, state.fileBlobs, state.parsing, state.perFileOverrides]);
+  }, [state.files, state.basePath, state.fileBlobs, state.parsing, state.perFileOverrides, beginInspection]);
 
   // Load columns when Y files change
-  useEffect(() => {
+  useLayoutEffect(() => {
     const yFiles = state.files.filter((f) => f.type === "Y");
     if (yFiles.length > 0) {
       loadTargetColumns();
     } else {
       setDetectedColumns([]);
     }
+    return () => { requestRevision.current += 1; };
   }, [state.files, loadTargetColumns]);
 
   // Auto-sync targets from detected columns
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (detectedColumns.length === 0) return;
 
     const targetSync = syncTargetsWithDetectedColumns(

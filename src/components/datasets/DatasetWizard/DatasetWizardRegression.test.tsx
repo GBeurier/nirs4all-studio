@@ -2,13 +2,14 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { autoDetectFile, previewDataset, validateFiles } from "@/api/datasets";
+import { autoDetectFile, detectFormat, previewDataset, validateFiles } from "@/api/datasets";
 import { getDataLoadingDefaults } from "@/api/workspace";
 import { WizardProvider } from "./WizardContext";
+import { Dialog } from "@/components/ui/dialog";
 import { DEFAULT_PARSING, useWizard, type WizardContextType, type WizardInitialState } from "./useWizard";
 import { PreviewStep } from "./PreviewStep";
 import { ParsingStep } from "./ParsingStep";
-import { DataStats } from "./WizardContent";
+import { DataStats, WizardContent } from "./WizardContent";
 import type { DetectedFile, PreviewDataResponse } from "@/types/datasets";
 
 vi.mock("@/api/datasets", () => ({
@@ -67,6 +68,126 @@ afterEach(async () => {
 });
 
 describe("Dataset wizard regressions", () => {
+  it("keeps Next unavailable while target detection and file validation are unresolved", async () => {
+    vi.mocked(detectFormat).mockReturnValue(new Promise(() => {}));
+    vi.mocked(validateFiles).mockReturnValue(new Promise(() => {}));
+    await mount(<Dialog open><WizardContent onAdd={async () => {}} onClose={() => {}} /></Dialog>, {
+      files: [xFile, { ...xFile, path: "Ycal.csv", filename: "Ycal.csv", type: "Y" }],
+      skipToStep: "targets",
+    });
+    expect(detectFormat).toHaveBeenCalled();
+    const next = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Next")!;
+    expect(next.disabled).toBe(true);
+    expect(previewDataset).not.toHaveBeenCalled();
+  });
+
+  it("waits for both inspections and synchronizes target columns before preview", async () => {
+    vi.useFakeTimers();
+    let resolveColumns!: (value: Awaited<ReturnType<typeof detectFormat>>) => void;
+    let resolveValidation!: (value: Awaited<ReturnType<typeof validateFiles>>) => void;
+    vi.mocked(detectFormat).mockReturnValue(new Promise(resolve => { resolveColumns = resolve; }));
+    vi.mocked(validateFiles).mockReturnValue(new Promise(resolve => { resolveValidation = resolve; }));
+    await mount(<Dialog open><WizardContent onAdd={async () => {}} onClose={() => {}} /></Dialog>, {
+      files: [xFile, { ...xFile, path: "Ycal.csv", filename: "Ycal.csv", type: "Y" }], skipToStep: "targets",
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(validateFiles).toHaveBeenCalledTimes(1);
+    const next = () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Next")!;
+    await act(async () => resolveColumns({ format: "csv", column_info: [{ name: "concentration", data_type: "numeric", task_type: "regression" }] }));
+    expect(wizard.state.targets[0].column).toBe("concentration");
+    expect(next().disabled).toBe(true);
+    expect(previewDataset).not.toHaveBeenCalled();
+    await act(async () => resolveValidation({ success: true, shapes: {} }));
+    expect(next().disabled).toBe(false);
+    await act(async () => next().click());
+    expect(previewDataset).toHaveBeenCalledTimes(1);
+    expect(wizard.state.targets[0].column).toBe("concentration");
+  });
+
+  it("keeps late target detections from overwriting the changed configuration", async () => {
+    vi.useFakeTimers();
+    let resolveOld!: (value: Awaited<ReturnType<typeof detectFormat>>) => void;
+    vi.mocked(detectFormat)
+      .mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }))
+      .mockResolvedValue({ format: "csv", column_info: [{ name: "current", data_type: "numeric", task_type: "regression" }] });
+    vi.mocked(validateFiles).mockResolvedValue({ success: true, shapes: {} });
+    await mount(<Dialog open><WizardContent onAdd={async () => {}} onClose={() => {}} /></Dialog>, {
+      files: [xFile, { ...xFile, path: "Ycal.csv", filename: "Ycal.csv", type: "Y" }], skipToStep: "targets",
+    });
+    await act(async () => wizard.dispatch({ type: "SET_PARSING", payload: { delimiter: "," } }));
+    expect(detectFormat).toHaveBeenCalledTimes(2);
+    expect(wizard.state.targets[0].column).toBe("current");
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(wizard.canProceed()).toBe(false);
+    await act(async () => resolveOld({ format: "csv", column_info: [{ name: "stale", data_type: "numeric", task_type: "regression" }] }));
+    expect(wizard.state.targets[0].column).toBe("current");
+    expect(wizard.canProceed()).toBe(true);
+  });
+
+  it("releases inspection state after a rejection without retrying", async () => {
+    vi.useFakeTimers();
+    vi.mocked(detectFormat).mockRejectedValue(new Error("Cannot detect target columns"));
+    vi.mocked(validateFiles).mockRejectedValue(new Error("Invalid file parameters"));
+    await mount(<Dialog open><WizardContent onAdd={async () => {}} onClose={() => {}} /></Dialog>, {
+      files: [xFile, { ...xFile, path: "Ycal.csv", filename: "Ycal.csv", type: "Y" }], skipToStep: "targets",
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(container.textContent).toContain("Cannot detect target columns");
+    expect(wizard.state.validationError).toBe("Invalid file parameters");
+    expect(wizard.canProceed()).toBe(true);
+    expect(detectFormat).toHaveBeenCalledTimes(1);
+    expect(validateFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Back and Cancel usable during pending inspections and tolerates unmount", async () => {
+    let resolveColumns!: (value: Awaited<ReturnType<typeof detectFormat>>) => void;
+    vi.mocked(detectFormat).mockReturnValue(new Promise(resolve => { resolveColumns = resolve; }));
+    const onClose = vi.fn();
+    await mount(<Dialog open><WizardContent onAdd={async () => {}} onClose={onClose} /></Dialog>, {
+      files: [xFile, { ...xFile, path: "Ycal.csv", filename: "Ycal.csv", type: "Y" }], skipToStep: "targets",
+    });
+    const button = (name: string) => [...container.querySelectorAll<HTMLButtonElement>("button")].find(candidate => candidate.textContent?.trim() === name)!;
+    expect(button("Back").disabled).toBe(false);
+    await act(async () => button("Back").click());
+    expect(wizard.state.step).toBe("parsing");
+    expect(button("Cancel").disabled).toBe(false);
+    await act(async () => button("Cancel").click());
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await act(async () => root.unmount());
+    await act(async () => resolveColumns({ format: "csv", column_info: [{ name: "late", data_type: "numeric", task_type: "regression" }] }));
+    expect(wizard.state.targets).toEqual([]);
+  });
+
+  it("counts overlapping inspections and releases each token only once", async () => {
+    await mount(null, { skipToStep: "targets" });
+    let finishFirst!: () => void;
+    let finishSecond!: () => void;
+    await act(async () => { finishFirst = wizard.beginInspection(); finishSecond = wizard.beginInspection(); });
+    expect(wizard.canProceed()).toBe(false);
+    await act(async () => { finishFirst(); finishFirst(); });
+    expect(wizard.canProceed()).toBe(false);
+    await act(async () => finishSecond());
+    expect(wizard.canProceed()).toBe(true);
+  });
+
+  it("retains pending old validation without applying its late result after edits", async () => {
+    vi.useFakeTimers();
+    let resolveOld!: (value: Awaited<ReturnType<typeof validateFiles>>) => void;
+    vi.mocked(validateFiles)
+      .mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }))
+      .mockResolvedValue({ success: true, shapes: { "Mcal.csv": { path: "Mcal.csv", num_rows: 3, num_columns: 1, column_names: ["current"] } } });
+    await mount(<DataStats />, { files: [xFile, metadataFile], skipToStep: "parsing" });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    await act(async () => wizard.dispatch({ type: "SET_PARSING", payload: { delimiter: "," } }));
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(wizard.state.metadataColumns).toEqual(["current"]);
+    expect(wizard.canProceed()).toBe(false);
+    await act(async () => resolveOld({ success: false, shapes: {}, error: "Stale validation error" }));
+    expect(wizard.state.validationError).toBeNull();
+    expect(wizard.state.metadataColumns).toEqual(["current"]);
+    expect(wizard.canProceed()).toBe(true);
+  });
+
   it("keeps a failed preview visible without retrying until the user asks", async () => {
     vi.mocked(previewDataset).mockRejectedValueOnce(new Error("Missing metadata"));
     await mount(<PreviewStep />);
