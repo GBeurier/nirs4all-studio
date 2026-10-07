@@ -13,8 +13,8 @@ import type {
 /**
  * Get app settings
  */
-export async function getAppSettings(): Promise<AppSettingsResponse> {
-  return api.get("/app/settings");
+export async function getAppSettings(signal?: AbortSignal): Promise<AppSettingsResponse> {
+  return api.get("/app/settings", signal ? { signal } : undefined);
 }
 
 /**
