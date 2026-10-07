@@ -34,8 +34,46 @@ fn is_foreground_prediction_read(request: &Value) -> bool {
         )
 }
 
+// Match the renderer's normal readiness polling cadence. This schedules a real
+// background validation after a read burst; it never caches a ready response.
+const READINESS_QUIET_PERIOD: Duration = Duration::from_secs(1);
+
 #[derive(Default)]
-struct RuntimeAdmission(RwLock<()>);
+struct PredictionReadState {
+    active: usize,
+    last_finished: Option<Instant>,
+    failed: bool,
+}
+
+pub struct PredictionReadActivity(Arc<Mutex<PredictionReadState>>);
+
+impl Drop for PredictionReadActivity {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.0.lock() {
+            match state.active.checked_sub(1) {
+                Some(active) => state.active = active,
+                None => state.failed = true,
+            }
+            state.last_finished = Some(Instant::now());
+        }
+    }
+}
+
+struct RuntimeAdmission {
+    gate: RwLock<()>,
+    reads: Arc<Mutex<PredictionReadState>>,
+    quiet_period: Duration,
+}
+
+impl Default for RuntimeAdmission {
+    fn default() -> Self {
+        Self {
+            gate: RwLock::default(),
+            reads: Arc::default(),
+            quiet_period: READINESS_QUIET_PERIOD,
+        }
+    }
+}
 
 #[cfg(test)]
 mod admission_tests {
@@ -125,9 +163,142 @@ mod admission_tests {
             Err(ScientificCpythonUnavailable::RuntimeContractTampered)
         ));
     }
+
+    #[test]
+    fn cold_background_validation_has_no_quiet_delay() {
+        let admission = RuntimeAdmission::default();
+        let _validation = admission.background(Duration::ZERO).unwrap();
+    }
+
+    #[test]
+    fn read_activity_covers_post_exchange_work_without_a_second_readlock() {
+        let admission = Arc::new(RuntimeAdmission {
+            quiet_period: Duration::from_millis(40),
+            ..RuntimeAdmission::default()
+        });
+        let activity = admission.read_activity().unwrap();
+        let exchange = admission.foreground(Duration::ZERO).unwrap();
+        let (entered, receive) = mpsc::channel();
+        let pending = Arc::clone(&admission);
+        let background = std::thread::spawn(move || {
+            let _validation = pending.background(Duration::from_secs(2)).unwrap();
+            entered.send(()).unwrap();
+        });
+        drop(exchange);
+        // Adapter post-verification and response serialization are still active.
+        assert!(receive.recv_timeout(Duration::from_millis(60)).is_err());
+        // A next foreground exchange must not deadlock on a queued writer.
+        drop(admission.foreground(Duration::ZERO).unwrap());
+        drop(activity);
+        assert!(receive.recv_timeout(Duration::from_millis(10)).is_err());
+        receive.recv_timeout(Duration::from_secs(2)).unwrap();
+        background.join().unwrap();
+    }
+
+    #[test]
+    fn background_waits_for_complete_read_burst_and_overlapping_responses() {
+        let admission = Arc::new(RuntimeAdmission {
+            quiet_period: Duration::from_millis(60),
+            ..RuntimeAdmission::default()
+        });
+        let first = admission.read_activity().unwrap();
+        let second = admission.read_activity().unwrap();
+        let (entered, receive) = mpsc::channel();
+        let pending = Arc::clone(&admission);
+        let background = std::thread::spawn(move || {
+            let _validation = pending.background(Duration::from_secs(2)).unwrap();
+            entered.send(()).unwrap();
+        });
+        drop(first);
+        assert!(receive.recv_timeout(Duration::from_millis(80)).is_err());
+        drop(second);
+        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
+        // The client submits another read during the ordinary polling interval.
+        let third = admission.read_activity().unwrap();
+        assert!(receive.recv_timeout(Duration::from_millis(80)).is_err());
+        drop(third);
+        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
+        receive.recv_timeout(Duration::from_secs(2)).unwrap();
+        background.join().unwrap();
+    }
+
+    #[test]
+    fn failed_read_releases_activity_but_does_not_bypass_background_validation() {
+        let admission = RuntimeAdmission {
+            quiet_period: Duration::from_millis(10),
+            ..RuntimeAdmission::default()
+        };
+        let failed_read = || -> Result<(), &'static str> {
+            let _activity = admission.read_activity().unwrap();
+            Err("response construction failed")
+        };
+        assert!(failed_read().is_err());
+        assert!(matches!(
+            admission.background(Duration::ZERO),
+            Err(ScientificCpythonUnavailable::TimedOut)
+        ));
+        let _validation = admission.background(Duration::from_secs(1)).unwrap();
+    }
+
+    #[test]
+    fn poisoned_read_activity_refuses_foreground_and_background_admission() {
+        let admission = Arc::new(RuntimeAdmission::default());
+        let poison = Arc::clone(&admission);
+        assert!(std::thread::spawn(move || {
+            let _state = poison.reads.lock().unwrap();
+            panic!("test activity panic");
+        })
+        .join()
+        .is_err());
+        assert!(matches!(
+            admission.read_activity(),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        ));
+        assert!(matches!(
+            admission.foreground(Duration::ZERO),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        ));
+        assert!(matches!(
+            admission.background(Duration::ZERO),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        ));
+    }
 }
 
 impl RuntimeAdmission {
+    fn read_activity(&self) -> Result<PredictionReadActivity, ScientificCpythonUnavailable> {
+        let mut state = self
+            .reads
+            .lock()
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+        if state.failed {
+            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+        }
+        if let Some(active) = state.active.checked_add(1) {
+            state.active = active;
+        } else {
+            state.failed = true;
+            drop(state);
+            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+        }
+        drop(state);
+        Ok(PredictionReadActivity(Arc::clone(&self.reads)))
+    }
+
+    fn reads_quiet(&self) -> Result<bool, ScientificCpythonUnavailable> {
+        let state = self
+            .reads
+            .lock()
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+        if state.failed {
+            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+        }
+        Ok(state.active == 0
+            && state
+                .last_finished
+                .is_none_or(|finished| finished.elapsed() >= self.quiet_period))
+    }
+
     fn foreground(
         &self,
         timeout: Duration,
@@ -135,8 +306,11 @@ impl RuntimeAdmission {
         let _timing = super::BoundaryTiming::start("runtime_foreground_admission_wait");
         let started = Instant::now();
         loop {
-            match self.0.try_read() {
-                Ok(guard) => return Ok(guard),
+            match self.gate.try_read() {
+                Ok(guard) => {
+                    self.reads_quiet()?;
+                    return Ok(guard);
+                }
                 Err(TryLockError::Poisoned(_)) => {
                     return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
                 }
@@ -156,8 +330,9 @@ impl RuntimeAdmission {
         let _timing = super::BoundaryTiming::start("runtime_availability_admission_wait");
         let started = Instant::now();
         loop {
-            match self.0.try_write() {
-                Ok(guard) => return Ok(guard),
+            match self.gate.try_write() {
+                Ok(guard) if self.reads_quiet()? => return Ok(guard),
+                Ok(guard) => drop(guard),
                 Err(TryLockError::Poisoned(_)) => {
                     return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
                 }
@@ -266,6 +441,20 @@ impl RuntimeChanges {
     ) -> Result<Option<RwLockReadGuard<'_, ()>>, ScientificCpythonUnavailable> {
         if is_foreground_prediction_read(request) {
             self.admission.foreground(timeout).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(super) fn prediction_read_activity(
+        &self,
+        operation: &str,
+    ) -> Result<Option<PredictionReadActivity>, ScientificCpythonUnavailable> {
+        if is_foreground_prediction_read(&serde_json::json!({
+            "schema": crate::document_cpython::REQUEST_SCHEMA,
+            "operation": operation,
+        })) {
+            self.admission.read_activity().map(Some)
         } else {
             Ok(None)
         }

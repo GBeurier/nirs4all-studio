@@ -469,6 +469,19 @@ impl CpythonScientificJobExecutor {
         Ok(response)
     }
 
+    pub(crate) fn prediction_read_activity(
+        &self,
+        operation: &str,
+    ) -> Result<Option<warm_library_host::PredictionReadActivity>, ScientificCpythonUnavailable>
+    {
+        self.packaged_runtime
+            .as_ref()
+            .and_then(|runtime| runtime.changes.as_ref())
+            .map_or(Ok(None), |changes| {
+                changes.prediction_read_activity(operation)
+            })
+    }
+
     pub(crate) fn adapt_document(&self, operation: &str, payload: &Value) -> Result<Value, String> {
         let _timing = BoundaryTiming::start(match operation {
             "dataset.configure" => "document_configure",
@@ -3580,6 +3593,69 @@ done"#,
                 result => panic!("runtime watcher did not invalidate content mutation: {result:?}"),
             }
         }
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn prediction_read_burst_defers_readiness_but_keeps_real_tamper_checks() {
+        let root = tempfile::tempdir().unwrap();
+        let python = root.path().join("python-runtime/python");
+        let site = python.join("site-packages");
+        fs::create_dir_all(&site).unwrap();
+        let host = python.join("python-host");
+        fs::write(&host, "host identity").unwrap();
+        let member = site.join("library.py");
+        fs::write(&member, "value = 1").unwrap();
+        let closure = python.parent().unwrap().join("PYTHON_PLUGIN_CLOSURE.json");
+        write_runtime_closure(&python, &site, &closure);
+        let runtime = packaged_runtime_identity(&host, &closure, &python, &site).unwrap();
+        let changes = runtime.changes.as_ref().unwrap();
+        changes.validate_background(&runtime).unwrap();
+        assert!(changes
+            .prediction_read_activity("dataset.preview")
+            .unwrap()
+            .is_none());
+        let activity = changes
+            .prediction_read_activity("results.arrays")
+            .unwrap()
+            .unwrap();
+        let background_runtime = runtime.clone();
+        let (send, receive) = std::sync::mpsc::channel();
+        let background = std::thread::spawn(move || {
+            let result = background_runtime
+                .changes
+                .as_ref()
+                .unwrap()
+                .validate_background(&background_runtime);
+            send.send(result).unwrap();
+        });
+        assert!(receive.recv_timeout(Duration::from_millis(50)).is_err());
+        let modified = fs::metadata(&member).unwrap().modified().unwrap();
+        fs::write(&member, "value = 2").unwrap();
+        File::options()
+            .write(true)
+            .open(&member)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        // Deferring a background scan must never defer the read's own guard.
+        let started = Instant::now();
+        loop {
+            match changes.validate(&runtime) {
+                Err(ScientificCpythonUnavailable::RuntimeContractTampered) => break,
+                Ok(_) if started.elapsed() < Duration::from_secs(3) => {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                other => panic!("foreground guard failed to detect mutation: {other:?}"),
+            }
+        }
+        assert!(receive.try_recv().is_err());
+        drop(activity);
+        assert_eq!(
+            receive.recv_timeout(Duration::from_secs(3)).unwrap(),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+        background.join().unwrap();
     }
 
     #[cfg(unix)]
