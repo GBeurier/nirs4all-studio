@@ -264,9 +264,9 @@ describe("build-native-sidecar", () => {
         mode: "bundled-required",
         abi: { major: 2, minor: 17 },
         source: {
-          commit: "dcc570b3647f77cf0428dd346078f442ed5cd032",
-          tree: "4b711a5cf7b0fb1e10a6ed99e1202bdd89917c42",
-          project_version: "1.3.2",
+          commit: "19432db0739048d6c9f5dd9ab56caba26dc2b562",
+          tree: "d559edb28cf6dd4510d6e6402c374cb4572170a8",
+          project_version: "1.3.4",
         },
       });
       expect(written.contract.native_runtime_linkage).toBeUndefined();

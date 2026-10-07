@@ -5086,7 +5086,7 @@ fn valid_json_value(value: &Value, depth: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dag_ml_core::{
+    use nirs4all::dag_ml::{
         BundleId, ConformalMultiTargetPolicy, ConformalSmallSamplePolicy, DataBinding, GraphSpec,
         RunId, TrainingDataIdentity, TrainingRequest, TRAINING_REQUEST_SCHEMA_VERSION,
     };
@@ -8951,7 +8951,7 @@ mod tests {
         assert_eq!(readiness["ml_ready"], false);
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.4.2+libn4m-abi-2.17:{methods_sha256}")
+            format!("nirs4all-core@0.4.4+libn4m-abi-2.17:{methods_sha256}")
         );
         let expected = [
             [1.636_363_636_363_636_5, 13.272_727_272_727_273],

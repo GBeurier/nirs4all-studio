@@ -18,7 +18,7 @@ use std::{
     process::Command,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError,
     },
     time::{Duration, Instant},
 };
@@ -26,12 +26,158 @@ use std::{
 const MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
 const MAX_WORKER_DIAGNOSTIC_BYTES: usize = 4096;
 
+fn is_foreground_prediction_read(request: &Value) -> bool {
+    request["schema"] == crate::document_cpython::REQUEST_SCHEMA
+        && matches!(
+            request["operation"].as_str(),
+            Some("results.chains" | "results.chain" | "results.arrays" | "results.page")
+        )
+}
+
+#[derive(Default)]
+struct RuntimeAdmission(RwLock<()>);
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+
+    #[test]
+    fn only_existing_prediction_reads_defer_availability_scans() {
+        for operation in [
+            "results.chains",
+            "results.chain",
+            "results.arrays",
+            "results.page",
+        ] {
+            assert!(is_foreground_prediction_read(&serde_json::json!({
+                "schema": crate::document_cpython::REQUEST_SCHEMA, "operation": operation
+            })));
+        }
+        for operation in [
+            "predictions.run",
+            "workspace.upgrade",
+            "documents.batch",
+            "dataset.preview",
+        ] {
+            assert!(!is_foreground_prediction_read(&serde_json::json!({
+                "schema": crate::document_cpython::REQUEST_SCHEMA, "operation": operation
+            })));
+        }
+        assert!(!is_foreground_prediction_read(&serde_json::json!({
+            "schema": "nirs4all.studio-playground-job.v1", "operation": "results.page"
+        })));
+    }
+
+    #[test]
+    fn background_waits_for_all_foreground_boundaries_and_resumes_after_release() {
+        let admission = Arc::new(RuntimeAdmission::default());
+        let first = admission.foreground(Duration::from_secs(1)).unwrap();
+        let second = admission.foreground(Duration::from_secs(1)).unwrap();
+        let (entered, receive) = mpsc::channel();
+        let pending = Arc::clone(&admission);
+        let task = std::thread::spawn(move || {
+            let _background = pending.background(Duration::from_secs(2)).unwrap();
+            entered.send(()).unwrap();
+        });
+        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
+        drop(first);
+        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
+        drop(second);
+        receive.recv_timeout(Duration::from_secs(2)).unwrap();
+        task.join().unwrap();
+        assert!(admission.foreground(Duration::from_secs(1)).is_ok());
+    }
+
+    #[test]
+    fn admission_is_bounded_and_does_not_leave_failed_background_waiters() {
+        let admission = RuntimeAdmission::default();
+        let foreground = admission.foreground(Duration::from_secs(1)).unwrap();
+        assert!(matches!(
+            admission.background(Duration::ZERO),
+            Err(ScientificCpythonUnavailable::TimedOut)
+        ));
+        drop(foreground);
+        let background = admission.background(Duration::from_secs(1)).unwrap();
+        assert!(matches!(
+            admission.foreground(Duration::ZERO),
+            Err(ScientificCpythonUnavailable::TimedOut)
+        ));
+        drop(background);
+        assert!(admission.foreground(Duration::from_secs(1)).is_ok());
+    }
+
+    #[test]
+    fn poisoned_admission_refuses_both_paths_instead_of_skipping_validation() {
+        let admission = Arc::new(RuntimeAdmission::default());
+        let poison = Arc::clone(&admission);
+        assert!(std::thread::spawn(move || {
+            let _held = poison.background(Duration::from_secs(1)).unwrap();
+            panic!("test admission panic");
+        })
+        .join()
+        .is_err());
+        assert!(matches!(
+            admission.foreground(Duration::from_secs(1)),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        ));
+        assert!(matches!(
+            admission.background(Duration::from_secs(1)),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        ));
+    }
+}
+
+impl RuntimeAdmission {
+    fn foreground(
+        &self,
+        timeout: Duration,
+    ) -> Result<RwLockReadGuard<'_, ()>, ScientificCpythonUnavailable> {
+        let _timing = super::BoundaryTiming::start("runtime_foreground_admission_wait");
+        let started = Instant::now();
+        loop {
+            match self.0.try_read() {
+                Ok(guard) => return Ok(guard),
+                Err(TryLockError::Poisoned(_)) => {
+                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+                Err(TryLockError::WouldBlock) => {}
+            }
+            if started.elapsed() >= timeout {
+                return Err(ScientificCpythonUnavailable::TimedOut);
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    fn background(
+        &self,
+        timeout: Duration,
+    ) -> Result<RwLockWriteGuard<'_, ()>, ScientificCpythonUnavailable> {
+        let _timing = super::BoundaryTiming::start("runtime_availability_admission_wait");
+        let started = Instant::now();
+        loop {
+            match self.0.try_write() {
+                Ok(guard) => return Ok(guard),
+                Err(TryLockError::Poisoned(_)) => {
+                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+                Err(TryLockError::WouldBlock) => {}
+            }
+            if started.elapsed() >= timeout {
+                return Err(ScientificCpythonUnavailable::TimedOut);
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+}
+
 /// Filesystem notifications invalidate the installation validation, not user
 /// requests. Unsupported watchers retain exhaustive request-time validation.
 pub(super) struct RuntimeChanges {
     generation: Arc<AtomicUsize>,
     healthy: Arc<AtomicBool>,
     validated: Mutex<Option<usize>>,
+    admission: RuntimeAdmission,
     _watcher: Mutex<notify::RecommendedWatcher>,
 }
 
@@ -80,6 +226,7 @@ impl RuntimeChanges {
             generation,
             healthy,
             validated: Mutex::new(None),
+            admission: RuntimeAdmission::default(),
             _watcher: Mutex::new(watcher),
         }))
     }
@@ -110,6 +257,31 @@ impl RuntimeChanges {
         }
         drop(validated);
         Ok(generation)
+    }
+
+    fn foreground_prediction_read(
+        &self,
+        request: &Value,
+        timeout: Duration,
+    ) -> Result<Option<RwLockReadGuard<'_, ()>>, ScientificCpythonUnavailable> {
+        if is_foreground_prediction_read(request) {
+            self.admission.foreground(timeout).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(super) fn validate_background(
+        &self,
+        runtime: &PackagedRuntimeIdentity,
+    ) -> Result<usize, ScientificCpythonUnavailable> {
+        // Availability still performs the same exhaustive validation. Wait for
+        // active guarded exchanges instead of inserting scans between their
+        // before/after boundaries; never synthesize a ready response.
+        let _admission = self
+            .admission
+            .background(super::SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT)?;
+        self.validate(runtime)
     }
 }
 
@@ -379,6 +551,12 @@ impl CpythonScientificJobExecutor {
             .and_then(Value::as_str)
             .ok_or(ScientificCpythonUnavailable::InvalidRequest)?;
         let start = Instant::now();
+        let _admission = runtime
+            .changes
+            .as_ref()
+            .map(|changes| changes.foreground_prediction_read(&request, timeout))
+            .transpose()?
+            .flatten();
         loop {
             for slot in &self.warm_workers {
                 if let Ok(mut slot) = slot.try_lock() {

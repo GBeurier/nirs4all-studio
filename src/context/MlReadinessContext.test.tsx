@@ -244,6 +244,26 @@ afterEach(() => {
 });
 
 describe("MlReadinessProvider", () => {
+  it("yields result reads without inventing readiness and resumes after refusal", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockResolvedValueOnce({ ml_ready: true, workspace_ready: true })
+      .mockResolvedValue({ ml_ready: false, workspace_ready: true });
+    const view = await renderProvider(createElectronApiMock());
+    const activity = await import("@/api/dataset-request-activity");
+    let refuse!: (reason: unknown) => void;
+    const pending = activity.withScientificRequestActivity(() => new Promise<void>((_resolve, reject) => { refuse = reject; }));
+    const rejection = expect(pending).rejects.toThrow("store unavailable");
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(mocks.apiGet).toHaveBeenCalledTimes(1);
+    expect(view.result.current?.mlReady).toBe(true);
+    refuse(new Error("store unavailable"));
+    await rejection;
+    expect(activity.hasScientificRequestInFlight()).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(mocks.apiGet).toHaveBeenCalledTimes(2);
+    expect(view.result.current?.mlReady).toBe(false);
+    await view.unmount();
+  });
   it("yields background polls to dataset requests and then refreshes real readiness", async () => {
     vi.useFakeTimers();
     mocks.apiGet.mockResolvedValueOnce({ ml_ready: true, workspace_ready: true })

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/transport";
-import { hasDatasetRequestInFlight } from "@/api/dataset-request-activity";
+import { hasScientificRequestInFlight } from "@/api/dataset-request-activity";
 import { datasetQueryKeys } from "@/hooks/useDatasetQueries";
 import { MlReadinessContext, type MlReadiness } from "@/context/useMlReadiness";
 
@@ -158,10 +158,10 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     let disposed = false;
     let checking = false;
     const check = async () => {
-      // Dataset inspection retains its native pre/post integrity checks. Avoid
-      // competing with those checks through an optional background heartbeat.
+      // Foreground inspection and result reads retain their native pre/post
+      // integrity checks. Yield only this optional background heartbeat.
       // Keep the last observed state; the request still validates its runtime.
-      if (checking || hasDatasetRequestInFlight()) return;
+      if (checking || hasScientificRequestInFlight()) return;
       checking = true;
       const revision = readinessRevision.current;
       try {

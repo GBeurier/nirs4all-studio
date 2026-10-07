@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, formatApiErrorDetail, resetBackendUrl } from "./transport";
+import { hasScientificRequestInFlight } from "./dataset-request-activity";
 import { getConfigDiff, getRecommendedConfig } from "./config";
 import {
   preselectRendererTransport,
@@ -307,6 +308,49 @@ describe("formatApiErrorDetail", () => {
 });
 
 describe("API client request handling", () => {
+  it("keeps overlapping prediction reads active through body parsing and releases refusals", async () => {
+    let releaseFirst!: (value: unknown) => void;
+    let releaseSecond!: (value: unknown) => void;
+    const firstBody = new Promise((resolve) => { releaseFirst = resolve; });
+    const secondBody = new Promise((resolve) => { releaseSecond = resolve; });
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => firstBody })
+      .mockResolvedValueOnce({ ok: true, json: () => secondBody }));
+    const first = api.get("/aggregated-predictions/chain/chain-1");
+    const second = api.get("/workspaces/owned/predictions/data?limit=1000");
+    expect(hasScientificRequestInFlight()).toBe(true);
+    releaseFirst({ chain: "chain-1" });
+    await first;
+    expect(hasScientificRequestInFlight()).toBe(true);
+    releaseSecond({ predictions: [] });
+    await second;
+    expect(hasScientificRequestInFlight()).toBe(false);
+
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ detail: "store tampered" }, 409));
+    await expect(api.get("/aggregated-predictions/pred-1/arrays"))
+      .rejects.toMatchObject({ detail: "store tampered", status: 409 });
+    expect(hasScientificRequestInFlight()).toBe(false);
+  });
+
+  it("does not scope control polling and mutations and releases cancelled prediction reads", async () => {
+    const cancelled = Object.assign(new Error("cancelled"), { name: "AbortError" });
+    const controller = new AbortController();
+    vi.stubGlobal("fetch", vi.fn(async (_url, config) => {
+      expect(hasScientificRequestInFlight()).toBe(false);
+      expect(config?.signal).toBe(controller.signal);
+      return jsonResponse({ ml_ready: true });
+    }));
+    await api.get("/system/readiness", { signal: controller.signal });
+    await api.post("/aggregated-predictions/query", { sql: "SELECT 1" }, { signal: controller.signal });
+    vi.mocked(fetch).mockImplementationOnce(async (_url, config) => {
+      expect(hasScientificRequestInFlight()).toBe(true);
+      expect(config?.signal).toBe(controller.signal);
+      throw cancelled;
+    });
+    await expect(api.get("/workspaces/owned/predictions/data", { signal: controller.signal }))
+      .rejects.toBe(cancelled);
+    expect(hasScientificRequestInFlight()).toBe(false);
+  });
   it("uses the preflighted native scientific submission transport without acquiring Python", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({
