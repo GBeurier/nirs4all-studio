@@ -485,7 +485,7 @@ export async function preselectRendererTransport(
   }
 
   try {
-    const response = await request(`${info.url}/sidecar/v1/capabilities`, {
+    const response = await request(`${info.url}/sidecar/v1/capabilities?capability=${encodeURIComponent(surface.capability)}`, {
       method: "GET",
       cache: "no-store",
     });
@@ -500,6 +500,7 @@ export async function preselectRendererTransport(
     const features = capabilities.features;
     if (
       capabilities.protocol_version !== PROTOCOL_VERSION ||
+      (capabilities.capability_projection !== undefined && capabilities.capability_projection !== surface.capability) ||
       !features || typeof features !== "object" || Array.isArray(features)
     ) {
       return decision(normalized, surface.name, "reject", "native_capability_mismatch", 503);

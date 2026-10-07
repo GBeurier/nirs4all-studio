@@ -395,7 +395,7 @@ describe("API client request handling", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://127.0.0.1:43123/sidecar/v1/capabilities",
+      "http://127.0.0.1:43123/sidecar/v1/capabilities?capability=scientific_submission_transport",
       { method: "GET", cache: "no-store" },
     );
     expect(fetchMock).toHaveBeenNthCalledWith(

@@ -12,6 +12,7 @@ const { expect } = require('@playwright/test');
 const archive = require('./smoke-archive-standalone.cjs');
 const ui = require('./smoke-first-launch-ui.cjs');
 const { sha256File, parseChecksumSidecar } = require('./finalize-release-assets.cjs');
+const { resolvePerformancePolicy, timed } = require('./qualification-performance.cjs');
 
 // Product budgets, deliberately separate from GitHub's infrastructure timeout.
 const BUDGETS = Object.freeze({ install: 300000, baselineSetup: 300000, baselineLaunch: 180000, launch: 120000, multimodal: 360000, preview: 5000, link: 5000, navigation: 3000 });
@@ -36,14 +37,6 @@ function parseArgs(argv) {
   return options;
 }
 
-async function timed(proof, phase, budget, callback) {
-  const start = performance.now();
-  const value = await callback();
-  const duration_ms = performance.now() - start;
-  proof.timings.push({ phase, duration_ms, budget_ms: budget });
-  assert(duration_ms <= budget, `${phase} took ${Math.round(duration_ms)}ms; budget ${budget}ms`);
-  return value;
-}
 
 async function install(file, platform, root) {
   const command = (program, args) => streamedCommand(program, args, path.dirname(root));
@@ -258,7 +251,8 @@ async function journeys(context, proof, data) {
 async function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   const proof = { success: false, platform: options.platform, arch: process.arch, source_sha: process.env.RELEASE_SOURCE_SHA,
-    installer_sha256: sha256File(options.installer), budgets: BUDGETS, timings: [] };
+    installer_sha256: sha256File(options.installer), budgets: BUDGETS,
+    performance_policy: resolvePerformancePolicy(), timings: [] };
   const root = fs.mkdtempSync(path.join(os.tmpdir(), options.platform === 'win32' ? 'studioq-' : 'studio installer qualification '));
   const installRoot = path.join(root, options.platform === 'win32' ? 'Application' : 'Application installée');
   const profile = path.join(root, 'upgrade-profile');
@@ -301,11 +295,11 @@ async function main(argv = process.argv.slice(2)) {
     if (before) assert.deepEqual(fileSnapshot(workspace), before, 'Installer changed workspace bytes');
     const config = archive.assertValidConfig(archive.parseArgs(['--extracted-root', installed, '--platform', options.platform, '--timeout-ms', String(BUDGETS.launch)]));
     for (const consent of ['decline', 'accept']) {
-      await ui.main({ config, consent, timings: proof.timings,
+      await ui.main({ config, consent, timings: proof.timings, performancePolicy: proof.performance_policy,
         inspectProfile: async ({ env }) => assert((await api(env, '/workspace')).workspace?.path, 'First install did not create a workspace') });
     }
     if (preserved) {
-      await ui.main({ config, sandboxRoot: profile, existingProfile: true, envOverrides, timings: proof.timings,
+      await ui.main({ config, sandboxRoot: profile, existingProfile: true, envOverrides, timings: proof.timings, performancePolicy: proof.performance_policy,
         inspectProfile: async ({ page, env }) => {
           // Same directory, not the same spelling: the native sidecar reports
           // canonical paths, which are verbatim (\\?\D:\...) on Windows.
@@ -319,7 +313,7 @@ async function main(argv = process.argv.slice(2)) {
           await expect(page.getByText(/Checking installation|Retry verification/i)).not.toBeVisible();
         }, journeys: context => journeys(context, proof, candidateData) });
     } else {
-      await ui.main({ config, timings: proof.timings, journeys: context => journeys(context, proof, data) });
+      await ui.main({ config, timings: proof.timings, performancePolicy: proof.performance_policy, journeys: context => journeys(context, proof, data) });
     }
     if (options['multimodal-provider-script']) {
       const layout = archive.resolveLaunchLayout(installed, options.platform, 'nirs4all Studio');

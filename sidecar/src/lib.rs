@@ -494,6 +494,11 @@ impl CapabilitiesSnapshot {
     }
 
     fn to_json(&self) -> String {
+        self.projected_json(None)
+            .expect("the complete native capability template is valid")
+    }
+
+    fn projected_json(&self, selected: Option<&str>) -> Option<String> {
         let mut capabilities: Value = self.capabilities.clone();
         capabilities["features"]["workspace_document_routes"] = json!(true);
         capabilities["features"]["workspace_metadata_routes"] = json!(true);
@@ -509,19 +514,74 @@ impl CapabilitiesSnapshot {
         capabilities["features"]["pipeline_preset_routes"] = json!(true);
         capabilities["features"]["dataset_score_routes"] = json!(true);
         capabilities["features"]["dataset_synthetic_preset_routes"] = json!(true);
-        capabilities["features"]["dataset_synthetic_generation_routes"] =
-            json!(self.scientific_host.as_deref().is_some_and(
-                scientific_cpython::CpythonScientificJobExecutor::library_facades_available
-            ));
-        capabilities["features"]["workspace_prediction_result_routes"] =
-            capabilities["features"]["dataset_synthetic_generation_routes"].clone();
-        capabilities["features"]["aggregated_prediction_result_routes"] =
-            capabilities["features"]["dataset_synthetic_generation_routes"].clone();
-        capabilities["features"]["playground_routes"] =
-            capabilities["features"]["dataset_synthetic_generation_routes"].clone();
         capabilities["features"]["native_webapp_update_routes"] = json!(true);
-        capabilities.to_string()
+        let scientific_features = [
+            "dataset_synthetic_generation_routes",
+            "workspace_prediction_result_routes",
+            "aggregated_prediction_result_routes",
+            "playground_routes",
+        ];
+        for feature in scientific_features {
+            capabilities["features"][feature] = json!(false);
+        }
+        if selected.is_some_and(|feature| !capabilities["features"][feature].is_boolean()) {
+            return None;
+        }
+        // The complete discovery response and every scientific projection
+        // retain the same real runtime validation. Rust polling only needs its
+        // own capability: do not scan an unrelated optional scientific host.
+        if selected.is_none_or(|feature| scientific_features.contains(&feature)) {
+            let available = self.scientific_host.as_deref().is_some_and(
+                scientific_cpython::CpythonScientificJobExecutor::library_facades_available,
+            );
+            for feature in scientific_features {
+                capabilities["features"][feature] = json!(available);
+            }
+        }
+        if let Some(selected) = selected {
+            let transport_guards = [
+                "renderer_transport_selection",
+                "renderer_rust_only_default",
+                "implicit_python_http_fallback",
+                "unmigrated_renderer_routes_fail_closed",
+                "renderer_http_transport",
+                "renderer_websocket_transport",
+                "python_plugin_preflight",
+                "scientific_execution",
+            ];
+            capabilities["features"]
+                .as_object_mut()?
+                .retain(|feature, _| {
+                    feature == selected || transport_guards.contains(&feature.as_str())
+                });
+            capabilities["capability_projection"] = json!(selected);
+        }
+        Some(capabilities.to_string())
     }
+}
+
+fn capability_projection_response(
+    snapshot: &CapabilitiesSnapshot,
+    query: Option<&str>,
+) -> HttpResponse {
+    let refuse = || {
+        error_response(
+            400,
+            ErrorCode::InvalidRequest,
+            "Request exactly one known capability",
+            BTreeMap::from([("reason".into(), "invalid_capability_projection".into())]),
+        )
+    };
+    let Some(query) = query else {
+        return HttpResponse::json(200, snapshot.to_json());
+    };
+    let fields: Vec<_> = url::form_urlencoded::parse(query.as_bytes()).collect();
+    if fields.len() != 1 || fields[0].0 != "capability" {
+        return refuse();
+    }
+    snapshot
+        .projected_json(Some(&fields[0].1))
+        .map_or_else(refuse, |body| HttpResponse::json(200, body))
 }
 
 impl Default for SidecarState {
@@ -955,6 +1015,13 @@ pub fn route_request_with_body(
     let (metadata_path, metadata_query) = path
         .split_once('?')
         .map_or((path, None), |(path, query)| (path, Some(query)));
+    if metadata_path == "/sidecar/v1/capabilities" {
+        return if method == "GET" {
+            capability_projection_response(&CapabilitiesSnapshot::from_state(state), metadata_query)
+        } else {
+            method_not_allowed(method, metadata_path, "GET")
+        };
+    }
     if let Some(response) = workspace_metadata::route_document(
         &state.app_settings,
         method,
@@ -999,7 +1066,6 @@ pub fn route_request_with_body(
         ("POST", LEGACY_CONVERSION_ROUTE) => legacy_workspace_conversion_response(state, body),
         ("GET", "/sidecar/v1/health") => HttpResponse::json(200, state.health_json()),
         ("GET", "/sidecar/v1/readiness") => HttpResponse::json(200, state.readiness_json()),
-        ("GET", "/sidecar/v1/capabilities") => HttpResponse::json(200, state.capabilities_json()),
         ("GET", "/sidecar/v1/python/preflight") => python_plugin_preflight_response(state),
         ("GET", "/api/system/capabilities") => python_capabilities_response(state),
         ("GET", "/api/system/info") => python_system_info_response(state),
@@ -4394,10 +4460,10 @@ fn route_readiness_without_global_lock(
     ))
 }
 
-fn render_capabilities_without_global_lock(
+fn render_capabilities_without_global_lock<T>(
     state: &Arc<Mutex<SidecarState>>,
-    render: impl FnOnce(&CapabilitiesSnapshot) -> String,
-) -> String {
+    render: impl FnOnce(&CapabilitiesSnapshot) -> T,
+) -> T {
     let snapshot = {
         let state = state.lock().expect("sidecar state mutex poisoned");
         CapabilitiesSnapshot::from_state(&state)
@@ -4412,10 +4478,9 @@ fn route_capabilities_without_global_lock(
     if request.method != "GET" || request.path != "/sidecar/v1/capabilities" {
         return None;
     }
-    Some(HttpResponse::json(
-        200,
-        render_capabilities_without_global_lock(state, CapabilitiesSnapshot::to_json),
-    ))
+    Some(render_capabilities_without_global_lock(state, |snapshot| {
+        capability_projection_response(snapshot, request.query.as_deref())
+    }))
 }
 
 fn route_documents_without_global_lock(
@@ -5214,6 +5279,96 @@ mod tests {
         release_tx.send(()).unwrap();
         assert_eq!(worker.join().unwrap(), expected);
         assert_eq!(health, Some(200));
+    }
+
+    #[test]
+    fn capability_projection_http_preserves_transport_guards_and_rejects_unknown_queries() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = Arc::new(Mutex::new(SidecarState::with_app_settings_dir(
+            directory.path(),
+        )));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let cases = [
+            ("GET", "/sidecar/v1/capabilities", 200),
+            ("GET", "/sidecar/v1/capabilities?capability=readiness", 200),
+            (
+                "GET",
+                "/sidecar/v1/capabilities?capability=workspace_prediction_result_routes",
+                200,
+            ),
+            ("GET", "/sidecar/v1/capabilities?capability=unknown", 400),
+            (
+                "GET",
+                "/sidecar/v1/capabilities?capability=readiness&capability=health",
+                400,
+            ),
+            ("POST", "/sidecar/v1/capabilities?capability=health", 405),
+            (
+                "GET",
+                "/sidecar/v1/capabilities?capability=%72eadiness",
+                200,
+            ),
+            ("GET", "/sidecar/v1/capabilities?", 400),
+            (
+                "GET",
+                "/sidecar/v1/capabilities?capability=readiness&untrusted=value",
+                400,
+            ),
+            (
+                "GET",
+                "/sidecar/v1/capabilities?capability=readiness%00",
+                400,
+            ),
+        ];
+        let server = thread::spawn(move || {
+            for _ in cases {
+                let (stream, _) = listener.accept().unwrap();
+                handle_connection_with_limits(stream, &state, ServerLimits::default()).unwrap();
+            }
+        });
+        for (method, path, status) in cases {
+            let mut client = TcpStream::connect(address).unwrap();
+            client
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            write!(
+                client,
+                "{method} {path} HTTP/1.1\r\nHost: localhost\r\n\r\n"
+            )
+            .unwrap();
+            let mut response = String::new();
+            client.read_to_string(&mut response).unwrap();
+            assert!(
+                response.starts_with(&format!("HTTP/1.1 {status} ")),
+                "{path}: {response}"
+            );
+            if status == 200 {
+                let (_, body) = response.split_once("\r\n\r\n").unwrap();
+                let value: Value = serde_json::from_str(body).unwrap();
+                assert_eq!(value["protocol_version"], PROTOCOL_VERSION);
+                assert_eq!(value["features"]["renderer_transport_selection"], true);
+                assert_eq!(value["features"]["renderer_http_transport"], true);
+                assert_eq!(value["features"]["renderer_websocket_transport"], true);
+                assert_eq!(value["features"]["renderer_rust_only_default"], true);
+                assert_eq!(value["features"]["implicit_python_http_fallback"], false);
+                assert_eq!(
+                    value["features"]["unmigrated_renderer_routes_fail_closed"],
+                    true
+                );
+                assert!(value["features"]["python_plugin_preflight"].is_boolean());
+                assert!(value["features"]["scientific_execution"].is_boolean());
+                if path.contains('?') {
+                    let selected = value["capability_projection"].as_str().unwrap();
+                    assert!(value["features"][selected].is_boolean());
+                    assert!(value["features"].get("playground_routes").is_none());
+                } else {
+                    assert!(value.get("capability_projection").is_none());
+                    assert_eq!(value["features"]["playground_routes"], false);
+                }
+            }
+        }
+        server.join().unwrap();
     }
 
     #[test]

@@ -6,6 +6,7 @@ const { createServer } = require("node:net");
 const { _electron: electron } = require("playwright");
 const { expect } = require("@playwright/test");
 const archive = require("./smoke-archive-standalone.cjs");
+const { recordTiming } = require("./qualification-performance.cjs");
 
 const SECRET_FIELD = /authorization|cookie|password|secret|token|api[_-]?key|credential|headers/i;
 
@@ -185,8 +186,8 @@ async function main(options = {}) {
     console.log("First setup verified bundled packages and opened datasets without skipping setup.");
     if (options.timings) {
       const elapsed = Date.now() - setupStarted;
-      options.timings.push({ phase: "first_setup", duration_ms: elapsed, budget_ms: config.timeoutMs });
-      if (elapsed > config.timeoutMs) throw new Error(`First setup took ${elapsed}ms; budget ${config.timeoutMs}ms`);
+      recordTiming({ timings: options.timings, performance_policy: options.performancePolicy },
+        "first_setup", elapsed, config.timeoutMs);
     }
     }
     if (options.inspectProfile) await options.inspectProfile({ page, app, env });
