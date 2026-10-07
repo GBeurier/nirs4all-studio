@@ -1,7 +1,7 @@
 # `src/ui` — compatibility bridge to `nirs4all-ui`
 
 This directory is now a thin compatibility bridge to the `nirs4all-ui` package.
-Studio installs the exact content-addressed `vendor/npm/nirs4all-ui-0.1.14.tgz`
+Studio installs the exact content-addressed `vendor/npm/nirs4all-ui-0.1.15.tgz`
 release artifact and keeps the historical `@/ui/*` import paths for incremental
 migration. The shared implementation source remains in the sibling
 `../nirs4all-ui` repository used by Studio and Web.

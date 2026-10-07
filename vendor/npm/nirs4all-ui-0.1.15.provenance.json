@@ -1,0 +1,33 @@
+{
+  "schema_version": "nirs4all.vendored-npm/v1",
+  "package": {
+    "name": "nirs4all-ui",
+    "version": "0.1.15"
+  },
+  "source": {
+    "commit_sha": "db401cdcee0d60b102b0894310d6bb994701255a",
+    "tree_sha": "bcf17f1a4ff19c7a15c4ba43566cd1678be7027b"
+  },
+  "artifact": {
+    "filename": "nirs4all-ui-0.1.15.tgz",
+    "size": 3131572,
+    "sha256": "69d1bc519c25d232afbbb324a4d2bc80bd31153d39e346788373efe17f521a5f",
+    "npm_integrity": "sha512-Mnc6cQP73gnT9uCPmWI4nlBmwJqYFzfYbmjosUTQuaLewjHGbk+YxAz1OYJJvrANB6yeg6dBYQ7C1MZLggvlJA=="
+  },
+  "license_files": [
+    "LICENSE",
+    "LICENSING.md",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSES/AGPL-3.0-or-later.txt",
+    "LICENSES/Apache-2.0.txt",
+    "LICENSES/COMMERCIAL-LICENSE.md",
+    "LICENSES/COMMERCIAL-LICENSE_FR.md",
+    "LICENSES/CeCILL-2.1.txt",
+    "LICENSES/MIT.txt"
+  ],
+  "publication": {
+    "registry_url": "https://registry.npmjs.org/nirs4all-ui/-/nirs4all-ui-0.1.15.tgz",
+    "sha1": "b6d216fcd30655a104e295d5a7274d0ff698615f",
+    "qualification_receipt": "ui015-root-public-byte-identity.json"
+  }
+}

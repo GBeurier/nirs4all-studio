@@ -106,7 +106,7 @@
     "i18next-browser-languagedetector": "^8.2.0",
     "i18next-http-backend": "^3.0.2",
     "lucide-react": "^0.556.0",
-    "nirs4all-ui": "file:./vendor/npm/nirs4all-ui-0.1.14.tgz",
+    "nirs4all-ui": "file:./vendor/npm/nirs4all-ui-0.1.15.tgz",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-hook-form": "^7.68.0",
