@@ -9,6 +9,7 @@
  */
 
 import { createLogger } from "@/lib/logger";
+import { withScientificRequestActivity } from "./dataset-request-activity";
 
 const logger = createLogger("API");
 
@@ -475,6 +476,21 @@ class ApiClient {
   private async request<T>(
     endpoint: string,
     options: RequestOptions = {},
+  ): Promise<T> {
+    // Include the real Electron preselection and response parsing in the
+    // foreground scope. Other control routes and mutations keep their policy.
+    const predictionRead = (options.method ?? "GET") === "GET" && (
+      /^\/aggregated-predictions(?:$|[/?])/.test(endpoint)
+      || /^\/workspaces\/[^/?]+\/predictions(?:\/data)?(?:$|\?)/.test(endpoint)
+    );
+    return predictionRead
+      ? withScientificRequestActivity(() => this.requestUnscheduled<T>(endpoint, options))
+      : this.requestUnscheduled<T>(endpoint, options);
+  }
+
+  private async requestUnscheduled<T>(
+    endpoint: string,
+    options: RequestOptions,
   ): Promise<T> {
     const { body, ...restOptions } = options;
 
