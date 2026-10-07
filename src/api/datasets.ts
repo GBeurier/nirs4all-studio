@@ -4,6 +4,7 @@
  */
 
 import { api, requestForm } from "./transport";
+import { withDatasetRequestActivity } from "./dataset-request-activity";
 import type {
   Dataset,
   DatasetConfig,
@@ -57,9 +58,11 @@ export async function linkDataset(
     const form = new FormData();
     form.append("metadata", JSON.stringify({ config }));
     for (const file of files) form.append("files", file);
-    return requestForm("/datasets/upload", form);
+    return withDatasetRequestActivity(() =>
+      requestForm<{ success: boolean; dataset: DatasetInfo }>("/datasets/upload", form));
   }
-  return api.post("/datasets/link", { path, config });
+  return withDatasetRequestActivity(() =>
+    api.post<{ success: boolean; dataset: DatasetInfo }>("/datasets/link", { path, config }));
 }
 
 /** Import a self-contained typed cohort for multimodal training and replay. */
@@ -231,7 +234,7 @@ export async function validateFiles(
 export async function previewDataset(
   request: PreviewDataRequest
 ): Promise<PreviewDataResponse> {
-  return api.post("/datasets/preview", request);
+  return withDatasetRequestActivity(() => api.post<PreviewDataResponse>("/datasets/preview", request));
 }
 
 /**
@@ -264,7 +267,7 @@ export async function previewDatasetWithUploads(
 
   // Keep metadata in the bounded body, not a potentially oversized URL.
   formData.append("metadata", metadata);
-  return requestForm("/datasets/preview-upload", formData);
+  return withDatasetRequestActivity(() => requestForm<PreviewDataResponse>("/datasets/preview-upload", formData));
 }
 
 /**
