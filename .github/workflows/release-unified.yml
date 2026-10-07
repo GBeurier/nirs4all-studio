@@ -37,13 +37,13 @@ env:
   # selected immutable releases and update them with the ecosystem release board.
   # Exact wheel bytes and URL verified against externally attested PyPI release JSON.
   NIRS4ALL_PUBLICATION_STATUS: published
-  NIRS4ALL_LIBRARY_REF: 71b046a3076e2d15bf0f2296a4c59ac071d435af
+  NIRS4ALL_LIBRARY_REF: 1e792e6068018e823f2a5f0e7918b3d0c12fba0c
   DAG_ML_REF: bc451c059f9e955a041a9575715b8a4f96912252
   DAG_ML_DATA_REF: 78719b68c8e9ffd4c2035792574b8da33387d237
   NIRS4ALL_TOOLS_REF: ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/71b046a3076e2d15bf0f2296a4c59ac071d435af.tar.gz
-  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/2c/1f/98551edfe7d8ab083afcaad8771f75774baac1ae6d8c143ea266f471f498/nirs4all-1.4.3-py3-none-any.whl
-  NIRS4ALL_WHEEL_SHA256: abbb9ba66caee59ac8299e2aa4213d6bc98c76c9e05ed46fae3338dfd4cfa98b
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/1e792e6068018e823f2a5f0e7918b3d0c12fba0c.tar.gz
+  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/4a/0f/0c61afed4e0c0960e144f1eabf87f0a12e9e208d3fce9d0693ee0d84c597/nirs4all-1.4.5-py3-none-any.whl
+  NIRS4ALL_WHEEL_SHA256: 1b579558876601cedb786cdc2345839ec1fc82f45b9ec4d3f596c59746836a26
   DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/bc451c059f9e955a041a9575715b8a4f96912252.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/78719b68c8e9ffd4c2035792574b8da33387d237.tar.gz
   NIRS4ALL_TOOLS_SOURCE_URL: https://github.com/GBeurier/nirs4all-tools/archive/ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8.tar.gz
@@ -159,7 +159,7 @@ jobs:
               exit 1
             fi
           done
-          if [[ ! "$NIRS4ALL_WHEEL_URL" =~ ^https://files\.pythonhosted\.org/.+/nirs4all-1\.4\.3-py3-none-any\.whl$ ]]; then
+          if [[ ! "$NIRS4ALL_WHEEL_URL" =~ ^https://files\.pythonhosted\.org/.+/nirs4all-1\.4\.5-py3-none-any\.whl$ ]]; then
             echo "::error::Pinned nirs4all wheel URL must be the immutable PyPI file URL"
             exit 1
           fi
@@ -213,7 +213,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      nirs4all_library_ref: 71b046a3076e2d15bf0f2296a4c59ac071d435af
+      nirs4all_library_ref: 1e792e6068018e823f2a5f0e7918b3d0c12fba0c
       dag_ml_ref: bc451c059f9e955a041a9575715b8a4f96912252
       dag_ml_data_ref: 78719b68c8e9ffd4c2035792574b8da33387d237
 
@@ -246,19 +246,19 @@ jobs:
           python -m pip install --upgrade setuptools==84.0.0 wheel==0.48.0 packaging==26.3
           mkdir -p dist/pinned-plugin-wheels
           curl --fail --location --proto "=https" --tlsv1.2 \
-            --output dist/pinned-plugin-wheels/nirs4all-1.4.3-py3-none-any.whl \
+            --output dist/pinned-plugin-wheels/nirs4all-1.4.5-py3-none-any.whl \
             "$NIRS4ALL_WHEEL_URL"
           curl --fail --location --proto "=https" --tlsv1.2 \
             --output dist/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl \
             "$NIRS4ALL_TOOLS_WHEEL_URL"
           cd dist/pinned-plugin-wheels
-          echo "$NIRS4ALL_WHEEL_SHA256  nirs4all-1.4.3-py3-none-any.whl" | sha256sum --check --strict
+          echo "$NIRS4ALL_WHEEL_SHA256  nirs4all-1.4.5-py3-none-any.whl" | sha256sum --check --strict
           echo '9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310  nirs4all_tools-0.0.8-py3-none-any.whl' | sha256sum --check --strict
 
       - name: Prove deterministic plugin runtime closure
         run: >-
           node scripts/verify-plugin-runtime-reproducibility.cjs
-          --plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.3-py3-none-any.whl
+          --plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.5-py3-none-any.whl
           --tools-wheel dist/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
           --evidence dist/plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json
 
@@ -293,7 +293,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 71b046a3076e2d15bf0f2296a4c59ac071d435af
+          ref: 1e792e6068018e823f2a5f0e7918b3d0c12fba0c
           path: _deps/nirs4all-qualification
 
       - name: Setup Node.js
@@ -355,7 +355,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.3-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.5-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         run: |
@@ -452,7 +452,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 71b046a3076e2d15bf0f2296a4c59ac071d435af
+          ref: 1e792e6068018e823f2a5f0e7918b3d0c12fba0c
           path: _deps/nirs4all-qualification
 
       - name: Note — building an unsigned Windows installer (no signing secrets)
@@ -509,7 +509,7 @@ jobs:
           } | ConvertTo-Json | Out-File -FilePath version.json -Encoding utf8
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.3-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.5-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         shell: pwsh
@@ -645,7 +645,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 71b046a3076e2d15bf0f2296a4c59ac071d435af
+          ref: 1e792e6068018e823f2a5f0e7918b3d0c12fba0c
           path: _deps/nirs4all-qualification
 
       - name: Note — building an unsigned macOS DMG (no Apple signing secrets)
@@ -702,7 +702,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.3-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.5-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         run: |
@@ -878,7 +878,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 71b046a3076e2d15bf0f2296a4c59ac071d435af
+          ref: 1e792e6068018e823f2a5f0e7918b3d0c12fba0c
           path: _deps/nirs4all-qualification
 
       - name: Note — building an unsigned macOS DMG (no Apple signing secrets)
@@ -935,7 +935,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.3-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.5-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         run: |

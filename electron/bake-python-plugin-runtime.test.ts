@@ -145,15 +145,15 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "71b046a3076e2d15bf0f2296a4c59ac071d435af",
+      source_commit: "1e792e6068018e823f2a5f0e7918b3d0c12fba0c",
       wheel_sha256:
-        "abbb9ba66caee59ac8299e2aa4213d6bc98c76c9e05ed46fae3338dfd4cfa98b",
-      distribution_version: "1.4.3",
+        "1b579558876601cedb786cdc2345839ec1fc82f45b9ec4d3f596c59746836a26",
+      distribution_version: "1.4.5",
       installed_manifest_sha256:
-        "5e75355ce74660cb3965cf1cc7f35b20c0514bb2c4fa06a5e0cf1f14eb9d5329",
+        "05bdd4f83f092cf9294b1b5de37666982a63cd88748e5bc2b065e8d9de2717be",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "7735407dba394328576a7969f67708f7affdb514f64131e8a23ea263d2bc3dab",
+        sha256: "d93aae6469fab93bc97b95e1ee38c80ad3380b9c5a5ae01167a36ad5e1002ec1",
       },
       platform: "linux",
       arch: "x64",
@@ -183,7 +183,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "7735407dba394328576a7969f67708f7affdb514f64131e8a23ea263d2bc3dab",
+      "d93aae6469fab93bc97b95e1ee38c80ad3380b9c5a5ae01167a36ad5e1002ec1",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -202,11 +202,11 @@ describe("plugin-only CPython runtime", () => {
         expect(target.get(name), `${name} must be installed in every packaged host`).toBe(version);
       }
     }
-    expect(linux.get("nirs4all")).toBe("1.4.3");
+    expect(linux.get("nirs4all")).toBe("1.4.5");
     expect(linux.get("nirs4all-core")).toBe("0.4.2");
     for (const target of [linux, linuxArm, macArm, macIntel, windows]) {
       for (const [name, version] of Object.entries({
-        "nirs4all": "1.4.3", "dag-ml": "0.3.37", "dag-ml-data": "0.2.13",
+        "nirs4all": "1.4.5", "dag-ml": "0.3.37", "dag-ml-data": "0.2.13",
         "nirs4all-core": "0.4.2", "nirs4all-io": "0.2.5",
         "nirs4all-methods": "1.3.4", "pls4all": "1.3.2",
       })) {
