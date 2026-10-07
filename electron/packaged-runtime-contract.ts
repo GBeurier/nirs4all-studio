@@ -12,8 +12,8 @@ const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
 const MAX_PYTHON_CLOSURE_FILES = 100_000;
 const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
-const PLUGIN_SOURCE_COMMIT = "71b046a3076e2d15bf0f2296a4c59ac071d435af";
-const PLUGIN_WHEEL_SHA256 = "abbb9ba66caee59ac8299e2aa4213d6bc98c76c9e05ed46fae3338dfd4cfa98b";
+const PLUGIN_SOURCE_COMMIT = "1e792e6068018e823f2a5f0e7918b3d0c12fba0c";
+const PLUGIN_WHEEL_SHA256 = "1b579558876601cedb786cdc2345839ec1fc82f45b9ec4d3f596c59746836a26";
 const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
 const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
 const METHODS_ABI_MAJOR = 2;
@@ -394,9 +394,9 @@ function verifyPluginMarker(
     marker.source_commit !== PLUGIN_SOURCE_COMMIT ||
     marker.wheel_sha256 !== PLUGIN_WHEEL_SHA256 ||
     marker.distribution !== "nirs4all" ||
-    marker.distribution_version !== "1.4.3" ||
+    marker.distribution_version !== "1.4.5" ||
     marker.installed_manifest_sha256 !==
-      "5e75355ce74660cb3965cf1cc7f35b20c0514bb2c4fa06a5e0cf1f14eb9d5329" ||
+      "05bdd4f83f092cf9294b1b5de37666982a63cd88748e5bc2b065e8d9de2717be" ||
     conversionTools?.source_commit !== TOOLS_SOURCE_COMMIT ||
     conversionTools?.wheel_sha256 !== TOOLS_WHEEL_SHA256 ||
     conversionTools?.distribution !== "nirs4all-tools" ||
