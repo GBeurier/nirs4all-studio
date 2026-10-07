@@ -153,7 +153,7 @@ describe("plugin-only CPython runtime", () => {
         "5e75355ce74660cb3965cf1cc7f35b20c0514bb2c4fa06a5e0cf1f14eb9d5329",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "1359ab361db963b62e8196877f28320afd607a19ff8d33f5557cd53f86dee827",
+        sha256: "7735407dba394328576a7969f67708f7affdb514f64131e8a23ea263d2bc3dab",
       },
       platform: "linux",
       arch: "x64",
@@ -183,7 +183,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "1359ab361db963b62e8196877f28320afd607a19ff8d33f5557cd53f86dee827",
+      "7735407dba394328576a7969f67708f7affdb514f64131e8a23ea263d2bc3dab",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -208,7 +208,7 @@ describe("plugin-only CPython runtime", () => {
       for (const [name, version] of Object.entries({
         "nirs4all": "1.4.3", "dag-ml": "0.3.37", "dag-ml-data": "0.2.13",
         "nirs4all-core": "0.4.2", "nirs4all-io": "0.2.5",
-        "nirs4all-methods": "1.3.2", "pls4all": "1.3.2",
+        "nirs4all-methods": "1.3.4", "pls4all": "1.3.2",
       })) {
         expect(target.get(name), `${name} cohort pin must match on every platform`).toBe(version);
       }

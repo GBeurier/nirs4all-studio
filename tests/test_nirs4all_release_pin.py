@@ -153,7 +153,7 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
     assert "nirs4all-core==0.4.2" in constraints
     assert "nirs4all-io==0.2.5" in constraints
     assert "dag-ml-data==0.2.13" in constraints
-    assert "nirs4all-methods==1.3.2" in constraints
+    assert "nirs4all-methods==1.3.4" in constraints
     assert "pls4all==1.3.2" in constraints
     assert "dag-ml==0.3.37" in constraints
     assert "scikit-learn==1.9.0" in constraints
