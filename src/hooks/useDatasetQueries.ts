@@ -38,6 +38,7 @@ import { useCallback, useEffect } from "react";
 import {
   useQuery,
   useQueryClient,
+  isCancelledError,
   type QueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
@@ -336,6 +337,38 @@ export function useInvalidateDatasets() {
       queryClient.invalidateQueries({ queryKey: datasetQueryKeys.linkedWorkspaces() }),
       queryClient.invalidateQueries({ queryKey: ["workspaces"] }),
     ]);
+  }, [queryClient]);
+}
+
+/** Publish the server's persisted link without waiting for unrelated refetches. */
+export function usePublishLinkedDataset() {
+  const queryClient = useQueryClient();
+  return useCallback((record: unknown) => {
+    if (!record || typeof record !== "object" || Array.isArray(record)
+      || !("id" in record) || typeof record.id !== "string" || !record.id
+      || !("path" in record) || typeof record.path !== "string" || !record.path
+      || !("name" in record) || typeof record.name !== "string" || !record.name) {
+      throw new Error("Linked dataset response is missing its persisted identity");
+    }
+    const dataset = normalizeDataset(record);
+    clearAllDatasetCaches();
+    queryClient.setQueryData<DatasetListResponse>(datasetQueryKeys.list(), (previous) => {
+      const datasets = [
+        ...(previous?.datasets.filter((entry) => entry.id !== dataset.id) ?? []),
+        dataset,
+      ];
+      return { datasets, groups: previous?.groups ?? [], total: datasets.length };
+    });
+    // Queries retain their error state and the authoritative committed row.
+    // Observe the refresh promise so failure cannot become an unhandled rejection
+    // or turn a successful persisted mutation into a retry of the same link.
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: datasetQueryKeys.all }, { throwOnError: true }),
+      queryClient.invalidateQueries({ queryKey: datasetQueryKeys.linkedWorkspaces() }, { throwOnError: true }),
+      queryClient.invalidateQueries({ queryKey: ["workspaces"] }, { throwOnError: true }),
+    ]).catch((error: unknown) => {
+      if (!isCancelledError(error)) console.warn("Linked dataset saved; catalogue refresh failed", error);
+    });
   }, [queryClient]);
 }
 

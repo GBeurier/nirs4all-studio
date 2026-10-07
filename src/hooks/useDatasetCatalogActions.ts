@@ -17,10 +17,11 @@ import {
 } from "@/api/workspace";
 import type { Dataset, DatasetConfig, DatasetGroup } from "@/types/datasets";
 
-import { useInvalidateDatasets } from "./useDatasetQueries";
+import { useInvalidateDatasets, usePublishLinkedDataset } from "./useDatasetQueries";
 
 export function useDatasetCatalogActions(groups: DatasetGroup[]) {
   const invalidateDatasets = useInvalidateDatasets();
+  const publishLinkedDataset = usePublishLinkedDataset();
 
   const refreshAll = useCallback(async () => {
     await invalidateDatasets();
@@ -34,9 +35,9 @@ export function useDatasetCatalogActions(groups: DatasetGroup[]) {
       if (!result.success) {
         throw new Error("Failed to link dataset");
       }
-      await invalidateDatasets();
+      publishLinkedDataset(result.dataset);
     },
-    [invalidateDatasets],
+    [publishLinkedDataset],
   );
 
   const addMultimodalDataset = useCallback(

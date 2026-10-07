@@ -19,6 +19,7 @@ const apiMocks = vi.hoisted(() => ({
   removeDatasetFromGroup: vi.fn(),
   renameGroup: vi.fn(),
   invalidateDatasets: vi.fn(),
+  publishLinkedDataset: vi.fn(),
 }));
 
 vi.mock("@/api/datasets", () => ({
@@ -38,6 +39,7 @@ vi.mock("@/api/workspace", () => ({
 
 vi.mock("./useDatasetQueries", () => ({
   useInvalidateDatasets: () => apiMocks.invalidateDatasets,
+  usePublishLinkedDataset: () => apiMocks.publishLinkedDataset,
 }));
 
 import { useDatasetCatalogActions } from "./useDatasetCatalogActions";
@@ -98,7 +100,7 @@ afterEach(() => {
 });
 
 describe("useDatasetCatalogActions", () => {
-  it("links a dataset and invalidates dataset caches", async () => {
+  it("publishes the persisted server dataset after linking", async () => {
     apiMocks.linkDataset.mockResolvedValue({ success: true, dataset });
     apiMocks.invalidateDatasets.mockResolvedValue(undefined);
 
@@ -111,7 +113,8 @@ describe("useDatasetCatalogActions", () => {
     expect(apiMocks.linkDataset).toHaveBeenCalledWith("/data/dataset-1", {
       delimiter: ",",
     });
-    expect(apiMocks.invalidateDatasets).toHaveBeenCalledTimes(1);
+    expect(apiMocks.publishLinkedDataset).toHaveBeenCalledWith(dataset);
+    expect(apiMocks.invalidateDatasets).not.toHaveBeenCalled();
 
     await mounted.unmount();
   });
@@ -125,6 +128,7 @@ describe("useDatasetCatalogActions", () => {
       mounted.result.current!.addDataset("/data/broken"),
     ).rejects.toThrow("Failed to link dataset");
     expect(apiMocks.invalidateDatasets).not.toHaveBeenCalled();
+    expect(apiMocks.publishLinkedDataset).not.toHaveBeenCalled();
 
     await mounted.unmount();
   });
