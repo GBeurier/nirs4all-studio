@@ -345,9 +345,9 @@ export function usePublishLinkedDataset() {
   const queryClient = useQueryClient();
   return useCallback((record: unknown) => {
     if (!record || typeof record !== "object" || Array.isArray(record)
-      || !("id" in record) || typeof record.id !== "string" || !record.id
-      || !("path" in record) || typeof record.path !== "string" || !record.path
-      || !("name" in record) || typeof record.name !== "string" || !record.name) {
+      || !("id" in record) || typeof record.id !== "string" || !record.id.trim()
+      || !("path" in record) || typeof record.path !== "string" || !record.path.trim()
+      || !("name" in record) || typeof record.name !== "string" || !record.name.trim()) {
       throw new Error("Linked dataset response is missing its persisted identity");
     }
     const dataset = normalizeDataset(record);
