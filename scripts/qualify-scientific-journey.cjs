@@ -2,17 +2,10 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { expect } = require('@playwright/test');
+const { timed, functionalTimeout } = require('./qualification-performance.cjs');
 // The full 10 MB Playground response and canvas can take 12.6s on a busy
 // macOS Intel runner (9.1-9.5s on qualified runs). Keep a measured margin.
 const BUDGETS = Object.freeze({ preview: 5000, link: 5000, playground: 20000, training: 60000, history: 10000, predictions: 5000 });
-async function timed(proof, phase, budget, callback) {
-  const start = performance.now();
-  const result = await callback();
-  const duration_ms = performance.now() - start;
-  proof.timings.push({ phase, duration_ms, budget_ms: budget });
-  assert(duration_ms <= budget, `${phase} took ${Math.round(duration_ms)}ms; budget ${budget}ms`);
-  return result;
-}
 async function api(env, route, method = 'GET', body) {
   const response = await fetch(`http://127.0.0.1:${env.NIRS4ALL_NATIVE_SIDECAR_PORT}/api${route}`, {
     method, headers: { 'Content-Type': 'application/json', 'X-Nirs4all-Session': env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN },
@@ -35,13 +28,13 @@ async function businessJourney(context, data) {
     await dialog.getByRole('button', { name: 'Next', exact: true }).click();
   }
   await timed(proof, 'dataset_preview_ui', BUDGETS.preview, async () => {
-    try { await expect(dialog.getByText(/All files parsed successfully/)).toBeVisible({ timeout: BUDGETS.preview }); }
+    try { await expect(dialog.getByText(/All files parsed successfully/)).toBeVisible({ timeout: functionalTimeout(proof, BUDGETS.preview) }); }
     catch (error) { throw new Error(`${error.message}\nDataset wizard:\n${await dialog.innerText()}\nRequests:\n${JSON.stringify(context.requests)}`); }
   });
   await timed(proof, 'dataset_link_ui', BUDGETS.link, async () => {
     await dialog.getByRole('button', { name: 'Add Dataset', exact: true }).click();
-    await expect(dialog).not.toBeVisible({ timeout: BUDGETS.link });
-    await expect(page.getByText('Release journey spectra', { exact: true }).first()).toBeVisible({ timeout: BUDGETS.link });
+    await expect(dialog).not.toBeVisible({ timeout: functionalTimeout(proof, BUDGETS.link) });
+    await expect(page.getByText('Release journey spectra', { exact: true }).first()).toBeVisible({ timeout: functionalTimeout(proof, BUDGETS.link) });
   });
   const dataset = (await api(env, '/datasets')).datasets.find(entry => entry.name === 'Release journey spectra');
   assert(dataset && dataset.num_samples === 1000, `Wrong imported dataset: ${JSON.stringify(dataset)}`);
@@ -50,7 +43,7 @@ async function businessJourney(context, data) {
   await inspector.send('Network.enable', { maxResourceBufferSize: 64 * 1024 * 1024, maxTotalBufferSize: 128 * 1024 * 1024 });
   await timed(proof, 'playground_transform_ui', BUDGETS.playground, async () => {
     const initialResponsePromise = page.waitForResponse(response => response.url().includes('/playground/execute-dataset')
-      && response.request().method() === 'POST', { timeout: BUDGETS.playground });
+      && response.request().method() === 'POST', { timeout: functionalTimeout(proof, BUDGETS.playground) });
     await page.evaluate(({ id, name }) => { window.location.hash = `/playground?datasetId=${encodeURIComponent(id)}&datasetName=${encodeURIComponent(name)}`; }, dataset);
     const initialResponse = await initialResponsePromise;
     if (!initialResponse.ok()) assert.fail(`Initial Playground dataset execution: HTTP ${initialResponse.status()}: ${await initialResponse.text()}`);
@@ -58,7 +51,7 @@ async function businessJourney(context, data) {
     await page.getByPlaceholder('Search operators...').fill('SNV');
     const responsePromise = page.waitForResponse(response => response.url().includes('/playground/execute')
       && response.request().method() === 'POST'
-      && response.request().postDataJSON()?.steps?.some(step => /StandardNormalVariate|SNV/.test(step.name)), { timeout: BUDGETS.playground });
+      && response.request().postDataJSON()?.steps?.some(step => /StandardNormalVariate|SNV/.test(step.name)), { timeout: functionalTimeout(proof, BUDGETS.playground) });
     await page.getByRole('option').filter({ has: page.getByText(/^(SNV|Standard Normal Variate|StandardNormalVariate)$/) }).first().click();
     const response = await responsePromise;
     const payload = await response.body();
@@ -73,7 +66,7 @@ async function businessJourney(context, data) {
     const variance = spectrum.reduce((sum, value) => sum + (value - mean) ** 2, 0) / spectrum.length;
     assert(Math.abs(mean) < 1e-5 && Math.abs(variance - 1) < .02, `SNV numerical invariant failed: mean=${mean}, variance=${variance}, trace=${JSON.stringify(result.execution_trace)}`);
     proof.playground = { response_bytes: payload.length, execution_time_ms: result.execution_time_ms, trace: result.execution_trace };
-    await expect(page.locator('canvas, .recharts-surface').first()).toBeVisible({ timeout: BUDGETS.playground });
+    await expect(page.locator('canvas, .recharts-surface').first()).toBeVisible({ timeout: functionalTimeout(proof, BUDGETS.playground) });
   });
   await inspector.detach();
   if (context.profile) await page.screenshot({ path: path.join(context.profile, 'playground.png') });
@@ -103,7 +96,7 @@ async function businessJourney(context, data) {
       result = await api(env, `/training/${started.job_id}`);
       assert(!['failed', 'error', 'cancelled'].includes(result.status), JSON.stringify(result));
       return result.status;
-    }, { timeout: BUDGETS.training, intervals: [200, 500, 1000] }).toBe('completed');
+    }, { timeout: functionalTimeout(proof, BUDGETS.training), intervals: [200, 500, 1000] }).toBe('completed');
     return result;
   });
   proof.training = { id: training.id || training.job_id, status: training.status, requested_engine: 'dag-ml', fallback: false };
@@ -129,7 +122,7 @@ async function businessJourney(context, data) {
     assert(truth?.length > 100 && truth.length === predicted?.length && truth.every(Number.isFinite) && predicted.every(Number.isFinite));
     proof.predictions.validation_samples = truth.length;
     await page.locator('a[href="#/predictions"]').click();
-    await expect(page.getByText('PLSRegression', { exact: false }).first()).toBeVisible({ timeout: BUDGETS.predictions });
+    await expect(page.getByText('PLSRegression', { exact: false }).first()).toBeVisible({ timeout: functionalTimeout(proof, BUDGETS.predictions) });
     await expect(page.getByText(/Error loading predictions|route_not_native_qualified|No predictions/i)).not.toBeVisible();
   });
   if (context.profile) await page.screenshot({ path: path.join(context.profile, 'predictions.png') });

@@ -35,6 +35,36 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 }
 
 describe("renderer transport preselection", () => {
+  it("requests only the readiness capability while retaining every transport guard", async () => {
+    const request = vi.fn(async () => capabilityResponse({ readiness: true }));
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/system/readiness" },
+      () => ({ ...running(), pythonPluginHostConfigured: false }), request,
+    )).resolves.toMatchObject({ target: "native-sidecar", reason: "native_capability_preflight_passed" });
+    expect(request).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/sidecar/v1/capabilities?capability=readiness",
+      { method: "GET", cache: "no-store" },
+    );
+    for (const [guard, value] of [
+      ["renderer_transport_selection", false], ["renderer_rust_only_default", false],
+      ["implicit_python_http_fallback", true], ["unmigrated_renderer_routes_fail_closed", false],
+      ["renderer_http_transport", false], ["readiness", false], ["scientific_execution", "ready"],
+    ]) {
+      await expect(preselectRendererTransport(
+        { kind: "http", method: "GET", path: "/system/readiness" }, running,
+        async () => capabilityResponse({ readiness: true, [guard as string]: value }),
+      )).resolves.toMatchObject({ target: "reject", reason: "native_capability_mismatch" });
+    }
+  });
+
+  it("rejects a projection for another capability even when its requested flag is true", async () => {
+    const full = await capabilityResponse({ readiness: true }).json();
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/system/readiness" }, running,
+      async () => new Response(JSON.stringify({ ...full, capability_projection: "health" })),
+    )).resolves.toMatchObject({ target: "reject", reason: "native_capability_mismatch" });
+  });
+
   it("qualifies populated result browsing, ranking and prediction arrays through the owner", async () => {
     const request = async () => capabilityResponse({ aggregated_prediction_result_routes: true, python_plugin_preflight: true });
     const paths = [
@@ -309,7 +339,7 @@ describe("renderer transport preselection", () => {
     });
     expect(request).toHaveBeenCalledOnce();
     expect(request).toHaveBeenCalledWith(
-      "http://127.0.0.1:43123/sidecar/v1/capabilities",
+      "http://127.0.0.1:43123/sidecar/v1/capabilities?capability=scientific_submission_transport",
       { method: "GET", cache: "no-store" },
     );
   });

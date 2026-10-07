@@ -3810,6 +3810,94 @@ done"#,
 
     #[cfg(unix)]
     #[test]
+    fn capability_projection_keeps_rust_polling_independent_and_refuses_tampered_science() {
+        let directory = tempfile::tempdir().unwrap();
+        let scientific_host = Arc::new(slow_document_host(directory.path()));
+        assert!(scientific_host.library_facades_available());
+        let executor: Arc<dyn ScientificJobExecutor> = scientific_host.clone();
+        let native_jobs = Arc::new(crate::NativeJobRuntime::with_executor(executor));
+        let mut state = crate::SidecarState::with_native_jobs_and_app_settings_dir(
+            native_jobs,
+            directory.path().join("config"),
+        );
+        state.scientific_host = Some(Arc::clone(&scientific_host));
+        let before: Value = serde_json::from_str(&state.capabilities_json()).unwrap();
+        assert_eq!(before["features"]["playground_routes"], true);
+
+        let projection = crate::route_request(
+            &mut state,
+            "GET",
+            "/sidecar/v1/capabilities?capability=readiness",
+        );
+        assert_eq!(projection.status, 200);
+        let projection: Value = serde_json::from_str(&projection.body).unwrap();
+        assert_eq!(projection["capability_projection"], "readiness");
+        assert_eq!(projection["features"]["readiness"], true);
+        assert!(projection["features"].get("playground_routes").is_none());
+        assert_eq!(
+            projection["features"]["implicit_python_http_fallback"],
+            false
+        );
+
+        let closure = directory
+            .path()
+            .join("python-runtime/PYTHON_PLUGIN_CLOSURE.json");
+        fs::write(closure, "tampered closure").unwrap();
+        assert!(!scientific_host.library_facades_available());
+        let polling = crate::route_request(
+            &mut state,
+            "GET",
+            "/sidecar/v1/capabilities?capability=readiness",
+        );
+        assert_eq!(polling.status, 200);
+        let polling: Value = serde_json::from_str(&polling.body).unwrap();
+        assert_eq!(polling["features"]["readiness"], true);
+        assert!(polling["features"]
+            .get("aggregated_prediction_result_routes")
+            .is_none());
+        let science = crate::route_request(
+            &mut state,
+            "GET",
+            "/sidecar/v1/capabilities?capability=aggregated_prediction_result_routes",
+        );
+        assert_eq!(science.status, 200);
+        let science: Value = serde_json::from_str(&science.body).unwrap();
+        assert_eq!(
+            science["features"]["aggregated_prediction_result_routes"],
+            false
+        );
+        let after: Value = serde_json::from_str(&state.capabilities_json()).unwrap();
+        assert_eq!(after["features"]["playground_routes"], false);
+        assert_eq!(
+            before["features"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .collect::<Vec<_>>(),
+            after["features"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .collect::<Vec<_>>()
+        );
+        for query in [
+            "",
+            "capability=",
+            "capability=unknown",
+            "capability=readiness&capability=health",
+            "capability=readiness&other=1",
+        ] {
+            let refused = crate::route_request(
+                &mut state,
+                "GET",
+                &format!("/sidecar/v1/capabilities?{query}"),
+            );
+            assert_eq!(refused.status, 400, "{query}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn cached_runtime_snapshot_rejects_add_remove_and_inode_replacement() {
         fn packaged(label: &str) -> (PathBuf, PathBuf, PackagedRuntimeIdentity) {
             let root = test_directory(label);
