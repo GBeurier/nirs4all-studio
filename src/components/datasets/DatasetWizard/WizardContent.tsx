@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useCallback, type ReactNode } from "react";
 import { detectUnified, validateFiles } from "@/api/datasets";
 import {
   DialogHeader,
@@ -110,7 +110,7 @@ function StepIndicator() {
 }
 
 export function DataStats() {
-  const { state, dispatch } = useWizard();
+  const { state, dispatch, beginInspection } = useWizard();
 
   const xTrainFiles = state.files.filter(f => f.type === "X" && f.split === "train");
   const xTestFiles = state.files.filter(f => f.type === "X" && f.split === "test");
@@ -124,7 +124,8 @@ export function DataStats() {
 
   const isWebMode = !state.basePath && state.fileBlobs.size > 0;
 
-  useEffect(() => {
+  // Register the prerequisite before the user can click Next on this frame.
+  useLayoutEffect(() => {
     let cancelled = false;
     const files = state.files.filter(f => f.type === "X" || f.type === "Y" || f.type === "metadata");
     if (!files.length) {
@@ -145,6 +146,7 @@ export function DataStats() {
     }
     dispatch({ type: "SET_VALIDATING", payload: true });
     const timer = setTimeout(async () => {
+      const finishInspection = beginInspection();
       try {
         const configured = buildDatasetWizardFiles({ files: state.files, parsing: state.parsing, perFileOverrides: state.perFileOverrides });
         const overrides = Object.fromEntries(configured.map(f => [f.path, f.overrides ?? {}]));
@@ -161,10 +163,12 @@ export function DataStats() {
       } catch (error) {
         if (!cancelled) dispatch({ type: "SET_VALIDATION_ERROR", payload:
           error instanceof Error ? error.message : "Failed to validate files" });
+      } finally {
+        finishInspection();
       }
     }, 200);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [state.basePath, state.files, state.parsing, state.perFileOverrides, isWebMode, dispatch]);
+  }, [state.basePath, state.files, state.parsing, state.perFileOverrides, isWebMode, dispatch, beginInspection]);
 
   const getShape = (filePath: string) => {
     return state.validatedShapes[filePath];

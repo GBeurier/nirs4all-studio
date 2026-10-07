@@ -142,7 +142,7 @@ export async function detectFiles(
 export async function detectFormat(
   request: DetectFormatRequest
 ): Promise<DetectFormatResponse> {
-  return api.post("/datasets/detect-format", request);
+  return withDatasetRequestActivity(() => api.post("/datasets/detect-format", request));
 }
 
 /**
@@ -225,7 +225,7 @@ export async function validateFiles(
   parsing?: Partial<ParsingOptions>,
   perFileOverrides?: Record<string, Partial<ParsingOptions>>
 ): Promise<ValidateFilesResponse> {
-  return api.post("/datasets/validate-files", { path, files, parsing, per_file_overrides: perFileOverrides });
+  return withDatasetRequestActivity(() => api.post("/datasets/validate-files", { path, files, parsing, per_file_overrides: perFileOverrides }));
 }
 
 /**

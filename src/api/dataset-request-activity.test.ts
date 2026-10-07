@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { describe, expect, it, vi } from "vitest";
 import { hasDatasetRequestInFlight, withDatasetRequestActivity } from "./dataset-request-activity";
-import { linkDataset, previewDataset, previewDatasetWithUploads } from "./datasets";
+import { detectFormat, linkDataset, previewDataset, previewDatasetWithUploads, validateFiles } from "./datasets";
 
 const transport = vi.hoisted(() => ({ post: vi.fn(), requestForm: vi.fn() }));
 vi.mock("./transport", () => ({ api: { post: transport.post }, requestForm: transport.requestForm }));
@@ -14,6 +14,24 @@ function deferred<T>() {
 }
 
 describe("dataset request activity", () => {
+  it("tracks format detection and validation until each real inspection settles", async () => {
+    const detection = deferred<unknown>();
+    const validation = deferred<unknown>();
+    transport.post.mockReturnValueOnce(detection.promise).mockReturnValueOnce(validation.promise);
+    const first = detectFormat({ path: "/owned/y.csv", sample_rows: 100 });
+    const second = validateFiles("/owned", [], { delimiter: "," });
+    expect(hasDatasetRequestInFlight()).toBe(true);
+    const refusal = new Error("Invalid parsing");
+    const assertion = expect(first).rejects.toBe(refusal);
+    detection.reject(refusal);
+    await assertion;
+    expect(hasDatasetRequestInFlight()).toBe(true);
+    validation.resolve({ success: true, shapes: {} });
+    await second;
+    expect(hasDatasetRequestInFlight()).toBe(false);
+    expect(transport.post).toHaveBeenCalledWith("/datasets/detect-format", { path: "/owned/y.csv", sample_rows: 100 });
+    expect(transport.post).toHaveBeenCalledWith("/datasets/validate-files", { path: "/owned", files: [], parsing: { delimiter: "," }, per_file_overrides: undefined });
+  });
   it("tracks overlapping real preview/link requests until both finish", async () => {
     const preview = deferred<unknown>();
     const link = deferred<unknown>();
