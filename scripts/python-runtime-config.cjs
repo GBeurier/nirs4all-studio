@@ -23,6 +23,7 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
 // dependencies live in python-http-runtime-config.cjs, which is source/dev only.
 const PLUGIN_DISTRIBUTION_VERSION = recommendedConfig.nirs4all;
 const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
+  "nirs4all-formats==0.2.11",
   "duckdb==1.5.5",
   "pyarrow==25.0.1",
   "shap==0.47.1",
