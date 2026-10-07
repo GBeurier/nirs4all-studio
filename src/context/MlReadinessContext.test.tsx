@@ -244,6 +244,40 @@ afterEach(() => {
 });
 
 describe("MlReadinessProvider", () => {
+  it("yields background polls to dataset requests and then refreshes real readiness", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockResolvedValueOnce({ ml_ready: true, workspace_ready: true })
+      .mockResolvedValue({ ml_ready: false, workspace_ready: true });
+    const view = await renderProvider(createElectronApiMock());
+    const activity = await import("@/api/dataset-request-activity");
+    let finish!: () => void;
+    const pending = activity.withDatasetRequestActivity(() => new Promise<void>((resolve) => { finish = resolve; }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(mocks.apiGet).toHaveBeenCalledTimes(1);
+    expect(view.result.current?.mlReady).toBe(true);
+    finish();
+    await pending;
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(mocks.apiGet).toHaveBeenCalledTimes(2);
+    expect(view.result.current?.mlReady).toBe(false);
+    await view.unmount();
+  });
+
+  it("does not leave a poller or activity token behind when unmounted during inspection", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockResolvedValue({ ml_ready: true, workspace_ready: true });
+    const view = await renderProvider(createElectronApiMock());
+    const activity = await import("@/api/dataset-request-activity");
+    let finish!: () => void;
+    const pending = activity.withDatasetRequestActivity(() => new Promise<void>((resolve) => { finish = resolve; }));
+    await view.unmount();
+    finish();
+    await pending;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(mocks.apiGet).toHaveBeenCalledTimes(1);
+    expect(activity.hasDatasetRequestInFlight()).toBe(false);
+  });
+
   it("does not rerender context consumers for unchanged desktop heartbeats", async () => {
     vi.useFakeTimers();
     mocks.apiGet.mockResolvedValue({ core_ready: true, ml_ready: true, workspace_ready: true });
