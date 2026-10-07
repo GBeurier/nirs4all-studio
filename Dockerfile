@@ -21,7 +21,7 @@ COPY ["sidecar/contracts/studio_document_adapters_v1.json", "/sidecar/contracts/
 FROM ${NODE_IMAGE} AS frontend
 WORKDIR /build
 COPY package.json package-lock.json ./
-COPY vendor/npm/nirs4all-ui-0.1.14.tgz vendor/npm/
+COPY vendor/npm/nirs4all-ui-0.1.15.tgz vendor/npm/
 RUN npm ci --ignore-scripts
 COPY vite.config.ts postcss.config.js tailwind.config.ts tsconfig*.json index.html ./
 COPY public/ public/
