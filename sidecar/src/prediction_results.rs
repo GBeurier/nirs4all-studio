@@ -25,6 +25,38 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         (state.app_settings.clone(), state.scientific_host.clone())
     };
+    // Cover the complete HTTP read, including adapter verification and JSON
+    // response construction. This activity token holds no admission readlock:
+    // the existing warm exchange still owns its unchanged pre/post guards.
+    let operation = aggregated_endpoint(&request.path).map_or_else(
+        || {
+            endpoint(&request.path).map(|(_, kind)| {
+                if kind == "data" {
+                    "results.page"
+                } else {
+                    "results.summary"
+                }
+            })
+        },
+        |(operation, _)| Some(operation),
+    )?;
+    let _activity = if request.method == "GET" {
+        match host
+            .as_deref()
+            .map(|host| host.prediction_read_activity(operation))
+            .transpose()
+        {
+            Ok(activity) => activity.flatten(),
+            Err(error) => {
+                return Some(HttpResponse::json(
+                    503,
+                    json!({"detail": error.reason()}).to_string(),
+                ));
+            }
+        }
+    } else {
+        None
+    };
     Some(dispatch(&settings, request, &|operation, payload| {
         host.as_deref()
             .ok_or_else(|| "Scientific library runtime is unavailable".to_owned())?
