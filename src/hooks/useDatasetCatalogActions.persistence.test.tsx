@@ -104,3 +104,20 @@ it("settles a committed link before unmount and safely observes cancelled refres
   client.clear(); await flush();
   expect(warning).not.toHaveBeenCalled();
 });
+
+it.each(["id", "path", "name"])("rejects blank %s identities and permits a later authoritative link", async field => {
+  const { result } = await mount();
+  const before = localStorage.getItem("n4a:cache:datasets:list");
+  mocks.link.mockResolvedValue({success: true, dataset: {...persisted, [field]: " \t\n "}});
+  await expect(result.actions.addDataset("/owned/data")).rejects.toThrow("persisted identity");
+  expect(result.list.data?.datasets).toEqual([existing]);
+  expect(result.list.data?.groups).toEqual([group]);
+  expect(localStorage.getItem("n4a:cache:datasets:list")).toBe(before);
+  expect(mocks.list).toHaveBeenCalledTimes(1);
+  mocks.link.mockResolvedValue({success: true, dataset: persisted});
+  mocks.list.mockReturnValue(deferred<typeof baseline>().promise);
+  await result.actions.addDataset("/owned/data"); await flush();
+  expect(result.list.data?.datasets.map(entry => entry.id)).toEqual(["existing", "persisted"]);
+  expect(result.list.data?.groups).toEqual([group]);
+  expect(localStorage.getItem("n4a:cache:datasets:list")).toBe(null);
+});
