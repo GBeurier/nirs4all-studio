@@ -159,7 +159,7 @@ jobs:
               exit 1
             fi
           done
-          if [[ ! "$NIRS4ALL_WHEEL_URL" =~ ^https://files\.pythonhosted\.org/.+/nirs4all-1\.4\.5-py3-none-any\.whl$ ]]; then
+          if [[ ! "$NIRS4ALL_WHEEL_URL" =~ ^https://files\.pythonhosted\.org/.+/nirs4all-1\.4\.6-py3-none-any\.whl$ ]]; then
             echo "::error::Pinned nirs4all wheel URL must be the immutable PyPI file URL"
             exit 1
           fi

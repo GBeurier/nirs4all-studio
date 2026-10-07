@@ -14,16 +14,17 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_sidecar_resolves_selected_native_releases() -> None:
     manifest = tomllib.loads((ROOT / "sidecar" / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
-    assert dependencies["nirs4all"] == "=0.4.2"
-    assert dependencies["nirs4all-io"] == "=0.2.5"
-    assert manifest["dev-dependencies"]["dag-ml-core"] == "=0.3.37"
+    assert dependencies["nirs4all"] == "=0.4.4"
+    assert dependencies["nirs4all-io"] == "=0.2.6"
+    # Native consumers use Core 0.4.4 public reexports and its exact DAG 0.3.39.
+    assert "dag-ml-core" not in manifest.get("dev-dependencies", {})
 
 
 def test_registry_lock_resolves_selected_native_releases() -> None:
     locked = tomllib.loads((ROOT / "sidecar" / "Cargo.lock").read_text(encoding="utf-8"))
     packages = {(package["name"], package["version"]) for package in locked["package"]}
-    assert {("nirs4all", "0.4.2"), ("nirs4all-io", "0.2.5"), ("dag-ml", "0.3.37"),
-            ("dag-ml-core", "0.3.37"), ("dag-ml-data", "0.2.13"), ("n4m", "0.4.0")} <= packages
+    assert {("nirs4all", "0.4.4"), ("nirs4all-io", "0.2.6"), ("dag-ml", "0.3.39"),
+            ("dag-ml-core", "0.3.39"), ("dag-ml-data", "0.2.13"), ("n4m", "0.4.0")} <= packages
     for package in locked["package"]:
         if package["name"] in {"nirs4all", "nirs4all-io", "dag-ml", "dag-ml-core", "dag-ml-data", "n4m"}:
             assert package.get("source", "").startswith("registry+"), "local path locks do not attest public releases"
@@ -37,12 +38,12 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     version = config["nirs4all"]
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
 
-    assert version == "1.4.5"
+    assert version == "1.4.6"
     ref = re.search(r"^  NIRS4ALL_LIBRARY_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert ref is not None
     assert source is not None
-    assert ref.group(1) == source.group(1) == "1e792e6068018e823f2a5f0e7918b3d0c12fba0c"
+    assert ref.group(1) == source.group(1) == "1cc6b83d4c6d3904a0ce78f7b844056e47efd794"
     parsed = yaml.safe_load(workflow)
     contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
     assert parsed["env"]["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
@@ -70,7 +71,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     dag_source = re.search(r"^  DAG_ML_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert dag_ref is not None
     assert dag_source is not None
-    assert dag_ref.group(1) == dag_source.group(1) == "bc451c059f9e955a041a9575715b8a4f96912252"
+    assert dag_ref.group(1) == dag_source.group(1) == "36af82eaf661de5c20311a3c2d55e24fbfcf287f"
 
     data_ref = re.search(r"^  DAG_ML_DATA_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     data_source = re.search(
@@ -149,13 +150,16 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
 
     assert "node scripts/verify-plugin-runtime-reproducibility.cjs" in workflow
     assert "plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json" in workflow
-    assert "nirs4all==1.4.5" in constraints
-    assert "nirs4all-core==0.4.2" in constraints
-    assert "nirs4all-io==0.2.5" in constraints
+    assert "nirs4all==1.4.6" in constraints
+    assert "nirs4all-core==0.4.4" in constraints
+    assert "nirs4all-io==0.2.6" in constraints
     assert "dag-ml-data==0.2.13" in constraints
     assert "nirs4all-methods==1.3.4" in constraints
-    assert "pls4all==1.3.2" in constraints
-    assert "dag-ml==0.3.37" in constraints
+    assert "pls4all==1.3.4" in constraints
+    # Python DAG is independently published 0.3.40; Rust stays on Core's 0.3.39.
+    assert "dag-ml==0.3.40" in constraints
+    assert "nirs4all-formats==0.2.11" in constraints
+    assert "nirs4all-tools==0.0.8" in constraints
     assert "scikit-learn==1.9.0" in constraints
 
 
@@ -185,7 +189,7 @@ def test_release_installed_upgrade_is_blocking_and_checksums_use_basenames() -> 
         sdk_checkout = next(i for i, step in enumerate(steps)
                             if step.get("with", {}).get("repository") == "GBeurier/nirs4all")
         assert sdk_checkout < qualification
-        assert steps[sdk_checkout]["with"]["ref"] == "1e792e6068018e823f2a5f0e7918b3d0c12fba0c"
+        assert steps[sdk_checkout]["with"]["ref"] == "1cc6b83d4c6d3904a0ce78f7b844056e47efd794"
         assert steps[sdk_checkout]["with"]["path"] == "_deps/nirs4all-qualification"
         assert not steps[qualification].get("continue-on-error", False)
         assert "INSTALLER_BASELINE" in steps[qualification]["env"]
