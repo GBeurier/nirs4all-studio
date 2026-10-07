@@ -462,7 +462,7 @@ impl ReadinessSnapshot {
     fn to_json(&self) -> String {
         let ml_ready = self.scientific_host.as_deref().map_or_else(
             || self.native_jobs.execution_selected(),
-            scientific_cpython::CpythonScientificJobExecutor::library_facades_available,
+            scientific_cpython::CpythonScientificJobExecutor::library_facades_available_background,
         );
         json!({
             "core_ready": true,
@@ -475,6 +475,52 @@ impl ReadinessSnapshot {
             "native_training_ready": self.native_training_ready,
         })
         .to_string()
+    }
+}
+
+/// Capture capability owners without validating under the product route lock.
+struct CapabilitiesSnapshot {
+    capabilities: Value,
+    scientific_host: Option<Arc<scientific_cpython::CpythonScientificJobExecutor>>,
+}
+
+impl CapabilitiesSnapshot {
+    fn from_state(state: &SidecarState) -> Self {
+        Self {
+            capabilities: serde_json::from_str(&state.base_capabilities_json())
+                .expect("the native capability template is valid JSON"),
+            scientific_host: state.scientific_host.clone(),
+        }
+    }
+
+    fn to_json(&self) -> String {
+        let mut capabilities: Value = self.capabilities.clone();
+        capabilities["features"]["workspace_document_routes"] = json!(true);
+        capabilities["features"]["workspace_metadata_routes"] = json!(true);
+        capabilities["features"]["pipeline_document_routes"] = json!(true);
+        capabilities["features"]["pipeline_library_routes"] = json!(true);
+        capabilities["features"]["dataset_catalogue_routes"] = json!(true);
+        capabilities["features"]["dataset_inspection_routes"] = json!(true);
+        capabilities["features"]["recommended_config_routes"] = json!(true);
+        capabilities["features"]["general_prediction_routes"] = json!(true);
+        capabilities["features"]["workspace_run_history_route"] = json!(true);
+        capabilities["features"]["workspace_run_listing_routes"] = json!(true);
+        capabilities["features"]["dataset_import_routes"] = json!(true);
+        capabilities["features"]["pipeline_preset_routes"] = json!(true);
+        capabilities["features"]["dataset_score_routes"] = json!(true);
+        capabilities["features"]["dataset_synthetic_preset_routes"] = json!(true);
+        capabilities["features"]["dataset_synthetic_generation_routes"] =
+            json!(self.scientific_host.as_deref().is_some_and(
+                scientific_cpython::CpythonScientificJobExecutor::library_facades_available
+            ));
+        capabilities["features"]["workspace_prediction_result_routes"] =
+            capabilities["features"]["dataset_synthetic_generation_routes"].clone();
+        capabilities["features"]["aggregated_prediction_result_routes"] =
+            capabilities["features"]["dataset_synthetic_generation_routes"].clone();
+        capabilities["features"]["playground_routes"] =
+            capabilities["features"]["dataset_synthetic_generation_routes"].clone();
+        capabilities["features"]["native_webapp_update_routes"] = json!(true);
+        capabilities.to_string()
     }
 }
 
@@ -761,32 +807,7 @@ impl SidecarState {
     /// capability template (covered by the route-contract tests).
     #[must_use]
     pub fn capabilities_json(&self) -> String {
-        let mut capabilities: Value = serde_json::from_str(&self.base_capabilities_json())
-            .expect("the native capability template is valid JSON");
-        capabilities["features"]["workspace_document_routes"] = json!(true);
-        capabilities["features"]["workspace_metadata_routes"] = json!(true);
-        capabilities["features"]["pipeline_document_routes"] = json!(true);
-        capabilities["features"]["pipeline_library_routes"] = json!(true);
-        capabilities["features"]["dataset_catalogue_routes"] = json!(true);
-        capabilities["features"]["dataset_inspection_routes"] = json!(true);
-        capabilities["features"]["recommended_config_routes"] = json!(true);
-        capabilities["features"]["general_prediction_routes"] = json!(true);
-        capabilities["features"]["workspace_run_history_route"] = json!(true);
-        capabilities["features"]["workspace_run_listing_routes"] = json!(true);
-        capabilities["features"]["dataset_import_routes"] = json!(true);
-        capabilities["features"]["pipeline_preset_routes"] = json!(true);
-        capabilities["features"]["dataset_score_routes"] = json!(true);
-        capabilities["features"]["dataset_synthetic_preset_routes"] = json!(true);
-        capabilities["features"]["dataset_synthetic_generation_routes"] =
-            json!(self.scientific_host.as_deref().is_some_and(
-                scientific_cpython::CpythonScientificJobExecutor::library_facades_available
-            ));
-        capabilities["features"]["workspace_prediction_result_routes"] =
-            capabilities["features"]["dataset_synthetic_generation_routes"].clone();
-        capabilities["features"]["playground_routes"] =
-            capabilities["features"]["dataset_synthetic_generation_routes"].clone();
-        capabilities["features"]["native_webapp_update_routes"] = json!(true);
-        capabilities.to_string()
+        CapabilitiesSnapshot::from_state(self).to_json()
     }
 
     fn base_capabilities_json(&self) -> String {
@@ -2170,6 +2191,7 @@ fn route_workspace_workflows_without_global_lock(
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
     route_readiness_without_global_lock(state, request)
+        .or_else(|| route_capabilities_without_global_lock(state, request))
         .or_else(|| workspace_upgrade::route(state, request))
         .or_else(|| route_runtime_diagnostics_without_global_lock(state, request))
         .or_else(|| route_workspace_transition_without_global_lock(state, request))
@@ -4372,6 +4394,30 @@ fn route_readiness_without_global_lock(
     ))
 }
 
+fn render_capabilities_without_global_lock(
+    state: &Arc<Mutex<SidecarState>>,
+    render: impl FnOnce(&CapabilitiesSnapshot) -> String,
+) -> String {
+    let snapshot = {
+        let state = state.lock().expect("sidecar state mutex poisoned");
+        CapabilitiesSnapshot::from_state(&state)
+    };
+    render(&snapshot)
+}
+
+fn route_capabilities_without_global_lock(
+    state: &Arc<Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    if request.method != "GET" || request.path != "/sidecar/v1/capabilities" {
+        return None;
+    }
+    Some(HttpResponse::json(
+        200,
+        render_capabilities_without_global_lock(state, CapabilitiesSnapshot::to_json),
+    ))
+}
+
 fn route_documents_without_global_lock(
     state: &Arc<Mutex<SidecarState>>,
     request: &HttpRequest,
@@ -5144,6 +5190,44 @@ mod tests {
         actual.as_object_mut().unwrap().remove("elapsed_seconds");
         assert_eq!(actual, expected);
         assert_eq!(actual["ml_ready"], false);
+    }
+
+    #[test]
+    fn capabilities_validation_releases_route_lock_and_preserves_payload() {
+        let state = Arc::new(Mutex::new(SidecarState::default()));
+        let expected = state.lock().unwrap().capabilities_json();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker_state = Arc::clone(&state);
+        let worker = thread::spawn(move || {
+            render_capabilities_without_global_lock(&worker_state, |snapshot| {
+                entered_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                snapshot.to_json()
+            })
+        });
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let health = state
+            .try_lock()
+            .ok()
+            .map(|mut state| route_request(&mut state, "GET", "/api/health").status);
+        release_tx.send(()).unwrap();
+        assert_eq!(worker.join().unwrap(), expected);
+        assert_eq!(health, Some(200));
+    }
+
+    #[test]
+    fn aggregate_capability_requires_the_same_attested_host_as_result_pages() {
+        let state = SidecarState::default();
+        let capabilities: Value = serde_json::from_str(&state.capabilities_json()).unwrap();
+        assert_eq!(
+            capabilities["features"]["aggregated_prediction_result_routes"],
+            false
+        );
+        assert_eq!(
+            capabilities["features"]["aggregated_prediction_result_routes"],
+            capabilities["features"]["workspace_prediction_result_routes"]
+        );
     }
 
     fn write_strict_v2_store(workspace: &Path) {

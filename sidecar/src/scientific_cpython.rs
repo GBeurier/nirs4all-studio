@@ -379,13 +379,24 @@ pub(crate) struct LibraryFacadeError {
 
 impl CpythonScientificJobExecutor {
     pub(crate) fn library_facades_available(&self) -> bool {
+        self.library_facades_available_with(validate_runtime_availability)
+    }
+
+    pub(crate) fn library_facades_available_background(&self) -> bool {
+        self.library_facades_available_with(validate_runtime_availability_background)
+    }
+
+    fn library_facades_available_with(
+        &self,
+        validate: fn(&PackagedRuntimeIdentity) -> Result<(), ScientificCpythonUnavailable>,
+    ) -> bool {
         platform_kill_tree_qualified()
             && self.identity.is_some()
             && self.callable_identity.is_some()
             && self
                 .packaged_runtime
                 .as_ref()
-                .is_some_and(|runtime| validate_runtime_availability(runtime).is_ok())
+                .is_some_and(|runtime| validate(runtime).is_ok())
     }
 
     pub(crate) fn invoke_library_facade(
@@ -1157,6 +1168,15 @@ fn canonical_directory_identity(path: &Path) -> Result<PathBuf, ScientificCpytho
 }
 
 fn validate_runtime_availability(
+    identity: &PackagedRuntimeIdentity,
+) -> Result<(), ScientificCpythonUnavailable> {
+    identity.changes.as_ref().map_or_else(
+        || verify_packaged_runtime_identity(identity),
+        |changes| changes.validate(identity).map(|_| ()),
+    )
+}
+
+fn validate_runtime_availability_background(
     identity: &PackagedRuntimeIdentity,
 ) -> Result<(), ScientificCpythonUnavailable> {
     identity.changes.as_ref().map_or_else(
