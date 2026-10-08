@@ -608,3 +608,5 @@ Third-party notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.m
 <br>
 <strong>Made for the spectroscopy community</strong>
 </div>
+
+Studio 0.15.1 was never published and is superseded by 0.15.2. Its immutable tag is retained for diagnosis. Studio 0.15.2 aligns the Rust scientific host contract with the public SDK 1.4.7, DAG-ML 0.3.41 and Core 0.4.5 runtime cohort.
