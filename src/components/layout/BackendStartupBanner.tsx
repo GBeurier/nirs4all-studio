@@ -163,7 +163,7 @@ export function BackendStartupBanner() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <div className="hidden rounded-xl bg-primary/5 p-2 sm:block">
-              <NirsSplashLoader className="h-8 w-16" alt={t("layout.backendStartup.loaderAlt", "Backend loading animation")} />
+              <NirsSplashLoader className="h-8 w-16" alt={t("layout.backendStartup.loaderAlt", "Starting Studio animation")} />
             </div>
           <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">{title}</p>

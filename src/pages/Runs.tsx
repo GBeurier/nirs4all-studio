@@ -34,6 +34,13 @@ import {
 } from "@/api/runs";
 import { getEnrichedRuns } from "@/api/enrichedRuns";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
+import { clientStorageKeys, readClientStorageJson, writeClientStorageJson } from "@/lib/clientStorage";
+import { isActiveExecutionStatus } from "@/lib/runs/executionJobStatus";
+import type { ExecutionJobRecord } from "@/lib/runs/executionJobRecords";
+
+function executionJobDismissalKey(workspaceId: string | undefined, record: ExecutionJobRecord): string {
+  return JSON.stringify([workspaceId, record.job_id, record.created_at]);
+}
 
 function formatRunsErrorMessage(error: unknown): string | null {
   if (!error) return null;
@@ -51,6 +58,10 @@ export default function Runs() {
   const [detailRun, setDetailRun] = useState<EnrichedRun | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [inspectedExecutionJobId, setInspectedExecutionJobId] = useState<string | null>(null);
+  const [dismissedExecutionJobs, setDismissedExecutionJobs] = useState<string[]>(() => {
+    const stored = readClientStorageJson(clientStorageKeys.dismissedExecutionJobs);
+    return Array.isArray(stored) ? stored.filter((key): key is string => typeof key === "string") : [];
+  });
 
   const { data: workspacesData } = useLinkedWorkspacesQuery();
 
@@ -109,9 +120,21 @@ export default function Runs() {
   }, [runs, executionJobRecordsData]);
 
   const executionTaskPanelData = useMemo(
-    () => buildRunsExecutionTaskPanelData(executionJobRecordsData?.records),
-    [executionJobRecordsData],
+    () => buildRunsExecutionTaskPanelData(executionJobRecordsData?.records.filter(record =>
+      isActiveExecutionStatus(record.status)
+      || !dismissedExecutionJobs.includes(executionJobDismissalKey(activeWorkspaceId, record)),
+    )),
+    [activeWorkspaceId, dismissedExecutionJobs, executionJobRecordsData],
   );
+
+  const dismissExecutionJobs = (jobIds: string[]) => {
+    const keys = (executionJobRecordsData?.records ?? [])
+      .filter(record => jobIds.includes(record.job_id) && !isActiveExecutionStatus(record.status))
+      .map(record => executionJobDismissalKey(activeWorkspaceId, record));
+    const next = [...new Set([...dismissedExecutionJobs, ...keys])];
+    setDismissedExecutionJobs(next);
+    writeClientStorageJson(clientStorageKeys.dismissedExecutionJobs, next);
+  };
 
   const runPageIdLookup = useMemo(
     () => buildRunPageIdLookup(activeRunsData?.runs),
@@ -182,6 +205,7 @@ export default function Runs() {
       <RunsExecutionTasksPanel
         data={executionTaskPanelData}
         onInspectJob={setInspectedExecutionJobId}
+        onDismissJobs={dismissExecutionJobs}
       />
 
       <RunsExecutionJobRecordDialog

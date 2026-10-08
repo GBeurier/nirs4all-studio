@@ -71,6 +71,7 @@ def _install_fake_nirs4all(monkeypatch, calls: list[dict]) -> None:
 
 def _stub_pipeline_task_deps(monkeypatch) -> None:
     monkeypatch.setattr(spectra_api, "_load_dataset", lambda _dataset_id: SimpleNamespace(name="Dataset A"))
+    monkeypatch.setattr(adapter_api, "build_dataset_config", lambda _dataset_id: {"dataset": "dataset-a"})
     monkeypatch.setattr(
         pipelines_api,
         "prepare_pipeline_steps_with_runtime_grouping",
@@ -164,6 +165,22 @@ def test_automl_task_threads_engine_and_persists_runtime(monkeypatch, tmp_path):
     assert payload["fallback_policy"]["allow_fallback"] is False
 
 
+def test_training_task_preserves_dataset_configuration_errors(monkeypatch):
+    calls: list[dict] = []
+    _install_fake_nirs4all(monkeypatch, calls)
+    monkeypatch.setattr(pipelines_api, "_load_pipeline", lambda _pipeline_id: {"steps": [{"id": "m"}]})
+    monkeypatch.setattr(pipeline_canonical, "editor_steps_to_runtime_canonical", lambda _steps: ["runtime-step"])
+
+    def missing_target(_dataset_id):
+        raise ValueError("Configured target file does not exist: response.csv")
+
+    monkeypatch.setattr(adapter_api, "build_dataset_config", missing_target)
+    job = SimpleNamespace(id="training-job", config={"pipeline_id": "pipe-a", "dataset_id": "dataset-a"})
+    with pytest.raises(ValueError, match="Configured target file does not exist: response.csv"):
+        training_api._run_training_task(job, _progress)
+    assert calls == []
+
+
 def test_pipeline_execute_task_threads_engine_and_returns_runtime(monkeypatch, tmp_path):
     calls: list[dict] = []
     _install_fake_nirs4all(monkeypatch, calls)
@@ -188,6 +205,7 @@ def test_pipeline_execute_task_threads_engine_and_returns_runtime(monkeypatch, t
 
     assert payload["success"] is True
     assert calls[0]["engine"] == "dag-ml"
+    assert calls[0]["dataset"] == {"dataset": "dataset-a"}
     assert calls[0]["allow_fallback"] is False
     assert calls[0]["results_path"] == str(tmp_path / "nirs4all_results")
     assert "workspace_path" not in calls[0]

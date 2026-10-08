@@ -77,9 +77,22 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
         ));
     }
     Some(handle(&settings, request, &|operation, payload| {
-        host.as_ref()
-            .ok_or("No attested scientific runtime configured")?
-            .adapt_document(operation, payload)
+        let host = host
+            .as_ref()
+            .ok_or("No attested scientific runtime configured")?;
+        crate::dataset_inspection::cache::adapt(
+            host.dataset_cache_scope(),
+            operation,
+            payload,
+            || host.adapt_document(operation, payload),
+            || {
+                if host.library_facades_available() {
+                    Ok(())
+                } else {
+                    Err("Attested scientific runtime unavailable".into())
+                }
+            },
+        )
     }))
 }
 
@@ -333,6 +346,9 @@ fn link(
         .unwrap_or_else(|| json!({}));
     if config.as_object().is_some_and(serde_json::Map::is_empty) && path.is_file() {
         config = json!({"train_x":path});
+    }
+    if refresh_id.is_some() {
+        crate::dataset_inspection::cache::invalidate(root);
     }
     let inspection = if let Some(descriptor) = config.get("dataset_document") {
         if config.as_object().is_none_or(|fields| fields.len() != 1) {

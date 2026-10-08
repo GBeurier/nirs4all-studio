@@ -25,7 +25,7 @@ export function ArchiveV2DataInput({
   const handleSubmit = () => {
     const spectra = parsePastedSpectra(pasteText);
     if (!spectra) {
-      setError("Paste a finite JSON, CSV, or TSV matrix.");
+      setError("Paste a table of numeric values in CSV, TSV, or JSON format. All values must be finite.");
       return;
     }
     setError(null);
@@ -35,10 +35,9 @@ export function ArchiveV2DataInput({
   return (
     <Card className="border-border/60 shadow-sm">
       <CardHeader className="space-y-3">
-        <CardTitle>Native array input</CardTitle>
+        <CardTitle>Enter Spectra</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Paste raw spectra. Dataset replay, upload, fitting, Python, and fallback
-          are not part of this Archive V2 surface.
+          Paste your spectra as a table: one sample per row, one wavelength per column.
         </p>
         {selection ? (
           <div className="flex flex-wrap gap-2">
@@ -48,7 +47,7 @@ export function ArchiveV2DataInput({
             ))}
           </div>
         ) : (
-          <p className="text-sm font-medium">Select a persisted Archive V2 first.</p>
+          <p className="text-sm font-medium">Select a saved model first.</p>
         )}
       </CardHeader>
       <CardContent className="space-y-3">
@@ -73,9 +72,9 @@ export function ArchiveV2DataInput({
           onClick={handleSubmit}
         >
           {isLoading ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Running native replay</>
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Calculating predictions...</>
           ) : (
-            <><Play className="mr-2 h-4 w-4" />Run Archive V2 prediction</>
+            <><Play className="mr-2 h-4 w-4" />Calculate Predictions</>
           )}
         </Button>
       </CardContent>

@@ -8,7 +8,7 @@ import type { CampaignPlanPreview } from "./campaignPlanPreviewTypes";
 
 export type CampaignPreviewBadgeVariant = "secondary" | "outline" | "destructive";
 
-export const campaignPlanPreviewTitle = "Campaign Plan Preview";
+export const campaignPlanPreviewTitle = "Experiment Overview";
 
 export const campaignPlanSectionTitles = {
   capabilities: "Readiness Checks",
@@ -16,7 +16,7 @@ export const campaignPlanSectionTitles = {
   pipelines: "Pipeline Inputs",
   compatibility: "Compatibility Preview",
   executionEnvironment: "Execution Environment",
-  singlePairSplits: "Single-Pair Split Preview",
+  singlePairSplits: "Individual Analyses",
   plannedRuns: "Planned Runs",
 } as const;
 
@@ -28,7 +28,7 @@ export const campaignPlanHiddenLabels = {
   plannedRuns: "more planned runs",
 } as const;
 
-export const campaignSinglePairSplitTagLabel = "strict one-pair";
+export const campaignSinglePairSplitTagLabel = "one dataset / one pipeline";
 
 export interface CampaignSummaryField {
   id: string;
@@ -89,7 +89,7 @@ export function formatCampaignExecutionAdapterLine(
 export function formatCampaignSchemaConstraintLine(
   campaignPreview: CampaignPlanPreview,
 ): string {
-  return `${campaignPreview.schemaConstraint.label} (${campaignPreview.schemaConstraint.strictPairingStatusLabel}): ${campaignPreview.schemaConstraint.description} ${campaignPreview.schemaConstraint.strictModeRecommendation}`;
+  return campaignPreview.schemaConstraint.description;
 }
 
 export function buildCampaignCapabilityCardData(
@@ -114,7 +114,7 @@ export function formatHiddenCampaignPreviewCount(
 
 export function formatCampaignGroupByTag(splitGroupBy: string | null): string | null {
   if (!splitGroupBy) return null;
-  return `group_by: ${splitGroupBy}`;
+  return `Sample groups: ${splitGroupBy}`;
 }
 
 export function formatCampaignDatasetDetailLabels(

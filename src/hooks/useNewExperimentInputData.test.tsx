@@ -119,7 +119,7 @@ afterEach(() => {
 });
 
 describe("useNewExperimentInputData", () => {
-  it("merges unique history pipelines after saved pipelines", () => {
+  it("preserves history identities even when their steps match a saved pipeline", () => {
     const saved = pipeline();
     const duplicateHistory = pipeline({
       id: "history:duplicate",
@@ -134,6 +134,11 @@ describe("useNewExperimentInputData", () => {
     });
 
     expect(mergeExperimentPipelineSources([saved], [duplicateHistory, uniqueHistory])).toEqual([
+      saved,
+      duplicateHistory,
+      uniqueHistory,
+    ]);
+    expect(mergeExperimentPipelineSources([saved], [saved, uniqueHistory, uniqueHistory])).toEqual([
       saved,
       uniqueHistory,
     ]);

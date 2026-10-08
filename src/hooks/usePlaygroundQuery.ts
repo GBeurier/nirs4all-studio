@@ -5,14 +5,13 @@
  * with support for request cancellation and optimistic updates.
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   executePlayground,
   executeDatasetPlayground,
   buildExecuteRequest,
-  computePcaChart,
-  computeRepetitionsChart,
+  getLoadedWorkspaceDatasetResult,
 } from '@/api/playground';
 import {
   useDebouncedValue,
@@ -21,6 +20,8 @@ import {
 import {
   createPlaygroundQueryKey,
   hashPipeline,
+  getSpectralDataIdentity,
+  isPlaygroundPipelineCacheable,
 } from '@/lib/playground/hashing';
 import { projectPlaygroundMetricObservations } from '@/lib/playground/metricObservations';
 import { unifiedToPlaygroundSteps } from '@/lib/playground/operatorFormat';
@@ -113,6 +114,22 @@ function transformResponse(response: ExecuteResponse): PlaygroundResult {
   };
 }
 
+/** Keep a few recent results for undo; slider edits must not retain unbounded matrices. */
+export function prunePlaygroundResults(queryClient: QueryClient, dataIdentity: string | null): void {
+  const queries = queryClient.getQueryCache().findAll({ predicate: query =>
+    (query.queryKey[0] === 'playground' && query.queryKey[1] === 'execute') || query.queryKey[0] === 'reference-playground' });
+  const identity = (key: readonly unknown[]) => key[key[0] === 'reference-playground' ? 1 : 2];
+  const activeSnapshots = new Set<unknown>([dataIdentity, ...queries.filter(query => query.getObserversCount() > 0).map(query => identity(query.queryKey))]);
+  const retained = new Map<unknown, number>();
+  for (const query of queries.sort((a, b) => b.state.dataUpdatedAt - a.state.dataUpdatedAt)) {
+    const snapshot = identity(query.queryKey);
+    const count = (retained.get(snapshot) ?? 0) + 1;
+    retained.set(snapshot, count);
+    if (query.getObserversCount() === 0 && query.state.fetchStatus !== 'fetching'
+      && (!activeSnapshots.has(snapshot) || count > 3)) queryClient.removeQueries({ queryKey: query.queryKey, exact: true });
+  }
+}
+
 /**
  * Hook for executing playground pipelines with React Query
  *
@@ -144,336 +161,136 @@ export function usePlaygroundQuery(
     onSuccess,
     onError,
   } = options;
-
   const queryClient = useQueryClient();
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const isMountedRef = useRef(true);
+  const dataIdentity = data ? getSpectralDataIdentity(data) : null;
 
-  // Track mounted state for cleanup
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  // Compute pipeline hash for tracking changes
-  const currentPipelineHash = useMemo(() => hashPipeline(operators), [operators]);
-
-  // Debounce the pipeline hash to prevent rapid API calls
-  const debouncedPipelineHash = useDebouncedValue(currentPipelineHash, debounceMs);
-
-  // Track if we're in a debounce window
+  // Debounce the actual operators, so a request's key and payload describe the
+  // same snapshot even while another parameter change is being entered.
+  const currentPipelineHash = hashPipeline(operators.filter(operator => operator.enabled));
+  // Active operators are unchanged when only a disabled operator is edited.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const activeOperators = useMemo(() => operators.filter(operator => operator.enabled), [currentPipelineHash]);
+  const debouncedOperators = useDebouncedValue(activeOperators, debounceMs);
+  const debouncedPipelineHash = hashPipeline(debouncedOperators);
   const isDebouncing = currentPipelineHash !== debouncedPipelineHash;
-
-  // Build sampling options with defaults
   const sampling: SamplingOptions = useMemo(() => ({
-    method: samplingOpts?.method || 'random',
-    n_samples: samplingOpts?.n_samples || 100,
-    seed: samplingOpts?.seed || 42,
+    method: samplingOpts?.method ?? 'random',
+    n_samples: samplingOpts?.n_samples ?? 100,
+    seed: samplingOpts?.seed ?? 42,
   }), [samplingOpts?.method, samplingOpts?.n_samples, samplingOpts?.seed]);
-
   const repetitionColumn = useMemo(() => getSpectralRepetitionColumn(data), [data]);
-  const metadataSignature = useMemo(() => {
-    if (!data?.metadata || data.metadata.length === 0) {
-      return null;
-    }
+  const loadedResponse = data ? getLoadedWorkspaceDatasetResult(data) : undefined;
 
-    const firstRow = data.metadata[0] ?? {};
-    const lastRow = data.metadata[data.metadata.length - 1] ?? {};
-
-    return JSON.stringify({
-      repetitionColumn: repetitionColumn ?? null,
-      keys: Object.keys(firstRow),
-      first: repetitionColumn ? firstRow[repetitionColumn] ?? null : null,
-      last: repetitionColumn ? lastRow[repetitionColumn] ?? null : null,
-      sampleFirst: data.sampleIds?.[0] ?? null,
-      sampleLast: data.sampleIds?.[data.sampleIds.length - 1] ?? null,
-    });
-  }, [data?.metadata, data?.sampleIds, repetitionColumn]);
-
-  // Memoize operators for stable reference when hash matches
-  const stableOperatorsRef = useRef(operators);
-  if (hashPipeline(stableOperatorsRef.current) !== debouncedPipelineHash) {
-    stableOperatorsRef.current = operators;
+  // Keep a chart's already requested result when it is hidden. Hiding a chart
+  // is a display change; the next pipeline/data change uses current visibility.
+  const computationIdentity = `${dataIdentity}:${debouncedPipelineHash}`;
+  const chartRequirements = useRef({ identity: '', pca: false, umap: false, repetitions: false });
+  if (chartRequirements.current.identity !== computationIdentity) {
+    chartRequirements.current = { identity: computationIdentity, pca: false, umap: false, repetitions: false };
   }
-
-  // Build query key from debounced values
-  // Include datasetId so TanStack Query properly caches per-dataset
+  chartRequirements.current.pca ||= (executeOptions?.compute_pca ?? true)
+    || (debouncedOperators.length === 0 && loadedResponse !== undefined);
+  chartRequirements.current.umap ||= executeOptions?.compute_umap ?? false;
+  chartRequirements.current.repetitions ||= executeOptions?.compute_repetitions ?? true;
+  const { pca, umap, repetitions } = chartRequirements.current;
+  const cacheable = executeOptions?.use_cache !== false && isPlaygroundPipelineCacheable(debouncedOperators, umap);
+  const effectiveOptions: ExecuteOptions = useMemo(() => ({
+    ...executeOptions,
+    compute_pca: pca,
+    compute_umap: umap,
+    compute_repetitions: repetitions,
+    compute_statistics: executeOptions?.compute_statistics ?? true,
+    use_cache: cacheable,
+    bio_sample_column: repetitionColumn,
+    dataset_repetition: repetitionColumn,
+    subset_mode: executeOptions?.subset_mode ?? 'all',
+  }), [executeOptions, pca, umap, repetitions, cacheable, repetitionColumn]);
   const queryKey = useMemo(() => {
-    if (!data) return ['playground', 'execute', null] as const;
+    const baseKey = createPlaygroundQueryKey(data?.spectra ?? null, data?.y, debouncedOperators,
+      sampling, effectiveOptions, dataIdentity);
+    return datasetId
+      ? [...baseKey, 'dataset', datasetId, datasetPartition ?? 'all', datasetSourceIndex ?? 0, datasetTargetIndex ?? 0]
+      : baseKey;
+  }, [data, debouncedOperators, sampling, effectiveOptions, dataIdentity, datasetId, datasetPartition, datasetSourceIndex, datasetTargetIndex]);
 
-    const baseKey = createPlaygroundQueryKey(
-      data.spectra,
-      data.y,
-      stableOperatorsRef.current,
-      sampling,
-      executeOptions,
-      metadataSignature,
-    );
-
-    // Add datasetId and datasetPartition to distinguish dataset-ref queries
-    if (datasetId) {
-      return [
-        ...baseKey,
-        'dataset',
-        datasetId,
-        datasetPartition ?? 'all',
-        datasetSourceIndex ?? 0,
-        datasetTargetIndex ?? 0,
-      ] as const;
-    }
-
-    return baseKey;
-    // stableOperatorsRef.current is refreshed from debouncedPipelineHash above;
-    // keep the hash here so the query key tracks the debounced pipeline state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    data,
-    debouncedPipelineHash,
-    sampling,
-    executeOptions,
-    datasetId,
-    datasetPartition,
-    datasetSourceIndex,
-    datasetTargetIndex,
-    metadataSignature,
-  ]);
-
-  // Query function with abort support
-  const queryFn = useCallback(async (): Promise<PlaygroundResult> => {
-    if (!data) {
-      throw new Error('No data provided');
-    }
-
-    // Cancel any pending request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-
-    // Create new abort controller
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    const steps = unifiedToPlaygroundSteps(stableOperatorsRef.current);
-    try {
+  const initialResponse = data && datasetId && debouncedOperators.length === 0
+    && sampling.method === 'all' && effectiveOptions.subset_mode === 'all'
+    && !effectiveOptions.compute_umap && !effectiveOptions.compute_repetitions
+    && effectiveOptions.max_wavelengths_returned === undefined
+    && effectiveOptions.split_index === undefined
+    ? loadedResponse : undefined;
+  const query = useQuery({
+    queryKey,
+    queryFn: async ({ signal }): Promise<PlaygroundResult> => {
+      if (!data) throw new Error('No data provided');
+      const steps = unifiedToPlaygroundSteps(debouncedOperators);
       let response: ExecuteResponse;
-
-      // Use dataset-ref endpoint when a workspace datasetId is available.
-      // This avoids uploading the full spectra matrix back to the server.
       if (datasetId) {
-        response = await executeDatasetPlayground(
-          {
-            dataset_id: datasetId,
-            partition: datasetPartition,
-            source_index: datasetSourceIndex ?? undefined,
-            target_index: datasetTargetIndex ?? undefined,
-            steps,
-            sampling: sampling.method !== 'all'
-              ? { method: sampling.method, n_samples: sampling.n_samples, seed: sampling.seed }
-              : undefined,
-            options: {
-              compute_pca: executeOptions?.compute_pca ?? true,
-              compute_umap: executeOptions?.compute_umap ?? false,
-              umap_params: executeOptions?.umap_params,
-              compute_statistics: executeOptions?.compute_statistics ?? true,
-              compute_repetitions: executeOptions?.compute_repetitions ?? true,
-              max_wavelengths_returned: executeOptions?.max_wavelengths_returned,
-              split_index: executeOptions?.split_index,
-              use_cache: executeOptions?.use_cache ?? true,
-              bio_sample_column: repetitionColumn,
-              dataset_repetition: repetitionColumn,
-              subset_mode: executeOptions?.subset_mode ?? 'all',
-              max_samples_displayed: executeOptions?.max_samples_displayed,
-            },
-          },
-          controller.signal
-        );
+        response = await executeDatasetPlayground({
+          dataset_id: datasetId,
+          partition: datasetPartition,
+          source_index: datasetSourceIndex ?? undefined,
+          target_index: datasetTargetIndex ?? undefined,
+          steps,
+          sampling: sampling.method === 'all' ? undefined : sampling,
+          options: effectiveOptions as Record<string, unknown>,
+        }, signal);
       } else {
-        // Fallback: send full data (for uploads, demos, non-workspace data)
-        const metadata = getColumnarMetadata(data.metadata);
-
-        const request = buildExecuteRequest({
+        response = await executePlayground(buildExecuteRequest({
           spectra: data.spectra,
           wavelengths: data.wavelengths,
           wavelengthUnit: data.wavelengthUnit,
-          y: data.y,
+          y: data.y.length > 0 ? data.y : undefined,
           sampleIds: data.sampleIds,
-          metadata,
+          metadata: getColumnarMetadata(data.metadata),
           steps,
           samplingMethod: sampling.method,
           maxSamples: sampling.n_samples,
-          computePca: executeOptions?.compute_pca ?? true,
-          computeUmap: executeOptions?.compute_umap ?? false,
-          umapParams: executeOptions?.umap_params,
-          computeStatistics: executeOptions?.compute_statistics ?? true,
-          computeRepetitions: executeOptions?.compute_repetitions ?? true,
-          maxWavelengths: executeOptions?.max_wavelengths_returned,
-          splitIndex: executeOptions?.split_index,
-          useCache: executeOptions?.use_cache ?? true,
+          samplingSeed: sampling.seed,
+          computePca: effectiveOptions.compute_pca,
+          computeUmap: effectiveOptions.compute_umap,
+          umapParams: effectiveOptions.umap_params,
+          computeStatistics: effectiveOptions.compute_statistics,
+          computeRepetitions: effectiveOptions.compute_repetitions,
+          maxWavelengths: effectiveOptions.max_wavelengths_returned,
+          splitIndex: effectiveOptions.split_index,
+          useCache: effectiveOptions.use_cache,
           bioSampleColumn: repetitionColumn,
           datasetRepetition: repetitionColumn,
-          subsetMode: executeOptions?.subset_mode ?? 'all',
-          maxSamplesDisplayed: executeOptions?.max_samples_displayed,
+          subsetMode: effectiveOptions.subset_mode,
+          maxSamplesDisplayed: effectiveOptions.max_samples_displayed,
           sourcePartitions: data.sourcePartitions,
-        });
-
-        response = await executePlayground(request, controller.signal);
+        }), signal);
       }
-
-      // Check if still mounted before processing
-      if (!isMountedRef.current) {
-        throw new Error('Request cancelled');
-      }
-
       return transformResponse(response);
-    } catch (error) {
-      // Don't throw if request was aborted
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Request cancelled');
-      }
-      throw error;
-    } finally {
-      // Clean up if this was the current controller
-      if (abortControllerRef.current === controller) {
-        abortControllerRef.current = null;
-      }
-    }
-    // stableOperatorsRef.current is intentionally synchronized via
-    // debouncedPipelineHash before this callback executes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    data,
-    datasetId,
-    datasetPartition,
-    datasetSourceIndex,
-    datasetTargetIndex,
-    debouncedPipelineHash,
-    sampling,
-    executeOptions,
-  ]);
-
-  // Parallel chart queries are disabled — PCA and repetitions are computed
-  // in the main query for reliability. The parallel endpoints relied on a
-  // server-side step cache that was fragile (fingerprint mismatches when
-  // sampling was applied, no cache entries in raw-data mode).
-  const useParallelCharts = false;
-  const wantPca = executeOptions?.compute_pca ?? true;
-  const wantRepetitions = executeOptions?.compute_repetitions ?? true;
-
-  // Main query
-  const query = useQuery({
-    queryKey,
-    queryFn,
-    enabled: enabled && data !== null && data.spectra.length > 0,
-    staleTime: 60 * 1000, // 1 minute
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    refetchOnWindowFocus: false,
-    retry: (failureCount, error) => {
-      // Don't retry cancelled requests
-      if (error instanceof Error && error.message === 'Request cancelled') {
-        return false;
-      }
-      return failureCount < 2;
     },
-    placeholderData: (previousData) => previousData, // Keep previous data while loading
+    enabled: enabled && !!data?.spectra.length && !isDebouncing,
+    initialData: initialResponse ? () => transformResponse(initialResponse) : undefined,
+    staleTime: cacheable ? 60 * 1000 : 0,
+    gcTime: cacheable ? 5 * 60 * 1000 : 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+    // Preserve charts while editing this dataset, never carry a different
+    // dataset's spectra/targets into the new selection's display.
+    placeholderData: (previousData, previousQuery) => previousQuery?.queryKey[2] === dataIdentity ? previousData : undefined,
   });
 
-  // Parallel PCA query — fires after the main query populates the step cache.
-  // Only used when datasetId is available (step cache requires it for lookup).
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- debouncedPipelineHash triggers recompute when ref updates
-  const steps = useMemo(() => unifiedToPlaygroundSteps(stableOperatorsRef.current), [debouncedPipelineHash]);
-  const chartRequest = useMemo(() => ({
-    dataset_id: datasetId || undefined,
-    source_index: datasetSourceIndex ?? undefined,
-    target_index: datasetTargetIndex ?? undefined,
-    steps,
-    sampling: sampling.method !== 'all'
-      ? { method: sampling.method, n_samples: sampling.n_samples, seed: sampling.seed }
-      : undefined,
-    options: {},
-  }), [datasetId, datasetSourceIndex, datasetTargetIndex, steps, sampling]);
+  useEffect(() => { prunePlaygroundResults(queryClient, dataIdentity); }, [queryClient, dataIdentity, query.data]);
 
-  const pcaQuery = useQuery({
-    queryKey: [...queryKey, 'pca-parallel'],
-    queryFn: async () => {
-      const result = await computePcaChart(chartRequest);
-      if (result.success && result.pca) {
-        return result.pca;
-      }
-      return null;
-    },
-    enabled: useParallelCharts && wantPca && query.isSuccess && !query.isFetching,
-    staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-
-  const repetitionsQuery = useQuery({
-    queryKey: [...queryKey, 'repetitions-parallel'],
-    queryFn: async () => {
-      const result = await computeRepetitionsChart(chartRequest);
-      if (result.success && result.repetitions) {
-        return result.repetitions;
-      }
-      return null;
-    },
-    enabled: useParallelCharts && wantRepetitions && query.isSuccess && !query.isFetching,
-    staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-
-  // Merge results: main query + parallel chart results
-  const mergedResult = useMemo(() => {
-    if (!query.data) return null;
-
-    // If not using parallel charts, main query already has everything
-    if (!useParallelCharts) return query.data;
-
-    return {
-      ...query.data,
-      pca: (pcaQuery.data as PlaygroundResult['pca']) ?? query.data.pca,
-      repetitions: (repetitionsQuery.data as PlaygroundResult['repetitions']) ?? query.data.repetitions,
-    };
-  }, [query.data, useParallelCharts, pcaQuery.data, repetitionsQuery.data]);
-
-  // Handle success callback
   useEffect(() => {
-    if (query.isSuccess && mergedResult && onSuccess) {
-      onSuccess(mergedResult);
-    }
-  }, [query.isSuccess, mergedResult, onSuccess]);
-
-  // Handle error callback
+    if (query.isSuccess && !query.isPlaceholderData && !isDebouncing && query.data) onSuccess?.(query.data);
+  }, [query.isSuccess, query.isPlaceholderData, isDebouncing, query.data, onSuccess]);
   useEffect(() => {
-    if (query.isError && query.error && onError) {
-      onError(query.error as Error);
-    }
+    if (query.isError && query.error) onError?.(query.error as Error);
   }, [query.isError, query.error, onError]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
-
-  // Refetch function that also cancels pending requests
   const refetch = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    queryClient.invalidateQueries({ queryKey });
+    void queryClient.invalidateQueries({ queryKey, exact: true });
   }, [queryClient, queryKey]);
-
   return {
-    result: mergedResult,
+    result: query.data ?? null,
     isLoading: query.isLoading,
-    isFetching: query.isFetching || (useParallelCharts && (pcaQuery.isFetching || repetitionsQuery.isFetching)),
+    isFetching: query.isFetching,
     isError: query.isError,
     error: query.error as Error | null,
     isDebouncing,

@@ -144,6 +144,8 @@ function propsForStep(currentStep: NewExperimentWizardStep) {
   const nativePayload = buildNativeExperimentLaunchPayload(launchLegacyConfig, launchStrictCampaignSpecs);
   const launchFlow: UseNewExperimentLaunchFlowResult = {
     isLaunching: false,
+          launchError: null,
+          clearLaunchError: vi.fn(),
     isPreflighting: false,
     launchPayloadPlan: {
       currentSubmissionKind: "legacy_config",

@@ -520,16 +520,20 @@ impl Drop for Worker {
 }
 
 impl Worker {
+    #[cfg(test)]
+    pub(super) fn process_id(&self) -> u32 {
+        self.child.id()
+    }
+
     /// The acquisition probe becomes the first worker: expensive library imports
     /// are paid once and retained for the first user interaction.
     pub(super) fn acquire(
         host: &HostIdentity,
-        runtime: &PackagedRuntimeIdentity,
+        runtime: Option<&PackagedRuntimeIdentity>,
     ) -> Result<(Self, Vec<u8>), ScientificCpythonUnavailable> {
         let generation = runtime
-            .changes
-            .as_ref()
-            .map(|changes| changes.validate(runtime))
+            .and_then(|runtime| runtime.changes.as_ref().map(|changes| (runtime, changes)))
+            .map(|(runtime, changes)| changes.validate(runtime))
             .transpose()?;
         let probe = serde_json::to_string(super::PREFLIGHT_SCRIPT)
             .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
@@ -540,7 +544,7 @@ impl Worker {
         let mut command = scientific_worker_command_with_script(
             host,
             host,
-            Some(&runtime.site_packages),
+            runtime.map(|runtime| runtime.site_packages.as_path()),
             &scratch.path,
             &script,
         )?;
@@ -562,7 +566,9 @@ impl Worker {
         if output.len() > super::MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES {
             return Err(ScientificCpythonUnavailable::StdoutTooLarge);
         }
-        if let Some(changes) = &runtime.changes {
+        if let Some((runtime, changes)) =
+            runtime.and_then(|runtime| runtime.changes.as_ref().map(|changes| (runtime, changes)))
+        {
             if Some(changes.validate(runtime)?) != generation {
                 return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
             }
@@ -573,13 +579,13 @@ impl Worker {
     fn spawn(
         host: &HostIdentity,
         callable: &HostIdentity,
-        runtime: &PackagedRuntimeIdentity,
+        runtime: Option<&PackagedRuntimeIdentity>,
     ) -> Result<Self, ScientificCpythonUnavailable> {
         let scratch = ScratchDirectory::create()?;
         let mut command = scientific_worker_command_with_script(
             host,
             callable,
-            Some(&runtime.site_packages),
+            runtime.map(|runtime| runtime.site_packages.as_path()),
             &scratch.path,
             &worker_script(),
         )?;
@@ -599,6 +605,9 @@ impl Worker {
         let mut child = command
             .spawn()
             .map_err(|_| ScientificCpythonUnavailable::SpawnFailed)?;
+        if super::performance_diagnostics_enabled() {
+            eprintln!("Studio performance worker_started pid={}", child.id());
+        }
         let (Some(stdin), Some(stdout), Some(mut stderr)) =
             (child.stdin.take(), child.stdout.take(), child.stderr.take())
         else {
@@ -720,11 +729,33 @@ impl Worker {
 }
 
 impl CpythonScientificJobExecutor {
+    fn interactive_generation(
+        &self,
+        host: &HostIdentity,
+        callable: &HostIdentity,
+        runtime: Option<&PackagedRuntimeIdentity>,
+    ) -> Result<Option<usize>, ScientificCpythonUnavailable> {
+        if let Some(runtime) = runtime {
+            if let Some(changes) = &runtime.changes {
+                return changes.validate(runtime).map(Some);
+            }
+            verify_identity(host)?;
+            verify_identity(callable)?;
+            verify_packaged_runtime_identity(runtime)?;
+        } else {
+            self.selected_library
+                .as_ref()
+                .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)?
+                .verify()?;
+        }
+        Ok(None)
+    }
+
     pub(super) fn run_interactive_request(
         &self,
         host: &HostIdentity,
         callable: &HostIdentity,
-        runtime: &PackagedRuntimeIdentity,
+        runtime: Option<&PackagedRuntimeIdentity>,
         input: &[u8],
         timeout: Duration,
     ) -> Result<Value, ScientificCpythonUnavailable> {
@@ -741,8 +772,7 @@ impl CpythonScientificJobExecutor {
             .ok_or(ScientificCpythonUnavailable::InvalidRequest)?;
         let start = Instant::now();
         let _admission = runtime
-            .changes
-            .as_ref()
+            .and_then(|runtime| runtime.changes.as_ref())
             .map(|changes| changes.foreground_prediction_read(&request, timeout))
             .transpose()?
             .flatten();
@@ -750,14 +780,7 @@ impl CpythonScientificJobExecutor {
             for slot in &self.warm_workers {
                 if let Ok(mut slot) = slot.try_lock() {
                     let result = (|| {
-                        let generation = if let Some(changes) = &runtime.changes {
-                            Some(changes.validate(runtime)?)
-                        } else {
-                            verify_identity(host)?;
-                            verify_identity(callable)?;
-                            verify_packaged_runtime_identity(runtime)?;
-                            None
-                        };
+                        let generation = self.interactive_generation(host, callable, runtime)?;
                         let expired = match slot.as_mut() {
                             Some(worker) => {
                                 worker.generation != generation
@@ -786,14 +809,9 @@ impl CpythonScientificJobExecutor {
                                 .expect("created worker")
                                 .exchange(input, remaining)?
                         };
-                        if let Some(changes) = &runtime.changes {
-                            if changes.validate(runtime)? != generation.unwrap_or_default() {
-                                // The response was produced across a runtime update.
-                                // Refuse it and discard the old imported modules.
-                                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                            }
-                        } else {
-                            verify_packaged_runtime_identity(runtime)?;
+                        if self.interactive_generation(host, callable, runtime)? != generation {
+                            // Refuse a response produced across an installation change.
+                            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
                         }
                         if output.len() > output_limit {
                             return Err(ScientificCpythonUnavailable::StdoutTooLarge);
@@ -884,6 +902,50 @@ mod tests {
             assert_eq!(response["pid"], pid);
         }
         assert_eq!(worker.completed, 20);
+    }
+
+    #[test]
+    fn executed_interactive_failure_is_not_replayed_and_discards_worker() {
+        let root = tempfile::tempdir().unwrap();
+        let site = root.path().join("site-packages");
+        std::fs::create_dir_all(site.join("nirs4all")).unwrap();
+        std::fs::create_dir_all(site.join("nirs4all-1.4.7.dist-info")).unwrap();
+        let callable_path = site.join("nirs4all/source.py");
+        std::fs::write(&callable_path, b"source").unwrap();
+        std::fs::write(site.join("nirs4all-1.4.7.dist-info/RECORD"), b"record").unwrap();
+        let host = super::super::host_identity_with_limit(
+            Path::new("/usr/bin/python3"),
+            super::super::MAX_SCIENTIFIC_CPYTHON_HOST_BYTES,
+        )
+        .unwrap();
+        let marker = root.path().join("executions");
+        let script = format!("import sys,json\nfor line in sys.stdin.buffer:\n with open({},'a') as f: f.write('executed\\n')\n sys.stdout.buffer.write((2).to_bytes(4,'little')+b'{{}}')\n sys.stdout.buffer.flush()\n", serde_json::to_string(marker.to_str().unwrap()).unwrap());
+        let mut executor = CpythonScientificJobExecutor::unavailable(
+            ScientificCpythonUnavailable::RequestResolverUnavailable,
+            root.path().join("config"),
+        );
+        executor.selected_library = Some(
+            super::super::selected_library_identity::SelectedLibraryIdentity::capture(&host, &site)
+                .unwrap(),
+        );
+        executor.warm_workers[0] = Mutex::new(Some(worker(&script)));
+        let callable = super::super::host_identity(&callable_path).unwrap();
+        let input = serde_json::json!({"schema":"nirs4all.studio-document-request.v1",
+            "job_id":"document-translation", "operation":"dataset.preview", "payload":{}})
+        .to_string();
+        assert_eq!(
+            executor.run_interactive_request(
+                &host,
+                &callable,
+                None,
+                input.as_bytes(),
+                Duration::from_secs(2)
+            ),
+            Err(ScientificCpythonUnavailable::MalformedResponse)
+        );
+        assert_eq!(std::fs::read_to_string(marker).unwrap(), "executed\n");
+        assert!(executor.warm_workers[0].lock().unwrap().is_none());
+        assert!(executor.warm_workers[1].lock().unwrap().is_none());
     }
 
     #[test]

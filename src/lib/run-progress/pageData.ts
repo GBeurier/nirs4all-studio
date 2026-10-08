@@ -36,9 +36,31 @@ export interface RunExecutionProgressDisplayData {
 }
 
 export interface BuildRunLogLinesInput {
-  run: Pick<Run, "datasets">;
+  run: Pick<Run, "datasets" | "error">;
   persistedLogs: readonly string[];
   streamingLogs: readonly string[];
+}
+
+/** A job can fail before the scientific library writes a stored run. */
+export function buildRunFromExecutionJobRecord(record: ExecutionJobRecord): Run {
+  const legacy = record.request.legacyConfig;
+  const config = legacy && typeof legacy === "object" && !Array.isArray(legacy)
+    ? legacy as Record<string, unknown> : record.request;
+  const ids = Array.isArray(config.dataset_ids) ? config.dataset_ids : [];
+  return {
+    id: record.run_id || record.job_id,
+    name: typeof config.name === "string" && config.name.trim()
+      ? config.name : record.run_name || record.job_id,
+    status: record.status === "pending" ? "queued"
+      : record.status === "cancelled" ? "failed"
+      : record.status as RunStatus,
+    created_at: record.created_at,
+    started_at: record.started_at ?? undefined,
+    completed_at: record.completed_at ?? undefined,
+    error: record.error,
+    datasets: ids.filter((id): id is string => typeof id === "string")
+      .map((id) => ({ dataset_id: id, dataset_name: id, pipelines: [] })),
+  };
 }
 
 const LEGACY_RUN_STATUS_MESSAGES: Record<RunStatus, string> = {
@@ -144,6 +166,7 @@ export function buildRunLogLines({
   );
 
   return [...new Set([
+    ...(run.error ? [`[ERROR] ${run.error}`] : []),
     ...buildRunDerivedLogs(run),
     ...persistedLogs,
     ...runtimeLogs,

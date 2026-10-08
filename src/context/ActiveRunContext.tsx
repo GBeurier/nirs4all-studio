@@ -19,7 +19,10 @@ import {
   ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getActiveRuns } from "@/api/runs";
+import { Link } from "react-router-dom";
+import { getActiveRuns, getWorkspaceExecutionJobRecord } from "@/api/runs";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { RunStatus } from "@/types/runs";
 import {
   ActiveRunContext,
@@ -50,9 +53,19 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const wsConnectionsRef = useRef<Map<string, WebSocket | null>>(new Map());
+  const notifiedFailures = useRef(new Set<string>());
+  const resolvingRuns = useRef(new Set<string>());
+  const [failures, setFailures] = useState<Array<{ runId: string; runName: string; error: string }>>([]);
+  const reportFailure = useCallback((runId: string, runName: string, error?: string | null) => {
+    if (error === "Cancelled" || notifiedFailures.current.has(runId)) return;
+    notifiedFailures.current.add(runId);
+    setFailures((previous) => [...previous, {
+      runId, runName, error: error?.trim() || "The run failed without an error description from the backend.",
+    }]);
+  }, []);
 
   // Fetch active runs periodically
-  const { data: activeRunsData, refetch: refreshActiveRuns } = useQuery({
+  const { data: activeRunsData, dataUpdatedAt: activeRunsUpdatedAt, refetch: refreshActiveRuns } = useQuery({
     queryKey: ["activeRuns"],
     queryFn: getActiveRuns,
     refetchInterval: 3000, // Poll every 3 seconds
@@ -91,6 +104,9 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
           try {
             const message: WsMessage = JSON.parse(event.data);
             if (message.channel === `job:${runId}`) {
+              if (message.type === "job_failed") {
+                reportFailure(runId, _runName, message.data?.error);
+              }
               setRunProgressMap((prev) => {
                 const existing = prev.get(runId);
                 if (!existing) return prev;
@@ -119,6 +135,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
                   newState.progress = 100;
                 } else if (message.type === "job_failed") {
                   newState.status = "failed";
+                  newState.message = message.data?.error || "Run failed";
                 }
 
                 if (newState.progress === existing.progress
@@ -152,7 +169,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       wsConnectionsRef.current.delete(runId);
     });
-  }, []);
+  }, [reportFailure]);
 
   // Cleanup WebSocket for completed/failed runs
   const disconnectFromRun = useCallback((runId: string) => {
@@ -211,16 +228,6 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       for (const [runId, state] of updated) {
         if (!activeRunIds.has(runId)) {
           // Run is no longer in active list - it has completed or failed
-          if (state.status === "running" || state.status === "queued") {
-            // Update status to completed (or failed via WebSocket)
-            updated.set(runId, {
-              ...state,
-              status: "completed",
-              progress: 100,
-              updatedAt: Date.now(),
-            });
-          }
-
           // Remove from map after 5 seconds (allow brief display of completion)
           const elapsed = Date.now() - state.updatedAt;
           if (elapsed > 5000 && state.status !== "running" && state.status !== "queued") {
@@ -235,6 +242,38 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
         ? prev : updated;
     });
   }, [activeRunsData, connectToRun, disconnectFromRun]);
+
+  // An absent active run can have failed before the WebSocket subscribed.
+  // Read its authoritative terminal status instead of assuming success.
+  useEffect(() => {
+    if (!activeRunsData?.runs) return;
+    const activeIds = new Set(activeRunsData.runs.map((run) => run.id));
+    for (const [runId, state] of runProgressMap) {
+      if (activeIds.has(runId) || resolvingRuns.current.has(runId)
+          || (state.status !== "running" && state.status !== "queued")) continue;
+      resolvingRuns.current.add(runId);
+      void getWorkspaceExecutionJobRecord(runId).then((record) => {
+        if (!["completed", "failed", "cancelled"].includes(record.status)) return;
+        const status = record.status === "completed" ? "completed" : "failed";
+        if (record.status === "failed") {
+          reportFailure(runId, state.runName || record.run_name, record.error);
+        }
+        setRunProgressMap((previous) => {
+          const existing = previous.get(runId);
+          if (!existing || (existing.status !== "running" && existing.status !== "queued")) return previous;
+          const updated = new Map(previous);
+          updated.set(runId, {
+            ...existing, status,
+            progress: status === "completed" ? 100 : existing.progress,
+            message: record.error || existing.message, updatedAt: Date.now(),
+          });
+          return updated;
+        });
+      }).catch(() => {
+        // Retry on the next active-run poll; a read failure is not success.
+      }).finally(() => resolvingRuns.current.delete(runId));
+    }
+  }, [activeRunsData, activeRunsUpdatedAt, runProgressMap, reportFailure]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -280,6 +319,21 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   return (
     <ActiveRunContext.Provider value={value}>
       {children}
+      <Dialog open={failures.length > 0} onOpenChange={(open) => {
+        if (!open) setFailures((previous) => previous.slice(1));
+      }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Run failed: {failures[0]?.runName}</DialogTitle>
+            <DialogDescription>The execution stopped. The backend reported the following error.</DialogDescription>
+          </DialogHeader>
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-sm">{failures[0]?.error}</pre>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFailures((previous) => previous.slice(1))}>Close</Button>
+            <Button asChild><Link to={`/runs/${encodeURIComponent(failures[0]?.runId || "")}`} onClick={() => setFailures((previous) => previous.slice(1))}>View run details</Link></Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ActiveRunContext.Provider>
   );
 }

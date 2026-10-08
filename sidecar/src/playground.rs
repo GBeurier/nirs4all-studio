@@ -15,7 +15,7 @@ use std::{
 
 const REQUEST_SCHEMA: &str = "nirs4all.studio-playground-job.v1";
 const RESPONSE_SCHEMA: &str = "nirs4all.studio-playground-result.v1";
-const MAX_REQUEST_BYTES: usize = 8 * 1024 * 1024;
+pub const MAX_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 
 pub fn owns_path(path: &str) -> bool {
     matches!(
@@ -54,11 +54,130 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
                         message: "Attested Playground library host unavailable".into(),
                     })
                 },
-                |host| host.invoke_library_facade(document),
+                |host| {
+                    if document["operation"] != "execute"
+                        || !cacheable_execution(&document["payload"])
+                    {
+                        return host.invoke_library_facade(document);
+                    }
+                    invoke_cached_execution(
+                        host.dataset_cache_scope(),
+                        document,
+                        &|document| host.invoke_library_facade(document),
+                        &|| {
+                            if host.library_facades_available() {
+                                Ok(())
+                            } else {
+                                Err(LibraryFacadeError {
+                                    code: "host_unavailable".into(),
+                                    message: "Attested Playground library host unavailable".into(),
+                                })
+                            }
+                        },
+                    )
+                },
             )
         },
         &|operation, payload| adapt_dataset_document(host.as_deref(), operation, payload),
     ))
+}
+
+fn invoke_cached_execution(
+    scope: u64,
+    document: &Value,
+    invoke: &impl Fn(&Value) -> Result<Value, LibraryFacadeError>,
+    validate_hit: &impl Fn() -> Result<(), LibraryFacadeError>,
+) -> Result<Value, LibraryFacadeError> {
+    if !cacheable_execution(&document["payload"]) {
+        return invoke(document);
+    }
+    let failure = std::cell::RefCell::new(None);
+    let mut used = true;
+    // Cache only validated result bodies, never request-specific envelopes.
+    let mut result = crate::dataset_inspection::cache::invoke_with_validation(
+        scope,
+        "playground.execute",
+        &document["payload"],
+        || {
+            used = false;
+            let response = invoke(document).map_err(|error| {
+                let message = error.message.clone();
+                *failure.borrow_mut() = Some(error);
+                message
+            })?;
+            project_response(
+                &response,
+                document["request_id"].as_str().unwrap_or(""),
+                "execute",
+                Projection::Result,
+            )
+        },
+        || {
+            validate_hit().map_err(|error| {
+                let message = error.message.clone();
+                *failure.borrow_mut() = Some(error);
+                message
+            })
+        },
+    )
+    .map_err(|message| {
+        failure.into_inner().unwrap_or_else(|| LibraryFacadeError {
+            code: "invalid_playground_response".into(),
+            message,
+        })
+    })?;
+    if result.is_object() {
+        result["cache"] = json!({"used":used,"scope":"studio_session"});
+    }
+    Ok(
+        json!({"schema":RESPONSE_SCHEMA,"operation":"execute", "request_id":document["request_id"], "result":result}),
+    )
+}
+
+fn cacheable_execution(payload: &Value) -> bool {
+    if payload["options"]["use_cache"] == false {
+        return false;
+    }
+    // The SDK does not yet declare operator determinism. Be conservative:
+    // reuse only known deterministic transformations and raw-data responses.
+    // Unknown/custom operators, splitters and augmentations always execute.
+    payload["steps"].as_array().is_some_and(|steps| {
+        steps.iter().all(|step| {
+            if step["enabled"] == false {
+                return true;
+            }
+            if step["type"] == "filter" && step["name"] == "SampleIndexFilter" {
+                return true;
+            }
+            step["type"] == "preprocessing"
+                && matches!(
+                    step["operator"]["class"].as_str(),
+                    Some(
+                        "nirs4all.operators.transforms.nirs.SavitzkyGolay"
+                            | "nirs4all.operators.transforms.scalers.StandardNormalVariate"
+                            | "nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection"
+                            | "nirs4all.operators.transforms.signal.Detrend"
+                            | "sklearn.preprocessing.StandardScaler"
+                            | "sklearn.preprocessing._data.StandardScaler"
+                            | "sklearn.preprocessing.MinMaxScaler"
+                            | "sklearn.preprocessing._data.MinMaxScaler"
+                            | "sklearn.preprocessing.RobustScaler"
+                            | "sklearn.preprocessing._data.RobustScaler"
+                            | "sklearn.preprocessing.MaxAbsScaler"
+                            | "sklearn.preprocessing._data.MaxAbsScaler"
+                            | "sklearn.preprocessing.Normalizer"
+                            | "sklearn.preprocessing._data.Normalizer"
+                            | "sklearn.preprocessing.PowerTransformer"
+                            | "sklearn.preprocessing._data.PowerTransformer"
+                    )
+                )
+        })
+    }) && payload["options"]["compute_umap"] != true
+        && payload["sampling"]["method"].as_str().is_none_or(|method| {
+            method == "all"
+                || (matches!(method, "random" | "stratified" | "kmeans")
+                    && payload["sampling"]["seed"].is_u64())
+        })
 }
 
 fn dispatch(
@@ -286,10 +405,22 @@ pub fn adapt_dataset_document(
     payload: &Value,
 ) -> Result<Value, (u16, String)> {
     let host = host
-        .filter(|host| host.library_facades_available())
+        .filter(|host| host.library_facades_available_background())
         .ok_or_else(|| (503, "Attested dataset document adapter unavailable".into()))?;
-    host.adapt_document(operation, payload)
-        .map_err(|_| (400, "Linked dataset config translation failed".into()))
+    crate::dataset_inspection::cache::adapt(
+        host.dataset_cache_scope(),
+        operation,
+        payload,
+        || host.adapt_document(operation, payload),
+        || {
+            if host.library_facades_available() {
+                Ok(())
+            } else {
+                Err("Attested dataset document adapter unavailable".into())
+            }
+        },
+    )
+    .map_err(|_| (400, "Linked dataset config translation failed".into()))
 }
 
 fn translated_dataset_config(
@@ -365,7 +496,7 @@ fn project_response(
             "nirs4all_available":true,
             "features":{"pca":true,"umap":false,"filters":true,"preprocessing":true,"splitting":true,"augmentation":true},
             "stateless":result["stateless"],
-            "cache":result["cache"],
+            "cache":true,
         }));
     }
     Ok(result)
@@ -381,6 +512,7 @@ fn request_id() -> Result<String, (u16, String)> {
 
 fn facade_error_status(code: &str) -> u16 {
     match code {
+        "invalid_playground_response" => 500,
         "host_unavailable" | "runtime_contract_tampered" | "python_host_spawn_failed" => 503,
         "request_too_large" | "response_too_large" | "resource_limit" => 413,
         _ => 400,
@@ -394,6 +526,109 @@ fn error(status: u16, detail: &str) -> HttpResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn cached_execution_preserves_values_and_uses_current_request_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let x = root.path().join("X.csv");
+        let y = root.path().join("Y.csv");
+        std::fs::write(&x, "1;2\n3;4\n").unwrap();
+        std::fs::write(&y, "5\n6\n").unwrap();
+        let mut document = json!({"schema":REQUEST_SCHEMA,"operation":"execute","request_id":"first",
+            "payload":{"dataset":{"config":{"train_x":x,"train_y":y}},"steps":[],
+            "selection":{"partition":"all","source_index":0,"target_index":0},"options":{"use_cache":true}}});
+        let calls = Cell::new(0);
+        let invoke = |request: &Value| {
+            calls.set(calls.get() + 1);
+            Ok(
+                json!({"schema":RESPONSE_SCHEMA,"operation":"execute","request_id":request["request_id"],
+                "result":{"success":true,"original":{"spectra":[[1,2],[3,4]],"y":[5,6],
+                    "sample_ids":["a","b"],"metadata":{"batch":["B","A"]}},
+                    "source_partitions":{"has_test":true,"n_train":1,"n_test":1}}}),
+            )
+        };
+        let first = invoke_cached_execution(800, &document, &invoke, &|| Ok(())).unwrap();
+        document["request_id"] = json!("second");
+        let second = invoke_cached_execution(800, &document, &invoke, &|| Ok(())).unwrap();
+        assert_eq!(calls.get(), 1);
+        assert_eq!(second["request_id"], "second");
+        assert_eq!(first["result"]["original"], second["result"]["original"]);
+        assert_eq!(
+            first["result"]["source_partitions"],
+            second["result"]["source_partitions"]
+        );
+        assert_eq!(first["result"]["cache"]["used"], false);
+        assert_eq!(second["result"]["cache"]["used"], true);
+        std::fs::write(&y, "7\n8\n").unwrap();
+        invoke_cached_execution(800, &document, &invoke, &|| Ok(())).unwrap();
+        assert_eq!(calls.get(), 2);
+        document["payload"]["options"]["use_cache"] = json!(false);
+        invoke_cached_execution(800, &document, &invoke, &|| Ok(())).unwrap();
+        invoke_cached_execution(800, &document, &invoke, &|| Ok(())).unwrap();
+        assert_eq!(
+            calls.get(),
+            4,
+            "use_cache=false must bypass the session cache"
+        );
+    }
+
+    #[test]
+    fn cache_refuses_random_unknown_operators_and_keys_complete_inline_inputs() {
+        let mut document = json!({"schema":REQUEST_SCHEMA,"operation":"execute","request_id":"inline",
+            "payload":{"data":{"x":[[1,2],[3,4],[5,6]],"y":[7,8,9],"metadata":{"group":["A","B","C"]}},
+                "steps":[],"options":{"use_cache":true}}});
+        let calls = Cell::new(0);
+        let invoke = |request: &Value| {
+            calls.set(calls.get() + 1);
+            Ok(
+                json!({"schema":RESPONSE_SCHEMA,"operation":"execute","request_id":request["request_id"],"result":{"success":true}}),
+            )
+        };
+        invoke_cached_execution(801, &document, &invoke, &|| Ok(())).unwrap();
+        document["payload"]["data"]["x"][1][0] = json!(100);
+        invoke_cached_execution(801, &document, &invoke, &|| Ok(())).unwrap();
+        document["payload"]["data"]["metadata"]["group"][1] = json!("D");
+        invoke_cached_execution(801, &document, &invoke, &|| Ok(())).unwrap();
+        assert_eq!(calls.get(), 3);
+        for step in [
+            json!({"type":"augmentation","name":"GaussianAdditiveNoise","operator":{"class":"nirs4all.operators.augmentation.GaussianAdditiveNoise"}}),
+            json!({"type":"preprocessing","name":"SavitzkyGolay","operator":{"class":"custom.SavitzkyGolay"}}),
+            json!({"type":"splitting","name":"ShuffleSplit","operator":{"class":"sklearn.model_selection.ShuffleSplit"}}),
+        ] {
+            document["payload"]["steps"] = json!([step]);
+            assert!(!cacheable_execution(&document["payload"]));
+            invoke_cached_execution(801, &document, &invoke, &|| Ok(())).unwrap();
+            invoke_cached_execution(801, &document, &invoke, &|| Ok(())).unwrap();
+        }
+        assert_eq!(calls.get(), 9);
+        document["payload"]["steps"] = json!([{"type":"preprocessing","operator":{"class":"nirs4all.operators.transforms.nirs.SavitzkyGolay"}}]);
+        assert!(cacheable_execution(&document["payload"]));
+        document["payload"]["options"]["compute_umap"] = json!(true);
+        assert!(!cacheable_execution(&document["payload"]));
+    }
+
+    #[test]
+    fn cache_retains_facade_errors_and_rejects_mismatched_identity() {
+        let document = json!({"schema":REQUEST_SCHEMA,"operation":"execute","request_id":"expected",
+            "payload":{"data":{"x":[[1]]},"steps":[]}});
+        let failure = invoke_cached_execution(
+            802,
+            &document,
+            &|_| {
+                Err(LibraryFacadeError {
+                    code: "host_unavailable".into(),
+                    message: "Host stopped".into(),
+                })
+            },
+            &|| Ok(()),
+        )
+        .unwrap_err();
+        assert_eq!(failure.code, "host_unavailable");
+        assert!(invoke_cached_execution(802, &document, &|_| Ok(json!({
+            "schema":RESPONSE_SCHEMA,"operation":"execute","request_id":"other","result":{"success":true}
+        })), &|| Ok(())).is_err());
+    }
     use std::{
         collections::BTreeMap,
         sync::atomic::{AtomicUsize, Ordering},

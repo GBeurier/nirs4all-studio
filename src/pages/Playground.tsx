@@ -190,8 +190,8 @@ export default function Playground() {
     },
     datasetId: currentDatasetInfo?.datasetId,
     datasetPartition: currentDatasetInfo?.partition,
-    datasetSourceIndex: currentDatasetInfo ? selectedSourceIndex : null,
-    datasetTargetIndex: currentDatasetInfo ? selectedTargetIndex : null,
+    datasetSourceIndex: currentDatasetInfo?.sourceIndex,
+    datasetTargetIndex: currentDatasetInfo?.targetIndex,
     executeOptions: visibilityExecuteOptions,
   });
 

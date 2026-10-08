@@ -17,6 +17,17 @@ import type {
 import type { SpectralData, SampleMetadata } from '@/types/spectral';
 import { getSampleIdsFromMetadata } from '@/lib/playground/repetition';
 
+let loadedDatasetResults = new WeakMap<SpectralData, ExecuteResponse>();
+
+export function invalidateLoadedWorkspaceDatasetResults(): void {
+  loadedDatasetResults = new WeakMap();
+}
+
+/** Reuse the initial raw-data execution when the playground mounts its query. */
+export function getLoadedWorkspaceDatasetResult(data: SpectralData): ExecuteResponse | undefined {
+  return loadedDatasetResults.get(data);
+}
+
 /**
  * Response from the /api/spectra/{dataset_id} endpoint
  */
@@ -199,6 +210,7 @@ export function buildExecuteRequest(params: {
   steps: PlaygroundStep[];
   samplingMethod?: 'random' | 'stratified' | 'kmeans' | 'all';
   maxSamples?: number;
+  samplingSeed?: number;
   computePca?: boolean;
   computeUmap?: boolean;
   umapParams?: {
@@ -245,7 +257,7 @@ export function buildExecuteRequest(params: {
     sampling: params.samplingMethod !== 'all' ? {
       method: params.samplingMethod || 'random',
       n_samples: params.maxSamples || 100,
-      seed: 42,
+      seed: params.samplingSeed ?? 42,
     } : undefined,
     options: {
       compute_pca: params.computePca ?? true,
@@ -377,6 +389,7 @@ export async function loadWorkspaceDataset(
   options: {
     sourceIndex?: number | null;
     targetIndex?: number | null;
+    signal?: AbortSignal;
   } = {},
 ): Promise<SpectralData> {
   const response = await executeDatasetPlayground({
@@ -386,23 +399,21 @@ export async function loadWorkspaceDataset(
     target_index: options.targetIndex ?? undefined,
     steps: [],
     options: {
-      compute_pca: false,
+      compute_pca: true,
       compute_umap: false,
-      compute_statistics: false,
+      compute_statistics: true,
       compute_repetitions: false,
-      use_cache: false,
+      use_cache: true,
     },
-  });
+  }, options.signal);
   const original = response.original;
 
   const wavelengths = original.wavelengths.length > 0
     ? original.wavelengths
     : Array.from({ length: original.shape[1] ?? 0 }, (_, index) => index);
 
-  // Use actual Y values from dataset if available, otherwise use indices as fallback
-  const y = original.y && original.y.length > 0
-    ? original.y
-    : original.spectra.map((_, i) => i);
+  // An unlabeled dataset must stay unlabeled, including subsequent execution.
+  const y = original.y ?? [];
 
   // Convert column-oriented metadata to SampleMetadata[] format
   let metadata: SampleMetadata[] | undefined;
@@ -429,13 +440,14 @@ export async function loadWorkspaceDataset(
     ?? getSampleIdsFromMetadata(metadata)
     ?? original.spectra.map((_, i) => `${datasetName || datasetId}_${i + 1}`);
 
-  return {
+  const data: SpectralData = {
     wavelengths,
     spectra: original.spectra,
     y,
     sampleIds,
     metadata,
     repetitionColumn: null,
+    sourcePartitions: response.source_partitions,
     // Propagate the unit detected by nirs4all so spectra charts can label the
     // X axis with the correct quantity ("Wavelength (nm)" vs "Wavenumber
     // (cm⁻¹)") instead of hardcoding "nm". The backend returns "unknown" when
@@ -445,6 +457,8 @@ export async function loadWorkspaceDataset(
         ? original.header_unit
         : undefined,
   };
+  loadedDatasetResults.set(data, response);
+  return data;
 }
 
 // ============= Difference Computation Types & Functions =============

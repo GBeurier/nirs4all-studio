@@ -62,8 +62,8 @@ export function summarizeCampaignPlan(campaign: CampaignSpec): CampaignPlanSumma
 }
 
 export function getCampaignPlanModeLabel(mode: CampaignPlanMode): string {
-  if (mode === "legacy_cartesian") return "Legacy cartesian";
-  if (mode === "paired_by_index") return "Paired by index";
+  if (mode === "legacy_cartesian") return "All combinations";
+  if (mode === "paired_by_index") return "Selected combinations";
   return mode;
 }
 
@@ -77,25 +77,25 @@ const campaignPairingModeReadModels: Record<CampaignPairingModeKind, CampaignPai
   single_pair: {
     kind: "single_pair",
     label: "One dataset / one pipeline",
-    strictPairingLabel: "Strict one-pair ready",
+    strictPairingLabel: "One analysis ready",
     isStrictPairingReady: true,
   },
   strict_pairs: {
     kind: "strict_pairs",
     label: "Explicit dataset/pipeline pairs",
-    strictPairingLabel: "Strict pairs ready",
+    strictPairingLabel: "Selected analyses ready",
     isStrictPairingReady: true,
   },
   cartesian_matrix: {
     kind: "cartesian_matrix",
     label: "All dataset/pipeline pairs",
-    strictPairingLabel: "Implicit all-pairs",
+    strictPairingLabel: "All combinations",
     isStrictPairingReady: false,
   },
   explicit_matrix: {
     kind: "explicit_matrix",
-    label: "Explicit run matrix",
-    strictPairingLabel: "Needs strict pair previews",
+    label: "Selected analyses",
+    strictPairingLabel: "Review each combination",
     isStrictPairingReady: false,
   },
 };
@@ -111,22 +111,22 @@ const campaignStrictOnePairReadinessReadModels: Record<
   },
   single_pair: {
     status: "ready",
-    label: "Strict one-pair ready",
+    label: "One analysis ready",
     isReady: true,
   },
   strict_pairs: {
     status: "not_ready",
-    label: "Multiple strict pairs",
+    label: "Several selected analyses",
     isReady: false,
   },
   cartesian_matrix: {
     status: "not_ready",
-    label: "Implicit all-pairs",
+    label: "All combinations",
     isReady: false,
   },
   explicit_matrix: {
     status: "not_ready",
-    label: "Needs one-pair selection",
+    label: "Select one combination",
     isReady: false,
   },
 };

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { SpectralData } from '@/types/spectral';
 import { loadWorkspaceDataset } from '@/api/playground';
 import { formatApiErrorDetail } from '@/api/transport';
@@ -29,8 +29,13 @@ export function useSpectralData() {
   // Track the source of the current data
   const [dataSource, setDataSource] = useState<'workspace' | 'demo' | null>(null);
   const [currentDatasetInfo, setCurrentDatasetInfo] = useState<WorkspaceDatasetInfo | null>(null);
+  const pendingLoad = useRef<AbortController | null>(null);
+  useEffect(() => () => pendingLoad.current?.abort(), []);
 
   const loadDemoData = useCallback(() => {
+    pendingLoad.current?.abort();
+    pendingLoad.current = null;
+    setIsLoading(false);
     setRawData(createSyntheticSpectralData());
     setDataSource('demo');
     setCurrentDatasetInfo(null);
@@ -44,14 +49,20 @@ export function useSpectralData() {
     datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples' | 'schemaRef'>,
     options: LoadWorkspaceDatasetOptions = {},
   ) => {
+    pendingLoad.current?.abort();
+    const controller = new AbortController();
+    pendingLoad.current = controller;
     setIsLoading(true);
     setError(null);
+    setRawData(null);
 
     try {
       const data = await loadWorkspaceDataset(datasetId, datasetName, partition, {
         sourceIndex: options.sourceIndex,
         targetIndex: options.targetIndex,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted || pendingLoad.current !== controller) return;
       setRawData(data);
       setDataSource('workspace');
       setCurrentDatasetInfo({
@@ -65,16 +76,23 @@ export function useSpectralData() {
         targetIndex: options.targetIndex,
       });
     } catch (err) {
+      if (controller.signal.aborted || pendingLoad.current !== controller) return;
       setError(err instanceof Error ? err.message : formatApiErrorDetail((err as { detail?: unknown }).detail));
       setRawData(null);
       setDataSource(null);
       setCurrentDatasetInfo(null);
     } finally {
-      setIsLoading(false);
+      if (pendingLoad.current === controller) {
+        pendingLoad.current = null;
+        setIsLoading(false);
+      }
     }
   }, []);
 
   const clearData = useCallback(() => {
+    pendingLoad.current?.abort();
+    pendingLoad.current = null;
+    setIsLoading(false);
     setRawData(null);
     setError(null);
     setDataSource(null);

@@ -38,12 +38,24 @@ def normalize_pipeline(document: dict[str, Any]) -> dict[str, Any]:
     )
     validate_studio_pipeline_config(payload["pipeline"])
     validation = validate_canonical(payload)
-    return {
+    result = {
         "steps": normalized,
         "payload": payload,
         "runtime_pipeline": editor_steps_to_runtime_canonical(normalized),
         "validation": validation,
     }
+    if document.get("scientific_run") is True:
+        from nirs4all.api.studio_scientific import StudioScientificJobError
+        from nirs4all.api.studio_scientific_general import _preflight_optional_product_operators
+
+        # Reuse the library's execution check before Rust admits a job. Editing
+        # and importing optional model presets remain independent of installation.
+        try:
+            _preflight_optional_product_operators(result["runtime_pipeline"])
+            result["execution_validation"] = {"valid": True}
+        except StudioScientificJobError as error:
+            result["execution_validation"] = {"valid": False, "code": error.code, "message": str(error)}
+    return result
 
 
 def import_pipeline(document: dict[str, Any]) -> dict[str, Any]:
@@ -169,6 +181,8 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         raise ValueError("Document must be a JSON object")
     if isinstance(document.get("workspace_path"), str):
         document = {**document, "workspace_path": plain_windows_path(document["workspace_path"])}
+    if operation == "runs.delete":
+        return delete_stored_run(document)
     if operation in {"playground.operators", "playground.presets", "spectra.data", "spectra.stats"}:
         from .library_playground_views import playground_view
 
@@ -210,11 +224,20 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         for item in requests:
             if not isinstance(item, dict) or set(item) != {"operation", "payload"}:
                 raise ValueError("Invalid document batch member")
-            if item["operation"] not in {"dataset.configure", "pipeline.normalize"} or not isinstance(item["payload"], dict):
-                raise ValueError("Document batch only supports normalization")
+            if item["operation"] not in {"dataset.configure", "pipeline.normalize", "pipeline.import"} or not isinstance(item["payload"], dict):
+                raise ValueError("Document batch only supports normalization and pipeline import")
             if len(json.dumps(item["payload"], allow_nan=False).encode("utf-8")) > 2 * 1024 * 1024:
                 raise ValueError("Document batch member exceeds 2 MiB")
-        return [adapt_document(item["operation"], item["payload"]) for item in requests]
+        results = []
+        for item in requests:
+            try:
+                results.append(adapt_document(item["operation"], item["payload"]))
+            except Exception as error:
+                # History browsing skips unsupported templates; launch normalization remains strict.
+                if item["operation"] != "pipeline.import":
+                    raise
+                results.append({"success": False, "error": str(error)})
+        return results
     operations = {
         "pipeline.normalize": normalize_pipeline,
         "pipeline.import": import_pipeline,
@@ -224,3 +247,26 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
     if operation not in operations:
         raise ValueError(f"Unknown document operation: {operation}")
     return operations[operation](document)
+
+
+def delete_stored_run(document: dict[str, Any]) -> dict[str, Any]:
+    """Delegate run deletion, including partial results, to the storage owner."""
+    from nirs4all.pipeline.storage import WorkspaceStore
+
+    if set(document) != {"workspace_path", "run_id"}:
+        raise ValueError("Run deletion requires a workspace path and run ID")
+    workspace = Path(document["workspace_path"])
+    run_id = document["run_id"]
+    if not isinstance(run_id, str) or not run_id:
+        raise ValueError("Run ID must be a non-empty string")
+    # Opening a writable store must not create a database for an unknown run.
+    if not (workspace / "store.sqlite").is_file():
+        return {"success": False, "reason": "run_not_found"}
+    with WorkspaceStore(workspace) as store:
+        run = store.get_run(run_id)
+        if run is None:
+            return {"success": False, "reason": "run_not_found"}
+        if run.get("status") in {"running", "queued", "pending"}:
+            return {"success": False, "reason": "run_active"}
+        deleted_rows = store.delete_run(run_id, delete_artifacts=True)
+    return {"success": True, "deleted_rows": deleted_rows, "run_id": run_id}

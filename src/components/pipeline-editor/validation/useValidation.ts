@@ -111,7 +111,7 @@ export function useValidation(
 
   // State
   const [result, setResult] = useState<PipelineValidationResult>(
-    createEmptyValidationResult()
+    createEmptyValidationResult
   );
   const [isValidating, setIsValidating] = useState(false);
   const [isStale, setIsStale] = useState(true);
@@ -120,19 +120,32 @@ export function useValidation(
   );
 
   // Refs for debouncing
+  const stepsSignature = useMemo(() => JSON.stringify(steps), [steps]);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastStepsRef = useRef<string>("");
+  const lastStepsRef = useRef<string>(validateOnMount ? stepsSignature : "");
+  const pendingValidationRef = useRef<(() => void) | null>(null);
+  const validationRevision = useRef(0);
   const callbackRef = useRef(onValidationComplete);
 
   // Update callback ref
   callbackRef.current = onValidationComplete;
 
+  const cancelScheduledValidation = useCallback(() => {
+    validationRevision.current += 1;
+    pendingValidationRef.current?.();
+    pendingValidationRef.current = null;
+  }, []);
+
   // Perform validation
   const performValidation = useCallback(() => {
+    cancelScheduledValidation();
+    const revision = validationRevision.current;
     setIsValidating(true);
 
     // Use requestIdleCallback or setTimeout for non-blocking validation
     const runValidation = () => {
+      if (revision !== validationRevision.current) return;
+      pendingValidationRef.current = null;
       const validationResult = validate(steps, {
         strictMode,
         disabledRules: Array.from(disabledRules),
@@ -148,15 +161,18 @@ export function useValidation(
     };
 
     // Use requestIdleCallback if available for better performance
-    if ("requestIdleCallback" in window) {
-      (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(runValidation);
+    if (typeof window.requestIdleCallback === "function") {
+      const callbackId = window.requestIdleCallback(runValidation);
+      pendingValidationRef.current = () => window.cancelIdleCallback?.(callbackId);
     } else {
-      setTimeout(runValidation, 0);
+      const timer = setTimeout(runValidation, 0);
+      pendingValidationRef.current = () => clearTimeout(timer);
     }
-  }, [steps, strictMode, disabledRules, selectedStepId]);
+  }, [steps, strictMode, disabledRules, selectedStepId, cancelScheduledValidation]);
 
   // Debounced validation trigger
   const validateDebounced = useCallback(() => {
+    cancelScheduledValidation();
     // Clear existing timer
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -175,7 +191,7 @@ export function useValidation(
     debounceTimerRef.current = setTimeout(() => {
       performValidation();
     }, effectiveDebounce);
-  }, [debounceMs, performValidation]);
+  }, [debounceMs, performValidation, cancelScheduledValidation]);
 
   // Immediate validation (no debounce)
   const validateNow = useCallback(() => {
@@ -187,13 +203,14 @@ export function useValidation(
 
   // Clear validation
   const clearValidation = useCallback(() => {
+    cancelScheduledValidation();
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
     setResult(createEmptyValidationResult());
     setIsStale(true);
     setIsValidating(false);
-  }, []);
+  }, [cancelScheduledValidation]);
 
   // Effect: Validate on mount
   useEffect(() => {
@@ -208,23 +225,23 @@ export function useValidation(
     if (!validateOnChange) return;
 
     // Create a stable representation of steps to detect changes
-    const stepsJson = JSON.stringify(steps);
-    if (stepsJson === lastStepsRef.current) {
+    if (stepsSignature === lastStepsRef.current) {
       return;
     }
-    lastStepsRef.current = stepsJson;
+    lastStepsRef.current = stepsSignature;
 
     validateDebounced();
-  }, [steps, validateOnChange, validateDebounced]);
+  }, [stepsSignature, validateOnChange, validateDebounced]);
 
   // Cleanup
   useEffect(() => {
     return () => {
+      cancelScheduledValidation();
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, []);
+  }, [cancelScheduledValidation]);
 
   // Get issues for a step
   const getStepIssuesCallback = useCallback(

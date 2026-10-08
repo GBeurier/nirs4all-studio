@@ -179,6 +179,7 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
             | "results.arrays"
             | "results.page"
             | "results.summary"
+            | "runs.delete"
             | "predictions.catalogue"
             | "predictions.run"
             | "predictions.file"
@@ -200,13 +201,15 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
                 member.as_object().is_none_or(|object| object.len() != 2)
                     || !matches!(
                         member["operation"].as_str(),
-                        Some("pipeline.normalize" | "dataset.configure")
+                        Some("pipeline.normalize" | "dataset.configure" | "pipeline.import")
                     )
                     || !member["payload"].is_object()
                     || member["payload"].to_string().len() > MAX_DOCUMENT_BYTES
             })
         {
-            return Err("Document batch must contain only bounded normalization requests".into());
+            return Err(
+                "Document batch must contain only bounded normalization or import requests".into(),
+            );
         }
     }
     Ok(
@@ -327,10 +330,15 @@ mod tests {
             &json!({"requests":[{"operation":"pipeline.normalize","payload":{"steps":[]}}]})
         )
         .is_ok());
+        assert!(request(
+            "documents.batch",
+            &json!({"requests":[{"operation":"pipeline.import","payload":{"payload":[]}}]})
+        )
+        .is_ok());
         for payload in [
             json!({"requests":[]}),
             json!({"requests":[{"operation":"documents.batch","payload":{}}]}),
-            json!({"requests":[{"operation":"pipeline.import","payload":{}}]}),
+            json!({"requests":[{"operation":"pipeline.render","payload":{}}]}),
         ] {
             assert!(request("documents.batch", &payload).is_err());
         }

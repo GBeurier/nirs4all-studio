@@ -43,31 +43,17 @@ export interface UseNewExperimentFilteredInputsResult {
   filteredPipelines: ExperimentPipelineOption[];
 }
 
-function stablePipelineStepsKey(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(stablePipelineStepsKey).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stablePipelineStepsKey(record[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "undefined";
-}
-
 export function mergeExperimentPipelineSources(
   savedPipelines: PipelineInfo[],
   historicalPipelines: PipelineInfo[],
 ): PipelineInfo[] {
   const merged = [...savedPipelines];
-  const seenSteps = new Set(savedPipelines.map((pipeline) => stablePipelineStepsKey(pipeline.steps)));
+  // Route selections refer to identities, even when two pipelines have the same steps.
+  const seenIds = new Set(savedPipelines.map((pipeline) => pipeline.id));
 
   for (const pipeline of historicalPipelines) {
-    const stepsKey = stablePipelineStepsKey(pipeline.steps);
-    if (seenSteps.has(stepsKey)) continue;
-    seenSteps.add(stepsKey);
+    if (seenIds.has(pipeline.id)) continue;
+    seenIds.add(pipeline.id);
     merged.push({ ...pipeline, source: "history" });
   }
 
@@ -76,13 +62,20 @@ export function mergeExperimentPipelineSources(
 
 export function useNewExperimentInputData(): NewExperimentInputData {
   const { data: datasetsData, isLoading: isLoadingDatasets, error: datasetsError } = useDatasetsQuery();
-  const { data: savedPipelinesData, isLoading: isLoadingPipelines, error: pipelineError } = useQuery({
+  const { data: savedPipelinesData, isLoading: isLoadingSavedPipelines, error: savedPipelineError } = useQuery({
     queryKey: ["pipelines"],
     queryFn: () => listPipelines(),
+    staleTime: 0,
+    refetchOnMount: "always",
   });
-  const { data: historicalPipelinesData } = useQuery({
+  const { data: historicalPipelinesData, isLoading: isLoadingHistoricalPipelines, error: historyPipelineError } = useQuery({
     queryKey: ["run-pipelines"],
     queryFn: () => listRunPipelines(),
+    // Saved pipelines must be visible before the more expensive history translation starts.
+    enabled: savedPipelinesData != null,
+    staleTime: 30_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
   });
 
   const rawDatasets = useMemo(
@@ -109,8 +102,8 @@ export function useNewExperimentInputData(): NewExperimentInputData {
     datasets,
     datasetsError,
     isLoadingDatasets,
-    isLoadingPipelines,
-    pipelineError,
+    isLoadingPipelines: isLoadingSavedPipelines || (rawPipelines.length === 0 && isLoadingHistoricalPipelines),
+    pipelineError: savedPipelineError ?? (rawPipelines.length === 0 ? historyPipelineError : null),
     pipelines,
     rawDatasets,
     rawPipelines,

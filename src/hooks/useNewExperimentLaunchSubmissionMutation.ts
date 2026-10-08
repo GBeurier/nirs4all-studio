@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -17,7 +17,6 @@ import {
 import {
   EXPERIMENT_LAUNCH_PREFLIGHT_BLOCKED_TITLE,
   EXPERIMENT_LAUNCH_SUCCESS_MESSAGE,
-  formatExperimentLaunchFailureMessage,
   getExperimentLaunchFailureDetail,
 } from "@/lib/experimentLaunchFlowState";
 
@@ -33,6 +32,8 @@ export interface SubmitNewExperimentLaunchPayloadPlanOptions {
 
 export interface UseNewExperimentLaunchSubmissionMutationResult {
   isLaunching: boolean;
+  launchError: string | null;
+  clearLaunchError: () => void;
   submitLaunchPayloadPlan: (
     launchPayloadPlan: ExperimentLaunchPayloadPlan,
     options?: SubmitNewExperimentLaunchPayloadPlanOptions,
@@ -45,6 +46,7 @@ export function useNewExperimentLaunchSubmissionMutation({
   onRunCreated,
 }: UseNewExperimentLaunchSubmissionMutationInput): UseNewExperimentLaunchSubmissionMutationResult {
   const queryClient = useQueryClient();
+  const [launchError, setLaunchError] = useState<string | null>(null);
   const { mutate: submitExperimentLaunch, isPending: isLaunching } = useMutation({
     mutationFn: (submission: ExperimentLaunchSubmission) =>
       submitExperimentLaunchSubmission(submission, createRun, launchSubmitters),
@@ -55,7 +57,7 @@ export function useNewExperimentLaunchSubmissionMutation({
     },
     onError: (error) => {
       const detail = getExperimentLaunchFailureDetail(error);
-      toast.error(formatExperimentLaunchFailureMessage(detail));
+      setLaunchError(detail);
     },
   });
 
@@ -69,6 +71,7 @@ export function useNewExperimentLaunchSubmissionMutation({
       return false;
     }
 
+    setLaunchError(null);
     submitExperimentLaunch(buildExperimentLaunchSubmission(
       executionAdapter,
       options.legacyConfig ?? launchPayloadPlan.legacyConfig,
@@ -79,6 +82,8 @@ export function useNewExperimentLaunchSubmissionMutation({
 
   return {
     isLaunching,
+    launchError,
+    clearLaunchError: () => setLaunchError(null),
     submitLaunchPayloadPlan,
   };
 }

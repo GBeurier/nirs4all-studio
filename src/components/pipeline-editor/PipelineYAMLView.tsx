@@ -341,7 +341,7 @@ export function PipelineYAMLView({
   if (steps.length === 0) {
     return (
       <div className={`flex items-center justify-center h-full text-muted-foreground text-sm ${className || ""}`}>
-        Add steps to the pipeline to see the canonical format view.
+        Add steps to the pipeline to see the file preview.
       </div>
     );
   }
@@ -352,7 +352,7 @@ export function PipelineYAMLView({
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">
-            Canonical nirs4all Format
+            nirs4all File Format
           </span>
           <span className="text-xs text-muted-foreground">
             ({canonicalStepCount} step{canonicalStepCount !== 1 ? "s" : ""})

@@ -47,6 +47,7 @@ pub enum ScientificResolveError {
     PipelineUnsafe,
     PipelineTooLarge,
     PipelineInvalid,
+    ExecutionUnavailable { code: String, message: String },
     DatasetAssembly,
 }
 

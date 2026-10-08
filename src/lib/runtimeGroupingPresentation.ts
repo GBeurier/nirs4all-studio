@@ -8,7 +8,7 @@ export interface RuntimeGroupingRequirementBadge {
 }
 
 export const runtimeGroupingPresentationCopy = {
-  title: "Runtime Grouping",
+  title: "Sample Grouping",
   selectPlaceholder: "Select metadata column...",
   noAdditionalGroupLabel: "No additional group",
   datasetRepetitionBadge: "Dataset repetition",

@@ -902,11 +902,10 @@ def _run_pipeline_task(job, progress_callback):
     Returns:
         Execution result dictionary
     """
-    from .nirs4all_adapter import ensure_models_dir, extract_best_metrics
+    from .nirs4all_adapter import build_dataset_config, ensure_models_dir, extract_best_metrics
 
     config = job.config
     steps = config.get("pipeline_steps", [])
-    dataset_path = config.get("dataset_path")
     dataset_id = config.get("dataset_id")
     workspace_path = config.get("workspace_path")
     split_group_by = config.get("split_group_by")
@@ -920,6 +919,8 @@ def _run_pipeline_task(job, progress_callback):
         dataset = _load_dataset(dataset_id)
         if dataset is None:
             raise ValueError(f"Dataset '{dataset_id}' not found")
+
+        dataset_config = build_dataset_config(dataset_id)
 
         prepared = prepare_pipeline_steps_with_runtime_grouping(
             steps,
@@ -948,7 +949,7 @@ def _run_pipeline_task(job, progress_callback):
 
         run_kwargs = {
             "pipeline": pipeline_steps,
-            "dataset": dataset_path,
+            "dataset": dataset_config,
             "verbose": config.get("verbose", 1),
         }
         if "refit" in config:

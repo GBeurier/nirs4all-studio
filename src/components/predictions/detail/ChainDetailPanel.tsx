@@ -354,7 +354,7 @@ function ChainDetailRobustnessAction({
     <div className="rounded-lg border border-border/70 bg-background/70 p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <h4 className="text-sm font-medium">Native robustness report</h4>
+          <h4 className="text-sm font-medium">Robustness Report</h4>
           <p className="mt-1 text-[11px] text-muted-foreground">
             Compute an audit-only robustness report from the selected stored prediction evidence. This calls nirs4all
             and persists a `RobustnessReport`; Studio does not synthesize missing truth labels or replay spectral

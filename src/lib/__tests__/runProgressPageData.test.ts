@@ -4,6 +4,7 @@ import {
   buildRunDerivedLogs,
   buildRunExecutionProgressDisplayData,
   buildRunLogLines,
+  buildRunFromExecutionJobRecord,
   buildRunProgressDisplayData,
 } from "@/lib/run-progress/pageData";
 import type { ExecutionJobRecord } from "@/lib/runs/executionJobRecords";
@@ -64,6 +65,21 @@ function executionJobRecord(overrides: Partial<ExecutionJobRecord> = {}): Execut
 }
 
 describe("run progress page data", () => {
+  it("shows a failed execution even when no archived run was written", () => {
+    const record = executionJobRecord({
+      status: "failed", run_status: "failed", is_orphaned: true,
+      error: "ModuleNotFoundError: No module named 'tabpfn'",
+      request: { legacyConfig: { dataset_ids: ["dataset-1", "dataset-2"] } },
+    });
+    const failedRun = buildRunFromExecutionJobRecord(record);
+    expect(failedRun.status).toBe("failed");
+    expect(failedRun.error).toBe(record.error);
+    expect(failedRun.datasets).toHaveLength(2);
+    expect(failedRun.datasets.every((dataset) => dataset.pipelines.length === 0)).toBe(true);
+    expect(buildRunLogLines({ run: failedRun, persistedLogs: [], streamingLogs: [] })[0])
+      .toContain("No module named 'tabpfn'");
+  });
+
   it("builds derived logs from datasets, pipelines, fold averages, and final metrics", () => {
     const lines = buildRunDerivedLogs(run({
       datasets: [{
@@ -186,6 +202,14 @@ describe("run progress page data", () => {
       "runtime",
       "streaming",
     ]);
+  });
+
+  it("keeps a job-level error in exported logs when no pipeline was started", () => {
+    expect(buildRunLogLines({
+      run: run({ status: "failed", error: "ModuleNotFoundError: tabpfn", datasets: [] }),
+      persistedLogs: [],
+      streamingLogs: [],
+    })).toEqual(["[ERROR] ModuleNotFoundError: tabpfn"]);
   });
 
   it("uses an execution job record as the progress display source when present", () => {

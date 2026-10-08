@@ -7,6 +7,7 @@ const http = require("http");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const { prepareDesktopSidecar } = require("./prepare-desktop-sidecar.cjs");
 
 const VITE_URL = "http://localhost:5173";
 const MAX_RETRIES = 30;
@@ -87,8 +88,9 @@ async function main() {
   // This variable makes Electron run as a plain Node.js process instead of the full Electron environment
   const env = { ...process.env, VITE_DEV_SERVER_URL: VITE_URL };
   delete env.ELECTRON_RUN_AS_NODE;
+  env.NIRS4ALL_NATIVE_SIDECAR_PATH = prepareDesktopSidecar(projectRoot, env);
 
-  const electron = spawn("node", args, {
+  const electron = spawn(process.execPath, args, {
     stdio: "inherit",
     cwd: projectRoot,
     env,
@@ -99,4 +101,7 @@ async function main() {
   });
 }
 
-main();
+main().catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});

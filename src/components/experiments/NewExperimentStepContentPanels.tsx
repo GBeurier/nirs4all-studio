@@ -25,10 +25,10 @@ export function NewExperimentPipelineStepPanel({
 }: NewExperimentPipelineStepPanelProps) {
   return (
     <NewExperimentPipelineSelectionStep
-      availablePipelineCount={inputData.pipelines.length}
+      availablePipelineCount={selectionFlow.allPipelineOptions.length}
       filteredPipelines={filteredInputs.filteredPipelines}
-      isLoading={inputData.isLoadingPipelines}
-      pipelineError={inputData.pipelineError}
+      isLoading={inputData.isLoadingPipelines && selectionFlow.allPipelineOptions.length === 0}
+      pipelineError={selectionFlow.allPipelineOptions.length === 0 ? inputData.pipelineError : null}
       pipelineFilter={selectionFlow.pipelineFilter}
       pipelineSearch={selectionFlow.pipelineSearch}
       selectedPipelineIds={selectionFlow.selectedPipelineIds}

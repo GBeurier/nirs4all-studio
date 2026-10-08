@@ -244,6 +244,41 @@ afterEach(() => {
 });
 
 describe("MlReadinessProvider", () => {
+  it("invalidates scientific results after runtime recovery while retaining successful document previews", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockResolvedValueOnce({ ml_ready: true, workspace_ready: true })
+      .mockResolvedValueOnce({ ml_ready: false, workspace_ready: true })
+      .mockResolvedValue({ ml_ready: true, workspace_ready: true });
+    const view = await renderProvider(createElectronApiMock());
+    const playgroundKey = ["playground", "execute", "snapshot"];
+    const referenceKey = ["reference-playground", "snapshot"];
+    const documentKey = ["datasets", "preview", "dataset", 100];
+    for (const key of [playgroundKey, referenceKey, documentKey]) view.client.setQueryData(key, { value: 1 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(view.client.getQueryState(playgroundKey)?.isInvalidated).toBe(true);
+    expect(view.client.getQueryState(referenceKey)?.isInvalidated).toBe(true);
+    expect(view.client.getQueryState(documentKey)?.isInvalidated).toBe(false);
+    await view.unmount();
+  });
+
+  it("refreshes startup catalogues and failed requests without invalidating successful previews", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockResolvedValueOnce({ ml_ready: false, workspace_ready: false })
+      .mockResolvedValue({ ml_ready: true, workspace_ready: true });
+    const view = await renderProvider(createElectronApiMock());
+    const previewKey = ["playground", "execute", "loaded-snapshot"];
+    view.client.setQueryData(previewKey, { spectra: [[1, 2]] });
+    view.client.setQueryData(["datasets", "list"], { datasets: [] });
+    const failed = view.client.getQueryCache().build(view.client, { queryKey: ["failed-preview"] });
+    failed.setState({ status: "error", error: new Error("Runtime starting") });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(view.client.getQueryState(previewKey)?.isInvalidated).toBe(false);
+    expect(view.client.getQueryState(["datasets", "list"])?.isInvalidated).toBe(true);
+    expect(failed.state.isInvalidated).toBe(true);
+    await view.unmount();
+  });
+
   it("yields result reads without inventing readiness and resumes after refusal", async () => {
     vi.useFakeTimers();
     mocks.apiGet.mockResolvedValueOnce({ ml_ready: true, workspace_ready: true })

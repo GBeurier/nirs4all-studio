@@ -324,7 +324,7 @@ const resultArtifactSourceLabels: Record<ResultArtifactSource, string> = {
   "prediction-arrays": "Prediction arrays",
   "benchmark-export": "Benchmark export",
   "result-repository": "Result repository",
-  "native-results": "Native results",
+  "native-results": "Analysis results",
   "cluster-run": "Cluster run",
   generated: "Generated",
 };
@@ -830,7 +830,7 @@ function normalizeNativePipelineRunArtifactRef(
   const format = readStringField(rawRef, ["format"]) ?? backend ?? (artifactType === "native_results_dir" ? "directory" : undefined);
   const label = readStringField(rawRef, ["label", "name"])
     ?? (artifactType === "native_results_dir" || role === "run_dir"
-      ? "Native results directory"
+      ? "Analysis results directory"
       : kind === "native_result"
         ? "Native result artifact"
         : `Native ${getResultArtifactKindLabel(kind).toLowerCase()} artifact`);

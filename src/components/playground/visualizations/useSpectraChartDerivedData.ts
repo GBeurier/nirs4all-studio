@@ -7,6 +7,7 @@ import {
   getWebGLSampleColor,
 } from '@/lib/playground/colorConfig';
 import type { SpectraChartConfig } from '@/lib/playground/spectraConfig';
+import { applySampling } from '@/lib/playground/sampling';
 import {
   applySpectraWavelengthFocus,
   buildFocusedSpectraData,
@@ -171,6 +172,11 @@ export function useSpectraChartDerivedData({
     showAbsoluteDifference,
   }), [config.viewMode, config.wavelengthFocus, original, processed, showAbsoluteDifference]);
 
+  const baseSampling = useMemo(() => applySampling(focusedData.spectra.length, config.sampling, {
+    spectra: focusedData.spectra,
+    yValues: y,
+  }), [config.sampling, focusedData.spectra, y]);
+
   const samplingResult = useMemo(() => buildSpectraSamplingResult({
     totalSamples: focusedData.spectra.length,
     sampling: config.sampling,
@@ -178,7 +184,8 @@ export function useSpectraChartDerivedData({
     selectedSamples,
     spectra: focusedData.spectra,
     yValues: y,
-  }), [config.displayMode, config.sampling, focusedData.spectra, selectedSamples, y]);
+    baseSampling,
+  }), [baseSampling, config.displayMode, config.sampling, focusedData.spectra, selectedSamples, y]);
 
   const displayIndices = useMemo(
     () => filterSpectraDisplayIndices(samplingResult.indices, colorContext?.displayFilteredIndices),

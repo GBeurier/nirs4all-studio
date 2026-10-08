@@ -21,7 +21,7 @@ export function NativeResultsExportAffordance({
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <Archive className="h-3.5 w-3.5" />
-          Native results
+          Analysis results
         </div>
         <Badge
           variant={view.hasNativeResults ? "secondary" : "outline"}

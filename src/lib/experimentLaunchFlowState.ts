@@ -2,8 +2,8 @@ import type { MissingOperatorIssue } from "@/lib/pipelineOperatorAvailability";
 import type { ExperimentConfig } from "@/types/runs";
 
 export const EXPERIMENT_LAUNCH_SUCCESS_MESSAGE = "Experiment started!";
-export const EXPERIMENT_LAUNCH_GROUPING_BLOCKED_MESSAGE = "Resolve runtime grouping errors before launching this experiment.";
-export const EXPERIMENT_LAUNCH_PREFLIGHT_UNAVAILABLE_MESSAGE = "Preflight check unavailable — dependency verification was skipped";
+export const EXPERIMENT_LAUNCH_GROUPING_BLOCKED_MESSAGE = "Check sample grouping before launching this experiment.";
+export const EXPERIMENT_LAUNCH_PREFLIGHT_UNAVAILABLE_MESSAGE = "Required analysis tools could not be checked.";
 export const EXPERIMENT_LAUNCH_PREFLIGHT_BLOCKED_TITLE = "Cannot start experiment";
 
 export interface ExperimentMissingNodesDialogState {

@@ -28,7 +28,7 @@ export interface NewExperimentStepProgressViewItem extends NewExperimentStepProg
 export const NEW_EXPERIMENT_STEP_PROGRESS_ITEMS: NewExperimentStepProgressItem[] = [
   { id: NEW_EXPERIMENT_PIPELINES_STEP, label: "Select Pipelines" },
   { id: NEW_EXPERIMENT_DATASETS_STEP, label: "Select Datasets" },
-  { id: NEW_EXPERIMENT_RUNTIME_GROUPING_STEP, label: "Runtime Grouping" },
+  { id: NEW_EXPERIMENT_RUNTIME_GROUPING_STEP, label: "Sample Grouping" },
   { id: NEW_EXPERIMENT_REVIEW_STEP, label: "Review" },
   { id: NEW_EXPERIMENT_LAUNCH_STEP, label: "Launch" },
 ];

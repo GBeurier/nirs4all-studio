@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/transport";
+import { invalidateLoadedWorkspaceDatasetResults } from "@/api/playground";
 import { hasScientificRequestInFlight } from "@/api/dataset-request-activity";
 import { datasetQueryKeys } from "@/hooks/useDatasetQueries";
 import { MlReadinessContext, type MlReadiness } from "@/context/useMlReadiness";
@@ -49,16 +50,25 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     });
   }, []);
   const workspaceReadyFired = useRef(false);
+  const scientificReadyObserved = useRef(false);
   const readinessRevision = useRef(0);
 
   useEffect(() => {
-    if (state.mlReady) queryClient.invalidateQueries();
+    if (!state.mlReady) return;
+    // Readiness resolves startup failures. Successful previews/results do not
+    // become stale merely because a heartbeat announces the same runtime.
+    const resumedRuntime = scientificReadyObserved.current;
+    scientificReadyObserved.current = true;
+    if (resumedRuntime) invalidateLoadedWorkspaceDatasetResults();
+    void queryClient.invalidateQueries({ predicate: query => query.state.status === 'error'
+      || (resumedRuntime && ['playground', 'reference-playground'].includes(String(query.queryKey[0]))) });
   }, [state.mlReady, queryClient]);
 
   useEffect(() => {
     if (state.workspaceReady && !workspaceReadyFired.current) {
       workspaceReadyFired.current = true;
-      queryClient.invalidateQueries();
+      void queryClient.invalidateQueries({ queryKey: datasetQueryKeys.list() });
+      void queryClient.invalidateQueries({ queryKey: datasetQueryKeys.linkedWorkspaces() });
     }
   }, [state.workspaceReady, queryClient]);
 

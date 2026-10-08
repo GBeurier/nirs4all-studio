@@ -49,34 +49,34 @@ type DatasetGroupingInput = DatasetGroupingFieldsInput;
 
 export const RUNTIME_GROUPING_COPY = {
   additiveDescription:
-    "Runtime group_by adds an extra split constraint. When a dataset repetition is configured, samples sharing the repetition value or the selected group_by value stay in the same fold. group_by never replaces dataset repetition.",
-  conflictTitle: "A selected pipeline already persists splitter grouping.",
+    "Keep related samples together during cross-validation. Samples sharing a repetition identifier or the selected group stay in the same fold. Repeated measurements always remain together.",
+  conflictTitle: "A selected pipeline already defines sample groups.",
   conflictDescription:
-    "Remove the saved group_by or legacy group value from the pipeline definition and use runtime grouping instead. The legacy group alias is deprecated and will be removed in a future release.",
+    "Remove the grouping setting from the pipeline, then choose the sample groups here.",
   conflictToast:
-    "This pipeline already persists splitter grouping. Remove the saved group_by or legacy group value from the pipeline definition and use runtime grouping instead.",
+    "This pipeline already defines sample groups. Remove its grouping setting, then choose the groups here.",
   legacyGroupDeprecation:
-    "Use group_by for new configurations. The legacy group alias is deprecated and will be removed in a future release.",
+    "Update the sample grouping setting before using this pipeline.",
   requiredBlocking:
-    "At least one selected pipeline requires an effective group. Choose a metadata column for group_by or configure a dataset repetition column.",
+    "A selected pipeline requires sample groups. Choose a sample information column or define the repeated measurements in the dataset.",
   noMetadataBlocking:
-    "At least one selected pipeline requires an effective group, but this dataset has no metadata column available for group_by and no configured repetition column.",
+    "A selected pipeline requires sample groups. Add sample information or define the repeated measurements in the dataset first.",
   noSplitterRun:
-    "No splitter was found in the selected pipelines. No runtime grouping is required for this run.",
+    "The selected pipelines do not divide the samples into validation sets. No sample grouping is needed.",
   noSplitterInjection:
-    "No runtime grouping will be injected because the selected pipelines do not contain splitters.",
+    "No sample grouping is needed for the selected pipelines.",
   noSplitterPipeline:
-    "This pipeline has no splitter. No runtime grouping is required.",
+    "This pipeline does not divide the samples into validation sets. No sample grouping is needed.",
 } as const;
 
 export function getRuntimeGroupingRepetitionOnlyWarning(
   repetitionColumn: string,
 ): string {
-  return `No additional group_by selected. Group-required splitters will use only the configured dataset repetition '${repetitionColumn}'.`;
+  return `No additional group selected. Repeated measurements will be kept together using '${repetitionColumn}'.`;
 }
 
 export function getRuntimeGroupingOptionalPropagationWarning(): string {
-  return "The explicit group_by selected here will also be applied to selected pipelines whose splitters do not strictly require groups.";
+  return "The sample groups selected here will apply to all selected pipelines.";
 }
 
 export function getRuntimeGroupingSummary(
@@ -88,7 +88,7 @@ export function getRuntimeGroupingSummary(
   }
 
   if (selectedGroupBy) {
-    return `Explicit group_by: ${selectedGroupBy}`;
+    return `Group samples by: ${selectedGroupBy}`;
   }
 
   if (repetitionColumn) {

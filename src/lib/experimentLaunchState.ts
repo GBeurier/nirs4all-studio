@@ -40,7 +40,7 @@ function buildExperimentLaunchPayloadBlockingNotice(
   return {
     id: "native-payload-submission-blocked",
     severity: "blocking",
-    title: "Native payload not ready",
+    title: "Experiment not ready",
     message,
   };
 }
@@ -48,9 +48,9 @@ function buildExperimentLaunchPayloadBlockingNotice(
 function getExperimentLaunchNativeReadyButtonLabel(
   executionBackend: CampaignExecutionBackend,
 ): string {
-  if (executionBackend === "cluster") return "Submit to Cluster";
-  if (executionBackend === "wasm-local") return "Run in WASM Local";
-  return "Submit Native Payload";
+  if (executionBackend === "cluster") return "Launch on Compute Server";
+  if (executionBackend === "wasm-local") return "Run in Browser";
+  return "Launch Experiment";
 }
 
 function getExperimentLaunchReadyButtonLabel(
@@ -103,7 +103,7 @@ export function getExperimentLaunchState({
     return {
       actionState: "blocked",
       blockingNotices,
-      buttonLabel: "Resolve Plan Issues",
+      buttonLabel: "Review Experiment Settings",
       isLaunchDisabled: true,
       showSpinner: false,
     };
@@ -113,7 +113,7 @@ export function getExperimentLaunchState({
     return {
       actionState: "blocked",
       blockingNotices,
-      buttonLabel: "Resolve Payload Issues",
+      buttonLabel: "Review Experiment Settings",
       isLaunchDisabled: true,
       showSpinner: false,
     };

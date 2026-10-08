@@ -68,6 +68,54 @@ afterEach(async () => {
 });
 
 describe("Dataset wizard regressions", () => {
+  it("validates only the file whose effective parsing changed and retains other shapes", async () => {
+    vi.useFakeTimers();
+    vi.mocked(validateFiles).mockImplementation(async (_path, files) => ({
+      success: true, shapes: Object.fromEntries(files.map(file => [file.path, {
+        path: file.path, num_rows: 3, num_columns: file.type === "metadata" ? 1 : 2,
+        column_names: file.type === "metadata" ? ["batch"] : ["a", "b"],
+      }])),
+    }));
+    await mount(<DataStats />, { files: [xFile, metadataFile] });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(validateFiles).toHaveBeenCalledTimes(1);
+    await act(async () => wizard.dispatch({ type: "SET_FILE_OVERRIDE", payload: {
+      path: xFile.path, options: { delimiter: "," },
+    } }));
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(validateFiles).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(validateFiles).mock.calls[1][1].map(file => file.path)).toEqual([xFile.path]);
+    expect(wizard.state.validatedShapes[metadataFile.path]?.num_rows).toBe(3);
+    expect(wizard.state.metadataColumns).toEqual(["batch"]);
+    await act(async () => wizard.dispatch({ type: "UPDATE_FILE", payload: { index: 0, updates: { split: "test" } } }));
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(validateFiles, "changing split does not reparse the table").toHaveBeenCalledTimes(2);
+    await act(async () => wizard.dispatch({ type: "SET_PARSING", payload: { delimiter: "," } }));
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(validateFiles).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(validateFiles).mock.calls[2][1].map(file => file.path)).toEqual([metadataFile.path]);
+    expect(wizard.state.validatedShapes[xFile.path]?.num_rows).toBe(3);
+    await act(async () => wizard.dispatch({ type: "SET_PARSING", payload: { delimiter: "," } }));
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(validateFiles, "replacing identical parsing objects does not revalidate").toHaveBeenCalledTimes(3);
+  });
+
+  it("removes stale shapes without rereading remaining files", async () => {
+    vi.useFakeTimers();
+    vi.mocked(validateFiles).mockImplementation(async (_path, files) => ({
+      success: true, shapes: Object.fromEntries(files.map(file => [file.path, {
+        path: file.path, num_rows: 3, num_columns: 2, column_names: ["batch"],
+      }])),
+    }));
+    await mount(<DataStats />, { files: [xFile, metadataFile] });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    await act(async () => wizard.dispatch({ type: "REMOVE_FILE", payload: 1 }));
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(validateFiles).toHaveBeenCalledTimes(1);
+    expect(Object.keys(wizard.state.validatedShapes)).toEqual([xFile.path]);
+    expect(wizard.state.metadataColumns).toEqual([]);
+  });
+
   it("accepts ignore NA and forwards the policy to validation and preview", async () => {
     vi.useFakeTimers();
     vi.mocked(detectFormat).mockResolvedValue({ format: "csv", column_info: [] });

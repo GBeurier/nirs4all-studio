@@ -79,7 +79,7 @@ export function ModelSelector({ selectedModel, onSelect }: ModelSelectorProps) {
       <CardContent className="space-y-3">
         {loading && <p className="text-sm text-muted-foreground">Loading verified archives…</p>}
         {!loading && !workspaceId && <p className="text-sm text-muted-foreground">Activate a linked workspace to choose an archive.</p>}
-        {error && <p role="alert" className="text-sm text-destructive">The native Archive V2 catalogue is unavailable.</p>}
+        {error && <p role="alert" className="text-sm text-destructive">The saved model list is unavailable.</p>}
         {catalogue.data?.archives.length === 0 && <p className="text-sm text-muted-foreground">No verified Archive V2 is registered in this workspace.</p>}
         {catalogue.data?.archives.map((entry) => {
           const selection = selectionFromEntry(workspaceId!, entry);

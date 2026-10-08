@@ -14,6 +14,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -183,6 +184,7 @@ export function RunsStatsGrid({ stats }: RunsStatsGridProps) {
 interface RunsExecutionTasksPanelProps {
   data: RunsExecutionTaskPanelData;
   onInspectJob?: (jobId: string) => void;
+  onDismissJobs?: (jobIds: string[]) => void;
 }
 
 function formatJsonValue(value: unknown): string {
@@ -193,7 +195,7 @@ function formatJsonValue(value: unknown): string {
   }
 }
 
-export function RunsExecutionTasksPanel({ data, onInspectJob }: RunsExecutionTasksPanelProps) {
+export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: RunsExecutionTasksPanelProps) {
   const [isPanelExpanded, setPanelExpanded] = useState(false);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
 
@@ -292,6 +294,19 @@ export function RunsExecutionTasksPanel({ data, onInspectJob }: RunsExecutionTas
                         <Badge variant={item.isActive ? "default" : "outline"} className="h-5 px-1.5 text-[10px]">
                           {formatRunTokenLabel(item.executionStatus)}
                         </Badge>
+                        {!item.isActive && onDismissJobs && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                            aria-label={`Dismiss execution job ${item.jobId}`}
+                            title="Dismiss finished task"
+                            onClick={() => onDismissJobs([item.jobId])}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                         {onInspectJob && (
                           <TooltipProvider>
                             <Tooltip>
@@ -384,6 +399,19 @@ export function RunsExecutionTasksPanel({ data, onInspectJob }: RunsExecutionTas
                         >
                           Orphaned
                         </Badge>
+                      )}
+                      {group.activeCount === 0 && onDismissJobs && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                          aria-label={`Dismiss execution group ${groupLabel}`}
+                          title="Dismiss finished tasks"
+                          onClick={() => onDismissJobs(group.items.map(item => item.jobId))}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
                       )}
                     </div>
                     <div className="mt-2 space-y-1">

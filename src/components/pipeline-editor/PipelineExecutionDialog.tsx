@@ -368,7 +368,7 @@ export function PipelineExecutionDialog({
       return;
     }
     if (selectedDatasetGroupingState?.hasBlockingError) {
-      toast.error(selectedDatasetGroupingState.blockingMessage || "Runtime grouping is required for this dataset.");
+      toast.error(selectedDatasetGroupingState.blockingMessage || "Select sample groups for this dataset.");
       return;
     }
 
@@ -411,7 +411,7 @@ export function PipelineExecutionDialog({
         return;
       }
     } catch {
-      toast.warning("Preflight check unavailable — dependency verification was skipped");
+      toast.warning("Required analysis tools could not be checked.");
     }
 
     await executeLaunchMode(mode, resolveInlinePipeline());

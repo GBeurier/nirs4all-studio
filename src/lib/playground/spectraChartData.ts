@@ -54,6 +54,7 @@ export interface BuildSpectraSamplingResultInput {
   spectra: number[][];
   yValues?: number[];
   maxForcedSelection?: number;
+  baseSampling?: SamplingResult;
 }
 
 export interface BuildSpectraColorContextInput {
@@ -79,6 +80,7 @@ export function buildSpectraSamplingResult({
   spectra,
   yValues,
   maxForcedSelection = DEFAULT_MAX_FORCED_SELECTION,
+  baseSampling: preparedSampling,
 }: BuildSpectraSamplingResultInput): SamplingResult {
   if (displayMode === 'selected_only' && selectedSamples.size > 0) {
     return {
@@ -89,7 +91,7 @@ export function buildSpectraSamplingResult({
     };
   }
 
-  const baseSampling = applySampling(totalSamples, sampling, {
+  const baseSampling = preparedSampling ?? applySampling(totalSamples, sampling, {
     yValues,
     spectra,
   });

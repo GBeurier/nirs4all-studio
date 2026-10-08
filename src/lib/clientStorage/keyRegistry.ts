@@ -163,6 +163,11 @@ export const clientStorageKeys = {
     scope: "session",
     description: "Current Pipeline Editor draft handoff consumed by New Experiment within the active browser session.",
   }),
+  dismissedExecutionJobs: defineClientStorageKey<string[]>("dismissed-execution-jobs", {
+    area: "session",
+    scope: "session",
+    description: "Workspace and job identities dismissed from the execution tasks panel in this session.",
+  }),
   playgroundSessionState: defineClientStorageKey<unknown>("playground-session-state", {
     area: "session",
     scope: "session",
