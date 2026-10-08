@@ -810,6 +810,17 @@ jobs:
             [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
           done
 
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos-x64-payload
+          path: |
+            release/*.dmg
+            release/*.sha256
+            release/*.yml
+          retention-days: 5
+
       - name: Smoke packaged UI and runtime contract
         timeout-minutes: 8
         env:
@@ -830,17 +841,6 @@ jobs:
           path: ${{ runner.temp }}/packaged-ui-smoke.json
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-macos-x64-payload
-          path: |
-            release/*.dmg
-            release/*.sha256
-            release/*.yml
-          retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Installer: macOS arm64 (Apple Silicon) — Phase 4: signed + notarized
@@ -1032,6 +1032,17 @@ jobs:
             [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
           done
 
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos-arm64-payload
+          path: |
+            release/*.dmg
+            release/*.sha256
+            release/*.yml
+          retention-days: 5
+
       - name: Smoke packaged UI and runtime contract
         timeout-minutes: 8
         env:
@@ -1052,17 +1063,6 @@ jobs:
           path: ${{ runner.temp }}/packaged-ui-smoke.json
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-macos-arm64-payload
-          path: |
-            release/*.dmg
-            release/*.sha256
-            release/*.yml
-          retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Docker: static frontend + loopback Rust sidecar
