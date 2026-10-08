@@ -27,7 +27,7 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
     ) {
         return None;
     }
-    let (settings, host, scientific) = {
+    let (settings, host, scientific, reused_runtime) = {
         let state = state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -35,9 +35,10 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
             state.app_settings.clone(),
             state.python_plugin_host.clone(),
             state.scientific_host.clone(),
+            !state.python_plugin_host_bundled,
         )
     };
-    Some(handle(
+    Some(handle_with_policy(
         &settings,
         request,
         &|| {
@@ -50,14 +51,26 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
                 .ok_or("No attested runtime is configured")?
                 .adapt_document(operation, payload)
         },
+        reused_runtime,
     ))
 }
 
+#[cfg(test)]
 fn handle(
     settings: &AppSettingsStore,
     request: &HttpRequest,
     probe: &impl Fn() -> Result<Value, String>,
     adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+) -> HttpResponse {
+    handle_with_policy(settings, request, probe, adapt, false)
+}
+
+fn handle_with_policy(
+    settings: &AppSettingsStore,
+    request: &HttpRequest,
+    probe: &impl Fn() -> Result<Value, String>,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    reused_runtime: bool,
 ) -> HttpResponse {
     let result = (|| -> Result<Value, (u16, String)> {
         let config = recommended_config::bundled().map_err(|error| (500, error))?;
@@ -130,11 +143,18 @@ fn handle(
                     return Err((400, "Setup completion takes no query fields".into()));
                 }
                 let profile = setup_profile(&config, &request.body)?;
-                let comparison = adapt(
-                    "config.compare",
-                    &json!({"config":config,"profile":profile,"include_optional":false,"include_latest":false}),
-                ).map_err(|error| (503, error))?;
-                if comparison["is_aligned"] != true {
+                let ready = if reused_runtime {
+                    let inventory = adapt("config.dependencies", &json!({"config":config}))
+                        .map_err(|error| (503, error))?;
+                    inventory["runtime_valid"] == true
+                } else {
+                    let comparison = adapt(
+                        "config.compare",
+                        &json!({"config":config,"profile":profile,"include_optional":false,"include_latest":false}),
+                    ).map_err(|error| (503, error))?;
+                    comparison["is_aligned"] == true
+                };
+                if !ready {
                     return Err((409, "Required runtime packages are missing or incompatible. Repair the Studio installation before completing setup.".into()));
                 }
                 // Only persist a profile verified against this runtime.
@@ -278,5 +298,33 @@ mod tests {
             Ok(json!({"is_aligned":false}))
         });
         assert_eq!(response.status, 200);
+    }
+    #[test]
+    fn existing_runtime_setup_does_not_require_optional_profile_packages() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path());
+        let request = HttpRequest {
+            method: "POST".into(),
+            path: "/api/config/complete-setup".into(),
+            query: None,
+            headers: BTreeMap::new(),
+            body: br#"{"profile":"cpu"}"#.to_vec(),
+        };
+        let probe = || panic!("setup invoked GPU probe");
+        let incompatible = |_: &str, _: &Value| Ok(json!({"runtime_valid":false}));
+        assert_eq!(
+            handle_with_policy(&settings, &request, &probe, &incompatible, true).status,
+            409
+        );
+        assert_eq!(settings.setup_status().unwrap()["setup_completed"], false);
+        let compatible = |operation: &str, _: &Value| {
+            assert_eq!(operation, "config.dependencies");
+            Ok(json!({"runtime_valid":true}))
+        };
+        assert_eq!(
+            handle_with_policy(&settings, &request, &probe, &compatible, true).status,
+            200
+        );
+        assert_eq!(settings.setup_status().unwrap()["setup_completed"], true);
     }
 }

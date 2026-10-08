@@ -74,8 +74,8 @@ export function derivePythonEnvRuntimeView(params: {
   const { runtimeSummary, envInfo, postSwitchValidation, selectedReviewProfile } = params;
 
   const isReady = runtimeSummary
-    ? runtimeSummary.core_ready && !!runtimeSummary.running_python
-    : Boolean(envInfo?.status === "ready" && envInfo.pythonPath);
+    ? runtimeSummary.core_ready && runtimeSummary.scientific_ready === true && runtimeSummary.coherent && !!runtimeSummary.running_python
+    : false;
 
   return {
     isReady,
@@ -84,7 +84,7 @@ export function derivePythonEnvRuntimeView(params: {
     runtimeDisplay: getPythonRuntimeDisplayState(runtimeSummary),
     missingCoreCount: runtimeSummary?.missing_core_packages.length ?? 0,
     missingOptionalCount: runtimeSummary?.missing_optional_packages.length ?? 0,
-    hasAlignmentPreview: postSwitchValidation?.alignmentPreview !== null,
+    hasAlignmentPreview: postSwitchValidation?.alignmentPreview != null,
     alignmentChangesCount: postSwitchValidation?.alignmentPreview?.installed.length ?? 0,
     // Hide optionals the selected review profile excludes (cpu-lite never offers torch/umap-learn).
     reviewOptionalPackages: filterOptionalPackagesForProfile(

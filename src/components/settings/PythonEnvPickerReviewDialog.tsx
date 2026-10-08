@@ -97,9 +97,9 @@ export function PythonRuntimeReviewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden p-4 sm:max-w-4xl sm:p-6">
         <DialogHeader className="shrink-0 pr-6">
-          <DialogTitle>Review Runtime After Switch</DialogTitle>
+          <DialogTitle>Python packages and optional features</DialogTitle>
           <DialogDescription>
-            The backend is now running under the selected interpreter. Review the profile and package targets for this machine, then align the runtime if needed.
+            Studio uses this environment for analysis. Recommended versions are informational: your compatible packages are kept, and optional packages enable additional features.
           </DialogDescription>
         </DialogHeader>
 
@@ -119,12 +119,12 @@ export function PythonRuntimeReviewDialog({
               />
             )}
 
-            <AlignmentPreviewNotice
+            {hasAlignmentPreview && <AlignmentPreviewNotice
               isReviewPreviewLoading={isReviewPreviewLoading}
               alignmentChangesCount={alignmentChangesCount}
               hasAlignmentPreview={hasAlignmentPreview}
               message={postSwitchValidation.alignmentPreview?.message}
-            />
+            />}
 
             {reviewError && (
               <Alert variant="destructive">
@@ -161,6 +161,8 @@ export function PythonRuntimeReviewDialog({
         )}
 
         <DialogFooter className="shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+          {hasAlignmentPreview && (
           <Button
             onClick={() => {
               void onAlignRuntime();
@@ -182,6 +184,7 @@ export function PythonRuntimeReviewDialog({
             )}
             {isAligning ? "Aligning runtime..." : hasAlignmentPreview && alignmentChangesCount === 0 ? "Runtime aligned" : "Align runtime"}
           </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

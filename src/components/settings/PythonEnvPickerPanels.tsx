@@ -141,7 +141,7 @@ export function PythonEnvStatusCard({
             size="sm"
             onClick={onOpenReview}
             disabled={isSettingUp}
-            title="Review optional packages and align with the recommended profile"
+            title="See installed packages and available optional features"
           >
             {reviewPackagesLabel}
           </Button>
@@ -196,16 +196,16 @@ export function RuntimeModeAlerts({ runtimeDisplay }: RuntimeModeAlertsProps) {
         <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
           <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription>
-            This bundled build is still using its embedded Python runtime. Switch to an external Python environment if you want updates and dependency changes to target a user-managed runtime.
+            Studio uses its included Python environment. You can select your previous Studio environment or a local environment using Change… above.
           </AlertDescription>
         </Alert>
       )}
 
       {runtimeDisplay.isBundledExternal && (
-        <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-          <AlertCircle className="h-4 w-4 text-amber-600" />
+        <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
+          <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription>
-            This bundled build is now running on an external Python runtime. Updates and dependency changes now apply to that external environment instead of the embedded bundled runtime.
+            Studio uses your selected Python environment. Required nirs4all updates are installed there, while your other compatible packages are kept.
           </AlertDescription>
         </Alert>
       )}

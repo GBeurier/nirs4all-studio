@@ -252,8 +252,8 @@ export function UpdatesSectionShell({
       <CardContent className="space-y-6">
         {/* Restart Banner */}
         {needsRestart && (
-          <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-            <AlertCircle className="h-4 w-4 text-amber-600" />
+          <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
+            <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription className="flex items-center justify-between">
               <span>Package changes require a backend restart to take effect.</span>
               <Button
@@ -274,16 +274,16 @@ export function UpdatesSectionShell({
             <AlertDescription>
               {runtimeDisplay.isBundledEmbedded
                 ? "This bundled build is still using its embedded Python runtime. nirs4all installs and snapshot restores are disabled because the embedded runtime is read-only."
-                : "This packaged backend runtime is read-only. Package mutations are disabled in this mode."}
+                : "Choose or update your Python environment from Python Environment. Studio manages the nirs4all version it requires and keeps your other compatible packages."}
             </AlertDescription>
           </Alert>
         )}
 
         {runtimeDisplay.isBundledExternal && (
-          <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-            <AlertCircle className="h-4 w-4 text-amber-600" />
+          <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
+            <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription>
-              This bundled build is running on an external Python runtime. Package installs, updates, and snapshot restores now apply to that external environment.
+              Studio is using your selected Python environment. You can prepare it again or select another one from Python Environment.
             </AlertDescription>
           </Alert>
         )}

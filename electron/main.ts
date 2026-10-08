@@ -150,6 +150,7 @@ function nativeSidecarStartOptions() {
   return {
     allowPackagedResource: app.isPackaged,
     pythonPluginHost: envManager.getConfiguredPythonPath(),
+    pythonPluginSitePackages: envManager.getSitePackages(),
     runtimeMode,
     runtimeKind,
     buildInfoPath: buildInfoCandidates.find((candidate) => fs.existsSync(candidate)) ?? null,
@@ -158,6 +159,8 @@ function nativeSidecarStartOptions() {
 }
 
 async function startNativeSidecar(): Promise<void> {
+  try { await envManager.prepareSelectedRuntimeAdapters(); }
+  catch (error) { console.warn("Selected environment needs Studio adapter preparation:", error); }
   const info = await nativeSidecarManager.start(nativeSidecarStartOptions());
   if (info.status === "running") {
     if (info.url) {
@@ -191,15 +194,53 @@ function getNativeSidecarInfo() {
 async function applyPythonRuntimeChange<T extends { success: boolean }>(
   change: () => Promise<T>,
 ): Promise<T> {
-  const result = await change();
-  if (result.success) {
-    // The running sidecar was launched with the previous plugin-host path.
-    // Mark that optional capability unavailable until the next app launch so
-    // route selection happens before (not after) choosing the compatibility
-    // plugin. Never restart the Rust control plane to rebind Python.
+  const previous = envManager.snapshotSelection();
+  try {
+    const result = await change();
+    if (!result.success) return result;
     nativePythonPluginHostStale = true;
+    await nativeSidecarManager.stop();
+    await startNativeSidecar();
+    const info = nativeSidecarManager.getInfo();
+    if (!info.url) throw new Error("The analysis backend could not be started.");
+    const [readinessResponse, coherenceResponse] = await Promise.all([
+      nativeSidecarManager.authenticatedFetch(`${info.url}/api/system/readiness`),
+      nativeSidecarManager.authenticatedFetch(`${info.url}/api/system/env-coherence`),
+    ]);
+    const readiness = await readinessResponse.json() as { ml_ready?: boolean; ml_error?: string };
+    const coherence = await coherenceResponse.json() as { coherent?: boolean; running_python?: string };
+    if (!readinessResponse.ok || readiness.ml_ready !== true) {
+      console.error("Selected scientific library could not be activated:", readiness.ml_error);
+      throw new Error(readiness.ml_error === "scientific_distribution_tampered"
+        ? "The installed nirs4all package could not be verified. Reinstall nirs4all in this environment or choose another environment."
+        : "Studio could not load the scientific library in this Python environment. Prepare its required packages or choose another environment.");
+    }
+    if (!coherenceResponse.ok || coherence.coherent !== true || !coherence.running_python) {
+      throw new Error("The analysis backend did not activate the selected Python environment.");
+    }
+    const expectedPython = envManager.getConfiguredPythonPath();
+    const normalizePython = (value: string) => process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+    if (!expectedPython || normalizePython(expectedPython) !== normalizePython(coherence.running_python)) {
+      throw new Error("The analysis backend is using a different Python interpreter than the one you selected.");
+    }
+    const setupResponse = await nativeSidecarManager.authenticatedFetch(`${info.url}/api/config/setup-status`);
+    const setup = await setupResponse.json() as { setup_completed?: boolean };
+    if (!setupResponse.ok) throw new Error("Studio could not save the environment setup.");
+    if (setup.setup_completed !== true) {
+      const completion = await nativeSidecarManager.authenticatedFetch(`${info.url}/api/config/complete-setup`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile: "cpu" }),
+      });
+      if (!completion.ok) throw new Error("Studio could not complete the environment setup.");
+    }
+    envManager.markWizardComplete(false);
+    return result;
+  } catch (error) {
+    envManager.restoreSelection(previous);
+    try { await nativeSidecarManager.stop(); await startNativeSidecar(); }
+    catch (restoreError) { console.error("Could not restart the previous environment:", restoreError); }
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${message} Your previous environment selection has been restored.`);
   }
-  return result;
 }
 
 let mainWindow: BrowserWindowInstance | null = null;
@@ -640,21 +681,16 @@ ipcMain.handle("env:isPortable", () => {
 
 ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
   try {
-    await envManager.setup((percent, step, detail) => {
-      // Broadcast progress to all renderer windows
-      const windows = BrowserWindow.getAllWindows();
-      for (const win of windows) {
-        win.webContents.send("env:setupProgress", { percent, step, detail });
-      }
-    }, targetDir);
-    nativePythonPluginHostStale = true;
-
-    // Runtime setup configures only the bounded CPython library/plugin host.
-    console.log(
-      "Python library/plugin host ready; restart the Rust sidecar to bind it",
-    );
-
-    return { success: true };
+    return await applyPythonRuntimeChange(async () => {
+      await envManager.setup((percent, step, detail) => {
+        // Broadcast progress to all renderer windows
+        const windows = BrowserWindow.getAllWindows();
+        for (const win of windows) {
+          win.webContents.send("env:setupProgress", { percent, step, detail });
+        }
+      }, targetDir);
+      return { success: true };
+    });
   } catch (error) {
     SentryMain?.captureException(error, { tags: { component: "env-setup" } });
     return {

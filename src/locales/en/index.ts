@@ -6,6 +6,16 @@
  */
 
 const en = {
+  pythonSetup: {
+    "title": "Choose your Python environment",
+    "description": "Reuse your previous Studio environment or a local Python environment. Studio will install the nirs4all version it needs in that environment and keep your other compatible packages.",
+    "settingsHint": "You can make the same choice later in Settings → Advanced → Python Environment.",
+    "checking": "Checking the analysis backend…",
+    "ready": "Your environment is ready for analysis.",
+    "prepare": "Use Change… to select and prepare an environment. An older nirs4all version can be updated in place.",
+    "later": "Set up later",
+    "open": "Open Studio"
+},
   // ============= Common / Global =============
   common: {
     loading: "Loading...",

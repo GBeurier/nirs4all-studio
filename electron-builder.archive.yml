@@ -11,6 +11,8 @@ files:
   - dist-electron/**/*
   # dist-electron/main.cjs loads the shared Python runtime config at startup.
   - scripts/python-runtime-config.cjs
+  - scripts/studio-document-adapters.cjs
+  - sidecar/contracts/studio_document_adapters_v1.json
   - recommended-config.json
   - "!**/*.map"
   # Renderer/UI libraries are bundled into dist/ by Vite and are NEVER require()d

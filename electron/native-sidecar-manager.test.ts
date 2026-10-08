@@ -457,7 +457,7 @@ describe("NativeSidecarManager", () => {
     });
   });
 
-  it("ignores user and managed interpreters for a packaged product", async () => {
+  it.each(["bundled", "custom", "managed"])("honors an explicit %s runtime in a verified packaged product", async (runtimeKind) => {
     const resourcesPath = fs.mkdtempSync(
       path.join(os.tmpdir(), "n4a-packaged-sidecar-strict-python-"),
     );
@@ -499,24 +499,26 @@ describe("NativeSidecarManager", () => {
       platform: "linux",
       arch: process.arch,
       pythonPluginHost: "/managed/runtime/bin/python",
+      runtimeKind,
+      pythonPluginSitePackages: "/managed/runtime/site-packages",
     });
     const spawnOptions = childProcessMocks.spawn.mock.calls[0]?.[2] as {
       env: NodeJS.ProcessEnv;
     };
-    expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST).toBe(pythonPath);
+    expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST).toBe(runtimeKind === "bundled" ? pythonPath : "/managed/runtime/bin/python");
     expect(childProcessMocks.spawn).toHaveBeenCalledTimes(1);
     expect(childProcessMocks.spawn.mock.calls[0]?.[0]).toBe(sidecarPath);
     expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST).not.toContain("venv");
     expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_CLOSURE).toBe(
-      path.join(
+      runtimeKind === "bundled" ? path.join(
         resourcesPath,
         "backend",
         "python-runtime",
         "PYTHON_PLUGIN_CLOSURE.json",
-      ),
+      ) : undefined,
     );
     expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES).toBe(
-      path.join(
+      runtimeKind === "bundled" ? path.join(
         resourcesPath,
         "backend",
         "python-runtime",
@@ -524,8 +526,9 @@ describe("NativeSidecarManager", () => {
         "lib",
         "python3.11",
         "site-packages",
-      ),
+      ) : "/managed/runtime/site-packages",
     );
+    expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED).toBe(runtimeKind === "bundled" ? "true" : undefined);
     expect(spawnOptions.env.NIRS4ALL_SCIENTIFIC_EXECUTOR).toBe(
       "cpython-stdio-v1",
     );

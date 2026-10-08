@@ -12,12 +12,14 @@ import { loadPythonRuntimeConfig, loadRecommendedConfig } from "./external-confi
 
 interface PythonRuntimeConfigModule {
   MANAGED_RUNTIME_PACKAGES: readonly string[];
+  REUSABLE_RUNTIME_PACKAGES: readonly string[];
 }
 
 const pythonRuntimeConfig = loadPythonRuntimeConfig<PythonRuntimeConfigModule>();
 const recommendedConfig = loadRecommendedConfig<RecommendedConfigFile>();
 
 export const MANAGED_RUNTIME_PACKAGES = pythonRuntimeConfig.MANAGED_RUNTIME_PACKAGES;
+export const REUSABLE_RUNTIME_PACKAGES = pythonRuntimeConfig.REUSABLE_RUNTIME_PACKAGES;
 
 export type EnvKind = "system" | "venv" | "conda" | "managed" | "bundled";
 
@@ -88,7 +90,7 @@ export function getManagedCorePackageNames(): string[] {
 }
 
 export function getMissingCorePackages(installedPackages: ReadonlyMap<string, string>): string[] {
-  return MANAGED_RUNTIME_PACKAGES.filter((packageSpec) => {
+  return pythonRuntimeConfig.REUSABLE_RUNTIME_PACKAGES.filter((packageSpec) => {
     const packageName = packageSpec.split(/[<>=!~ []/)[0];
     const installedVersion = installedPackages.get(normalizePackageName(packageName));
     if (!installedVersion) return true;
@@ -145,13 +147,15 @@ export function inspectPythonPackages(pythonPath: string): Promise<InspectPython
       pythonPath,
       [
         "-c",
-        "import json, sys\n"
+        "import json, sys, re\n"
         + "from importlib import metadata as importlib_metadata\n"
         + "installed = {}\n"
         + "for dist in importlib_metadata.distributions():\n"
         + "    name = dist.metadata.get('Name')\n"
         + "    if name:\n"
-        + "        installed[name] = dist.version\n"
+        + "        key = re.sub(r'[-_.]+', '_', name).lower()\n"
+        + "        if key not in installed:\n"
+        + "            installed[key] = importlib_metadata.version(name)\n"
         + "payload = {\n"
         + "    'version': f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}',\n"
         + "    'installed': installed,\n"

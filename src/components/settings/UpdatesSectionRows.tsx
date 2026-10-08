@@ -108,7 +108,7 @@ export function Nirs4allUpdateRow({
           {row.currentVersion ? (
             <>
               Current: <span className="font-mono">{row.currentVersion}</span>
-              {row.showTargetVersion && (
+              {!row.managedByStudio && row.showTargetVersion && (
                 <>
                   {" → "}
                   <span className="font-mono text-primary">{row.latestVersion}</span>
@@ -119,9 +119,12 @@ export function Nirs4allUpdateRow({
             <span className="text-amber-600">Not installed in current runtime</span>
           )}
         </div>
+        {row.managedByStudio && <p className="text-xs text-muted-foreground">Studio requires nirs4all {row.requiredVersion ?? "for this Studio version"}. Prepared in your selected Python environment.</p>}
       </div>
       <div className="flex items-center gap-2">
-        {row.action === "update" ? (
+        {row.managedByStudio ? (
+          <Button size="sm" variant="outline" onClick={onOpenDialog}>Manage Python environment</Button>
+        ) : row.action === "update" ? (
           <Button size="sm" onClick={onOpenDialog} disabled={row.isActionDisabled}>
             <Download className="mr-2 h-4 w-4" />
             Update

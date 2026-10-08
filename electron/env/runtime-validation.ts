@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { getManagedCorePackageNames } from "./env-inspection";
 import { loadPythonRuntimeConfig } from "./external-config";
 
-const { PLUGIN_DISTRIBUTION_VERSION } = loadPythonRuntimeConfig<{ PLUGIN_DISTRIBUTION_VERSION: string }>();
+const { PLUGIN_DISTRIBUTION_VERSION, REUSABLE_RUNTIME_PACKAGES } = loadPythonRuntimeConfig<{ PLUGIN_DISTRIBUTION_VERSION: string; REUSABLE_RUNTIME_PACKAGES: string[] }>();
 
 export const REQUIRED_RUNTIME_IMPORT_PROBE = `import importlib, importlib.metadata, json, os, sys
 assert sys.version_info >= (3, 11), "Studio requires Python 3.11 or newer"
@@ -17,6 +17,7 @@ assert callable(studio_scientific_job_v1) and callable(studio_scientific_job_v2)
 `;
 
 interface RuntimeValidationOptions {
+  reused?: boolean;
   timeoutMs?: number;
   /** The immutable bundle intentionally removes pip after build qualification. */
   checkDependencies?: boolean;
@@ -36,8 +37,8 @@ function verifyCommand(pythonPath: string, args: string[], timeoutMs: number): P
 export async function validatePythonRuntime(pythonPath: string, options: RuntimeValidationOptions = {}): Promise<void> {
   const timeoutMs = options.timeoutMs ?? 30_000;
   await verifyCommand(pythonPath, [
-    "-I", "-B", "-c", REQUIRED_RUNTIME_IMPORT_PROBE,
-    JSON.stringify(getManagedCorePackageNames()), PLUGIN_DISTRIBUTION_VERSION,
+    ...(options.reused ? [] : ["-I"]), "-B", "-c", REQUIRED_RUNTIME_IMPORT_PROBE,
+    JSON.stringify(options.reused ? REUSABLE_RUNTIME_PACKAGES.map((name) => name.split(/[<>=!~ []/)[0]) : getManagedCorePackageNames()), PLUGIN_DISTRIBUTION_VERSION,
   ], timeoutMs);
   if (options.checkDependencies !== false) {
     await verifyCommand(pythonPath, ["-I", "-B", "-m", "pip", "check"], timeoutMs);

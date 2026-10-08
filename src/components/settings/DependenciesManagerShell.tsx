@@ -229,16 +229,16 @@ function RuntimeAlerts({
           <AlertDescription>
             {runtimeDisplay.isBundledEmbedded
               ? "This bundled build is using its embedded Python runtime. Package management is disabled because the embedded runtime is read-only."
-              : "Package management is unavailable for this runtime. Install an updated Studio release to update its included packages."}
+              : "Studio keeps your existing optional packages. Available recommendations are shown below. Update nirs4all through Python Environment; use your environment’s package manager for optional libraries."}
           </AlertDescription>
         </Alert>
       )}
 
       {runtimeDisplay.isBundledExternal && !runtimeDisplay.isReadOnly && (
-        <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-          <AlertCircle className="h-4 w-4 text-amber-600" />
+        <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
+          <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription>
-            This bundled build is running on an external Python runtime. Optional package installs and removals now apply to that external environment.
+            Studio is using your selected Python environment. Compatible packages are kept.
           </AlertDescription>
         </Alert>
       )}

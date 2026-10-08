@@ -78,11 +78,12 @@ export async function installCorePackages(
   }
 
   // Install all core packages in a single pip call
-  await runCommand(pythonPath, [...PIP_INSTALL_BASE_ARGS, ...MANAGED_RUNTIME_PACKAGES], {
+  const { REUSABLE_RUNTIME_PACKAGES } = loadPythonRuntimeConfig<{ REUSABLE_RUNTIME_PACKAGES: string[] }>();
+  await runCommand(pythonPath, [...PIP_INSTALL_BASE_ARGS, "--upgrade-strategy", "only-if-needed", ...REUSABLE_RUNTIME_PACKAGES], {
     retries: 2,
     timeoutMs,
   });
-  await validatePythonRuntime(pythonPath, { timeoutMs: Math.min(timeoutMs, ENSUREPIP_TIMEOUT_MS) });
+  await validatePythonRuntime(pythonPath, { timeoutMs: Math.min(timeoutMs, ENSUREPIP_TIMEOUT_MS), checkDependencies: false, reused: true });
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   FolderOpen,
   Loader2,
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +48,7 @@ interface PythonEnvSelectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   labels: PythonEnvSelectionLabels;
+  error?: string | null;
   switchProgressState: BusyProgressState | null;
   inspection: DesktopInspectedEnv | null;
   isSwitching: boolean;
@@ -66,6 +68,7 @@ export function PythonEnvSelectionDialog({
   open,
   onOpenChange,
   labels,
+  error,
   switchProgressState,
   inspection,
   isSwitching,
@@ -90,6 +93,7 @@ export function PythonEnvSelectionDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
         <div className="space-y-4 mt-2">
           {switchProgressState && !inspection && (
             <BusyProgressPanel
@@ -213,14 +217,12 @@ function DetectedEnvironmentList({
             <button
               key={env.pythonPath}
               onClick={() => {
-                if (!isCurrent) {
-                  void onSelectDetectedEnv(env.path);
-                }
+                void onSelectDetectedEnv(env.path);
               }}
-              disabled={isSwitching || !!isCurrent}
+              disabled={isSwitching}
               className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
                 isCurrent
-                  ? "bg-primary/5 border-primary/30 cursor-default"
+                  ? "bg-primary/5 border-primary/30 cursor-pointer"
                   : "hover:bg-muted/70 cursor-pointer border-muted"
               }`}
             >
@@ -232,8 +234,8 @@ function DetectedEnvironmentList({
                   <Badge variant="secondary" className="text-xs">
                     {getDesktopEnvKindLabel(env.envKind)}
                   </Badge>
-                  <Badge variant={env.hasCorePackages ? "outline" : "destructive"} className="text-xs">
-                    {env.hasCorePackages ? "Core ready" : "Core missing"}
+                  <Badge variant="outline" className="text-xs">
+                    {env.hasCorePackages ? "nirs4all available" : "nirs4all preparation needed"}
                   </Badge>
                   <Badge variant={env.writable ? "outline" : "secondary"} className="text-xs">
                     {getDesktopEnvWriteAccessLabel(env.writable)}

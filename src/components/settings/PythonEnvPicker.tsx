@@ -148,7 +148,7 @@ export function PythonEnvPicker() {
               />
             )}
 
-            <SetupErrorAlert error={setupError} isSettingUp={isSettingUp} />
+            <SetupErrorAlert error={setupError || controller.environmentError || null} isSettingUp={isSettingUp} />
             <RuntimeModeAlerts runtimeDisplay={runtimeDisplay} />
             <SwitchResultAlert result={switchResult} success={false} />
           </>
@@ -158,6 +158,7 @@ export function PythonEnvPicker() {
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           labels={selectionLabels}
+          error={switchResult?.success === false ? switchResult.message : null}
           switchProgressState={switchProgressState}
           inspection={inspection}
           isSwitching={isSwitching}

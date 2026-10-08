@@ -17,6 +17,16 @@ from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 
+def _installed_versions() -> dict[str, str]:
+    """Use the interpreter's selected distribution when paths overlap."""
+    installed = {}
+    for distribution in importlib.metadata.distributions():
+        name = distribution.metadata.get("Name")
+        if name:
+            installed.setdefault(canonicalize_name(name), importlib.metadata.version(name))
+    return installed
+
+
 def compare_configuration(document: dict[str, Any]) -> dict[str, Any]:
     """Compare installed versions against minimum requirements using PEP 440."""
     if set(document) - {"config", "profile", "include_optional", "include_latest"}:
@@ -26,8 +36,7 @@ def compare_configuration(document: dict[str, Any]) -> dict[str, Any]:
     profile = config.get("profiles", {}).get(profile_id)
     if not isinstance(profile, dict) or (profile.get("platforms") and sys.platform not in profile["platforms"]):
         raise ValueError(f"Unknown or incompatible profile: {profile_id}")
-    installed = {canonicalize_name(dist.metadata["Name"]): dist.version for dist in importlib.metadata.distributions()
-                 if "Name" in dist.metadata and dist.metadata["Name"]}
+    installed = _installed_versions()
     # Lite distribution names provide the same capabilities under different
     # published package identities; profile renames remain explicit.
     renames = profile.get("package_renames", {})
@@ -67,8 +76,7 @@ def dependency_inventory(document: dict[str, Any]) -> dict[str, Any]:
     if set(document) != {"config"}:
         raise ValueError("Unexpected dependency inventory fields")
     config = document["config"]
-    installed = {canonicalize_name(dist.metadata["Name"]): dist.version
-                 for dist in importlib.metadata.distributions() if dist.metadata.get("Name")}
+    installed = _installed_versions()
     categories = []
     for category_id, category in config.get("categories", {}).items():
         packages = []
@@ -91,7 +99,7 @@ def dependency_inventory(document: dict[str, Any]) -> dict[str, Any]:
                            "packages": packages, "installed_count": sum(p["is_installed"] for p in packages),
                            "total_count": len(packages)})
     version = installed.get("nirs4all")
-    return {"categories": categories, "read_only": True, "runtime_valid": version is not None,
+    return {"categories": categories, "read_only": True, "runtime_valid": version == config.get("nirs4all"),
             "runtime_path": sys.executable, "venv_valid": version is not None, "venv_path": sys.prefix,
             "nirs4all_installed": version is not None, "nirs4all_version": version,
             "total_installed": sum(c["installed_count"] for c in categories),

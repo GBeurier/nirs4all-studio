@@ -650,8 +650,7 @@ impl SidecarState {
     }
 
     /// Capture the product-owned Python plugin host at sidecar startup. The
-    /// value is only used by the explicit preflight route; it never selects a
-    /// Python HTTP backend or authorizes scientific execution.
+    /// library host is attested before execution and never owns an HTTP port.
     #[must_use]
     pub fn from_environment() -> Self {
         let python_plugin_host = env::var_os(PYTHON_PLUGIN_HOST_ENV)
@@ -681,7 +680,15 @@ impl SidecarState {
             == Ok(scientific_cpython::SCIENTIFIC_CPYTHON_EXECUTOR_ID)
         {
             let empty = Path::new("");
-            Some(Arc::new(
+            let executor = if !python_plugin_host_bundled
+                && matches!(runtime_kind.as_str(), "custom" | "managed")
+            {
+                scientific_cpython::CpythonScientificJobExecutor::acquire_existing_with_config_dir(
+                    python_plugin_host.as_deref().unwrap_or(empty),
+                    python_plugin_site_packages.unwrap_or_default(),
+                    app_settings.config_dir(),
+                )
+            } else {
                 scientific_cpython::CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
                     python_plugin_host_bundled
                         .then_some(python_plugin_host.as_deref())
@@ -700,8 +707,9 @@ impl SidecarState {
                         .flatten()
                         .unwrap_or(empty),
                     app_settings.config_dir(),
-                ),
-            ))
+                )
+            };
+            Some(Arc::new(executor))
         } else {
             None
         };

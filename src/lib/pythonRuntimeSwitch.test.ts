@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  readiness: vi.fn(async () => ({ ml_ready: true })),
   alignConfig: vi.fn(),
   detectGPU: vi.fn(),
   getRecommendedConfig: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@/api/system", () => ({
 
 vi.mock("@/api/transport", () => ({
   resetBackendUrl: mocks.resetBackendUrl,
+  api: { get: mocks.readiness },
 }));
 
 vi.mock("@/lib/pipelineOperatorAvailability", () => ({
@@ -43,6 +45,7 @@ afterEach(() => {
 describe("pythonRuntimeSwitch", () => {
   it("preselects installed visible optional packages from runtime summary gaps without scanning dependencies", async () => {
     mocks.getRuntimeSummary.mockResolvedValue({
+      coherent: true,
       core_ready: true,
       missing_optional_packages: ["tabpfn"],
     });
@@ -110,6 +113,7 @@ describe("pythonRuntimeSwitch", () => {
 
   it("never preselects optionals excluded by the suggested profile", async () => {
     mocks.getRuntimeSummary.mockResolvedValue({
+      coherent: true,
       core_ready: true,
       missing_optional_packages: [],
     });
@@ -187,12 +191,18 @@ describe("pythonRuntimeSwitch", () => {
     });
   });
 
+  it("rejects an environment whose imports exist but scientific activation failed", async () => {
+    mocks.getRuntimeSummary.mockResolvedValue({ coherent: true, core_ready: true });
+    mocks.readiness.mockResolvedValueOnce({ ml_ready: false });
+    await expect(loadPostSwitchValidation()).rejects.toThrow("not ready for analysis");
+  });
+
   it("restarts the backend with skipEnsure enabled during runtime switches", async () => {
     const restartBackend = vi.fn().mockResolvedValue({ success: true });
     const restarted = vi.fn();
     window.addEventListener("backend-restarted", restarted);
 
-    mocks.getRuntimeSummary.mockResolvedValue(null);
+    mocks.getRuntimeSummary.mockResolvedValue({ coherent: true, core_ready: true });
     mocks.detectGPU.mockResolvedValue(null);
     mocks.getRecommendedConfig.mockResolvedValue(null);
 

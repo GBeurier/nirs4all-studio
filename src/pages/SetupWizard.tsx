@@ -43,6 +43,8 @@ import {
   useCompleteSetup,
   useSkipSetup,
 } from "@/hooks/useRecommendedConfig";
+import { PythonEnvPicker } from "@/components/settings/PythonEnvPicker";
+import { getElectronApi } from "@/components/settings/PythonEnvPickerRuntime";
 import { alignConfig, getConfigDiff } from "@/api/config";
 import { getDependencies } from "@/api/dependencies";
 import { getRuntimeSummary } from "@/api/system";
@@ -77,6 +79,64 @@ function setupErrorMessage(error: unknown, fallback: string): string {
 }
 
 export default function SetupWizard() {
+  return getElectronApi() ? <DesktopSetupWizard /> : <WebSetupWizard />;
+}
+
+function DesktopSetupWizard() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const completeSetup = useCompleteSetup();
+  const [ready, setReady] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const verify = useCallback(async () => {
+    setChecking(true);
+    try {
+      const [runtime, readiness] = await Promise.all([
+        getRuntimeSummary(), api.get<{ ml_ready?: boolean }>("/system/readiness"),
+      ]);
+      setReady(runtime.coherent && runtime.core_ready && readiness.ml_ready === true);
+    } catch { setReady(false); }
+    finally { setChecking(false); }
+  }, []);
+  useEffect(() => {
+    void verify();
+    const refresh = () => { void verify(); };
+    window.addEventListener("backend-restarted", refresh);
+    return () => window.removeEventListener("backend-restarted", refresh);
+  }, [verify]);
+  const finish = async () => {
+    if (!ready || checking) return;
+    setError(null);
+    try {
+      await completeSetup.mutateAsync({ profile: "cpu" });
+      await getElectronApi()?.markWizardComplete?.(false);
+      navigate("/datasets", { replace: true });
+    } catch (err) { setError(setupErrorMessage(err, "Could not save setup.")); }
+  };
+  const defer = async () => {
+    await getElectronApi()?.markWizardComplete?.(true);
+    navigate("/datasets", { replace: true });
+  };
+  return <div className="min-h-screen bg-background p-4 sm:p-8">
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div className="space-y-2">
+        <h1 className="text-2xl font-semibold">{t("pythonSetup.title", "Choose your Python environment")}</h1>
+        <p className="text-muted-foreground">{t("pythonSetup.description", "Reuse your previous Studio environment or a local Python environment. Studio will install the nirs4all version it needs in that environment and keep your other compatible packages.")}</p>
+        <p className="text-sm text-muted-foreground">{t("pythonSetup.settingsHint", "You can make the same choice later in Settings → Advanced → Python Environment.")}</p>
+      </div>
+      <PythonEnvPicker />
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      <p role="status" className="text-sm">{checking ? t("pythonSetup.checking", "Checking the analysis backend…") : ready ? t("pythonSetup.ready", "Your environment is ready for analysis.") : t("pythonSetup.prepare", "Choose an environment below Change… to prepare it. An older nirs4all version can be updated in place.")}</p>
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={() => void defer()} disabled={completeSetup.isPending}>{t("pythonSetup.later", "Set up later")}</Button>
+        <Button onClick={() => void finish()} disabled={!ready || checking || completeSetup.isPending}>{t("pythonSetup.open", "Open Studio")}</Button>
+      </div>
+    </div>
+  </div>;
+}
+
+function WebSetupWizard() {
   const navigate = useNavigate();
   const completeSetupMutation = useCompleteSetup();
   const [mode, setMode] = useState<"checking" | "writable" | "packaged">("checking");

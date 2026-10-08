@@ -49,6 +49,8 @@ export type WebappUpdateRowState = {
 export type Nirs4allUpdateRowAction = "update" | "install" | "up-to-date";
 
 export type Nirs4allUpdateRowState = {
+  managedByStudio?: boolean;
+  requiredVersion?: string;
   action: Nirs4allUpdateRowAction;
   currentVersion: string | null | undefined;
   isActionDisabled: boolean;

@@ -55,6 +55,7 @@ import type { BundledRuntimeInfo } from "./env/runtime-paths";
 import { checkPythonEnv, detectExistingEnvs } from "./env/env-detection";
 import { clearVerifyCache, computeEnvFingerprint, readVerifyCache, writeVerifyCache } from "./env/verify-cache";
 import { validatePythonRuntime } from "./env/runtime-validation";
+import { prepareRuntimeAdapters } from "./env/runtime-adapters";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
@@ -92,6 +93,7 @@ export interface EnvInfo {
   sitePackages: string | null;
   pythonVersion: string | null;
   isCustom: boolean;
+  setupDeferred?: boolean;
   error?: string;
 }
 
@@ -118,6 +120,7 @@ interface ApplyExistingPythonOptions {
 
 export class EnvManager {
   private status: EnvStatus = "none";
+  private preparedSitePackages: string | null = null;
   private lastError: string | null = null;
   private envDir: string;
   private settingsPath: string;
@@ -186,36 +189,38 @@ export class EnvManager {
   }
 
   isBundled(): boolean {
-    return detectBundledRuntime() !== null;
+    return this.getConfiguredRuntimeMode() === "bundled";
+  }
+
+  private isBundledPythonPath(pythonPath: string): boolean {
+    const bundled = detectBundledRuntime();
+    const normalize = (value: string) => process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+    return !!bundled && normalize(pythonPath) === normalize(bundled.pythonPath);
   }
 
   /**
    * Get the Python executable Electron is currently configured to use.
    *
-   * An attested all-in-one runtime is immutable product input and always wins;
-   * stale per-user settings must never select or describe the scientific host
-   * for that product. Installer/development builds without a bundle continue
-   * to honor an explicit user selection.
+   * A saved environment is retained across updates. The included interpreter
+   * is the default when no existing or managed environment has been selected.
    */
   getConfiguredPythonPath(): string | null {
+    if (this.pythonPath) return fs.existsSync(this.pythonPath) ? this.pythonPath : null;
+    const managedPython = getManagedPythonPath(this.envDir);
+    if (fs.existsSync(managedPython)) return managedPython;
     const bundledRuntime = detectBundledRuntime();
     if (bundledRuntime) {
       return bundledRuntime.pythonPath;
     }
 
-    if (this.pythonPath && fs.existsSync(this.pythonPath)) {
-      return this.pythonPath;
-    }
-
-    const managedPython = getManagedPythonPath(this.envDir);
-    return fs.existsSync(managedPython) ? managedPython : null;
+    return null;
   }
 
   /** Get the configured runtime mode from Electron state. */
   getConfiguredRuntimeMode(): EnvRuntimeMode {
-    if (this.isBundled()) return "bundled";
-    if (this.pythonPath && fs.existsSync(this.pythonPath)) return "custom";
-    return fs.existsSync(getManagedPythonPath(this.envDir)) ? "managed" : "none";
+    if (this.pythonPath) return this.isBundledPythonPath(this.pythonPath) ? "bundled" : "custom";
+    if (fs.existsSync(getManagedPythonPath(this.envDir))) return "managed";
+    return detectBundledRuntime() ? "bundled" : "none";
   }
 
   /**
@@ -229,26 +234,31 @@ export class EnvManager {
 
   /** Get the Python executable path */
   getPythonPath(): string | null {
-    const bundledRuntime = detectBundledRuntime();
-    if (bundledRuntime) {
-      return bundledRuntime.pythonPath;
-    }
+    return this.getConfiguredPythonPath();
+  }
 
-    // Custom python path (user-selected or custom-dir setup)
-    if (this.pythonPath) {
-      if (fs.existsSync(this.pythonPath)) return this.pythonPath;
-      return null;
-    }
+  snapshotSelection() {
+    return { pythonPath: this.pythonPath, configuredPythonPath: this.getConfiguredPythonPath(), runtimeMode: this.getConfiguredRuntimeMode(), status: this.status, lastError: this.lastError, preparedSitePackages: this.preparedSitePackages, savedAppVersion: this.savedAppVersion, savedSkipWizard: this.savedSkipWizard };
+  }
 
-    // Managed env: use the venv's Python directly.
-    // Since the venv is created on the user's machine (not bundled from build),
-    // pyvenv.cfg has correct paths and sys.prefix resolves to the venv.
-    // This ensures VenvManager's pip_executable and package installs work correctly.
-    return getManagedPythonPath(this.envDir);
+  restoreSelection(snapshot: ReturnType<EnvManager["snapshotSelection"]>): void {
+    this.pythonPath = snapshot.pythonPath ?? (snapshot.runtimeMode === "bundled" ? snapshot.configuredPythonPath : null);
+    this.preparedSitePackages = snapshot.preparedSitePackages;
+    this.status = snapshot.status;
+    this.lastError = snapshot.lastError;
+    this.savedAppVersion = snapshot.savedAppVersion;
+    this.savedSkipWizard = snapshot.savedSkipWizard;
+    this.saveSettings();
+  }
+
+  async prepareSelectedRuntimeAdapters(): Promise<void> {
+    const pythonPath = this.getConfiguredPythonPath();
+    if (pythonPath && !this.isBundled()) this.preparedSitePackages = await prepareRuntimeAdapters(pythonPath);
   }
 
   /** Get the site-packages path */
   getSitePackages(): string | null {
+    if (!this.isBundled()) return this.preparedSitePackages ?? getSitePackagesForPythonPath(this.getConfiguredPythonPath());
     const bundledRuntime = detectBundledRuntime();
     if (bundledRuntime) {
       return bundledRuntime.sitePackages;
@@ -296,9 +306,10 @@ export class EnvManager {
       status: this.status,
       envDir: this.envDir,
       pythonPath,
-      sitePackages: getSitePackagesForPythonPath(pythonPath),
+      sitePackages: this.getSitePackages(),
       pythonVersion,
       isCustom: this.getConfiguredRuntimeMode() === "custom",
+      setupDeferred: this.savedSkipWizard,
       error: this.lastError ?? undefined,
     };
   }
@@ -317,8 +328,7 @@ export class EnvManager {
    * @returns `true` if the configured runtime is still reachable.
    */
   validateConfiguredState(): boolean {
-    // A packaged all-in-one runtime is independently attested and immutable.
-    // Do not let an obsolete per-user setting invalidate or relabel it.
+    // The bundle is independently attested when it is the selected runtime.
     if (this.isBundled()) {
       this.status = "ready";
       this.lastError = null;
@@ -326,13 +336,10 @@ export class EnvManager {
     }
     if (this.pythonPath && !fs.existsSync(this.pythonPath)) {
       console.warn(
-        `[EnvManager] Configured Python not found at ${this.pythonPath} (clearing saved custom path)`,
+        `[EnvManager] Configured Python not found at ${this.pythonPath}`,
       );
-      this.pythonPath = null;
-      this.savedAppVersion = null;
-      this.saveSettings();
       this.status = "none";
-      this.lastError = null;
+      this.lastError = "Your previous Python environment could not be found. Select its current location or another existing environment.";
       return false;
     }
 
@@ -471,7 +478,8 @@ export class EnvManager {
     try {
       await validatePythonRuntime(pythonPath, {
         timeoutMs: timeout,
-        checkDependencies: !this.isBundled(),
+        checkDependencies: false,
+        reused: !this.isBundled(),
       });
       result = true;
     } catch (error) {
@@ -703,7 +711,8 @@ export class EnvManager {
     }
 
     let info = inspection.info;
-    const shouldInstallCorePackages = options?.installCorePackages === true;
+    const bundledSelection = this.isBundledPythonPath(pythonPath);
+    const shouldInstallCorePackages = options?.installCorePackages === true && !bundledSelection;
 
     if (!info.hasCorePackages && !shouldInstallCorePackages) {
       return {
@@ -713,7 +722,7 @@ export class EnvManager {
       };
     }
 
-    if (!info.hasCorePackages && shouldInstallCorePackages) {
+    if (shouldInstallCorePackages) {
       if (!(await probeNetworkOnline())) {
         return {
           success: false,
@@ -752,7 +761,8 @@ export class EnvManager {
     }
 
     try {
-      await validatePythonRuntime(pythonPath);
+      await validatePythonRuntime(pythonPath, { reused: !bundledSelection, checkDependencies: false });
+      this.preparedSitePackages = bundledSelection ? null : await prepareRuntimeAdapters(pythonPath);
     } catch (error) {
       return {
         success: false,
@@ -815,6 +825,16 @@ export class EnvManager {
    *   pythonPath so getPythonPath() finds it.
    */
   async setup(progress?: ProgressCallback, targetDir?: string): Promise<void> {
+    const destination = targetDir ?? this.envDir;
+    const existingPython = [getManagedPythonPath(destination), ...getPythonExecutableCandidatesForEnvRoot(destination)]
+      .find((candidate) => fs.existsSync(candidate));
+    if (existingPython) {
+      progress?.(10, "installing", "Updating the existing Studio environment…");
+      const result = await this.applyExistingPython(existingPython, { installCorePackages: true });
+      if (!result.success) throw new Error(result.message);
+      progress?.(100, "ready", "The existing environment is ready.");
+      return;
+    }
     return provisionManagedRuntime(this.provisioningContext(), progress, targetDir);
   }
 }
