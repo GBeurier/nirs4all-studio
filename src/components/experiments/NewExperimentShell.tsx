@@ -4,6 +4,7 @@ import { motion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MissingNodesConfirmDialog } from "@/components/pipeline-editor/MissingNodesConfirmDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   NEW_EXPERIMENT_MAX_STEP,
   shouldShowNewExperimentWizardActions,
@@ -91,6 +92,17 @@ export function NewExperimentShell({
         description="Unavailable operators will be removed from temporary copies of the affected pipelines before the experiment starts. Saved pipelines stay unchanged."
         confirmLabel="Launch Experiment"
       />
+      <Dialog open={Boolean(launchFlow.launchError)} onOpenChange={(open) => {
+        if (!open) launchFlow.clearLaunchError();
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cannot start experiment</DialogTitle>
+            <DialogDescription>{launchFlow.launchError}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter><Button onClick={launchFlow.clearLaunchError}>Close</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }

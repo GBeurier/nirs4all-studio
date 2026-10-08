@@ -203,7 +203,7 @@ export function FinetuneNativeContractCard({
         <div>
           <h4 className="flex items-center gap-2 text-sm font-medium">
             <Workflow className="h-4 w-4 text-purple-500" />
-            Native nirs4all tuning contract
+            Model Optimization Settings
           </h4>
           <p className="mt-1 text-xs text-muted-foreground">
             {summary.nativePayloadLabel} for {summary.modelName}; {summary.trialCountLabel}.

@@ -127,7 +127,7 @@ function DesktopSetupWizard() {
       </div>
       <PythonEnvPicker />
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-      <p role="status" className="text-sm">{checking ? t("pythonSetup.checking", "Checking the analysis backend…") : ready ? t("pythonSetup.ready", "Your environment is ready for analysis.") : t("pythonSetup.prepare", "Choose an environment below Change… to prepare it. An older nirs4all version can be updated in place.")}</p>
+      <p role="status" className="text-sm">{checking ? t("pythonSetup.checking", "Checking the analysis engine…") : ready ? t("pythonSetup.ready", "Your environment is ready for analysis.") : t("pythonSetup.prepare", "Choose an environment below Change… to prepare it. An older nirs4all version can be updated in place.")}</p>
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={() => void defer()} disabled={completeSetup.isPending}>{t("pythonSetup.later", "Set up later")}</Button>
         <Button onClick={() => void finish()} disabled={!ready || checking || completeSetup.isPending}>{t("pythonSetup.open", "Open Studio")}</Button>
@@ -161,10 +161,10 @@ function WebSetupWizard() {
         api.get<{ ml_ready?: boolean; ml_error?: string | null }>("/system/readiness"),
       ]);
       if (!inventory.runtime_valid || !runtime.core_ready || !runtime.coherent) {
-        throw new Error("The included Python runtime is not ready. Repair or reinstall Studio, then retry verification.");
+        throw new Error("The analysis tools are not ready. Repair or reinstall Studio, then check again.");
       }
       if (readiness.ml_ready !== true) {
-        throw new Error(readiness.ml_error || "The scientific runtime is not ready. Repair or reinstall Studio, then retry verification.");
+        throw new Error(readiness.ml_error || "The analysis tools are not ready. Repair or reinstall Studio, then check again.");
       }
       if (!diff.is_aligned) {
         const packages = diff.packages.filter((pkg) => pkg.status === "missing" || pkg.status === "outdated");
@@ -173,7 +173,7 @@ function WebSetupWizard() {
       setReady(true);
       return true;
     } catch (err) {
-      setError(setupErrorMessage(err, "Failed to verify the installed runtime"));
+      setError(setupErrorMessage(err, "Could not check the analysis tools"));
       return false;
     } finally {
       setChecking(false);
@@ -201,12 +201,12 @@ function WebSetupWizard() {
       <Card className="w-full max-w-2xl">
         <CardHeader>
           <CardTitle>Verify Studio installation</CardTitle>
-          <CardDescription>Studio includes its Python runtime and CPU packages. Verify the installation before opening your datasets.</CardDescription>
+          <CardDescription>Studio includes the tools needed for analysis. Check the installation before opening your datasets.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {checking && <p role="status">Checking the installed runtime and required packages…</p>}
+          {checking && <p role="status">Checking the analysis tools…</p>}
           {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-          {ready && !checking && <p role="status">The included CPU runtime and required packages are ready.</p>}
+          {ready && !checking && <p role="status">The analysis tools are ready.</p>}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => void verifyRuntime(true)} disabled={checking || completeSetupMutation.isPending}>Retry verification</Button>
             <Button onClick={() => void finishPackagedSetup()} disabled={!ready || checking || completeSetupMutation.isPending}>Open Studio</Button>

@@ -334,7 +334,7 @@ export function RobustnessScenarioDraftCard({
         </div>
 
         <div className="rounded border border-border/50 bg-background/60 p-2">
-          <p className="text-[11px] font-medium text-foreground">Normalized launch payload</p>
+          <p className="text-[11px] font-medium text-foreground">Experiment Settings</p>
           <pre className="mt-1 max-h-24 overflow-auto rounded bg-muted p-2 text-[10px] text-muted-foreground">
             {JSON.stringify(normalizedLaunchPayload, null, 2)}
           </pre>

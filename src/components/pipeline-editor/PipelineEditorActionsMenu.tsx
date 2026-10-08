@@ -73,11 +73,11 @@ export function PipelineEditorActionsMenu({
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => { void onExportCanonical("json"); }}>
           <FileJson className="h-4 w-4 mr-2" />
-          Export as JSON (Canonical)
+          Export as JSON
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => { void onExportCanonical("yaml"); }}>
           <FileCode className="h-4 w-4 mr-2" />
-          Export as YAML (Canonical)
+          Export as YAML
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onImportClick}>

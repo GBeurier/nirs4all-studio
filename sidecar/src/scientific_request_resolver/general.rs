@@ -94,7 +94,7 @@ fn normalize_documents(
         requests.push(json!({"operation":"dataset.configure", "payload":{"record":record,"scientific_run":true}}));
     }
     for (id, inline) in &selection.pipelines {
-        let document = match inline {
+        let mut document = match inline {
             Some(value) => value.clone(),
             None => {
                 read_pipeline_with_limit(&preflight.workspace_path, id, MAX_DOCUMENT_BYTES as u64)?
@@ -103,6 +103,7 @@ fn normalize_documents(
         if inline.is_none() && document.get("id").and_then(Value::as_str) != Some(id) {
             return Err(ScientificResolveError::PipelineInvalid);
         }
+        document["scientific_run"] = json!(true);
         bounded(&document, MAX_DOCUMENT_BYTES)?;
         requests.push(json!({"operation":"pipeline.normalize", "payload":document}));
     }
@@ -135,6 +136,19 @@ fn normalize_documents(
     let mut pipelines = Vec::new();
     for normalized in normalized {
         bounded(&normalized, MAX_GENERAL_BYTES)?;
+        let execution = &normalized["execution_validation"];
+        if execution["valid"] == false {
+            let code = execution["code"].as_str().filter(|value| !value.is_empty() && value.len() <= 128)
+                .ok_or(ScientificResolveError::PipelineInvalid)?;
+            let message = execution["message"].as_str().filter(|value| !value.is_empty() && value.len() <= 4096)
+                .ok_or(ScientificResolveError::PipelineInvalid)?;
+            return Err(ScientificResolveError::ExecutionUnavailable {
+                code: code.into(), message: message.into(),
+            });
+        }
+        if execution["valid"] != true {
+            return Err(ScientificResolveError::PipelineInvalid);
+        }
         let pipeline = normalized
             .get("runtime_pipeline")
             .filter(|value| value.as_array().is_some_and(|steps| !steps.is_empty()))
@@ -586,10 +600,32 @@ mod tests {
                 "name": value["record"]["name"],
             })),
             "pipeline.normalize" => Ok(json!({
-                "runtime_pipeline": value["steps"], "validation": {"valid": true}
+                "runtime_pipeline": value["steps"], "validation": {"valid": true},
+                "execution_validation": {"valid": true}
             })),
             _ => Err("unexpected operation".into()),
         }
+    }
+
+    #[test]
+    fn missing_execution_dependency_is_rejected_before_job_admission() {
+        let (root, config, workspace) = fixture("missing-execution-dependency");
+        let message = "TabPFN is unavailable in the selected Python environment";
+        let result = ScientificRequestResolver::new(config)
+            .resolve_general(&submission(&workspace, "local-python"), |operation, payload| {
+                let mut normalized = adapter(operation, payload)?;
+                if operation == "pipeline.normalize" {
+                    assert_eq!(payload["scientific_run"], true);
+                    normalized["execution_validation"] = json!({
+                        "valid": false, "code": "dependency_missing", "message": message,
+                    });
+                }
+                Ok(normalized)
+            });
+        assert_eq!(result, Err(ScientificResolveError::ExecutionUnavailable {
+            code: "dependency_missing".into(), message: message.into(),
+        }));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

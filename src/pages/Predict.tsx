@@ -155,7 +155,7 @@ function NativePredictionPanel() {
             <div>
               <h1 className="text-2xl font-bold">{t("predict.title")}</h1>
               <p className="text-sm text-muted-foreground">
-                Native replay of an immutable persisted Archive V2.
+                Predict new samples using a saved model.
               </p>
             </div>
           </div>

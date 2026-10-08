@@ -44,6 +44,8 @@ export interface UseNewExperimentLaunchFlowInput {
 
 export interface UseNewExperimentLaunchFlowResult {
   isLaunching: boolean;
+  launchError: string | null;
+  clearLaunchError: () => void;
   isPreflighting: boolean;
   pendingMissingIssues: MissingOperatorIssue[];
   showMissingNodesDialog: boolean;
@@ -70,6 +72,8 @@ export function useNewExperimentLaunchFlow({
   const [missingNodesDialogState, setMissingNodesDialogState] = useState(createClosedExperimentMissingNodesDialogState);
   const {
     isLaunching,
+    launchError,
+    clearLaunchError,
     submitLaunchPayloadPlan,
   } = useNewExperimentLaunchSubmissionMutation({
     executionAdapter,
@@ -178,6 +182,8 @@ export function useNewExperimentLaunchFlow({
 
   return {
     isLaunching,
+    launchError,
+    clearLaunchError,
     isPreflighting,
     pendingMissingIssues: missingNodesDialogState.missingIssues,
     showMissingNodesDialog: missingNodesDialogState.isOpen,

@@ -2,12 +2,13 @@
 import { act, memo } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ActiveRunProvider } from "./ActiveRunContext";
 import { useActiveRuns, type ActiveRunContextValue } from "./useActiveRuns";
 
-const mocks = vi.hoisted(() => ({ getActiveRuns: vi.fn() }));
-vi.mock("@/api/runs", () => ({ getActiveRuns: mocks.getActiveRuns }));
+const mocks = vi.hoisted(() => ({ getActiveRuns: vi.fn(), getWorkspaceExecutionJobRecord: vi.fn() }));
+vi.mock("@/api/runs", () => mocks);
 vi.mock("@/lib/websocket", () => ({ getWebSocketBaseUrl: async () => "ws://localhost" }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -33,6 +34,7 @@ async function mount(runs: Array<{ id: string; name: string; status: string }>) 
   vi.stubGlobal("WebSocket", Socket);
   let response = { runs, total: runs.length };
   mocks.getActiveRuns.mockImplementation(async () => structuredClone(response));
+  mocks.getWorkspaceExecutionJobRecord.mockResolvedValue({ id: "run-1", run_name: "PLS", status: "completed" });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const container = document.createElement("div");
   const root = createRoot(container);
@@ -45,7 +47,7 @@ async function mount(runs: Array<{ id: string; name: string; status: string }>) 
   });
   const flush = () => new Promise((resolve) => setTimeout(resolve, 5));
   await act(async () => {
-    root.render(<QueryClientProvider client={client}><ActiveRunProvider><Consumer /></ActiveRunProvider></QueryClientProvider>);
+    root.render(<MemoryRouter><QueryClientProvider client={client}><ActiveRunProvider><Consumer /></ActiveRunProvider></QueryClientProvider></MemoryRouter>);
     await flush();
   });
   await act(flush);
@@ -65,6 +67,38 @@ async function mount(runs: Array<{ id: string; name: string; status: string }>) 
 }
 
 describe("active run polling and render cost", () => {
+  it("shows a persistent error dialog on a WebSocket failure and deduplicates it", async () => {
+    const app = await mount([{ id: "run-1", name: "PLS", status: "running" }]);
+    const message = { type: "job_failed", channel: "job:run-1", data: { error: "ValueError: invalid pipeline" } };
+    await app.message(message);
+    await app.message(message);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("ValueError: invalid pipeline");
+    expect(app.value().getRunProgress("run-1")?.status).toBe("failed");
+    await act(async () => {
+      (Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Close"))?.click();
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("recovers an error missed by the WebSocket from the terminal run record", async () => {
+    const app = await mount([{ id: "run-1", name: "PLS", status: "running" }]);
+    mocks.getWorkspaceExecutionJobRecord.mockResolvedValue({ id: "run-1", run_name: "PLS", status: "failed", error: "python_host_process_failed: missing dependency" });
+    await app.poll({ runs: [], total: 0 });
+    expect(mocks.getWorkspaceExecutionJobRecord).toHaveBeenCalledWith("run-1");
+    expect(app.value().getRunProgress("run-1")?.status).toBe("failed");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("missing dependency");
+  });
+
+  it("retries a failed terminal read without declaring the run successful", async () => {
+    const app = await mount([{ id: "run-1", name: "PLS", status: "running" }]);
+    mocks.getWorkspaceExecutionJobRecord.mockRejectedValueOnce(new Error("Connection lost"));
+    await app.poll({ runs: [], total: 0 });
+    expect(app.value().getRunProgress("run-1")?.status).toBe("running");
+    await app.poll({ runs: [], total: 0 });
+    expect(app.value().getRunProgress("run-1")?.status).toBe("completed");
+    expect(mocks.getWorkspaceExecutionJobRecord).toHaveBeenCalledTimes(2);
+  });
+
   it("does not rerender consumers across 30 unchanged idle polls", async () => {
     const app = await mount([]);
     const initial = app.renders();

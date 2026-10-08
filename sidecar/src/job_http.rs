@@ -234,6 +234,7 @@ pub enum JobExecutorError {
     Unselected,
     InvalidCapability,
     PreflightRefused,
+    PreflightBlocked { code: String, detail: String },
     SubmissionRefused,
     CancellationRefused,
 }
@@ -1227,6 +1228,7 @@ fn cancellation_failure(job_id: &str, error: &NativeJobRuntimeError) -> HttpResp
         NativeJobRuntimeError::Executor(
             JobExecutorError::InvalidCapability
             | JobExecutorError::PreflightRefused
+            | JobExecutorError::PreflightBlocked { .. }
             | JobExecutorError::SubmissionRefused,
         ) => legacy_detail(503, "Scientific job executor is unavailable"),
         NativeJobRuntimeError::Executor(JobExecutorError::CancellationRefused) => {

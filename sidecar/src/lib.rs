@@ -53,6 +53,7 @@ mod results_summary;
 pub mod run_detail;
 pub mod run_detail_cpython;
 pub mod run_detail_preselection;
+mod run_deletion;
 mod run_history;
 mod run_listing;
 pub mod scientific_cpython;
@@ -2284,6 +2285,7 @@ fn route_workspace_workflows_without_global_lock(
         .or_else(|| dataset_inspection_http::route(state, request))
         .or_else(|| route_pipeline_presets_without_global_lock(state, request))
         .or_else(|| route_workspace_run_history(state, request))
+        .or_else(|| run_deletion::route(state, request))
         .or_else(|| prediction_results::route(state, request))
         .or_else(|| run_listing::route(state, request))
 }
@@ -2386,8 +2388,20 @@ fn route_workspace_run_detail_preselection(
 }
 
 fn route_workspace_run_detail(state: &SidecarState, method: &str, path: &str) -> HttpResponse {
+    if method == "DELETE" {
+        return run_deletion::dispatch(
+            &state.app_settings,
+            &state.native_jobs,
+            path,
+            &|operation, payload| {
+                state.scientific_host.as_deref()
+                    .ok_or_else(|| "Scientific library runtime is unavailable".to_owned())?
+                    .adapt_document(operation, payload)
+            },
+        );
+    }
     if method != "GET" {
-        return method_not_allowed(method, path, "GET");
+        return method_not_allowed(method, path, "GET, DELETE");
     }
     let Some((workspace_id, run_id)) = workspace_run_detail_ids(path) else {
         return linked_workspace_route_not_found(path);
@@ -4221,6 +4235,12 @@ fn scientific_submission_runtime_response(
             )
         }
         Err(job_http::NativeJobRuntimeError::Executor(
+            job_http::JobExecutorError::PreflightBlocked { code, detail },
+        )) => HttpResponse::json(
+            400,
+            json!({"code": code, "detail": detail}).to_string(),
+        ),
+        Err(job_http::NativeJobRuntimeError::Executor(
             job_http::JobExecutorError::InvalidCapability
             | job_http::JobExecutorError::PreflightRefused,
         )) => HttpResponse::json(
@@ -4975,6 +4995,7 @@ fn http_body_limit(path: &str) -> usize {
     match path {
         "/api/datasets/upload" | "/api/datasets/preview-upload" => dataset_import::MAX_UPLOAD_BYTES,
         "/api/datasets/import-multimodal" => document_cpython::MAX_DOCUMENT_BYTES,
+        "/api/playground/execute" | "/api/playground/diff/compute" | "/api/playground/diff/repetition-variance" => playground::MAX_REQUEST_BYTES,
         "/api/predict" | "/api/predict/file" => matrix_limits::MAX_PREDICTION_BODY_BYTES,
         ARCHIVE_V2_PREDICTION_ROUTE
         | ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE
@@ -8330,6 +8351,19 @@ mod tests {
             .unwrap();
         assert_ne!(expired.id, replacement.id);
         assert!(!expiring.jobs.contains_key(&expired.id));
+    }
+
+    #[test]
+    fn playground_matrix_transport_budget_matches_the_bounded_library_contract() {
+        let body = serde_json::json!({"data": {"x": vec![vec![0; 700]; 60]}}).to_string();
+        assert!(body.len() > MAX_REQUEST_BODY_BYTES);
+        for path in ["/api/playground/execute", "/api/playground/diff/compute", "/api/playground/diff/repetition-variance"] {
+            assert!(body.len() < http_body_limit(path));
+            assert_eq!(http_body_limit(path), playground::MAX_REQUEST_BYTES);
+        }
+        for path in ["/api/playground/execute/extra", "/api/playground/validate", "/api/playground/capabilities", "/api/preferences"] {
+            assert_eq!(http_body_limit(path), MAX_REQUEST_BODY_BYTES);
+        }
     }
 
     #[test]

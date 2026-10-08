@@ -7,11 +7,12 @@
  * enabling side-by-side comparison visualization.
  */
 
-import { useQuery } from '@tanstack/react-query';
-import { useMemo, useRef, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useEffect } from 'react';
+import { prunePlaygroundResults } from './usePlaygroundQuery';
 import { executePlayground, buildExecuteRequest } from '@/api/playground';
 import { useDebouncedValue, DEBOUNCE_DELAYS } from '@/lib/playground/debounce';
-import { hashPipeline } from '@/lib/playground/hashing';
+import { hashPipeline, getSpectralDataIdentity, isPlaygroundPipelineCacheable } from '@/lib/playground/hashing';
 import { unifiedToPlaygroundSteps } from '@/lib/playground/operatorFormat';
 import {
   getColumnarMetadata,
@@ -75,60 +76,18 @@ export function useReferenceDatasetQuery(
     enabled = true,
     debounceMs = DEBOUNCE_DELAYS.STRUCTURE_CHANGE,
   } = options;
+  const queryClient = useQueryClient();
 
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Compute pipeline hash
-  const currentPipelineHash = useMemo(() => hashPipeline(operators), [operators]);
-
-  // Debounce the pipeline hash
-  const debouncedPipelineHash = useDebouncedValue(currentPipelineHash, debounceMs);
-
-  // Track debouncing state
+  const currentPipelineHash = hashPipeline(operators.filter(operator => operator.enabled));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const activeOperators = useMemo(() => operators.filter(operator => operator.enabled), [currentPipelineHash]);
+  const effectiveOperators = useDebouncedValue(activeOperators, debounceMs);
+  const debouncedPipelineHash = hashPipeline(effectiveOperators);
   const isDebouncing = currentPipelineHash !== debouncedPipelineHash;
-
-  // Memoize operators for stable reference
-  const stableOperatorsRef = useRef(operators);
-  if (hashPipeline(stableOperatorsRef.current) !== debouncedPipelineHash) {
-    stableOperatorsRef.current = operators;
-  }
-
-  // Only enabled operators affect output
-  const effectiveOperators = stableOperatorsRef.current.filter(op => op.enabled);
-
-  const repetitionColumn = useMemo(
-    () => getSpectralRepetitionColumn(referenceData),
-    [referenceData],
-  );
-
-  const referenceSignature = useMemo(() => {
-    if (!referenceData) {
-      return null;
-    }
-
-    const firstRow = referenceData.metadata?.[0] ?? {};
-    const lastRow = referenceData.metadata?.[referenceData.metadata.length - 1] ?? {};
-
-    return JSON.stringify({
-      repetitionColumn: repetitionColumn ?? null,
-      sampleFirst: referenceData.sampleIds?.[0] ?? null,
-      sampleLast: referenceData.sampleIds?.[referenceData.sampleIds.length - 1] ?? null,
-      first: repetitionColumn ? firstRow[repetitionColumn] ?? null : null,
-      last: repetitionColumn ? lastRow[repetitionColumn] ?? null : null,
-    });
-  }, [referenceData, repetitionColumn]);
-
-  // Build query key
-  const queryKey = useMemo(() => {
-    if (!referenceData) return ['reference-playground', 'no-data'];
-    return [
-      'reference-playground',
-      referenceData.spectra.length,
-      referenceData.wavelengths.length,
-      debouncedPipelineHash,
-      referenceSignature,
-    ];
-  }, [referenceData, debouncedPipelineHash, referenceSignature]);
+  const repetitionColumn = useMemo(() => getSpectralRepetitionColumn(referenceData), [referenceData]);
+  const dataIdentity = referenceData ? getSpectralDataIdentity(referenceData) : null;
+  const cacheable = isPlaygroundPipelineCacheable(effectiveOperators);
+  const queryKey = ['reference-playground', dataIdentity, debouncedPipelineHash];
 
   // Query function
   const queryFn = async ({ signal }: { signal?: AbortSignal }): Promise<PlaygroundResult> => {
@@ -136,18 +95,12 @@ export function useReferenceDatasetQuery(
       throw new Error('No reference data');
     }
 
-    // Cancel previous request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    abortControllerRef.current = new AbortController();
-
     const steps = unifiedToPlaygroundSteps(effectiveOperators);
     const request = buildExecuteRequest({
       spectra: referenceData.spectra,
       wavelengths: referenceData.wavelengths,
       wavelengthUnit: referenceData.wavelengthUnit,
-      y: referenceData.y,
+      y: referenceData.y.length > 0 ? referenceData.y : undefined,
       sampleIds: referenceData.sampleIds,
       metadata: getColumnarMetadata(referenceData.metadata),
       steps,
@@ -156,13 +109,15 @@ export function useReferenceDatasetQuery(
       computeUmap: false, // Skip UMAP for reference to save time
       computeStatistics: true,
       computeRepetitions: true,
+      useCache: cacheable,
+      sourcePartitions: referenceData.sourcePartitions,
       bioSampleColumn: repetitionColumn,
       datasetRepetition: repetitionColumn,
     });
 
     const response = await executePlayground(
       request,
-      signal || abortControllerRef.current.signal
+      signal
     );
 
     return transformResponse(response);
@@ -172,21 +127,15 @@ export function useReferenceDatasetQuery(
   const query = useQuery({
     queryKey,
     queryFn,
-    enabled: enabled && !!referenceData && effectiveOperators.length > 0,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
+    enabled: enabled && !!referenceData && effectiveOperators.length > 0 && !isDebouncing,
+    staleTime: cacheable ? 5 * 60 * 1000 : 0,
+    gcTime: cacheable ? 10 * 60 * 1000 : 0,
     refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: 1,
   });
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
+  useEffect(() => { prunePlaygroundResults(queryClient, dataIdentity); }, [queryClient, dataIdentity, query.data]);
 
   return {
     result: query.data ?? null,

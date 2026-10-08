@@ -69,49 +69,33 @@ def build_dataset_config(dataset_id: str) -> dict[str, Any]:
     Returns:
         A dict configuration compatible with nirs4all.run(dataset=config).
     """
-    from .shared.dataset_config import build_nirs4all_config, for_dataset_configs
+    from .shared.dataset_config import build_nirs4all_config_from_stored, for_dataset_configs
 
     dataset = get_dataset_record(dataset_id)
     config = dataset.get("config", {})
     files = config.get("files", [])
 
-    if not files:
-        # Fallback to folder path if no files configured
-        dataset_path = dataset.get("path")
-        if not dataset_path:
-            raise HTTPException(status_code=400, detail=f"Dataset '{dataset_id}' has no files or path")
-        config_dict: dict[str, Any] = {"folder": dataset_path}
-        dataset_name = dataset.get("name")
-        if dataset_name:
-            config_dict["name"] = dataset_name
-        return config_dict
-
     # Verify all files exist
     for file_info in files:
         file_path = file_info.get("path")
-        if file_path and not Path(file_path).exists():
-            raise HTTPException(
-                status_code=404,
-                detail=f"Dataset file does not exist: {file_path}"
-            )
+        if file_path:
+            path = Path(file_path)
+            if not path.is_absolute() and dataset.get("path"):
+                path = Path(dataset["path"]) / path
+            if not path.exists():
+                raise HTTPException(status_code=404, detail=f"Dataset file does not exist: {path}")
 
-    # Build parsing dict from config top-level keys + global_params
-    stored_global = config.get("global_params", {})
-    parsing: dict[str, Any] = {}
-    for key in ("delimiter", "decimal_separator", "has_header", "encoding",
-                "header_unit", "signal_type", "na_policy", "na_fill_config"):
-        value = config.get(key) or stored_global.get(key)
-        if value is not None:
-            parsing[key] = value
-
-    return for_dataset_configs(build_nirs4all_config(
-        files=files,
-        parsing=parsing,
-        aggregation=config.get("aggregation"),
-        folds=config.get("folds"),
-        task_type=config.get("task_type") or dataset.get("task_type"),
-        dataset_name=dataset.get("name"),
-    ))
+    # Use the preview translator so explicit targets, False parsing options,
+    # source settings and library-owned fields also survive execution.
+    translated = build_nirs4all_config_from_stored(dataset)
+    if not translated.get("train_x") and not translated.get("test_x"):
+        dataset_path = dataset.get("path")
+        if not dataset_path:
+            raise HTTPException(status_code=400, detail=f"Dataset '{dataset_id}' has no files or path")
+        translated.setdefault("folder", dataset_path)
+    if dataset.get("task_type") and dataset["task_type"] != "auto":
+        translated.setdefault("task_type", dataset["task_type"])
+    return for_dataset_configs(translated)
 
 
 def _looks_like_function_model_path(reference: Any) -> bool:

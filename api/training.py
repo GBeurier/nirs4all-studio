@@ -26,7 +26,6 @@ from pydantic import BaseModel, Field
 
 from .jobs import Job, JobStatus, JobType, job_manager
 from .nirs4all_adapter import (
-    build_dataset_spec,
     ensure_models_dir,
     require_nirs4all,
 )
@@ -474,12 +473,9 @@ def _run_training_task(
     if not progress_callback(15, "Loading dataset..."):
         return {"error": "Cancelled"}
 
-    # Get dataset configuration
-    try:
-        dataset_config = build_dataset_config(config["dataset_id"])
-    except Exception as e:
-        # Fall back to path-based loading
-        dataset_config = build_dataset_spec(config["dataset_id"])
+    # Keep configured targets and parsing settings; report configuration errors
+    # instead of silently reloading a folder with different data.
+    dataset_config = build_dataset_config(config["dataset_id"])
 
     if not progress_callback(20, "Starting training..."):
         return {"error": "Cancelled"}

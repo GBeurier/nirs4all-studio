@@ -86,7 +86,7 @@ export function buildBackendStartupBannerReadModel(
           }
         : {
             key: "layout.backendStartup.badge",
-            defaultValue: "Backend loading",
+            defaultValue: "Starting Studio",
           },
       iconKind: hasMlError ? "error" : "loading",
     },
@@ -108,13 +108,13 @@ function getStartupTitle({
   if (mlError) {
     return {
       key: "layout.backendStartup.errorTitle",
-      defaultValue: "Backend startup stalled",
+      defaultValue: "Studio could not start",
     };
   }
   if (!mlReady) {
     return {
       key: "layout.backendStartup.loadingTitle",
-      defaultValue: "Loading analysis backend...",
+      defaultValue: "Starting analysis engine...",
     };
   }
   return {
@@ -132,14 +132,14 @@ function getStartupDescription({
     return {
       key: "layout.backendStartup.connectingDescription",
       defaultValue:
-        "The native Rust control plane is still starting.",
+        "Studio is still starting. Please wait.",
       error: null,
     };
   }
   if (mlError) {
     return {
       key: "layout.backendStartup.errorDescription",
-      defaultValue: "Backend startup stalled.",
+      defaultValue: "Studio could not start.",
       error: mlError,
     };
   }
@@ -154,7 +154,7 @@ function getStartupDescription({
   return {
     key: "layout.backendStartup.workspaceDescription",
     defaultValue:
-      "The backend is loading the active workspace. Dataset, run, result, and prediction views will refresh when startup finishes.",
+      "Opening your workspace. Your datasets and results will appear when loading finishes.",
     error: null,
   };
 }
@@ -182,11 +182,11 @@ function getStartupSteps(
       detail: state.coreReady
         ? {
             key: "layout.backendStartup.apiReady",
-            defaultValue: "Rust sidecar ready",
+            defaultValue: "Analysis engine ready",
           }
         : {
             key: "layout.backendStartup.apiLoading",
-            defaultValue: "Starting Rust sidecar",
+            defaultValue: "Starting analysis engine",
           },
       state: state.coreReady ? "done" : "loading",
     },
@@ -230,7 +230,7 @@ function getStartupSteps(
       detail: state.mlError
         ? {
             key: "layout.backendStartup.workspaceBlocked",
-            defaultValue: "Blocked until backend recovers",
+            defaultValue: "Waiting for the analysis engine",
           }
         : workspaceDone
           ? {

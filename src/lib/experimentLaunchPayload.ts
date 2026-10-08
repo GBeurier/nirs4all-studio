@@ -211,27 +211,27 @@ function buildStrictCampaignPayloadSummary(
   executionAdapter: ExperimentExecutionAdapter,
   strictCampaignSpecs: CampaignSinglePairSplitSpecResult,
 ): Pick<ExperimentLaunchPayloadPlan, "strictCampaignPayloadStatus" | "strictCampaignPayloadSummary"> {
-  const strictSpecLabel = `${strictCampaignSpecs.splitSpecs.length} strict campaign ${strictCampaignSpecs.splitSpecs.length === 1 ? "spec" : "specs"}`;
+  const strictSpecLabel = `${strictCampaignSpecs.splitSpecs.length} analysis ${strictCampaignSpecs.splitSpecs.length === 1 ? "plan" : "plans"}`;
   const skippedRunLabel = `${strictCampaignSpecs.skippedRunIds.length} run ${strictCampaignSpecs.skippedRunIds.length === 1 ? "entry" : "entries"}`;
 
   if (executionAdapter.id === LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.id) {
     return {
       strictCampaignPayloadStatus: "legacy_only",
-      strictCampaignPayloadSummary: "Legacy local launches submit the current ExperimentConfig payload.",
+      strictCampaignPayloadSummary: "The experiment is prepared for local analysis.",
     };
   }
 
   if (strictCampaignSpecs.splitSpecs.length === 0) {
     return {
       strictCampaignPayloadStatus: "unavailable",
-      strictCampaignPayloadSummary: "No strict campaign specs are available for this launch payload.",
+      strictCampaignPayloadSummary: "No analyses could be prepared. Check the selected data and pipelines.",
     };
   }
 
   if (strictCampaignSpecs.skippedRunIds.length > 0) {
     return {
       strictCampaignPayloadStatus: "partial",
-      strictCampaignPayloadSummary: `${strictSpecLabel} available; ${skippedRunLabel} could not be materialized.`,
+      strictCampaignPayloadSummary: `${strictSpecLabel} available; ${skippedRunLabel} could not be prepared.`,
     };
   }
 
@@ -273,7 +273,7 @@ export function getExperimentLaunchStrictPayloadActivation(
     return {
       status: "legacy_not_applicable",
       canUseStrictPayload: false,
-      message: "Strict campaign payloads are not used by legacy local launches.",
+      message: "The experiment uses local analysis settings.",
     };
   }
 
@@ -281,7 +281,7 @@ export function getExperimentLaunchStrictPayloadActivation(
     return {
       status: "ready",
       canUseStrictPayload: true,
-      message: "Strict campaign payload is ready for native submitters.",
+      message: "The experiment is ready to launch.",
     };
   }
 
@@ -289,14 +289,14 @@ export function getExperimentLaunchStrictPayloadActivation(
     return {
       status: "blocked",
       canUseStrictPayload: false,
-      message: `${launchPayloadPlan.strictCampaignSpecs.skippedRunIds.length} run ${launchPayloadPlan.strictCampaignSpecs.skippedRunIds.length === 1 ? "entry" : "entries"} must be materialized before strict payload submission.`,
+      message: `${launchPayloadPlan.strictCampaignSpecs.skippedRunIds.length} run ${launchPayloadPlan.strictCampaignSpecs.skippedRunIds.length === 1 ? "entry" : "entries"} must be prepared before the experiment can start.`,
     };
   }
 
   return {
     status: "blocked",
     canUseStrictPayload: false,
-    message: "Strict campaign payload is unavailable for this launch.",
+    message: "The experiment could not be prepared. Check the selected data and pipelines.",
   };
 }
 

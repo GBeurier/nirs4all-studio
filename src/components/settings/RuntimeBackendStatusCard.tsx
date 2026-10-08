@@ -15,10 +15,10 @@ export function RuntimeBackendStatusCard() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Cpu className="h-5 w-5" />
-          Runtime Backend
+          Analysis Engine
         </CardTitle>
         <CardDescription>
-          Studio runs experiments and direct pipelines with the strict native backend.
+          Studio uses this engine to run experiments and pipelines.
         </CardDescription>
       </CardHeader>
       <CardContent>

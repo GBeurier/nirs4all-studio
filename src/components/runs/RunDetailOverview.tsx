@@ -179,7 +179,7 @@ export function RunDetailOverview({
               <TableRow className="bg-muted/10">
                 <TableHead className="text-xs">Dataset</TableHead>
                 <TableHead className="text-xs">Linked Dataset</TableHead>
-                <TableHead className="text-xs">Runtime Grouping</TableHead>
+                <TableHead className="text-xs">Sample Grouping</TableHead>
                 <TableHead className="text-xs text-right">Samples</TableHead>
                 <TableHead className="text-xs text-right">Features</TableHead>
                 <TableHead className="text-xs text-right">Best Score</TableHead>

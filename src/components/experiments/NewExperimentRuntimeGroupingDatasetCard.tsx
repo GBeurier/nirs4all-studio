@@ -83,7 +83,7 @@ export function NewExperimentRuntimeGroupingDatasetCard({
       )}
       {groupingState.embeddedGroups && hasRequiredSplitters && (
         <p className="text-xs text-muted-foreground">
-          This cohort provides split groups directly; no additional group_by is required.
+          This cohort already defines sample groups. No additional grouping is needed.
         </p>
       )}
       <p className="text-[11px] leading-relaxed text-muted-foreground">

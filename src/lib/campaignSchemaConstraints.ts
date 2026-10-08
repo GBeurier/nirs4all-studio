@@ -34,8 +34,8 @@ export function buildCampaignSchemaConstraintPreview(
   if (summary.datasetCount === 0 || summary.pipelineCount === 0) {
     return {
       kind: "incomplete",
-      label: "Incomplete binding",
-      description: "Select dataset and pipeline inputs before schema binding can be evaluated.",
+      label: "Selection incomplete",
+      description: "Select the data and pipelines to analyse.",
       strictPairingStatus: "not_evaluated",
       strictPairingStatusLabel: "Pending inputs",
       strictModeRecommendation: "Select dataset and pipeline inputs before strict schema-bound readiness can be evaluated.",
@@ -46,10 +46,10 @@ export function buildCampaignSchemaConstraintPreview(
   if (campaign.mode === "paired_by_index") {
     return {
       kind: "paired_by_index",
-      label: "Paired bindings",
-      description: "Datasets and pipelines are already represented as explicit index pairs.",
+      label: "Selected combinations",
+      description: "Each dataset is matched with its selected pipeline.",
       strictPairingStatus: "ready",
-      strictPairingStatusLabel: "Explicit pairs",
+      strictPairingStatusLabel: "Selected combinations",
       strictModeRecommendation: "Ready for strict schema-bound execution because each run is already an explicit dataset/pipeline pair.",
       notice: null,
     };
@@ -58,16 +58,16 @@ export function buildCampaignSchemaConstraintPreview(
   if (summary.datasetCount > 1 && summary.pipelineCount > 1) {
     return {
       kind: "cartesian_matrix",
-      label: "Cartesian matrix binding",
+      label: "All combinations",
       description: "Every selected pipeline is paired with every selected dataset.",
       strictPairingStatus: "needs_explicit_pairs",
-      strictPairingStatusLabel: "Implicit all-pairs",
+      strictPairingStatusLabel: "All combinations",
       strictModeRecommendation: "Convert the cartesian matrix to explicit dataset/pipeline pair previews before strict schema-bound execution.",
       notice: {
         id: "legacy-cartesian-matrix",
         severity: "info",
-        title: "Cartesian campaign",
-        message: "Every selected pipeline will run on every selected dataset. Future campaign modes can replace this with previewed pairings.",
+        title: "All combinations",
+        message: "Every selected pipeline will run on every selected dataset.",
       },
     };
   }
@@ -75,16 +75,16 @@ export function buildCampaignSchemaConstraintPreview(
   if (summary.datasetCount === 1 && summary.pipelineCount > 1) {
     return {
       kind: "shared_dataset",
-      label: "Shared dataset binding",
+      label: "One dataset, several pipelines",
       description: "One dataset is paired with multiple pipelines.",
       strictPairingStatus: "needs_explicit_pairs",
-      strictPairingStatusLabel: "Implicit shared dataset",
+      strictPairingStatusLabel: "Same dataset for each pipeline",
       strictModeRecommendation: "Keep the shared dataset shape only if each pipeline pairing has an explicit schema preview before strict schema-bound execution.",
       notice: {
         id: "shared-dataset-campaign",
         severity: "info",
         title: "Shared dataset campaign",
-        message: "One dataset will be reused across multiple pipelines. Future schema-bound campaign modes should keep these pair previews explicit.",
+        message: "Each selected pipeline will analyse the same dataset.",
       },
     };
   }
@@ -92,26 +92,26 @@ export function buildCampaignSchemaConstraintPreview(
   if (summary.datasetCount > 1 && summary.pipelineCount === 1) {
     return {
       kind: "shared_pipeline",
-      label: "Shared pipeline binding",
+      label: "One pipeline, several datasets",
       description: "One pipeline is paired with multiple datasets.",
       strictPairingStatus: "needs_explicit_pairs",
-      strictPairingStatusLabel: "Implicit shared pipeline",
+      strictPairingStatusLabel: "Same pipeline for each dataset",
       strictModeRecommendation: "Keep the shared pipeline shape only if each dataset pairing has an explicit schema preview before strict schema-bound execution.",
       notice: {
         id: "shared-pipeline-campaign",
         severity: "info",
         title: "Shared pipeline campaign",
-        message: "One pipeline will be reused across multiple datasets. Future schema-bound campaign modes should keep these pair previews explicit.",
+        message: "The selected pipeline will analyse each dataset.",
       },
     };
   }
 
   return {
     kind: "single_pair",
-    label: "Single dataset/pipeline binding",
-    description: "One dataset is paired with one pipeline, the simplest schema-bound campaign shape.",
+    label: "One dataset, one pipeline",
+    description: "One pipeline will analyse one dataset.",
     strictPairingStatus: "ready",
-    strictPairingStatusLabel: "Single explicit pair",
+    strictPairingStatusLabel: "One analysis",
     strictModeRecommendation: "Ready for strict schema-bound execution with one dataset and one pipeline.",
     notice: null,
   };

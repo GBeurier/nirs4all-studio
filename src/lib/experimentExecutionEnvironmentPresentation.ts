@@ -33,44 +33,44 @@ export function buildNewExperimentExecutionEnvironmentDiagnosticFields(
   return [
     {
       id: "available-adapters",
-      label: "Adapters",
+      label: "Calculation options",
       value: diagnostics.availableAdapterIds.length > 0
         ? diagnostics.availableAdapterIds.join(", ")
         : "None",
     },
     {
       id: "available-execution-backends",
-      label: "Available backends",
+      label: "Available analysis engines",
       value: formatExecutionBackendList(diagnostics.availableExecutionBackends ?? []),
     },
     {
       id: "configured-native-backends",
-      label: "Configured native",
+      label: "Ready to use",
       value: formatNativeBackendList(diagnostics.configuredNativeBackends),
     },
     {
       id: "unavailable-execution-backends",
-      label: "Unavailable backends",
+      label: "Unavailable analysis engines",
       value: formatExecutionBackendList(diagnostics.unavailableExecutionBackends ?? []),
     },
     {
       id: "unconfigured-native-backends",
-      label: "Unconfigured native",
+      label: "Setup required",
       value: formatNativeBackendList(diagnostics.unconfiguredNativeBackends),
     },
     {
       id: "submitters",
-      label: "Submitters",
+      label: "Ready to launch",
       value: configuredSubmitters.length > 0 ? configuredSubmitters.join(", ") : "None",
     },
     {
       id: "workspace-prediction-publishers",
-      label: "Prediction publishers",
+      label: "Prediction saving available",
       value: formatNativeBackendList(diagnostics.workspacePredictionPublisherBackends),
     },
     {
       id: "workspace-prediction-handoff-only",
-      label: "Prediction handoff-only",
+      label: "Prediction saving not configured",
       value: formatNativeBackendList(diagnostics.workspacePredictionHandoffOnlyBackends),
     },
   ];

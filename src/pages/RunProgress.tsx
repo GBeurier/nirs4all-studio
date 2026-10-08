@@ -16,12 +16,14 @@ import { useState, useEffect, useCallback, useReducer, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { getRun, getRunExecutionJobRecord, stopRun, getPipelineLogs } from "@/api/runs";
+import { getRun, getRunExecutionJobRecord, getWorkspaceExecutionJobRecord, stopRun, getPipelineLogs } from "@/api/runs";
 import { ReconnectingIndicator, ErrorState, LoadingState } from "@/components/ui/state-display";
 import type { Run } from "@/types/runs";
 import {
   buildRunLogLines,
+  buildRunFromExecutionJobRecord,
   buildRunExecutionProgressDisplayData,
   buildRunProgressDisplayData,
 } from "@/lib/run-progress/pageData";
@@ -68,7 +70,7 @@ export default function RunProgress() {
   const { granular: granularProgress, refit: refitState } = progressState;
 
   // Fetch run data with polling for active runs
-  const { data: run, isLoading, error, refetch } = useQuery({
+  const { data: runDetail, isLoading, error, refetch } = useQuery({
     queryKey: ["run", runId],
     queryFn: () => getRun(runId!),
     enabled: !!runId,
@@ -89,7 +91,12 @@ export default function RunProgress() {
         return await getRunExecutionJobRecord(runId!);
       } catch (err) {
         if (isNotFoundApiError(err)) {
-          return null;
+          try {
+            return await getWorkspaceExecutionJobRecord(runId!);
+          } catch (jobError) {
+            if (isNotFoundApiError(jobError)) return null;
+            throw jobError;
+          }
         }
         throw err;
       }
@@ -104,6 +111,9 @@ export default function RunProgress() {
       return false;
     },
   });
+
+  const run = runDetail ?? (executionJobRecord
+    ? buildRunFromExecutionJobRecord(executionJobRecord) : undefined);
 
   // WebSocket updates
   const handleWsUpdate = useCallback(
@@ -234,7 +244,7 @@ export default function RunProgress() {
     return undefined;
   }, [runStatus, runId]);
 
-  if (isLoading) {
+  if (isLoading && !run) {
     return (
       <div className="p-6">
         <LoadingState message="Loading run details..." />
@@ -242,7 +252,7 @@ export default function RunProgress() {
     );
   }
 
-  if (error || !run) {
+  if (!run) {
     return (
       <div className="p-6">
         <ErrorState
@@ -308,6 +318,15 @@ export default function RunProgress() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <RunProgressHeader run={run} isStopping={isStopping} onStop={handleStop} />
+
+      {(run.status === "failed" || executionJobRecord?.status === "failed") && (
+        <Alert variant="destructive">
+          <AlertTitle>Run failed</AlertTitle>
+          <AlertDescription className="mt-2 whitespace-pre-wrap break-words font-mono">
+            {executionJobRecord?.error || run.error || "The backend did not provide an error description."}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* WebSocket reconnecting indicator */}
       {wsReconnecting && isActiveRun && (

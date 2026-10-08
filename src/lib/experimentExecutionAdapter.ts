@@ -305,7 +305,7 @@ export function getRunPreflightArgs(request: ExperimentPreflightRequest): RunPre
 
 export const LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = {
   id: "legacy-local",
-  label: "Legacy local run API",
+  label: "Local analysis",
   nativeBackends: ["local-python"],
   buildPreflightRequest: buildLegacyLocalExperimentPreflightRequest,
   buildLaunchSubmission: buildLegacyLocalExperimentLaunchSubmission,
@@ -313,14 +313,14 @@ export const LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapt
 
 export const NATIVE_LOCAL_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = {
   id: "native-local",
-  label: "Native local run API",
+  label: "Local analysis",
   nativeBackends: ["local-python"],
   buildLaunchSubmission: buildNativeLocalExperimentLaunchSubmission,
 };
 
 export const CLUSTER_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = {
   id: "cluster",
-  label: "Cluster execution adapter",
+  label: "Compute server",
   nativeBackends: ["cluster"],
   buildPreflightRequest: buildLegacyLocalExperimentPreflightRequest,
   buildLaunchSubmission: buildClusterExperimentLaunchSubmission,
@@ -328,7 +328,7 @@ export const CLUSTER_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = 
 
 export const WASM_LOCAL_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = {
   id: "wasm-local",
-  label: "WASM local execution adapter",
+  label: "Browser analysis",
   nativeBackends: ["wasm-local"],
   buildPreflightRequest: buildLegacyLocalExperimentPreflightRequest,
   buildLaunchSubmission: buildWasmLocalExperimentLaunchSubmission,
@@ -356,9 +356,9 @@ export function resolveExperimentExecutionAdapter(
     isNativeForBackend,
     statusLabel: isNativeForBackend ? "Native adapter" : "Legacy fallback",
     message: isLegacyNative
-      ? "Launches use the current local run API."
+      ? "The experiment will run on this computer."
       : isNativeForBackend
-        ? `${adapter.label} is selected for this campaign backend.`
-      : "No native adapter is wired for this backend yet; launches still target the legacy local run API.",
+        ? `The experiment will use ${adapter.label}.`
+      : "This calculation option is not available yet. The experiment will run on this computer.",
   };
 }

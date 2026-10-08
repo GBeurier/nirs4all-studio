@@ -176,6 +176,7 @@ export interface RunCheckpoint {
 export interface Run {
   id: string;
   name: string;
+  error?: string | null;
   description?: string;
   execution_backend?: RunExecutionBackend;
   engine?: string | null;

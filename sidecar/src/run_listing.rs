@@ -65,7 +65,7 @@ fn read_historical_pipelines(
         Err(error) => return Err(crate::workspace_store_read_error_response(&error)),
     };
     let mut seen = HashSet::new();
-    let mut pipelines = Vec::new();
+    let mut candidates = Vec::new();
     let mut truncated = false;
     for summary in summaries {
         let summary = summary.response();
@@ -94,46 +94,80 @@ fn read_historical_pipelines(
             if signature.len() > 32 * 1024 || !seen.insert(signature.clone()) {
                 continue;
             }
-            if pipelines.len() == 100 {
+            if candidates.len() == 100 {
                 truncated = true;
                 break;
             }
-            let Some(host) = &host else {
-                return Err(HttpResponse::json(
-                    503,
-                    json!({"detail":"Historical pipeline conversion requires the configured library host"})
-                        .to_string(),
-                ));
-            };
-            let Ok(converted) =
-                host.adapt_document("pipeline.import", &json!({"payload":template}))
-            else {
-                continue;
-            };
-            let Some(steps) = converted["steps"].as_array() else {
-                continue;
-            };
-            if steps.is_empty() || steps.iter().any(|step| !step.is_object()) {
-                continue;
-            }
             let id = format!("history:{:x}", Sha256::digest(signature));
             let created_at = pipeline["created_at"].as_str().unwrap_or_default();
-            pipelines.push(json!({
-                "id":id,
-                "name":pipeline["name"].as_str().unwrap_or("Historical pipeline"),
-                "description":"Recovered from run history",
-                "category":"history",
-                "source":"history",
-                "steps":steps,
-                "created_at":created_at,
-                "updated_at":pipeline["completed_at"].as_str().unwrap_or(created_at),
-            }));
+            candidates.push((
+                template.clone(),
+                json!({
+                    "id":id,
+                    "name":pipeline["name"].as_str().unwrap_or("Historical pipeline"),
+                    "description":"Recovered from run history",
+                    "category":"history",
+                    "source":"history",
+                    "created_at":created_at,
+                    "updated_at":pipeline["completed_at"].as_str().unwrap_or(created_at),
+                }),
+            ));
         }
         if truncated {
             break;
         }
     }
+    if candidates.is_empty() {
+        return Ok(json!({"pipelines":[],"truncated":truncated}));
+    }
+    let Some(host) = &host else {
+        return Err(HttpResponse::json(
+            503,
+            json!({"detail":"Historical pipeline conversion requires the configured library host"})
+                .to_string(),
+        ));
+    };
+    let pipelines = translate_historical_candidates(candidates, |operation, payload| {
+        host.adapt_document(operation, payload)
+    })?;
     Ok(json!({"pipelines":pipelines,"truncated":truncated}))
+}
+
+fn translate_historical_candidates(
+    candidates: Vec<(Value, Value)>,
+    adapt: impl FnOnce(&str, &Value) -> Result<Value, String>,
+) -> Result<Vec<Value>, HttpResponse> {
+    // One bounded library call avoids starting and attesting a Python host per template.
+    let requests = candidates
+        .iter()
+        .map(|(template, _)| json!({"operation":"pipeline.import","payload":{"payload":template}}))
+        .collect::<Vec<_>>();
+    let converted = adapt("documents.batch", &json!({"requests":requests}))
+        .map_err(|detail| HttpResponse::json(503, json!({"detail":detail}).to_string()))?;
+    let results = converted
+        .as_array()
+        .filter(|results| results.len() == candidates.len())
+        .ok_or_else(|| {
+            HttpResponse::json(
+                502,
+                json!({"detail":"Invalid historical pipeline batch response"}).to_string(),
+            )
+        })?;
+    Ok(candidates
+        .into_iter()
+        .zip(results)
+        .filter_map(|((_, mut pipeline), result)| {
+            let steps = result["steps"].as_array()?;
+            if result["success"] != true
+                || steps.is_empty()
+                || steps.iter().any(|step| !step.is_object())
+            {
+                return None;
+            }
+            pipeline["steps"] = json!(steps);
+            Some(pipeline)
+        })
+        .collect::<Vec<_>>())
 }
 
 fn historical_template(pipeline: &Value) -> Option<&Value> {
@@ -333,6 +367,39 @@ mod tests {
     use super::*;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn history_translates_one_bounded_batch_and_preserves_valid_pipeline_identities() {
+        let candidates = (0..100)
+            .map(|index| {
+                (
+                    json!([{"model":"PLSRegression"}]),
+                    json!({"id":format!("history:{index}"),"name":format!("Pipeline {index}")}),
+                )
+            })
+            .collect();
+        let pipelines = translate_historical_candidates(candidates, |operation, payload| {
+            assert_eq!(operation, "documents.batch");
+            let requests = payload["requests"].as_array().unwrap();
+            assert_eq!(requests.len(), 100);
+            assert!(crate::document_cpython::request(operation, payload).is_ok());
+            assert!(requests.iter().all(|request| request["operation"] == "pipeline.import"));
+            Ok(Value::Array((0..100).map(|index| if index == 1 {
+                json!({"success":false,"error":"Unsupported template"})
+            } else {
+                json!({"success":true,"steps":[{"name":"PLSRegression","type":"model","params":{}}]})
+            }).collect()))
+        }).unwrap();
+        assert_eq!(pipelines.len(), 99);
+        assert_eq!(pipelines[0]["id"], "history:0");
+        assert_eq!(pipelines[1]["id"], "history:2");
+        assert_eq!(pipelines[98]["name"], "Pipeline 99");
+        assert!(translate_historical_candidates(
+            vec![(json!([]), json!({"id":"history:0"}))],
+            |_, _| Ok(json!([])),
+        )
+        .is_err());
+    }
 
     #[test]
     fn historical_pipeline_source_reads_schema_five_and_falls_back_to_expanded_config() {

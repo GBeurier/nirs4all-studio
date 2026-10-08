@@ -36,6 +36,7 @@ fn inspection_loading_params(params: &Value) -> Result<LoadingParams, String> {
     LoadingParams::from_value(Some(&canonical)).map_err(|error| error.to_string())
 }
 
+pub mod cache;
 mod discovery;
 
 const MAX_ENTRIES: usize = 4096;
@@ -104,6 +105,23 @@ impl DatasetInspection {
                 "headers":result["headers"],"sample_data":result["sample_data"],
                 "reader":result["reader"],"sheet_names":null,"column_info":null}));
         }
+        // Native IO is fixed for the sidecar lifetime. Keep authorization and
+        // budgets ahead of lookup; re-read only when bytes/options have changed.
+        cache::invoke(
+            0,
+            "native.dataset.inspect",
+            &json!({"path":path,"params":params,"sample_rows":sample_rows,"limits":self.limits}),
+            || self.inspect_native_file(&path, params, sample_rows),
+        )
+    }
+
+    fn inspect_native_file(
+        &self,
+        path: &Path,
+        params: &Value,
+        sample_rows: usize,
+    ) -> Result<Value, String> {
+        let format = file_format(path);
         let mut detected = json!({});
         let mut confidence = json!({});
         // Neutral detector is library-owned. Read a bounded prefix, not the
@@ -113,7 +131,7 @@ impl DatasetInspection {
             && !path.to_string_lossy().ends_with(".zip")
         {
             let mut bytes = Vec::new();
-            fs::File::open(&path)
+            fs::File::open(path)
                 .map_err(|error| error.to_string())?
                 .take(65536.min(self.limits.max_file_bytes))
                 .read_to_end(&mut bytes)
@@ -128,7 +146,7 @@ impl DatasetInspection {
             detected[key] = value.clone();
         }
         let loading = inspection_loading_params(&detected)?;
-        let frame = read_table_with_limits(&path, &loading, self.limits)
+        let frame = read_table_with_limits(path, &loading, self.limits)
             .map_err(|error| error.to_string())?;
         let samples = sample_rows.min(frame.n_rows);
         let slots = frame
@@ -482,6 +500,31 @@ mod tests {
 
     fn no_python(_: &str, _: &Value) -> Result<Value, String> {
         panic!("CSV inspection must use native IO, not Python");
+    }
+
+    #[test]
+    fn cached_native_inspection_detects_same_shape_edit_with_restored_mtime() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("X.csv");
+        fs::write(&path, "a;b\n1;2\n3;4\n").unwrap();
+        let inspector = DatasetInspection::new(root.path(), LoadLimits::default()).unwrap();
+        let original = inspector
+            .inspect_file(&path, &json!({"has_header":true}), 2, &no_python)
+            .unwrap();
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        fs::write(&path, "a;b\n5;6\n7;8\n").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        let changed = inspector
+            .inspect_file(&path, &json!({"has_header":true}), 2, &no_python)
+            .unwrap();
+        assert_eq!(original["num_rows"], changed["num_rows"]);
+        assert_eq!(original["num_columns"], changed["num_columns"]);
+        assert_eq!(changed["sample_data"], json!([["5", "6"], ["7", "8"]]));
     }
 
     #[test]

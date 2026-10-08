@@ -44,8 +44,8 @@ export function RuntimeBackendStatus({
   const statusLabel = status === "checking"
     ? "Checking"
     : status === "available"
-      ? "Native available"
-      : "Native unavailable";
+      ? "Available"
+      : "Unavailable";
 
   return (
     <div
@@ -55,14 +55,14 @@ export function RuntimeBackendStatus({
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Cpu className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Runtime Backend</span>
+          <span className="text-sm font-medium">Analysis Engine</span>
         </div>
         <Badge variant={status === "available" ? "default" : "secondary"}>
           {statusLabel}
         </Badge>
       </div>
       <p className="text-xs text-muted-foreground">
-        Strict DAG-ML native execution. Legacy execution and fallback are disabled.
+        Runs the analyses configured in Studio.
       </p>
     </div>
   );

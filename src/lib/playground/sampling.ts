@@ -169,20 +169,20 @@ export function coverageSample(
 
   // Precompute features for all samples
   const features = spectra.map((_, i) => getFeatures(i));
+  const nearestDistances = new Float64Array(totalSamples).fill(Infinity);
 
   while (selected.length < targetCount) {
     let maxDist = -1;
     let maxIdx = -1;
+    const latest = selected[selected.length - 1];
 
     for (let i = 0; i < totalSamples; i++) {
       if (used.has(i)) continue;
 
-      // Find minimum distance to any selected point
-      let minDist = Infinity;
-      for (const selIdx of selected) {
-        const d = distance(features[i], features[selIdx]);
-        if (d < minDist) minDist = d;
-      }
+      // Earlier selected points have already contributed to this minimum.
+      const d = distance(features[i], features[latest]);
+      if (d < nearestDistances[i]) nearestDistances[i] = d;
+      const minDist = nearestDistances[i];
 
       if (minDist > maxDist) {
         maxDist = minDist;

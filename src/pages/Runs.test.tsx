@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   listRuns: vi.fn(),
   getEnrichedRuns: vi.fn(),
   useLinkedWorkspacesQuery: vi.fn(),
+  listRunExecutionJobRecords: vi.fn().mockResolvedValue({ records: [] }),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -25,6 +26,7 @@ vi.mock("@/api/runs", async () => {
   return {
     ...actual,
     listRuns: mocks.listRuns,
+    listRunExecutionJobRecords: mocks.listRunExecutionJobRecords,
   };
 });
 
@@ -65,6 +67,8 @@ vi.mock("@/components/ui/tooltip", () => {
 import Runs from "./Runs";
 import { RunsExecutionJobRecordDialog, RunsExecutionTasksPanel } from "./RunsSections";
 import type { ExecutionJobRecord } from "@/lib/runs/executionJobRecords";
+import { clientStorageKeys, removeClientStorageItem } from "@/lib/clientStorage";
+import { buildRunsExecutionTaskPanelData } from "@/lib/runs/pageData";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -201,9 +205,64 @@ async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise
 
 afterEach(() => {
   vi.clearAllMocks();
+  mocks.listRunExecutionJobRecords.mockResolvedValue({ records: [] });
+  removeClientStorageItem(clientStorageKeys.dismissedExecutionJobs);
 });
 
 describe("Runs page", () => {
+  it("dismisses failed launch bars and keeps them dismissed when the page is reopened", async () => {
+    mocks.useLinkedWorkspacesQuery.mockReturnValue({ data: { active_workspace_id: "ws-1" } });
+    mocks.listRuns.mockResolvedValue({ runs: [] });
+    mocks.getEnrichedRuns.mockResolvedValue({ runs: [], total: 0 });
+    mocks.listRunExecutionJobRecords.mockResolvedValue({
+      records: [executionJobRecord({ status: "failed", run_status: "failed", is_orphaned: true })],
+    });
+    const view = await renderPage();
+    await waitFor(() => expect(view.container.textContent).toContain("Execution tasks"));
+    await expandExecutionTasksPanel(view.container);
+    const dismiss = view.container.querySelector<HTMLButtonElement>('[aria-label="Dismiss execution job job-1"]');
+    expect(dismiss).toBeTruthy();
+    await act(async () => { dismiss!.click(); });
+    expect(view.container.textContent).not.toContain("Execution tasks");
+    await view.unmount();
+
+    const reopened = await renderPage();
+    await waitFor(() => expect(mocks.listRunExecutionJobRecords).toHaveBeenCalledTimes(2));
+    expect(reopened.container.textContent).not.toContain("Execution tasks");
+    await reopened.unmount();
+
+    // The same identity in another workspace, or a reactivated job, must stay visible.
+    mocks.useLinkedWorkspacesQuery.mockReturnValue({ data: { active_workspace_id: "ws-2" } });
+    const otherWorkspace = await renderPage();
+    await waitFor(() => expect(otherWorkspace.container.textContent).toContain("Execution tasks"));
+    await otherWorkspace.unmount();
+    mocks.useLinkedWorkspacesQuery.mockReturnValue({ data: { active_workspace_id: "ws-1" } });
+    mocks.listRunExecutionJobRecords.mockResolvedValue({ records: [executionJobRecord({ status: "running" })] });
+    const reactivated = await renderPage();
+    await waitFor(() => expect(reactivated.container.textContent).toContain("Execution tasks"));
+    await expandExecutionTasksPanel(reactivated.container);
+    expect(reactivated.container.querySelector('[aria-label="Dismiss execution job job-1"]')).toBeNull();
+    await reactivated.unmount();
+  });
+
+  it("offers dismissal for finished tasks and groups while keeping active tasks visible", async () => {
+    const onDismissJobs = vi.fn();
+    const data = buildRunsExecutionTaskPanelData([
+      executionJobRecord({ job_id: "running", status: "running", run_id: "active" }),
+      executionJobRecord({ job_id: "failed", status: "failed", run_id: "finished" }),
+      executionJobRecord({ job_id: "cancelled", status: "cancelled", run_id: "finished" }),
+    ]);
+    const view = await renderNode(<RunsExecutionTasksPanel data={data} onDismissJobs={onDismissJobs} />);
+    await expandExecutionTasksPanel(view.container);
+    expect(view.container.querySelector('[aria-label="Dismiss execution job running"]')).toBeNull();
+    await act(async () => {
+      view.container.querySelector<HTMLButtonElement>('[aria-label="Dismiss execution job failed"]')!.click();
+      view.container.querySelector<HTMLButtonElement>('[aria-label^="Dismiss execution group"]')!.click();
+    });
+    expect(onDismissJobs).toHaveBeenCalledWith(["failed"]);
+    expect(onDismissJobs).toHaveBeenCalledWith(["failed", "cancelled"]);
+    await view.unmount();
+  });
   it("renders run rows when enriched runs are available", async () => {
     mocks.useLinkedWorkspacesQuery.mockReturnValue({
       data: { active_workspace_id: "ws-1" },

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useCallback, type ReactNode } from "react";
-import { detectUnified, validateFiles } from "@/api/datasets";
+import { detectUnified, validateFiles, type FileShapeInfo } from "@/api/datasets";
 import {
   DialogHeader,
   DialogTitle,
@@ -111,6 +111,13 @@ function StepIndicator() {
 
 export function DataStats() {
   const { state, dispatch, beginInspection } = useWizard();
+  const validatedFiles = useRef(new Map<string, { key: string; shape: FileShapeInfo }>());
+  const configuredFiles = buildDatasetWizardFiles(state);
+  const validationKeys = new Map(configuredFiles.map(file => [file.path, JSON.stringify({
+    basePath: state.basePath, path: file.path, type: file.type, parsing: file.overrides,
+  }, (_key, value) => value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value)]));
+  const validationKey = JSON.stringify([...validationKeys]);
 
   const xTrainFiles = state.files.filter(f => f.type === "X" && f.split === "train");
   const xTestFiles = state.files.filter(f => f.type === "X" && f.split === "test");
@@ -144,21 +151,37 @@ export function DataStats() {
       dispatch({ type: "SET_VALIDATING", payload: false });
       return;
     }
+    const changedFiles = files.filter(file => validatedFiles.current.get(file.path)?.key !== validationKeys.get(file.path));
+    const publishShapes = () => {
+      const shapes = Object.fromEntries(files.flatMap(file => {
+        const validated = validatedFiles.current.get(file.path);
+        return validated && validated.key === validationKeys.get(file.path) ? [[file.path, validated.shape]] : [];
+      }));
+      dispatch({ type: "SET_VALIDATED_SHAPES", payload: shapes });
+      const metadataColumns = [...new Set(files.filter(file => file.type === "metadata")
+        .flatMap(file => shapes[file.path]?.column_names ?? []))];
+      dispatch({ type: "SET_DETECTION_RESULTS", payload: { metadataColumns } });
+    };
+    if (changedFiles.length === 0) {
+      publishShapes();
+      return;
+    }
     dispatch({ type: "SET_VALIDATING", payload: true });
     const timer = setTimeout(async () => {
       const finishInspection = beginInspection();
       try {
-        const configured = buildDatasetWizardFiles({ files: state.files, parsing: state.parsing, perFileOverrides: state.perFileOverrides });
-        const overrides = Object.fromEntries(configured.map(f => [f.path, f.overrides ?? {}]));
-        const result = await validateFiles(state.basePath, files, state.parsing, overrides);
+        const overrides = Object.fromEntries(configuredFiles.filter(file => changedFiles.some(changed => changed.path === file.path))
+          .map(file => [file.path, file.overrides ?? {}]));
+        const result = await validateFiles(state.basePath, changedFiles, state.parsing, overrides);
         if (cancelled) return;
         if (result.error || !result.success) {
           dispatch({ type: "SET_VALIDATION_ERROR", payload: result.error || "Failed to validate files" });
         } else {
-          dispatch({ type: "SET_VALIDATED_SHAPES", payload: result.shapes });
-          const metadataColumns = [...new Set(files.filter(f => f.type === "metadata")
-            .flatMap(f => result.shapes[f.path]?.column_names ?? []))];
-          dispatch({ type: "SET_DETECTION_RESULTS", payload: { metadataColumns } });
+          for (const file of changedFiles) {
+            const shape = result.shapes[file.path];
+            if (shape) validatedFiles.current.set(file.path, { key: validationKeys.get(file.path)!, shape });
+          }
+          publishShapes();
         }
       } catch (error) {
         if (!cancelled) dispatch({ type: "SET_VALIDATION_ERROR", payload:
@@ -168,7 +191,10 @@ export function DataStats() {
       }
     }, 200);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [state.basePath, state.files, state.parsing, state.perFileOverrides, isWebMode, dispatch, beginInspection]);
+    // The complete effective parsing key avoids re-reading on object replacement
+    // and on split/source changes that cannot affect a file's table shape.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.basePath, validationKey, isWebMode, dispatch, beginInspection]);
 
   const getShape = (filePath: string) => {
     return state.validatedShapes[filePath];

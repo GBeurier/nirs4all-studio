@@ -65,15 +65,15 @@ function formatExperimentLaunchPayloadReadinessDetail(
 ): Pick<ExperimentLaunchPayloadManifestDetail, "value" | "title"> {
   const { payloadDiagnostics } = launchPayloadPlan;
   if (!payloadDiagnostics.nativePayloadRequired) {
-    return { value: "Legacy config submission" };
+    return { value: "Local experiment" };
   }
 
   if (payloadDiagnostics.canSubmitNativePayload) {
-    return { value: "Ready for native submission" };
+    return { value: "Ready to launch" };
   }
 
   return {
-    value: "Blocked for native submission",
+    value: "Settings need review",
     title: payloadDiagnostics.blockedReason ?? undefined,
   };
 }
@@ -85,7 +85,7 @@ function formatExperimentLaunchSubmissionTargetDetail(
   const adapterStatus = formatExperimentLaunchAdapterStatusLine(campaignPreview);
   if (launchPayloadPlan.payloadDiagnostics.nativePayloadRequired) {
     return {
-      value: `${campaignPreview.executionBackendLabel} via ${campaignPreview.executionAdapter.label}`,
+      value: `${campaignPreview.executionAdapter.label}`,
       title: adapterStatus,
     };
   }
@@ -101,7 +101,7 @@ function formatExperimentLaunchSchemaBindingDetail(
 ): ExperimentLaunchPayloadManifestDetail {
   return {
     id: "schema-binding",
-    label: "Schema binding",
+    label: "Data and pipeline pairing",
     value: [
       campaignPreview.schemaConstraint.label,
       campaignPreview.schemaConstraint.strictPairingStatusLabel,
@@ -119,7 +119,7 @@ function formatExperimentLaunchRobustnessEvidencePublicationDetail(
   const effectCount = payloadDiagnostics.robustnessEvidencePublicationRequiredEffects?.length ?? 0;
   return {
     id: "robustness-evidence-publication",
-    label: "Robustness evidence publication",
+    label: "Save robustness results",
     value: [
       "Requested",
       formatExperimentLaunchCount(keywordCount, "keyword"),
@@ -137,7 +137,7 @@ function formatExperimentLaunchCampaignCardinalityDetail(
 ): ExperimentLaunchPayloadManifestDetail {
   return {
     id: "campaign-cardinality",
-    label: "Campaign cardinality",
+    label: "Planned analyses",
     value: [
       campaignPreview.summary.inputCardinalityLabel,
       campaignPreview.summary.runCountLabel,
@@ -159,7 +159,7 @@ export function buildExperimentLaunchBadgeLabels(
 export function formatExperimentLaunchAdapterStatusLine(
   campaignPreview: CampaignPlanPreview,
 ): string {
-  return `${campaignPreview.executionAdapter.statusLabel}: ${campaignPreview.executionAdapter.message}`;
+  return campaignPreview.executionAdapter.message;
 }
 
 function getExperimentLaunchStrictPayloadStatusLabel(
@@ -168,14 +168,14 @@ function getExperimentLaunchStrictPayloadStatusLabel(
   if (status === "ready") return "Ready";
   if (status === "partial") return "Partial";
   if (status === "unavailable") return "Unavailable";
-  return "Legacy only";
+  return "Local analysis";
 }
 
 function getExperimentLaunchCurrentSubmissionKindLabel(
   kind: ExperimentLaunchCurrentSubmissionKind,
 ): string {
-  if (kind === "native_payload") return "Native payload";
-  return "Legacy config";
+  if (kind === "native_payload") return "Experiment preparation";
+  return "Local analysis";
 }
 
 export function getExperimentLaunchPayloadBadgeVariant(
@@ -193,12 +193,12 @@ export function buildExperimentLaunchPayloadBadgeLabels(
   return [
     {
       id: "current-submission",
-      label: `Submission: ${getExperimentLaunchCurrentSubmissionKindLabel(launchPayloadPlan.currentSubmissionKind)}`,
+      label: `Analysis: ${getExperimentLaunchCurrentSubmissionKindLabel(launchPayloadPlan.currentSubmissionKind)}`,
       variant: launchPayloadPlan.currentSubmissionKind === "native_payload" ? "secondary" : "outline",
     },
     {
       id: "strict-campaigns",
-      label: `Strict campaigns: ${getExperimentLaunchStrictPayloadStatusLabel(launchPayloadPlan.strictCampaignPayloadStatus)}`,
+      label: `Preparation: ${getExperimentLaunchStrictPayloadStatusLabel(launchPayloadPlan.strictCampaignPayloadStatus)}`,
       variant: getExperimentLaunchPayloadBadgeVariant(launchPayloadPlan.strictCampaignPayloadStatus),
     },
   ];
@@ -219,7 +219,7 @@ export function buildExperimentLaunchPayloadManifestDetails(
   const details: ExperimentLaunchPayloadManifestDetail[] = [
     {
       id: "legacy-inputs",
-      label: "Legacy inputs",
+      label: "Selected data and pipelines",
       value: [
         formatExperimentLaunchCount(payloadDiagnostics.legacyDatasetCount, "dataset"),
         formatExperimentLaunchCount(payloadDiagnostics.legacyPipelineCount, "pipeline"),
@@ -227,33 +227,27 @@ export function buildExperimentLaunchPayloadManifestDetails(
     },
     {
       id: "native-payload",
-      label: "Native payload",
+      label: "Experiment preparation",
       value: [
-        formatExperimentLaunchCount(payloadDiagnostics.strictCampaignCount, "strict campaign"),
+        formatExperimentLaunchCount(payloadDiagnostics.strictCampaignCount, "prepared analysis"),
         formatExperimentLaunchCount(payloadDiagnostics.skippedRunCount, "skipped run"),
       ].join(" · "),
     },
     {
       id: "submission-target",
-      label: "Submission target",
+      label: "Calculate with",
       ...submissionTargetPreview,
     },
     formatExperimentLaunchCampaignCardinalityDetail(campaignPreview),
     formatExperimentLaunchSchemaBindingDetail(campaignPreview),
     {
-      id: "payload-schema",
-      label: "Payload schema",
-      value: payloadDiagnostics.nativePayloadVersion,
-      title: "Native launch payload schema version",
-    },
-    {
       id: "payload-readiness",
-      label: "Payload readiness",
+      label: "Preparation status",
       ...readinessPreview,
     },
     {
       id: "source-runs",
-      label: "Source runs",
+      label: "Selected analyses",
       ...sourceRunPreview,
     },
   ];

@@ -279,10 +279,10 @@ export function usePlaygroundPipeline(
 
   // Mark state as stable when result arrives (not fetching anymore)
   useEffect(() => {
-    if (!isFetching && result !== null) {
+    if (!isFetching && !isDebouncing && result !== null) {
       markStable();
     }
-  }, [isFetching, result, markStable]);
+  }, [isFetching, isDebouncing, result, markStable]);
 
   // Determine if UMAP is currently loading
   // UMAP is loading if we requested it and the query is still fetching

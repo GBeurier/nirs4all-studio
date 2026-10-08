@@ -11,6 +11,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RunItem } from "../RunItem";
 import type { EnrichedRun } from "@/types/enriched-runs";
+import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
+
+vi.mock("@/api/linkedWorkspaces", () => ({
+  deleteN4AWorkspaceRun: vi.fn(),
+}));
 
 vi.mock("@/components/scores/DatasetResultCard", () => ({
   DatasetResultCard: () => null,
@@ -96,6 +101,40 @@ function run(overrides: Partial<EnrichedRun> & Record<string, unknown> = {}): En
 }
 
 describe("RunItem storage metadata", () => {
+  it("deletes a failed run without results and refreshes history", async () => {
+    vi.mocked(deleteN4AWorkspaceRun).mockResolvedValue({ success: true, deleted_rows: 1, run_id: "failed-run" });
+    const client = createQueryClient();
+    client.setQueryData(["enriched-runs", "workspace-1"], { runs: [] });
+    client.setQueryData(["runs"], { runs: [] });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { container, root } = await render(
+      <RunItem run={run({ run_id: "failed-run", status: "failed", datasets: [] })}
+        onViewDetails={vi.fn()} workspaceId="workspace-1" />, client,
+    );
+    const deleteButton = container.querySelector<HTMLButtonElement>('button[title="Delete run"]');
+    expect(deleteButton?.disabled).toBe(false);
+    await act(async () => { deleteButton!.click(); });
+    const confirmButton = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
+      .find(button => button.textContent?.trim() === "Delete run");
+    expect(confirmButton).toBeDefined();
+    await act(async () => { confirmButton!.click(); });
+
+    expect(deleteN4AWorkspaceRun).toHaveBeenCalledWith("workspace-1", "failed-run");
+    expect(invalidate).toHaveBeenCalled();
+    expect(client.getQueryState(["enriched-runs", "workspace-1"])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(["runs"])?.isInvalidated).toBe(true);
+    await act(async () => { root.unmount(); });
+  });
+
+  it.each(["running", "queued"])("disables deletion of a %s run", async (status) => {
+    const { container, root } = await render(
+      <RunItem run={run({ status })} onViewDetails={vi.fn()} workspaceId="workspace-1" />,
+    );
+    expect(container.querySelector<HTMLButtonElement>('button[title="Stop the run before deleting it"]')?.disabled).toBe(true);
+    expect(deleteN4AWorkspaceRun).not.toHaveBeenCalled();
+    await act(async () => { root.unmount(); });
+  });
+
   it("renders UI-ready artifact, storage, and provenance fields from the run page data model", async () => {
     const { container, root } = await render(
       <RunItem

@@ -135,11 +135,11 @@ export function usePipelineEditorRouteActions({
             format,
           }),
         );
-        toast.success(`Pipeline exported as canonical ${format.toUpperCase()}`);
+        toast.success(`Pipeline exported as ${format.toUpperCase()}`);
       } catch (error) {
         console.error("Canonical export error:", error);
         toast.error(
-          `Failed to export canonical ${format.toUpperCase()}: ${
+          `Failed to export ${format.toUpperCase()}: ${
             error instanceof Error ? error.message : "Unknown error"
           }`,
         );

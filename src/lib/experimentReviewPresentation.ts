@@ -11,7 +11,7 @@ export const experimentReviewCopy = {
   nameLabel: "Experiment Name",
   descriptionLabel: "Description (optional)",
   descriptionPlaceholder: "Add notes about this experiment...",
-  groupingTitle: "Runtime Grouping Summary",
+  groupingTitle: "Sample Grouping Summary",
   noSplittersBadge: "No splitters",
 } as const;
 

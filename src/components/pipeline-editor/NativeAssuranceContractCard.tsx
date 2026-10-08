@@ -283,7 +283,7 @@ export function NativeAssuranceContractCard({
         <div>
           <h4 className="flex items-center gap-2 text-sm font-medium">
             <ShieldCheck className="h-4 w-4 text-emerald-500" />
-            Native assurance contract
+            Analysis Requirements
           </h4>
           <p className="mt-1 text-xs text-muted-foreground">
             Conformal and robustness keywords for {summary.runtimeEngineLabel}; Studio displays contract effects only.

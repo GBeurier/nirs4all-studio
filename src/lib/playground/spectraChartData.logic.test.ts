@@ -40,6 +40,14 @@ const oneFold: FoldsInfo = {
 };
 
 describe('spectra chart pure state helpers', () => {
+  it('reuses the dataset sampling while incorporating a changed selection', () => {
+    const baseSampling = { indices: [0, 1], totalSamples: 5, wasApplied: true, strategy: 'coverage' as const };
+    const input = { totalSamples: 5, sampling, displayMode: 'individual' as const, spectra, baseSampling };
+    expect(buildSpectraSamplingResult({ ...input, selectedSamples: new Set([1]) })).toBe(baseSampling);
+    expect(buildSpectraSamplingResult({ ...input, selectedSamples: new Set([4]) }).indices).toEqual([0, 1, 4]);
+    expect(baseSampling.indices).toEqual([0, 1]);
+  });
+
   it('keeps selected samples visible when sampling would omit them', () => {
     const result = buildSpectraSamplingResult({
       totalSamples: spectra.length,
