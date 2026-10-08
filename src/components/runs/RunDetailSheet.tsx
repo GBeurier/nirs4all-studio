@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { formatApiErrorDetail } from "@/api/transport";
 import {
   Sheet,
   SheetContent,
@@ -50,7 +51,7 @@ export function RunDetailSheet({
     [run],
   );
 
-  const { data: detail, isLoading: detailLoading } = useQuery({
+  const { data: detail, isLoading: detailLoading, error: detailError, refetch: refetchDetail } = useQuery({
     queryKey: ["workspace-run-detail", workspaceId, run?.run_id],
     queryFn: () => getN4AWorkspaceRunDetail(workspaceId, run!.run_id),
     enabled: open && !!workspaceId && !!run,
@@ -94,7 +95,7 @@ export function RunDetailSheet({
     },
   });
 
-  const { data: logsResponse, isLoading: logsLoading } = useQuery({
+  const { data: logsResponse, isLoading: logsLoading, error: logsError, refetch: refetchLogs } = useQuery({
     queryKey: ["workspace-run-pipeline-logs", workspaceId, run?.run_id, selectedPipelineId],
     queryFn: () => getWorkspaceRunPipelineLogs(workspaceId, run!.run_id, selectedPipelineId!),
     enabled: open && activeTab === "logs" && !!workspaceId && !!run && !!selectedPipelineId,
@@ -133,6 +134,13 @@ export function RunDetailSheet({
         />
 
         <Separator className="my-4" />
+
+        {(detailError || (activeTab === "logs" && logsError)) && (
+          <div role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+            <p>{formatApiErrorDetail(detailError ?? logsError)}</p>
+            <button type="button" className="mt-2 underline" onClick={() => void (detailError ? refetchDetail() : refetchLogs())}>Retry</button>
+          </div>
+        )}
 
         <RunDetailSheetTabs
           activeTab={activeTab}

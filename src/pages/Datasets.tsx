@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { getApiErrorMessage } from "@/api/transport";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
@@ -113,8 +114,8 @@ export default function Datasets() {
   const refreshing =
     datasetsQuery.isFetching || linkedWorkspacesQuery.isFetching;
   const loadError =
-    (datasetsQuery.error instanceof Error && datasetsQuery.error.message)
-    || (linkedWorkspacesQuery.error instanceof Error && linkedWorkspacesQuery.error.message)
+    getApiErrorMessage(datasetsQuery.error)
+    || getApiErrorMessage(linkedWorkspacesQuery.error)
     || null;
 
   // Per-dataset best scores. Gated on workspaceReady inside the hook so the

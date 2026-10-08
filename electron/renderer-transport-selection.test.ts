@@ -35,6 +35,22 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 }
 
 describe("renderer transport preselection", () => {
+  it("routes historical deletion, logs and execution records to their native owners", async () => {
+    const request = async () => capabilityResponse({ workspace_run_management_routes: true, python_plugin_preflight: true });
+    await expect(preselectRendererTransport({ kind: "http", method: "GET", path: "/runs/execution-backends" }, running, request))
+      .resolves.toMatchObject({ target: "native-sidecar" });
+    for (const [method, path] of [
+      ["DELETE", "/workspaces/workspace-1/runs/run-1"],
+      ["GET", "/workspaces/workspace-1/runs/run-1/pipelines/pipeline-1/logs"],
+      ["GET", "/runs/execution-job-records?include_orphaned=true"],
+      ["POST", "/workspaces/workspace-1/runs/run-1/rerun"],
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar", status: 200 });
+    }
+    await expect(preselectRendererTransport({kind:"http",method:"DELETE",path:"/workspaces/workspace-1/runs/run-1?force=true"},running,request))
+      .resolves.toMatchObject({target:"reject"});
+  });
   it("routes the error journal without a Python host and refuses unsupported queries", async () => {
     const request = async () => capabilityResponse({ system_error_log_routes: true });
     const noPython = () => ({ ...running(), pythonPluginHostConfigured: false });

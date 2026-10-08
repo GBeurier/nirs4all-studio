@@ -84,6 +84,7 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["DELETE /updates/webapp/last-apply-result", { name: "webapp-update", capability: "native_webapp_update_routes" }],
   ["POST /updates/webapp/restart", { name: "webapp-update", capability: "native_webapp_update_routes" }],
   ["POST /runs/run-groups", { name: "scientific-submission", capability: "scientific_submission_transport" }],
+  ["GET /runs/execution-backends", { name: "execution-backends", capability: "workspace_run_management_routes" }],
   ["POST /predict/archive-v2", { name: "archive-v2-prediction", capability: "native_archive_v2_prediction" }],
   ["POST /predict/archive-v2/conformal-presentation", { name: "archive-v2-conformal-presentation", capability: "native_conformal_presentation_v2" }],
   ["POST /predict/archive-v2/conformal-projection", { name: "archive-v2-conformal-projection", capability: "native_conformal_presentation_v2" }],
@@ -339,7 +340,23 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
   if (method === "GET" && ((pathname === "/runs/stats" && !query) || (pathname === "/runs" && validQuery({
     status: (value) => value.split(",").every((status) => ["running", "queued", "completed", "failed", "cancelled", "partial"].includes(status)),
   })))) return { name: "run-listing", capability: "workspace_run_listing_routes" };
+  if (method === "GET" && !query && /^\/runs\/[^/]+$/.test(pathname) && !["/runs/execution-backends", "/runs/run-groups", "/runs/execution-job-records"].includes(pathname)) {
+    return {name:"run-detail",capability:"workspace_run_listing_routes"};
+  }
   const history = identifierPath("/workspaces/", "/runs/enriched").exec(pathname);
+  if (method === "GET" && pathname === "/runs/execution-job-records" && validQuery({
+    include_orphaned: bool, run_status: (value) => value.length > 0,
+    execution_status: (value) => value.length > 0, requested_backend: (value) => value.length > 0,
+  })) return { name: "execution-job-records", capability: "durable_execution_job_record_reads" };
+  if (method === "DELETE" && !query && /^\/workspaces\/[^/]+\/runs\/[^/]+$/.test(pathname)) {
+    return { name: "run-deletion", capability: "workspace_run_management_routes", requiresPythonHost: true };
+  }
+  if (method === "GET" && !query && /^\/workspaces\/[^/]+\/runs\/[^/]+\/pipelines\/[^/]+\/logs$/.test(pathname)) {
+    return { name: "run-logs", capability: "workspace_run_management_routes", requiresPythonHost: true };
+  }
+  if (method === "POST" && !query && /^\/workspaces\/[^/]+\/runs\/[^/]+\/rerun$/.test(pathname)) {
+    return { name: "run-rerun", capability: "workspace_run_management_routes", requiresPythonHost: true };
+  }
   if (method === "GET" && history && isValidIdentifier(history[1]) && validQuery({
     project_id: isValidIdentifier, limit: (value) => /^\d+$/.test(value), offset: (value) => /^\d+$/.test(value),
   })) return { name: "run-history", capability: "workspace_run_history_route" };

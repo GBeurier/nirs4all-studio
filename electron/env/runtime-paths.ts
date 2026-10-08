@@ -81,8 +81,8 @@ export function detectBundledRuntime(): BundledRuntimeInfo | null {
   if (!resourcesPath) return null;
 
   const runtimeDir = path.join(resourcesPath, "backend", "python-runtime");
-  const readyMarker = path.join(runtimeDir, "RUNTIME_READY.json");
-  if (!fs.existsSync(readyMarker)) {
+  const readyMarkers = ["PLUGIN_RUNTIME_READY.json", "RUNTIME_READY.json"];
+  if (!readyMarkers.some((name) => fs.existsSync(path.join(runtimeDir, name)))) {
     return null;
   }
 

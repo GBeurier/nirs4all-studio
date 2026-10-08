@@ -331,6 +331,16 @@ export function formatApiErrorDetail(detail: unknown, status?: number): string {
   return status ? `HTTP error ${status}` : "Network error";
 }
 
+/** Queries receive plain ApiError objects as well as ordinary Error instances. */
+export function getApiErrorMessage(error: unknown): string | null {
+  if (error == null) return null;
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && "detail" in error) {
+    return formatApiErrorDetail(error.detail, "status" in error && typeof error.status === "number" ? error.status : undefined);
+  }
+  return formatApiErrorDetail(error);
+}
+
 function isApiError(error: unknown): error is ApiError {
   return Boolean(
     error &&
