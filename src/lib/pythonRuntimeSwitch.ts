@@ -4,7 +4,7 @@ import {
   getRecommendedConfig,
 } from "@/api/config";
 import { getRuntimeSummary } from "@/api/system";
-import { resetBackendUrl } from "@/api/transport";
+import { api, resetBackendUrl } from "@/api/transport";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import {
   filterPackageNamesForProfile,
@@ -68,12 +68,17 @@ export async function previewRuntimeAlignment(
 }
 
 export async function loadPostSwitchValidation(): Promise<PostSwitchValidation> {
-  const [runtimeSummary, gpuInfo, config] = await Promise.all([
-    retryAsync(() => getRuntimeSummary(), 6).catch(() => null),
+  const [runtimeSummary, gpuInfo, config, readiness] = await Promise.all([
+    retryAsync(() => getRuntimeSummary(), 6),
     retryAsync(() => detectGPU(), 4).catch(() => null),
     retryAsync(() => getRecommendedConfig(), 4).catch(() => null),
+    retryAsync(() => api.get<{ ml_ready?: boolean; ml_error?: string }>("/system/readiness"), 4),
   ]);
 
+  if (!runtimeSummary.coherent || !runtimeSummary.core_ready || readiness.ml_ready !== true) {
+    throw new Error("The selected Python environment is not ready for analysis. Prepare it from Python Environment settings.");
+  }
+  runtimeSummary.scientific_ready = true;
   const visibleOptionalPackages = getVisibleOptionalPackages(config);
   const availableProfiles = config?.profiles.map((profile) => profile.id) ?? [];
   const selectedProfile = pickSuggestedProfile(gpuInfo?.recommended_profiles, availableProfiles);

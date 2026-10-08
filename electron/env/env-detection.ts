@@ -11,7 +11,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 
-import { getManagedCorePackageNames } from "./env-inspection";
+import { REUSABLE_RUNTIME_PACKAGES } from "./env-inspection";
 import type { DetectedEnv } from "./env-inspection";
 import {
   gatherPythonCandidates,
@@ -48,7 +48,7 @@ export interface DetectEnvsContext {
 
 /** Check a Python executable and return info if it's 3.11+. */
 export function checkPythonEnv(envDir: string, pythonPath: string): Promise<DetectedEnv | null> {
-  const corePackageNames = JSON.stringify(getManagedCorePackageNames());
+  const corePackageSpecs = JSON.stringify(REUSABLE_RUNTIME_PACKAGES);
   return new Promise((resolve) => {
     execFile(
       pythonPath,
@@ -57,15 +57,15 @@ export function checkPythonEnv(envDir: string, pythonPath: string): Promise<Dete
         "import sys\n"
         + "from importlib import metadata as importlib_metadata\n"
         + "print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')\n"
-        + "installed = set()\n"
+        + "installed = {}\n"
         + "normalize = lambda name: name.replace('-', '_').replace('.', '_').lower()\n"
         + "for dist in importlib_metadata.distributions():\n"
         + "    name = dist.metadata.get('Name')\n"
         + "    if name:\n"
-        + "        installed.add(normalize(name))\n"
-        + `core = [normalize(name) for name in ${corePackageNames}]\n`
+        + "        installed.setdefault(normalize(name), importlib_metadata.version(name))\n"
+        + `core = ${corePackageSpecs}\n`
         + "print('nirs4all' in installed)\n"
-        + "print(all(name in installed for name in core))",
+        + "print(all(normalize(spec.split('==')[0]) in installed and ('==' not in spec or installed[normalize(spec.split('==')[0])] == spec.split('==')[1]) for spec in core))",
       ],
       { timeout: 5000, windowsHide: isWindows },
       (error, stdout) => {

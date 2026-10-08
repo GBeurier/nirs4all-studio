@@ -114,6 +114,7 @@ export interface NativeSidecarStartOptions {
   allowPackagedResource?: boolean;
   /** Explicit library/plugin interpreter; never an HTTP backend command. */
   pythonPluginHost?: string | null;
+  pythonPluginSitePackages?: string | null;
   /** Product runtime metadata for Rust-owned system inventory responses. */
   runtimeMode?: string | null;
   /** Distinguishes bundled, managed, custom, and development plugin hosts. */
@@ -298,9 +299,11 @@ export class NativeSidecarManager {
     const explicitPythonPluginHost =
       process.env[PYTHON_PLUGIN_HOST_ENV]?.trim();
     const selectedPythonPluginHost = options.pythonPluginHost?.trim();
-    const pythonPluginHost = packagedProduct
+    const selectedUserRuntime = options.runtimeKind === "custom" || options.runtimeKind === "managed";
+    const usesBundledHost = packagedProduct && !selectedUserRuntime;
+    const pythonPluginHost = usesBundledHost
       ? verifiedBundledPython
-      : explicitPythonPluginHost || selectedPythonPluginHost || null;
+      : selectedPythonPluginHost || (!packagedProduct ? explicitPythonPluginHost : null) || null;
     this.pythonPluginHostConfigured = Boolean(pythonPluginHost);
     const childEnvironment: NodeJS.ProcessEnv = { ...process.env };
     this.sessionToken = createNativeSessionToken();
@@ -323,7 +326,8 @@ export class NativeSidecarManager {
     delete childEnvironment[BUNDLED_RUNTIME_AVAILABLE_ENV];
     if (pythonPluginHost) {
       childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
-      if (packagedProduct) {
+      if (usesBundledHost || selectedUserRuntime) childEnvironment[SCIENTIFIC_EXECUTOR_ENV] = "cpython-stdio-v1";
+      if (usesBundledHost) {
         if (
           !verifiedBundledClosure ||
           !verifiedBundledRuntimeRoot ||
@@ -339,7 +343,8 @@ export class NativeSidecarManager {
           verifiedBundledRuntimeRoot;
         childEnvironment[PYTHON_PLUGIN_SITE_PACKAGES_ENV] =
           verifiedBundledSitePackages;
-        childEnvironment[SCIENTIFIC_EXECUTOR_ENV] = "cpython-stdio-v1";
+      } else if (options.pythonPluginSitePackages?.trim()) {
+        childEnvironment[PYTHON_PLUGIN_SITE_PACKAGES_ENV] = options.pythonPluginSitePackages.trim();
       }
     }
     if (options.runtimeMode?.trim())

@@ -14,6 +14,8 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useUpdateStatus, useUpdateSettings } from "./useUpdates";
 import { useSetupStatus, useIsConfigAligned } from "./useRecommendedConfig";
+import { api } from "@/api/transport";
+import { getElectronApi } from "@/components/settings/PythonEnvPickerRuntime";
 import { useNetworkState } from "./useNetworkState";
 
 export function useStartupUpdateCheck() {
@@ -31,11 +33,24 @@ export function useStartupUpdateCheck() {
     if (hasCheckedSetup.current) return;
     if (!setupStatus) return;
 
-    hasCheckedSetup.current = true;
-
-    if (!setupStatus.setup_completed) {
-      navigate("/setup", { replace: true });
+    const desktop = getElectronApi();
+    if (!desktop) {
+      hasCheckedSetup.current = true;
+      if (!setupStatus.setup_completed) navigate("/setup", { replace: true });
+      return;
     }
+    let cancelled = false;
+    void Promise.all([
+      desktop.getEnvInfo(),
+      api.get<{ ml_ready?: boolean }>("/system/readiness").catch(() => null),
+    ]).then(([environment, readiness]) => {
+      if (cancelled) return;
+      hasCheckedSetup.current = true;
+      if (!cancelled && !environment.setupDeferred && (!setupStatus.setup_completed || readiness?.ml_ready !== true)) {
+        navigate("/setup", { replace: true });
+      }
+    }).catch(() => { if (!cancelled) navigate("/setup", { replace: true }); });
+    return () => { cancelled = true; };
   }, [setupStatus, navigate]);
 
   // Check for updates
@@ -46,7 +61,7 @@ export function useStartupUpdateCheck() {
     if (!settings.auto_check) return;
 
     const hasWebapp = status.webapp?.update_available ?? false;
-    const hasNirs4all = status.nirs4all?.update_available ?? false;
+    const hasNirs4all = !getElectronApi() && (status.nirs4all?.update_available ?? false);
 
     if (!hasWebapp && !hasNirs4all) return;
 
@@ -70,8 +85,9 @@ export function useStartupUpdateCheck() {
     });
   }, [online, networkLoading, status, settings, navigate]);
 
-  // Config drift notification
+  // User-selected desktop packages are informational, not a scored profile.
   useEffect(() => {
+    if (getElectronApi()) return;
     if (networkLoading || !online) return;
     if (!setupStatus?.setup_completed) return;
     if (isAligned) return;

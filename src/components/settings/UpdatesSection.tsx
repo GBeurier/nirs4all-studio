@@ -21,7 +21,8 @@ import {
   useStagedUpdate,
   formatBytes,
 } from "@/hooks/useUpdates";
-import { useGPUDetection } from "@/hooks/useRecommendedConfig";
+import { getElectronApi } from "./PythonEnvPickerRuntime";
+import { useGPUDetection, useRecommendedConfig } from "@/hooks/useRecommendedConfig";
 import {
   listSnapshots,
   createSnapshot,
@@ -57,6 +58,7 @@ import { UpdatesNirs4allDialog } from "./UpdatesNirs4allDialog";
 import { UpdatesWebappDialog } from "./UpdatesWebappDialog";
 
 export function UpdatesSection() {
+  const { data: requiredRuntime } = useRecommendedConfig();
   const queryClient = useQueryClient();
   const { data: status, isLoading: statusLoading, error: statusError } = useUpdateStatus();
   const { data: settings, isLoading: settingsLoading } = useUpdateSettings();
@@ -206,7 +208,7 @@ export function UpdatesSection() {
   };
   const runtimeDisplay = getPythonRuntimeDisplayState(runtimeSummary);
   const isReadOnlyRuntime = runtimeDisplay.isReadOnly;
-  const nirs4allRow = getNirs4allUpdateRowState(status, isReadOnlyRuntime);
+  const nirs4allRow = { ...getNirs4allUpdateRowState(status, isReadOnlyRuntime), managedByStudio: Boolean(getElectronApi()), requiredVersion: requiredRuntime?.nirs4all };
   const currentRuntime = getCurrentRuntime(venvStatus);
   const runtimeExecutablePath = getRuntimeExecutablePath(runtimeSummary, currentRuntime);
   const gpuDisplay = getGpuDisplay(gpuInfo, gpuLoading);
@@ -251,7 +253,10 @@ export function UpdatesSection() {
       webappRow={webappRow}
       nirs4allRow={nirs4allRow}
       onOpenWebappDialog={() => setWebappDialogOpen(true)}
-      onOpenNirs4allDialog={() => setNirs4allDialogOpen(true)}
+      onOpenNirs4allDialog={() => {
+        if (getElectronApi()) window.dispatchEvent(new CustomEvent("choose-python-environment"));
+        else setNirs4allDialogOpen(true);
+      }}
       lastCheck={status?.last_check}
       currentRuntime={currentRuntime}
       gpuDisplay={gpuDisplay}

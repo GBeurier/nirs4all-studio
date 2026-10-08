@@ -15,18 +15,27 @@ import * as path from "path";
  * and broke every all-in-one launch — so resolve against __dirname, trying
  * both depths. (fs.existsSync sees inside asar via Electron's patched fs.)
  */
-function requireExternal<T>(relativeFromRoot: string): T {
+function resolveExternal(relativeFromRoot: string): string {
   const candidates = [
     path.join(__dirname, "..", relativeFromRoot), // dist-electron bundle (packaged + dev)
     path.join(__dirname, "..", "..", relativeFromRoot), // TS sources under electron/env (vitest)
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
-      return require(candidate) as T;
+      return candidate;
     }
   }
   // Let the error name the path that matters (the bundle-relative one).
-  return require(candidates[0]) as T;
+  return candidates[0];
+}
+
+function requireExternal<T>(relativeFromRoot: string): T {
+  return require(resolveExternal(relativeFromRoot)) as T;
+}
+
+export function loadRuntimeAdapterInstaller<T>(): { installer: T; root: string } {
+  const modulePath = resolveExternal(path.join("scripts", "studio-document-adapters.cjs"));
+  return { installer: require(modulePath) as T, root: path.dirname(path.dirname(modulePath)) };
 }
 
 export function loadPythonRuntimeConfig<T>(): T {

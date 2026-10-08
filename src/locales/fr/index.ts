@@ -5,6 +5,16 @@
  */
 
 const fr = {
+  pythonSetup: {
+    "title": "Choisir votre environnement Python",
+    "description": "Reprenez votre ancien environnement Studio ou un environnement Python local. Studio y installera la version de nirs4all dont il a besoin et conservera vos autres paquets compatibles.",
+    "settingsHint": "Vous pourrez faire le même choix dans Paramètres → Avancé → Environnement Python.",
+    "checking": "Vérification du moteur d’analyse…",
+    "ready": "Votre environnement est prêt pour les analyses.",
+    "prepare": "Utilisez Modifier… pour sélectionner et préparer un environnement. Une ancienne version de nirs4all peut être mise à jour sur place.",
+    "later": "Configurer plus tard",
+    "open": "Ouvrir Studio"
+},
   // ============= Common / Global =============
   common: {
     loading: "Chargement...",

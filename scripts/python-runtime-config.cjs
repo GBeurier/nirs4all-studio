@@ -33,6 +33,13 @@ const PLUGIN_HOST_PACKAGES = Object.freeze([
   `nirs4all==${PLUGIN_DISTRIBUTION_VERSION}`,
   ...PLUGIN_SUPPORT_PACKAGES,
 ]);
+// Reused environments keep their own compatible dependencies. pip resolves
+// nirs4all's declared minimum requirements without pinning optional libraries.
+const REUSABLE_RUNTIME_PACKAGES = Object.freeze([
+  `nirs4all==${PLUGIN_DISTRIBUTION_VERSION}`,
+  "nirs4all-formats",
+  "duckdb",
+]);
 
 const LEGACY_FLAVOR_TO_PROFILE = Object.freeze({
   cpu: "cpu",
@@ -311,6 +318,7 @@ function resolveProfileForFlavor(flavor, platform = process.platform) {
 const MANAGED_RUNTIME_PACKAGES = PLUGIN_HOST_PACKAGES;
 
 module.exports = {
+  REUSABLE_RUNTIME_PACKAGES,
   assertProfileSupportedOnPlatform,
   LEGACY_FLAVOR_TO_PROFILE,
   LITE_EXCLUDED_PACKAGE_NAMES,

@@ -51,8 +51,8 @@
     },
     {
       "path": "api/library_runtime_config.py",
-      "size": 6590,
-      "sha256": "7cf67cd13aca8d48b3d5cf087c3a054e9cb4c104ac0e9fe9f237a4f3606d845d"
+      "size": 6703,
+      "sha256": "010bce4d77ca0262d6f3a7b29806159f8ef2b787e24c4771cc447e1af75051fc"
     },
     {
       "path": "api/node_registry_loader.py",

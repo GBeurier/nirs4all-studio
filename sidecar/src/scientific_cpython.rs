@@ -90,7 +90,7 @@ pub const SCIENTIFIC_SOURCE_COMMIT: &str = "1a828c3cad6b6571cbe14b9bd7da2f9f1db7
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
 
-const PREFLIGHT_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,platform,socket,sys
+const PREFLIGHT_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
 SCHEMA="nirs4all.studio-scientific-cpython-host.v1"
 def deny_product_network(event,args):
     if event == "socket.bind":
@@ -100,6 +100,12 @@ def deny_product_network(event,args):
 if sys.platform == "win32":
     platform.machine()
 sys.addaudithook(deny_product_network)
+selected_site=os.environ.get("NIRS4ALL_SELECTED_SITE_PACKAGES")
+if selected_site:
+    # Load the selected environment only after the process audit is active.
+    site.main()
+    site.addsitedir(selected_site)
+    sys.path.insert(0,selected_site)
 if sys.argv[1]:
     sys.path.insert(0,sys.argv[1])
 probe=socket.socket()
@@ -148,7 +154,7 @@ except Exception as error:
 print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"0ed0b2cb1e3cda248ccfd52513d6874a763e7cc64fb4a28973058ada677ef8f6","source_commit":"1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc"},separators=(",",":"),sort_keys=True))
 "#;
 
-const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,socket,sys
+const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
 def bounded_library_error_message(error):
     sanitized="".join(" " if ord(char)<32 or 127<=ord(char)<=159 else char for char in str(error))
     return sanitized.encode("utf-8")[:4000].decode("utf-8",errors="ignore")
@@ -160,6 +166,11 @@ def deny_product_network(event,args):
 if sys.platform == "win32":
     platform.machine()
 sys.addaudithook(deny_product_network)
+selected_site=os.environ.get("NIRS4ALL_SELECTED_SITE_PACKAGES")
+if selected_site:
+    site.main()
+    site.addsitedir(selected_site)
+    sys.path.insert(0,selected_site)
 if sys.argv[1]:
     sys.path.insert(0,sys.argv[1])
     if sys.platform == "win32":
@@ -185,9 +196,16 @@ record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes
 manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
 if hashlib.sha256(manifest_bytes).hexdigest() != "84acf9234ce7ec0b3f637be06524f6a3fa6d5e2c0ca208f3f47bd22bacd39e3e":
     raise RuntimeError("scientific distribution identity changed")
-for _,encoded,size in record_rows:
+for relative,encoded,size in record_rows:
     if "=" not in encoded or (size and not size.isdigit()):
         raise RuntimeError("scientific distribution record changed")
+    if not sys.argv[1]:
+        algorithm,expected=encoded.split("=",1)
+        payload=open(distribution.locate_file(relative),"rb").read()
+        import base64
+        actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
+        if actual != expected or (size and len(payload) != int(size)):
+            raise RuntimeError("scientific distribution member changed")
 # Rust cryptographically verifies every closure member at acquisition, then
 # checks path/inode/size/mtime/ctime snapshots around this fresh worker. The
 # worker verifies the immutable RECORD identity without redundantly hashing
@@ -313,6 +331,7 @@ impl ScientificCpythonUnavailable {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct HostIdentity {
     canonical_path: PathBuf,
+    selected_site_packages: Option<PathBuf>,
     size: u64,
     sha256: [u8; 32],
 }
@@ -363,6 +382,7 @@ pub struct CpythonScientificJobExecutor {
     identity: Option<HostIdentity>,
     callable_identity: Option<HostIdentity>,
     packaged_runtime: Option<PackagedRuntimeIdentity>,
+    existing_site_packages: Option<PathBuf>,
     #[cfg_attr(not(any(unix, windows)), allow(dead_code))]
     acquisition: ScientificCpythonUnavailable,
     resolver: ScientificRequestResolver,
@@ -393,10 +413,23 @@ impl CpythonScientificJobExecutor {
         platform_kill_tree_qualified()
             && self.identity.is_some()
             && self.callable_identity.is_some()
-            && self
-                .packaged_runtime
-                .as_ref()
-                .is_some_and(|runtime| validate(runtime).is_ok())
+            && self.packaged_runtime.as_ref().map_or_else(
+                || {
+                    self.existing_site_packages
+                        .as_ref()
+                        .is_some_and(|site_packages| {
+                            self.identity
+                                .as_ref()
+                                .is_some_and(|host| verify_identity(host).is_ok())
+                                && self
+                                    .callable_identity
+                                    .as_ref()
+                                    .is_some_and(|callable| verify_identity(callable).is_ok())
+                                && crate::document_cpython::verify(site_packages).is_ok()
+                        })
+                },
+                |runtime| validate(runtime).is_ok(),
+            )
     }
 
     pub(crate) fn invoke_library_facade(
@@ -417,11 +450,7 @@ impl CpythonScientificJobExecutor {
                 "Unsupported Studio library facade contract",
             ));
         }
-        let (Some(host), Some(callable), Some(runtime)) = (
-            &self.identity,
-            &self.callable_identity,
-            &self.packaged_runtime,
-        ) else {
+        let (Some(host), Some(callable)) = (&self.identity, &self.callable_identity) else {
             return Err(fail(
                 "host_unavailable",
                 "Attested scientific library host unavailable",
@@ -430,10 +459,9 @@ impl CpythonScientificJobExecutor {
         let bytes = serde_json::to_vec(request)
             .map_err(|_| fail("invalid_request", "Library facade request is not JSON"))?;
         let response = self
-            .run_interactive_request(
+            .run_selected_interactive_request(
                 host,
                 callable,
-                runtime,
                 &bytes,
                 SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
             )
@@ -488,24 +516,25 @@ impl CpythonScientificJobExecutor {
             "dataset.preview" => "document_preview",
             _ => "document_other",
         });
-        let (Some(host), Some(callable), Some(runtime)) = (
-            &self.identity,
-            &self.callable_identity,
-            &self.packaged_runtime,
-        ) else {
+        let (Some(host), Some(callable)) = (&self.identity, &self.callable_identity) else {
             return Err("Attested document library host unavailable".into());
         };
+        let site_packages = self
+            .packaged_runtime
+            .as_ref()
+            .map(|runtime| &runtime.site_packages)
+            .or(self.existing_site_packages.as_ref())
+            .ok_or("Document adapter folder unavailable")?;
         {
             let _timing = BoundaryTiming::start("adapter_verify_before");
-            crate::document_cpython::verify(&runtime.site_packages)?;
+            crate::document_cpython::verify(site_packages)?;
         }
         let request = crate::document_cpython::request(operation, payload)?;
         let bytes = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
         let response = self
-            .run_interactive_request(
+            .run_selected_interactive_request(
                 host,
                 callable,
-                runtime,
                 &bytes,
                 if matches!(
                     operation,
@@ -519,7 +548,7 @@ impl CpythonScientificJobExecutor {
             .map_err(|error| error.reason().to_owned())?;
         {
             let _timing = BoundaryTiming::start("adapter_verify_after");
-            crate::document_cpython::verify(&runtime.site_packages)?;
+            crate::document_cpython::verify(site_packages)?;
         }
         if response["success"] == true {
             Ok(response["result"].clone())
@@ -530,6 +559,28 @@ impl CpythonScientificJobExecutor {
                 .into())
         }
     }
+    fn run_selected_interactive_request(
+        &self,
+        host: &HostIdentity,
+        callable: &HostIdentity,
+        input: &[u8],
+        timeout: Duration,
+    ) -> Result<Value, ScientificCpythonUnavailable> {
+        self.packaged_runtime.as_ref().map_or_else(
+            || {
+                run_scientific_process_with_timeout(
+                    host,
+                    callable,
+                    None,
+                    input,
+                    &AtomicBool::new(false),
+                    timeout,
+                )
+            },
+            |runtime| self.run_interactive_request(host, callable, runtime, input, timeout),
+        )
+    }
+
     #[must_use]
     pub fn acquire(path: impl AsRef<Path>) -> Self {
         let config_dir = std::env::var_os("NIRS4ALL_CONFIG")
@@ -540,7 +591,7 @@ impl CpythonScientificJobExecutor {
 
     #[must_use]
     pub fn acquire_with_config_dir(path: impl AsRef<Path>, config_dir: impl Into<PathBuf>) -> Self {
-        Self::acquire_inner(path.as_ref(), None, config_dir.into())
+        Self::acquire_inner(path.as_ref(), None, None, config_dir.into())
     }
 
     /// Acquire only an adjacent packaged runtime already selected by Electron's
@@ -561,14 +612,33 @@ impl CpythonScientificJobExecutor {
             site_packages.as_ref(),
         );
         match packaged_runtime {
-            Ok(identity) => Self::acquire_inner(path.as_ref(), Some(identity), config_dir.into()),
+            Ok(identity) => {
+                Self::acquire_inner(path.as_ref(), Some(identity), None, config_dir.into())
+            }
             Err(error) => Self::unavailable(error, config_dir.into()),
         }
+    }
+
+    /// Reuse an explicitly selected interpreter while retaining the exact
+    /// scientific distribution, document adapter and bounded-process checks.
+    #[must_use]
+    pub fn acquire_existing_with_config_dir(
+        path: impl AsRef<Path>,
+        site_packages: impl Into<PathBuf>,
+        config_dir: impl Into<PathBuf>,
+    ) -> Self {
+        Self::acquire_inner(
+            path.as_ref(),
+            None,
+            Some(site_packages.into()),
+            config_dir.into(),
+        )
     }
 
     fn acquire_inner(
         path: &Path,
         packaged_runtime: Option<PackagedRuntimeIdentity>,
+        existing_site_packages: Option<PathBuf>,
         config_dir: PathBuf,
     ) -> Self {
         let resolver = ScientificRequestResolver::new(config_dir);
@@ -577,7 +647,12 @@ impl CpythonScientificJobExecutor {
             .map(|identity| identity.site_packages.as_path());
         let acquired = packaged_runtime.as_ref().map_or_else(
             || {
-                acquire_host(path, site_packages)
+                existing_site_packages
+                    .as_deref()
+                    .map_or_else(
+                        || acquire_host(path, site_packages),
+                        |selected_site| acquire_existing_host(path, selected_site),
+                    )
                     .map(|(identity, callable)| (identity, callable, None))
             },
             |runtime| {
@@ -594,6 +669,7 @@ impl CpythonScientificJobExecutor {
                     identity: Some(identity),
                     callable_identity,
                     packaged_runtime,
+                    existing_site_packages,
                     acquisition: if callable_ready {
                         ScientificCpythonUnavailable::RequestResolverUnavailable
                     } else {
@@ -609,6 +685,7 @@ impl CpythonScientificJobExecutor {
                 identity: None,
                 callable_identity: None,
                 packaged_runtime,
+                existing_site_packages,
                 acquisition: error,
                 resolver,
                 running: Arc::new(Mutex::new(BTreeMap::new())),
@@ -623,6 +700,7 @@ impl CpythonScientificJobExecutor {
             identity: None,
             callable_identity: None,
             packaged_runtime: None,
+            existing_site_packages: None,
             acquisition: error,
             resolver: ScientificRequestResolver::new(config_dir),
             running: Arc::new(Mutex::new(BTreeMap::new())),
@@ -788,6 +866,24 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
 
 const fn platform_kill_tree_qualified() -> bool {
     cfg!(any(unix, windows))
+}
+
+fn acquire_existing_host(
+    path: &Path,
+    selected_site: &Path,
+) -> Result<(HostIdentity, Option<HostIdentity>), ScientificCpythonUnavailable> {
+    let mut identity = host_identity_with_limit(path, MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)?;
+    // Invoking the canonical base binary would discard a symlinked venv.
+    identity.canonical_path =
+        std::path::absolute(path).map_err(|_| ScientificCpythonUnavailable::HostUnavailable)?;
+    identity.selected_site_packages = Some(selected_site.to_path_buf());
+    let output = run_selected_preflight(
+        &identity.canonical_path,
+        None,
+        Some(selected_site),
+        SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
+    )?;
+    parse_acquired_host(identity, &output)
 }
 
 fn acquire_host(
@@ -1567,6 +1663,7 @@ fn host_identity_with_limit(
     let sha256 = hash_file(&canonical_path)?;
     Ok(HostIdentity {
         canonical_path,
+        selected_site_packages: None,
         size: metadata.len(),
         sha256,
     })
@@ -1625,6 +1722,15 @@ fn run_preflight_with_timeout(
     site_packages: Option<&Path>,
     timeout: Duration,
 ) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
+    run_selected_preflight(path, site_packages, None, timeout)
+}
+
+fn run_selected_preflight(
+    path: &Path,
+    site_packages: Option<&Path>,
+    selected_site: Option<&Path>,
+    timeout: Duration,
+) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
     let scratch = ScratchDirectory::create()?;
     let mut command = contained_scientific_command(path)?;
     let isolated_packaged = site_packages.is_some();
@@ -1638,7 +1744,7 @@ fn run_preflight_with_timeout(
                 Err(error)
             }
         })?;
-    if isolated_packaged {
+    if isolated_packaged || selected_site.is_some() {
         command.args(["-I", "-S", "-B", "-c", PREFLIGHT_SCRIPT, site_packages]);
     } else {
         command.args(["-I", "-B", "-c", PREFLIGHT_SCRIPT, site_packages]);
@@ -1654,6 +1760,9 @@ fn run_preflight_with_timeout(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(selected_site) = selected_site {
+        command.env("NIRS4ALL_SELECTED_SITE_PACKAGES", selected_site);
+    }
     configure_windows_runtime_environment(&mut command)?;
     run_configured_process(
         command,
@@ -2154,7 +2263,7 @@ fn scientific_worker_command_with_script(
         .to_str()
         .ok_or(ScientificCpythonUnavailable::CallableTampered)?;
     let callable_digest = hex_digest(&callable.sha256);
-    if isolated_packaged {
+    if isolated_packaged || host.selected_site_packages.is_some() {
         command.args([
             "-I",
             "-S",
@@ -2191,6 +2300,9 @@ fn scientific_worker_command_with_script(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(selected_site) = host.selected_site_packages.as_deref() {
+        command.env("NIRS4ALL_SELECTED_SITE_PACKAGES", selected_site);
+    }
     configure_windows_runtime_environment(&mut command)?;
     #[cfg(unix)]
     {
@@ -3273,6 +3385,7 @@ done"#,
             packaged_runtime: Some(
                 packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap(),
             ),
+            existing_site_packages: None,
             acquisition: ScientificCpythonUnavailable::RequestResolverUnavailable,
             resolver: ScientificRequestResolver::new(root.join("config")),
             running: Arc::new(Mutex::new(BTreeMap::new())),
@@ -3769,6 +3882,7 @@ done"#,
             packaged_runtime: Some(
                 packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap(),
             ),
+            existing_site_packages: None,
             acquisition: ScientificCpythonUnavailable::RequestResolverUnavailable,
             resolver: ScientificRequestResolver::new(config.clone()),
             running: Arc::new(Mutex::new(BTreeMap::new())),

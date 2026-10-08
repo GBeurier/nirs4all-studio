@@ -362,6 +362,7 @@ export interface RuntimeEngineCapabilities {
  * Runtime summary response from /system/env-coherence
  */
 export interface RuntimeSummaryResponse {
+  scientific_ready?: boolean;
   coherent: boolean;
   configured_python: string | null;
   running_python: string;

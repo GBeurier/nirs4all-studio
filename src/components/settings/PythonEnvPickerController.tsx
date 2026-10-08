@@ -26,7 +26,6 @@ import {
   loadRuntimeReviewDetails,
   loadRuntimeSnapshot,
   previewRuntimeAlignment,
-  restartBackendForRuntimeSwitch,
   type ConfigComparisonResponse,
   type DependenciesResponse,
   type EnvInfo,
@@ -268,6 +267,12 @@ export function usePythonEnvPickerController() {
     }
   }, [electronApi]);
 
+  useEffect(() => {
+    const choose = () => { void handleOpenDialog(); };
+    window.addEventListener("choose-python-environment", choose);
+    return () => window.removeEventListener("choose-python-environment", choose);
+  }, [handleOpenDialog]);
+
   const handleInspectResult = useCallback((result: DesktopEnvActionResult, fallbackMessage: string) => {
     if (result.success && result.info) {
       setInspection(result.info);
@@ -355,12 +360,13 @@ export function usePythonEnvPickerController() {
       }
 
       updateSwitchProgress(
-        "Restarting backend",
-        "The environment has been applied. Restarting the backend on the selected Python runtime.",
+        "Verifying environment",
+        "Checking the scientific library in the selected Python environment.",
         86,
         96,
       );
-      const validation = await restartBackendForRuntimeSwitch((options) => electronApi.restartBackend(options));
+      announceBackendRestarted();
+      const validation = await loadPostSwitchValidation();
       setPostSwitchValidation(validation);
       setReviewProfileDiff(null);
       setReviewDependencies(null);
@@ -492,7 +498,7 @@ export function usePythonEnvPickerController() {
       if (result.requires_restart) {
         setAlignProgress(96);
         setAlignStatus({
-          title: "Restarting backend",
+          title: "Verifying environment",
           detail: "The runtime was updated successfully. Restarting the backend to load the aligned packages.",
         });
 
@@ -596,6 +602,7 @@ export function usePythonEnvPickerController() {
     compatibleProfiles,
     selectedReviewProfile,
     runtimeView,
+    environmentError: envInfo?.error,
     loadEnvInfo,
     handleOpenDialog,
     handleSelectDetectedEnv,

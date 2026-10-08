@@ -7,7 +7,7 @@ import {
   type DependenciesResponse,
 } from "@/api/dependencies";
 import { getRuntimeSummary } from "@/api/system";
-import { formatApiErrorDetail } from "@/api/transport";
+import { api, formatApiErrorDetail } from "@/api/transport";
 import {
   announceBackendRestarted,
   loadPostSwitchValidation,
@@ -40,6 +40,7 @@ export interface EnvInfo {
   sitePackages: string | null;
   pythonVersion: string | null;
   isCustom: boolean;
+  setupDeferred?: boolean;
   error?: string;
 }
 
@@ -51,6 +52,7 @@ export interface SetupProgress {
 
 export interface ElectronEnvApi {
   getEnvInfo: () => Promise<EnvInfo>;
+  markWizardComplete?: (defer: boolean) => Promise<void>;
   detectExistingEnvs: () => Promise<DesktopDetectedEnv[]>;
   inspectExistingEnv: (envPath: string) => Promise<DesktopEnvActionResult>;
   inspectExistingPython: (pythonPath: string) => Promise<DesktopEnvActionResult>;
@@ -71,7 +73,7 @@ export function getElectronApi(): ElectronEnvApi | null {
 
 export function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) {
-    return error.message;
+    return error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
   }
 
   if (error && typeof error === "object") {
@@ -91,12 +93,13 @@ export interface RuntimeSnapshot {
 }
 
 export async function loadRuntimeSnapshot(electronApi: ElectronEnvApi): Promise<RuntimeSnapshot> {
-  const [envInfo, runtimeSummary] = await Promise.all([
+  const [envInfo, runtimeSummary, readiness] = await Promise.all([
     electronApi.getEnvInfo(),
     getRuntimeSummary().catch(() => null),
+    api.get<{ ml_ready?: boolean }>("/system/readiness").catch(() => null),
   ]);
 
-  return { envInfo, runtimeSummary };
+  return { envInfo, runtimeSummary: runtimeSummary ? { ...runtimeSummary, scientific_ready: readiness?.ml_ready === true } : null };
 }
 
 export interface RuntimeReviewDetails {

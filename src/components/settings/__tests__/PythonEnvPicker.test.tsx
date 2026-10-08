@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  readiness: vi.fn(async () => ({ ml_ready: true })),
   getRuntimeSummary: vi.fn(),
   getConfigDiff: vi.fn(),
   getDependencies: vi.fn(),
@@ -22,6 +23,11 @@ vi.mock("react-i18next", () => ({
     t: (key: string) => key,
   }),
 }));
+
+vi.mock("@/api/transport", async () => {
+  const actual = await vi.importActual<typeof import("@/api/transport")>("@/api/transport");
+  return { ...actual, api: { ...actual.api, get: mocks.readiness } };
+});
 
 vi.mock("@/api/system", async () => {
   const actual =
@@ -658,11 +664,11 @@ describe("PythonEnvPicker", () => {
     });
 
     await waitFor(() => {
-      expect(document.body.textContent).toContain("Use as-is");
+      expect(document.body.textContent).toContain("Use this environment");
     });
 
     const useAsIsButton = Array.from(document.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("Use as-is"),
+      (button) => button.textContent?.includes("Use this environment"),
     );
     expect(useAsIsButton).toBeTruthy();
 
@@ -675,7 +681,7 @@ describe("PythonEnvPicker", () => {
     await waitFor(() => {
       expect(electronApi.applyExistingPython).toHaveBeenCalled();
       expect(document.body.textContent).not.toContain(
-        "Review Runtime After Switch",
+        "Python packages and optional features",
       );
     });
 
@@ -690,7 +696,7 @@ describe("PythonEnvPicker", () => {
 
     await waitFor(() => {
       expect(document.body.textContent).toContain(
-        "Review Runtime After Switch",
+        "Python packages and optional features",
       );
     });
 
@@ -708,11 +714,11 @@ describe("PythonEnvPicker", () => {
         skipEnsure: true,
       });
       expect(document.body.textContent).not.toContain(
-        "Review Runtime After Switch",
+        "Python packages and optional features",
       );
     });
 
-    expect(mocks.announceBackendRestarted).toHaveBeenCalledTimes(1);
+    expect(mocks.announceBackendRestarted).toHaveBeenCalledTimes(2);
 
     await view.unmount();
   });

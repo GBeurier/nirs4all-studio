@@ -52,7 +52,13 @@ export function addPythonCandidate(candidateMap: Map<string, string>, pythonPath
 
   try {
     const resolvedPath = fs.realpathSync(pythonPath);
-    const key = normalizeDetectedPath(resolvedPath);
+    // Different venvs commonly symlink Python to the same base executable.
+    // Keep their environment roots distinct, but deduplicate python/python3
+    // aliases within one environment.
+    const envRoot = getEnvRootForPythonPath(pythonPath);
+    const key = fs.existsSync(path.join(envRoot, "pyvenv.cfg"))
+      ? normalizeDetectedPath(envRoot)
+      : normalizeDetectedPath(resolvedPath);
     if (!candidateMap.has(key)) {
       candidateMap.set(key, pythonPath);
     }

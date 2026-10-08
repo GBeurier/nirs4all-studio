@@ -10,6 +10,10 @@ const childProcessMocks = vi.hoisted(() => ({
   spawn: vi.fn(),
 }));
 
+vi.mock("./env/runtime-adapters", () => ({
+  prepareRuntimeAdapters: vi.fn(async (pythonPath: string) => path.join(path.dirname(pythonPath), "site-packages")),
+}));
+
 const fakeApp = {
   getPath: vi.fn(),
   getVersion: vi.fn(() => "0.3.1"),
@@ -103,7 +107,7 @@ describe("EnvManager", () => {
     expect(childProcessMocks.spawn).not.toHaveBeenCalled();
   });
 
-  it("does not persist readiness after pip install succeeds but dependency verification fails", async () => {
+  it("does not persist readiness when scientific imports still fail after installation", async () => {
     const userDataDir = makeUserDataDir();
     const pythonPath = path.join(userDataDir, "runtime", "python.exe");
     fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
@@ -111,11 +115,9 @@ describe("EnvManager", () => {
     fs.writeFileSync(path.join(userDataDir, "env-settings.json"), JSON.stringify({ pythonPath }));
     const network = await import("./env/network-probe");
     vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(true);
-    let imports = 0;
     childProcessMocks.execFile.mockImplementation((_command: string, args: string[], _options: unknown, callback: (error: Error | null, stdout?: string) => void) => {
       if (args.some((arg) => arg.includes("importlib.import_module"))) {
-        imports += 1;
-        callback(imports === 1 ? new Error("missing shap") : null);
+        callback(new Error("nirs4all requires a compatible numpy"));
       } else if (args.includes("check")) callback(new Error("pip check failed"), "shap requires a compatible numpy");
       else callback(null);
     });
@@ -131,7 +133,7 @@ describe("EnvManager", () => {
     expect(fs.existsSync(path.join(userDataDir, "verify-cache.json"))).toBe(false);
   });
 
-  it("clears a stale saved custom python path instead of treating it as ready", async () => {
+  it("keeps a missing saved environment path so the user can recover its location", async () => {
     const userDataDir = makeUserDataDir();
     const settingsPath = path.join(userDataDir, "env-settings.json");
 
@@ -153,7 +155,9 @@ describe("EnvManager", () => {
     const saved = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
       pythonPath?: string;
     };
-    expect(saved.pythonPath).toBeUndefined();
+    expect(saved.pythonPath).toBe(path.join(userDataDir, "missing", "python.exe"));
+    expect(manager.getConfiguredPythonPath()).toBeNull();
+    expect((await manager.getInfo()).error).toContain("previous Python environment");
   });
 
   it("fails fast when backend package repair is requested without a usable runtime", async () => {
@@ -287,6 +291,8 @@ describe("EnvManager", () => {
       .filter(([, args]) => Array.isArray(args) && args.includes("install"))
       .flatMap(([, args]) => args as string[]);
     expect(installArgs).toContain("nirs4all==1.4.7");
+    expect(installArgs).toContain("only-if-needed");
+    expect(installArgs.some((arg) => arg.startsWith("shap") || arg.startsWith("matplotlib"))).toBe(false);
     expect(installArgs.join(" ").toLowerCase()).not.toMatch(
       /fastapi|uvicorn|python-multipart|sentry-sdk/,
     );
@@ -752,7 +758,7 @@ describe("EnvManager", () => {
     expect(saved.pythonPath).toBeUndefined();
   });
 
-  it("prefers a bundled runtime over saved custom settings and skips the wizard", async () => {
+  it("preserves the saved custom runtime when a bundled runtime is available", async () => {
     const userDataDir = makeUserDataDir();
     const settingsPath = path.join(userDataDir, "env-settings.json");
     const customPython = path.join(userDataDir, "custom-env", "python.exe");
@@ -787,11 +793,10 @@ describe("EnvManager", () => {
     const { EnvManager } = await import("./env-manager");
     const manager = new EnvManager();
 
-    expect(manager.isBundled()).toBe(true);
-    expect(manager.getConfiguredRuntimeMode()).toBe("bundled");
-    expect(manager.getConfiguredPythonPath()).toBe(bundledPython);
-    expect(manager.getPythonPath()).toBe(bundledPython);
-    expect(manager.shouldShowWizard()).toBe(false);
+    expect(manager.isBundled()).toBe(false);
+    expect(manager.getConfiguredRuntimeMode()).toBe("custom");
+    expect(manager.getConfiguredPythonPath()).toBe(customPython);
+    expect(manager.getPythonPath()).toBe(customPython);
   });
 
   it("verifies a bundled runtime without attempting any package repair", async () => {
@@ -827,7 +832,7 @@ describe("EnvManager", () => {
     expect(childProcessMocks.execFile).toHaveBeenCalled();
   });
 
-  it("verifies the immutable bundled runtime instead of a saved custom runtime", async () => {
+  it("verifies the selected custom interpreter even when a bundle is available", async () => {
     vi.stubEnv("NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS", "45000");
     const userDataDir = makeUserDataDir();
     const settingsPath = path.join(userDataDir, "env-settings.json");
@@ -863,7 +868,7 @@ describe("EnvManager", () => {
     childProcessMocks.execFile.mockImplementation((command: string, ...args: unknown[]) => {
       const options = args[1] as { timeout?: number };
       const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
-      expect(command).toBe(bundledPython);
+      expect(command).toBe(customPython);
       expect(options.timeout).toBe(45000);
       callback(null, "", "");
     });
@@ -1066,6 +1071,27 @@ describe("EnvManager", () => {
       hasCorePackages: true,
     });
     expect(envs[0]?.path).toBe(managedRoot);
+  });
+
+  it.skipIf(process.platform === "win32")("keeps separate venvs that share the same Python binary", async () => {
+    const root = makeUserDataDir();
+    const base = path.join(root, "base-python");
+    fs.writeFileSync(base, "python");
+    for (const name of ["old-studio", "local"]) {
+      const environment = path.join(root, name);
+      fs.mkdirSync(path.join(environment, "bin"), { recursive: true });
+      fs.writeFileSync(path.join(environment, "pyvenv.cfg"), "home = /usr/bin");
+      for (const alias of ["python", "python3"]) fs.symlinkSync(base, path.join(environment, "bin", alias));
+    }
+    const { addPythonCandidate } = await import("./env/python-discovery");
+    const candidates = new Map<string, string>();
+    for (const name of ["old-studio", "local"]) {
+      for (const alias of ["python", "python3"]) addPythonCandidate(candidates, path.join(root, name, "bin", alias));
+    }
+    expect([...candidates.values()]).toEqual([
+      path.join(root, "old-studio", "bin", "python"),
+      path.join(root, "local", "bin", "python"),
+    ]);
   });
 
   it("deduplicates Windows launcher discoveries against PATH entries", async () => {

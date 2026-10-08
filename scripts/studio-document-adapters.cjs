@@ -94,7 +94,10 @@ function expectedManifest(root) {
 }
 
 function verifyAdapters(root, sitePackages) {
-  const expected = expectedManifest(root);
+  return verifyAdapterPackage(expectedManifest(root), sitePackages);
+}
+
+function verifyAdapterPackage(expected, sitePackages) {
   const packageRoot = path.join(sitePackages, PACKAGE);
   if (fs.lstatSync(packageRoot).isSymbolicLink()) throw new Error("Adapter package symlink refused");
   const actual = [];
@@ -131,6 +134,48 @@ function installAdapters(root, sitePackages) {
   return verifyAdapters(root, sitePackages);
 }
 
+/** Refresh Studio-owned translators without replacing the user's environment. */
+function installRuntimeAdapters(root, sitePackages, sourceSitePackages) {
+  const expected = JSON.parse(regularFile(root, MANIFEST).toString("utf8"));
+  const target = path.join(sitePackages, PACKAGE);
+  if (fs.existsSync(target)) {
+    if (fs.lstatSync(target).isSymbolicLink()) throw new Error("Studio adapter package must not be a symlink");
+    try { return verifyAdapterPackage(expected, sitePackages); } catch { /* Update only Studio-owned files. */ }
+  }
+  let payloads;
+  if (sourceSitePackages) {
+    verifyAdapterPackage(expected, sourceSitePackages);
+    payloads = new Map(expected.files.map(file => [file.path, regularFile(path.join(sourceSitePackages, PACKAGE), file.path)]));
+  } else {
+    expectedManifest(root);
+    payloads = sourcePayloads(root);
+  }
+  fs.mkdirSync(sitePackages, { recursive: true });
+  const staging = fs.mkdtempSync(path.join(sitePackages, ".studio-adapters-"));
+  const stagedPackage = path.join(staging, PACKAGE);
+  const previous = path.join(staging, "previous");
+  let keepBackup = false;
+  try {
+    fs.mkdirSync(stagedPackage);
+    for (const file of expected.files) {
+      const destination = path.join(stagedPackage, file.path);
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      fs.writeFileSync(destination, payloads.get(file.path), { flag: "wx" });
+    }
+    verifyAdapterPackage(expected, staging);
+    if (fs.existsSync(target)) fs.renameSync(target, previous);
+    try { fs.renameSync(stagedPackage, target); }
+    catch (error) {
+      if (fs.existsSync(previous)) {
+        try { fs.renameSync(previous, target); }
+        catch (restoreError) { keepBackup = true; throw restoreError; }
+      }
+      throw error;
+    }
+    return expected;
+  } finally { if (!keepBackup) fs.rmSync(staging, { recursive: true, force: true }); }
+}
+
 if (require.main === module) {
   if (process.argv[2] !== "--manifest") throw new Error("Only explicit --manifest generation is supported");
   const root = path.join(__dirname, "..");
@@ -139,6 +184,7 @@ if (require.main === module) {
 
 module.exports = {
   buildManifest,
+  installRuntimeAdapters,
   installAdapters,
   verifyAdapters,
   PACKAGE,
