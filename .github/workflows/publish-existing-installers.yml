@@ -1,0 +1,87 @@
+name: Publish existing Studio installers
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-existing-studio-installers-0.15.2
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: 0.15.2
+      RELEASE_SHA: 434d8221bc72a3fbb65dcc62b74cfc77e565d34b
+      RELEASE_PRERELEASE: 'false'
+      RELEASE_NOTES_PATH: release-notes.md
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 434d8221bc72a3fbb65dcc62b74cfc77e565d34b
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify retained build identities and successful platform checks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const source = process.env.RELEASE_SHA;
+            const original = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: 37742597366 })).data;
+            const retry = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: 37745084504 })).data;
+            if (original.head_sha !== source || original.path !== '.github/workflows/release-unified.yml' || original.status !== 'completed') throw Error('Unexpected original release identity');
+            if (retry.head_sha !== '8282de5a8e50fbc30943313bec6bce3bd6876165' || retry.path !== '.github/workflows/release-unified.yml' || retry.status !== 'completed') throw Error('Unexpected macOS retry identity');
+            const oldJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: 37742597366, per_page: 100 });
+            const newJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: 37745084504, per_page: 100 });
+            const one = (jobs, name) => { const rows = jobs.filter(job => job.name === name); if (rows.length !== 1) throw Error('Ambiguous platform job'); return rows[0]; };
+            if (one(oldJobs, 'Installer — Linux x64').conclusion !== 'success') throw Error('Linux package smoke must have succeeded');
+            const windows = one(oldJobs, 'Installer — Windows x64');
+            for (const name of ['Package with electron-builder', 'Verify packaged native sidecar', 'Upload artifacts']) if (!windows.steps.some(step => step.name === name && step.conclusion === 'success')) throw Error('Windows package or exact native verification missing');
+            // The original Windows smoke altered the unpacked build by recursively
+            // generating checksums. Publication is dispatched only after the real
+            // preserved NSIS payload passes the local Windows smoke.
+            const mac = one(newJobs, 'Installer — macOS arm64');
+            if (mac.conclusion !== 'success' || !mac.steps.some(step => step.name === 'Smoke packaged UI and runtime contract' && step.conclusion === 'success')) throw Error('Corrected macOS package smoke must have succeeded');
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-linux-x64-payload
+          run-id: 37742597366
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-windows-x64-payload
+          run-id: 37742597366
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-macos-arm64-payload
+          run-id: 37745084504
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/macos
+      - name: Verify and normalize exact existing installer payloads
+        run: |
+          mkdir release
+          find artifacts -type f \( -name '*.deb' -o -name '*.exe' -o -name '*.dmg' -o -name '*.sha256' \) -exec cp {} release/ \;
+          node scripts/finalize-release-assets.cjs release 0.15.2 false false
+      - name: Write release notes for these immutable artifacts
+        run: |
+          cat > release-notes.md <<'NOTES'
+          Studio 0.15.2 embeds public SDK 1.4.7, DAG 0.3.41 and Core 0.4.5 and fixes the embedded Python SDK identity guard. Version 0.15.1 was never published and is superseded.
+
+          Installers: Windows x64, Linux x64 and macOS Apple Silicon. Intel Mac installers remain deferred. Each installer includes a SHA256 sidecar. macOS is unsigned; use right-click > Open on first launch.
+
+          Docker: ghcr.io/gbeurier/nirs4all-studio:0.15.2 (also latest), digest sha256:3d302028832af375e165e8a18918c7ea84ef6ed7c85cca49de2ef7b41232c58b. See docs/NATIVE_HTTP_ACCESS.md for deployment configuration.
+
+          Immutable application source: 434d8221bc72a3fbb65dcc62b74cfc77e565d34b. Linux, Windows and Docker reuse run 37742597366. macOS ARM uses the same application source with the corrected workflow smoke path in run 37745084504. Original workflow smoke failures are retained; successful binaries were not rebuilt. The preserved NSIS payload was checked separately on Windows before publication.
+          NOTES
+      - name: Publish the same verified installers
+        run: node scripts/publish-qualified-release.cjs release 0.15.2 false false
