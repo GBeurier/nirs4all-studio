@@ -578,7 +578,7 @@ jobs:
       - name: Generate checksums
         shell: pwsh
         run: |
-          Get-ChildItem release -Include *.exe -Recurse | ForEach-Object {
+          Get-ChildItem release -File -Filter '*.exe' | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
             "$hash  $($_.Name)" | Out-File -FilePath "$($_.FullName).sha256" -Encoding ascii -NoNewline
           }
