@@ -1,0 +1,61 @@
+name: Publish existing Studio Docker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+concurrency:
+  group: publish-existing-studio-docker-0.15.2
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_SHA: 434d8221bc72a3fbb65dcc62b74cfc77e565d34b
+      EXPECTED_IMAGE_ID: sha256:7bccfd5667bd5f5cc0fec3d60d0fd5a982eb569b81a828e63d0957c075443ae6
+    steps:
+      - name: Verify immutable source and successful existing Docker build
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const source = process.env.SOURCE_SHA;
+            const run = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: 37742597366 })).data;
+            if (run.head_sha !== source || run.path !== '.github/workflows/release-unified.yml' || run.status !== 'completed') throw Error('Unexpected original release identity');
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: 37742597366, per_page: 100 });
+            const docker = jobs.filter(job => job.name === 'Native Docker Image');
+            if (docker.length !== 1 || docker[0].conclusion !== 'success') throw Error('The exact Docker image build and smoke must have succeeded');
+            let object = (await github.rest.git.getRef({ owner, repo, ref: 'tags/0.15.2' })).data.object;
+            for (let depth = 0; object.type === 'tag' && depth < 5; depth++) object = (await github.rest.git.getTag({ owner, repo, tag_sha: object.sha })).data.object;
+            if (object.type !== 'commit' || object.sha !== source) throw Error('Immutable release tag changed');
+      - name: Download the existing tested image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-candidate
+          run-id: 37742597366
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: docker-candidate
+      - name: Load and verify exact tested image bytes and source labels
+        run: |
+          docker load --input docker-candidate/studio-image.tar
+          test "$(docker image inspect --format '{{.Id}}' nirs4all-studio:native-release-candidate)" = "$EXPECTED_IMAGE_ID"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' nirs4all-studio:native-release-candidate)" = '0.15.2'
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' nirs4all-studio:native-release-candidate)" = "$SOURCE_SHA"
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the same tested image
+        run: |
+          IMAGE=ghcr.io/gbeurier/nirs4all-studio
+          docker tag nirs4all-studio:native-release-candidate "$IMAGE:0.15.2"
+          docker push "$IMAGE:0.15.2"
+          docker tag nirs4all-studio:native-release-candidate "$IMAGE:latest"
+          docker push "$IMAGE:latest"
