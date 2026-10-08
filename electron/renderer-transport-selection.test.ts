@@ -35,6 +35,19 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 }
 
 describe("renderer transport preselection", () => {
+  it("routes the error journal without a Python host and refuses unsupported queries", async () => {
+    const request = async () => capabilityResponse({ system_error_log_routes: true });
+    const noPython = () => ({ ...running(), pythonPluginHostConfigured: false });
+    for (const [method, path] of [["GET", "/system/errors"], ["GET", "/system/errors?limit=50"], ["DELETE", "/system/errors"]]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, noPython, request))
+        .resolves.toMatchObject({ target: "native-sidecar", status: 200 });
+    }
+    for (const [method, path] of [["POST", "/system/errors"], ["GET", "/system/errors?other=1"], ["DELETE", "/system/errors?limit=5"]]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, noPython, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+  });
+
   it("requests only the readiness capability while retaining every transport guard", async () => {
     const request = vi.fn(async () => capabilityResponse({ readiness: true }));
     await expect(preselectRendererTransport(

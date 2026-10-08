@@ -15,10 +15,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from .app_config import app_config
 from .shared.logger import get_logger
 from .shared.metrics_computer import compute_spectral_statistics
 from .shared.preprocessing_runtime import apply_preprocessing_chain
-from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
@@ -76,24 +76,22 @@ _dataset_cache = _DatasetLRUCache(_DATASET_CACHE_MAX_ENTRIES)
 
 
 def _get_dataset_config(dataset_id: str) -> dict[str, Any] | None:
-    """Get dataset configuration from workspace.
+    """Get a globally linked dataset without requiring an active workspace.
 
     Looks up by ID first, then falls back to name matching so that
     URLs containing a dataset *name* also resolve correctly.
     """
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        return None
+    datasets = [dataset.to_dict() for dataset in app_config.get_datasets()]
 
-    for ds in workspace.datasets:
+    for ds in datasets:
         if ds.get("id") == dataset_id:
             return ds
     # Fallback: match by name
-    for ds in workspace.datasets:
+    for ds in datasets:
         if ds.get("name") == dataset_id:
             return ds
     lower = dataset_id.lower()
-    for ds in workspace.datasets:
+    for ds in datasets:
         if (ds.get("name") or "").lower() == lower:
             return ds
     return None
@@ -104,7 +102,7 @@ def _build_nirs4all_config_from_stored(dataset_config: dict[str, Any]) -> dict[s
 
     Delegates to the canonical translator in shared.dataset_config.
     """
-    from .shared.dataset_config import build_nirs4all_config_from_stored
+    from .shared.dataset_config import build_nirs4all_config_from_stored, for_dataset_configs
 
     config = build_nirs4all_config_from_stored(dataset_config)
 
@@ -149,7 +147,7 @@ def _build_nirs4all_config_from_stored(dataset_config: dict[str, Any]) -> dict[s
                 except Exception:
                     pass
 
-    return config
+    return for_dataset_configs(config)
 
 
 def _load_dataset(dataset_id: str) -> Any:
@@ -199,7 +197,7 @@ def _load_dataset(dataset_id: str) -> Any:
 
     except Exception as e:
         logger.error("Error loading dataset %s: %s", dataset_id, e, exc_info=True)
-        return None
+        raise HTTPException(status_code=422, detail=f"Failed to load dataset '{dataset_id}': {e}") from e
 
 
 def _clear_dataset_cache(dataset_id: str | None = None):

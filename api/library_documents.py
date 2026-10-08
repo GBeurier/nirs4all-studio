@@ -18,7 +18,7 @@ from .pipeline_canonical import (
     hydrate_editor_steps,
     validate_canonical,
 )
-from .shared.dataset_config import build_nirs4all_config, build_nirs4all_config_from_stored
+from .shared.dataset_config import build_nirs4all_config, build_nirs4all_config_from_stored, for_dataset_configs
 
 
 def normalize_pipeline(document: dict[str, Any]) -> dict[str, Any]:
@@ -104,16 +104,7 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
     def finish(config: dict[str, Any]) -> dict[str, Any]:
         if document.get("scientific_run") is not True:
             return config
-        # nirs4all 1.1.5's run loader accepts na_policy/na_fill_config, while
-        # the native IO preview accepts the corresponding nested `na` object.
-        # The scientific request must not pass `na` through to pandas.read_csv.
-        return {
-            key: {param: value for param, value in entry.items()
-                  if param != "na" and (param != "signal_type" or key.endswith("_x_params"))}
-            if (key == "global_params" or key.endswith("_params")) and isinstance(entry, dict)
-            else entry
-            for key, entry in config.items()
-        }
+        return for_dataset_configs(config)
 
     if "record" in document:
         record = document["record"]

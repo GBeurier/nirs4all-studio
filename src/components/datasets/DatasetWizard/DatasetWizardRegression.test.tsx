@@ -68,6 +68,30 @@ afterEach(async () => {
 });
 
 describe("Dataset wizard regressions", () => {
+  it("accepts ignore NA and forwards the policy to validation and preview", async () => {
+    vi.useFakeTimers();
+    vi.mocked(detectFormat).mockResolvedValue({ format: "csv", column_info: [] });
+    vi.mocked(validateFiles).mockResolvedValue({ success: true, shapes: {} });
+    await mount(<Dialog open><WizardContent onAdd={async () => {}} onClose={() => {}} /></Dialog>, {
+      files: [xFile, { ...xFile, path: "Ycal.csv", filename: "Ycal.csv", type: "Y" }],
+      skipToStep: "targets", parsing: { ...DEFAULT_PARSING, na_policy: "ignore" },
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(validateFiles).toHaveBeenCalledWith(
+      "/data", expect.any(Array), expect.objectContaining({ na_policy: "ignore" }), expect.any(Object),
+    );
+    expect(wizard.state.validationError).toBeNull();
+    const next = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find(button => button.textContent?.trim() === "Next")!;
+    expect(next.disabled).toBe(false);
+    await act(async () => next.click());
+    expect(previewDataset).toHaveBeenCalledWith(expect.objectContaining({
+      parsing: expect.objectContaining({ na_policy: "ignore" }),
+    }));
+    expect(wizard.state.preview?.success).toBe(true);
+    expect(wizard.canProceed()).toBe(true);
+  });
+
   it("keeps Next unavailable while target detection and file validation are unresolved", async () => {
     vi.mocked(detectFormat).mockReturnValue(new Promise(() => {}));
     vi.mocked(validateFiles).mockReturnValue(new Promise(() => {}));

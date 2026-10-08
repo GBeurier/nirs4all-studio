@@ -56,6 +56,26 @@ def _na_policy(params: dict[str, Any], default: str | None = "auto") -> str | No
     return params.get("na_policy", native_na.get("policy", default) if isinstance(native_na, dict) else default)
 
 
+def for_dataset_configs(config: dict[str, Any]) -> dict[str, Any]:
+    """Adapt native IO parameters to the library's DatasetConfigs/run loader.
+
+    Native IO consumes nested ``na`` settings. DatasetConfigs consumes their
+    flat equivalents and otherwise forwards ``na`` to pandas as a CSV option.
+    Preserve the requested policy, including ignore, without changing rows.
+    """
+    def loading_params(params: dict[str, Any], key: str) -> dict[str, Any]:
+        bridged = _with_library_na_params(params)
+        return {name: value for name, value in bridged.items()
+                if name != "na" and (name != "signal_type" or key.endswith("_x_params"))}
+
+    return {
+        key: loading_params(value, key)
+        if (key == "global_params" or key.endswith("_params")) and isinstance(value, dict)
+        else value
+        for key, value in config.items()
+    }
+
+
 def _normalize_library_loading_params(config: dict[str, Any]) -> dict[str, Any]:
     """Bridge NA fields without dropping library-owned dataset settings."""
     result = dict(config)

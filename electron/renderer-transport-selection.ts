@@ -225,6 +225,10 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
   if (aggregated) return aggregated;
   const predictions = classifyPredictionResults(method, path);
   if (predictions) return predictions;
+  if ((method === "GET" && /^\/system\/errors(?:\?limit=[0-9]+)?$/.test(path))
+      || (method === "DELETE" && path === "/system/errors")) {
+    return { name: "system-errors", capability: "system_error_log_routes" };
+  }
   const exact = exactHttpRoutes.get(`${method} ${path}`) ?? pythonHostRoutes.get(`${method} ${path}`);
   if (exact) return exact;
   const workflow = classifyScientificWorkflow(method, path);

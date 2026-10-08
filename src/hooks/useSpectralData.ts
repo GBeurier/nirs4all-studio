@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { SpectralData } from '@/types/spectral';
 import { loadWorkspaceDataset } from '@/api/playground';
+import { formatApiErrorDetail } from '@/api/transport';
 import type { PartitionKey } from '@/types/datasets';
 import type { DatasetSchemaRef } from '@/lib/datasetSchema';
 import { createSyntheticSpectralData } from '@/lib/playground/syntheticSpectralData';
@@ -64,7 +65,7 @@ export function useSpectralData() {
         targetIndex: options.targetIndex,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load workspace dataset');
+      setError(err instanceof Error ? err.message : formatApiErrorDetail((err as { detail?: unknown }).detail));
       setRawData(null);
       setDataSource(null);
       setCurrentDatasetInfo(null);

@@ -29,6 +29,7 @@ import {
   buildDatasetTargetOptions,
 } from '@/lib/playground/datasetSelectionOptions';
 import { cn } from '@/lib/utils';
+import { formatApiErrorDetail } from '@/api/transport';
 import { formatWavelengthUnit } from '@/components/playground/visualizations/chartConfig';
 
 export type PlaygroundDatasetInfo = WorkspaceDatasetInfo & {
@@ -85,7 +86,7 @@ export function DataUpload({
   const workspaceError = datasetsQuery.error
     ? datasetsQuery.error instanceof Error
       ? datasetsQuery.error.message
-      : 'Failed to load workspace'
+      : formatApiErrorDetail((datasetsQuery.error as { detail?: unknown }).detail)
     : null;
 
   const currentPartition = currentDatasetInfo?.partition ?? 'all';
@@ -324,12 +325,16 @@ export function DataUpload({
         {!workspaceLoading && workspaceError && (
           <div className="text-xs text-muted-foreground bg-muted/50 rounded-md p-3 text-center">
             <FolderOpen className="w-6 h-6 mx-auto mb-2 opacity-40" />
-            No workspace connected
+            <p role="alert" className="break-words text-destructive">{workspaceError}</p>
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => void datasetsQuery.refetch()}>
+              <RefreshCw className="mr-2 h-3 w-3" />
+              Retry loading datasets
+            </Button>
           </div>
         )}
 
         {/* Dataset list */}
-        {!workspaceLoading && !workspaceError && (
+        {!workspaceLoading && (!workspaceError || workspaceDatasets.length > 0) && (
           <>
             {workspaceDatasets.length === 0 ? (
               <div className="bg-muted/30 rounded-md p-4 text-center border border-dashed border-border">

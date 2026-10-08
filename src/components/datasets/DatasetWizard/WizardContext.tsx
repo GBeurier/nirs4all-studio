@@ -361,9 +361,9 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
       case "files":
         return state.files.length > 0 && state.files.some((f) => f.type === "X");
       case "parsing":
-        return true; // Parsing always has defaults
+        return true; // Parsing always has defaults, including explicit NA preservation.
       case "targets":
-        return true; // Targets are optional
+        return true; // Targets are optional.
       case "preview":
         return state.preview?.success === true && !state.preview.error;
       default:

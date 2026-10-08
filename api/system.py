@@ -28,6 +28,7 @@ from .recommended_config import (
     _normalize_pkg_name,
 )
 from .shared.gpu_detection import detect_gpu_hardware
+from .shared.system_info import system_information
 from .venv_manager import venv_manager
 from .workspace_manager import workspace_manager
 
@@ -226,12 +227,7 @@ async def system_info():
             "platform": sys.platform,
             "executable": sys.executable,
         },
-        "system": {
-            "os": platform.system(),
-            "release": platform.release(),
-            "machine": platform.machine(),
-            "processor": platform.processor(),
-        },
+        "system": system_information(),
         "nirs4all_version": _get_nirs4all_version(),
         "packages": _get_package_versions(),
         "runtime_engine_capabilities": _get_runtime_engine_capabilities(),
