@@ -18,6 +18,11 @@ on:
         description: 'Tag to build (e.g., 1.2.0)'
         required: true
         type: string
+      publish_existing_tag:
+        description: 'Publish a retry for an existing immutable tag using this workflow fix'
+        required: false
+        default: false
+        type: boolean
       skip_docker:
         description: 'Skip Docker image builds'
         required: false
@@ -63,10 +68,9 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       skip_docker: ${{ steps.flags.outputs.skip_docker }}
       include_macos_x64: ${{ steps.flags.outputs.include_macos_x64 }}
-      # Tag-push releases are public and must fail closed on signing.
-      # workflow_dispatch is used for smoke testing (often without secrets) and
-      # is allowed to build unsigned. `push` only fires on tags here (see `on:`).
-      is_tag_release: ${{ github.event_name == 'push' }}
+      # Publication occurs for a tag push or an explicit existing-tag retry.
+      # Other dispatches build and smoke without publishing.
+      is_tag_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_existing_tag == true) }}
       # Signing detection computed once, here, from `secrets` — which can be read
       # in a step `env:` but never in a job-level `if:`. Build jobs consume these
       # via needs.prepare.outputs.* (reliable, unlike the old per-step env probe).
@@ -115,6 +119,10 @@ jobs:
             git fetch --no-tags --depth=1 origin "refs/tags/${TAG}"
             REF="$(git rev-parse 'FETCH_HEAD^{commit}')"
           else
+            if [[ '${{ inputs.publish_existing_tag }}' == 'true' ]]; then
+              echo '::error::Publication retry requires an existing immutable tag'
+              exit 1
+            fi
             # workflow_dispatch against a tag that does not exist yet (smoke test):
             # fall back to the triggering commit so checkout always succeeds and
             # we never silently build the wrong branch under the tag's version.
@@ -149,7 +157,7 @@ jobs:
               exit 1
             fi
           done
-          if [[ ! "$NIRS4ALL_WHEEL_URL" =~ ^https://files\.pythonhosted\.org/.+/nirs4all-1\.4\.6-py3-none-any\.whl$ ]]; then
+          if [[ ! "$NIRS4ALL_WHEEL_URL" =~ ^https://files\.pythonhosted\.org/.+/nirs4all-1\.4\.7-py3-none-any\.whl$ ]]; then
             echo "::error::Pinned nirs4all wheel URL must be the immutable PyPI file URL"
             exit 1
           fi
@@ -1278,9 +1286,8 @@ jobs:
           fi
 
       - name: Publish verified assets sequentially
-        # Publish ONLY on a real tag push. workflow_dispatch is for build/smoke
-        # validation (often a not-yet-existent tag) — it must never publish a
-        # GitHub release. All build + smoke jobs above still run on dispatch.
+        # Publish on a real tag push or an explicit retry of an existing tag.
+        # Default dispatches still perform build/smoke without publication.
         if: needs.prepare.outputs.is_tag_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
