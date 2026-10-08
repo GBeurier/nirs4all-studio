@@ -35,11 +35,11 @@ jobs:
             const { owner, repo } = context.repo;
             const source = process.env.RELEASE_SHA;
             const original = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: 37742597366 })).data;
-            const retry = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: 37745084504 })).data;
+            const retry = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: 37747471309 })).data;
             if (original.head_sha !== source || original.path !== '.github/workflows/release-unified.yml' || original.status !== 'completed') throw Error('Unexpected original release identity');
-            if (retry.head_sha !== '8282de5a8e50fbc30943313bec6bce3bd6876165' || retry.path !== '.github/workflows/release-unified.yml' || retry.status !== 'completed') throw Error('Unexpected macOS retry identity');
+            if (retry.head_sha !== 'ab050828cf1a0a1234bd1a308bf04138ff9129c3' || retry.path !== '.github/workflows/release-unified.yml' || retry.status !== 'completed') throw Error('Unexpected macOS retry identity');
             const oldJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: 37742597366, per_page: 100 });
-            const newJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: 37745084504, per_page: 100 });
+            const newJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: 37747471309, per_page: 100 });
             const one = (jobs, name) => { const rows = jobs.filter(job => job.name === name); if (rows.length !== 1) throw Error('Ambiguous platform job'); return rows[0]; };
             if (one(oldJobs, 'Installer — Linux x64').conclusion !== 'success') throw Error('Linux package smoke must have succeeded');
             const windows = one(oldJobs, 'Installer — Windows x64');
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: installer-macos-arm64-payload
-          run-id: 37745084504
+          run-id: 37747471309
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/macos
       - name: Verify and normalize exact existing installer payloads
@@ -81,7 +81,7 @@ jobs:
 
           Docker: ghcr.io/gbeurier/nirs4all-studio:0.15.2 (also latest), digest sha256:3d302028832af375e165e8a18918c7ea84ef6ed7c85cca49de2ef7b41232c58b. See docs/NATIVE_HTTP_ACCESS.md for deployment configuration.
 
-          Immutable application source: 434d8221bc72a3fbb65dcc62b74cfc77e565d34b. Linux, Windows and Docker reuse run 37742597366. macOS ARM uses the same application source with the corrected workflow smoke path in run 37745084504. Original workflow smoke failures are retained; successful binaries were not rebuilt. The preserved NSIS payload was checked separately on Windows before publication.
+          Immutable application source: 434d8221bc72a3fbb65dcc62b74cfc77e565d34b. Linux, Windows and Docker reuse run 37742597366. macOS ARM uses the same application source with the corrected workflow smoke path in run 37747471309. Original workflow smoke failures are retained; successful binaries were not rebuilt. The preserved NSIS payload was checked separately on Windows before publication.
           NOTES
       - name: Publish the same verified installers
         run: node scripts/publish-qualified-release.cjs release 0.15.2 false false
