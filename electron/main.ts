@@ -211,7 +211,9 @@ async function applyPythonRuntimeChange<T extends { success: boolean }>(
     const coherence = await coherenceResponse.json() as { coherent?: boolean; running_python?: string };
     if (!readinessResponse.ok || readiness.ml_ready !== true) {
       console.error("Selected scientific library could not be activated:", readiness.ml_error);
-      throw new Error(readiness.ml_error === "scientific_distribution_tampered"
+      throw new Error(readiness.ml_error === "scientific_distribution_version_unsupported"
+        ? "This environment has an unsupported nirs4all version. Choose Studio's included environment or install nirs4all 1.4.7."
+        : readiness.ml_error === "scientific_distribution_tampered"
         ? "The installed nirs4all package could not be verified. Reinstall nirs4all in this environment or choose another environment."
         : "Studio could not load the scientific library in this Python environment. Prepare its required packages or choose another environment.");
     }

@@ -32,6 +32,7 @@ import type { RunsExecutionJobListIndicators } from "@/lib/runs/pageData";
 import { formatRunProgress, formatRunTokenLabel } from "@/lib/runs/format";
 import { getRuntimeResultStatusDisplay } from "@/ui/runtime";
 import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
+import { formatApiErrorDetail } from "@/api/transport";
 import {
   formatMetricValue,
   getPrimaryContextMetricLabel,
@@ -231,7 +232,7 @@ export function RunItem({
       setDeleteOpen(false);
       toast.success(`Run ${run.name || run.run_id} deleted`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Run deletion failed");
+      toast.error(formatApiErrorDetail(error));
     } finally {
       setDeleteBusy(false);
     }
@@ -266,6 +267,9 @@ export function RunItem({
                       </Badge>
                     )}
                     <RuntimeEngineBadge source={run} />
+                    <Badge variant="outline" className={cn("text-xs shrink-0", run.status === "failed" && "text-destructive border-destructive/40")}>
+                      {statusDisplay.label}
+                    </Badge>
                   </div>
                   <RunSummaryStrip
                     run={run}
@@ -298,7 +302,7 @@ export function RunItem({
                   {showExecutionSummary && (
                     <span className="flex items-center gap-1" title="Execution backend">
                       <RefreshCw className={cn("h-3 w-3", executionJob?.executionStatus === "running" && "animate-spin")} />
-                      {executionStatus ?? executionRequestedBackend ?? executionBackend}
+                      Task {executionStatus ?? executionRequestedBackend ?? executionBackend}
                       {executionProgressSummary
                         ? `${executionProgressUnavailable ? " · " : " "}${executionProgressSummary}`
                         : ""}

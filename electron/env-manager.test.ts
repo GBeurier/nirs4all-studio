@@ -816,7 +816,7 @@ describe("EnvManager", () => {
 
     fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
     fs.mkdirSync(sitePackages, { recursive: true });
-    fs.writeFileSync(path.join(runtimeDir, "RUNTIME_READY.json"), "{}");
+    fs.writeFileSync(path.join(runtimeDir, "PLUGIN_RUNTIME_READY.json"), "{}");
     fs.writeFileSync(bundledPython, "");
 
     childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
@@ -827,6 +827,9 @@ describe("EnvManager", () => {
     const { EnvManager } = await import("./env-manager");
     const manager = new EnvManager();
 
+    expect(manager.isBundled()).toBe(true);
+    expect(manager.getConfiguredPythonPath()).toBe(bundledPython);
+    expect(manager.getSitePackages()).toBe(sitePackages);
     await expect(manager.ensureBackendPackages()).resolves.toBe(false);
     expect(childProcessMocks.spawn).not.toHaveBeenCalled();
     expect(childProcessMocks.execFile).toHaveBeenCalled();

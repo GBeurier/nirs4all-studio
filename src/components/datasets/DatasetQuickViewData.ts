@@ -13,6 +13,7 @@ import type {
   SpectraPreview,
   TargetDistribution,
 } from "@/types/datasets";
+import { getApiErrorMessage } from "@/api/transport";
 import {
   getEffectivePreviewPartition,
   getPreviewSampleMetadata,
@@ -59,7 +60,7 @@ export function deriveQuickViewLoadState({
   const waitingForWorkspace = !!datasetId && !workspaceReady && !preview;
   const loading = waitingForWorkspace || queryLoading || (isFetching && !preview);
   const error =
-    queryError instanceof Error ? queryError.message : preview?.error ?? null;
+    getApiErrorMessage(queryError) ?? preview?.error ?? null;
   return { waitingForWorkspace, loading, error };
 }
 

@@ -46,6 +46,7 @@ import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import { getMultimodalDatasetSummary, isStudioMultimodalDatasetDocument } from "@/lib/multimodalDatasetSummary";
 import { MultimodalDatasetOverview } from "@/components/datasets/MultimodalDatasetOverview";
 import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
+import { getApiErrorMessage } from "@/api/transport";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -84,16 +85,13 @@ export default function DatasetDetail() {
   const hasMultimodalDocument = isStudioMultimodalDatasetDocument(descriptor);
   const previewQuery = useDatasetPreviewQuery(id, 100, !!dataset && !hasMultimodalDocument);
   const loading = datasetQuery.isLoading;
-  const error =
-    datasetQuery.error instanceof Error ? datasetQuery.error.message : null;
+  const error = getApiErrorMessage(datasetQuery.error);
   const preview = previewQuery.data ?? null;
   const waitingForWorkspace = !!id && !workspaceReady && !preview && !hasMultimodalDocument;
   const previewLoading =
     !hasMultimodalDocument && (waitingForWorkspace || previewQuery.isLoading || (previewQuery.isFetching && !preview));
   const previewError =
-    hasMultimodalDocument ? null : previewQuery.error instanceof Error
-      ? previewQuery.error.message
-      : preview?.error ?? null;
+    hasMultimodalDocument ? null : getApiErrorMessage(previewQuery.error) ?? preview?.error ?? null;
   const loadDataset = () => {
     datasetQuery.refetch();
   };
@@ -302,6 +300,20 @@ export default function DatasetDetail() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {previewError && !previewLoading && (
+        <motion.div variants={itemVariants} role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-4">
+          <div className="flex items-center gap-2 text-destructive">
+            <AlertCircle className="h-5 w-5" />
+            <p className="font-medium">Failed to load dataset preview</p>
+          </div>
+          <p className="mt-2 text-sm">{previewError}</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={loadPreview}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry Preview
+          </Button>
+        </motion.div>
+      )}
 
       {/* Tabs */}
       <motion.div variants={itemVariants}>

@@ -81,6 +81,15 @@ describe("deriveQuickViewLoadState", () => {
       }).error,
     ).toBe("bad");
   });
+
+  it("shows the native HTTP error instead of rendering an empty successful preview", () => {
+    const state = deriveQuickViewLoadState({
+      ...base,
+      queryError: { status: 400, detail: "Explicit regression targets must contain numeric values" },
+    });
+    expect(state.loading).toBe(false);
+    expect(state.error).toBe("Explicit regression targets must contain numeric values");
+  });
 });
 
 describe("getQuickViewCounts", () => {

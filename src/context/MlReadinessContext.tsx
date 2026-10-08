@@ -6,6 +6,7 @@ import { invalidateLoadedWorkspaceDatasetResults } from "@/api/playground";
 import { hasScientificRequestInFlight } from "@/api/dataset-request-activity";
 import { datasetQueryKeys } from "@/hooks/useDatasetQueries";
 import { MlReadinessContext, type MlReadiness } from "@/context/useMlReadiness";
+import { scientificRuntimeErrorMessage } from "@/lib/scientificRuntimeError";
 
 interface ScientificReadinessPayload {
   core_ready?: boolean;
@@ -187,7 +188,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
             ...previous,
             mlReady: readiness.ml_ready === true,
             mlLoading: readiness.ml_ready !== true && readiness.ml_loading === true,
-            mlError: readiness.ml_error ?? null,
+            mlError: scientificRuntimeErrorMessage(readiness.ml_error),
             scientificRequested: readiness.ml_ready === true || readiness.ml_loading === true,
             scientificStatus: readiness.ml_error ? "error" : readiness.ml_ready === true ? "running"
               : readiness.ml_loading === true ? "starting" : "stopped",
@@ -210,7 +211,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
           mlLoading: previous.mlReady || readiness.ml_ready
             ? false
             : readiness.ml_loading ?? previous.mlLoading,
-          mlError: readiness.ml_error ?? previous.mlError,
+          mlError: scientificRuntimeErrorMessage(readiness.ml_error) ?? previous.mlError,
           workspaceReady: previous.workspaceReady
             || !!(readiness.workspace_ready ?? readiness.ml_ready),
         }));
