@@ -819,6 +819,7 @@ jobs:
         run: |
           installers=(release/*.dmg)
           test "${#installers[@]}" = 1
+          export TMPDIR="$(cd "$RUNNER_TEMP" && pwd -P)"
           node scripts/smoke-packaged-ui.cjs --extracted-root release/mac --platform darwin --timeout-ms 120000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
 
       - name: Preserve packaged UI smoke proof
@@ -831,6 +832,7 @@ jobs:
           retention-days: 14
 
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: installer-macos-x64-payload
@@ -1039,6 +1041,7 @@ jobs:
         run: |
           installers=(release/*.dmg)
           test "${#installers[@]}" = 1
+          export TMPDIR="$(cd "$RUNNER_TEMP" && pwd -P)"
           node scripts/smoke-packaged-ui.cjs --extracted-root release/mac-arm64 --platform darwin --timeout-ms 120000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
 
       - name: Preserve packaged UI smoke proof
@@ -1051,6 +1054,7 @@ jobs:
           retention-days: 14
 
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: installer-macos-arm64-payload
