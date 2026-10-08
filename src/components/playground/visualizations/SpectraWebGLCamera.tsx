@@ -1,5 +1,5 @@
 import { useLayoutEffect } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import {
@@ -18,23 +18,18 @@ function applySpectraWebGLCameraBounds(
 }
 
 export function SpectraWebGLCamera() {
-  const { camera, size } = useThree();
+  const { camera, size, invalidate } = useThree();
 
   useLayoutEffect(() => {
     if (camera instanceof THREE.OrthographicCamera) {
       camera.position.set(0.5, 0.5, 5);
       camera.near = 0.1;
       camera.far = 100;
+      applySpectraWebGLCameraBounds(camera, computeSpectraWebGLCameraBounds({ width: size.width, height: size.height }));
       camera.updateProjectionMatrix();
+      invalidate();
     }
-  }, [camera]);
-
-  useFrame(() => {
-    if (camera instanceof THREE.OrthographicCamera) {
-      applySpectraWebGLCameraBounds(camera, computeSpectraWebGLCameraBounds(size));
-      camera.updateProjectionMatrix();
-    }
-  });
+  }, [camera, size.width, size.height, invalidate]);
 
   return null;
 }

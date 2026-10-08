@@ -31,8 +31,8 @@
     },
     {
       "path": "api/library_documents.py",
-      "size": 13232,
-      "sha256": "b2224d24d21b200512205298c2e25dfef333d20095bd43f191b6ecfcd26dbf4b"
+      "size": 18986,
+      "sha256": "0c789772ced50dcaf0b04f9c91b6eda03c97f2c08a0bbc2b646a4bf5f664e589"
     },
     {
       "path": "api/library_playground_views.py",

@@ -273,9 +273,9 @@ export function useDatasetQuery(id: string | undefined) {
  * permanent failure on first quickview open. Once `workspaceReady` flips,
  * MlReadinessContext invalidates queries and this fetch runs automatically.
  *
- * Backend `success: false` responses are converted to thrown errors so React
- * Query treats them as retryable failures and the user sees a real error
- * state with a working Retry button instead of a silent empty preview.
+ * Backend `success: false` responses become validation errors. Invalid data or
+ * configuration needs a user change, not repeated scientific inspections;
+ * transient HTTP/network errors retain the QueryClient's retry policy.
  */
 export function useDatasetPreviewQuery(
   id: string | undefined,
@@ -283,17 +283,26 @@ export function useDatasetPreviewQuery(
   enabled: boolean = true,
 ) {
   const { workspaceReady } = useMlReadiness();
+  const queryClient = useQueryClient();
+  const queryKey = datasetQueryKeys.preview(id ?? null, maxSamples);
+  const inheritedRetry = queryClient.defaultQueryOptions({ queryKey }).retry ?? 3;
   return useQuery<PreviewDataResponse>({
-    queryKey: datasetQueryKeys.preview(id ?? null, maxSamples),
+    queryKey,
     queryFn: async () => {
       const result = await previewDatasetById(id as string, maxSamples);
       if (!result.success) {
-        throw new Error(result.error || "Failed to load preview");
+        throw Object.assign(new Error(result.error || "Failed to load preview"), { status: 422 });
       }
       return result;
     },
     enabled: !!id && workspaceReady && enabled,
     ...baseOptions,
+    retry: (failureCount, error) => {
+      const status = error && typeof error === "object" && "status" in error ? error.status : undefined;
+      if (status === 400 || status === 422) return false;
+      if (typeof inheritedRetry === "function") return inheritedRetry(failureCount, error);
+      return inheritedRetry === true || (typeof inheritedRetry === "number" && failureCount < inheritedRetry);
+    },
   });
 }
 

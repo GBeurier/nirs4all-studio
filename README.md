@@ -310,8 +310,11 @@ acquisition path, or renderer target. Web-development server sources remain in
 the checkout, but they are outside the packaged Electron dependency graph and
 absent from product installers and all-in-one archives.
 
-The native sidecar is the packaged product backend, not an opt-in hybrid. For
-development, `NIRS4ALL_NATIVE_SIDECAR_PATH` may point to a specific built
+The native sidecar is the packaged product backend, not an opt-in hybrid.
+`npm run start:desktop` builds the Rust backend incrementally in release mode
+before launching Electron, so backend changes take effect on the next launch.
+The first Rust build takes longer; subsequent launches reuse unchanged build
+artifacts. For development, `NIRS4ALL_NATIVE_SIDECAR_PATH` may point to a specific built
 `studio-sidecar` binary and `NIRS4ALL_NATIVE_SIDECAR_PORT` may select its
 loopback port (default `0`, an ephemeral port). Packaged Electron instead
 verifies and starts the bundled content-addressed

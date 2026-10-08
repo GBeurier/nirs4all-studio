@@ -32,7 +32,7 @@ import type { RunsExecutionJobListIndicators } from "@/lib/runs/pageData";
 import { formatRunProgress, formatRunTokenLabel } from "@/lib/runs/format";
 import { getRuntimeResultStatusDisplay } from "@/ui/runtime";
 import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
-import { formatApiErrorDetail } from "@/api/transport";
+import { getApiErrorMessage } from "@/api/transport";
 import {
   formatMetricValue,
   getPrimaryContextMetricLabel,
@@ -232,7 +232,7 @@ export function RunItem({
       setDeleteOpen(false);
       toast.success(`Run ${run.name || run.run_id} deleted`);
     } catch (error) {
-      toast.error(formatApiErrorDetail(error));
+      toast.error(getApiErrorMessage(error) ?? "Run deletion failed");
     } finally {
       setDeleteBusy(false);
     }

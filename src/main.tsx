@@ -3,24 +3,12 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, HashRouter } from "react-router-dom";
 
-// Workaround for React 19.2 Performance Tracks crash:
-// react-dom-profiling calls `performance.measure(name, { detail: { devtools: { properties: <prop diff> } } })`
-// on every render with changed props. When a prop diff contains very large structures
-// (spectra arrays, selection sets, regl/three handles), the browser's structured clone of `detail`
-// throws `DataCloneError: ... out of memory`, which tears down the React tree mid-commit.
-// Swallow only that specific failure so the rest of the app keeps working.
-if (typeof performance !== "undefined" && typeof performance.measure === "function") {
-  const originalMeasure = performance.measure.bind(performance);
-  performance.measure = function patchedMeasure(...args: Parameters<Performance["measure"]>) {
-    try {
-      return originalMeasure(...args);
-    } catch (err) {
-      if (err instanceof DOMException && (err.name === "DataCloneError" || err.message.includes("cloned"))) {
-        return undefined as unknown as PerformanceMeasure;
-      }
-      throw err;
-    }
-  };
+import { omitReactPerformancePropDiff } from "@/lib/reactPerformanceMeasure";
+
+// Install before rendering: React's development tracks otherwise clone spectra
+// and graphics handles in changed props before the old crash guard can react.
+if (import.meta.env.DEV && typeof performance !== "undefined" && typeof performance.measure === "function") {
+  performance.measure = omitReactPerformancePropDiff(performance.measure.bind(performance));
 }
 
 // Initialize Sentry crash reporting only when the user has opted in.

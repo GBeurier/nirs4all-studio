@@ -7,11 +7,12 @@ use std::{
     time::Instant,
 };
 
+#[allow(clippy::needless_pass_by_value)]
 fn error(status: u16, detail: impl ToString) -> HttpResponse {
     HttpResponse::json(status, json!({"detail": detail.to_string()}).to_string())
 }
 
-pub(crate) fn has_live_training(jobs: &[Value]) -> bool {
+pub fn has_live_training(jobs: &[Value]) -> bool {
     jobs.iter().any(|context| {
         matches!(
             context["job"]["status"].as_str(),
@@ -21,7 +22,7 @@ pub(crate) fn has_live_training(jobs: &[Value]) -> bool {
 }
 
 /// Persisted activity is historical evidence, not proof of a surviving worker.
-pub(crate) fn normalize_interrupted(runs: &mut Value, jobs: &[Value]) {
+pub fn normalize_interrupted(runs: &mut Value, jobs: &[Value]) {
     if has_live_training(jobs) {
         return;
     }
@@ -36,7 +37,12 @@ pub(crate) fn normalize_interrupted(runs: &mut Value, jobs: &[Value]) {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<HttpResponse> {
+    // Keep the existing deletion admission and owner-response validation.
+    if request.method == "DELETE" {
+        return None;
+    }
     if request.path == "/api/runs/execution-backends" {
         if request.method != "GET" {
             return Some(crate::method_not_allowed(
@@ -105,10 +111,11 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
     if request.query.is_some() {
         return Some(error(400, "Run operations do not accept query fields"));
     }
+    if !request.body.is_empty() {
+        return Some(error(400, "Run operations do not accept a request body"));
+    }
     if (rerun_ids.is_some() && request.method != "POST")
-        || (rerun_ids.is_none()
-            && request.method != "GET"
-            && (request.method != "DELETE" || preselection.is_some() || log_ids.is_some()))
+        || (rerun_ids.is_none() && request.method != "GET")
     {
         return Some(crate::method_not_allowed(
             &request.method,
@@ -126,6 +133,11 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
             state.native_jobs.clone(),
         )
     };
+    if host.is_none() && log_ids.is_none() && rerun_ids.is_none() {
+        // Explicit bare-interpreter diagnostics retain their bounded bridge.
+        // A configured but invalid attested host always stays on this route.
+        return None;
+    }
     let workspace_id = preselection
         .as_deref()
         .unwrap_or_else(|| &ids.as_ref().unwrap().0);
@@ -145,9 +157,9 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
         return Some(error(503, "Attested run library host unavailable"));
     };
     if preselection.is_some() {
-        let ready = host
-            .adapt_document("runs.preflight", &json!({}))
-            .is_ok_and(|result| result["ready"] == true);
+        let ready = host.adapt_document("runs.preflight", &json!({})).is_ok_and(|result| {
+            result == json!({"callable":"nirs4all.pipeline.storage.studio_run_detail_http_inputs_v1", "ready":true})
+        });
         let decision = crate::run_detail_preselection::RunDetailPreselection {
             target: if ready {
                 crate::run_detail_preselection::RunDetailTarget::NativeSidecar
@@ -168,42 +180,10 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
         ));
     }
     let run_id = &ids.as_ref().unwrap().1;
+    if !valid_id(run_id) || log_ids.as_ref().is_some_and(|ids| !valid_id(&ids.2)) {
+        return Some(error(400, "Invalid run or pipeline identifier"));
+    }
     let live = jobs.training_list_at(workspace.path(), Instant::now());
-    if let Some(ids) = log_ids {
-        return Some(
-            match host.adapt_document(
-                "runs.logs",
-                &json!({"workspace_path":workspace.path(),"run_id":run_id,"pipeline_id":ids.2}),
-            ) {
-                Ok(value) => HttpResponse::json(200, value.to_string()),
-                Err(detail) => error(404, detail),
-            },
-        );
-    }
-    if request.method == "DELETE" {
-        // A library job may publish child run IDs only when it completes.
-        if has_live_training(&live) {
-            return Some(error(
-                409,
-                "Stop active workspace training before deleting a run",
-            ));
-        }
-        let path = workspace.path().to_path_buf();
-        // Release the read transaction before the library owns the write.
-        drop(workspace);
-        return Some(
-            match host.adapt_document(
-                "runs.delete",
-                &json!({"workspace_path":path,"run_id":run_id}),
-            ) {
-                Ok(value) => HttpResponse::json(
-                    if value["success"] == true { 200 } else { 404 },
-                    value.to_string(),
-                ),
-                Err(detail) => error(409, detail),
-            },
-        );
-    }
     // Materialize a private snapshot from the authenticated connection, so the
     // owner sees the same read transaction even with a live WAL.
     let snapshot = match tempfile::Builder::new()
@@ -228,6 +208,18 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
     }
     drop(bytes);
     drop(store);
+    if let Some(ids) = log_ids {
+        return Some(
+            match host.adapt_document(
+                "runs.logs",
+                &json!({"workspace_path":snapshot.path(),"run_id":run_id,"pipeline_id":ids.2}),
+            ) {
+                Ok(value) => HttpResponse::json(200, value.to_string()),
+                Err(detail) if detail == "Pipeline not found in run" => error(404, detail),
+                Err(detail) => error(502, detail),
+            },
+        );
+    }
     let owner = match host.adapt_document(
         "runs.detail",
         &json!({"workspace_path":snapshot.path(),"run_id":run_id}),
@@ -236,6 +228,9 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
         Ok(_) => return Some(error(404, "Run not found")),
         Err(detail) => return Some(error(502, detail)),
     };
+    if let Err(detail) = crate::run_detail_cpython::validate_owner_envelope(&owner) {
+        return Some(crate::run_detail_owner_bridge_error_response(detail));
+    }
     let links = match settings.dataset_links() {
         Ok(links) => links,
         Err(detail) => return Some(error(500, detail)),
@@ -257,7 +252,14 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
     )
 }
 
-pub(crate) fn engine_capabilities(
+fn valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 1024
+        && !id.contains(['/', '\\', '\0'])
+        && !matches!(id, "." | "..")
+}
+
+pub fn engine_capabilities(
     host: Option<&crate::scientific_cpython::CpythonScientificJobExecutor>,
 ) -> Value {
     let ready = host.is_some_and(
@@ -267,6 +269,7 @@ pub(crate) fn engine_capabilities(
         "default_engine":"dag-ml","reason":if ready {Value::Null} else {json!("The attested scientific library host is unavailable.")}})
 }
 
+#[allow(clippy::too_many_lines)]
 fn rerun(
     settings: &crate::settings::AppSettingsStore,
     host: &crate::scientific_cpython::CpythonScientificJobExecutor,
@@ -396,6 +399,7 @@ fn rerun(
     )
 }
 
+#[allow(clippy::too_many_lines)]
 fn list_records(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> HttpResponse {
     if request.method != "GET" {
         return crate::method_not_allowed(&request.method, &request.path, "GET");
@@ -445,26 +449,15 @@ fn list_records(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Ht
         let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
             continue;
         };
-        let record =
-            match crate::execution_job_records::read_execution_job_record(workspace.path(), &id) {
-                Ok(record) => record,
-                Err(_) => {
-                    skipped += 1;
-                    continue;
-                }
-            };
-        let mapped_id = store_run_ids(workspace.path(), &id)
-            .into_iter()
-            .next()
-            .unwrap_or(id.clone());
-        let run = workspace.store().map_or_else(
-            || crate::workspace_store::read_run_detail_projection(workspace.path(), &mapped_id),
-            |store| {
-                crate::workspace_store::read_run_detail_projection_from_connection(
-                    &store, &mapped_id,
-                )
-            },
-        );
+        let Ok(record) =
+            crate::execution_job_records::read_execution_job_record(workspace.path(), &id)
+        else {
+            skipped += 1;
+            continue;
+        };
+        let store = workspace.store();
+        let run = record_run_projection(workspace.path(), store.as_deref(), &id, &record);
+        drop(store);
         let run = match run {
             Ok(run) => run,
             Err(detail) => return crate::workspace_store_read_error_response(&detail),
@@ -520,9 +513,9 @@ fn list_records(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Ht
     )
 }
 
-pub(crate) fn legacy_store_run_id(workspace: &std::path::Path, job_id: &str) -> Option<String> {
+pub fn legacy_store_run_id(workspace: &std::path::Path, job_id: &str) -> Option<String> {
     use std::io::Read;
-    if job_id.is_empty() || job_id.contains(['/', '\\']) || matches!(job_id, "." | "..") {
+    if !valid_id(job_id) {
         return None;
     }
     let runs = workspace.join("runs");
@@ -552,10 +545,13 @@ pub(crate) fn legacy_store_run_id(workspace: &std::path::Path, job_id: &str) -> 
     if manifest["id"].as_str() != Some(job_id) {
         return None;
     }
-    manifest["store_run_id"].as_str().map(str::to_owned)
+    manifest["store_run_id"]
+        .as_str()
+        .filter(|id| valid_id(id))
+        .map(str::to_owned)
 }
 
-pub(crate) fn job_id_for_store_run(workspace: &std::path::Path, run_id: &str) -> Option<String> {
+pub fn job_id_for_store_run(workspace: &std::path::Path, run_id: &str) -> Option<String> {
     std::fs::read_dir(workspace.join("runs"))
         .ok()?
         .take(2000)
@@ -568,25 +564,52 @@ pub(crate) fn job_id_for_store_run(workspace: &std::path::Path, run_id: &str) ->
         })
 }
 
-pub(crate) fn store_run_ids(workspace: &std::path::Path, job_id: &str) -> Vec<String> {
+pub fn store_run_ids(workspace: &std::path::Path, job_id: &str) -> Vec<String> {
     if let Some(id) = legacy_store_run_id(workspace, job_id) {
         return vec![id];
     }
     crate::execution_job_records::read_execution_job_record(workspace, job_id)
-        .ok()
-        .and_then(|record| {
-            record
-                .pointer("/driver/store_run_ids")
-                .and_then(Value::as_array)
-                .cloned()
-        })
-        .unwrap_or_default()
+        .map_or_else(|_| vec![], |record| native_store_run_ids(&record))
+}
+
+fn native_store_run_ids(record: &Value) -> Vec<String> {
+    record
+        .pointer("/driver/store_run_ids")
+        .and_then(Value::as_array)
         .iter()
+        .flat_map(|ids| ids.iter())
         .take(256)
         .filter_map(Value::as_str)
-        .filter(|id| !id.is_empty())
+        .filter(|id| valid_id(id))
         .map(str::to_owned)
         .collect()
+}
+
+pub fn record_run_projection(
+    workspace: &std::path::Path,
+    connection: Option<&rusqlite::Connection>,
+    job_id: &str,
+    record: &Value,
+) -> Result<Option<Value>, crate::workspace_store::WorkspaceStoreReadError> {
+    let ids = legacy_store_run_id(workspace, job_id)
+        .map_or_else(|| native_store_run_ids(record), |id| vec![id]);
+    let ids = if ids.is_empty() {
+        vec![job_id.to_owned()]
+    } else {
+        ids
+    };
+    for id in ids {
+        let run = connection.map_or_else(
+            || crate::workspace_store::read_run_detail_projection(workspace, &id),
+            |connection| {
+                crate::workspace_store::read_run_detail_projection_from_connection(connection, &id)
+            },
+        )?;
+        if run.is_some() {
+            return Ok(run);
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(test)]
@@ -607,6 +630,58 @@ mod tests {
         let body: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(body["backends"][0]["available"], false);
         assert_eq!(engine_capabilities(None)["supported_engines"], json!([]));
+        assert_eq!(
+            crate::route_workspace_workflows_without_global_lock(&state, &request)
+                .unwrap()
+                .body,
+            response.body,
+        );
+    }
+    #[test]
+    fn execution_record_listing_is_wired_and_rejects_unknown_filters() {
+        let state = Arc::new(Mutex::new(SidecarState::default()));
+        let mut request = HttpRequest {
+            method: "GET".into(),
+            path: "/api/runs/execution-job-records".into(),
+            query: None,
+            headers: Default::default(),
+            body: vec![],
+        };
+        let response =
+            crate::route_workspace_workflows_without_global_lock(&state, &request).unwrap();
+        assert_eq!(response.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&response.body).unwrap()["records"],
+            json!([])
+        );
+        request.query = Some("unknown=true".into());
+        assert_eq!(route(&state, &request).unwrap().status, 400);
+    }
+    #[test]
+    fn configured_invalid_attested_host_never_falls_back_to_bare_run_bridge() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        std::fs::write(
+            workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5_summary.sqlite"),
+        )
+        .unwrap();
+        let config = root.path().join("config");
+        std::fs::create_dir(&config).unwrap();
+        std::fs::write(config.join("app_settings.json"), json!({"linked_workspaces":[{"id":"test","path":workspace,"name":"test","is_active":true,"linked_at":"2026-09-01T10:00:00","last_scanned":null,"discovered":{"runs_count":1}}]}).to_string()).unwrap();
+        let mut state = SidecarState::with_app_settings_dir(&config);
+        state.scientific_host = Some(Arc::new(crate::scientific_cpython::CpythonScientificJobExecutor::acquire_existing_with_config_dir(root.path().join("missing-python"), root.path().join("missing-packages"), &config)));
+        let state = Arc::new(Mutex::new(state));
+        let request = HttpRequest {
+            method: "GET".into(),
+            path: "/sidecar/v1/workspaces/test/run-detail-preselection".into(),
+            query: None,
+            headers: Default::default(),
+            body: vec![],
+        };
+        let response = route(&state, &request).expect("invalid configured host must be handled");
+        assert_eq!(response.status, 503);
     }
     #[test]
     fn durable_native_job_children_are_linked_without_guessing_from_run_names() {
@@ -630,6 +705,22 @@ mod tests {
             job_id_for_store_run(workspace.path(), "child-b").as_deref(),
             Some("native-job")
         );
+    }
+    #[test]
+    fn shared_job_still_resolves_a_remaining_child_after_first_child_deletion() {
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(
+            workspace.path().join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5_summary.sqlite"),
+        )
+        .unwrap();
+        let summaries = crate::workspace_store::read_run_summaries(workspace.path(), 1, 0).unwrap();
+        let id = summaries[0].response()["id"].as_str().unwrap().to_owned();
+        let record = json!({"driver":{"store_run_ids":["removed-child", id]}});
+        let run = record_run_projection(workspace.path(), None, "shared-job", &record)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run["run_id"], id);
     }
     #[test]
     fn run_history_route_is_not_materialized_as_a_run_id() {

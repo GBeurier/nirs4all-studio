@@ -39,6 +39,7 @@ import {
   datasetQueryKeys,
   hydrateDatasetCachesFromStorage,
   useDatasetScoresQuery,
+  useDatasetPreviewQuery,
   useDatasetsQuery,
   useInvalidateDatasets,
   useLinkedWorkspacesQuery,
@@ -144,6 +145,60 @@ afterEach(() => {
 });
 
 describe("useDatasetQueries", () => {
+  it.each([400, 422])("does not repeat a permanent HTTP %i preview failure", async (status) => {
+    const error = { status, detail: "Regression targets must contain numeric values" };
+    const retry = vi.fn((failureCount: number) => failureCount < 8);
+    const client = new QueryClient({ defaultOptions: { queries: { retry, retryDelay: 0 } } });
+    apiMocks.previewDatasetById.mockRejectedValue(error);
+
+    const mounted = await renderHook(() => useDatasetPreviewQuery("invalid"), client);
+    await waitFor(() => expect(mounted.result.current?.isError).toBe(true));
+    expect(mounted.result.current?.error).toEqual(error);
+    expect(apiMocks.previewDatasetById).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
+    await mounted.unmount();
+  });
+
+  it("stops legacy validation failures immediately and allows an explicit retry", async () => {
+    const retry = vi.fn((failureCount: number) => failureCount < 8);
+    const client = new QueryClient({ defaultOptions: { queries: { retry, retryDelay: 0 } } });
+    apiMocks.previewDatasetById.mockResolvedValue({ success: false, error: "Invalid target selection" });
+
+    const mounted = await renderHook(() => useDatasetPreviewQuery("legacy"), client);
+    await waitFor(() => expect(mounted.result.current?.isError).toBe(true));
+    expect(mounted.result.current?.error).toMatchObject({ message: "Invalid target selection", status: 422 });
+    expect(apiMocks.previewDatasetById).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
+
+    const preview = { success: true, summary: { num_samples: 60, num_features: 700 }, selected_targets: ["protein"] };
+    apiMocks.previewDatasetById.mockResolvedValue(preview);
+    await act(async () => { await mounted.result.current?.refetch(); });
+    expect(client.getQueryData(datasetQueryKeys.preview("legacy", 100))).toEqual(preview);
+    await waitFor(() => {
+      expect(mounted.result.current?.isSuccess).toBe(true);
+      expect(mounted.result.current?.data).toEqual(preview);
+    });
+    await mounted.rerender();
+    expect(apiMocks.previewDatasetById).toHaveBeenCalledTimes(2);
+    await mounted.unmount();
+  });
+
+  it.each([
+    { label: "HTTP 503", error: { status: 503, detail: "Runtime is loading" } },
+    { label: "network", error: new Error("Connection unavailable") },
+  ])("retains the configured retry policy for a transient $label error", async ({ error }) => {
+    const retry = vi.fn((failureCount: number) => failureCount < 2);
+    const client = new QueryClient({ defaultOptions: { queries: { retry, retryDelay: 0 } } });
+    const preview = { success: true };
+    apiMocks.previewDatasetById.mockRejectedValueOnce(error).mockResolvedValue(preview);
+
+    const mounted = await renderHook(() => useDatasetPreviewQuery("transient"), client);
+    await waitFor(() => expect(mounted.result.current?.data).toEqual(preview));
+    expect(apiMocks.previewDatasetById).toHaveBeenCalledTimes(2);
+    expect(retry).toHaveBeenCalledWith(0, error);
+    await mounted.unmount();
+  });
+
   it("hydrates dataset and linked-workspace caches into the QueryClient before mount", () => {
     const datasetsCached = {
       v: 1,

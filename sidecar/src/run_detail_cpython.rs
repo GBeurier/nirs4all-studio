@@ -207,7 +207,7 @@ pub fn materialize_run_detail_owner_from_connection(
     materialize_run_detail_owner(python_plugin_host, snapshot.path(), run_id)
 }
 
-fn validate_owner_envelope(value: &Value) -> Result<(), RunDetailOwnerBridgeFailure> {
+pub(crate) fn validate_owner_envelope(value: &Value) -> Result<(), RunDetailOwnerBridgeFailure> {
     const FIELDS: [&str; 7] = [
         "pipeline_runtime",
         "pipeline_splitters",

@@ -101,6 +101,61 @@ fn configured_resolver(root: &Path) -> PathBuf {
     config
 }
 
+/// Exercise production environment selection without modifying the source venv.
+fn selected_runtime_site(python: &Path, root: &Path) -> (PathBuf, PathBuf) {
+    let runtime = root.join("selected-runtime");
+    let copied = std::process::Command::new(python)
+        .args(["-I", "-B", "-c", r#"import importlib.metadata,json,pathlib,shutil,sys
+runtime=pathlib.Path(sys.argv[1])
+site=runtime/"lib"/f"python{sys.version_info.major}.{sys.version_info.minor}"/"site-packages"
+site.mkdir(parents=True)
+binary=runtime/"bin"/"python"
+binary.parent.mkdir()
+shutil.copy2(sys.executable,binary)
+(runtime/"pyvenv.cfg").write_text(f"home = {pathlib.Path(sys.executable).resolve().parent}\ninclude-system-site-packages = false\n")
+# Only dependencies are inherited; the exact SDK and Studio adapters below
+# live inside the active prefix required by the scientific owner.
+(site/"inherited-dependencies.pth").write_text("\n".join(path for path in sys.path if pathlib.Path(path).is_dir())+"\n")
+for name,module in (("nirs4all","nirs4all"),("dag-ml","dag_ml")):
+    d=importlib.metadata.distribution(name)
+    package=pathlib.Path(d.locate_file(module))
+    metadata=next(pathlib.Path(d.locate_file(p)).parent for p in d.files if p.name=="METADATA" and p.parent.name.endswith(".dist-info"))
+    for source in (package,metadata):
+        shutil.copytree(source,site/source.name,ignore=shutil.ignore_patterns("__pycache__"))
+print(json.dumps({"python":str(binary),"site":str(site)}))
+"#])
+        .arg(&runtime)
+        .output()
+        .unwrap();
+    assert!(
+        copied.status.success(),
+        "{}",
+        String::from_utf8_lossy(&copied.stderr)
+    );
+    let copied: Value = serde_json::from_slice(&copied.stdout).unwrap();
+    let selected_python = PathBuf::from(copied["python"].as_str().unwrap());
+    let site = PathBuf::from(copied["site"].as_str().unwrap());
+    let manifest: Value = serde_json::from_str(include_str!(
+        "../contracts/studio_document_adapters_v1.json"
+    ))
+    .unwrap();
+    let sources = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let adapters = site.join("studio_document_adapters");
+    for member in manifest["files"].as_array().unwrap() {
+        let relative = member["path"].as_str().unwrap();
+        let destination = adapters.join(relative);
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        let bytes = if relative.ends_with("__init__.py") {
+            b"\"\"\"Pure document translation package; no HTTP or application state.\"\"\"\n"
+                .to_vec()
+        } else {
+            fs::read(sources.join(relative)).unwrap()
+        };
+        fs::write(destination, bytes).unwrap();
+    }
+    (selected_python, site)
+}
+
 fn refusal(root: &Path, host: &Path) -> (Value, Arc<NativeJobRuntime>) {
     let config = root.join("config");
     fs::create_dir_all(config.join("app_settings.json")).unwrap();
@@ -457,7 +512,9 @@ fn selected_wheel_resolves_saved_route_and_persists_only_the_original_request() 
         .unwrap(),
     )
     .unwrap();
-    let executor = CpythonScientificJobExecutor::acquire_with_config_dir(&python, &config);
+    let (python, site) = selected_runtime_site(&python, &root);
+    let executor =
+        CpythonScientificJobExecutor::acquire_existing_with_config_dir(&python, site, &config);
     assert!(executor.is_selected(), "{}", executor.unavailable_reason());
     let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(executor)));
     let mut state =
