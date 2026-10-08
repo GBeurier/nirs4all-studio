@@ -1,0 +1,25 @@
+{
+  "schema": "nirs4all.studio.runtime-cohort.v1",
+  "sdk": {
+    "version": "1.4.7",
+    "source_sha": "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc",
+    "wheel_sha256": "0ed0b2cb1e3cda248ccfd52513d6874a763e7cc64fb4a28973058ada677ef8f6",
+    "qualification_oracle_sha256": "3a497b5715280a99378f490d8e312e740dd9f489b77f1d57b855519bf5e0d315"
+  },
+  "dag": {
+    "version": "0.3.41",
+    "source_sha": "6f4044b45028a90a92d3f29287e67779bb5fd0b9"
+  },
+  "dag_data": {
+    "version": "0.2.13",
+    "source_sha": "78719b68c8e9ffd4c2035792574b8da33387d237"
+  },
+  "core": {
+    "version": "0.4.5"
+  },
+  "tools": {
+    "version": "0.0.8",
+    "source_sha": "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
+    "wheel_sha256": "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310"
+  }
+}

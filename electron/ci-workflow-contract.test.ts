@@ -38,6 +38,59 @@ function releaseGate(job: string, results: Record<string, string> = {}, flags: R
 afterEach(() => { directories.splice(0).forEach((directory) => fs.rmSync(directory, { recursive: true, force: true })); });
 
 describe("CI release protection graph", () => {
+  it("anchors every local gate to existing runtime paths and the actual compiler configuration", () => {
+    const policy = JSON.parse(fs.readFileSync("qualification/policy.json", "utf8")) as {
+      gates: Array<{ id: string; input_paths: string[] }>;
+    };
+    const compilerInputs = fs.readdirSync(".").filter(name =>
+      /^(tsconfig.*\.json$|(?:vite|tailwind|postcss)\.config\.(?:js|ts)$)/.test(name));
+    expect(compilerInputs.length).toBeGreaterThan(1);
+    for (const gate of policy.gates) {
+      for (const input of gate.input_paths) {
+        expect(fs.existsSync(input), `${gate.id}: missing runtime scope ${input}`).toBe(true);
+      }
+      const applicableCompilerInputs = gate.id === "web-e2e"
+        ? compilerInputs.filter(name => !["tsconfig.electron.json", "tsconfig.nirs4all-ui-package-smoke.json"].includes(name))
+        : compilerInputs;
+      for (const input of applicableCompilerInputs) {
+        expect(gate.input_paths, `${gate.id}: omitted compiler input ${input}`).toContain(input);
+      }
+    }
+  });
+
+  it("keeps full E2E and scientific journeys local while smoking every built OS UI", () => {
+    expect(fs.existsSync(".github/workflows/playwright.yml")).toBe(false);
+    for (const name of ["installer-linux", "installer-windows", "installer-macos-x64", "installer-macos-arm64"]) {
+      const steps = release.jobs[name].steps!;
+      const smoke = steps.filter(step => step.run?.includes("scripts/smoke-packaged-ui.cjs"));
+      expect(smoke, name).toHaveLength(1);
+      expect(smoke[0].if, name).toBeUndefined();
+      expect(smoke[0]["continue-on-error"], name).not.toBe(true);
+      expect(smoke[0].env?.RELEASE_SOURCE_SHA).toBe("${{ needs.prepare.outputs.checkout_ref }}");
+      expect(smoke[0].env?.RELEASE_VERSION).toBe("${{ needs.prepare.outputs.version }}");
+      expect(smoke[0].env?.NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY).toBe("github-observational");
+      expect(smoke[0].run).toContain("--installer");
+      expect(smoke[0].run).toContain("--timeout-ms 120000");
+    }
+    const remoteCommands = Object.values(release.jobs).flatMap(job => job.steps ?? []).map(step => step.run ?? "").join("\n");
+    for (const fullJourney of ["scripts/qualify-installer.cjs", "installed_multimodal_provider.py", "test:native-archive-v2", "npx playwright test"]) {
+      expect(remoteCommands).not.toContain(fullJourney);
+    }
+  });
+
+  it("publishes only after mandatory build and package smoke jobs succeed", () => {
+    const steps = release.jobs.release.steps!;
+    const required = ["prepare", "quality", "installer-linux", "installer-windows", "installer-macos-arm64", "docker"];
+    expect(dependencies(release.jobs.release)).toEqual(expect.arrayContaining(required));
+    expect(releaseGate("release")).toBe(true);
+    for (const job of required) expect(releaseGate("release", { [job]: "failure" }), job).toBe(false);
+    for (const publication of ["Publish the tested Docker image", "Publish verified assets sequentially"]) {
+      const step = steps.find(item => item.name === publication)!;
+      expect(step.if).toContain("needs.prepare.outputs.is_tag_release == 'true'");
+      expect(step["continue-on-error"]).not.toBe(true);
+    }
+  });
+
   it("makes the summary depend on every CI job", () => {
     expect(dependencies(ci.jobs.summary).sort()).toEqual(Object.keys(ci.jobs).filter((job) => job !== "summary").sort());
     expect(ci.jobs.summary.if).toBe("always()");

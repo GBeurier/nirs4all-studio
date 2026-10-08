@@ -327,7 +327,7 @@ async function main(argv = process.argv.slice(2)) {
       assert.match(provider.stdout, /INSTALLED_GENERATED_HPO_MATRIX_OK 45\b/,
         'Installed candidate did not complete the multimodal provider HPO matrix');
       await timed(proof, 'multimodal_installed_ui', BUDGETS.multimodal, () =>
-        require('./smoke-multimodal-ui.cjs').main(config));
+        require('./smoke-multimodal-ui.cjs').main(config, proof));
       proof.multimodal = { provider_hpo_combinations: 45, installed_ui_replay_without_fit: true };
     }
     proof.success = true;

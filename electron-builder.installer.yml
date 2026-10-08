@@ -12,6 +12,8 @@ files:
   # dist-electron/main.cjs loads the shared Python runtime config at startup.
   - scripts/python-runtime-config.cjs
   - recommended-config.json
+  # Bind the packaged application to the exact resolved build source.
+  - version.json
   - "!**/*.map"
 
 # Standard installers ship the attested plugin-only CPython closure beside the

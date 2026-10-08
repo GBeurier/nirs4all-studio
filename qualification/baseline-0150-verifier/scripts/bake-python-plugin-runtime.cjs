@@ -1,0 +1,601 @@
+/** Build and verify Studio's CPython library/plugin runtime (never an HTTP backend). */
+
+const { spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
+const { installAdapters, verifyAdapters } = require("./studio-document-adapters.cjs");
+
+const projectRoot = path.join(__dirname, "..");
+const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
+const PLUGIN_MARKER_SCHEMA = "nirs4all.studio-python-plugin-runtime.v1";
+const PLUGIN_ROLE = "library-plugin-host-only";
+const PLUGIN_SOURCE_COMMIT = "41ee99f188e6d4cad2bdc9c254597a0ff94ab67b";
+const PLUGIN_WHEEL_SHA256 = "2c2c2206cdfc8c8e58c826ee931333e6da753d57c281453e77c3bc165b63cd68";
+const PLUGIN_DISTRIBUTION_VERSION = "1.4.0";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "9f70da8d24b3359a0dd9a79454b09e1b2166aa1e29ae1b629ac9d46e2df9fe59";
+const PLUGIN_CONSTRAINTS_RELATIVE_PATH = "build/constraints/plugin-runtime-cpython311.txt";
+const PLUGIN_CONSTRAINTS_PATH = path.join(projectRoot, ...PLUGIN_CONSTRAINTS_RELATIVE_PATH.split("/"));
+const PLUGIN_CONSTRAINTS_SHA256 = "2e4b1f1f61ceae48d370676de6f7aab36281cfb46953752d5e2a080bce794a60";
+const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
+const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
+const TOOLS_DISTRIBUTION_VERSION = "0.0.8";
+const TOOLS_INSTALLED_MANIFEST_SHA256 = "92069ded823ffd1e291b4c8272b46e8b247ed5b619734e1ebf5ad3f612774ac8";
+const DUCKDB_VERSION = "1.5.5";
+const PYARROW_VERSION = "25.0.1";
+const WINDOWS_CONSTRAINT_MARKER = 'sys_platform == "win32"';
+const MAC_INTEL_CONSTRAINT_MARKER = 'sys_platform == "darwin" and platform_machine == "x86_64"';
+const NON_MAC_INTEL_CONSTRAINT_MARKER = 'sys_platform != "darwin" or platform_machine != "x86_64"';
+const GREENLET_PLATFORM_MARKER = 'platform_machine == "aarch64" or (platform_machine == "ppc64le" or (platform_machine == "x86_64" or (platform_machine == "amd64" or (platform_machine == "AMD64" or (platform_machine == "win32" or platform_machine == "WIN32")))))';
+const FORBIDDEN_DISTRIBUTIONS = Object.freeze([
+  "fastapi",
+  "httptools",
+  "python-multipart",
+  "sentry-sdk",
+  "starlette",
+  "uvicorn",
+  "uvloop",
+  "watchfiles",
+  "websockets",
+]);
+const FORBIDDEN_TOP_LEVEL_MODULES = Object.freeze([
+  "fastapi",
+  "httptools",
+  "multipart",
+  "sentry_sdk",
+  "starlette",
+  "uvicorn",
+  "uvloop",
+  "watchfiles",
+  "websockets",
+]);
+
+const PREFLIGHT = String.raw`import base64,csv,hashlib,importlib.metadata,io,json,os,platform,socket,subprocess,sys
+# python-build-standalone on Windows can implement the first platform.machine()
+# lookup through cmd /c ver. Warm that trusted stdlib cache before the audit
+# hook; all third-party imports and every subsequent spawn remain denied.
+# This qualifies the packaged payload only; Windows process-tree containment
+# is enforced independently by the sidecar Job Object launcher.
+platform.machine()
+def deny(event,args):
+    if event == "socket.bind": raise RuntimeError("listener denied")
+    if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}: raise PermissionError("spawn denied")
+sys.addaudithook(deny)
+sys.path.insert(0,sys.argv[1])
+bind_denied=spawn_denied=spawnv_denied=False
+s=socket.socket()
+try: s.bind(("127.0.0.1",0))
+except RuntimeError: bind_denied=True
+finally: s.close()
+try: subprocess.Popen([sys.executable,"-c","pass"])
+except PermissionError: spawn_denied=True
+if os.name == "posix":
+    try: os.spawnv(os.P_WAIT,"/bin/true",["true"])
+    except PermissionError: spawnv_denied=True
+else: spawnv_denied=True
+import nirs4all,nirs4all_tools,duckdb,pyarrow,pyarrow.parquet as parquet
+import numpy as np, shap
+from sklearn.linear_model import LinearRegression
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+sample=np.array([[0.,1.],[1.,0.],[2.,1.],[3.,2.]])
+model=LinearRegression().fit(sample,np.array([0.,1.,2.,3.]))
+explanation=shap.LinearExplainer(model,sample)(sample)
+if explanation.values.shape != sample.shape or not np.isfinite(explanation.values).all():
+    raise RuntimeError("SHAP functional preflight failed")
+figure=Figure(); FigureCanvasAgg(figure); figure.add_subplot().plot([0,1],[0,1])
+png=io.BytesIO(); figure.savefig(png,format="png")
+if not png.getvalue().startswith(b"\x89PNG"):
+    raise RuntimeError("Matplotlib functional preflight failed")
+from studio_document_adapters.api.library_documents import adapt_document
+if not callable(getattr(nirs4all,"studio_scientific_job_v2",None)):
+    raise RuntimeError("general scientific callable unavailable")
+adapter_probe=adapt_document("pipeline.import",{"payload":[{"class":"sklearn.linear_model.Ridge"}]})
+if adapter_probe.get("success") is not True or len(adapter_probe.get("steps",[])) != 1:
+    raise RuntimeError("document adapter functional preflight failed")
+if any(name.split(".")[0] in {"fastapi","starlette","uvicorn","api"} for name in sys.modules):
+    raise RuntimeError("document adapter imported an HTTP/application module")
+d=importlib.metadata.distribution("nirs4all")
+r=next(x for x in d.files or [] if str(x).endswith(".dist-info/RECORD")); record_bytes=open(d.locate_file(r),"rb").read()
+rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
+m="".join(",".join(row)+"\n" for row in rows).encode("utf-8")
+verified=True
+for relative,encoded,size in rows:
+    algorithm,expected=encoded.split("=",1); payload=open(d.locate_file(relative),"rb").read(); actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
+    if actual != expected or (size and len(payload) != int(size)): verified=False; break
+td=importlib.metadata.distribution("nirs4all-tools")
+tr=next(x for x in td.files or [] if str(x).endswith(".dist-info/RECORD")); trb=open(td.locate_file(tr),"rb").read()
+trows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(trb.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
+tm="".join(",".join(row)+"\n" for row in trows).encode("utf-8")
+tverified=True
+for relative,encoded,size in trows:
+    algorithm,expected=encoded.split("=",1); payload=open(td.locate_file(relative),"rb").read(); actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
+    if actual != expected or (size and len(payload) != int(size)): tverified=False; break
+dc=duckdb.connect(":memory:"); duckdb_functional=dc.execute("SELECT 40 + 2").fetchone()==(42,); dc.close()
+table=pyarrow.table({"value":[1,2,3]}); sink=pyarrow.BufferOutputStream(); parquet.write_table(table,sink); payload=sink.getvalue(); restored=parquet.read_table(pyarrow.BufferReader(payload)); pyarrow_functional=restored.equals(table)
+print(json.dumps({"bind_denied":bind_denied,"spawn_denied":spawn_denied,"spawnv_denied":spawnv_denied,"implementation":sys.implementation.name,"isolated":bool(sys.flags.isolated),"no_site":bool(sys.flags.no_site),"dont_write_bytecode":bool(sys.dont_write_bytecode),"version":d.version,"record":hashlib.sha256(record_bytes).hexdigest(),"manifest":hashlib.sha256(m).hexdigest(),"verified":verified,"callable":callable(getattr(nirs4all,"studio_scientific_job_v1",None)),"tools_version":td.version,"tools_record":hashlib.sha256(trb).hexdigest(),"tools_manifest":hashlib.sha256(tm).hexdigest(),"tools_verified":tverified,"tools_module":getattr(nirs4all_tools,"__name__",None),"duckdb_version":duckdb.__version__,"pyarrow_version":pyarrow.__version__,"duckdb_functional":duckdb_functional,"pyarrow_parquet_functional":pyarrow_functional},sort_keys=True,separators=(",",":")))`;
+
+function normalizeDistribution(name) {
+  return name.trim().toLowerCase().replace(/[_.]+/g, "-");
+}
+
+function sha256File(filePath) {
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function assertConstraintsIdentity(
+  constraintsPath = PLUGIN_CONSTRAINTS_PATH,
+  expectedSha256 = PLUGIN_CONSTRAINTS_SHA256,
+) {
+  const actualSha256 = sha256File(constraintsPath);
+  if (actualSha256 !== expectedSha256) {
+    throw new Error(
+      `Plugin runtime constraints identity mismatch: expected ${expectedSha256}, got ${actualSha256}`,
+    );
+  }
+}
+
+function constraintMarkerApplies(marker, platform, arch) {
+  if (!marker) return true;
+  if (marker === WINDOWS_CONSTRAINT_MARKER) return platform === "win32";
+  if (marker === MAC_INTEL_CONSTRAINT_MARKER) return platform === "darwin" && arch === "x64";
+  if (marker === NON_MAC_INTEL_CONSTRAINT_MARKER) return platform !== "darwin" || arch !== "x64";
+  if (marker === GREENLET_PLATFORM_MARKER) {
+    return arch === "x64" || arch === "ppc64" || (platform === "linux" && arch === "arm64");
+  }
+  throw new Error(`Unsupported plugin constraint marker: ${marker}`);
+}
+
+function constrainedDistributionVersions(platform = process.platform, arch = process.arch) {
+  assertConstraintsIdentity();
+  const versions = new Map();
+  for (const rawLine of fs.readFileSync(PLUGIN_CONSTRAINTS_PATH, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const [requirement, marker = ""] = line.split(";", 2).map((part) => part.trim());
+    if (!constraintMarkerApplies(marker, platform, arch)) continue;
+    const match = /^([A-Za-z0-9_.-]+)==([^\s]+)$/.exec(requirement);
+    if (!match) throw new Error(`Plugin runtime constraint is not exact: ${line}`);
+    const name = normalizeDistribution(match[1]);
+    if (versions.has(name)) throw new Error(`Duplicate plugin runtime constraint: ${name}`);
+    versions.set(name, match[2]);
+  }
+  return versions;
+}
+
+function isLowerSha256(value) {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
+
+function findSitePackages(runtimeRoot) {
+  const candidates = [];
+  const windows = path.join(runtimeRoot, "Lib", "site-packages");
+  if (fs.existsSync(windows)) candidates.push(windows);
+  const lib = path.join(runtimeRoot, "lib");
+  if (fs.existsSync(lib)) {
+    for (const entry of fs.readdirSync(lib)) {
+      if (/^python3\.\d+$/.test(entry)) {
+        const candidate = path.join(lib, entry, "site-packages");
+        if (fs.existsSync(candidate)) candidates.push(candidate);
+      }
+    }
+  }
+  if (candidates.length !== 1) {
+    throw new Error(`Plugin runtime requires exactly one site-packages; found ${candidates.length}`);
+  }
+  return candidates[0];
+}
+
+function bundledPython(runtimeRoot, platform = process.platform) {
+  return platform === "win32"
+    ? path.join(runtimeRoot, "python.exe")
+    : path.join(runtimeRoot, "bin", "python3");
+}
+
+function removeBytecode(runtimeRoot) {
+  const pending = [runtimeRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory() && entry.name === "__pycache__") {
+        fs.rmSync(entryPath, { recursive: true, force: true });
+      } else if (entry.isDirectory()) {
+        pending.push(entryPath);
+      } else if (entry.isFile() && entry.name.endsWith(".pyc")) {
+        fs.rmSync(entryPath, { force: true });
+      }
+    }
+  }
+}
+
+/** Compile with the exact bundled interpreter, before the closure is signed off.
+ * Checked-hash bytecode remains covered by the closure SHA inventory; -B still
+ * prevents runtime writes. Test/example sources need no startup acceleration.
+ */
+function compileRuntimeBytecode(runtimeRoot, platform = process.platform) {
+  const script = `import compileall,pathlib,py_compile,re,sys
+root=pathlib.Path(sys.argv[1])
+library=root/'Lib' if (root/'Lib').is_dir() else next(root.glob('lib/python3.*'))
+excluded=re.compile(r"[/\\\\](tests?|testing|examples|benchmarks|studio_document_adapters)[/\\\\]")
+ok=compileall.compile_dir(str(library),quiet=1,workers=1 if sys.platform == "win32" else 2,rx=excluded,stripdir=root,prependdir="python-runtime/python",invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
+raise SystemExit(0 if ok else 1)`;
+  const result = spawnSync(bundledPython(runtimeRoot, platform), ["-I", "-S", "-B", "-c", script, runtimeRoot], {
+    encoding: "utf8", windowsHide: true, timeout: 180000, maxBuffer: 2 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`Runtime bytecode compilation failed (status ${result.status}, signal ${result.signal}): ${[result.error?.message, result.stderr, result.stdout].filter(Boolean).join("\n")}`);
+  }
+}
+
+function removeEmptyDirectories(runtimeRoot) {
+  const directories = [];
+  const pending = [runtimeRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    directories.push(directory);
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        pending.push(path.join(directory, entry.name));
+      }
+    }
+  }
+  directories.sort((left, right) => right.length - left.length);
+  for (const directory of directories) {
+    if (directory !== runtimeRoot && fs.readdirSync(directory).length === 0) {
+      fs.rmdirSync(directory);
+    }
+  }
+}
+
+function assertClosedTree(runtimeRoot) {
+  const pending = [runtimeRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      const metadata = fs.lstatSync(entryPath);
+      if (metadata.isSymbolicLink() || (!metadata.isDirectory() && !metadata.isFile())) {
+        throw new Error(`Plugin runtime contains a link or special file: ${entryPath}`);
+      }
+      if (metadata.isDirectory()) pending.push(entryPath);
+      if (metadata.isFile() && entry.name.endsWith(".pth")) {
+        throw new Error(`Plugin runtime contains a forbidden acquisition artifact: ${entryPath}`);
+      }
+      if (metadata.isFile() && entry.name.endsWith(".pyc")) {
+        const header = Buffer.alloc(8);
+        const fd = fs.openSync(entryPath, "r");
+        let count;
+        try { count = fs.readSync(fd, header, 0, header.length, 0); } finally { fs.closeSync(fd); }
+        if (count !== 8 || header.readUInt32LE(4) !== 3 || path.basename(directory) !== "__pycache__") {
+          throw new Error(`Plugin runtime bytecode must use checked source hashes: ${entryPath}`);
+        }
+      }
+    }
+  }
+}
+
+function materializeInternalRuntimeLinks(runtimeRoot) {
+  const canonicalRoot = fs.realpathSync(runtimeRoot);
+  const rootPrefix = `${canonicalRoot}${path.sep}`;
+
+  for (let pass = 0; pass < 10; pass += 1) {
+    const links = [];
+    const pending = [runtimeRoot];
+    while (pending.length > 0) {
+      const directory = pending.pop();
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const entryPath = path.join(directory, entry.name);
+        const metadata = fs.lstatSync(entryPath);
+        if (metadata.isSymbolicLink()) links.push(entryPath);
+        else if (metadata.isDirectory()) pending.push(entryPath);
+      }
+    }
+    if (links.length === 0) return;
+
+    for (const linkPath of links) {
+      const resolvedTarget = fs.realpathSync(linkPath);
+      if (resolvedTarget !== canonicalRoot && !resolvedTarget.startsWith(rootPrefix)) {
+        throw new Error(`Plugin runtime link escapes its package root: ${linkPath}`);
+      }
+      const targetMetadata = fs.statSync(resolvedTarget);
+      fs.unlinkSync(linkPath);
+      if (targetMetadata.isFile()) {
+        fs.copyFileSync(resolvedTarget, linkPath);
+        fs.chmodSync(linkPath, targetMetadata.mode & 0o777);
+      } else if (targetMetadata.isDirectory()) {
+        fs.cpSync(resolvedTarget, linkPath, {
+          recursive: true,
+          dereference: true,
+          preserveTimestamps: true,
+        });
+      } else {
+        throw new Error(`Plugin runtime link targets a special file: ${linkPath}`);
+      }
+    }
+  }
+  throw new Error("Plugin runtime link materialization did not converge");
+}
+
+function installedDistributionVersions(sitePackages) {
+  const versions = new Map();
+  for (const entry of fs.readdirSync(sitePackages)) {
+    if (!entry.endsWith(".dist-info")) continue;
+    const metadataPath = path.join(sitePackages, entry, "METADATA");
+    const metadata = fs.readFileSync(metadataPath, "utf8");
+    const nameMatch = /^Name:\s*(.+)$/im.exec(metadata);
+    const versionMatch = /^Version:\s*(.+)$/im.exec(metadata);
+    if (!nameMatch || !versionMatch) {
+      throw new Error(`Distribution metadata has no exact Name/Version: ${metadataPath}`);
+    }
+    const name = normalizeDistribution(nameMatch[1]);
+    if (versions.has(name)) throw new Error(`Duplicate installed distribution: ${name}`);
+    versions.set(name, versionMatch[1].trim());
+  }
+  return new Map([...versions.entries()].sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function assertPluginOnlyPayload(
+  backendRoot,
+  runtimeRoot,
+  sitePackages,
+  platform = process.platform,
+) {
+  for (const relative of ["api", "websocket", "main.py"]) {
+    if (fs.existsSync(path.join(backendRoot, relative))) {
+      throw new Error(`Python backend source is forbidden in Phase 2 payload: ${relative}`);
+    }
+  }
+  const installedVersions = installedDistributionVersions(sitePackages);
+  const installed = new Set(installedVersions.keys());
+  const denied = FORBIDDEN_DISTRIBUTIONS.filter((name) => installed.has(name));
+  for (const moduleName of FORBIDDEN_TOP_LEVEL_MODULES) {
+    for (const suffix of ["", ".py"]) {
+      if (fs.existsSync(path.join(sitePackages, `${moduleName}${suffix}`))) denied.push(moduleName);
+    }
+  }
+  if (denied.length > 0) {
+    throw new Error(`Plugin runtime contains forbidden Python backend packages: ${[...new Set(denied)].sort().join(", ")}`);
+  }
+  const constrained = constrainedDistributionVersions(platform);
+  const drift = [];
+  for (const [name, version] of constrained) {
+    if (installedVersions.get(name) !== version) {
+      drift.push(`${name}: expected ${version}, got ${installedVersions.get(name) ?? "missing"}`);
+    }
+  }
+  for (const [name, version] of installedVersions) {
+    if (!constrained.has(name)) drift.push(`${name}: unexpected ${version}`);
+  }
+  if (drift.length > 0) {
+    throw new Error(`Plugin runtime distribution closure drift: ${drift.join(", ")}`);
+  }
+  assertClosedTree(runtimeRoot);
+  return [...installed].sort();
+}
+
+function runPreflight(runtimeRoot, sitePackages, platform = process.platform) {
+  const python = bundledPython(runtimeRoot, platform);
+  if (!fs.existsSync(python) || fs.lstatSync(python).isSymbolicLink()) {
+    throw new Error(`Plugin runtime interpreter is absent or linked: ${python}`);
+  }
+  // Always qualify a first launch. A warm developer font cache can hide
+  // Matplotlib subprocess discovery failures inside the bounded plugin host.
+  const plottingCache = fs.mkdtempSync(path.join(os.tmpdir(), "studio-plugin-preflight-"));
+  let result;
+  try {
+    result = spawnSync(python, ["-I", "-S", "-B", "-c", PREFLIGHT, sitePackages], {
+      encoding: "utf8",
+      timeout: 120_000,
+      windowsHide: true,
+      env: { ...process.env, MPLCONFIGDIR: plottingCache, MPLBACKEND: "Agg" },
+    });
+  } finally {
+    fs.rmSync(plottingCache, { recursive: true, force: true });
+  }
+  if (result.status !== 0) {
+    throw new Error(`Plugin runtime preflight failed: ${(result.stderr || "").trim()}`);
+  }
+  const response = JSON.parse(result.stdout);
+  if (
+    response.bind_denied !== true ||
+    response.spawn_denied !== true ||
+    response.spawnv_denied !== true ||
+    response.implementation !== "cpython" ||
+    response.isolated !== true ||
+    response.no_site !== true ||
+    response.dont_write_bytecode !== true ||
+    response.version !== PLUGIN_DISTRIBUTION_VERSION ||
+    !isLowerSha256(response.record) ||
+    response.manifest !== PLUGIN_INSTALLED_MANIFEST_SHA256 ||
+    response.verified !== true ||
+    response.callable !== true
+    || response.tools_version !== TOOLS_DISTRIBUTION_VERSION
+    || !isLowerSha256(response.tools_record)
+    || response.tools_manifest !== TOOLS_INSTALLED_MANIFEST_SHA256
+    || response.tools_verified !== true
+    || response.tools_module !== "nirs4all_tools"
+    || response.duckdb_version !== DUCKDB_VERSION
+    || response.pyarrow_version !== PYARROW_VERSION
+    || response.duckdb_functional !== true
+    || response.pyarrow_parquet_functional !== true
+  ) {
+    throw new Error(`Plugin runtime preflight identity mismatch: ${result.stdout.trim()}`);
+  }
+  return response;
+}
+
+function markerPath(backendRoot) {
+  return path.join(backendRoot, "python-runtime", PLUGIN_MARKER_FILE);
+}
+
+function expectedMarker(platform = process.platform, arch = process.arch) {
+  return {
+    schema: PLUGIN_MARKER_SCHEMA,
+    python_role: PLUGIN_ROLE,
+    product_backend: "rust-sidecar",
+    transport: "bounded-cpython-stdio-v1",
+    http_listener: "forbidden",
+    source_commit: PLUGIN_SOURCE_COMMIT,
+    wheel_sha256: PLUGIN_WHEEL_SHA256,
+    distribution: "nirs4all",
+    distribution_version: PLUGIN_DISTRIBUTION_VERSION,
+    installed_manifest_sha256: PLUGIN_INSTALLED_MANIFEST_SHA256,
+    constraints: {
+      path: PLUGIN_CONSTRAINTS_RELATIVE_PATH,
+      sha256: PLUGIN_CONSTRAINTS_SHA256,
+    },
+    platform,
+    arch,
+    forbidden_distributions: [...FORBIDDEN_DISTRIBUTIONS],
+    conversion_tools: {
+      source_commit: TOOLS_SOURCE_COMMIT,
+      wheel_sha256: TOOLS_WHEEL_SHA256,
+      distribution: "nirs4all-tools",
+      distribution_version: TOOLS_DISTRIBUTION_VERSION,
+      installed_manifest_sha256: TOOLS_INSTALLED_MANIFEST_SHA256,
+      module: "nirs4all_tools",
+      cli: "python -I -B -m nirs4all_tools",
+      readers: { duckdb: DUCKDB_VERSION, pyarrow: PYARROW_VERSION },
+      functional_probes: {
+        duckdb: "in-memory-select-40-plus-2",
+        pyarrow_parquet: "in-memory-round-trip",
+      },
+    },
+  };
+}
+
+function verifyPluginRuntime({ backendRoot, platform = process.platform, arch = process.arch, writeMarker = false }) {
+  const readyPath = markerPath(backendRoot);
+  if (writeMarker) {
+    // Requalification must revoke a previous success before touching the staged
+    // runtime. A failed import or inventory check must never leave it marked ready.
+    fs.rmSync(readyPath, { force: true });
+  }
+  const runtimeRoot = path.join(backendRoot, "python-runtime", "python");
+  const sitePackages = findSitePackages(runtimeRoot);
+  if (writeMarker) {
+    removeBytecode(runtimeRoot);
+    // electron-builder does not preserve empty directories. Normalize them
+    // before content-addressing so the packaged closure remains identical.
+    removeEmptyDirectories(runtimeRoot);
+    installAdapters(projectRoot, sitePackages);
+  }
+  verifyAdapters(projectRoot, sitePackages);
+  const distributions = assertPluginOnlyPayload(
+    backendRoot,
+    runtimeRoot,
+    sitePackages,
+    platform,
+  );
+  if (writeMarker) {
+    compileRuntimeBytecode(runtimeRoot, platform);
+    assertClosedTree(runtimeRoot);
+  }
+  const preflight = runPreflight(runtimeRoot, sitePackages, platform);
+  const expected = expectedMarker(platform, arch);
+  if (writeMarker) {
+    fs.rmSync(path.join(backendRoot, "python-runtime", "RUNTIME_READY.json"), { force: true });
+    fs.writeFileSync(readyPath, `${JSON.stringify(expected, null, 2)}\n`);
+  } else {
+    const actual = JSON.parse(fs.readFileSync(readyPath, "utf8"));
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      throw new Error("Plugin runtime marker identity mismatch");
+    }
+  }
+  return { runtimeRoot, sitePackages, readyPath, distributions, preflight };
+}
+
+function parseArgs(argv = process.argv.slice(2)) {
+  const options = {
+    backendRoot: path.join(projectRoot, "backend-dist"),
+    cacheDir: path.join(projectRoot, "build", ".python-cache"),
+    constraints: PLUGIN_CONSTRAINTS_PATH,
+    pluginWheel: "",
+    dagWheel: "",
+    ioWheel: "",
+    toolsWheel: "",
+    verifyOnly: false,
+    finalizeExisting: false,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--backend-root") options.backendRoot = path.resolve(argv[++index]);
+    else if (arg === "--cache-dir") options.cacheDir = path.resolve(argv[++index]);
+    else if (arg === "--constraints") options.constraints = path.resolve(argv[++index]);
+    else if (arg === "--plugin-wheel") options.pluginWheel = path.resolve(argv[++index]);
+    else if (arg === "--dag-wheel") options.dagWheel = path.resolve(argv[++index]);
+    else if (arg === "--io-wheel") options.ioWheel = path.resolve(argv[++index]);
+    else if (arg === "--tools-wheel") options.toolsWheel = path.resolve(argv[++index]);
+    else if (arg === "--verify-only") options.verifyOnly = true;
+    else if (arg === "--finalize-existing") options.finalizeExisting = true;
+    else throw new Error(`Unknown argument: ${arg}`);
+  }
+  return options;
+}
+
+function runSetup(options) {
+  fs.rmSync(options.backendRoot, { recursive: true, force: true });
+  const args = [
+    path.join(__dirname, "setup-python-env.cjs"),
+    "--profile", "cpu",
+    "--output-dir", path.join(options.backendRoot, "python-runtime"),
+    "--cache-dir", options.cacheDir,
+    "--runtime-only",
+    "--build-mode", "studio-python-plugin-runtime",
+    "--clean",
+  ];
+  if (options.constraints) args.push("--constraints", options.constraints);
+  if (options.pluginWheel) args.push("--plugin-wheel", options.pluginWheel);
+  if (options.dagWheel) args.push("--dag-wheel", options.dagWheel);
+  if (options.ioWheel) args.push("--io-wheel", options.ioWheel);
+  if (options.toolsWheel) args.push("--tools-wheel", options.toolsWheel);
+  const result = spawnSync(process.execPath, args, { stdio: "inherit", windowsHide: true });
+  if (result.status !== 0) throw new Error(`Plugin runtime setup failed with code ${result.status}`);
+}
+
+function main() {
+  const options = parseArgs();
+  if (!options.verifyOnly && !options.finalizeExisting) {
+    runSetup(options);
+    materializeInternalRuntimeLinks(path.join(options.backendRoot, "python-runtime", "python"));
+  }
+  const verified = verifyPluginRuntime({
+    backendRoot: options.backendRoot,
+    writeMarker: !options.verifyOnly,
+  });
+  console.log(`Plugin-only CPython runtime verified: ${verified.runtimeRoot}`);
+  console.log(`Installed distributions: ${verified.distributions.length}`);
+}
+
+if (require.main === module) {
+  try { main(); } catch (error) {
+    console.error(`Plugin runtime bake failed: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+module.exports = {
+  assertConstraintsIdentity,
+  compileRuntimeBytecode,
+  assertClosedTree,
+  assertPluginOnlyPayload,
+  FORBIDDEN_DISTRIBUTIONS,
+  PLUGIN_MARKER_FILE,
+  PLUGIN_MARKER_SCHEMA,
+  PLUGIN_ROLE,
+  PLUGIN_SOURCE_COMMIT,
+  PLUGIN_WHEEL_SHA256,
+  PLUGIN_CONSTRAINTS_PATH,
+  PLUGIN_CONSTRAINTS_SHA256,
+  constrainedDistributionVersions,
+  installedDistributionVersions,
+  PREFLIGHT,
+  expectedMarker,
+  findSitePackages,
+  materializeInternalRuntimeLinks,
+  removeEmptyDirectories,
+  parseArgs,
+  verifyPluginRuntime,
+};
