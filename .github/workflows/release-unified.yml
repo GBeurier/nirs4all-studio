@@ -23,6 +23,11 @@ on:
         required: false
         default: false
         type: boolean
+      macos_arm64_only:
+        description: 'Retry only the macOS ARM installer; other existing artifacts remain unchanged'
+        required: false
+        default: false
+        type: boolean
       skip_docker:
         description: 'Skip Docker image builds'
         required: false
@@ -68,6 +73,7 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       skip_docker: ${{ steps.flags.outputs.skip_docker }}
       include_macos_x64: ${{ steps.flags.outputs.include_macos_x64 }}
+      macos_arm64_only: ${{ steps.flags.outputs.macos_arm64_only }}
       # Publication occurs for a tag push or an explicit existing-tag retry.
       # Other dispatches build and smoke without publishing.
       is_tag_release: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_existing_tag == true) }}
@@ -200,6 +206,7 @@ jobs:
       - name: Determine build flags
         id: flags
         run: |
+          echo "macos_arm64_only=${{ inputs.macos_arm64_only || 'false' }}" >> $GITHUB_OUTPUT
           echo "skip_docker=${{ inputs.skip_docker || 'false' }}" >> $GITHUB_OUTPUT
           echo "include_macos_x64=${{ inputs.include_macos_x64 || vars.STUDIO_INCLUDE_MACOS_X64 == 'true' }}" >> $GITHUB_OUTPUT
 
@@ -207,6 +214,7 @@ jobs:
   # A tag or manual dispatch must not bypass the PR quality gate.
   quality:
     name: Qualify release commit
+    if: needs.prepare.outputs.macos_arm64_only != 'true'
     needs: prepare
     uses: ./.github/workflows/ci.yml
     with:
@@ -280,6 +288,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   installer-linux:
     name: Installer — Linux x64
+    if: needs.prepare.outputs.macos_arm64_only != 'true'
     needs: [prepare, pinned-plugin-wheels]
     runs-on: ubuntu-22.04
     steps:
@@ -428,6 +437,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   installer-windows:
     name: Installer — Windows x64
+    if: needs.prepare.outputs.macos_arm64_only != 'true'
     needs: [prepare, pinned-plugin-wheels]
     # Methods' release preset is intentionally bound to VS 17 / 2022.
     runs-on: windows-2022
@@ -809,7 +819,7 @@ jobs:
         run: |
           installers=(release/*.dmg)
           test "${#installers[@]}" = 1
-          node scripts/smoke-packaged-ui.cjs --extracted-root release --platform darwin --timeout-ms 120000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
+          node scripts/smoke-packaged-ui.cjs --extracted-root release/mac --platform darwin --timeout-ms 120000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
 
       - name: Preserve packaged UI smoke proof
         if: always()
@@ -1029,7 +1039,7 @@ jobs:
         run: |
           installers=(release/*.dmg)
           test "${#installers[@]}" = 1
-          node scripts/smoke-packaged-ui.cjs --extracted-root release --platform darwin --timeout-ms 120000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
+          node scripts/smoke-packaged-ui.cjs --extracted-root release/mac-arm64 --platform darwin --timeout-ms 120000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
 
       - name: Preserve packaged UI smoke proof
         if: always()
