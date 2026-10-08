@@ -55,6 +55,25 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
   const readinessRevision = useRef(0);
 
   useEffect(() => {
+    // A fast environment switch can stop and restart Rust between heartbeats.
+    // The existing completion event is authoritative even if no poll saw it.
+    const restarted = () => {
+      readinessRevision.current += 1;
+      scientificReadyObserved.current = true;
+      invalidateLoadedWorkspaceDatasetResults();
+      const predicate = (query: { queryKey: readonly unknown[] }) =>
+        ['playground', 'reference-playground'].includes(String(query.queryKey[0]));
+      void queryClient.cancelQueries({ predicate });
+      void queryClient.invalidateQueries({ predicate, refetchType: 'none' });
+      // One refresh follows the next real readiness response. Do not start a
+      // second readiness request or refetch against an unverified runtime.
+      setReadiness(previous => ({ ...previous, mlReady: false, mlLoading: false }));
+    };
+    window.addEventListener('backend-restarted', restarted);
+    return () => window.removeEventListener('backend-restarted', restarted);
+  }, [queryClient, setReadiness]);
+
+  useEffect(() => {
     if (!state.mlReady) return;
     // Readiness resolves startup failures. Successful previews/results do not
     // become stale merely because a heartbeat announces the same runtime.

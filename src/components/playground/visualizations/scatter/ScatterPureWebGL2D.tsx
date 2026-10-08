@@ -61,7 +61,8 @@ export function ScatterPureWebGL2D({
 }: ScatterRendererProps & { clearOnBackgroundClick?: boolean; customBounds?: DataBounds }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const resourcesRef = useRef<Scatter2DWebGLResources | null>(null);
-  const animationFrameRef = useRef<number>(0);
+  const animationFrameRef = useRef<number | null>(null);
+  const renderRef = useRef<(() => void) | null>(null);
   const gridDataRef = useRef<GridGeometry2D | null>(null);
 
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -100,6 +101,16 @@ export function ScatterPureWebGL2D({
   );
   const { points: points2D, indexMap, bounds, pointColors } = scatterViewState;
 
+  // Coalesce data, interaction and size updates into one frame. Static plots
+  // leave the GPU idle after their pending frame has been drawn.
+  const requestRender = useCallback(() => {
+    if (!resourcesRef.current || animationFrameRef.current !== null) return;
+    animationFrameRef.current = requestAnimationFrame(() => {
+      animationFrameRef.current = null;
+      renderRef.current?.();
+    });
+  }, []);
+
   // Initialize WebGL
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -108,16 +119,25 @@ export function ScatterPureWebGL2D({
     const resources = createScatter2DWebGLResources(canvas);
     if (!resources) return;
     resourcesRef.current = resources;
+    const resizeObserver = new ResizeObserver(requestRender);
+    resizeObserver.observe(canvas);
+    window.addEventListener('resize', requestRender);
+    requestRender();
 
     // Cleanup
     return () => {
-      cancelAnimationFrame(animationFrameRef.current);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', requestRender);
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
       destroyScatter2DWebGLResources(resources);
       if (resourcesRef.current === resources) {
         resourcesRef.current = null;
       }
     };
-  }, []);
+  }, [requestRender]);
 
   // Update buffer data when points/colors change
   useEffect(() => {
@@ -132,7 +152,8 @@ export function ScatterPureWebGL2D({
       pointSize,
       indexMap
     );
-  }, [points2D, pointColors, pointSize, indexMap]);
+    requestRender();
+  }, [points2D, pointColors, pointSize, indexMap, requestRender]);
 
   // Update grid data when bounds change
   useEffect(() => {
@@ -146,7 +167,8 @@ export function ScatterPureWebGL2D({
       showGrid,
       showAxes
     );
-  }, [bounds, showGrid, showAxes]);
+    requestRender();
+  }, [bounds, showGrid, showAxes, requestRender]);
 
   // Update selection/hover state
   useEffect(() => {
@@ -162,7 +184,8 @@ export function ScatterPureWebGL2D({
       pinnedSamples,
       effectiveHovered
     );
-  }, [points2D, indexMap, selectedSamples, pinnedSamples, effectiveHovered]);
+    requestRender();
+  }, [points2D, indexMap, selectedSamples, pinnedSamples, effectiveHovered, requestRender]);
 
   // Render function
   const render = useCallback(() => {
@@ -179,23 +202,11 @@ export function ScatterPureWebGL2D({
     });
   }, [points2D, bounds, preserveAspectRatio, selectedSamples]);
 
-  // Animation loop
+  // A pending frame always uses the most recently committed render state.
   useEffect(() => {
-    let running = true;
-
-    const loop = () => {
-      if (!running) return;
-      render();
-      animationFrameRef.current = requestAnimationFrame(loop);
-    };
-
-    loop();
-
-    return () => {
-      running = false;
-      cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, [render]);
+    renderRef.current = render;
+    requestRender();
+  }, [render, requestRender]);
 
   // Mouse move handler for hover
   const handleMouseMove = useCallback(

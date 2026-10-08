@@ -54,6 +54,7 @@ pub mod run_detail;
 pub mod run_detail_cpython;
 pub mod run_detail_preselection;
 mod run_deletion;
+mod run_management;
 mod run_history;
 mod run_listing;
 pub mod scientific_cpython;
@@ -2286,6 +2287,7 @@ fn route_workspace_workflows_without_global_lock(
         .or_else(|| route_pipeline_presets_without_global_lock(state, request))
         .or_else(|| route_workspace_run_history(state, request))
         .or_else(|| run_deletion::route(state, request))
+        .or_else(|| run_management::route(state, request))
         .or_else(|| prediction_results::route(state, request))
         .or_else(|| run_listing::route(state, request))
 }
@@ -2598,10 +2600,29 @@ fn route_durable_execution_job_record(
         Ok(None) => return missing_durable_execution_record(route.route, &route.id),
         Err(error) => return app_settings_storage_error("resolve active linked workspace", &error),
     };
-    let run = match workspace.store().map_or_else(
-        || read_run_detail_projection(workspace.path(), &route.id),
-        |store| read_run_detail_projection_from_connection(&store, &route.id),
-    ) {
+    let job_id = if route.route == DurableExecutionJobRecordRoute::ByRunId {
+        run_management::job_id_for_store_run(workspace.path(), &route.id)
+            .unwrap_or_else(|| route.id.clone())
+    } else {
+        route.id.clone()
+    };
+    let record = match read_execution_job_record(workspace.path(), &job_id) {
+        Ok(record) => record,
+        Err(ExecutionJobRecordReadError::Missing) => {
+            return missing_durable_execution_record(route.route, &route.id);
+        }
+        Err(error) => return execution_job_record_read_error_response(&error),
+    };
+    let store = workspace.store();
+    let run = if route.route == DurableExecutionJobRecordRoute::ByJobId {
+        run_management::record_run_projection(workspace.path(), store.as_deref(), &job_id, &record)
+    } else {
+        store.as_deref().map_or_else(
+            || read_run_detail_projection(workspace.path(), &route.id),
+            |store| read_run_detail_projection_from_connection(store, &route.id),
+        )
+    };
+    let run = match run {
         Ok(run) => run,
         Err(error) => return workspace_store_read_error_response(&error),
     };
@@ -2611,13 +2632,6 @@ fn route_durable_execution_job_record(
             json!({"detail": format!("Run {} not found", route.id)}).to_string(),
         );
     }
-    let record = match read_execution_job_record(workspace.path(), &route.id) {
-        Ok(record) => record,
-        Err(ExecutionJobRecordReadError::Missing) => {
-            return missing_durable_execution_record(route.route, &route.id);
-        }
-        Err(error) => return execution_job_record_read_error_response(&error),
-    };
     HttpResponse::json(
         200,
         compose_execution_job_record_response(&record, run.as_ref()).to_string(),
@@ -3446,6 +3460,7 @@ fn runtime_directory_size(runtime_path: &Path) -> u64 {
 /// Immutable runtime facts used while diagnostics run outside the route mutex.
 struct RuntimeDiagnosticsSnapshot {
     python_plugin_host: Option<PathBuf>,
+    scientific_host: Option<Arc<scientific_cpython::CpythonScientificJobExecutor>>,
     runtime_mode: String,
     runtime_kind: String,
     python_plugin_host_bundled: bool,
@@ -3456,6 +3471,7 @@ impl RuntimeDiagnosticsSnapshot {
     fn from_state(state: &SidecarState) -> Self {
         Self {
             python_plugin_host: state.python_plugin_host.clone(),
+            scientific_host: state.scientific_host.clone(),
             runtime_mode: state.runtime_mode.clone(),
             runtime_kind: state.runtime_kind.clone(),
             python_plugin_host_bundled: state.python_plugin_host_bundled,
@@ -3885,6 +3901,7 @@ fn read_python_env_coherence(
         "bundled_runtime_available": state.python_plugin_host_bundled,
         "configured_matches_running": configured_matches_running,
         "core_ready": nirs4all_import,
+        "runtime_engine_capabilities": run_management::engine_capabilities(state.scientific_host.as_deref()),
         "missing_core_packages": missing_core_packages,
         "missing_optional_packages": [],
         "python_match": configured_matches_running,

@@ -181,6 +181,8 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         raise ValueError("Document must be a JSON object")
     if isinstance(document.get("workspace_path"), str):
         document = {**document, "workspace_path": plain_windows_path(document["workspace_path"])}
+    if operation in {"runs.preflight", "runs.detail", "runs.logs"}:
+        return read_stored_run(operation, document)
     if operation == "runs.delete":
         return delete_stored_run(document)
     if operation in {"playground.operators", "playground.presets", "spectra.data", "spectra.stats"}:
@@ -249,6 +251,103 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
     return operations[operation](document)
 
 
+def read_stored_run(operation: str, document: dict[str, Any]) -> Any:
+    """Read history through the library owner without opening a writable store."""
+    from nirs4all.pipeline.storage import WorkspaceStore, studio_run_detail_http_inputs_v1
+
+    if operation == "runs.preflight":
+        if document:
+            raise ValueError("Run owner preflight does not accept fields")
+        if not callable(studio_run_detail_http_inputs_v1):
+            raise TypeError("Run owner materializer is not callable")
+        return {"callable": "nirs4all.pipeline.storage.studio_run_detail_http_inputs_v1", "ready": True}
+    fields = {"workspace_path", "run_id"} | ({"pipeline_id"} if operation == "runs.logs" else set())
+    if set(document) != fields or not isinstance(document["workspace_path"], str) or not document["workspace_path"]:
+        raise ValueError("Run history requires an explicit workspace path and identifiers")
+    for field in fields - {"workspace_path"}:
+        identifier = document[field]
+        if not isinstance(identifier, str) or not identifier or len(identifier) > 1024 or any(character in identifier for character in "/\\\0") or identifier in {".", ".."}:
+            raise ValueError(f"Invalid {field}")
+    if operation == "runs.detail":
+        return studio_run_detail_http_inputs_v1(document["workspace_path"], document["run_id"])
+    from .shared.json_safe import sanitize_dict
+
+    with WorkspaceStore.open_readonly(document["workspace_path"]) as store:
+        pipeline = store.get_pipeline(document["pipeline_id"])
+        if not isinstance(pipeline, dict) or pipeline.get("run_id") != document["run_id"]:
+            raise ValueError("Pipeline not found in run")
+        logs = []
+        for row in store.get_pipeline_log(document["pipeline_id"]).iter_rows(named=True):
+            entry = sanitize_dict(dict(row))
+            if isinstance(entry.get("details"), str):
+                try:
+                    entry["details"] = json.loads(entry["details"])
+                except (ValueError, TypeError):
+                    pass
+            logs.append(entry)
+        return {"pipeline_id": document["pipeline_id"], "pipeline_name": pipeline.get("name"), "logs": logs}
+
+
+def retire_run_documents(workspace: Path, run_id: str, store: Any) -> list[str]:
+    """Move only documents identifying the deleted run; preserve shared jobs."""
+    import os
+    import uuid
+
+    runs = workspace / "runs"
+    if not runs.is_dir() or runs.is_symlink():
+        return []
+    warnings = []
+    with os.scandir(runs) as entries:
+        for index, entry in enumerate(entries):
+            if index >= 2000:
+                break
+            directory = Path(entry.path)
+            if not entry.is_dir(follow_symlinks=False) or entry.is_symlink():
+                continue
+            matched = False
+            for filename, maximum in (("manifest.json", 2 * 1024 * 1024), ("execution_job_record.json", 256 * 1024)):
+                path = directory / filename
+                try:
+                    if path.is_symlink() or not path.is_file() or path.stat().st_size > maximum:
+                        continue
+                    with path.open("rb") as stream:
+                        raw = stream.read(maximum + 1)
+                    if len(raw) > maximum:
+                        continue
+                    document = json.loads(raw)
+                    if not isinstance(document, dict):
+                        continue
+                    if filename == "manifest.json":
+                        matched = document.get("id") == entry.name and document.get("store_run_id") == run_id
+                    else:
+                        driver = document.get("driver")
+                        ids = driver.get("store_run_ids") if isinstance(driver, dict) else None
+                        if document.get("job_id") == entry.name and isinstance(ids, list) and 1 <= len(ids) <= 256 and all(isinstance(identifier, str) and identifier for identifier in ids):
+                            matched = run_id in ids and all(identifier == run_id or store.get_run(identifier) is None for identifier in ids)
+                    if matched:
+                        break
+                except (OSError, ValueError, TypeError):
+                    continue
+            if not matched:
+                continue
+            retired = workspace / ".nirs4all" / "deleted-runs"
+            # Do not move historical documents through a user-controlled symlink.
+            if (workspace / ".nirs4all").is_symlink() or retired.is_symlink():
+                warnings.append(f"Could not retire run documents: {entry.name}")
+                continue
+            try:
+                retired.mkdir(parents=True, exist_ok=True)
+                destination = retired / entry.name
+                if destination.exists() or destination.is_symlink():
+                    destination = retired / f"{entry.name}-{uuid.uuid4().hex}"
+                directory.rename(destination)
+            except OSError:
+                # The Store deletion already succeeded; never report it as a
+                # retryable failure merely because a Windows file is open.
+                warnings.append(f"Could not retire run documents: {entry.name}")
+    return warnings
+
+
 def delete_stored_run(document: dict[str, Any]) -> dict[str, Any]:
     """Delegate run deletion, including partial results, to the storage owner."""
     from nirs4all.pipeline.storage import WorkspaceStore
@@ -257,7 +356,7 @@ def delete_stored_run(document: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Run deletion requires a workspace path and run ID")
     workspace = Path(document["workspace_path"])
     run_id = document["run_id"]
-    if not isinstance(run_id, str) or not run_id:
+    if not isinstance(run_id, str) or not run_id or len(run_id) > 1024 or any(character in run_id for character in "/\\\0") or run_id in {".", ".."}:
         raise ValueError("Run ID must be a non-empty string")
     # Opening a writable store must not create a database for an unknown run.
     if not (workspace / "store.sqlite").is_file():
@@ -269,4 +368,11 @@ def delete_stored_run(document: dict[str, Any]) -> dict[str, Any]:
         if run.get("status") in {"running", "queued", "pending"}:
             return {"success": False, "reason": "run_active"}
         deleted_rows = store.delete_run(run_id, delete_artifacts=True)
-    return {"success": True, "deleted_rows": deleted_rows, "run_id": run_id}
+        try:
+            warnings = retire_run_documents(workspace, run_id, store)
+        except OSError:
+            warnings = ["Could not inspect historical run documents after Store deletion"]
+    result = {"success": True, "deleted_rows": deleted_rows, "run_id": run_id}
+    if warnings:
+        result["warnings"] = warnings
+    return result

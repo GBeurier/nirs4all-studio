@@ -397,12 +397,13 @@ function SpectraWebGLInner({
   return (
     <div ref={containerRef} className={cn('relative', className)}>
       <Canvas
+        frameloop="demand"
         orthographic
         camera={{
           position: [0.5, 0.5, 5],
           near: 0.1,
           far: 100,
-          // Initial values - ResponsiveCamera will adjust these on each frame
+          // ResponsiveCamera adjusts these when the viewport changes.
           left: SPECTRA_WEBGL_CAMERA_BOUNDS.left,
           right: SPECTRA_WEBGL_CAMERA_BOUNDS.right,
           top: SPECTRA_WEBGL_CAMERA_BOUNDS.top,

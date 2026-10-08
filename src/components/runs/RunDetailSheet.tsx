@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { formatApiErrorDetail } from "@/api/transport";
+import { getApiErrorMessage } from "@/api/transport";
 import {
   Sheet,
   SheetContent,
@@ -137,7 +137,7 @@ export function RunDetailSheet({
 
         {(detailError || (activeTab === "logs" && logsError)) && (
           <div role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
-            <p>{formatApiErrorDetail(detailError ?? logsError)}</p>
+            <p>{getApiErrorMessage(detailError ?? logsError)}</p>
             <button type="button" className="mt-2 underline" onClick={() => void (detailError ? refetchDetail() : refetchLogs())}>Retry</button>
           </div>
         )}

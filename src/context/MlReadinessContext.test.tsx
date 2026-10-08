@@ -3,7 +3,7 @@
  */
 
 import { act, type ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -244,6 +244,83 @@ afterEach(() => {
 });
 
 describe("MlReadinessProvider", () => {
+  it("refreshes a runtime restarted between polls once and preserves document previews", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockResolvedValue({ ml_ready: true, workspace_ready: true });
+    const view = await renderProvider(createElectronApiMock());
+    const key = ["playground", "execute", "snapshot"];
+    const fetchResult = vi.fn().mockResolvedValue({ value: "new runtime" });
+    const observer = new QueryObserver(view.client, {
+      queryKey: key, queryFn: fetchResult, initialData: { value: "old runtime" }, staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+    const documentKey = ["datasets", "preview", "dataset", 100];
+    view.client.setQueryData(documentKey, { value: 1 });
+    await act(async () => { window.dispatchEvent(new CustomEvent("backend-restarted")); });
+    expect(view.client.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(view.client.getQueryState(documentKey)?.isInvalidated).toBe(false);
+    expect(view.result.current?.mlReady).toBe(false);
+    expect(fetchResult).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(view.result.current?.mlReady).toBe(true);
+    expect(fetchResult).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(fetchResult).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    await view.unmount();
+    view.client.setQueryData(key, { value: "after unmount" });
+    window.dispatchEvent(new CustomEvent("backend-restarted"));
+    expect(view.client.getQueryState(key)?.isInvalidated).toBe(false);
+    view.client.clear();
+  });
+
+  it("discards a readiness response started before an explicit runtime restart", async () => {
+    vi.useFakeTimers();
+    const oldPoll = deferred<MlStatusPayload>();
+    mocks.apiGet.mockResolvedValueOnce({ ml_ready: true, workspace_ready: true })
+      .mockReturnValueOnce(oldPoll.promise)
+      .mockResolvedValue({ ml_ready: true, workspace_ready: true });
+    const view = await renderProvider(createElectronApiMock());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await act(async () => { window.dispatchEvent(new CustomEvent("backend-restarted")); });
+    await act(async () => {
+      oldPoll.resolve({ core_ready: true, ml_ready: true, ml_loading: false, ml_error: null });
+    });
+    expect(view.result.current?.mlReady).toBe(false);
+    expect(mocks.apiGet).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(view.result.current?.mlReady).toBe(true);
+    await view.unmount();
+  });
+
+  it("cancels an old runtime preview before marking its result stale", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockResolvedValue({ ml_ready: true, workspace_ready: true });
+    const view = await renderProvider(createElectronApiMock());
+    const key = ["playground", "execute", "snapshot"];
+    const oldResult = deferred<{ value: string }>();
+    let signal: AbortSignal | undefined;
+    const fetchResult = vi.fn(({ signal: current }: { signal: AbortSignal }) => {
+      signal = current;
+      return oldResult.promise;
+    });
+    const observer = new QueryObserver(view.client, {
+      queryKey: key, queryFn: fetchResult, initialData: { value: "cached" }, staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+    const request = observer.refetch();
+    await act(async () => { window.dispatchEvent(new CustomEvent("backend-restarted")); });
+    await request;
+    expect(signal?.aborted).toBe(true);
+    expect(view.client.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(view.client.getQueryState(key)?.fetchStatus).toBe("idle");
+    oldResult.resolve({ value: "obsolete runtime" });
+    await act(async () => { await Promise.resolve(); });
+    expect(view.client.getQueryData(key)).toEqual({ value: "cached" });
+    unsubscribe();
+    await view.unmount();
+  });
+
   it("invalidates scientific results after runtime recovery while retaining successful document previews", async () => {
     vi.useFakeTimers();
     mocks.apiGet.mockResolvedValueOnce({ ml_ready: true, workspace_ready: true })

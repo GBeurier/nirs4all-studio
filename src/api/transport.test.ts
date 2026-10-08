@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api, formatApiErrorDetail, resetBackendUrl } from "./transport";
+import { api, formatApiErrorDetail, getApiErrorMessage, resetBackendUrl } from "./transport";
 import { hasScientificRequestInFlight } from "./dataset-request-activity";
 import { getConfigDiff, getRecommendedConfig } from "./config";
 import {
@@ -286,6 +286,13 @@ afterEach(() => {
 });
 
 describe("formatApiErrorDetail", () => {
+  it("extracts messages from query Errors and native ApiErrors without serializing the wrapper", () => {
+    expect(getApiErrorMessage(new Error("Logs unavailable"))).toBe("Logs unavailable");
+    expect(getApiErrorMessage({ detail: "Run deletion refused", status: 409 })).toBe("Run deletion refused");
+    expect(getApiErrorMessage({ detail: [{ loc: ["body", "name"], msg: "Required" }], status: 422 })).toBe("name: Required");
+    expect(getApiErrorMessage(null)).toBeNull();
+  });
+
   it("formats FastAPI validation arrays into readable messages", () => {
     const detail = [
       {

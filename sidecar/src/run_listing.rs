@@ -206,7 +206,16 @@ fn read(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Result<Val
         .dataset_links()
         .map_err(|error| crate::app_settings_storage_error("read run dataset links", &error))?;
     let mut history_statuses = statuses.iter().flatten().cloned().collect::<Vec<_>>();
+    let live = jobs.training_list_at(workspace.path(), Instant::now());
+    if !crate::run_management::has_live_training(&live)
+        && statuses
+            .as_ref()
+            .is_some_and(|statuses| statuses.contains("failed"))
+    {
+        history_statuses.extend(["running".into(), "queued".into()]);
+    }
     history_statuses.sort();
+    history_statuses.dedup();
     let stored = if stats_only {
         Ok(json!({"runs":[],"total":0}))
     } else {
@@ -249,13 +258,7 @@ fn read(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Result<Val
         Err(WorkspaceStoreReadError::StoreNotFound) => empty_stats,
         Err(error) => return Err(crate::workspace_store_read_error_response(&error)),
     };
-    Ok(compose(
-        &stored,
-        stats,
-        jobs.training_list_at(workspace.path(), Instant::now()),
-        statuses.as_ref(),
-        stats_only,
-    ))
+    Ok(compose(&stored, stats, live, statuses.as_ref(), stats_only))
 }
 
 fn parse_statuses(
@@ -294,7 +297,25 @@ fn compose(
     statuses: Option<&HashSet<String>>,
     stats_only: bool,
 ) -> Value {
+    let mut stored = stored.clone();
+    crate::run_management::normalize_interrupted(&mut stored, &jobs);
+    if !crate::run_management::has_live_training(&jobs) {
+        let interrupted = ["running", "queued"]
+            .iter()
+            .map(|status| counters[*status].as_u64().unwrap_or(0))
+            .sum::<u64>();
+        counters["running"] = json!(0);
+        counters["queued"] = json!(0);
+        counters["failed"] = json!(counters["failed"].as_u64().unwrap_or(0) + interrupted);
+    }
     let mut runs = stored["runs"].as_array().cloned().unwrap_or_default();
+    runs.retain(|run| {
+        statuses.is_none_or(|statuses| {
+            run["status"]
+                .as_str()
+                .is_some_and(|status| statuses.contains(status))
+        })
+    });
     for run in &mut runs {
         run["id"] = run["run_id"].clone();
         run["store_run_id"] = run["run_id"].clone();
@@ -460,5 +481,27 @@ mod tests {
         assert_eq!(result["running"], 1);
         assert_eq!(result["completed"], 600);
         assert_eq!(result["total_pipelines"], 900);
+    }
+    #[test]
+    fn restart_marks_stored_running_runs_interrupted_without_changing_live_children() {
+        let stored = json!({"runs":[{"run_id":"child","status":"running","completed_at":null,"created_at":"2026-09-01","datasets":[]}],"total":1});
+        let stats = json!({"running":1,"queued":0,"completed":0,"failed":0,"total":1});
+        let live = vec![
+            json!({"job":{"id":"parent","status":"running","result":{"result":{"run_ids":["child"]}}}}),
+        ];
+        let running = compose(&stored, stats.clone(), live, None, false);
+        assert_eq!(running["runs"][0]["status"], "running");
+        let stopped = compose(&stored, stats.clone(), vec![], None, false);
+        assert_eq!(stopped["runs"][0]["status"], "failed");
+        assert_eq!(stopped["runs"][0]["stored_status"], "running");
+        assert!(stopped["runs"][0]["completed_at"].is_null());
+        let stats_only = compose(&stored, stats.clone(), vec![], None, true);
+        assert_eq!(stats_only["running"], 0);
+        assert_eq!(stats_only["failed"], 1);
+        let selected = HashSet::from(["running".to_owned()]);
+        let filtered = compose(&stored, stats, vec![], Some(&selected), false);
+        assert_eq!(filtered["total"], 0);
+        assert!(filtered["runs"].as_array().unwrap().is_empty());
+        assert_eq!(stored["runs"][0]["status"], "running");
     }
 }
