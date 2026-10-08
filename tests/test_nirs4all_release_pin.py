@@ -14,17 +14,17 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_sidecar_resolves_selected_native_releases() -> None:
     manifest = tomllib.loads((ROOT / "sidecar" / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
-    assert dependencies["nirs4all"] == "=0.4.4"
+    assert dependencies["nirs4all"] == "=0.4.5"
     assert dependencies["nirs4all-io"] == "=0.2.6"
-    # Native consumers use Core 0.4.4 public reexports and its exact DAG 0.3.39.
+    # Native consumers use Core 0.4.5 public reexports and its exact DAG 0.3.41.
     assert "dag-ml-core" not in manifest.get("dev-dependencies", {})
 
 
 def test_registry_lock_resolves_selected_native_releases() -> None:
     locked = tomllib.loads((ROOT / "sidecar" / "Cargo.lock").read_text(encoding="utf-8"))
     packages = {(package["name"], package["version"]) for package in locked["package"]}
-    assert {("nirs4all", "0.4.4"), ("nirs4all-io", "0.2.6"), ("dag-ml", "0.3.39"),
-            ("dag-ml-core", "0.3.39"), ("dag-ml-data", "0.2.13"), ("n4m", "0.4.0")} <= packages
+    assert {("nirs4all", "0.4.5"), ("nirs4all-io", "0.2.6"), ("dag-ml", "0.3.41"),
+            ("dag-ml-core", "0.3.41"), ("dag-ml-data", "0.2.13"), ("n4m", "0.4.0")} <= packages
     for package in locked["package"]:
         if package["name"] in {"nirs4all", "nirs4all-io", "dag-ml", "dag-ml-core", "dag-ml-data", "n4m"}:
             assert package.get("source", "").startswith("registry+"), "local path locks do not attest public releases"
@@ -38,12 +38,12 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     version = config["nirs4all"]
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
 
-    assert version == "1.4.6"
+    assert version == "1.4.7"
     ref = re.search(r"^  NIRS4ALL_LIBRARY_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert ref is not None
     assert source is not None
-    assert ref.group(1) == source.group(1) == "1cc6b83d4c6d3904a0ce78f7b844056e47efd794"
+    assert ref.group(1) == source.group(1) == "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc"
     parsed = yaml.safe_load(workflow)
     contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
     assert parsed["env"]["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
@@ -71,7 +71,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     dag_source = re.search(r"^  DAG_ML_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert dag_ref is not None
     assert dag_source is not None
-    assert dag_ref.group(1) == dag_source.group(1) == "36af82eaf661de5c20311a3c2d55e24fbfcf287f"
+    assert dag_ref.group(1) == dag_source.group(1) == "6f4044b45028a90a92d3f29287e67779bb5fd0b9"
 
     data_ref = re.search(r"^  DAG_ML_DATA_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     data_source = re.search(
@@ -108,7 +108,8 @@ def test_recommended_profiles_use_single_nirs4all_version() -> None:
         if package is None:
             continue
         assert package["recommended"] == version
-        assert package["min"] == f">={version}"
+        # Compatibility floor remains 1.4.6 while the recommended cohort is 1.4.7.
+        assert package["min"] == ">=1.4.6"
 
 
 def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> None:
@@ -150,20 +151,20 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
 
     assert "node scripts/verify-plugin-runtime-reproducibility.cjs" in workflow
     assert "plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json" in workflow
-    assert "nirs4all==1.4.6" in constraints
-    assert "nirs4all-core==0.4.4" in constraints
+    assert "nirs4all==1.4.7" in constraints
+    assert "nirs4all-core==0.4.5" in constraints
     assert "nirs4all-io==0.2.6" in constraints
     assert "dag-ml-data==0.2.13" in constraints
     assert "nirs4all-methods==1.3.4" in constraints
     assert "pls4all==1.3.4" in constraints
-    # Python DAG is independently published 0.3.40; Rust stays on Core's 0.3.39.
-    assert "dag-ml==0.3.40" in constraints
+    # Python and Rust DAG consume the same independently published 0.3.41 cohort.
+    assert "dag-ml==0.3.41" in constraints
     assert "nirs4all-formats==0.2.11" in constraints
     assert "nirs4all-tools==0.0.8" in constraints
     assert "scikit-learn==1.9.0" in constraints
 
 
-def test_release_dispatch_never_publishes_docker_images() -> None:
+def test_release_dispatch_only_publishes_when_explicitly_requested() -> None:
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8"))
 
     for step_name in ["Login to GitHub Container Registry", "Publish the tested Docker image"]:
@@ -171,7 +172,7 @@ def test_release_dispatch_never_publishes_docker_images() -> None:
         assert step["if"] == "needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'"
 
 
-def test_release_installed_upgrade_is_blocking_and_checksums_use_basenames() -> None:
+def test_release_packaged_ui_smoke_is_blocking_and_checksums_use_basenames() -> None:
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8"))
 
     installers = {name: job for name, job in workflow["jobs"].items() if name.startswith("installer-")}
@@ -181,18 +182,15 @@ def test_release_installed_upgrade_is_blocking_and_checksums_use_basenames() -> 
         assert name in release["needs"]
         assert f"needs.{name}.result == 'success'" in release["if"]
         steps = job["steps"]
-        qualification = next(i for i, step in enumerate(steps) if "scripts/qualify-installer.cjs" in step.get("run", ""))
+        qualification = next(i for i, step in enumerate(steps) if "scripts/smoke-packaged-ui.cjs" in step.get("run", ""))
         upload = next(i for i, step in enumerate(steps) if step.get("name") == "Upload artifacts")
         assert qualification < upload
         qualifier = steps[qualification]["run"]
-        assert qualifier.count("--multimodal-provider-script _deps/nirs4all-qualification/tests/qualification/installed_multimodal_provider.py") == 1
-        sdk_checkout = next(i for i, step in enumerate(steps)
-                            if step.get("with", {}).get("repository") == "GBeurier/nirs4all")
-        assert sdk_checkout < qualification
-        assert steps[sdk_checkout]["with"]["ref"] == "1cc6b83d4c6d3904a0ce78f7b844056e47efd794"
-        assert steps[sdk_checkout]["with"]["path"] == "_deps/nirs4all-qualification"
+        assert "--installer" in qualifier
+        assert "--timeout-ms 120000" in qualifier
         assert not steps[qualification].get("continue-on-error", False)
-        assert "INSTALLER_BASELINE" in steps[qualification]["env"]
+        assert "checkout_ref" in steps[qualification]["env"]["RELEASE_SOURCE_SHA"]
+        assert "INSTALLER_BASELINE" not in steps[qualification].get("env", {})
         checksum = next(step["run"] for step in steps if step.get("name") == "Generate checksums")
         if name == "installer-windows":
             assert "$($_.Name)" in checksum

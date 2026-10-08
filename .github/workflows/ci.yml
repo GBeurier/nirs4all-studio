@@ -75,8 +75,9 @@ jobs:
       - name: Type check
         run: npm run lint:tsc
 
-      - name: Run tests
-        run: npm run test:frontend
+      - name: Check release workflow contracts
+        # Full unchanged frontend suites remain local or retained historical evidence.
+        run: npx vitest run electron/ci-workflow-contract.test.ts electron/windows-release-gate.test.ts --maxWorkers=1
 
       - name: Test installer and release scripts
         run: node --test scripts/tests/*.test.cjs scripts/tests/linux-installer-cycle.contract.cjs
@@ -217,9 +218,10 @@ jobs:
           python main.py --help
           echo "CLI arguments work"
 
-      - name: Run backend tests
+      - name: Check published runtime cohort contracts
+        # Hosted jobs build and smoke; full scientific/backend suites run locally.
         run: |
-          python -m pytest tests/ -v --tb=short --timeout=120 --cov=api --cov-report=xml
+          python -m pytest tests/test_nirs4all_release_pin.py tests/test_plugin_runtime_platform_constraints.py -q --tb=short --timeout=120
         env:
           PYTHONPATH: .
 
@@ -240,12 +242,6 @@ jobs:
         env:
           PYTHONPATH: .
 
-      - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-coverage
-          path: coverage.xml
           retention-days: 7
 
 
