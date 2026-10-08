@@ -24,15 +24,18 @@ function closed(value, keys, label) {
 function positive(value, label) { assert(Number.isSafeInteger(value) && value > 0, `Invalid ${label}`); }
 function digest(value, label) { assert(typeof value === 'string' && /^[0-9a-f]{64}$/.test(value), `Invalid ${label}`); }
 function validateManifest(value) {
-  closed(value, ['schema', 'version', 'source_sha', 'release_run_id', 'ci_run_id', 'e2e_run_id', 'version_run_id',
+  closed(value, ['schema', 'version', 'source_sha', 'release_run_id', 'ci_run_id', 'local_qualification', 'version_run_id',
     'artifacts', 'producer_files', 'files', 'docker', 'notes_sha256'], 'Reviewed manifest');
-  assert.equal(value.schema, 'nirs4all.studio.reviewed-promotion.v1');
+  assert.equal(value.schema, 'nirs4all.studio.reviewed-promotion.v2');
   assert.equal(value.version, VERSION);
   assert(typeof value.source_sha === 'string' && /^[0-9a-f]{40}$/.test(value.source_sha), 'Invalid immutable runtime SHA');
-  const runIds = ['release_run_id', 'ci_run_id', 'e2e_run_id', 'version_run_id'].map(key => {
+  const runIds = ['release_run_id', 'ci_run_id', 'version_run_id'].map(key => {
     positive(value[key], key); return value[key];
   });
-  assert.equal(new Set(runIds).size, 4, 'Gate run IDs must be distinct');
+  assert.equal(new Set(runIds).size, 3, 'Gate run IDs must be distinct');
+  closed(value.local_qualification, ['path', 'sha256'], 'Local qualification');
+  assert.equal(value.local_qualification.path, 'qualification/local-qualification.json');
+  digest(value.local_qualification.sha256, 'local qualification SHA256');
   closed(value.artifacts, Object.keys(ARTIFACT_NAMES), 'Artifacts');
   for (const [key, name] of Object.entries(ARTIFACT_NAMES)) {
     const artifact = value.artifacts[key]; closed(artifact, ['id', 'name', 'digest'], `Artifact ${key}`);
@@ -71,7 +74,6 @@ async function verifyGates(manifest, api) {
   const gates = [
     [m.release_run_id, '.github/workflows/release-unified.yml', 'workflow_dispatch', RELEASE_JOBS],
     [m.ci_run_id, '.github/workflows/ci.yml', 'push', CI_JOBS],
-    [m.e2e_run_id, '.github/workflows/playwright.yml', 'push', ['E2E Tests']],
     [m.version_run_id, '.github/workflows/version-guard.yml', 'push', ['version-guard']],
   ];
   for (const [id, workflow, event, names] of gates) {
@@ -135,6 +137,15 @@ async function command(program, args) {
   // Commands never print child diagnostics, argv or credentials on failure.
   return (await execFileAsync(program, args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: 30 * 60 * 1000 })).stdout;
 }
+async function verifyLocalQualification(manifest, execute = command) {
+  const m = validateManifest(manifest);
+  plainFile(m.local_qualification.path);
+  assert.equal(sha256File(m.local_qualification.path), m.local_qualification.sha256, 'Reviewed local qualification bytes differ');
+  // The shared verifier checks actual local host/command/log/report facts and
+  // unchanged runtime/dependency/fixture/helper inputs; CI/doc changes do not replay E2E.
+  await execute('python3', ['scripts/verify_local_qualification.py', '--project', 'studio',
+    '--receipt', m.local_qualification.path, '--root', '.']);
+}
 async function main(argv = process.argv.slice(2), env = process.env) {
   assert(argv.length === 1 && ['verify', 'publish'].includes(argv[0]), 'Usage: promote-reviewed-0151.cjs verify|publish');
   assert.equal(env.GITHUB_REPOSITORY, REPO); assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
@@ -142,6 +153,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   assert.equal(env.GITHUB_WORKFLOW, 'Publish reviewed Studio 0.15.1');
   // Manifest and notes are tracked, independently reviewed source; no input ref/path/digest is accepted.
   const manifest = validateManifest(JSON.parse(fs.readFileSync(MANIFEST, 'utf8')));
+  await verifyLocalQualification(manifest);
   const api = async endpoint => JSON.parse(await command('gh', ['api', `repos/${REPO}/${endpoint}`]));
   await verifyGates(manifest, api);
   const root = fs.mkdtempSync(path.join(env.RUNNER_TEMP, 'reviewed-studio0151-'));
@@ -161,6 +173,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   // Recheck live gates immediately before any write. This workflow supplies only github.token.
   // Git refs created with GITHUB_TOKEN do not trigger push workflows: release-unified cannot rebuild concurrently.
   await verifyGates(manifest, api);
+  await verifyLocalQualification(manifest);
   let tag;
   try { tag = await api(`git/ref/tags/${VERSION}`); }
   catch (error) {
@@ -178,4 +191,4 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   console.log('Published only the exact reviewed Studio 0.15.1 installers and Docker image');
 }
 if (require.main === module) main().catch(error => { console.error(error.cmd ? 'Reviewed promotion command failed' : error.message); process.exitCode = 1; });
-module.exports = { ARTIFACT_NAMES, CI_JOBS, RELEASE_JOBS, validateManifest, verifyGates, stageProducerPayloads, verifyPayloads, main };
+module.exports = { ARTIFACT_NAMES, CI_JOBS, RELEASE_JOBS, validateManifest, verifyGates, verifyLocalQualification, stageProducerPayloads, verifyPayloads, main };

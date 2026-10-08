@@ -4,10 +4,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { expectedPublishedNames, sha256File } = require('../finalize-release-assets.cjs');
-const { ARTIFACT_NAMES, CI_JOBS, RELEASE_JOBS, validateManifest, verifyGates, stageProducerPayloads, verifyPayloads } = require('../promote-reviewed-0151.cjs');
+const { ARTIFACT_NAMES, CI_JOBS, RELEASE_JOBS, validateManifest, verifyGates, verifyLocalQualification, stageProducerPayloads, verifyPayloads } = require('../promote-reviewed-0151.cjs');
 function candidate() {
-  return { schema: 'nirs4all.studio.reviewed-promotion.v1', version: '0.15.1', source_sha: 'a'.repeat(40),
-    release_run_id: 100, ci_run_id: 101, e2e_run_id: 102, version_run_id: 103,
+  return { schema: 'nirs4all.studio.reviewed-promotion.v2', version: '0.15.1', source_sha: 'a'.repeat(40),
+    release_run_id: 100, ci_run_id: 101, local_qualification: { path: 'qualification/local-qualification.json', sha256: 'b'.repeat(64) }, version_run_id: 103,
     artifacts: Object.fromEntries(Object.entries(ARTIFACT_NAMES).map(([key, name], index) => [key, { id: 200 + index, name, digest: `sha256:${'b'.repeat(64)}` }])),
     producer_files: expectedPublishedNames('0.15.1', false, false).flatMap(name => [name, `${name}.sha256`]).map(name => ({ name: name.replace('nirs4all.Studio-', 'nirs4all Studio-'), size: 1, sha256: 'c'.repeat(64) })),
     files: expectedPublishedNames('0.15.1', false, false).flatMap(name => [name, `${name}.sha256`]).map(name => ({ name, size: 1, sha256: 'c'.repeat(64) })),
@@ -17,7 +17,7 @@ function server(m) {
   const records = {};
   for (const [id, workflow, event, names] of [
     [m.release_run_id, 'release-unified', 'workflow_dispatch', RELEASE_JOBS], [m.ci_run_id, 'ci', 'push', CI_JOBS],
-    [m.e2e_run_id, 'playwright', 'push', ['E2E Tests']], [m.version_run_id, 'version-guard', 'push', ['version-guard']],
+    [m.version_run_id, 'version-guard', 'push', ['version-guard']],
   ]) {
     records[`actions/runs/${id}`] = { id, head_sha: m.source_sha, path: `.github/workflows/${workflow}.yml`, event, head_branch: 'main', status: 'completed', conclusion: 'success' };
     const jobs = names.map(name => ({ name, status: 'completed', conclusion: 'success' }));
@@ -42,7 +42,7 @@ test('failed, skipped, mismatched-source, truncated and already-published candid
     records => { records['actions/runs/100'].conclusion = 'failure'; },
     records => { records['actions/runs/100'].event = 'push'; },
     records => { records['actions/runs/100'].head_sha = '0'.repeat(40); },
-    records => { records['actions/runs/102'].head_sha = '0'.repeat(40); },
+    records => { records['actions/runs/103'].head_sha = '0'.repeat(40); },
     records => { records['actions/runs/101'].head_branch = 'fork'; },
     records => { records['actions/runs/100/jobs?per_page=100'].jobs.find(job => job.name === 'Installer — Windows x64').conclusion = 'skipped'; },
     records => { records['actions/runs/100/jobs?per_page=100'].total_count += 1; },
@@ -60,6 +60,7 @@ test('manifest refuses other versions, source aliases, duplicate IDs and arbitra
   for (const alter of [
     m => { m.version = '0.15.2'; }, m => { m.source_sha = 'main'; }, m => { m.extra = true; },
     m => { m.ci_run_id = m.release_run_id; }, m => { m.artifacts.macos.id = m.artifacts.windows.id; },
+    m => { m.local_qualification.path = '../unreviewed.json'; }, m => { m.e2e_run_id = 102; },
     m => { m.files[0].name = '../app.exe'; }, m => { m.files[0].size = 0; },
   ]) { const m = candidate(); alter(m); assert.throws(() => validateManifest(m)); }
 });
@@ -112,4 +113,23 @@ test('real producer space-names normalize without rebuilding; both producer and 
     const file = folders.map(folder => path.join(folder, producer.name)).find(file => fs.existsSync(file));
     fs.appendFileSync(file, 'tampered'); assert.throws(() => stageProducerPayloads(m, root, folders));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('reviewed local receipt hash and shared strict verifier are mandatory before promotion', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reviewed0151-local-'));
+  const previous = process.cwd();
+  try {
+    fs.mkdirSync(path.join(root, 'qualification'));
+    const receipt = path.join(root, 'qualification/local-qualification.json');
+    fs.writeFileSync(receipt, '{"strict":"retained evidence, not a production qualification"}');
+    const m = candidate(); m.local_qualification.sha256 = sha256File(receipt);
+    process.chdir(root);
+    const calls = [];
+    await verifyLocalQualification(m, async (program, args) => { calls.push([program, args]); });
+    assert.deepEqual(calls, [['python3', ['scripts/verify_local_qualification.py', '--project', 'studio', '--receipt', 'qualification/local-qualification.json', '--root', '.']]]);
+    await assert.rejects(verifyLocalQualification(m, async () => { throw new Error('stale runtime or missing local gate'); }), /missing local gate/);
+    fs.appendFileSync(receipt, 'tampered');
+    await assert.rejects(verifyLocalQualification(m, async () => assert.fail('Must not invoke verifier with changed evidence')), /bytes differ/);
+  } finally { process.chdir(previous); fs.rmSync(root, { recursive: true, force: true }); }
 });

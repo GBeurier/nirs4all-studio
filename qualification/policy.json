@@ -1,0 +1,524 @@
+{
+  "schema": "nirs4all.local-qualification.v1",
+  "project": "studio",
+  "gates": [
+    {
+      "id": "web-e2e",
+      "hosts": [
+        "linux"
+      ],
+      "commands": {
+        "linux": [
+          "npx",
+          "playwright",
+          "test",
+          "--project=web-chromium",
+          "--reporter=json"
+        ]
+      },
+      "input_paths": [
+        "src/",
+        "e2e/",
+        "package.json",
+        "package-lock.json",
+        "playwright.config.ts",
+        "vite.config.ts",
+        "postcss.config.js",
+        "tailwind.config.ts",
+        "tsconfig.app.json",
+        "tsconfig.json",
+        "tsconfig.node.json",
+        "public/",
+        "sidecar/src/",
+        "sidecar/contracts/"
+      ],
+      "minimum_passed": 60,
+      "allowed_skips": [],
+      "report_format": "playwright-json",
+      "required_environment": {
+        "NIRS4ALL_E2E_REUSE_SERVER": "0"
+      },
+      "qualification_scope": "Historical renderer/navigation/settings and mocked run-display checks, with unchanged renderer/test and Rust route source bytes. The unbaked Vite/Cargo development server does not read plugin-runtime constraints or runtime-cohort. This gate does not assert unchanged Cargo/Core dependency bytes or qualify current numeric runtime; current installed cohort and backend are qualified separately by actual packaged journeys and host UI smokes."
+    },
+    {
+      "id": "linux-packaged-journeys",
+      "hosts": [
+        "linux"
+      ],
+      "commands": {
+        "linux": [
+          "node",
+          "{root}/scripts/qualify-local-packaged.cjs",
+          "--config",
+          "{root}/qualification/linux-packaged.config.json"
+        ]
+      },
+      "input_paths": [
+        "src/",
+        "electron/",
+        "sidecar/",
+        "api/",
+        "package.json",
+        "package-lock.json",
+        "recommended-config.json",
+        "build/constraints/",
+        "build/runtime-cohort.json",
+        "electron-builder.installer.yml",
+        "scripts/python-runtime-config.cjs",
+        "scripts/bake-python-plugin-runtime.cjs",
+        "scripts/native-runtime-contract.cjs",
+        "scripts/smoke-archive-standalone.cjs",
+        "scripts/smoke-first-launch-ui.cjs",
+        "scripts/finalize-release-assets.cjs",
+        "scripts/qualification-performance.cjs",
+        "scripts/verify-runtime-cohort.cjs",
+        "scripts/qualify-installer.cjs",
+        "scripts/qualify-local-packaged.cjs",
+        "scripts/qualify-scientific-journey.cjs",
+        "scripts/smoke-multimodal-ui.cjs",
+        "scripts/fixtures/",
+        "scripts/tests/smoke-multimodal-ui-policy.test.cjs",
+        "postcss.config.js",
+        "tailwind.config.ts",
+        "tsconfig.app.json",
+        "tsconfig.electron.json",
+        "tsconfig.json",
+        "tsconfig.nirs4all-ui-package-smoke.json",
+        "tsconfig.node.json",
+        "vite.config.ts"
+      ],
+      "minimum_passed": 1,
+      "allowed_skips": [],
+      "requires_provenance": true,
+      "facts": [
+        {
+          "field": "strict_budgets",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "diagnostic_only",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "field": "samples",
+          "op": "eq",
+          "value": 1000
+        },
+        {
+          "field": "features",
+          "op": "eq",
+          "value": 256
+        },
+        {
+          "field": "training_status",
+          "op": "eq",
+          "value": "completed"
+        },
+        {
+          "field": "requested_engine",
+          "op": "eq",
+          "value": "dag-ml"
+        },
+        {
+          "field": "fallback",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "field": "historical_steps",
+          "op": "min",
+          "value": 1
+        },
+        {
+          "field": "predictions_total",
+          "op": "min",
+          "value": 1
+        },
+        {
+          "field": "validation_samples",
+          "op": "min",
+          "value": 1
+        },
+        {
+          "field": "finite_cv_scores",
+          "op": "min",
+          "value": 1
+        },
+        {
+          "field": "hpo_combinations",
+          "op": "eq",
+          "value": 45
+        },
+        {
+          "field": "replay_without_fit",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "sdk_version",
+          "op": "eq",
+          "value": "1.4.7"
+        },
+        {
+          "field": "sdk_source_sha",
+          "op": "eq",
+          "value": "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc"
+        },
+        {
+          "field": "dag_version",
+          "op": "eq",
+          "value": "0.3.41"
+        },
+        {
+          "field": "core_version",
+          "op": "eq",
+          "value": "0.4.5"
+        },
+        {
+          "field": "cv_scores",
+          "op": "finite_nonempty",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "linux-application-migration",
+      "hosts": [
+        "linux"
+      ],
+      "commands": {
+        "linux": [
+          "node",
+          "{root}/scripts/qualify-local-application-migration.cjs",
+          "--config",
+          "{root}/qualification/linux-migration.config.json"
+        ]
+      },
+      "input_paths": [
+        "src/",
+        "electron/",
+        "sidecar/",
+        "api/",
+        "package.json",
+        "package-lock.json",
+        "recommended-config.json",
+        "build/constraints/",
+        "build/runtime-cohort.json",
+        "electron-builder.installer.yml",
+        "scripts/python-runtime-config.cjs",
+        "scripts/bake-python-plugin-runtime.cjs",
+        "scripts/native-runtime-contract.cjs",
+        "scripts/smoke-archive-standalone.cjs",
+        "scripts/smoke-first-launch-ui.cjs",
+        "scripts/finalize-release-assets.cjs",
+        "scripts/qualification-performance.cjs",
+        "scripts/verify-runtime-cohort.cjs",
+        "scripts/qualify-installer.cjs",
+        "scripts/qualify-local-packaged.cjs",
+        "scripts/qualify-local-application-migration.cjs",
+        "postcss.config.js",
+        "tailwind.config.ts",
+        "tsconfig.app.json",
+        "tsconfig.electron.json",
+        "tsconfig.json",
+        "tsconfig.nirs4all-ui-package-smoke.json",
+        "tsconfig.node.json",
+        "vite.config.ts",
+        "qualification/baseline-0150-verifier/"
+      ],
+      "minimum_passed": 1,
+      "allowed_skips": [],
+      "requires_provenance": true,
+      "facts": [
+        {
+          "field": "application_migration",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "isolated_profile",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "installer_cycle",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "field": "baseline_version",
+          "op": "eq",
+          "value": "0.15.0"
+        },
+        {
+          "field": "candidate_version",
+          "op": "eq",
+          "value": "0.15.1"
+        },
+        {
+          "field": "preserved_dataset",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "preserved_workspace",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "preserved_preferences",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "preserved_dataset_bytes",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "windows-packaged-journeys",
+      "hosts": [
+        "windows"
+      ],
+      "commands": {
+        "windows": [
+          "node",
+          "{root}/scripts/qualify-local-packaged.cjs",
+          "--config",
+          "{root}/qualification/windows-packaged.config.json"
+        ]
+      },
+      "input_paths": [
+        "src/",
+        "electron/",
+        "sidecar/",
+        "api/",
+        "package.json",
+        "package-lock.json",
+        "recommended-config.json",
+        "build/constraints/",
+        "build/runtime-cohort.json",
+        "electron-builder.installer.yml",
+        "scripts/python-runtime-config.cjs",
+        "scripts/bake-python-plugin-runtime.cjs",
+        "scripts/native-runtime-contract.cjs",
+        "scripts/smoke-archive-standalone.cjs",
+        "scripts/smoke-first-launch-ui.cjs",
+        "scripts/finalize-release-assets.cjs",
+        "scripts/qualification-performance.cjs",
+        "scripts/verify-runtime-cohort.cjs",
+        "scripts/qualify-installer.cjs",
+        "scripts/qualify-local-packaged.cjs",
+        "scripts/qualify-scientific-journey.cjs",
+        "scripts/smoke-multimodal-ui.cjs",
+        "scripts/fixtures/",
+        "scripts/tests/smoke-multimodal-ui-policy.test.cjs",
+        "postcss.config.js",
+        "tailwind.config.ts",
+        "tsconfig.app.json",
+        "tsconfig.electron.json",
+        "tsconfig.json",
+        "tsconfig.nirs4all-ui-package-smoke.json",
+        "tsconfig.node.json",
+        "vite.config.ts"
+      ],
+      "minimum_passed": 1,
+      "allowed_skips": [],
+      "requires_provenance": true,
+      "facts": [
+        {
+          "field": "strict_budgets",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "diagnostic_only",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "field": "samples",
+          "op": "eq",
+          "value": 1000
+        },
+        {
+          "field": "features",
+          "op": "eq",
+          "value": 256
+        },
+        {
+          "field": "training_status",
+          "op": "eq",
+          "value": "completed"
+        },
+        {
+          "field": "requested_engine",
+          "op": "eq",
+          "value": "dag-ml"
+        },
+        {
+          "field": "fallback",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "field": "historical_steps",
+          "op": "min",
+          "value": 1
+        },
+        {
+          "field": "predictions_total",
+          "op": "min",
+          "value": 1
+        },
+        {
+          "field": "validation_samples",
+          "op": "min",
+          "value": 1
+        },
+        {
+          "field": "finite_cv_scores",
+          "op": "min",
+          "value": 1
+        },
+        {
+          "field": "hpo_combinations",
+          "op": "eq",
+          "value": 45
+        },
+        {
+          "field": "replay_without_fit",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "sdk_version",
+          "op": "eq",
+          "value": "1.4.7"
+        },
+        {
+          "field": "sdk_source_sha",
+          "op": "eq",
+          "value": "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc"
+        },
+        {
+          "field": "dag_version",
+          "op": "eq",
+          "value": "0.3.41"
+        },
+        {
+          "field": "core_version",
+          "op": "eq",
+          "value": "0.4.5"
+        },
+        {
+          "field": "cv_scores",
+          "op": "finite_nonempty",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "windows-application-migration",
+      "hosts": [
+        "windows"
+      ],
+      "commands": {
+        "windows": [
+          "node",
+          "{root}/scripts/qualify-local-application-migration.cjs",
+          "--config",
+          "{root}/qualification/windows-migration.config.json"
+        ]
+      },
+      "input_paths": [
+        "src/",
+        "electron/",
+        "sidecar/",
+        "api/",
+        "package.json",
+        "package-lock.json",
+        "recommended-config.json",
+        "build/constraints/",
+        "build/runtime-cohort.json",
+        "electron-builder.installer.yml",
+        "scripts/python-runtime-config.cjs",
+        "scripts/bake-python-plugin-runtime.cjs",
+        "scripts/native-runtime-contract.cjs",
+        "scripts/smoke-archive-standalone.cjs",
+        "scripts/smoke-first-launch-ui.cjs",
+        "scripts/finalize-release-assets.cjs",
+        "scripts/qualification-performance.cjs",
+        "scripts/verify-runtime-cohort.cjs",
+        "scripts/qualify-installer.cjs",
+        "scripts/qualify-local-packaged.cjs",
+        "scripts/qualify-local-application-migration.cjs",
+        "postcss.config.js",
+        "tailwind.config.ts",
+        "tsconfig.app.json",
+        "tsconfig.electron.json",
+        "tsconfig.json",
+        "tsconfig.nirs4all-ui-package-smoke.json",
+        "tsconfig.node.json",
+        "vite.config.ts",
+        "qualification/baseline-0150-verifier/"
+      ],
+      "minimum_passed": 1,
+      "allowed_skips": [],
+      "requires_provenance": true,
+      "facts": [
+        {
+          "field": "application_migration",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "isolated_profile",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "installer_cycle",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "field": "baseline_version",
+          "op": "eq",
+          "value": "0.15.0"
+        },
+        {
+          "field": "candidate_version",
+          "op": "eq",
+          "value": "0.15.1"
+        },
+        {
+          "field": "preserved_dataset",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "preserved_workspace",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "preserved_preferences",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "field": "preserved_dataset_bytes",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    }
+  ],
+  "proposal_incomplete_not_for_publication": true,
+  "pending_runtime_cohort": "Root must replace SDK146/DAG040/Core044 pins with the published final cohort and remove this explicit guard before final qualification/publication."
+}

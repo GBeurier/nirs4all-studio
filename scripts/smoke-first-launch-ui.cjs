@@ -110,7 +110,7 @@ async function freePort() {
 async function main(options = {}) {
   const config = options.config || archive.assertValidConfig(archive.parseArgs());
   const layout = archive.resolveLaunchLayout(config.extractedRoot, config.platform, config.appName);
-  const sandbox = options.sandboxRoot || fs.mkdtempSync(path.join(os.tmpdir(), "studio-first-launch-ui-"));
+  const sandbox = options.sandboxRoot || config.sandboxRoot || fs.mkdtempSync(path.join(os.tmpdir(), "studio-first-launch-ui-"));
   const env = { ...archive.buildSandboxEnv(config.platform, sandbox, await freePort(), config.timeoutMs), ...options.envOverrides };
   env.SENTRY_DSN = "";
   let app;
