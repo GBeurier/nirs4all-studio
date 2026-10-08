@@ -1092,6 +1092,9 @@ def _preview_dataset_sync(request: PreviewDataRequest):
             )
 
         config = _build_nirs4all_config(request.files, request.parsing, base_path)
+        from .shared.dataset_config import for_dataset_configs
+
+        config = for_dataset_configs(config)
 
         try:
             dataset_configs = get_cached("DatasetConfigs")(config)
@@ -1524,11 +1527,9 @@ def _find_dataset_by_id_or_name(
 @router.get("/datasets/{dataset_id}")
 async def get_dataset(dataset_id: str):
     """Get detailed information about a specific dataset."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
+    from .spectra import _get_dataset_config
 
-    dataset = _find_dataset_by_id_or_name(workspace.datasets, dataset_id)
+    dataset = _get_dataset_config(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 

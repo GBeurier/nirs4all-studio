@@ -32,6 +32,7 @@ mod dataset_inspection_http;
 mod dataset_scores;
 mod dataset_synthesis;
 mod document_cpython;
+mod error_logs;
 pub mod execution_job_records;
 mod general_prediction;
 mod http_access;
@@ -874,7 +875,7 @@ impl SidecarState {
         let python_plugin_configured = self.python_plugin_host.is_some();
         let scientific_execution = self.native_jobs.execution_selected();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"native_archive_v2_training\":{},\"native_conformal_presentation_v2\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_transition_status_route\":true,\"legacy_workspace_conversion_route\":{},\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_status_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"dataset_synthetic_generation_routes\":false,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"native_archive_v2_training\":{},\"native_conformal_presentation_v2\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_transition_status_route\":true,\"legacy_workspace_conversion_route\":{},\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_error_log_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_status_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"dataset_synthetic_generation_routes\":false,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -1000,6 +1001,12 @@ pub fn route_request_with_body(
     path: &str,
     body: &[u8],
 ) -> HttpResponse {
+    let (journal_path, journal_query) = path
+        .split_once('?')
+        .map_or((path, None), |(path, query)| (path, Some(query)));
+    if let Some(response) = error_logs::ERROR_LOGS.route(method, journal_path, journal_query) {
+        return response;
+    }
     if let Some(response) = native_updates::route(state, method, path, body) {
         return response;
     }
@@ -3696,7 +3703,8 @@ fn read_python_system_info(python_plugin_host: &Path) -> Result<String, PythonPl
     let package_names = serde_json::to_string(PYTHON_INFO_PACKAGES)
         .map_err(|_| PythonPluginBridgeFailure::ScriptFailed)?;
     let script = format!(
-        "import json,platform,sys\npackages={{}}\nfor name in {package_names}:\n try:\n  module=__import__(name); packages[name]=str(getattr(module,'__version__','unknown'))\n except ImportError: pass\ntry:\n import nirs4all; nirs4all_version=str(getattr(nirs4all,'__version__','unknown'))\nexcept ImportError: nirs4all_version='not installed'\nprint(json.dumps({{'python':{{'version':sys.version,'platform':sys.platform,'executable':sys.executable}},'system':{{'os':platform.system(),'release':platform.release(),'machine':platform.machine(),'processor':platform.processor()}},'nirs4all_version':nirs4all_version,'packages':packages}}, separators=(',',':'), sort_keys=True))"
+        "{}\nimport json,platform,sys\npackages={{}}\nfor name in {package_names}:\n try:\n  module=__import__(name); packages[name]=str(getattr(module,'__version__','unknown'))\n except ImportError: pass\ntry:\n import nirs4all; nirs4all_version=str(getattr(nirs4all,'__version__','unknown'))\nexcept ImportError: nirs4all_version='not installed'\nprint(json.dumps({{'python':{{'version':sys.version,'platform':sys.platform,'executable':sys.executable}},'system':system_information(),'nirs4all_version':nirs4all_version,'packages':packages}}, separators=(',',':'), sort_keys=True))",
+        include_str!("../../api/shared/system_info.py")
     );
     let output = run_python_plugin_json(
         python_plugin_host,
@@ -3958,6 +3966,11 @@ fn read_bounded_stdout(
 }
 
 fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpResponse {
+    if let Some(response) =
+        error_logs::ERROR_LOGS.route(&request.method, &request.path, request.query.as_deref())
+    {
+        return response;
+    }
     if request.query.is_some() && workspace_documents::owns_path(&request.path) {
         return HttpResponse::json(
             400,
@@ -4597,6 +4610,12 @@ fn route_result_and_upgrade(
         .or_else(|| playground_views::route(state, request))
 }
 
+#[derive(Default)]
+struct ResponseAccessContext {
+    origin: Option<String>,
+    endpoint: Option<String>,
+}
+
 fn handle_connection_with_access(
     mut stream: TcpStream,
     state: &Arc<Mutex<SidecarState>>,
@@ -4606,27 +4625,20 @@ fn handle_connection_with_access(
 ) -> std::io::Result<()> {
     stream.set_read_timeout(Some(limits.read_timeout))?;
     stream.set_write_timeout(Some(limits.write_timeout))?;
-    let mut accepted_origin = None;
+    let mut response_context = ResponseAccessContext::default();
     let response = match read_http_request_with_access(&mut stream, limits.header_timeout, access) {
         Ok(request) => {
-            accepted_origin = request.headers.get("origin").cloned();
-            if request.method == "OPTIONS" && accepted_origin.is_some() {
-                let response = HttpResponse::json(204, "")
-                    .with_header(
-                        "Access-Control-Allow-Methods",
-                        "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-                    )
-                    .with_header(
-                        "Access-Control-Allow-Headers",
-                        "Content-Type, X-Nirs4all-Session",
-                    );
-                return write_access_response(&mut stream, response, accepted_origin.as_deref());
+            response_context.endpoint = Some(request.path.clone());
+            response_context.origin = request.headers.get("origin").cloned();
+            if request.method == "OPTIONS" && response_context.origin.is_some() {
+                let response = cors_preflight_response();
+                return write_access_response(&mut stream, response, &response_context);
             }
             if let Some(response) = route_result_and_upgrade(state, &request) {
-                return write_access_response(&mut stream, response, accepted_origin.as_deref());
+                return write_access_response(&mut stream, response, &response_context);
             }
             if let Some(response) = route_documents_without_global_lock(state, &request) {
-                return write_access_response(&mut stream, response, accepted_origin.as_deref());
+                return write_access_response(&mut stream, response, &response_context);
             }
             if request.method == "GET" {
                 if let Some(endpoint) =
@@ -4665,14 +4677,14 @@ fn handle_connection_with_access(
                         &legacy_conversion,
                         &request.body,
                     ),
-                    accepted_origin.as_deref(),
+                    &response_context,
                 );
             }
             if let Some(response) = route_workspace_workflows_without_global_lock(state, &request) {
-                return write_access_response(&mut stream, response, accepted_origin.as_deref());
+                return write_access_response(&mut stream, response, &response_context);
             }
             if let Some(response) = route_scientific_without_global_lock(state, &request) {
-                return write_access_response(&mut stream, response, accepted_origin.as_deref());
+                return write_access_response(&mut stream, response, &response_context);
             }
             if request.method == "GET"
                 && matches!(
@@ -4702,14 +4714,14 @@ fn handle_connection_with_access(
                     }
                     _ => python_plugin_preflight_response_for_host(host),
                 };
-                return write_access_response(&mut stream, response, accepted_origin.as_deref());
+                return write_access_response(&mut stream, response, &response_context);
             }
             let mut state = state.lock().expect("sidecar state mutex poisoned");
             route_http_request(&mut state, &request)
         }
         Err(error) => request_read_error_response(error)?,
     };
-    write_access_response(&mut stream, response, accepted_origin.as_deref())
+    write_access_response(&mut stream, response, &response_context)
 }
 
 fn request_read_error_response(error: RequestReadError) -> std::io::Result<HttpResponse> {
@@ -4742,12 +4754,27 @@ fn request_read_error_response(error: RequestReadError) -> std::io::Result<HttpR
     })
 }
 
+fn cors_preflight_response() -> HttpResponse {
+    HttpResponse::json(204, "")
+        .with_header(
+            "Access-Control-Allow-Methods",
+            "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        )
+        .with_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, X-Nirs4all-Session",
+        )
+}
+
 fn write_access_response(
     stream: &mut TcpStream,
     mut response: HttpResponse,
-    accepted_origin: Option<&str>,
+    context: &ResponseAccessContext,
 ) -> std::io::Result<()> {
-    if let Some(origin) = accepted_origin {
+    if let Some(endpoint) = context.endpoint.as_deref() {
+        error_logs::ERROR_LOGS.record(endpoint, &response);
+    }
+    if let Some(origin) = context.origin.as_deref() {
         response = response
             .with_header("Access-Control-Allow-Origin", origin)
             .with_header("Vary", "Origin");

@@ -95,8 +95,8 @@ export function PythonRuntimeReviewDialog({
 }: PythonRuntimeReviewDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden p-4 sm:max-w-4xl sm:p-6">
+        <DialogHeader className="shrink-0 pr-6">
           <DialogTitle>Review Runtime After Switch</DialogTitle>
           <DialogDescription>
             The backend is now running under the selected interpreter. Review the profile and package targets for this machine, then align the runtime if needed.
@@ -104,7 +104,7 @@ export function PythonRuntimeReviewDialog({
         </DialogHeader>
 
         {postSwitchValidation ? (
-          <div className="space-y-4 mt-2">
+          <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto overscroll-contain pr-2 mt-2">
             <ReviewRuntimeSummary
               postSwitchValidation={postSwitchValidation}
               runningPythonPath={runningPythonPath}
@@ -160,7 +160,7 @@ export function PythonRuntimeReviewDialog({
           <LoadingPanel label={labels.loading} iconClassName="h-4 w-4" />
         )}
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button
             onClick={() => {
               void onAlignRuntime();

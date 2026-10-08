@@ -35,11 +35,9 @@ def require_nirs4all() -> None:
 
 
 def get_dataset_record(dataset_id: str) -> dict[str, Any]:
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
+    from .spectra import _get_dataset_config
 
-    dataset = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
+    dataset = _get_dataset_config(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
 
@@ -71,7 +69,7 @@ def build_dataset_config(dataset_id: str) -> dict[str, Any]:
     Returns:
         A dict configuration compatible with nirs4all.run(dataset=config).
     """
-    from .shared.dataset_config import build_nirs4all_config
+    from .shared.dataset_config import build_nirs4all_config, for_dataset_configs
 
     dataset = get_dataset_record(dataset_id)
     config = dataset.get("config", {})
@@ -106,14 +104,14 @@ def build_dataset_config(dataset_id: str) -> dict[str, Any]:
         if value is not None:
             parsing[key] = value
 
-    return build_nirs4all_config(
+    return for_dataset_configs(build_nirs4all_config(
         files=files,
         parsing=parsing,
         aggregation=config.get("aggregation"),
         folds=config.get("folds"),
         task_type=config.get("task_type") or dataset.get("task_type"),
         dataset_name=dataset.get("name"),
-    )
+    ))
 
 
 def _looks_like_function_model_path(reference: Any) -> bool:

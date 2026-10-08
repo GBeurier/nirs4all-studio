@@ -37,6 +37,8 @@
       "GET /health",
       "GET /system/readiness",
       "GET /system/status",
+      "GET /system/errors",
+      "DELETE /system/errors",
       "GET /system/capabilities",
       "GET /system/info",
       "GET /system/build",
@@ -78,6 +80,11 @@
     ],
     "workspace_run_query": {
       "allowed": ["source=unified|manifests|parquet", "refresh=true|false"],
+      "duplicates": "reject",
+      "unknown": "reject"
+    },
+    "system_errors_query": {
+      "allowed": ["limit=integer(1..200)"],
       "duplicates": "reject",
       "unknown": "reject"
     },
