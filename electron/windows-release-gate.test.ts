@@ -7,17 +7,18 @@ const release = require('js-yaml').load(readFileSync('.github/workflows/release-
 const installers = ['installer-windows', 'installer-linux', 'installer-macos-x64', 'installer-macos-arm64'];
 
 describe('installer product qualification and publication', () => {
-  it('qualifies each actual installer on its own runner before uploading its payload', () => {
+  it('smokes each actual packaged UI on its own runner before uploading its payload', () => {
     for (const name of installers) {
       const job = release.jobs[name];
       expect(job.needs).toEqual(['prepare', 'pinned-plugin-wheels']);
-      const gate = job.steps.findIndex((step: { run?: string }) => step.run?.includes('qualify-installer.cjs'));
+      const gate = job.steps.findIndex((step: { run?: string }) => step.run?.includes('smoke-packaged-ui.cjs'));
       const upload = job.steps.findIndex((step: { name?: string }) => step.name === 'Upload artifacts');
       expect(gate).toBeGreaterThan(0);
       expect(upload).toBeGreaterThan(gate);
       expect(job.steps[gate].if).toBeUndefined();
       expect(job.steps[gate]['continue-on-error']).not.toBe(true);
-      expect(job.steps[gate].env.INSTALLER_BASELINE).toContain('installer_baselines');
+      expect(job.steps[gate].run).toContain('--installer');
+      expect(job.steps[gate].run).toContain('--timeout-ms 120000');
       expect(job.steps[gate].env.RELEASE_SOURCE_SHA).toContain('checkout_ref');
     }
   });
