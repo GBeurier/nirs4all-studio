@@ -71,7 +71,13 @@ export class SidebarPage extends BasePage {
       settings: this.settingsLink,
     };
 
-    await linkMap[section].click();
+    const link = linkMap[section];
+    const href = await link.getAttribute('href');
+    // The sidebar scrolls on short viewports: bring the link into view before
+    // clicking so a scroll during the click cannot land on a neighbouring entry.
+    await link.scrollIntoViewIfNeeded();
+    await link.click();
+    if (href) await this.page.waitForURL((url) => url.pathname.startsWith(href));
     await this.waitForPageLoad();
   }
 
