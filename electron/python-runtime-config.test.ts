@@ -27,9 +27,9 @@ describe("python-runtime-config", () => {
       "nirs4all-tools>=0.0.8",
     ]);
     expect(transitionalHttpConfig.BACKEND_COMMON_PACKAGES).toContain("fastapi>=0.115.0");
-    expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("1.4.7");
+    expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("1.4.8");
     expect(runtimeConfig.PLUGIN_HOST_PACKAGES).toEqual([
-      "nirs4all==1.4.7", "nirs4all-formats==0.2.11", "duckdb==1.5.5", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
+      "nirs4all==1.4.8", "nirs4all-formats==0.2.11", "duckdb==1.5.5", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
     ]);
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toEqual(runtimeConfig.PLUGIN_HOST_PACKAGES);
 
@@ -104,7 +104,7 @@ describe("python-runtime-config", () => {
   it("maps legacy installer flavors onto product profiles while preserving the managed runtime footprint", () => {
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "darwin")).toBe("gpu-mps");
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "win32")).toBe("gpu-cuda-torch");
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==1.4.7");
+    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==1.4.8");
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES.some((pkg) => pkg.startsWith("torch"))).toBe(false);
   });
 

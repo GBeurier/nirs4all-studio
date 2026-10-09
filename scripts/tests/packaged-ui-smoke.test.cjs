@@ -14,7 +14,7 @@ async function run(change = {}) {
   fs.writeFileSync(installer, 'fixture installer bytes');
   fs.writeFileSync(`${installer}.sha256`, `${finalize.sha256File(installer)}  candidate.deb\n`);
   const markerPath = path.join(root, 'marker.json');
-  fs.writeFileSync(markerPath, JSON.stringify({ source_commit: change.sdk || 'b'.repeat(40), distribution_version: '1.4.7',
+  fs.writeFileSync(markerPath, JSON.stringify({ source_commit: change.sdk || 'b'.repeat(40), distribution_version: '1.4.8',
     wheel_sha256: 'd'.repeat(64), constraints: { sha256: 'e'.repeat(64) } }));
   const calls = [], module = { exports: {} };
   const env = { RELEASE_SOURCE_SHA: 'a'.repeat(40), RELEASE_VERSION: '0.15.1', NIRS4ALL_LIBRARY_REF: 'b'.repeat(40),

@@ -109,9 +109,9 @@ mod tests {
         fs::write(&host_path, b"interpreter").unwrap();
         let site = root.path().join("site-packages");
         fs::create_dir_all(site.join("nirs4all")).unwrap();
-        fs::create_dir_all(site.join("nirs4all-1.4.7.dist-info")).unwrap();
+        fs::create_dir_all(site.join("nirs4all-1.4.8.dist-info")).unwrap();
         fs::write(site.join("nirs4all/source.py"), b"original").unwrap();
-        fs::write(site.join("nirs4all-1.4.7.dist-info/RECORD"), b"record").unwrap();
+        fs::write(site.join("nirs4all-1.4.8.dist-info/RECORD"), b"record").unwrap();
         (root, super::super::host_identity(&host_path).unwrap(), site)
     }
 
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn selected_library_detects_additions_metadata_and_interpreter_replacement() {
-        for target in ["nirs4all/new.py", "nirs4all-1.4.7.dist-info/RECORD"] {
+        for target in ["nirs4all/new.py", "nirs4all-1.4.8.dist-info/RECORD"] {
             let (_root, host, site) = fixture();
             let identity = SelectedLibraryIdentity::capture(&host, &site).unwrap();
             fs::write(site.join(target), b"changed").unwrap();

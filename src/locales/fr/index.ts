@@ -151,7 +151,7 @@ const fr = {
       writable: "Probablement modifiable",
       readOnly: "Probablement en lecture seule",
       error: {
-        versionUnsupported: "L'environnement Python sélectionné contient une version de nirs4all non prise en charge. Choisissez l'environnement inclus dans Studio dans les Paramètres, ou installez nirs4all 1.4.7 dans l'environnement sélectionné.",
+        versionUnsupported: "L'environnement Python sélectionné contient une version de nirs4all non prise en charge. Choisissez l'environnement inclus dans Studio dans les Paramètres, ou installez nirs4all 1.4.8 dans l'environnement sélectionné.",
         tampered: "Le paquet nirs4all installé a échoué à la vérification d'intégrité. Choisissez l'environnement inclus dans Studio dans les Paramètres, ou réinstallez nirs4all dans l'environnement sélectionné.",
         notReady: "L'environnement Python sélectionné n'est pas prêt pour l'analyse. Préparez-le depuis les paramètres de l'environnement Python.",
         restartFailed: "Échec du redémarrage du backend",

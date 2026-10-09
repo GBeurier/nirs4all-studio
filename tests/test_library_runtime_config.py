@@ -34,11 +34,11 @@ def test_unknown_and_incompatible_profiles_are_not_silently_selected():
 
 def test_inventory_keeps_the_selected_distribution_when_old_paths_are_inherited(monkeypatch):
     monkeypatch.setattr("importlib.metadata.distributions", lambda: [
-        SimpleNamespace(metadata={"Name": "nirs4all"}, version="1.4.7"),
+        SimpleNamespace(metadata={"Name": "nirs4all"}, version="1.4.8"),
         SimpleNamespace(metadata={"Name": "nirs4all"}, version="1.4.2"),
         SimpleNamespace(metadata={"Name": "shap"}, version="0.51.0"),
     ])
-    monkeypatch.setattr("importlib.metadata.version", {"nirs4all": "1.4.7", "shap": "0.51.0"}.__getitem__)
-    result = dependency_inventory({"config": {"nirs4all": "1.4.7", "categories": {}, "optional": {}}})
-    assert result["nirs4all_version"] == "1.4.7"
+    monkeypatch.setattr("importlib.metadata.version", {"nirs4all": "1.4.8", "shap": "0.51.0"}.__getitem__)
+    result = dependency_inventory({"config": {"nirs4all": "1.4.8", "categories": {}, "optional": {}}})
+    assert result["nirs4all_version"] == "1.4.8"
     assert result["runtime_valid"] is True

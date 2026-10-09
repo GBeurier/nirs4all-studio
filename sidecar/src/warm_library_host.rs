@@ -943,10 +943,10 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let site = root.path().join("site-packages");
         std::fs::create_dir_all(site.join("nirs4all")).unwrap();
-        std::fs::create_dir_all(site.join("nirs4all-1.4.7.dist-info")).unwrap();
+        std::fs::create_dir_all(site.join("nirs4all-1.4.8.dist-info")).unwrap();
         let callable_path = site.join("nirs4all/source.py");
         std::fs::write(&callable_path, b"source").unwrap();
-        std::fs::write(site.join("nirs4all-1.4.7.dist-info/RECORD"), b"record").unwrap();
+        std::fs::write(site.join("nirs4all-1.4.8.dist-info/RECORD"), b"record").unwrap();
         let host = super::super::host_identity_with_limit(
             Path::new("/usr/bin/python3"),
             super::super::MAX_SCIENTIFIC_CPYTHON_HOST_BYTES,
@@ -987,10 +987,10 @@ mod tests {
     ) -> (CpythonScientificJobExecutor, HostIdentity, HostIdentity) {
         let site = root.path().join("site-packages");
         std::fs::create_dir_all(site.join("nirs4all")).unwrap();
-        std::fs::create_dir_all(site.join("nirs4all-1.4.7.dist-info")).unwrap();
+        std::fs::create_dir_all(site.join("nirs4all-1.4.8.dist-info")).unwrap();
         let callable_path = site.join("nirs4all/source.py");
         std::fs::write(&callable_path, b"source").unwrap();
-        std::fs::write(site.join("nirs4all-1.4.7.dist-info/RECORD"), b"record").unwrap();
+        std::fs::write(site.join("nirs4all-1.4.8.dist-info/RECORD"), b"record").unwrap();
         let host = super::super::host_identity_with_limit(
             Path::new("/usr/bin/python3"),
             super::super::MAX_SCIENTIFIC_CPYTHON_HOST_BYTES,
