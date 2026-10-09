@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 import type { RepetitionQuantileValue } from '@/lib/playground/repetitionsChartData';
 import type { DiffScaleType } from '@/lib/playground/spectraConfig';
 import type { DataBounds } from './scatter';
@@ -43,6 +45,7 @@ export function RepetitionsWebglOverlays({
   quantileValues,
   formatXAxisTick,
 }: RepetitionsWebglOverlaysProps) {
+  const { t } = useTranslation();
   const yTicks = buildEvenTicks(bounds.minY, bounds.maxY);
   const sampleIndices = Array.from({ length: bioSampleCount }, (_, sampleIndex) => sampleIndex);
 
@@ -50,7 +53,7 @@ export function RepetitionsWebglOverlays({
     <>
       <div className="absolute left-0 top-0 bottom-6 w-10 pointer-events-none z-[6] flex flex-col justify-between py-1">
         <div className="absolute -left-1 top-1/2 -translate-y-1/2 -rotate-90 origin-center text-[9px] text-muted-foreground whitespace-nowrap">
-          {scaleType === 'log' ? 'log(1 + Distance)' : 'Distance'}
+          {scaleType === 'log' ? t('playground.charts.repetitions.axisLogDistance') : t('playground.charts.repetitions.axisDistance')}
         </div>
         {yTicks.map((tick, index) => (
           <div

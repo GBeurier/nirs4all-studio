@@ -7,6 +7,7 @@
  * @see docs/_internals/implementation_roadmap.md
  */
 
+import { useTranslation } from "react-i18next";
 import { LineChart, Info } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -31,6 +32,7 @@ export function ChartRenderer({
   onRemove,
   onDuplicate,
 }: StepRendererProps) {
+  const { t } = useTranslation();
   const config = step.chartConfig;
 
   const handleChartTypeChange = (chartType: string) => {
@@ -57,16 +59,16 @@ export function ChartRenderer({
           <div className="flex items-center gap-3 p-3 rounded-lg bg-sky-500/10 border border-sky-500/30">
             <LineChart className="h-5 w-5 text-sky-500" />
             <div>
-              <h4 className="font-medium text-sm">Chart Visualization</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.config.chart.title")}</h4>
               <p className="text-xs text-muted-foreground">
-                Add visualization step to the pipeline
+                {t("pipelineEditor.config.chart.subtitle")}
               </p>
             </div>
           </div>
 
           {/* Chart Type */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Chart Type</Label>
+            <Label className="text-sm font-medium">{t("pipelineEditor.config.chart.typeLabel")}</Label>
             <Select
               value={step.name || config?.chartType || "chart_2d"}
               onValueChange={handleChartTypeChange}
@@ -76,10 +78,10 @@ export function ChartRenderer({
               </SelectTrigger>
               <SelectContent className="bg-popover">
                 <SelectItem value="chart_2d">
-                  chart_2d - 2D spectrum visualization
+                  {t("pipelineEditor.config.chart.chart2d")}
                 </SelectItem>
                 <SelectItem value="chart_y">
-                  chart_y - Y distribution visualization
+                  {t("pipelineEditor.config.chart.chartY")}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -91,11 +93,12 @@ export function ChartRenderer({
           <div className="space-y-4">
             <div className="flex items-center justify-between py-2">
               <div className="flex items-center gap-2">
-                <Label className="text-sm">Include Excluded</Label>
+                <Label className="text-sm">{t("pipelineEditor.config.chart.includeExcluded")}</Label>
                 <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
               </div>
               <Switch
                 checked={Boolean(config?.include_excluded)}
+                aria-label={t("pipelineEditor.config.chart.includeExcluded")}
                 onCheckedChange={(v) =>
                   handleOptionChange("include_excluded", v)
                 }
@@ -104,10 +107,11 @@ export function ChartRenderer({
 
             <div className="flex items-center justify-between py-2">
               <div className="flex items-center gap-2">
-                <Label className="text-sm">Highlight Excluded</Label>
+                <Label className="text-sm">{t("pipelineEditor.config.chart.highlightExcluded")}</Label>
               </div>
               <Switch
                 checked={Boolean(config?.highlight_excluded)}
+                aria-label={t("pipelineEditor.config.chart.highlightExcluded")}
                 onCheckedChange={(v) =>
                   handleOptionChange("highlight_excluded", v)
                 }

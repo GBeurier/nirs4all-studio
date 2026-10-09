@@ -2,18 +2,18 @@ import type { SourceOption } from './sourceDatasetOptions';
 
 export interface SourceOptionGroup {
   id: 'input' | 'preprocessing' | 'other';
-  label: string;
+  labelKey: string;
   options: SourceOption[];
 }
 
 export function groupSourceOptions(options: SourceOption[]): SourceOptionGroup[] {
-  const inputGroup: SourceOptionGroup = { id: 'input', label: 'Input', options: [] };
+  const inputGroup: SourceOptionGroup = { id: 'input', labelKey: 'playground.charts.sourceDataset.groupInput', options: [] };
   const preprocessingGroup: SourceOptionGroup = {
     id: 'preprocessing',
-    label: 'Preprocessing Steps',
+    labelKey: 'playground.charts.sourceDataset.groupPreprocessing',
     options: [],
   };
-  const otherGroup: SourceOptionGroup = { id: 'other', label: 'Other', options: [] };
+  const otherGroup: SourceOptionGroup = { id: 'other', labelKey: 'playground.charts.sourceDataset.groupOther', options: [] };
   const groups: SourceOptionGroup[] = [
     inputGroup,
     preprocessingGroup,

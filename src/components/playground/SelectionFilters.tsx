@@ -10,6 +10,7 @@
  */
 
 import { useMemo, useCallback, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   Filter,
   Layers,
@@ -72,6 +73,7 @@ export function SelectionFilters({
   compact = false,
   className,
 }: SelectionFiltersProps) {
+  const { t } = useTranslation();
   const { select, selectedSamples, clear } = useSelection();
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
 
@@ -155,7 +157,7 @@ export function SelectionFilters({
             className="h-7 px-2 gap-1"
           >
             <Filter className="w-3 h-3" />
-            {!compact && <span className="text-xs">Select by</span>}
+            {!compact && <span className="text-xs">{t('playground.selection.filters.selectBy')}</span>}
             {activeFilters.length > 0 && (
               <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
                 {activeFilters.length}
@@ -167,7 +169,7 @@ export function SelectionFilters({
         <PopoverContent className="w-64 p-0" align="start">
           <div className="p-2 border-b">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Select Samples By</span>
+              <span className="text-sm font-medium">{t('playground.selection.filters.selectSamplesBy')}</span>
               {activeFilters.length > 0 && (
                 <Button
                   variant="ghost"
@@ -175,7 +177,7 @@ export function SelectionFilters({
                   className="h-6 px-2 text-xs"
                   onClick={handleClearFilters}
                 >
-                  Clear
+                  {t('playground.selection.filters.clear')}
                 </Button>
               )}
             </div>
@@ -185,10 +187,20 @@ export function SelectionFilters({
                   <Badge key={filter} variant="outline" className="text-[10px] h-5 gap-1">
                     {filter}
                     <X
-                      className="w-2.5 h-2.5 cursor-pointer hover:text-destructive"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={t('playground.selection.filters.removeFilter', { filter })}
+                      className="w-2.5 h-2.5 cursor-pointer hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       onClick={(e) => {
                         e.stopPropagation();
                         setActiveFilters(prev => prev.filter(f => f !== filter));
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveFilters(prev => prev.filter(f => f !== filter));
+                        }
                       }}
                     />
                   </Badge>
@@ -201,7 +213,7 @@ export function SelectionFilters({
             {/* Partition selection (Train/Test) */}
             {currentFoldData && (
               <div className="p-2 border-b">
-                <div className="text-xs font-medium text-muted-foreground mb-1">Partition</div>
+                <div className="text-xs font-medium text-muted-foreground mb-1">{t('playground.selection.filters.partition')}</div>
                 <div className="flex gap-1">
                   <Button
                     variant="outline"
@@ -209,7 +221,7 @@ export function SelectionFilters({
                     className="h-7 flex-1 text-xs justify-between"
                     onClick={(e) => handleSelectByPartition('train', e.shiftKey ? 'add' : 'replace')}
                   >
-                    <span>Train</span>
+                    <span>{t('playground.selection.filters.train')}</span>
                     <Badge variant="secondary" className="h-4 px-1 text-[10px]">
                       {currentFoldData.train_indices.length}
                     </Badge>
@@ -220,7 +232,7 @@ export function SelectionFilters({
                     className="h-7 flex-1 text-xs justify-between"
                     onClick={(e) => handleSelectByPartition('test', e.shiftKey ? 'add' : 'replace')}
                   >
-                    <span>Test</span>
+                    <span>{t('playground.selection.filters.test')}</span>
                     <Badge variant="secondary" className="h-4 px-1 text-[10px]">
                       {currentFoldData.test_indices.length}
                     </Badge>
@@ -233,7 +245,7 @@ export function SelectionFilters({
             {uniqueFolds.length > 0 && (
               <div className="p-2 border-b">
                 <div className="text-xs font-medium text-muted-foreground mb-1">
-                  Fold ({uniqueFolds.length} folds)
+                  {t('playground.selection.filters.foldHeading', { count: uniqueFolds.length })}
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {uniqueFolds.map(foldIdx => (
@@ -247,7 +259,7 @@ export function SelectionFilters({
                       )}
                       onClick={(e) => handleSelectByFold(foldIdx, e.shiftKey ? 'add' : 'replace')}
                     >
-                      F{foldIdx + 1}
+                      {t('playground.selection.filters.foldShort', { n: foldIdx + 1 })}
                       <span className="ml-1 text-muted-foreground">
                         ({getFilterCount('fold', foldIdx)})
                       </span>
@@ -262,7 +274,7 @@ export function SelectionFilters({
               <div key={key} className="p-2 border-b last:border-b-0">
                 <div className="text-xs font-medium text-muted-foreground mb-1 flex items-center justify-between">
                   <span className="truncate max-w-[150px]" title={key}>{key}</span>
-                  <span className="text-[10px]">{totalValues} values</span>
+                  <span className="text-[10px]">{t('playground.selection.filters.valuesCount', { count: totalValues })}</span>
                 </div>
                 <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
                   {uniqueValues.slice(0, 20).map(value => (
@@ -284,7 +296,7 @@ export function SelectionFilters({
                   ))}
                   {uniqueValues.length > 20 && (
                     <span className="text-[10px] text-muted-foreground px-2 py-1">
-                      +{uniqueValues.length - 20} more
+                      {t('playground.selection.filters.more', { count: uniqueValues.length - 20 })}
                     </span>
                   )}
                 </div>
@@ -294,7 +306,10 @@ export function SelectionFilters({
 
           <div className="p-2 border-t bg-muted/30">
             <p className="text-[10px] text-muted-foreground">
-              Hold <kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">Shift</kbd> to add to selection
+              <Trans
+                i18nKey="playground.selection.filters.shiftHint"
+                components={{ kbd: <kbd className="px-1 py-0.5 bg-muted rounded text-[9px]" /> }}
+              />
             </p>
           </div>
         </PopoverContent>

@@ -45,9 +45,9 @@ export function usePipelineEditorSamples({
         pipeline: result.pipeline,
         fallbackName: result.name || sampleName,
       });
-      if (!draft) throw new Error("Sample does not contain a pipeline");
+      if (!draft) throw new Error(t("pipelineEditor.hooks.sampleNoPipeline"));
       const imported = await importIntoEditor(draft);
-      toast.success(`Loaded sample: ${imported.name}`);
+      toast.success(t("pipelineEditor.hooks.sampleLoaded", { name: imported.name }));
     } catch (err) {
       console.error("Failed to load sample:", err);
       notifyApiError(err, t("errors.action.loadSample"));

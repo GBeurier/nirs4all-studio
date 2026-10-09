@@ -17,6 +17,7 @@
  */
 
 import { useMemo, useState, useEffect, useRef, type ReactNode } from "react";
+import i18n from "i18next";
 import { type StepType } from "../types";
 import { usePipelineEditorPreferencesOptional } from "./usePipelineEditorPreferences";
 import {
@@ -134,7 +135,7 @@ export function NodeRegistryProvider({ children }: NodeRegistryProviderProps) {
       setError(null);
       return unsubscribe;
     } catch (e) {
-      setError(e instanceof Error ? e : new Error("Failed to load node registry"));
+      setError(e instanceof Error ? e : new Error(i18n.t("pipelineEditor.contexts.registryLoadFailed")));
       console.error("[NodeRegistry] Failed to initialize:", e);
       baseRegistryRef.current = null;
     } finally {
@@ -164,7 +165,7 @@ export function NodeRegistryProvider({ children }: NodeRegistryProviderProps) {
         });
 
         if (!res.ok) {
-          throw new Error(`Failed to load extended registry: ${res.status} ${res.statusText}`);
+          throw new Error(i18n.t("pipelineEditor.contexts.extendedHttpError", { status: res.status, statusText: res.statusText }));
         }
 
         const data: unknown = await res.json();
@@ -176,7 +177,7 @@ export function NodeRegistryProvider({ children }: NodeRegistryProviderProps) {
         setExtendedNodes(data as JsonNodeDefinition[]);
       } catch (e) {
         if (abort.signal.aborted) return;
-        const err = e instanceof Error ? e : new Error("Failed to load extended registry");
+        const err = e instanceof Error ? e : new Error(i18n.t("pipelineEditor.contexts.extendedLoadFailed"));
         extendedRetryAttempts.current += 1;
         setExtendedError(err);
         console.error("[NodeRegistry] Failed to load extended registry:", err);

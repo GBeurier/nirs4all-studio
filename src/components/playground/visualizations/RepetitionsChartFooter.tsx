@@ -1,4 +1,5 @@
 import { AlertTriangle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { formatYValue } from './chartConfig';
 import type { RepetitionsPlotStatistics, RepetitionsSortOption } from '@/lib/playground/repetitionsChartData';
@@ -31,6 +32,8 @@ export function RepetitionsChartFooter({
   selectedCount,
   highVariabilitySamples,
 }: RepetitionsChartFooterProps) {
+  const { t } = useTranslation();
+
   if (compact) {
     return null;
   }
@@ -45,36 +48,38 @@ export function RepetitionsChartFooter({
           {hasRepetitions && repetitionData ? (
             <>
               <span>
-                {repetitionData.total_repetitions} measurements from {repetitionData.n_with_reps} samples
+                {t('playground.charts.repetitions.footer.measurements', { total: repetitionData.total_repetitions, samples: repetitionData.n_with_reps })}
               </span>
               {repetitionData.n_singletons && repetitionData.n_singletons > 0 && (
-                <span>({repetitionData.n_singletons} singletons hidden)</span>
+                <span>{t('playground.charts.repetitions.footer.singletonsHidden', { count: repetitionData.n_singletons })}</span>
               )}
             </>
           ) : (
             <span>
-              {plotDataLength} samples
+              {t('playground.charts.repetitions.footer.samples', { count: plotDataLength })}
               {sortBy === 'metadata_column' && metadataSortColumn
-                ? ` grouped by "${metadataSortColumn}" (${groupCount} groups)`
+                ? t('playground.charts.repetitions.footer.groupedBy', { column: metadataSortColumn, groups: groupCount })
                 : ''}
             </span>
           )}
           <span className="text-muted-foreground/50">
-            Scroll to zoom • Right-drag to pan • Left-drag to select • Double-click to reset
+            {t('playground.charts.repetitions.footer.interactionHint')}
           </span>
         </div>
 
         <div className="flex items-center gap-3">
           {statistics && (
             <span>
-              Mean: {formatYValue(scaleType === 'log' ? Math.log1p(statistics.mean_distance ?? 0) : (statistics.mean_distance ?? 0))} |
-              Max: {formatYValue(scaleType === 'log' ? Math.log1p(statistics.max_distance ?? 0) : (statistics.max_distance ?? 0))}
+              {t('playground.charts.repetitions.footer.statsMeanMax', {
+                mean: formatYValue(scaleType === 'log' ? Math.log1p(statistics.mean_distance ?? 0) : (statistics.mean_distance ?? 0)),
+                max: formatYValue(scaleType === 'log' ? Math.log1p(statistics.max_distance ?? 0) : (statistics.max_distance ?? 0)),
+              })}
             </span>
           )}
 
           {selectedCount > 0 && (
             <span className="text-primary font-medium">
-              {selectedCount} selected
+              {t('playground.charts.repetitions.footer.selected', { count: selectedCount })}
             </span>
           )}
         </div>
@@ -84,7 +89,7 @@ export function RepetitionsChartFooter({
         <div className="flex items-center gap-1.5 mt-1 text-[10px] text-amber-600">
           <AlertTriangle className="w-3 h-3" />
           <span>
-            {visibleHighVariabilitySamples.length} sample(s) with high variability
+            {t('playground.charts.repetitions.footer.highVariability', { count: visibleHighVariabilitySamples.length })}
             {visibleHighVariabilitySamples.length <= 3 && (
               <span className="text-muted-foreground ml-1">
                 ({visibleHighVariabilitySamples.map(sample => sample.bio_sample).join(', ')})

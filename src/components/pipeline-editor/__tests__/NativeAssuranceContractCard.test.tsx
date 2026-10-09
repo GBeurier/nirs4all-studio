@@ -5,7 +5,8 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { beforeAll, afterEach, describe, expect, it } from "vitest";
+import i18n from "@/lib/i18n";
 
 import type { KeywordRegistryDocument } from "@/ui/keywordRegistry";
 import {
@@ -14,6 +15,10 @@ import {
   NativeAssuranceContractCard,
   REQUIRED_NATIVE_REGISTRY_ENTRY_IDS,
 } from "../NativeAssuranceContractCard";
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;

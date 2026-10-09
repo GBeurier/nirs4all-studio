@@ -30,6 +30,7 @@ import {
 import type { HistogramChartProps, RechartsMouseEvent } from './types';
 import { RANGE_SELECTION_INITIAL } from './types';
 import { findBarRect, isBarElement } from './utils';
+import { useTranslation } from 'react-i18next';
 
 export default function HistogramByMetadata({
   histogramData,
@@ -49,6 +50,7 @@ export default function HistogramByMetadata({
   metadata,
   metadataCategories,
 }: HistogramChartProps) {
+  const { t } = useTranslation();
   const palette = globalColorConfig?.categoricalPalette ?? 'default';
   const metadataKey = globalColorConfig?.metadataKey;
   const metadataValues = metadataKey && metadata?.[metadataKey] ? metadata[metadataKey] : null;
@@ -191,7 +193,7 @@ export default function HistogramByMetadata({
                         className="w-2 h-2 rounded-sm"
                         style={{ backgroundColor: getCategoricalColor(catIdx, palette) }}
                       />
-                      {category}: {count}
+                      {t('playground.charts.histogram.tooltip.labelValue', { label: category, value: count })}
                     </p>
                   );
                 })}

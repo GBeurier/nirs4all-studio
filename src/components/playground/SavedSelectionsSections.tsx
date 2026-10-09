@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from 'react-i18next';
 import {
   useCallback,
   useRef,
@@ -56,14 +57,14 @@ import {
 import { toast } from 'sonner';
 
 const SELECTION_COLORS = [
-  { name: 'Blue', value: '#3b82f6' },
-  { name: 'Green', value: '#22c55e' },
-  { name: 'Orange', value: '#f97316' },
-  { name: 'Purple', value: '#a855f7' },
-  { name: 'Pink', value: '#ec4899' },
-  { name: 'Cyan', value: '#06b6d4' },
-  { name: 'Yellow', value: '#eab308' },
-  { name: 'Red', value: '#ef4444' },
+  { nameKey: 'playground.savedSelections.colors.blue', value: '#3b82f6' },
+  { nameKey: 'playground.savedSelections.colors.green', value: '#22c55e' },
+  { nameKey: 'playground.savedSelections.colors.orange', value: '#f97316' },
+  { nameKey: 'playground.savedSelections.colors.purple', value: '#a855f7' },
+  { nameKey: 'playground.savedSelections.colors.pink', value: '#ec4899' },
+  { nameKey: 'playground.savedSelections.colors.cyan', value: '#06b6d4' },
+  { nameKey: 'playground.savedSelections.colors.yellow', value: '#eab308' },
+  { nameKey: 'playground.savedSelections.colors.red', value: '#ef4444' },
 ];
 
 interface ColorPickerProps {
@@ -72,6 +73,7 @@ interface ColorPickerProps {
 }
 
 function ColorPicker({ value, onChange }: ColorPickerProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap gap-1">
       {SELECTION_COLORS.map((color) => (
@@ -86,7 +88,8 @@ function ColorPicker({ value, onChange }: ColorPickerProps) {
           )}
           style={{ backgroundColor: color.value }}
           onClick={() => onChange(color.value)}
-          title={color.name}
+          title={t(color.nameKey)}
+          aria-label={t(color.nameKey)}
         />
       ))}
     </div>
@@ -112,6 +115,7 @@ function SelectionActionsMenu({
   onImport,
   onDeleteAll,
 }: SelectionActionsMenuProps) {
+  const { t } = useTranslation();
   const isCompact = variant === 'compact';
   const triggerClassName = isCompact ? 'h-5 w-5 p-0' : 'h-7 w-7 p-0';
   const triggerIconClassName = isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4';
@@ -120,23 +124,23 @@ function SelectionActionsMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className={triggerClassName}>
+        <Button variant="ghost" size="sm" className={triggerClassName} aria-label={t('playground.savedSelections.menu.actions')}>
           <MoreHorizontal className={triggerIconClassName} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={onExportCurrentCsv} disabled={selectedCount === 0}>
           <Download className={itemIconClassName} />
-          {isCompact ? 'Export current (CSV)' : 'Export current selection (CSV)'}
+          {isCompact ? t('playground.savedSelections.menu.exportCurrentCompact') : t('playground.savedSelections.menu.exportCurrentFull')}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onExportJson} disabled={savedSelectionCount === 0}>
           <Download className={itemIconClassName} />
-          {isCompact ? 'Export all (JSON)' : 'Export all saved (JSON)'}
+          {isCompact ? t('playground.savedSelections.menu.exportAllCompact') : t('playground.savedSelections.menu.exportAllFull')}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onImport}>
           <Upload className={itemIconClassName} />
-          {isCompact ? 'Import (CSV/JSON)' : 'Import from file (CSV/JSON)'}
+          {isCompact ? t('playground.savedSelections.menu.importCompact') : t('playground.savedSelections.menu.importFull')}
         </DropdownMenuItem>
         {onDeleteAll && (
           <>
@@ -147,7 +151,7 @@ function SelectionActionsMenu({
               onClick={onDeleteAll}
             >
               <Trash2 className={itemIconClassName} />
-              Delete all
+              {t('playground.savedSelections.menu.deleteAll')}
             </DropdownMenuItem>
           </>
         )}
@@ -169,20 +173,21 @@ export function SaveSelectionDialog({
   selectedCount,
   onSave,
 }: SaveSelectionDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [color, setColor] = useState(SELECTION_COLORS[0].value);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = useCallback(() => {
     if (!name.trim()) {
-      toast.error('Please enter a name for the selection');
+      toast.error(t('playground.savedSelections.toast.enterName'));
       return;
     }
     onSave(name.trim(), color);
     setName('');
     setColor(SELECTION_COLORS[0].value);
     onOpenChange(false);
-  }, [name, color, onSave, onOpenChange]);
+  }, [name, color, onSave, onOpenChange, t]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -200,7 +205,7 @@ export function SaveSelectionDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BookmarkPlus className="w-5 h-5" />
-            Save Selection
+            {t('playground.savedSelections.dialog.title')}
           </DialogTitle>
           <DialogDescription>{buildSaveSelectionDialogDescription(selectedCount)}</DialogDescription>
         </DialogHeader>
@@ -208,7 +213,7 @@ export function SaveSelectionDialog({
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
             <label htmlFor="selection-name" className="text-sm font-medium">
-              Name
+              {t('playground.savedSelections.dialog.name')}
             </label>
             <Input
               id="selection-name"
@@ -216,7 +221,7 @@ export function SaveSelectionDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="e.g., Outliers, High variance, Batch A..."
+              placeholder={t('playground.savedSelections.dialog.namePlaceholder')}
               autoFocus
             />
           </div>
@@ -224,7 +229,7 @@ export function SaveSelectionDialog({
           <div className="space-y-2">
             <label className="text-sm font-medium flex items-center gap-1.5">
               <Palette className="w-3.5 h-3.5" />
-              Color
+              {t('playground.savedSelections.dialog.color')}
             </label>
             <ColorPicker value={color} onChange={setColor} />
           </div>
@@ -232,11 +237,11 @@ export function SaveSelectionDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={!name.trim()}>
             <Check className="w-4 h-4 mr-1.5" />
-            Save Selection
+            {t('playground.savedSelections.dialog.title')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -252,6 +257,7 @@ interface SelectionItemProps {
 }
 
 function SelectionItem({ selection, isActive, onLoad, onDelete }: SelectionItemProps) {
+  const { t } = useTranslation();
   const handleDeleteClick = useCallback(
     (e: MouseEvent) => {
       e.stopPropagation();
@@ -289,14 +295,15 @@ function SelectionItem({ selection, isActive, onLoad, onDelete }: SelectionItemP
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive/10 hover:text-destructive"
               onClick={handleDeleteClick}
+              aria-label={t('playground.savedSelections.item.delete')}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="left">
-            <p className="text-xs">Delete selection</p>
+            <p className="text-xs">{t('playground.savedSelections.item.delete')}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -339,13 +346,16 @@ function SelectionList({
 }
 
 export function SavedSelectionsEmptyState() {
+  const { t } = useTranslation();
   return (
     <div className="text-center py-6 text-muted-foreground">
       <Bookmark className="w-8 h-8 mx-auto mb-2 opacity-40" />
-      <p className="text-sm">No saved selections</p>
+      <p className="text-sm">{t('playground.savedSelections.empty.title')}</p>
       <p className="text-xs mt-1">
-        Select samples in a chart, then click{' '}
-        <BookmarkPlus className="w-3 h-3 inline-block" /> to save
+        <Trans
+          i18nKey="playground.savedSelections.empty.hint"
+          components={{ icon: <BookmarkPlus className="w-3 h-3 inline-block" /> }}
+        />
       </p>
     </div>
   );
@@ -385,6 +395,7 @@ export function CompactSavedSelectionsSection({
   onLoadSelection,
   onDeleteSelection,
 }: CompactSavedSelectionsSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className={cn('flex items-center gap-1', className)}>
       <TooltipProvider delayDuration={200}>
@@ -398,11 +409,11 @@ export function CompactSavedSelectionsSection({
               disabled={selectedCount === 0}
             >
               <BookmarkPlus className="w-3.5 h-3.5" />
-              Save
+              {t('playground.savedSelections.compact.save')}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="max-w-xs">
-            <p className="text-xs font-medium">Save current selection</p>
+            <p className="text-xs font-medium">{t('playground.savedSelections.compact.saveTooltipTitle')}</p>
             <p className="text-xs text-muted-foreground">
               {buildCompactSaveTooltipDescription(selectedCount)}
             </p>
@@ -415,13 +426,13 @@ export function CompactSavedSelectionsSection({
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[10px]">
               <Bookmark className="w-3 h-3" />
-              Saved ({savedSelections.length})
+              {t('playground.savedSelections.compact.saved', { count: savedSelections.length })}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-64 p-2">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground">
-                Saved Selections
+                {t('playground.savedSelections.title')}
               </span>
               <SelectionActionsMenu
                 variant="compact"
@@ -470,12 +481,13 @@ export function FullSavedSelectionsSection({
   onLoadSelection,
   onDeleteSelection,
 }: FullSavedSelectionsSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className={cn('space-y-3', className)}>
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium flex items-center gap-2">
           <Bookmark className="w-4 h-4" />
-          Saved Selections
+          {t('playground.savedSelections.title')}
         </h3>
 
         <div className="flex items-center gap-1">
@@ -488,12 +500,13 @@ export function FullSavedSelectionsSection({
                   className="h-7 w-7 p-0"
                   onClick={onOpenSaveDialog}
                   disabled={selectedCount === 0}
+                  aria-label={t('playground.savedSelections.full.saveTooltip')}
                 >
                   <BookmarkPlus className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-xs">Save current selection (Ctrl+S)</p>
+                <p className="text-xs">{t('playground.savedSelections.full.saveTooltip')}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

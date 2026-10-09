@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useTranslation } from 'react-i18next';
 
 interface UnifiedOperatorCardErrorDialogProps {
   open: boolean;
@@ -25,17 +26,17 @@ export function UnifiedOperatorCardErrorDialog({
   onOpenChange,
   onCopyError,
 }: UnifiedOperatorCardErrorDialogProps) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl bg-card border-border shadow-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="w-5 h-5" />
-            {displayName} failed
+            {t('playground.operators.card.errorTitle', { name: displayName })}
           </DialogTitle>
           <DialogDescription>
-            The operator threw an error during pipeline execution. Copy the log
-            below when filing an issue.
+            {t('playground.operators.card.errorDescription')}
           </DialogDescription>
         </DialogHeader>
         <pre className="max-h-[50vh] overflow-auto rounded border border-destructive/30 bg-destructive/5 p-3 text-[11px] leading-relaxed font-mono text-destructive whitespace-pre-wrap break-words">
@@ -49,13 +50,13 @@ export function UnifiedOperatorCardErrorDialog({
             className="gap-2"
           >
             <Copy className="w-3.5 h-3.5" />
-            Copy error
+            {t('playground.operators.card.copyError')}
           </Button>
           <Button
             size="sm"
             onClick={() => onOpenChange(false)}
           >
-            Close
+            {t('common.close')}
           </Button>
         </DialogFooter>
       </DialogContent>

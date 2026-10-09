@@ -10,6 +10,7 @@
  * callbacks live in `YProcessingPanel.tsx`.
  */
 
+import i18n from "i18next";
 import {
   Y_PROCESSING_OPTIONS,
   type YProcessingConfig,
@@ -29,7 +30,8 @@ export type YProcessingCategory = (typeof Y_PROCESSING_CATEGORY_ORDER)[number];
 /** A single choice in a param-specific select control. */
 export interface YProcessingSelectChoice {
   value: string;
-  label: string;
+  /** i18n key of the visible label. */
+  labelKey: string;
 }
 
 /**
@@ -39,17 +41,17 @@ export interface YProcessingSelectChoice {
  */
 export const Y_PROCESSING_PARAM_SELECTS: Record<string, YProcessingSelectChoice[]> = {
   method: [
-    { value: "yeo-johnson", label: "Yeo-Johnson" },
-    { value: "box-cox", label: "Box-Cox (positive only)" },
+    { value: "yeo-johnson", labelKey: "pipelineEditor.yProcessing.choice.yeoJohnson" },
+    { value: "box-cox", labelKey: "pipelineEditor.yProcessing.choice.boxCox" },
   ],
   output_distribution: [
-    { value: "uniform", label: "Uniform [0, 1]" },
-    { value: "normal", label: "Normal (Gaussian)" },
+    { value: "uniform", labelKey: "pipelineEditor.yProcessing.choice.uniform01" },
+    { value: "normal", labelKey: "pipelineEditor.yProcessing.choice.normal" },
   ],
   strategy: [
-    { value: "quantile", label: "Quantile (equal frequencies)" },
-    { value: "uniform", label: "Uniform (equal width)" },
-    { value: "kmeans", label: "K-Means clustering" },
+    { value: "quantile", labelKey: "pipelineEditor.yProcessing.choice.quantile" },
+    { value: "uniform", labelKey: "pipelineEditor.yProcessing.choice.uniformWidth" },
+    { value: "kmeans", labelKey: "pipelineEditor.yProcessing.choice.kmeans" },
   ],
 };
 
@@ -82,7 +84,8 @@ export function getYProcessingParamDescription(
   key: string,
 ): string | undefined {
   if (!option) return undefined;
-  return (option.paramDescriptions as Record<string, string>)[key];
+  const descriptionKey = (option.paramDescriptionKeys as Record<string, string>)[key];
+  return descriptionKey ? i18n.t(descriptionKey) : undefined;
 }
 
 /** Options grouped by category, in display order, skipping empty groups. */

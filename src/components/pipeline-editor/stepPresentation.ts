@@ -1,32 +1,39 @@
+import i18n from "i18next";
 import type {
   PipelineStep,
   StepSubType,
   StepType,
 } from "./types";
 
-export const stepTypeLabels: Record<StepType, string> = {
-  preprocessing: "Preprocessing",
-  y_processing: "Target Processing",
-  splitting: "Splitting",
-  model: "Models",
-  filter: "Filters",
-  augmentation: "Augmentation",
-  flow: "Flow Control",
-  utility: "Utility",
-};
+/** Localised display labels for every step type (resolved in the active language at call time). */
+export function getStepTypeLabels(): Record<StepType, string> {
+  return {
+    preprocessing: i18n.t("pipelineEditor.shared.stepTypes.preprocessing"),
+    y_processing: i18n.t("pipelineEditor.shared.stepTypes.y_processing"),
+    splitting: i18n.t("pipelineEditor.shared.stepTypes.splitting"),
+    model: i18n.t("pipelineEditor.shared.stepTypes.model"),
+    filter: i18n.t("pipelineEditor.shared.stepTypes.filter"),
+    augmentation: i18n.t("pipelineEditor.shared.stepTypes.augmentation"),
+    flow: i18n.t("pipelineEditor.shared.stepTypes.flow"),
+    utility: i18n.t("pipelineEditor.shared.stepTypes.utility"),
+  };
+}
 
-export const stepSubTypeLabels: Record<StepSubType, string> = {
-  branch: "Branching",
-  merge: "Merge",
-  generator: "Generators",
-  sample_augmentation: "Sample Augmentation",
-  feature_augmentation: "Feature Augmentation",
-  sample_filter: "Sample Filter",
-  concat_transform: "Concat Transform",
-  sequential: "Sequential Group",
-  chart: "Charts",
-  comment: "Comments",
-};
+/** Localised display labels for every step sub-type (resolved in the active language at call time). */
+export function getStepSubTypeLabels(): Record<StepSubType, string> {
+  return {
+    branch: i18n.t("pipelineEditor.shared.stepSubTypes.branch"),
+    merge: i18n.t("pipelineEditor.shared.stepSubTypes.merge"),
+    generator: i18n.t("pipelineEditor.shared.stepSubTypes.generator"),
+    sample_augmentation: i18n.t("pipelineEditor.shared.stepSubTypes.sample_augmentation"),
+    feature_augmentation: i18n.t("pipelineEditor.shared.stepSubTypes.feature_augmentation"),
+    sample_filter: i18n.t("pipelineEditor.shared.stepSubTypes.sample_filter"),
+    concat_transform: i18n.t("pipelineEditor.shared.stepSubTypes.concat_transform"),
+    sequential: i18n.t("pipelineEditor.shared.stepSubTypes.sequential"),
+    chart: i18n.t("pipelineEditor.shared.stepSubTypes.chart"),
+    comment: i18n.t("pipelineEditor.shared.stepSubTypes.comment"),
+  };
+}
 
 export interface StepColorScheme {
   border: string;

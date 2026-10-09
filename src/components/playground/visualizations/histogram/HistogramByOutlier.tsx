@@ -30,6 +30,7 @@ import {
 import type { HistogramChartProps, RechartsMouseEvent } from './types';
 import { RANGE_SELECTION_INITIAL } from './types';
 import { findBarRect, isBarElement } from './utils';
+import { useTranslation } from 'react-i18next';
 
 const NORMAL_FILL = 'hsl(var(--muted-foreground) / 0.4)';
 
@@ -49,6 +50,7 @@ export default function HistogramByOutlier({
   lastMouseEventRef,
   colorContext,
 }: HistogramChartProps) {
+  const { t } = useTranslation();
   const outlierIndices = colorContext?.outlierIndices;
 
   const stackedData = useMemo(() =>
@@ -164,13 +166,13 @@ export default function HistogramByOutlier({
                 {data.normalCount > 0 && (
                   <p className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: NORMAL_FILL }} />
-                    Normal: {data.normalCount}
+                    {t('playground.charts.histogram.tooltip.labelValue', { label: t('playground.charts.histogram.segment.normal'), value: data.normalCount })}
                   </p>
                 )}
                 {data.outlierCount > 0 && (
                   <p className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: HIGHLIGHT_COLORS.outlier }} />
-                    Outliers: {data.outlierCount}
+                    {t('playground.charts.histogram.tooltip.labelValue', { label: t('playground.charts.histogram.segment.outliers'), value: data.outlierCount })}
                   </p>
                 )}
               </div>
@@ -184,7 +186,7 @@ export default function HistogramByOutlier({
         />
         <Bar
           dataKey="normal"
-          name="Normal"
+          name={t('playground.charts.histogram.segment.normal')}
           stackId="outlier"
           fill={NORMAL_FILL}
           cursor="pointer"
@@ -205,7 +207,7 @@ export default function HistogramByOutlier({
         </Bar>
         <Bar
           dataKey="outlier"
-          name="Outliers"
+          name={t('playground.charts.histogram.segment.outliers')}
           stackId="outlier"
           fill={HIGHLIGHT_COLORS.outlier}
           radius={[2, 2, 0, 0]}

@@ -5,10 +5,15 @@
 import type { ReactNode } from 'react';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import i18n from '@/lib/i18n';
 
 import { RepetitionsChartFooter } from '../RepetitionsChartFooter';
 import type { RepetitionDataPoint, RepetitionResult } from '@/types/playground';
+
+beforeAll(async () => {
+  await i18n.changeLanguage('en');
+});
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -70,7 +75,7 @@ describe('RepetitionsChartFooter', () => {
     expect(container.textContent).toContain('Mean: 0.25');
     expect(container.textContent).toContain('Max: 1.50');
     expect(container.textContent).toContain('2 selected');
-    expect(container.textContent).toContain('2 sample(s) with high variability');
+    expect(container.textContent).toContain('2 samples with high variability');
     expect(container.textContent).toContain('bio-a, bio-b');
 
     await act(async () => {

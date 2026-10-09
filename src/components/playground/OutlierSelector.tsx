@@ -13,6 +13,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
   Target,
@@ -79,29 +80,29 @@ export interface OutlierSelectorProps {
 
 // ============= Constants =============
 
-const METHODS: { value: OutlierMethod; label: string; description: string; requiresPCA: boolean }[] = [
+const METHODS: { value: OutlierMethod; labelKey: string; descriptionKey: string; requiresPCA: boolean }[] = [
   {
     value: 'hotelling_t2',
-    label: "Hotelling's T²",
-    description: 'Distance in PCA score space, weighted by variance',
+    labelKey: 'playground.outliers.methods.hotelling_t2.label',
+    descriptionKey: 'playground.outliers.methods.hotelling_t2.description',
     requiresPCA: true,
   },
   {
     value: 'q_residual',
-    label: 'Q-Residual (SPE)',
-    description: 'PCA reconstruction error',
+    labelKey: 'playground.outliers.methods.q_residual.label',
+    descriptionKey: 'playground.outliers.methods.q_residual.description',
     requiresPCA: true,
   },
   {
     value: 'lof',
-    label: 'Local Outlier Factor',
-    description: 'Density-based outlier detection',
+    labelKey: 'playground.outliers.methods.lof.label',
+    descriptionKey: 'playground.outliers.methods.lof.description',
     requiresPCA: false,
   },
   {
     value: 'distance',
-    label: 'Distance to Centroid',
-    description: 'Euclidean distance from data center',
+    labelKey: 'playground.outliers.methods.distance.label',
+    descriptionKey: 'playground.outliers.methods.distance.description',
     requiresPCA: false,
   },
 ];
@@ -116,6 +117,7 @@ interface DistributionPreviewProps {
 }
 
 function DistributionPreview({ values, threshold, invert, height = 48 }: DistributionPreviewProps) {
+  const { t } = useTranslation();
   // All hooks before early return (Rules of Hooks).
   const stats = useMemo(() => {
     if (!values || values.length === 0) return { min: 0, max: 1, p95: 1 };
@@ -160,7 +162,7 @@ function DistributionPreview({ values, threshold, invert, height = 48 }: Distrib
   if (!values || values.length === 0) {
     return (
       <div className="flex items-center justify-center text-xs text-muted-foreground" style={{ height }}>
-        No data available
+        {t('playground.outliers.noData')}
       </div>
     );
   }
@@ -202,8 +204,8 @@ function DistributionPreview({ values, threshold, invert, height = 48 }: Distrib
 
       {/* Labels */}
       <div className="absolute bottom-0 left-0 right-0 flex justify-between text-[8px] text-muted-foreground font-mono mt-1">
-        <span>Typical</span>
-        <span className="text-red-500">Outliers</span>
+        <span>{t('playground.outliers.typical')}</span>
+        <span className="text-red-500">{t('playground.outliers.outliers')}</span>
       </div>
     </div>
   );
@@ -221,6 +223,7 @@ export function OutlierSelector({
   isLoading = false,
   compact = false,
 }: OutlierSelectorProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [method, setMethod] = useState<OutlierMethod>('hotelling_t2');
   const [threshold, setThreshold] = useState(0.95);
@@ -290,7 +293,7 @@ export function OutlierSelector({
           )}
         >
           <AlertTriangle className="w-3 h-3" />
-          Outliers
+          {t('playground.outliers.outliers')}
           {lastResult?.n_outliers !== undefined && lastResult.n_outliers > 0 && (
             <Badge variant="secondary" className="h-4 px-1 text-[9px]">
               {lastResult.n_outliers}
@@ -305,14 +308,14 @@ export function OutlierSelector({
         <div className="flex items-center justify-between px-3 py-2 border-b">
           <h4 className="text-sm font-semibold flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-500" />
-            Outlier Detection
+            {t('playground.outliers.title')}
           </h4>
         </div>
 
         <div className="p-3 space-y-4">
           {/* Method selector */}
           <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Detection Method</Label>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">{t('playground.outliers.detectionMethod')}</Label>
             <Select value={method} onValueChange={(v) => setMethod(v as OutlierMethod)}>
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue />
@@ -321,8 +324,8 @@ export function OutlierSelector({
                 {METHODS.map(m => (
                   <SelectItem key={m.value} value={m.value}>
                     <div className="flex flex-col">
-                      <span>{m.label}</span>
-                      <span className="text-[10px] text-muted-foreground">{m.description}</span>
+                      <span>{t(m.labelKey)}</span>
+                      <span className="text-[10px] text-muted-foreground">{t(m.descriptionKey)}</span>
                     </div>
                   </SelectItem>
                 ))}
@@ -332,14 +335,14 @@ export function OutlierSelector({
             {selectedMethod?.requiresPCA && (
               <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
                 <Info className="w-3 h-3" />
-                Uses PCA projection for detection
+                {t('playground.outliers.usesPca')}
               </p>
             )}
           </div>
 
           {/* Distribution preview */}
           <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Value Distribution</Label>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">{t('playground.outliers.valueDistribution')}</Label>
             <div className="bg-muted/30 rounded p-2">
               <DistributionPreview
                 values={previewValues}
@@ -353,7 +356,7 @@ export function OutlierSelector({
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <Label className="text-xs text-muted-foreground">
-                Confidence Threshold
+                {t('playground.outliers.confidenceThreshold')}
               </Label>
               <span className="text-xs font-mono text-primary">
                 {(threshold * 100).toFixed(0)}%
@@ -368,15 +371,15 @@ export function OutlierSelector({
               className="w-full"
             />
             <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
-              <span>More outliers</span>
-              <span>Fewer outliers</span>
+              <span>{t('playground.outliers.moreOutliers')}</span>
+              <span>{t('playground.outliers.fewerOutliers')}</span>
             </div>
           </div>
 
           {/* Mode toggles */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs">Select inliers (typical samples)</Label>
+              <Label className="text-xs">{t('playground.outliers.selectInliersLabel')}</Label>
               <Switch
                 checked={selectInliers}
                 onCheckedChange={setSelectInliers}
@@ -385,7 +388,7 @@ export function OutlierSelector({
             </div>
 
             <div className="flex items-center justify-between">
-              <Label className="text-xs">Top K most extreme</Label>
+              <Label className="text-xs">{t('playground.outliers.topK')}</Label>
               <div className="flex items-center gap-2">
                 <Switch
                   checked={topKMode}
@@ -418,12 +421,12 @@ export function OutlierSelector({
               {isDetecting ? (
                 <>
                   <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                  Detecting...
+                  {t('playground.outliers.detecting')}
                 </>
               ) : (
                 <>
                   <Target className="w-3 h-3 mr-1" />
-                  Select {selectInliers ? 'Inliers' : 'Outliers'}
+                  {selectInliers ? t('playground.outliers.selectInliers') : t('playground.outliers.selectOutliers')}
                 </>
               )}
             </Button>
@@ -438,11 +441,11 @@ export function OutlierSelector({
                       className="h-8 text-xs px-2"
                       onClick={handleAddFilter}
                     >
-                      + Filter
+                      {t('playground.outliers.addFilter')}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    <p className="text-xs">Add as filter operator to pipeline</p>
+                    <p className="text-xs">{t('playground.outliers.addFilterTooltip')}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -455,12 +458,15 @@ export function OutlierSelector({
               <div className="flex items-center gap-2">
                 <Check className="w-3 h-3 text-green-500" />
                 <span>
-                  Found <strong>{lastResult.n_outliers}</strong> outliers,{' '}
-                  <strong>{lastResult.n_inliers}</strong> inliers
+                  <Trans
+                    i18nKey="playground.outliers.foundOutliers"
+                    values={{ outliers: lastResult.n_outliers, inliers: lastResult.n_inliers }}
+                    components={{ b: <strong /> }}
+                  />
                 </span>
               </div>
               <div className="text-[10px] text-muted-foreground mt-1">
-                Threshold: {lastResult.threshold?.toPrecision(4)}
+                {t('playground.outliers.thresholdValue', { value: lastResult.threshold?.toPrecision(4) })}
               </div>
             </div>
           )}

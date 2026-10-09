@@ -13,6 +13,7 @@
  */
 
 import { useState, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, Grid, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,6 +84,7 @@ export function CartesianStage({
   isOnlyStage = false,
   className,
 }: CartesianStageProps) {
+  const { t } = useTranslation();
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const [localLabel, setLocalLabel] = useState(
     resolveCartesianStageLabel(label, index)
@@ -118,12 +120,22 @@ export function CartesianStage({
               }
             }}
             autoFocus
+            aria-label={t("pipelineEditor.generator.cartesian.stageName")}
             className="h-6 text-sm font-medium flex-1"
           />
         ) : (
           <span
-            className="font-medium text-sm text-cyan-700 dark:text-cyan-300 cursor-pointer hover:underline flex-1"
+            role="button"
+            tabIndex={0}
+            title={t("pipelineEditor.generator.cartesian.renameStage")}
+            className="font-medium text-sm text-cyan-700 dark:text-cyan-300 cursor-pointer hover:underline flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             onClick={() => setIsEditingLabel(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setIsEditingLabel(true);
+              }
+            }}
           >
             {localLabel}
           </span>
@@ -140,6 +152,8 @@ export function CartesianStage({
               size="sm"
               className="h-6 w-6 p-0"
               onClick={onToggleExpand}
+              aria-label={isExpanded ? t("pipelineEditor.generator.cartesian.collapseStage") : t("pipelineEditor.generator.cartesian.expandStage")}
+              aria-expanded={isExpanded}
             >
               {isExpanded ? (
                 <ChevronUp className="h-3.5 w-3.5" />
@@ -156,11 +170,12 @@ export function CartesianStage({
                   size="sm"
                   className="h-6 w-6 p-0 text-destructive hover:text-destructive"
                   onClick={onRemove}
+                  aria-label={t("pipelineEditor.generator.cartesian.removeStage")}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Remove stage</TooltipContent>
+              <TooltipContent>{t("pipelineEditor.generator.cartesian.removeStage")}</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -227,6 +242,7 @@ export function CartesianGeneratorContainer({
   isEditing = true,
   className,
 }: CartesianGeneratorContainerProps) {
+  const { t } = useTranslation();
   const [expandedStages, setExpandedStages] = useState<Set<number>>(
     () => new Set(stages.map((_, i) => i))
   );
@@ -309,7 +325,7 @@ export function CartesianGeneratorContainer({
           onClick={onAddStage}
         >
           <Plus className="h-4 w-4 mr-2" />
-          Add Stage
+          {t("pipelineEditor.generator.cartesian.addStage")}
         </Button>
       )}
 
@@ -340,6 +356,7 @@ export function CartesianPreview({
   maxDisplay = 50,
   className,
 }: CartesianPreviewProps) {
+  const { t } = useTranslation();
   const totalCombinations = useMemo(
     () => computeMatrixCombinations(stages),
     [stages]
@@ -350,9 +367,12 @@ export function CartesianPreview({
       <div className={cn("text-center py-4 text-sm text-muted-foreground", className)}>
         <Grid className="h-8 w-8 mx-auto mb-2 opacity-50" />
         <p>
-          {totalCombinations.toLocaleString()} combinations
+          {t("pipelineEditor.generator.cartesian.combinationsCount", {
+            count: totalCombinations,
+            formatted: totalCombinations.toLocaleString(),
+          })}
           <br />
-          <span className="text-xs">(too many to display)</span>
+          <span className="text-xs">{t("pipelineEditor.generator.cartesian.tooManyToDisplay")}</span>
         </p>
       </div>
     );
@@ -379,10 +399,10 @@ export function CartesianPreview({
             {stages
               .map((s) => s.options.length)
               .join(" × ")}{" "}
-            = {totalCombinations} combinations
+            = {t("pipelineEditor.generator.cartesian.combinationsCount", { count: totalCombinations, formatted: totalCombinations })}
           </span>
         ) : (
-          <span>{totalCombinations} total combinations</span>
+          <span>{t("pipelineEditor.generator.cartesian.totalCombinations", { count: totalCombinations })}</span>
         )}
       </div>
     </div>

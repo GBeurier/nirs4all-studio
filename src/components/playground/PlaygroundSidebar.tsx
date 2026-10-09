@@ -35,6 +35,7 @@ import type { SpectralData } from '@/types/spectral';
 import type { UnifiedOperator, OperatorDefinition, StepError, FilterInfo } from '@/types/playground';
 import type { WorkspaceDatasetInfo } from '@/hooks/useSpectralData';
 import type { PartitionKey } from '@/types/datasets';
+import { useTranslation } from 'react-i18next';
 
 interface PlaygroundSidebarProps {
   // Data
@@ -128,6 +129,7 @@ export function PlaygroundSidebar({
   onExportDataCsv,
   onImportPipeline,
 }: PlaygroundSidebarProps) {
+  const { t } = useTranslation();
   const hasExportOptions = onExportToPipelineEditor || onExportPipelineJson || onExportDataCsv;
   const currentSplitterName = operators.find((operator) => operator.type === 'splitting')?.name ?? null;
 
@@ -143,7 +145,7 @@ export function PlaygroundSidebar({
             </div>
             <div>
               <h1 className="text-sm font-bold text-foreground">NIR Lab</h1>
-              <p className="text-xs text-muted-foreground">Preprocessing Playground</p>
+              <p className="text-xs text-muted-foreground">{t('playground.sidebar.subtitle')}</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -155,13 +157,14 @@ export function PlaygroundSidebar({
                   className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-30"
                   disabled={!canUndo}
                   onClick={onUndo}
+                  aria-label={t('playground.sidebar.undo')}
                 >
                   <Undo2 className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 <div className="flex items-center gap-2">
-                  <span>Undo</span>
+                  <span>{t('playground.sidebar.undo')}</span>
                   <kbd className="text-[10px] bg-muted px-1.5 py-0.5 rounded">Ctrl+Z</kbd>
                 </div>
               </TooltipContent>
@@ -174,13 +177,14 @@ export function PlaygroundSidebar({
                   className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-30"
                   disabled={!canRedo}
                   onClick={onRedo}
+                  aria-label={t('playground.sidebar.redo')}
                 >
                   <Redo2 className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 <div className="flex items-center gap-2">
-                  <span>Redo</span>
+                  <span>{t('playground.sidebar.redo')}</span>
                   <kbd className="text-[10px] bg-muted px-1.5 py-0.5 rounded">Ctrl+Shift+Z</kbd>
                 </div>
               </TooltipContent>
@@ -192,15 +196,16 @@ export function PlaygroundSidebar({
                   size="icon"
                   className="h-7 w-7 text-muted-foreground hover:text-primary"
                   onClick={() => window.open('https://nirs4all.readthedocs.io/', '_blank')}
+                  aria-label={t('playground.sidebar.helpTitle')}
                 >
                   <HelpCircle className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 <div className="space-y-1">
-                  <div className="font-medium">Help & Documentation</div>
+                  <div className="font-medium">{t('playground.sidebar.helpTitle')}</div>
                   <div className="text-[10px] text-muted-foreground">
-                    Open nirs4all docs in new tab
+                    {t('playground.sidebar.helpHint')}
                   </div>
                 </div>
               </TooltipContent>
@@ -278,7 +283,7 @@ export function PlaygroundSidebar({
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="flex-1 h-8 text-xs">
                     <Download className="w-3 h-3 mr-1" />
-                    Export
+                    {t('playground.sidebar.export')}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56">
@@ -286,9 +291,9 @@ export function PlaygroundSidebar({
                     <DropdownMenuItem onClick={onExportToPipelineEditor}>
                       <ExternalLink className="w-4 h-4 mr-2" />
                       <div className="flex flex-col">
-                        <span>Open in Pipeline Editor</span>
+                        <span>{t('playground.sidebar.openInEditor')}</span>
                         <span className="text-xs text-muted-foreground">
-                          Continue editing with full features
+                          {t('playground.sidebar.openInEditorHint')}
                         </span>
                       </div>
                     </DropdownMenuItem>
@@ -300,9 +305,9 @@ export function PlaygroundSidebar({
                     <DropdownMenuItem onClick={onExportPipelineJson}>
                       <FileJson className="w-4 h-4 mr-2" />
                       <div className="flex flex-col">
-                        <span>Download Pipeline JSON</span>
+                        <span>{t('playground.sidebar.downloadJson')}</span>
                         <span className="text-xs text-muted-foreground">
-                          nirs4all-compatible format
+                          {t('playground.sidebar.downloadJsonHint')}
                         </span>
                       </div>
                     </DropdownMenuItem>
@@ -311,9 +316,9 @@ export function PlaygroundSidebar({
                     <DropdownMenuItem onClick={onExportDataCsv}>
                       <Table className="w-4 h-4 mr-2" />
                       <div className="flex flex-col">
-                        <span>Download Processed CSV</span>
+                        <span>{t('playground.sidebar.downloadCsv')}</span>
                         <span className="text-xs text-muted-foreground">
-                          Processed spectral data
+                          {t('playground.sidebar.downloadCsvHint')}
                         </span>
                       </div>
                     </DropdownMenuItem>
@@ -331,11 +336,12 @@ export function PlaygroundSidebar({
                     size="sm"
                     className="h-8 text-xs px-2"
                     onClick={onImportPipeline}
+                    aria-label={t('playground.sidebar.importFromEditor')}
                   >
                     <Upload className="w-3 h-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Import from Pipeline Editor</TooltipContent>
+                <TooltipContent>{t('playground.sidebar.importFromEditor')}</TooltipContent>
               </Tooltip>
             )}
           </div>

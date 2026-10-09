@@ -34,6 +34,7 @@ import {
 import { OrbitControls } from './utils/orbitControls';
 import { useRenderScheduler } from './utils/useRenderScheduler';
 import { createRegl3DDrawCommands } from './ScatterRegl3DCommands';
+import { useTranslation } from 'react-i18next';
 
 // ============= Component =============
 
@@ -66,6 +67,7 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
   isLoading,
   clearOnBackgroundClick = true,
 }, ref) => {
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { requestRender, setRender } = useRenderScheduler(canvasRef);
   const reglRef = useRef<createRegl.Regl | null>(null);
@@ -414,7 +416,8 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
         size="sm"
         className="absolute top-2 right-2 h-7 w-7 p-0"
         onClick={handleReset}
-        title="Reset camera"
+        title={t('playground.charts.scatter.resetCamera')}
+        aria-label={t('playground.charts.scatter.resetCamera')}
       >
         <RotateCcw className="h-4 w-4" />
       </Button>

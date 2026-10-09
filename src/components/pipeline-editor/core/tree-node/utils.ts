@@ -5,6 +5,7 @@
  * Uses subType for rendering distinctions within flow/utility types.
  */
 
+import i18n from "i18next";
 import {
   Waves,
   Shuffle,
@@ -113,15 +114,15 @@ export function isBranchableStep(step: PipelineStep): boolean {
  */
 export function getBranchLabel(step: PipelineStep): string {
   if (step.subType === "branch" && step.branchMode === "separation") {
-    return "Route";
+    return i18n.t("pipelineEditor.tree.branchKinds.route");
   }
   if (step.subType === "generator") {
-    return step.generatorKind === "cartesian" ? "Stage"
-      : step.generatorKind === "grid" || step.generatorKind === "zip" ? "Param"
-      : step.generatorKind === "chain" ? "Config"
-      : "Option";
+    return step.generatorKind === "cartesian" ? i18n.t("pipelineEditor.tree.branchKinds.stage")
+      : step.generatorKind === "grid" || step.generatorKind === "zip" ? i18n.t("pipelineEditor.tree.branchKinds.param")
+      : step.generatorKind === "chain" ? i18n.t("pipelineEditor.tree.branchKinds.config")
+      : i18n.t("pipelineEditor.tree.branchKinds.option");
   }
-  return "Branch";
+  return i18n.t("pipelineEditor.tree.branchKinds.branch");
 }
 
 // ============================================================================
@@ -165,7 +166,7 @@ export function computeSweepInfo(step: PipelineStep): SweepInfo {
       sweepSummaryParts.push(`${paramName}: log_range(${start}, ${end}, ${count})`);
     } else if (gen.type === "_or_" && Array.isArray(gen.values)) {
       const choices = gen.values.slice(0, 3).join(", ");
-      const suffix = gen.values.length > 3 ? `, ... (${gen.values.length} total)` : "";
+      const suffix = gen.values.length > 3 ? i18n.t("pipelineEditor.tree.totalSuffix", { count: gen.values.length }) : "";
       sweepSummaryParts.push(`${paramName}: [${choices}${suffix}]`);
     }
   }
@@ -256,37 +257,37 @@ export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
   // Build selection summary
   const summaryParts: string[] = [];
   if (opts.pick !== undefined) {
-    summaryParts.push(`pick ${formatPickArrangeValue(opts.pick)}`);
+    summaryParts.push(i18n.t("pipelineEditor.tree.gen.pick", { value: formatPickArrangeValue(opts.pick) }));
   }
   if (opts.arrange !== undefined) {
-    summaryParts.push(`arrange ${formatPickArrangeValue(opts.arrange)}`);
+    summaryParts.push(i18n.t("pipelineEditor.tree.gen.arrange", { value: formatPickArrangeValue(opts.arrange) }));
   }
   if (opts.then_pick !== undefined) {
-    summaryParts.push(`then pick ${formatPickArrangeValue(opts.then_pick)}`);
+    summaryParts.push(i18n.t("pipelineEditor.tree.gen.thenPick", { value: formatPickArrangeValue(opts.then_pick) }));
   }
   if (opts.then_arrange !== undefined) {
-    summaryParts.push(`then arrange ${formatPickArrangeValue(opts.then_arrange)}`);
+    summaryParts.push(i18n.t("pipelineEditor.tree.gen.thenArrange", { value: formatPickArrangeValue(opts.then_arrange) }));
   }
   if (opts.count !== undefined) {
-    summaryParts.push(`limit ${opts.count}`);
+    summaryParts.push(i18n.t("pipelineEditor.tree.gen.limit", { value: opts.count }));
   }
 
   // Get option names from branches
   const optionNames = generatorKind === "grid" || generatorKind === "zip"
     ? scalarEntries.map((entry, idx) => {
-        const prefix = generatorKind === "grid" || generatorKind === "zip" ? entry.key : `Option ${idx + 1}`;
+        const prefix = generatorKind === "grid" || generatorKind === "zip" ? entry.key : i18n.t("pipelineEditor.tree.gen.optionN", { n: idx + 1 });
         return `${prefix} (${entry.values.length})`;
       })
     : generatorKind === "sample"
-      ? [String(sampleConfig.distribution || "distribution")]
+      ? [String(sampleConfig.distribution || i18n.t("pipelineEditor.tree.gen.distributionFallback"))]
       : branches.map((branch, idx) => {
-          if (branch.length === 0) return `Option ${idx + 1} (empty)`;
+          if (branch.length === 0) return i18n.t("pipelineEditor.tree.gen.optionEmpty", { n: idx + 1 });
           if (branch.length === 1) return branch[0].name;
-          return `${branch[0].name} + ${branch.length - 1} more`;
+          return i18n.t("pipelineEditor.tree.gen.plusMore", { name: branch[0].name, count: branch.length - 1 });
         });
 
   if (generatorKind === "sample" && sampleConfig.distribution) {
-    summaryParts.unshift(`${sampleConfig.distribution} distribution`);
+    summaryParts.unshift(i18n.t("pipelineEditor.tree.gen.distribution", { name: sampleConfig.distribution }));
   }
 
   return {
@@ -296,11 +297,11 @@ export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
     variantCount,
     hasPickArrange,
     selectionSummary: summaryParts.join(" -> ") || (
-      generatorKind === "cartesian" || generatorKind === "grid" ? "all combinations"
-        : generatorKind === "zip" ? "parallel pairs"
-        : generatorKind === "chain" ? "ordered sequence"
-        : generatorKind === "sample" ? "sampled distribution"
-        : "try each"
+      generatorKind === "cartesian" || generatorKind === "grid" ? i18n.t("pipelineEditor.tree.gen.summary.combinations")
+        : generatorKind === "zip" ? i18n.t("pipelineEditor.tree.gen.summary.parallel")
+        : generatorKind === "chain" ? i18n.t("pipelineEditor.tree.gen.summary.ordered")
+        : generatorKind === "sample" ? i18n.t("pipelineEditor.tree.gen.summary.sampled")
+        : i18n.t("pipelineEditor.tree.gen.summary.tryEach")
     ),
     optionNames,
   };
@@ -342,10 +343,13 @@ export function getFoldLabel(step: PipelineStep, childLabel: string): string {
         : step.generatorKind === "chain" ? "configs"
         : "options")
       : step.branchMode === "separation" ? "routes" : "branches";
-    return `${count} ${label}`;
+    return i18n.t(`pipelineEditor.tree.foldLabels.${label}`, { count });
   }
   if (isContainer) {
-    return `${containerChildren.length} ${childLabel}${containerChildren.length !== 1 ? "s" : ""}`;
+    return i18n.t("pipelineEditor.tree.foldLabels.children", {
+      count: containerChildren.length,
+      noun: i18n.t(`pipelineEditor.tree.childKind_${childLabel}`, { count: containerChildren.length }),
+    });
   }
   return "";
 }

@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 export interface SpectraTooltipPayloadEntry {
   payload?: Record<string, number | undefined>;
 }
@@ -27,11 +29,12 @@ export function SpectraSampleTooltip({
   wavelengthAxisName,
   wavelengthUnitSuffix,
 }: SpectraSampleTooltipProps) {
+  const { t } = useTranslation();
   if (!enableHover || !active || hoveredSample === null) {
     return null;
   }
 
-  const sampleId = sampleIds?.[hoveredSample] ?? `Sample ${hoveredSample}`;
+  const sampleId = sampleIds?.[hoveredSample] ?? t('playground.charts.common.sampleFallback', { index: hoveredSample });
   const yValue = targetValues?.[hoveredSample];
   const foldLabel = foldLabels?.[hoveredSample];
   const row = payload?.[0]?.payload;
@@ -48,7 +51,7 @@ export function SpectraSampleTooltip({
         <div className="text-muted-foreground">Y: <span className="font-mono">{yValue.toFixed(3)}</span></div>
       )}
       {foldLabel !== undefined && foldLabel >= 0 && (
-        <div className="text-muted-foreground">Fold: {foldLabel + 1}</div>
+        <div className="text-muted-foreground">{t('playground.charts.common.foldLabel', { n: foldLabel + 1 })}</div>
       )}
       {wavelength !== undefined && (
         <div className="text-muted-foreground">

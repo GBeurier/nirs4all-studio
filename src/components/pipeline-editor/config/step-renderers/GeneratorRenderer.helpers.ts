@@ -9,6 +9,7 @@
  * are added.
  */
 
+import i18n from "i18next";
 import type { PipelineStep, ScalarGeneratorEntry } from "../../types";
 
 // ---------------------------------------------------------------------------
@@ -124,7 +125,7 @@ export function getGeneratorOptionCount({
 
 export function formatSelectionValue(value: SelectionValue | undefined): string {
   if (value === undefined) return "";
-  if (isRange(value)) return `${value[0]} to ${value[1]}`;
+  if (isRange(value)) return i18n.t("pipelineEditor.config.generator.rangeValue", { from: value[0], to: value[1] });
   return String(value);
 }
 
@@ -136,12 +137,23 @@ export function getPrimarySelectionDescription(
     return "";
   }
   if (isRange(config.primaryValue)) {
-    return `All ${config.primaryMode === "pick" ? "combinations" : "permutations"} from ${config.primaryValue[0]} to ${config.primaryValue[1]}`;
+    return i18n.t(
+      config.primaryMode === "pick" ? "pipelineEditor.config.generator.allCombinationsRange" : "pipelineEditor.config.generator.allPermutationsRange",
+      { from: config.primaryValue[0], to: config.primaryValue[1] },
+    );
   }
   if (config.primaryMode === "pick") {
-    return `C(${selectionBaseCount}, ${config.primaryValue || 1}) = ${combinations(selectionBaseCount, (config.primaryValue as number) || 1)} combinations`;
+    return i18n.t("pipelineEditor.config.generator.combinationsFormula", {
+      n: selectionBaseCount,
+      k: config.primaryValue || 1,
+      total: combinations(selectionBaseCount, (config.primaryValue as number) || 1),
+    });
   }
-  return `P(${selectionBaseCount}, ${config.primaryValue || 1}) = ${permutations(selectionBaseCount, (config.primaryValue as number) || 1)} permutations`;
+  return i18n.t("pipelineEditor.config.generator.permutationsFormula", {
+    n: selectionBaseCount,
+    k: config.primaryValue || 1,
+    total: permutations(selectionBaseCount, (config.primaryValue as number) || 1),
+  });
 }
 
 export function getPrimarySelectionSummary(
@@ -150,25 +162,25 @@ export function getPrimarySelectionSummary(
 ): string {
   if (config.primaryMode === "none") {
     return generatorKind === "cartesian"
-      ? "All stage combinations"
-      : "Each option tested individually";
+      ? i18n.t("pipelineEditor.config.generator.summaryAllStageCombinations")
+      : i18n.t("pipelineEditor.config.generator.summaryEachOption");
   }
   if (config.primaryMode === "pick") {
     return isRange(config.primaryValue)
-      ? `All combinations from ${config.primaryValue[0]} to ${config.primaryValue[1]}`
-      : `All ${config.primaryValue}-combinations`;
+      ? i18n.t("pipelineEditor.config.generator.allCombinationsRange", { from: config.primaryValue[0], to: config.primaryValue[1] })
+      : i18n.t("pipelineEditor.config.generator.summaryKCombinations", { k: config.primaryValue });
   }
   return isRange(config.primaryValue)
-    ? `All permutations from ${config.primaryValue[0]} to ${config.primaryValue[1]}`
-    : `All ${config.primaryValue}-permutations`;
+    ? i18n.t("pipelineEditor.config.generator.allPermutationsRange", { from: config.primaryValue[0], to: config.primaryValue[1] })
+    : i18n.t("pipelineEditor.config.generator.summaryKPermutations", { k: config.primaryValue });
 }
 
 export function getSecondarySelectionSummary(config: SelectionConfig): string | undefined {
   if (config.secondaryMode === "then_pick") {
-    return `\u2192 Then pick ${formatSelectionValue(config.secondaryValue)} from results`;
+    return i18n.t("pipelineEditor.config.generator.thenPickSummary", { value: formatSelectionValue(config.secondaryValue) });
   }
   if (config.secondaryMode === "then_arrange") {
-    return `\u2192 Then arrange ${formatSelectionValue(config.secondaryValue)} from results`;
+    return i18n.t("pipelineEditor.config.generator.thenArrangeSummary", { value: formatSelectionValue(config.secondaryValue) });
   }
   return undefined;
 }

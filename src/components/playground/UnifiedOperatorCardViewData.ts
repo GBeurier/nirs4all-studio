@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { UnifiedOperatorFilterStats } from './UnifiedOperatorCardTypes';
 
 export interface FilterStatsBadgeViewModel {
@@ -10,31 +11,32 @@ export interface FilterStatsBadgeViewModel {
 export function getFilterStatsBadgeViewModel({
   isFilter,
   filterStats,
+  t,
 }: {
   isFilter: boolean;
   filterStats?: UnifiedOperatorFilterStats;
+  t: TFunction;
 }): FilterStatsBadgeViewModel | null {
   if (!isFilter || !filterStats || !(filterStats.removed_count > 0)) {
     return null;
   }
 
   const count = filterStats.removed_count;
-  const sampleLabel = `${count} sample${count !== 1 ? 's' : ''}`;
-  const reasonSuffix = filterStats.reason ? `: ${filterStats.reason}` : '';
+  const withReason = (text: string) => (filterStats.reason ? t('playground.operators.filterStats.withReason', { text, reason: filterStats.reason }) : text);
 
   if (filterStats.mode === 'tag') {
     return {
       variant: 'outline',
       className: 'h-4 px-1.5 text-[10px] font-medium gap-0.5 cursor-help border-amber-500/50 text-amber-600 dark:text-amber-400',
-      label: `${count} tagged`,
-      tooltip: `${sampleLabel} tagged as outliers (visible in charts)${reasonSuffix}`,
+      label: t('playground.operators.filterStats.tagged', { count }),
+      tooltip: withReason(t('playground.operators.filterStats.taggedTooltip', { count })),
     };
   }
 
   return {
     variant: 'destructive',
     className: 'h-4 px-1.5 text-[10px] font-medium gap-0.5 cursor-help',
-    label: `${count} removed`,
-    tooltip: `${sampleLabel} filtered out${reasonSuffix}`,
+    label: t('playground.operators.filterStats.removed', { count }),
+    tooltip: withReason(t('playground.operators.filterStats.removedTooltip', { count })),
   };
 }

@@ -16,96 +16,100 @@ import type {
 } from "./GeneratorRenderer.helpers";
 
 export interface GeneratorKindMeta {
-  label: string;
+  /** i18n key of the generator display name. */
+  labelKey: string;
   keyword: string;
   icon: LucideIcon;
-  description: string;
+  /** i18n key of the one-line description. */
+  descriptionKey: string;
   supportsPickArrange: boolean;
   supportsSecondOrder: boolean;
-  variantLabel: string;
-  branchLabel: string;
+  /** Unit id resolved with `pipelineEditor.config.generator.unit.<id>` (plural-aware). */
+  variantUnit: string;
+  /** Unit id resolved with `pipelineEditor.config.generator.unit.<id>` (plural-aware). */
+  branchUnit: string;
 }
 
 export const GENERATOR_KINDS: Record<string, GeneratorKindMeta> = {
   or: {
-    label: "Or (Choose)",
+    labelKey: "pipelineEditor.config.generator.kind.or.label",
     keyword: "_or_",
     icon: Sparkles,
-    description: "Choose from alternatives \u2014 each branch is one option",
+    descriptionKey: "pipelineEditor.config.generator.kind.or.description",
     supportsPickArrange: true,
     supportsSecondOrder: true,
-    variantLabel: "variant",
-    branchLabel: "option",
+    variantUnit: "variant",
+    branchUnit: "option",
   },
   cartesian: {
-    label: "Cartesian Product",
+    labelKey: "pipelineEditor.config.generator.kind.cartesian.label",
     keyword: "_cartesian_",
     icon: Layers,
-    description: "Cross all stages \u2014 each branch is a stage",
+    descriptionKey: "pipelineEditor.config.generator.kind.cartesian.description",
     supportsPickArrange: true,
     supportsSecondOrder: false,
-    variantLabel: "combination",
-    branchLabel: "stage",
+    variantUnit: "combination",
+    branchUnit: "stage",
   },
   grid: {
-    label: "Grid Search",
+    labelKey: "pipelineEditor.config.generator.kind.grid.label",
     keyword: "_grid_",
     icon: Hash,
-    description: "Cartesian product of parameter values",
+    descriptionKey: "pipelineEditor.config.generator.kind.grid.description",
     supportsPickArrange: false,
     supportsSecondOrder: false,
-    variantLabel: "combination",
-    branchLabel: "param",
+    variantUnit: "combination",
+    branchUnit: "param",
   },
   zip: {
-    label: "Zip",
+    labelKey: "pipelineEditor.config.generator.kind.zip.label",
     keyword: "_zip_",
     icon: Link2,
-    description: "Pair parameter values by position",
+    descriptionKey: "pipelineEditor.config.generator.kind.zip.description",
     supportsPickArrange: false,
     supportsSecondOrder: false,
-    variantLabel: "pair",
-    branchLabel: "param",
+    variantUnit: "pair",
+    branchUnit: "param",
   },
   chain: {
-    label: "Chain",
+    labelKey: "pipelineEditor.config.generator.kind.chain.label",
     keyword: "_chain_",
     icon: ListOrdered,
-    description: "Ordered sequence of configurations",
+    descriptionKey: "pipelineEditor.config.generator.kind.chain.description",
     supportsPickArrange: false,
     supportsSecondOrder: false,
-    variantLabel: "config",
-    branchLabel: "config",
+    variantUnit: "config",
+    branchUnit: "config",
   },
   sample: {
-    label: "Sample",
+    labelKey: "pipelineEditor.config.generator.kind.sample.label",
     keyword: "_sample_",
     icon: BarChart3,
-    description: "Random samples from a distribution",
+    descriptionKey: "pipelineEditor.config.generator.kind.sample.description",
     supportsPickArrange: false,
     supportsSecondOrder: false,
-    variantLabel: "sample",
-    branchLabel: "sample",
+    variantUnit: "sample",
+    branchUnit: "sample",
   },
   range: {
-    label: "Range",
+    labelKey: "pipelineEditor.config.generator.kind.range.label",
     keyword: "_range_",
     icon: Ruler,
-    description: "Linear numeric sequence",
+    descriptionKey: "pipelineEditor.config.generator.kind.range.description",
     supportsPickArrange: false,
     supportsSecondOrder: false,
-    variantLabel: "value",
-    branchLabel: "value",
+    variantUnit: "value",
+    branchUnit: "value",
   },
   log_range: {
-    label: "Log Range",
+    labelKey: "pipelineEditor.config.generator.kind.log_range.label",
     keyword: "_log_range_",
     icon: GitBranch,
-    description: "Logarithmically-spaced values",
+    descriptionKey: "pipelineEditor.config.generator.kind.log_range.description",
     supportsPickArrange: false,
     supportsSecondOrder: false,
-    variantLabel: "value",
-    branchLabel: "value",
+    variantUnit: "value",
+    branchUnit: "value",
   },
 };
 
@@ -115,21 +119,21 @@ export function getKindMeta(kind: string): GeneratorKindMeta {
 
 export const PRIMARY_MODE_OPTIONS: {
   value: PrimarySelectionMode;
-  label: string;
-  description: string;
+  labelKey: string;
+  descriptionKey: string;
   icon: LucideIcon;
 }[] = [
-  { value: "none", label: "Try Each", description: "Test each option individually", icon: Sparkles },
-  { value: "pick", label: "Pick", description: "Combinations (order ignored)", icon: Layers },
-  { value: "arrange", label: "Arrange", description: "Permutations (order matters)", icon: Shuffle },
+  { value: "none", labelKey: "pipelineEditor.config.generator.mode.none.label", descriptionKey: "pipelineEditor.config.generator.mode.none.description", icon: Sparkles },
+  { value: "pick", labelKey: "pipelineEditor.config.generator.mode.pick.label", descriptionKey: "pipelineEditor.config.generator.mode.pick.description", icon: Layers },
+  { value: "arrange", labelKey: "pipelineEditor.config.generator.mode.arrange.label", descriptionKey: "pipelineEditor.config.generator.mode.arrange.description", icon: Shuffle },
 ];
 
 export const SECONDARY_MODE_OPTIONS: {
   value: SecondarySelectionMode;
-  label: string;
-  description: string;
+  labelKey: string;
+  descriptionKey: string;
 }[] = [
-  { value: "none", label: "None", description: "No second-order selection" },
-  { value: "then_pick", label: "Then Pick", description: "Combinations from results" },
-  { value: "then_arrange", label: "Then Arrange", description: "Permutations from results" },
+  { value: "none", labelKey: "pipelineEditor.config.generator.secondMode.none.label", descriptionKey: "pipelineEditor.config.generator.secondMode.none.description" },
+  { value: "then_pick", labelKey: "pipelineEditor.config.generator.secondMode.then_pick.label", descriptionKey: "pipelineEditor.config.generator.secondMode.then_pick.description" },
+  { value: "then_arrange", labelKey: "pipelineEditor.config.generator.secondMode.then_arrange.label", descriptionKey: "pipelineEditor.config.generator.secondMode.then_arrange.description" },
 ];

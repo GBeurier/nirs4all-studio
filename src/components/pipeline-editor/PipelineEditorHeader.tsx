@@ -122,7 +122,7 @@ export function PipelineEditorHeader({
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Back to Pipelines</TooltipContent>
+            <TooltipContent>{t("pipelines.editor.backToPipelines")}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -134,13 +134,13 @@ export function PipelineEditorHeader({
                 className="border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
               >
                 <Plus className="mr-1.5 h-4 w-4" />
-                New
+                {t("pipelineEditor.shell.header.new")}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
               {isNew && isDirty
-                ? "Stash as draft & start a new pipeline"
-                : "Start a new pipeline"}
+                ? t("pipelineEditor.shell.header.newTooltipDraft")
+                : t("pipelineEditor.shell.header.newTooltip")}
             </TooltipContent>
           </Tooltip>
 
@@ -149,6 +149,7 @@ export function PipelineEditorHeader({
               <Workflow className="h-5 w-5 text-muted-foreground" />
               <Input
                 value={pipelineName}
+                aria-label={t("pipelineEditor.shell.header.pipelineName")}
                 onChange={(e) => onPipelineNameChange(e.target.value)}
                 className="text-lg font-semibold bg-transparent px-2 py-1 h-auto border border-transparent hover:border-border/50 focus:border-primary/50 focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:ring-offset-0 rounded-md transition-colors w-auto"
                 style={{ minWidth: "200px" }}
@@ -156,10 +157,10 @@ export function PipelineEditorHeader({
               {isDirty && (
                 <span
                   className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
-                  title="Unsaved changes"
+                  title={t("pipelineEditor.shell.header.unsavedTitle")}
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                  Unsaved
+                  {t("pipelineEditor.shell.header.unsaved")}
                 </span>
               )}
             </div>
@@ -189,7 +190,7 @@ export function PipelineEditorHeader({
                   <Undo2 className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+              <TooltipContent>{t("pipelineEditor.shell.header.undoTooltip")}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -202,7 +203,7 @@ export function PipelineEditorHeader({
                   <Redo2 className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+              <TooltipContent>{t("pipelineEditor.shell.header.redoTooltip")}</TooltipContent>
             </Tooltip>
           </div>
 
@@ -223,7 +224,7 @@ export function PipelineEditorHeader({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {viewMode === "code" ? "Switch to Tree View" : "View as Code"}
+              {viewMode === "code" ? t("pipelineEditor.shell.header.switchToTree") : t("pipelineEditor.shell.header.viewAsCode")}
             </TooltipContent>
           </Tooltip>
 
@@ -238,7 +239,7 @@ export function PipelineEditorHeader({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              Keyboard Shortcuts (Ctrl+/)
+              {t("pipelineEditor.shell.header.shortcutsTooltip")}
             </TooltipContent>
           </Tooltip>
 
@@ -253,7 +254,7 @@ export function PipelineEditorHeader({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              Command Palette (Ctrl+K)
+              {t("pipelineEditor.shell.header.commandPaletteTooltip")}
             </TooltipContent>
           </Tooltip>
 
@@ -270,13 +271,13 @@ export function PipelineEditorHeader({
                     isFavorite ? "fill-current" : ""
                   }`}
                 />
-                {isFavorite ? "Favorited" : "Favorite"}
+                {isFavorite ? t("pipelines.editor.favorited") : t("pipelines.editor.favorite")}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
               {isFavorite
-                ? "Remove from favorites"
-                : "Add to favorites"}
+                ? t("pipelines.editor.removeFromFavorites")
+                : t("pipelines.editor.addToFavorites")}
             </TooltipContent>
           </Tooltip>
 
@@ -296,7 +297,7 @@ export function PipelineEditorHeader({
 
           <Button variant="outline" size="sm" onClick={onSave}>
             <Save className="h-4 w-4 mr-2" />
-            Save
+            {t("common.save")}
           </Button>
 
           <Button
@@ -305,7 +306,7 @@ export function PipelineEditorHeader({
             onClick={onUseInExperiment}
           >
             <Play className="h-4 w-4 mr-2" />
-            Use in Experiment
+            {t("pipelineEditor.shell.header.useInExperiment")}
           </Button>
         </div>
       </div>

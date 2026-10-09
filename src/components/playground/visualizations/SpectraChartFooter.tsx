@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type {
   ColorContext,
   GlobalColorConfig,
@@ -31,6 +32,7 @@ export function SpectraChartFooter({
   brushDomain,
   wavelengthUnitSuffix,
 }: SpectraChartFooterProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
       <div className="flex items-center gap-3">
@@ -49,7 +51,7 @@ export function SpectraChartFooter({
         ))}
         {selectedCount > 0 && (
           <span className="text-primary font-medium">
-            • {selectedCount} selected
+            • {t('playground.charts.common.selectedCount', { count: selectedCount })}
           </span>
         )}
         {globalColorConfig && colorContext && (

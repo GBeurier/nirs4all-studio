@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeAll } from "vitest";
 import type { Dataset } from "@/types/datasets";
 import {
   buildDatasetShapeDisplayModel,
@@ -8,6 +8,11 @@ import {
   getDataShapeSourcesBadge,
   partitionBindableDatasets,
 } from "../DatasetBindingData";
+import i18n from "i18next";
+import en from "@/locales/en";
+beforeAll(async () => {
+  await i18n.init({ lng: "en", resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
+});
 
 function makeDataset(overrides: Partial<Dataset>): Dataset {
   return {

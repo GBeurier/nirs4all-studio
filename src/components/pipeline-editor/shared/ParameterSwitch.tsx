@@ -26,6 +26,7 @@
  * />
  */
 
+import { useTranslation } from "react-i18next";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +75,7 @@ export function ParameterSwitch({
   layout = "inline",
   suffix,
 }: ParameterSwitchProps) {
+  const { t } = useTranslation();
   const isDisabled = disabled || hasSweep;
   const displayLabel = label ?? formatParamLabel(paramKey);
 
@@ -96,7 +98,7 @@ export function ParameterSwitch({
               variant="outline"
               className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500"
             >
-              sweep
+              {t("pipelineEditor.shared.param.sweepBadge")}
             </Badge>
           )}
         </div>
@@ -144,7 +146,7 @@ export function ParameterSwitch({
               variant="outline"
               className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500"
             >
-              sweep
+              {t("pipelineEditor.shared.param.sweepBadge")}
             </Badge>
           )}
         </div>

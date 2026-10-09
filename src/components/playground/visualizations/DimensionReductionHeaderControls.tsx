@@ -22,6 +22,7 @@ import {
   DimensionReductionSettingsMenu,
 } from './DimensionReductionSettingsMenu';
 import { DimensionReductionToolbarActions } from './DimensionReductionToolbarActions';
+import { useTranslation } from 'react-i18next';
 
 type DimensionReductionViewMode = '2d' | '3d';
 
@@ -94,6 +95,8 @@ export function DimensionReductionHeaderControls({
   onToggleHover,
   onExport,
 }: DimensionReductionHeaderControlsProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
       <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -109,7 +112,7 @@ export function DimensionReductionHeaderControls({
           value={method}
           onValueChange={(value) => onMethodChange(value as DimensionReductionMethod)}
         >
-          <SelectTrigger className="h-7 w-[70px] text-xs">
+          <SelectTrigger className="h-7 w-[70px] text-xs" aria-label={t('playground.charts.dimReduction.methodLabel')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -120,14 +123,14 @@ export function DimensionReductionHeaderControls({
 
         {nComponents >= 2 && (
           <>
-            <DimensionReductionAxisSelect label="X axis" value={xAxis} options={dimensionOptions} onChange={onXAxisChange} />
-            <span className="text-xs text-muted-foreground">vs</span>
-            <DimensionReductionAxisSelect label="Y axis" value={yAxis} options={dimensionOptions} onChange={onYAxisChange} />
+            <DimensionReductionAxisSelect label={t('playground.charts.dimReduction.axis.x')} value={xAxis} options={dimensionOptions} onChange={onXAxisChange} />
+            <span className="text-xs text-muted-foreground">{t('playground.charts.dimReduction.axis.vs')}</span>
+            <DimensionReductionAxisSelect label={t('playground.charts.dimReduction.axis.y')} value={yAxis} options={dimensionOptions} onChange={onYAxisChange} />
 
             {viewMode === '3d' && nComponents >= 3 && (
               <>
-                <span className="text-xs text-muted-foreground">vs</span>
-                <DimensionReductionAxisSelect label="Z axis" value={zAxis} options={dimensionOptions} onChange={onZAxisChange} />
+                <span className="text-xs text-muted-foreground">{t('playground.charts.dimReduction.axis.vs')}</span>
+                <DimensionReductionAxisSelect label={t('playground.charts.dimReduction.axis.z')} value={zAxis} options={dimensionOptions} onChange={onZAxisChange} />
               </>
             )}
           </>

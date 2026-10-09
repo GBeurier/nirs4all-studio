@@ -8,6 +8,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { PipelineSampleInfo } from "@/api/pipelines";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,12 +50,13 @@ export function PipelineEditorActionsMenu({
   onLoadSample,
   onClearPipeline,
 }: PipelineEditorActionsMenuProps) {
+  const { t } = useTranslation();
   const nextViewMode = viewMode === "code" ? "tree" : "code";
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" aria-label={t("pipelineEditor.shell.actions.more")}>
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -64,40 +66,40 @@ export function PipelineEditorActionsMenu({
           disabled={totalSteps === 0}
         >
           <FileCode className="h-4 w-4 mr-2" />
-          {viewMode === "code" ? "Switch to Tree View" : "View as Code"}
+          {viewMode === "code" ? t("pipelineEditor.shell.header.switchToTree") : t("pipelineEditor.shell.header.viewAsCode")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onExportJson}>
           <Download className="h-4 w-4 mr-2" />
-          Export as JSON (Editor)
+          {t("pipelineEditor.shell.actions.exportJsonEditor")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => { void onExportCanonical("json"); }}>
           <FileJson className="h-4 w-4 mr-2" />
-          Export as JSON
+          {t("pipelineEditor.shell.actions.exportJson")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => { void onExportCanonical("yaml"); }}>
           <FileCode className="h-4 w-4 mr-2" />
-          Export as YAML
+          {t("pipelineEditor.shell.actions.exportYaml")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onImportClick}>
           <Upload className="h-4 w-4 mr-2" />
-          Import JSON or YAML
+          {t("pipelineEditor.shell.actions.importFile")}
         </DropdownMenuItem>
         <DropdownMenuSub onOpenChange={(open) => { if (open) void onLoadSamples(); }}>
           <DropdownMenuSubTrigger>
             <FolderOpen className="h-4 w-4 mr-2" />
-            Load Sample Pipeline
+            {t("pipelineEditor.shell.actions.loadSample")}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="bg-popover max-h-80 overflow-y-auto min-w-[280px]">
             {samplesLoading ? (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="h-4 w-4 mr-2 animate-spin text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Loading samples...</span>
+                <span className="text-sm text-muted-foreground">{t("pipelines.editor.loadingSamples")}</span>
               </div>
             ) : samples.length === 0 ? (
               <DropdownMenuItem disabled>
-                No samples available
+                {t("pipelineEditor.shell.actions.noSamples")}
               </DropdownMenuItem>
             ) : (
               samples.map((sample) => (
@@ -126,7 +128,7 @@ export function PipelineEditorActionsMenu({
           disabled={totalSteps === 0}
         >
           <Trash2 className="h-4 w-4 mr-2" />
-          Clear All Steps
+          {t("pipelineEditor.shell.actions.clearAll")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

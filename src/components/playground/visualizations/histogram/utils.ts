@@ -2,11 +2,13 @@
  * Pure utility functions for histogram calculations.
  */
 
+import type { TFunction } from 'i18next';
+
 import {
   getPartitionRoleColor,
-  getPartitionRoleLabel,
   type PartitionRole,
 } from '@/lib/playground/colorConfig';
+import { useTranslation } from 'react-i18next';
 
 type HistogramPartitionRole = Exclude<PartitionRole, 'unknown'>;
 
@@ -124,8 +126,13 @@ export function getHistogramPartitionRoleColor(role: HistogramPartitionRole): st
     : getPartitionRoleColor(role);
 }
 
-export function getHistogramPartitionRoleLabel(role: HistogramPartitionRole): string {
-  return role === 'val'
-    ? 'cross-val'
-    : getPartitionRoleLabel(role);
+export function getHistogramPartitionRoleLabel(role: HistogramPartitionRole, t: TFunction): string {
+  switch (role) {
+    case 'train':
+      return t('playground.charts.histogram.role.train');
+    case 'val':
+      return t('playground.charts.histogram.role.crossVal');
+    case 'test':
+      return t('playground.charts.histogram.role.test');
+  }
 }

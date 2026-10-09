@@ -9,6 +9,8 @@
  * Also includes discriminated union types for chart state management.
  */
 
+import i18n from '@/lib/i18n';
+
 // ============= Discriminated Union Types for Chart State =============
 
 /**
@@ -333,11 +335,12 @@ export function formatWavelengthUnit(unit?: string | null): string {
  */
 export function getWavelengthAxisLabel(unit?: string | null): string {
   const symbol = formatWavelengthUnit(unit);
-  if (symbol === 'cm⁻¹') return 'Wavenumber (cm⁻¹)';
-  if (symbol === 'nm') return 'Wavelength (nm)';
-  if (symbol === 'µm') return 'Wavelength (µm)';
-  if (symbol) return `Wavelength (${symbol})`;
-  return 'Wavelength';
+  if (symbol === 'cm⁻¹') {
+    return i18n.t('playground.charts.common.axisWithUnit', { axis: i18n.t('playground.charts.common.axisWavenumber'), unit: symbol });
+  }
+  const wavelengthAxis = i18n.t('playground.charts.common.axisWavelength');
+  if (symbol) return i18n.t('playground.charts.common.axisWithUnit', { axis: wavelengthAxis, unit: symbol });
+  return wavelengthAxis;
 }
 
 /**
@@ -368,7 +371,7 @@ export function formatPercentage(value: number, precision: number = 1): string {
  * Format fold label
  */
 export function formatFoldLabel(foldIndex: number): string {
-  return `Fold ${foldIndex + 1}`;
+  return i18n.t('playground.charts.common.foldN', { n: foldIndex + 1 });
 }
 
 // ============= Legend Items =============
@@ -384,12 +387,12 @@ export interface LegendItem {
  */
 export function getStatisticsLegendItems(includeMinMax: boolean = false): LegendItem[] {
   const items: LegendItem[] = [
-    { label: 'Mean', color: STATISTICS_COLORS.mean },
-    { label: '±1 Std', color: STATISTICS_COLORS.std, dashed: true },
+    { label: i18n.t('playground.charts.common.legendMean'), color: STATISTICS_COLORS.mean },
+    { label: i18n.t('playground.charts.common.legendStd'), color: STATISTICS_COLORS.std, dashed: true },
   ];
 
   if (includeMinMax) {
-    items.push({ label: 'Min/Max', color: STATISTICS_COLORS.minMax, dashed: true });
+    items.push({ label: i18n.t('playground.charts.common.legendMinMax'), color: STATISTICS_COLORS.minMax, dashed: true });
   }
 
   return items;

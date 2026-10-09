@@ -12,6 +12,7 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from '@/lib/motion';
 import {
   Settings,
@@ -64,6 +65,7 @@ interface CustomNodeSettingsProps {
 }
 
 export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsProps) {
+  const { t, i18n } = useTranslation();
   const {
     securityConfig,
     updateSecurityConfig,
@@ -106,19 +108,19 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
     const pkg = newPackage.trim().toLowerCase();
 
     if (!pkg) {
-      setPackageError('Package name is required');
+      setPackageError(t('pipelineEditor.customNodes.settings.allowlist.errRequired'));
       return;
     }
 
     // Validate package name format
     if (!/^[a-z][a-z0-9_-]*$/.test(pkg)) {
-      setPackageError('Invalid package name format. Use lowercase letters, numbers, underscores, or hyphens.');
+      setPackageError(t('pipelineEditor.customNodes.settings.allowlist.errFormat'));
       return;
     }
 
     // Check if already exists
     if (allowedPackages.includes(pkg)) {
-      setPackageError('Package is already in the allowlist');
+      setPackageError(t('pipelineEditor.customNodes.settings.allowlist.errExists'));
       return;
     }
 
@@ -128,7 +130,7 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
       setPackageError(null);
       setHasChanges(true);
     } else {
-      setPackageError(result.error || 'Failed to add package');
+      setPackageError(result.error || t('pipelineEditor.customNodes.settings.allowlist.errFailed'));
     }
   };
 
@@ -153,15 +155,15 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
 
   // Format last sync time
   const formatLastSync = (date: Date | null) => {
-    if (!date) return 'Never';
+    if (!date) return t('pipelineEditor.customNodes.settings.sync.never');
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 1) return t('pipelineEditor.customNodes.settings.sync.justNow');
+    if (minutes < 60) return t('pipelineEditor.customNodes.settings.sync.minutesAgo', { count: minutes });
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return date.toLocaleDateString();
+    if (hours < 24) return t('pipelineEditor.customNodes.settings.sync.hoursAgo', { count: hours });
+    return date.toLocaleDateString(i18n.language);
   };
 
   return (
@@ -170,10 +172,10 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5 text-violet-500" />
-            Custom Node Settings
+            {t('pipelineEditor.customNodes.settings.title')}
           </DialogTitle>
           <DialogDescription>
-            Configure security policies and manage allowed packages for custom nodes
+            {t('pipelineEditor.customNodes.settings.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -183,10 +185,10 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Cloud className="h-4 w-4" />
-                Workspace Sync
+                {t('pipelineEditor.customNodes.settings.sync.title')}
               </CardTitle>
               <CardDescription>
-                Sync custom nodes with the workspace for team sharing
+                {t('pipelineEditor.customNodes.settings.sync.description')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -194,14 +196,14 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-sm">
                     <HardDrive className="h-4 w-4 text-muted-foreground" />
-                    <span>Local nodes: <strong>{localNodes.length}</strong></span>
+                    <span>{t('pipelineEditor.customNodes.settings.sync.localNodes')} <strong>{localNodes.length}</strong></span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Cloud className="h-4 w-4 text-muted-foreground" />
-                    <span>Workspace nodes: <strong>{workspaceNodes.length}</strong></span>
+                    <span>{t('pipelineEditor.customNodes.settings.sync.workspaceNodes')} <strong>{workspaceNodes.length}</strong></span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Last sync: {formatLastSync(lastSyncTime)}
+                    {t('pipelineEditor.customNodes.settings.sync.lastSync', { when: formatLastSync(lastSyncTime) })}
                   </div>
                 </div>
                 <Button
@@ -212,7 +214,7 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
                   className="gap-2"
                 >
                   <RefreshCw className={cn('h-4 w-4', isSyncing && 'animate-spin')} />
-                  {isSyncing ? 'Syncing...' : 'Sync Now'}
+                  {isSyncing ? t('pipelineEditor.customNodes.settings.sync.syncing') : t('pipelineEditor.customNodes.settings.sync.syncNow')}
                 </Button>
               </div>
 
@@ -227,7 +229,7 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
                     <Alert className="bg-green-50 border-green-200">
                       <Check className="h-4 w-4 text-green-600" />
                       <AlertDescription className="text-green-700">
-                        Successfully synced with workspace
+                        {t('pipelineEditor.customNodes.settings.sync.success')}
                       </AlertDescription>
                     </Alert>
                   </motion.div>
@@ -241,19 +243,19 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Shield className="h-4 w-4" />
-                Security Policy
+                {t('pipelineEditor.customNodes.settings.security.title')}
               </CardTitle>
               <CardDescription>
-                Control who can create and use custom nodes
+                {t('pipelineEditor.customNodes.settings.security.description')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Enable custom nodes */}
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label htmlFor="enable-custom">Enable Custom Nodes</Label>
+                  <Label htmlFor="enable-custom">{t('pipelineEditor.customNodes.settings.security.enable')}</Label>
                   <p className="text-xs text-muted-foreground">
-                    Allow users to create and use custom operators
+                    {t('pipelineEditor.customNodes.settings.security.enableHint')}
                   </p>
                 </div>
                 <Switch
@@ -269,23 +271,22 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="require-approval" className="flex items-center gap-2">
-                    Require Admin Approval
+                    {t('pipelineEditor.customNodes.settings.security.approval')}
                     <TooltipProvider>
                       <Tooltip>
-                        <TooltipTrigger>
+                        <TooltipTrigger aria-label={t('pipelineEditor.customNodes.settings.security.moreInfo')}>
                           <Info className="h-3.5 w-3.5 text-muted-foreground" />
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="max-w-xs">
-                            When enabled, new custom nodes must be approved by an admin
-                            before they can be used in pipelines.
+                            {t('pipelineEditor.customNodes.settings.security.approvalTooltip')}
                           </p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    New custom nodes require admin review
+                    {t('pipelineEditor.customNodes.settings.security.approvalHint')}
                   </p>
                 </div>
                 <Switch
@@ -301,9 +302,9 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
               {/* Allow user packages */}
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label htmlFor="allow-user-packages">Allow User Packages</Label>
+                  <Label htmlFor="allow-user-packages">{t('pipelineEditor.customNodes.settings.security.allowUserPackages')}</Label>
                   <p className="text-xs text-muted-foreground">
-                    Let users add their own packages to the allowlist
+                    {t('pipelineEditor.customNodes.settings.security.allowUserPackagesHint')}
                   </p>
                 </div>
                 <Switch
@@ -321,10 +322,10 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Package className="h-4 w-4" />
-                Package Allowlist
+                {t('pipelineEditor.customNodes.settings.allowlist.title')}
               </CardTitle>
               <CardDescription>
-                Only operators from these packages can be used in custom nodes
+                {t('pipelineEditor.customNodes.settings.allowlist.description')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -333,7 +334,7 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Input
-                      placeholder="Package name (e.g., mypackage)"
+                      placeholder={t('pipelineEditor.customNodes.settings.allowlist.placeholder')}
                       value={newPackage}
                       onChange={(e) => {
                         setNewPackage(e.target.value);
@@ -355,6 +356,7 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
                     size="icon"
                     onClick={handleAddPackage}
                     disabled={!securityConfig.allowCustomNodes}
+                    aria-label={t('pipelineEditor.customNodes.settings.allowlist.add')}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -378,19 +380,21 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
                       {isDefault ? (
                         <TooltipProvider>
                           <Tooltip>
-                            <TooltipTrigger>
+                            <TooltipTrigger aria-label={t('pipelineEditor.customNodes.settings.allowlist.defaultPackage')}>
                               <Shield className="h-3 w-3 ml-1 text-muted-foreground" />
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Default package (cannot be removed)</p>
+                              <p>{t('pipelineEditor.customNodes.settings.allowlist.defaultPackage')}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                       ) : (
                         <button
                           onClick={() => handleRemovePackage(pkg)}
-                          className="ml-1 p-0.5 rounded-full hover:bg-red-100 transition-colors"
-                          title="Remove package"
+                          className="ml-1 p-0.5 rounded-full hover:bg-red-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          type="button"
+                          title={t('pipelineEditor.customNodes.settings.allowlist.remove', { name: pkg })}
+                          aria-label={t('pipelineEditor.customNodes.settings.allowlist.remove', { name: pkg })}
                         >
                           <X className="h-3 w-3 text-muted-foreground group-hover:text-red-500" />
                         </button>
@@ -404,10 +408,9 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
               {!securityConfig.allowUserPackages && (
                 <Alert>
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Restricted Mode</AlertTitle>
+                  <AlertTitle>{t('pipelineEditor.customNodes.settings.allowlist.restrictedTitle')}</AlertTitle>
                   <AlertDescription>
-                    User packages are disabled. Only default packages can be used.
-                    Enable "Allow User Packages" to let users add custom packages.
+                    {t('pipelineEditor.customNodes.settings.allowlist.restrictedDescription')}
                   </AlertDescription>
                 </Alert>
               )}
@@ -418,10 +421,9 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
           {!securityConfig.allowCustomNodes && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Custom Nodes Disabled</AlertTitle>
+              <AlertTitle>{t('pipelineEditor.customNodes.settings.disabledTitle')}</AlertTitle>
               <AlertDescription>
-                Custom nodes are currently disabled. Users cannot create or use custom operators.
-                Enable custom nodes to allow this functionality.
+                {t('pipelineEditor.customNodes.settings.disabledDescription')}
               </AlertDescription>
             </Alert>
           )}
@@ -436,7 +438,7 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
           >
             <p className="text-sm text-muted-foreground flex items-center gap-2">
               <Save className="h-4 w-4" />
-              Changes are saved automatically
+              {t('pipelineEditor.customNodes.settings.autosave')}
             </p>
             <Button
               variant="outline"
@@ -445,7 +447,7 @@ export function CustomNodeSettings({ open, onOpenChange }: CustomNodeSettingsPro
                 setHasChanges(false);
               }}
             >
-              Done
+              {t('pipelineEditor.customNodes.settings.done')}
             </Button>
           </motion.div>
         )}

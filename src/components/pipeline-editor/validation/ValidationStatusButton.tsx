@@ -8,6 +8,7 @@
  */
 
 import React from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   AlertTriangle,
@@ -63,6 +64,7 @@ export function ValidationStatusButton({
   variant = "default",
   className,
 }: ValidationStatusButtonProps): React.ReactElement {
+  const { t } = useTranslation();
   const { errorCount, warningCount, infoCount } = result.summary;
   const hasIssues = errorCount > 0 || warningCount > 0;
 
@@ -81,25 +83,25 @@ export function ValidationStatusButton({
       icon: Loader2,
       color: "text-muted-foreground",
       bgColor: "bg-muted/50",
-      label: "Validating...",
+      label: t("pipelineEditor.validation.ui.validating"),
     },
     error: {
       icon: AlertCircle,
       color: "text-destructive",
       bgColor: "bg-destructive/10",
-      label: `${errorCount} error${errorCount !== 1 ? "s" : ""}`,
+      label: t("pipelineEditor.validation.ui.errorCount", { count: errorCount }),
     },
     warning: {
       icon: AlertTriangle,
       color: "text-orange-500",
       bgColor: "bg-orange-500/10",
-      label: `${warningCount} warning${warningCount !== 1 ? "s" : ""}`,
+      label: t("pipelineEditor.validation.ui.warningCount", { count: warningCount }),
     },
     valid: {
       icon: CheckCircle2,
       color: "text-emerald-500",
       bgColor: "bg-emerald-500/10",
-      label: "Pipeline valid",
+      label: t("pipelineEditor.validation.ui.pipelineValid"),
     },
   };
 
@@ -119,6 +121,7 @@ export function ValidationStatusButton({
                   size="icon"
                   className={cn("h-8 w-8 relative", className)}
                   disabled={isValidating}
+                  aria-label={config.label}
                 >
                   <Icon
                     className={cn(
@@ -237,12 +240,12 @@ export function ValidationStatusButton({
                 </Badge>
               )}
               {!hasIssues && (
-                <span className="text-xs text-emerald-500">Valid</span>
+                <span className="text-xs text-emerald-500">{t("pipelineEditor.validation.ui.valid")}</span>
               )}
             </>
           )}
           {isValidating && (
-            <span className="text-xs text-muted-foreground">Validating</span>
+            <span className="text-xs text-muted-foreground">{t("pipelineEditor.validation.ui.validatingShort")}</span>
           )}
         </Button>
       </PopoverTrigger>

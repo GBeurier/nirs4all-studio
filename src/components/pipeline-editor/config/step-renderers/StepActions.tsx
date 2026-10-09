@@ -7,6 +7,7 @@
  * Phase 3 Implementation - Component Refactoring
  */
 
+import { useTranslation } from "react-i18next";
 import { Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -33,6 +34,7 @@ export function StepActions({
   onRemove,
   className = "",
 }: StepActionsProps) {
+  const { t } = useTranslation();
   return (
     <div className={`p-4 border-t border-border space-y-2 ${className}`}>
       <Button
@@ -42,7 +44,7 @@ export function StepActions({
         onClick={() => onDuplicate(stepId)}
       >
         <Copy className="h-4 w-4 mr-2" />
-        Duplicate Step
+        {t("pipelineEditor.config.stepActions.duplicate")}
       </Button>
       <Button
         variant="destructive"
@@ -51,7 +53,7 @@ export function StepActions({
         onClick={() => onRemove(stepId)}
       >
         <Trash2 className="h-4 w-4 mr-2" />
-        Remove Step
+        {t("pipelineEditor.config.stepActions.remove")}
       </Button>
     </div>
   );

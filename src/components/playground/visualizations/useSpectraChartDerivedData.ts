@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   type ColorContext,
   type GlobalColorConfig,
@@ -149,6 +150,8 @@ export function useSpectraChartDerivedData({
   referenceLabel,
   showAbsoluteDifference,
 }: UseSpectraChartDerivedDataInput) {
+  // `t` is only a dependency so labels built through the global i18n instance refresh on language change.
+  const { t } = useTranslation();
   const baseWavelengths = useMemo(
     () => getSpectraBaseWavelengths(original, processed, config.viewMode),
     [config.viewMode, original, processed]
@@ -156,7 +159,8 @@ export function useSpectraChartDerivedData({
 
   const axisInfo = useMemo(
     () => buildSpectraChartAxisInfo(original, processed),
-    [original, processed]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `t` triggers a refresh of the localised axis label on language change
+    [original, processed, t]
   );
 
   const wavelengthRange: [number, number] = useMemo(
@@ -356,6 +360,7 @@ export function useSpectraChartDerivedData({
     showOriginal: viewState.showOriginal,
     hasReferenceDataset: Boolean(referenceDataset?.spectra && referenceDataset.spectra.length > 0),
     referenceLabel,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `t` refreshes localised legend labels on language change
   }), [
     config.aggregation.mode,
     config.viewMode,
@@ -363,6 +368,7 @@ export function useSpectraChartDerivedData({
     groupKeys,
     referenceDataset,
     referenceLabel,
+    t,
     viewState.showGroupedAggregation,
     viewState.showOriginal,
     viewState.showProcessed,

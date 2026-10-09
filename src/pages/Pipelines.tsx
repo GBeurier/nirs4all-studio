@@ -124,8 +124,8 @@ export default function Pipelines() {
   }, [toggleFavorite]);
 
   const handleDuplicate = useCallback(async (pipeline: Pipeline) => {
-    await clonePipeline(pipeline.id, `${pipeline.name} (Copy)`);
-  }, [clonePipeline]);
+    await clonePipeline(pipeline.id, `${pipeline.name} (${t("pipelines.library.copySuffix")})`);
+  }, [clonePipeline, t]);
 
   const handleDelete = useCallback((pipeline: Pipeline) => {
     setSelectedPipeline(pipeline);
@@ -148,14 +148,14 @@ export default function Pipelines() {
   const handlePresetSelect = useCallback(async (presetId: string, variant: PipelinePresetVariantId) => {
     const created = await createFromPreset(presetId, variant);
     if (!created) {
-      toast.error("Failed to create pipeline from template");
+      toast.error(t("pipelines.toasts.templateFailed"));
       return;
     }
-    toast.success("Template added to your workspace", {
-      description: `"${created.name}" is ready to edit.`,
+    toast.success(t("pipelines.toasts.templateAdded"), {
+      description: t("pipelines.toasts.templateReady", { name: created.name }),
     });
     navigate(`/pipelines/${created.id}`);
-  }, [createFromPreset, navigate]);
+  }, [createFromPreset, navigate, t]);
 
   const handleImport = useCallback(async (jsonString: string) => {
     return await importPipeline(jsonString);
@@ -207,13 +207,13 @@ export default function Pipelines() {
 
       if (lastError) {
         console.error("Failed to resolve best chain:", lastError);
-        toast.error("Could not open the best chain for this run.");
+        toast.error(t("pipelines.toasts.bestChainFailed"));
         return;
       }
 
-      toast.info("No chain artifacts found for this run.");
+      toast.info(t("pipelines.toasts.noChainArtifacts"));
     },
-    [navigate]
+    [navigate, t]
   );
 
   return (

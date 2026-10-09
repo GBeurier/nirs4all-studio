@@ -11,6 +11,7 @@ import { SimilarityFilter } from './SimilarityFilter';
 import { RibbonGroup } from './CanvasToolbarRibbonGroup';
 import type { PipelineExecutionMetricObservation } from '@/lib/pipelineExecutionContract';
 import type { FoldsInfo, MetricFilter, MetricsResult, OutlierResult, SimilarityResult } from '@/types/playground';
+import { useTranslation } from 'react-i18next';
 
 export interface CanvasToolbarFilterGroupProps {
   hasPartition: boolean;
@@ -45,8 +46,9 @@ export const CanvasToolbarFilterGroup = memo(function CanvasToolbarFilterGroup({
   selectedSample,
   sampleIds,
 }: CanvasToolbarFilterGroupProps) {
+  const { t } = useTranslation();
   return (
-    <RibbonGroup label="Filter" icon={<Filter className="w-2.5 h-2.5" />}>
+    <RibbonGroup label={t('playground.toolbar.filter.groupLabel')} icon={<Filter className="w-2.5 h-2.5" />}>
       {(hasPartition || hasFolds) && (
         <PartitionSelector
           value={partitionFilter}

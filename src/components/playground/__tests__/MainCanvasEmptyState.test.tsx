@@ -5,7 +5,8 @@
 import type { ReactNode } from 'react';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import i18n from '@/lib/i18n';
 
 import { MainCanvasEmptyState } from '../MainCanvasEmptyState';
 
@@ -32,6 +33,10 @@ afterEach(() => {
     container.remove();
   }
   mountedContainers = [];
+});
+
+beforeAll(async () => {
+  await i18n.changeLanguage('en');
 });
 
 describe('MainCanvasEmptyState', () => {

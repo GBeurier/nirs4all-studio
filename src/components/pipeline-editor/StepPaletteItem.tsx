@@ -1,4 +1,5 @@
 import { useDraggable } from "@dnd-kit/core";
+import { useTranslation } from "react-i18next";
 import {
   GripVertical,
   Star,
@@ -37,6 +38,7 @@ export function DraggableStep({
   isUnavailable = false,
   unavailableReason,
 }: DraggableStepProps) {
+  const { t } = useTranslation();
   const { isDragging: globalIsDragging } = usePipelineDnd();
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -91,7 +93,7 @@ export function DraggableStep({
               <p className="text-xs font-medium text-foreground truncate">{option.name}</p>
               {isUnavailable && (
                 <Badge variant="outline" className="h-4 px-1 text-[9px] text-amber-700 border-amber-500/50 dark:text-amber-300">
-                  Unavailable
+                  {t("pipelineEditor.palette.unavailable")}
                 </Badge>
               )}
               {option.isDeepLearning && (
@@ -125,7 +127,7 @@ export function DraggableStep({
           {option.isDeepLearning && (
             <div className="flex items-center gap-1.5 pt-1">
               <div className="h-1.5 w-1.5 rounded-full bg-violet-500" />
-              <span className="text-[10px] text-muted-foreground">Deep Learning Model</span>
+              <span className="text-[10px] text-muted-foreground">{t("pipelineEditor.palette.deepLearningModel")}</span>
             </div>
           )}
         </div>

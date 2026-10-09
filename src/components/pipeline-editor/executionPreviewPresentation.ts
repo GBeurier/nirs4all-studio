@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import type { ExecutionBreakdown } from "./executionAnalysis";
 
 export type ExecutionPreviewSeverity = "low" | "medium" | "high" | "extreme";
@@ -25,23 +26,23 @@ export function getSeverityColor(severity: ExecutionPreviewSeverity): string {
 export function getComplexityLabel(severity: ExecutionPreviewSeverity): string {
   switch (severity) {
     case "low":
-      return "Light";
+      return i18n.t("pipelineEditor.misc.complexity.low");
     case "medium":
-      return "Moderate";
+      return i18n.t("pipelineEditor.misc.complexity.medium");
     case "high":
-      return "Heavy";
+      return i18n.t("pipelineEditor.misc.complexity.high");
     case "extreme":
-      return "Extreme";
+      return i18n.t("pipelineEditor.misc.complexity.extreme");
   }
 }
 
 export function estimateExecutionTime(fits: number): string {
   const seconds = fits;
 
-  if (seconds < 60) return `~${seconds}s`;
-  if (seconds < 3600) return `~${Math.ceil(seconds / 60)} min`;
-  if (seconds < 86400) return `~${(seconds / 3600).toFixed(1)} hours`;
-  return `~${(seconds / 86400).toFixed(1)} days`;
+  if (seconds < 60) return i18n.t("pipelineEditor.misc.time.seconds", { count: seconds });
+  if (seconds < 3600) return i18n.t("pipelineEditor.misc.time.minutes", { count: Math.ceil(seconds / 60) });
+  if (seconds < 86400) return i18n.t("pipelineEditor.misc.time.hours", { value: (seconds / 3600).toFixed(1) });
+  return i18n.t("pipelineEditor.misc.time.days", { value: (seconds / 86400).toFixed(1) });
 }
 
 export function getExecutionProgressValue(totalFits: number): number {
@@ -55,31 +56,31 @@ export function generateExecutionSuggestions(breakdown: ExecutionBreakdown): str
 
   if (breakdown.sweepVariants > 100 && breakdown.modelsWithFinetuning === 0) {
     suggestions.push(
-      "Consider using Optuna finetuning instead of exhaustive grid search for faster optimization."
+      i18n.t("pipelineEditor.misc.suggestions.finetuning")
     );
   }
 
   if (breakdown.sweepVariants > 1000) {
     suggestions.push(
-      "Reduce parameter sweep ranges or use coarser step sizes to limit combinations."
+      i18n.t("pipelineEditor.misc.suggestions.reduceSweeps")
     );
   }
 
   if (breakdown.finetuningTrials > 100 && breakdown.sweepVariants > 1) {
     suggestions.push(
-      "With many sweep variants, consider reducing Optuna trials per variant."
+      i18n.t("pipelineEditor.misc.suggestions.reduceTrials")
     );
   }
 
   if (breakdown.cvFolds > 10) {
     suggestions.push(
-      "High CV fold count increases execution time. Consider 5-fold CV for faster iteration."
+      i18n.t("pipelineEditor.misc.suggestions.fewerFolds")
     );
   }
 
   if (breakdown.totalFits > 50000) {
     suggestions.push(
-      "Consider using a subset of data for initial exploration, then full data for final model."
+      i18n.t("pipelineEditor.misc.suggestions.subset")
     );
   }
 
@@ -90,16 +91,16 @@ export function buildExecutionFormula(breakdown: ExecutionBreakdown): string {
   const pipelineTerm = breakdown.totalPipelines > 1
     ? (() => {
       const pipelineParts: string[] = [];
-      if (breakdown.sweepVariants > 1) pipelineParts.push(`${breakdown.sweepVariants} sweeps`);
-      if (breakdown.generatorVariants > 1) pipelineParts.push(`${breakdown.generatorVariants} generators`);
-      return pipelineParts.length > 0 ? pipelineParts.join(" × ") : `${breakdown.totalPipelines} pipelines`;
+      if (breakdown.sweepVariants > 1) pipelineParts.push(i18n.t("pipelineEditor.misc.formula.sweeps", { count: breakdown.sweepVariants }));
+      if (breakdown.generatorVariants > 1) pipelineParts.push(i18n.t("pipelineEditor.misc.formula.generators", { count: breakdown.generatorVariants }));
+      return pipelineParts.length > 0 ? pipelineParts.join(" × ") : i18n.t("pipelineEditor.misc.formula.pipelines", { count: breakdown.totalPipelines });
     })()
-    : "1 pipeline";
+    : i18n.t("pipelineEditor.misc.formula.onePipeline");
 
-  const fitTerm = `${breakdown.cvFitsPerPipeline} fit${breakdown.cvFitsPerPipeline !== 1 ? "s" : ""}/pipeline`;
-  const cvFormula = `${pipelineTerm} × ${fitTerm} × ${breakdown.cvFolds} folds`;
+  const fitTerm = i18n.t("pipelineEditor.misc.formula.fitsPerPipeline", { count: breakdown.cvFitsPerPipeline });
+  const cvFormula = i18n.t("pipelineEditor.misc.formula.folds", { pipelines: pipelineTerm, fits: fitTerm, folds: breakdown.cvFolds });
   if (breakdown.refitModels > 0) {
-    return `${cvFormula} + ${breakdown.refitModels.toLocaleString()} refit${breakdown.refitModels !== 1 ? "s" : ""}`;
+    return i18n.t("pipelineEditor.misc.formula.refits", { formula: cvFormula, count: breakdown.refitModels });
   }
   return cvFormula;
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   ArrowDown,
   Boxes,
@@ -42,6 +43,7 @@ import {
   getVisibleStackingBaseModelCount,
   isStackingSourceSelected,
   META_MODEL_CATEGORIES,
+  META_MODEL_CATEGORY_LABEL_KEYS,
   META_MODEL_OPTIONS,
   type AvailableStackingModel,
   type MetaModelOption,
@@ -49,23 +51,23 @@ import {
 
 const COVERAGE_STRATEGIES = {
   drop: {
-    label: "Drop Samples",
-    description: "Remove samples without complete OOF predictions",
+    labelKey: "pipelineEditor.stacking.coverage.drop.label",
+    descriptionKey: "pipelineEditor.stacking.coverage.drop.description",
     icon: EyeOff,
   },
   fill: {
-    label: "Fill with Value",
-    description: "Replace missing predictions with a constant value",
+    labelKey: "pipelineEditor.stacking.coverage.fill.label",
+    descriptionKey: "pipelineEditor.stacking.coverage.fill.description",
     icon: Puzzle,
   },
   model: {
-    label: "Model Prediction",
-    description: "Use fitted model to fill missing predictions",
+    labelKey: "pipelineEditor.stacking.coverage.model.label",
+    descriptionKey: "pipelineEditor.stacking.coverage.model.description",
     icon: Target,
   },
 } satisfies Record<
   StackingConfig["coverageStrategy"],
-  { label: string; description: string; icon: LucideIcon }
+  { labelKey: string; descriptionKey: string; icon: LucideIcon }
 >;
 
 interface StackingPanelHeaderProps {
@@ -77,6 +79,7 @@ export function StackingPanelHeader({
   enabled,
   onToggle,
 }: StackingPanelHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -92,21 +95,22 @@ export function StackingPanelHeader({
         </div>
         <div>
           <h3 className="font-semibold text-foreground flex items-center gap-2">
-            Stacking Ensemble
+            {t("pipelineEditor.stacking.title")}
             {enabled && (
               <Badge className="text-[10px] px-1.5 h-4 bg-pink-500">
-                MetaModel
+                {t("pipelineEditor.stacking.metaModelBadge")}
               </Badge>
             )}
           </h3>
           <p className="text-xs text-muted-foreground">
-            Combine models using out-of-fold predictions
+            {t("pipelineEditor.stacking.subtitle")}
           </p>
         </div>
       </div>
       <Switch
         checked={enabled}
         onCheckedChange={onToggle}
+        aria-label={t("pipelineEditor.stacking.toggle")}
         className="data-[state=checked]:bg-pink-500"
       />
     </div>
@@ -124,6 +128,7 @@ export function StackingDiagram({
   metaModel,
   passthrough,
 }: StackingDiagramProps) {
+  const { t } = useTranslation();
   const baseModels = getVisibleStackingBaseModelCount(sourceCount);
 
   return (
@@ -136,7 +141,7 @@ export function StackingDiagram({
                 <Target className="h-4 w-4 text-emerald-500" />
               </div>
               <span className="text-[10px] text-muted-foreground">
-                Model {index + 1}
+                {t("pipelineEditor.stacking.diagram.model", { n: index + 1 })}
               </span>
             </div>
           ))}
@@ -159,7 +164,7 @@ export function StackingDiagram({
 
         <div className="flex items-center gap-2 py-1 px-3 rounded-full bg-muted border border-border">
           <Combine className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-xs">OOF Predictions</span>
+          <span className="text-xs">{t("pipelineEditor.stacking.diagram.oofPredictions")}</span>
           {passthrough && (
             <>
               <span className="text-muted-foreground">+</span>
@@ -176,7 +181,7 @@ export function StackingDiagram({
           </div>
           <span className="text-xs font-medium text-pink-500">{metaModel}</span>
           <Badge variant="secondary" className="text-[10px] px-1 h-4">
-            Meta-Model
+            {t("pipelineEditor.stacking.metaModel")}
           </Badge>
         </div>
       </div>
@@ -199,10 +204,11 @@ export function SourceModelsSelection({
   onUseAllSources,
   onSourceToggle,
 }: SourceModelsSelectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Base Models</Label>
+        <Label className="text-sm font-medium">{t("pipelineEditor.stacking.baseModels")}</Label>
         <Button
           variant="ghost"
           size="sm"
@@ -210,7 +216,7 @@ export function SourceModelsSelection({
           onClick={onUseAllSources}
           disabled={isUsingAllSources}
         >
-          Use All
+          {t("pipelineEditor.stacking.useAll")}
         </Button>
       </div>
 
@@ -265,9 +271,10 @@ export function MetaModelSelection({
   selectedMetaModel,
   onMetaModelChange,
 }: MetaModelSelectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
-      <Label className="text-sm font-medium">Meta-Model</Label>
+      <Label className="text-sm font-medium">{t("pipelineEditor.stacking.metaModel")}</Label>
       <Select value={value} onValueChange={onMetaModelChange}>
         <SelectTrigger>
           <SelectValue />
@@ -275,7 +282,7 @@ export function MetaModelSelection({
         <SelectContent className="bg-popover max-h-[300px]">
           {META_MODEL_CATEGORIES.map((category) => (
             <SelectGroup key={category}>
-              <SelectLabel>{category}</SelectLabel>
+              <SelectLabel>{t(META_MODEL_CATEGORY_LABEL_KEYS[category])}</SelectLabel>
               {META_MODEL_OPTIONS.filter((model) => model.category === category).map(
                 (model) => (
                   <SelectItem key={model.name} value={model.name}>
@@ -284,7 +291,7 @@ export function MetaModelSelection({
                       <div className="flex flex-col">
                         <span className="font-medium">{model.name}</span>
                         <span className="text-xs text-muted-foreground">
-                          {model.description}
+                          {t(model.descriptionKey)}
                         </span>
                       </div>
                     </div>
@@ -297,7 +304,7 @@ export function MetaModelSelection({
       </Select>
       {selectedMetaModel && (
         <p className="text-xs text-muted-foreground">
-          {selectedMetaModel.description}
+          {t(selectedMetaModel.descriptionKey)}
         </p>
       )}
     </div>
@@ -317,13 +324,14 @@ export function MetaModelParameters({
   onReset,
   onParamChange,
 }: MetaModelParametersProps) {
+  const { t } = useTranslation();
   const paramEntries = Object.entries(defaultParams);
   if (paramEntries.length === 0) return null;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Parameters</Label>
+        <Label className="text-sm font-medium">{t("pipelineEditor.stacking.parameters")}</Label>
         <Button
           variant="ghost"
           size="sm"
@@ -331,7 +339,7 @@ export function MetaModelParameters({
           onClick={onReset}
         >
           <RotateCcw className="h-3 w-3 mr-1" />
-          Reset
+          {t("common.reset")}
         </Button>
       </div>
       {paramEntries.map(([key, defaultValue]) => (
@@ -349,8 +357,8 @@ export function MetaModelParameters({
               </SelectTrigger>
               <SelectContent className="bg-popover">
                 <SelectItem value="rbf">RBF</SelectItem>
-                <SelectItem value="linear">Linear</SelectItem>
-                <SelectItem value="poly">Polynomial</SelectItem>
+                <SelectItem value="linear">{t("pipelineEditor.stacking.kernels.linear")}</SelectItem>
+                <SelectItem value="poly">{t("pipelineEditor.stacking.kernels.poly")}</SelectItem>
               </SelectContent>
             </Select>
           ) : (
@@ -392,12 +400,13 @@ export function AdvancedStackingOptions({
   onFillValueChange,
   onPassthroughChange,
 }: AdvancedStackingOptionsProps) {
+  const { t } = useTranslation();
   return (
     <Collapsible open={isOpen} onOpenChange={onOpenChange}>
       <CollapsibleTrigger asChild>
         <Button variant="ghost" className="w-full justify-between h-8 px-2">
           <span className="text-xs text-muted-foreground">
-            Advanced Options
+            {t("pipelineEditor.stacking.advancedOptions")}
           </span>
           {isOpen ? (
             <ChevronUp className="h-3.5 w-3.5" />
@@ -409,7 +418,7 @@ export function AdvancedStackingOptions({
       <CollapsibleContent className="space-y-4 pt-2">
         <div className="space-y-2">
           <Label className="text-xs font-medium text-muted-foreground">
-            Coverage Strategy
+            {t("pipelineEditor.stacking.coverageStrategy")}
           </Label>
           <RadioGroup
             value={config.coverageStrategy}
@@ -433,9 +442,9 @@ export function AdvancedStackingOptions({
                   />
                   <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                   <div className="flex-1">
-                    <div className="text-xs font-medium">{desc.label}</div>
+                    <div className="text-xs font-medium">{t(desc.labelKey)}</div>
                     <div className="text-[10px] text-muted-foreground">
-                      {desc.description}
+                      {t(desc.descriptionKey)}
                     </div>
                   </div>
                 </label>
@@ -445,7 +454,7 @@ export function AdvancedStackingOptions({
 
           {config.coverageStrategy === "fill" && (
             <div className="flex items-center gap-2 pl-6">
-              <Label className="text-xs">Fill Value:</Label>
+              <Label className="text-xs">{t("pipelineEditor.stacking.fillValue")}</Label>
               <Input
                 type="number"
                 value={config.fillValue ?? 0}
@@ -465,16 +474,17 @@ export function AdvancedStackingOptions({
             <Combine className="h-4 w-4 text-muted-foreground" />
             <div>
               <Label className="text-xs font-medium">
-                Feature Passthrough
+                {t("pipelineEditor.stacking.featurePassthrough")}
               </Label>
               <p className="text-[10px] text-muted-foreground">
-                Include original X features with OOF predictions
+                {t("pipelineEditor.stacking.featurePassthroughHint")}
               </p>
             </div>
           </div>
           <Switch
             checked={config.passthrough}
             onCheckedChange={onPassthroughChange}
+            aria-label={t("pipelineEditor.stacking.featurePassthrough")}
             className="scale-90"
           />
         </div>
@@ -484,15 +494,16 @@ export function AdvancedStackingOptions({
 }
 
 export function StackingInfoNote() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-2 p-3 rounded-lg bg-pink-500/5 border border-pink-500/20">
       <Lightbulb className="h-4 w-4 text-pink-500 flex-shrink-0 mt-0.5" />
       <div className="text-xs text-muted-foreground">
-        <p className="font-medium text-foreground mb-1">How Stacking Works:</p>
+        <p className="font-medium text-foreground mb-1">{t("pipelineEditor.stacking.howItWorks.title")}</p>
         <ol className="list-decimal list-inside space-y-0.5">
-          <li>Base models generate out-of-fold (OOF) predictions</li>
-          <li>OOF predictions become features for the meta-model</li>
-          <li>Meta-model learns to combine base predictions</li>
+          <li>{t("pipelineEditor.stacking.howItWorks.step1")}</li>
+          <li>{t("pipelineEditor.stacking.howItWorks.step2")}</li>
+          <li>{t("pipelineEditor.stacking.howItWorks.step3")}</li>
         </ol>
       </div>
     </div>
@@ -500,11 +511,12 @@ export function StackingInfoNote() {
 }
 
 export function StackingDisabledState() {
+  const { t } = useTranslation();
   return (
     <div className="text-center py-4 text-muted-foreground">
-      <p className="text-xs">Enable to configure a stacking ensemble</p>
+      <p className="text-xs">{t("pipelineEditor.stacking.disabled.title")}</p>
       <p className="text-[10px] mt-1 text-muted-foreground/70">
-        Requires multiple base models in parallel branches
+        {t("pipelineEditor.stacking.disabled.hint")}
       </p>
     </div>
   );

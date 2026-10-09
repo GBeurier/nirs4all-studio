@@ -21,6 +21,7 @@ import { UnifiedOperatorCard } from './UnifiedOperatorCard';
 import { useNodeRegistryOptional, type NodeDefinition } from '@/components/pipeline-editor/contexts';
 import type { UnifiedOperator, StepError, FilterInfo, OperatorParamInfo } from '@/types/playground';
 import type { SampleMetadata } from '@/types/spectral';
+import { useTranslation } from 'react-i18next';
 
 interface PipelineBuilderProps {
   operators: UnifiedOperator[];
@@ -88,6 +89,7 @@ export function PipelineBuilder({
   onReorder,
   onClear,
 }: PipelineBuilderProps) {
+  const { t } = useTranslation();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
@@ -165,13 +167,13 @@ export function PipelineBuilder({
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
             <Layers className="w-4 h-4" />
-            Pipeline
+            {t('playground.builder.title')}
           </h3>
         </div>
         <div className="text-center py-8 text-muted-foreground">
           <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No operators added</p>
-          <p className="text-xs mt-1">Click an operator above to add it</p>
+          <p className="text-sm">{t('playground.builder.empty')}</p>
+          <p className="text-xs mt-1">{t('playground.builder.emptyHint')}</p>
         </div>
       </div>
     );
@@ -184,24 +186,24 @@ export function PipelineBuilder({
           <div className="flex items-center gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
               <Layers className="w-4 h-4" />
-              Pipeline
+              {t('playground.builder.title')}
             </h3>
             <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              {preprocessingCount} prep
+              {t('playground.builder.prepCount', { count: preprocessingCount })}
             </span>
             {augmentationCount > 0 && (
               <span className="text-[10px] text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded">
-                {augmentationCount} aug
+                {t('playground.builder.augCount', { count: augmentationCount })}
               </span>
             )}
             {filterCount > 0 && (
               <span className="text-[10px] text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded">
-                {filterCount} filter
+                {t('playground.builder.filterCount', { count: filterCount })}
               </span>
             )}
             {splittingCount > 0 && (
               <span className="text-[10px] text-orange-500 bg-orange-500/10 px-1.5 py-0.5 rounded">
-                {splittingCount} split
+                {t('playground.builder.splitCount', { count: splittingCount })}
               </span>
             )}
             {isProcessing && (
@@ -215,13 +217,14 @@ export function PipelineBuilder({
                 size="icon"
                 className="h-6 w-6 text-muted-foreground hover:text-destructive"
                 onClick={onClear}
+                aria-label={t('playground.builder.clear')}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">
               <div className="flex items-center gap-2">
-                <span>Clear pipeline</span>
+                <span>{t('playground.builder.clear')}</span>
                 <kbd className="text-[10px] bg-muted px-1.5 py-0.5 rounded">Ctrl+Backspace</kbd>
               </div>
             </TooltipContent>

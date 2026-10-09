@@ -29,6 +29,7 @@ import {
 import type { HistogramChartProps, RechartsMouseEvent } from './types';
 import { RANGE_SELECTION_INITIAL } from './types';
 import { findBarRect, isBarElement } from './utils';
+import { useTranslation } from 'react-i18next';
 
 export default function HistogramBySelection({
   histogramData,
@@ -45,6 +46,7 @@ export default function HistogramBySelection({
   handleDragSelection,
   lastMouseEventRef,
 }: HistogramChartProps) {
+  const { t } = useTranslation();
   // Transform data for selection stacking
   const stackedData = useMemo(() =>
     histogramData.map(bin => {
@@ -168,13 +170,13 @@ export default function HistogramBySelection({
                 {data.selectedCount > 0 && (
                   <p className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: HIGHLIGHT_COLORS.selected }} />
-                    Selected: {data.selectedCount}
+                    {t('playground.charts.histogram.tooltip.labelValue', { label: t('playground.charts.histogram.segment.selected'), value: data.selectedCount })}
                   </p>
                 )}
                 {data.unselectedCount > 0 && (
                   <p className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: 'hsl(var(--muted-foreground) / 0.4)' }} />
-                    Unselected: {data.unselectedCount}
+                    {t('playground.charts.histogram.tooltip.labelValue', { label: t('playground.charts.histogram.segment.unselected'), value: data.unselectedCount })}
                   </p>
                 )}
               </div>
@@ -188,7 +190,7 @@ export default function HistogramBySelection({
         />
         <Bar
           dataKey="unselected"
-          name="Unselected"
+          name={t('playground.charts.histogram.segment.unselected')}
           stackId="selection"
           fill="hsl(var(--muted-foreground) / 0.4)"
           cursor="pointer"
@@ -209,7 +211,7 @@ export default function HistogramBySelection({
         </Bar>
         <Bar
           dataKey="selected"
-          name="Selected"
+          name={t('playground.charts.histogram.segment.selected')}
           stackId="selection"
           fill={HIGHLIGHT_COLORS.selected}
           radius={[2, 2, 0, 0]}

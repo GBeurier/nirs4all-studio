@@ -47,6 +47,7 @@ import {
   isBarElement,
 } from './utils';
 import type { HistogramChartProps, ClassBarData, RechartsMouseEvent } from './types';
+import { useTranslation } from 'react-i18next';
 
 const UNSELECTED_FILL = 'hsl(var(--muted-foreground) / 0.4)';
 
@@ -93,6 +94,7 @@ export default function HistogramClassification({
   metadata,
   metadataCategories,
 }: HistogramChartProps) {
+  const { t } = useTranslation();
   const setHovered = useSetHoveredSample();
   const totalCount = useMemo(
     () => classBarData.reduce((sum, bar) => sum + bar.count, 0),
@@ -112,7 +114,7 @@ export default function HistogramClassification({
         return colorContext
           ? getPresentPartitionRoles(colorContext).map((role) => ({
               key: role,
-              label: getHistogramPartitionRoleLabel(role),
+              label: getHistogramPartitionRoleLabel(role, t),
               color: getHistogramPartitionRoleColor(role),
               getSamples: (bar) => bar.samples.filter((sampleIdx) => getSamplePartitionRole(sampleIdx, colorContext) === role),
             }))
@@ -122,14 +124,14 @@ export default function HistogramClassification({
         return [
           ...uniqueFolds.map((foldIdx) => ({
             key: `fold${foldIdx}`,
-            label: `Fold ${foldIdx + 1}`,
+            label: t('playground.charts.histogram.segment.foldN', { n: foldIdx + 1 }),
             color: getCategoricalColor(foldIdx, globalColorConfig?.categoricalPalette ?? 'default'),
             getSamples: (bar: ClassBarData) => bar.samples.filter((sampleIdx) => colorContext?.foldLabels?.[sampleIdx] === foldIdx),
           })),
           ...(hasHeldOutTestSamples(colorContext ?? {})
             ? [{
                 key: 'test',
-                label: 'Test',
+                label: t('playground.charts.histogram.segment.test'),
                 color: getHeldOutTestColor(),
                 getSamples: (bar: ClassBarData) => bar.samples.filter((sampleIdx) => colorContext ? isHeldOutTestSample(sampleIdx, colorContext) : false),
               }]
@@ -145,13 +147,13 @@ export default function HistogramClassification({
           return [
             {
               key: 'normal',
-              label: 'Normal',
+              label: t('playground.charts.histogram.segment.normal'),
               color: UNSELECTED_FILL,
               getSamples: (bar) => bar.samples.filter((sampleIdx) => !outlierIndices.has(sampleIdx)),
             },
             {
               key: 'outlier',
-              label: 'Outliers',
+              label: t('playground.charts.histogram.segment.outliers'),
               color: HIGHLIGHT_COLORS.outlier,
               getSamples: (bar) => bar.samples.filter((sampleIdx) => outlierIndices.has(sampleIdx)),
             },
@@ -162,13 +164,13 @@ export default function HistogramClassification({
         return [
           {
             key: 'unselected',
-            label: 'Unselected',
+            label: t('playground.charts.histogram.segment.unselected'),
             color: UNSELECTED_FILL,
             getSamples: (bar) => bar.samples.filter((sampleIdx) => !selectedSamples.has(sampleIdx)),
           },
           {
             key: 'selected',
-            label: 'Selected',
+            label: t('playground.charts.histogram.segment.selected'),
             color: HIGHLIGHT_COLORS.selected,
             getSamples: (bar) => bar.samples.filter((sampleIdx) => selectedSamples.has(sampleIdx)),
           },
@@ -197,6 +199,7 @@ export default function HistogramClassification({
     metadataType,
     metadataValues,
     metadataCategories,
+    t,
   ]);
 
   const chartData = useMemo<ChartRow[]>(() => {
@@ -423,7 +426,7 @@ export default function HistogramClassification({
 
             return (
               <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs">
-                <p className="font-medium">Class: {data.classLabel}</p>
+                <p className="font-medium">{t('playground.charts.histogram.tooltip.classLabel', { label: data.classLabel })}</p>
                 {stackSegments.length > 0 ? (
                   stackSegments.map((segment) => {
                     const count = (data[`${segment.key}Count`] as number | undefined) ?? 0;
@@ -435,13 +438,13 @@ export default function HistogramClassification({
                           className="w-2 h-2 rounded-sm"
                           style={{ backgroundColor: segment.color }}
                         />
-                        {segment.label}: {formatSegmentValue(count, totalCount, config.yAxisType)}
+                        {t('playground.charts.histogram.tooltip.labelValue', { label: segment.label, value: formatSegmentValue(count, totalCount, config.yAxisType) })}
                       </p>
                     );
                   })
                 ) : (
                   <p className="text-muted-foreground">
-                    {yAxisLabel}: {data.displayCount.toFixed(config.yAxisType === 'count' ? 0 : 1)}
+                    {t('playground.charts.histogram.tooltip.yAxisValue', { label: yAxisLabel, value: data.displayCount.toFixed(config.yAxisType === 'count' ? 0 : 1) })}
                     {config.yAxisType === 'count' && totalCount > 0
                       ? ` (${((data.count / totalCount) * 100).toFixed(1)}%)`
                       : ''}

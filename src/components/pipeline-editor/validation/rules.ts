@@ -326,39 +326,41 @@ export function getEffectiveSeverity(
 export const CATEGORY_METADATA: Record<
   ValidationCategory,
   {
-    label: string;
-    description: string;
+    /** i18n key of the label */
+    labelKey: string;
+    /** i18n key of the description */
+    descriptionKey: string;
     icon: string;
     order: number;
   }
 > = {
   parameter: {
-    label: "Parameter",
-    description: "Parameter value validation",
+    labelKey: "pipelineEditor.validation.category.parameter.label",
+    descriptionKey: "pipelineEditor.validation.category.parameter.description",
     icon: "Settings",
     order: 1,
   },
   step: {
-    label: "Step",
-    description: "Individual step validation",
+    labelKey: "pipelineEditor.validation.category.step.label",
+    descriptionKey: "pipelineEditor.validation.category.step.description",
     icon: "Layers",
     order: 2,
   },
   pipeline: {
-    label: "Pipeline",
-    description: "Pipeline structure validation",
+    labelKey: "pipelineEditor.validation.category.pipeline.label",
+    descriptionKey: "pipelineEditor.validation.category.pipeline.description",
     icon: "GitBranch",
     order: 3,
   },
   dependency: {
-    label: "Dependencies",
-    description: "Step dependencies and ordering",
+    labelKey: "pipelineEditor.validation.category.dependency.label",
+    descriptionKey: "pipelineEditor.validation.category.dependency.description",
     icon: "Link",
     order: 4,
   },
   compatibility: {
-    label: "Compatibility",
-    description: "nirs4all compatibility checks",
+    labelKey: "pipelineEditor.validation.category.compatibility.label",
+    descriptionKey: "pipelineEditor.validation.category.compatibility.description",
     icon: "Shield",
     order: 5,
   },
@@ -374,8 +376,10 @@ export const CATEGORY_METADATA: Record<
 export const SEVERITY_METADATA: Record<
   ValidationSeverity,
   {
-    label: string;
-    description: string;
+    /** i18n key of the label */
+    labelKey: string;
+    /** i18n key of the description */
+    descriptionKey: string;
     icon: string;
     color: string;
     bgColor: string;
@@ -383,24 +387,24 @@ export const SEVERITY_METADATA: Record<
   }
 > = {
   error: {
-    label: "Error",
-    description: "Must be fixed before running pipeline",
+    labelKey: "pipelineEditor.validation.severity.error.label",
+    descriptionKey: "pipelineEditor.validation.severity.error.description",
     icon: "AlertCircle",
     color: "text-destructive",
     bgColor: "bg-destructive/10",
     borderColor: "border-destructive/30",
   },
   warning: {
-    label: "Warning",
-    description: "May cause issues, should be reviewed",
+    labelKey: "pipelineEditor.validation.severity.warning.label",
+    descriptionKey: "pipelineEditor.validation.severity.warning.description",
     icon: "AlertTriangle",
     color: "text-orange-500",
     bgColor: "bg-orange-500/10",
     borderColor: "border-orange-500/30",
   },
   info: {
-    label: "Info",
-    description: "Informational, optional improvement",
+    labelKey: "pipelineEditor.validation.severity.info.label",
+    descriptionKey: "pipelineEditor.validation.severity.info.description",
     icon: "Info",
     color: "text-blue-500",
     bgColor: "bg-blue-500/10",

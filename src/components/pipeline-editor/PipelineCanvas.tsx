@@ -1,5 +1,6 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Plus, Sparkles, ArrowDown, PlayCircle, Flag } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence, LayoutGroup } from "@/lib/motion";
 import { PipelineNode } from "./PipelineNode";
 import { usePipelineDnd } from "./usePipelineDnd";
@@ -26,6 +27,7 @@ export function PipelineCanvas({
   onAddBranch,
   onRemoveBranch,
 }: PipelineCanvasProps) {
+  const { t } = useTranslation();
   const { isDragging, dropIndicator } = usePipelineDnd();
 
   // Main canvas drop zone
@@ -89,7 +91,7 @@ export function PipelineCanvas({
           >
             <div className="px-3 py-1.5 rounded-full bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 border border-emerald-500/30 text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 shadow-sm">
               <PlayCircle className="h-3.5 w-3.5" />
-              Input Data
+              {t("pipelineEditor.canvas.inputData")}
             </div>
           </motion.div>
 
@@ -154,7 +156,7 @@ export function PipelineCanvas({
             <ConnectionLine />
             <div className="px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/30 text-xs font-medium text-primary flex items-center gap-1.5 shadow-sm">
               <Flag className="h-3.5 w-3.5" />
-              Output
+              {t("pipelineEditor.canvas.output")}
             </div>
           </motion.div>
 
@@ -168,7 +170,7 @@ export function PipelineCanvas({
                 className="mt-6 flex items-center justify-center p-6 rounded-xl border-2 border-dashed border-primary bg-primary/5 text-primary"
               >
                 <Plus className="h-5 w-5 mr-2" />
-                <span className="font-medium">Drop here to add step</span>
+                <span className="font-medium">{t("pipelineEditor.dnd.dropHereToAdd")}</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -186,6 +188,7 @@ function EmptyCanvasState({
   isOver: boolean;
   setDropRef: (node: HTMLElement | null) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <motion.div
       ref={setDropRef}
@@ -214,18 +217,18 @@ function EmptyCanvasState({
           <Sparkles className={`h-8 w-8 ${isOver ? "text-primary" : "text-primary/70"}`} />
         </motion.div>
         <h3 className="text-lg font-semibold text-foreground mb-2">
-          {isOver ? "Release to add step" : "Start Building Your Pipeline"}
+          {isOver ? t("pipelineEditor.canvas.releaseToAdd") : t("pipelineEditor.canvas.startBuilding")}
         </h3>
         <p className="text-muted-foreground mb-4">
           {isOver
-            ? "Drop your component here to begin"
-            : "Drag steps from the component library on the left, or double-click to add them."
+            ? t("pipelineEditor.canvas.dropComponent")
+            : t("pipelineEditor.canvas.dragHint")
           }
         </p>
         {!isOver && (
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Plus className="h-4 w-4" />
-            <span>Drop steps here to begin</span>
+            <span>{t("pipelineEditor.canvas.dropStepsHere")}</span>
           </div>
         )}
       </motion.div>
@@ -252,6 +255,7 @@ interface DropZoneIndicatorProps {
 }
 
 function DropZoneIndicator({ id, path, index, isActive }: DropZoneIndicatorProps) {
+  const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({
     id,
     data: {
@@ -281,7 +285,7 @@ function DropZoneIndicator({ id, path, index, isActive }: DropZoneIndicatorProps
             className="w-full h-10 rounded-lg border-2 border-dashed border-primary bg-primary/10 flex items-center justify-center"
           >
             <Plus className="h-4 w-4 text-primary" />
-            <span className="ml-1.5 text-xs font-medium text-primary">Drop here</span>
+            <span className="ml-1.5 text-xs font-medium text-primary">{t("pipelineEditor.dnd.dropHere")}</span>
           </motion.div>
         )}
       </AnimatePresence>

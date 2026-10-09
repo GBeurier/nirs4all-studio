@@ -10,6 +10,7 @@
  */
 
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -109,6 +110,7 @@ export function ParameterInput({
     [onChange, isNumber]
   );
 
+  const { t } = useTranslation();
   const displayLabel = label ?? formatParamLabel(paramKey);
   const hasError = !!error;
   const hasWarning = !hasError && !!warning;
@@ -134,7 +136,7 @@ export function ParameterInput({
               variant="outline"
               className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500"
             >
-              sweep
+              {t("pipelineEditor.shared.param.sweepBadge")}
             </Badge>
           )}
         </div>

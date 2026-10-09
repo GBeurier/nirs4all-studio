@@ -12,6 +12,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Sliders,
   Scissors,
@@ -120,6 +121,7 @@ interface DerivativeToggleProps {
 }
 
 function DerivativeToggle({ value, onChange, onInteractionStart }: DerivativeToggleProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-1">
       {[0, 1, 2].map((deriv) => (
@@ -133,7 +135,7 @@ function DerivativeToggle({ value, onChange, onInteractionStart }: DerivativeTog
             onChange(deriv as 0 | 1 | 2);
           }}
         >
-          {deriv === 0 ? 'Off' : `d${deriv}`}
+          {deriv === 0 ? t('common.off') : `d${deriv}`}
         </Button>
       ))}
     </div>
@@ -150,6 +152,7 @@ export function WavelengthRangePicker({
   onInteractionStart,
   compact = false,
 }: WavelengthRangePickerProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [customPresetName, setCustomPresetName] = useState('');
 
@@ -282,13 +285,13 @@ export function WavelengthRangePicker({
                 {sliderRange[0].toFixed(0)}-{sliderRange[1].toFixed(0)}
               </span>
             ) : (
-              'Focus'
+              t('playground.charts.wavelength.focus')
             )}
             {(config.derivative > 0 || config.edgeMask.enabled) && (
               <Badge variant="secondary" className="h-4 px-1 text-[9px]">
                 {config.derivative > 0 && `d${config.derivative}`}
                 {config.derivative > 0 && config.edgeMask.enabled && '+'}
-                {config.edgeMask.enabled && 'mask'}
+                {config.edgeMask.enabled && t('playground.charts.wavelength.mask')}
               </Badge>
             )}
             <ChevronDown className="w-3 h-3 opacity-50" />
@@ -300,7 +303,7 @@ export function WavelengthRangePicker({
           <div className="flex items-center justify-between px-3 py-2 border-b">
             <h4 className="text-sm font-semibold flex items-center gap-2">
               <Sliders className="w-4 h-4 text-primary" />
-              Wavelength Focus
+              {t('playground.charts.wavelength.title')}
             </h4>
             <Button
               variant="ghost"
@@ -309,14 +312,14 @@ export function WavelengthRangePicker({
               onClick={handleReset}
             >
               <RotateCcw className="w-3 h-3 mr-1" />
-              Reset
+              {t('common.reset')}
             </Button>
           </div>
 
           <div className="p-3 space-y-4">
             {/* ROI Presets */}
             <div>
-              <Label className="text-xs text-muted-foreground mb-2 block">NIR Region Presets</Label>
+              <Label className="text-xs text-muted-foreground mb-2 block">{t('playground.charts.wavelength.nirPresets')}</Label>
               <div className="flex flex-wrap gap-1">
                 {NIR_ROI_PRESETS.map((preset) => (
                   <Tooltip key={preset.id}>
@@ -362,6 +365,7 @@ export function WavelengthRangePicker({
                         size="sm"
                         className="h-6 w-6 p-0 text-destructive hover:text-destructive"
                         onClick={() => handleDeletePreset(preset.id)}
+                        aria-label={t('playground.charts.wavelength.deletePreset', { name: preset.name })}
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>
@@ -375,7 +379,7 @@ export function WavelengthRangePicker({
 
             {/* Range slider */}
             <div>
-              <Label className="text-xs text-muted-foreground mb-2 block">Wavelength Range</Label>
+              <Label className="text-xs text-muted-foreground mb-2 block">{t('playground.charts.wavelength.wavelengthRange')}</Label>
               <DualRangeSlider
                 value={sliderRange}
                 min={wavelengthRange[0]}
@@ -390,7 +394,7 @@ export function WavelengthRangePicker({
             {isRangeModified && (
               <div className="flex items-center gap-2">
                 <Input
-                  placeholder="Preset name..."
+                  placeholder={t('playground.charts.wavelength.presetNamePlaceholder')}
                   value={customPresetName}
                   onChange={(e) => setCustomPresetName(e.target.value)}
                   className="h-7 text-xs"
@@ -401,6 +405,7 @@ export function WavelengthRangePicker({
                   className="h-7 px-2"
                   onClick={handleSavePreset}
                   disabled={!customPresetName.trim()}
+                  aria-label={t('playground.charts.wavelength.savePreset')}
                 >
                   <Plus className="w-3 h-3" />
                 </Button>
@@ -413,7 +418,7 @@ export function WavelengthRangePicker({
             <div className="flex items-center justify-between">
               <Label className="text-xs flex items-center gap-2">
                 <TrendingUp className="w-3 h-3 text-muted-foreground" />
-                Derivative View
+                {t('playground.charts.wavelength.derivativeView')}
               </Label>
               <DerivativeToggle
                 value={config.derivative}
@@ -427,7 +432,7 @@ export function WavelengthRangePicker({
               <div className="flex items-center justify-between">
                 <Label className="text-xs flex items-center gap-2">
                   <Scissors className="w-3 h-3 text-muted-foreground" />
-                  Edge Masking
+                  {t('playground.charts.wavelength.edgeMasking')}
                 </Label>
                 <Switch
                   checked={config.edgeMask.enabled}
@@ -438,7 +443,7 @@ export function WavelengthRangePicker({
               {config.edgeMask.enabled && (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-[10px] text-muted-foreground">Start points</Label>
+                    <Label className="text-[10px] text-muted-foreground">{t('playground.charts.wavelength.startPoints')}</Label>
                     <Input
                       type="number"
                       min={0}
@@ -452,7 +457,7 @@ export function WavelengthRangePicker({
                     />
                   </div>
                   <div>
-                    <Label className="text-[10px] text-muted-foreground">End points</Label>
+                    <Label className="text-[10px] text-muted-foreground">{t('playground.charts.wavelength.endPoints')}</Label>
                     <Input
                       type="number"
                       min={0}

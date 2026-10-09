@@ -13,6 +13,7 @@
 
 import { useEffect, useCallback, useMemo, useState } from 'react';
 import { useSelection } from '@/context/useSelection';
+import { useTranslation } from 'react-i18next';
 
 // ============= Types =============
 
@@ -178,15 +179,6 @@ function detectConflicts(shortcuts: KeyboardShortcut[]): ShortcutConflict[] {
 }
 
 // ============= Category Display =============
-
-export const CATEGORY_LABELS: Record<ShortcutCategory, string> = {
-  selection: 'Selection',
-  navigation: 'Navigation',
-  pipeline: 'Pipeline',
-  view: 'View',
-  export: 'Export',
-  general: 'General',
-};
 
 export const CATEGORY_ORDER: ShortcutCategory[] = [
   'general',

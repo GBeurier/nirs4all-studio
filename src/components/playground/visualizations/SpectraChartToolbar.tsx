@@ -14,6 +14,7 @@
  */
 
 import { useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Download,
   Filter,
@@ -103,39 +104,41 @@ export interface SpectraChartToolbarProps {
 
 // ============= Constants =============
 
-const VIEW_MODE_OPTIONS: { value: SpectraViewMode; label: string }[] = [
-  { value: 'processed', label: 'Processed' },
-  { value: 'original', label: 'Original' },
-  { value: 'both', label: 'Both' },
-  { value: 'difference', label: 'Difference' },
+const TK = 'playground.charts.spectra.toolbar.';
+
+const VIEW_MODE_OPTIONS: { value: SpectraViewMode; labelKey: string }[] = [
+  { value: 'processed', labelKey: `${TK}viewProcessed` },
+  { value: 'original', labelKey: `${TK}viewOriginal` },
+  { value: 'both', labelKey: `${TK}viewBoth` },
+  { value: 'difference', labelKey: `${TK}viewDifference` },
 ];
 
-const DISPLAY_MODE_OPTIONS: { value: SpectraDisplayMode; label: string }[] = [
-  { value: 'individual', label: 'Individual' },
-  { value: 'selected_only', label: 'Selected Only' },
-  { value: 'aggregated', label: 'Aggregated' },
-  { value: 'grouped', label: 'Grouped' },
+const DISPLAY_MODE_OPTIONS: { value: SpectraDisplayMode; labelKey: string }[] = [
+  { value: 'individual', labelKey: `${TK}displayIndividual` },
+  { value: 'selected_only', labelKey: `${TK}displaySelectedOnly` },
+  { value: 'aggregated', labelKey: `${TK}displayAggregated` },
+  { value: 'grouped', labelKey: `${TK}displayGrouped` },
 ];
 
-const SAMPLING_STRATEGY_OPTIONS: { value: SamplingStrategy; label: string }[] = [
-  { value: 'random', label: 'Random' },
-  { value: 'stratified', label: 'Stratified' },
-  { value: 'coverage', label: 'Coverage' },
-  { value: 'progressive', label: 'Progressive' },
+const SAMPLING_STRATEGY_OPTIONS: { value: SamplingStrategy; labelKey: string }[] = [
+  { value: 'random', labelKey: `${TK}strategyRandom` },
+  { value: 'stratified', labelKey: `${TK}strategyStratified` },
+  { value: 'coverage', labelKey: `${TK}strategyCoverage` },
+  { value: 'progressive', labelKey: `${TK}strategyProgressive` },
 ];
 
 const SAMPLE_COUNT_PRESETS = [25, 50, 100, 200, 500];
 
 /** Selection color presets - high visibility colors that work with various palettes */
 const SELECTION_COLOR_PRESETS = [
-  { value: undefined, label: 'Default (Cyan)', color: 'hsl(180, 85%, 45%)' },
-  { value: 'hsl(0, 85%, 55%)', label: 'Red', color: 'hsl(0, 85%, 55%)' },
-  { value: 'hsl(280, 75%, 55%)', label: 'Purple', color: 'hsl(280, 75%, 55%)' },
-  { value: 'hsl(120, 70%, 45%)', label: 'Green', color: 'hsl(120, 70%, 45%)' },
-  { value: 'hsl(45, 95%, 55%)', label: 'Gold', color: 'hsl(45, 95%, 55%)' },
-  { value: 'hsl(320, 80%, 55%)', label: 'Magenta', color: 'hsl(320, 80%, 55%)' },
-  { value: '#ffffff', label: 'White', color: '#ffffff' },
-  { value: '#000000', label: 'Black', color: '#000000' },
+  { value: undefined, labelKey: `${TK}colorDefault`, color: 'hsl(180, 85%, 45%)' },
+  { value: 'hsl(0, 85%, 55%)', labelKey: `${TK}colorRed`, color: 'hsl(0, 85%, 55%)' },
+  { value: 'hsl(280, 75%, 55%)', labelKey: `${TK}colorPurple`, color: 'hsl(280, 75%, 55%)' },
+  { value: 'hsl(120, 70%, 45%)', labelKey: `${TK}colorGreen`, color: 'hsl(120, 70%, 45%)' },
+  { value: 'hsl(45, 95%, 55%)', labelKey: `${TK}colorGold`, color: 'hsl(45, 95%, 55%)' },
+  { value: 'hsl(320, 80%, 55%)', labelKey: `${TK}colorMagenta`, color: 'hsl(320, 80%, 55%)' },
+  { value: '#ffffff', labelKey: `${TK}colorWhite`, color: '#ffffff' },
+  { value: '#000000', labelKey: `${TK}colorBlack`, color: '#000000' },
 ];
 
 // ============= Main Component =============
@@ -161,6 +164,7 @@ export function SpectraChartToolbar({
   effectiveRenderMode,
   onRenderModeChange,
 }: SpectraChartToolbarProps) {
+  const { t } = useTranslation();
   const { config } = configResult;
 
   // Compute sample count description
@@ -235,9 +239,14 @@ export function SpectraChartToolbar({
   const currentSelectionColor = config.colorConfig.selectionColor ?? 'hsl(180, 85%, 45%)';
 
   // Get view mode label
-  const viewModeLabel = VIEW_MODE_OPTIONS.find(o => o.value === config.viewMode)?.label ?? 'Processed';
-  const displayModeLabel = DISPLAY_MODE_OPTIONS.find(o => o.value === config.displayMode)?.label ?? 'Individual';
+  const viewModeLabel = t(VIEW_MODE_OPTIONS.find(o => o.value === config.viewMode)?.labelKey ?? `${TK}viewProcessed`);
+  const displayModeLabel = t(DISPLAY_MODE_OPTIONS.find(o => o.value === config.displayMode)?.labelKey ?? `${TK}displayIndividual`);
   const hasSelection = selectedCount > 0;
+  const selectedOnlyLabel = config.displayMode === 'selected_only'
+    ? t(`${TK}showAllVisible`)
+    : hasSelection
+      ? t(`${TK}showOnlySelected`, { count: selectedCount })
+      : t(`${TK}selectToEnable`);
 
   const handleSelectedOnlyToggle = useCallback(() => {
     if (!hasSelection) return;
@@ -258,7 +267,7 @@ export function SpectraChartToolbar({
             compact ? 'text-xs' : 'text-sm'
           )}>
             <Layers className={cn('text-primary', compact ? 'w-3 h-3' : 'w-4 h-4')} />
-            Spectra
+            {t(`${TK}title`)}
           </h3>
           <Badge variant="outline" className={cn('font-mono', compact ? 'text-[9px] h-4 px-1' : 'text-[10px] h-5 px-1.5')}>
             {sampleDescription}
@@ -281,10 +290,10 @@ export function SpectraChartToolbar({
                   onClick={onResetBrush}
                 >
                   <ZoomIn className="w-3 h-3" />
-                  Reset
+                  {t(`${TK}reset`)}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Reset wavelength zoom</TooltipContent>
+              <TooltipContent>{t(`${TK}resetZoom`)}</TooltipContent>
             </Tooltip>
           )}
 
@@ -297,19 +306,20 @@ export function SpectraChartToolbar({
                     variant={config.viewMode !== 'processed' ? 'secondary' : 'ghost'}
                     size="sm"
                     className="h-7 w-7 p-0"
+                    aria-label={t(`${TK}viewTooltip`, { mode: viewModeLabel })}
                   >
                     <Eye className="w-3.5 h-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>View: {viewModeLabel}</TooltipContent>
+              <TooltipContent>{t(`${TK}viewTooltip`, { mode: viewModeLabel })}</TooltipContent>
             </Tooltip>
             <DropdownMenuContent side="bottom" align="start" className="w-36">
-              <DropdownMenuLabel className="text-[10px] text-muted-foreground">View Mode</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground">{t(`${TK}viewModeLabel`)}</DropdownMenuLabel>
               <DropdownMenuRadioGroup value={config.viewMode} onValueChange={handleViewModeChange}>
                 {VIEW_MODE_OPTIONS.map(opt => (
                   <DropdownMenuRadioItem key={opt.value} value={opt.value} className="text-xs">
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -325,19 +335,20 @@ export function SpectraChartToolbar({
                     variant={config.displayMode !== 'individual' ? 'secondary' : 'ghost'}
                     size="sm"
                     className="h-7 w-7 p-0"
+                    aria-label={t(`${TK}displayTooltip`, { mode: displayModeLabel })}
                   >
                     <LayoutGrid className="w-3.5 h-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>Display: {displayModeLabel}</TooltipContent>
+              <TooltipContent>{t(`${TK}displayTooltip`, { mode: displayModeLabel })}</TooltipContent>
             </Tooltip>
             <DropdownMenuContent side="bottom" align="start" className="w-36">
-              <DropdownMenuLabel className="text-[10px] text-muted-foreground">Display Mode</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground">{t(`${TK}displayModeLabel`)}</DropdownMenuLabel>
               <DropdownMenuRadioGroup value={config.displayMode} onValueChange={handleDisplayModeChange}>
                 {DISPLAY_MODE_OPTIONS.map(opt => (
                   <DropdownMenuRadioItem key={opt.value} value={opt.value} className="text-xs">
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -353,18 +364,13 @@ export function SpectraChartToolbar({
                   className="h-7 w-7 p-0"
                   disabled={!hasSelection}
                   onClick={handleSelectedOnlyToggle}
+                  aria-label={selectedOnlyLabel}
                 >
                   <Filter className="w-3.5 h-3.5" />
                 </Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent>
-              {config.displayMode === 'selected_only'
-                ? 'Show all visible spectra'
-                : hasSelection
-                  ? `Show only ${selectedCount} selected sample${selectedCount === 1 ? '' : 's'}`
-                  : 'Select samples to enable selected-only view'}
-            </TooltipContent>
+            <TooltipContent>{selectedOnlyLabel}</TooltipContent>
           </Tooltip>
 
           {/* Selection Color dropdown - always visible for changing selection highlight color */}
@@ -376,22 +382,23 @@ export function SpectraChartToolbar({
                       variant={config.colorConfig.selectionColor ? 'secondary' : 'ghost'}
                       size="sm"
                       className="h-7 w-7 p-0"
+                      aria-label={t(`${TK}selectionColor`)}
                     >
                       <Palette className="w-3.5 h-3.5" style={{ color: currentSelectionColor }} />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
-                <TooltipContent>Selection color</TooltipContent>
+                <TooltipContent>{t(`${TK}selectionColor`)}</TooltipContent>
               </Tooltip>
               <DropdownMenuContent side="bottom" align="start" className="w-40">
-                <DropdownMenuLabel className="text-[10px] text-muted-foreground">Selection Color</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-[10px] text-muted-foreground">{t(`${TK}selectionColor`)}</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={config.colorConfig.selectionColor ?? 'default'}
                   onValueChange={handleSelectionColorChange}
                 >
                   {SELECTION_COLOR_PRESETS.map(opt => (
                     <DropdownMenuRadioItem
-                      key={opt.label}
+                      key={opt.labelKey}
                       value={opt.value ?? 'default'}
                       className="text-xs flex items-center gap-2"
                     >
@@ -399,7 +406,7 @@ export function SpectraChartToolbar({
                         className="w-3 h-3 rounded-full border border-border flex-shrink-0"
                         style={{ backgroundColor: opt.color }}
                       />
-                      {opt.label}
+                      {t(opt.labelKey)}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>
@@ -415,25 +422,26 @@ export function SpectraChartToolbar({
                     variant={config.sampling.sampleCount !== totalSamples ? 'secondary' : 'ghost'}
                     size="sm"
                     className="h-7 w-7 p-0"
+                    aria-label={t(`${TK}samplingTooltip`, { count: config.sampling.sampleCount, total: totalSamples })}
                   >
                     <Shuffle className="w-3.5 h-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>Sampling: {config.sampling.sampleCount}/{totalSamples}</TooltipContent>
+              <TooltipContent>{t(`${TK}samplingTooltip`, { count: config.sampling.sampleCount, total: totalSamples })}</TooltipContent>
             </Tooltip>
             <DropdownMenuContent side="bottom" align="start" className="w-48 p-3">
-              <DropdownMenuLabel className="text-[10px] text-muted-foreground px-0">Strategy</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground px-0">{t(`${TK}strategy`)}</DropdownMenuLabel>
               <DropdownMenuRadioGroup value={config.sampling.strategy} onValueChange={handleSamplingStrategyChange}>
                 {SAMPLING_STRATEGY_OPTIONS.map(opt => (
                   <DropdownMenuRadioItem key={opt.value} value={opt.value} className="text-xs">
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-[10px] text-muted-foreground px-0 flex justify-between">
-                <span>Count</span>
+                <span>{t(`${TK}count`)}</span>
                 <span className="font-mono">{config.sampling.sampleCount}/{totalSamples}</span>
               </DropdownMenuLabel>
               <div className="flex gap-1 flex-wrap mb-2 mt-1">
@@ -460,7 +468,7 @@ export function SpectraChartToolbar({
                     configResult.setSampleCount(totalSamples);
                   }}
                 >
-                  All
+                  {t(`${TK}all`)}
                 </Button>
               </div>
               <Slider
@@ -482,11 +490,12 @@ export function SpectraChartToolbar({
                 size="sm"
                 className="h-7 w-7 p-0"
                 onClick={() => configResult.toggleHover()}
+                aria-label={config.enableHover ? t(`${TK}hoverEnabled`) : t(`${TK}hoverDisabled`)}
               >
                 <MousePointer2 className={cn("w-3.5 h-3.5", config.enableHover && "text-primary")} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{config.enableHover ? 'Hover enabled' : 'Hover disabled'}</TooltipContent>
+            <TooltipContent>{config.enableHover ? t(`${TK}hoverEnabled`) : t(`${TK}hoverDisabled`)}</TooltipContent>
           </Tooltip>
 
           {/* Render Mode toggle (Canvas/WebGL) - two checkable icons */}
@@ -499,11 +508,12 @@ export function SpectraChartToolbar({
                     size="sm"
                     className="h-7 w-7 p-0 rounded-r-none border-r"
                     onClick={() => onRenderModeChange('canvas')}
+                    aria-label={t(`${TK}canvasRenderer`)}
                   >
                     <Monitor className="w-3.5 h-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Canvas renderer</TooltipContent>
+                <TooltipContent>{t(`${TK}canvasRenderer`)}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -512,11 +522,12 @@ export function SpectraChartToolbar({
                     size="sm"
                     className="h-7 w-7 p-0 rounded-l-none"
                     onClick={() => onRenderModeChange('webgl')}
+                    aria-label={t(`${TK}webglRenderer`)}
                   >
                     <Zap className={cn("w-3.5 h-3.5", (effectiveRenderMode === 'webgl' || renderMode === 'webgl') && "text-yellow-500")} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>WebGL renderer (GPU accelerated)</TooltipContent>
+                <TooltipContent>{t(`${TK}webglRenderer`)}</TooltipContent>
               </Tooltip>
             </div>
           )}
@@ -543,11 +554,12 @@ export function SpectraChartToolbar({
                   size="sm"
                   className="h-7 w-7 p-0"
                   onClick={onExport}
+                  aria-label={t(`${TK}exportChart`)}
                 >
                   <Download className="w-3.5 h-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Export chart</TooltipContent>
+              <TooltipContent>{t(`${TK}exportChart`)}</TooltipContent>
             </Tooltip>
           )}
         </div>

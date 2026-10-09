@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { GitBranch, GitFork, Route } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
@@ -59,6 +60,7 @@ export function BranchRenderer({
   onRemove,
   onDuplicate,
 }: StepRendererProps) {
+  const { t } = useTranslation();
   const branchMode = step.branchMode ?? "duplication";
   const separationConfig = useMemo<SeparationBranchConfig>(
     () => ({
@@ -116,18 +118,18 @@ export function BranchRenderer({
             )}
             <div>
               <h4 className="text-sm font-medium">
-                {branchMode === "separation" ? "Separation Branch" : "Parallel Branch"}
+                {branchMode === "separation" ? t("pipelineEditor.config.branch.separationTitle") : t("pipelineEditor.config.branch.parallelTitle")}
               </h4>
               <p className="text-xs text-muted-foreground">
                 {branchMode === "separation"
-                  ? "Route different samples to different branches."
-                  : "Duplicate the same samples across multiple branches."}
+                  ? t("pipelineEditor.config.branch.separationHint")
+                  : t("pipelineEditor.config.branch.parallelHint")}
               </p>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Branch Mode</Label>
+            <Label className="text-sm font-medium">{t("pipelineEditor.config.branch.mode")}</Label>
             <Select
               value={branchMode}
               onValueChange={(value) => {
@@ -142,8 +144,8 @@ export function BranchRenderer({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-popover">
-                <SelectItem value="duplication">Duplication</SelectItem>
-                <SelectItem value="separation">Separation</SelectItem>
+                <SelectItem value="duplication">{t("pipelineEditor.config.branch.modeDuplication")}</SelectItem>
+                <SelectItem value="separation">{t("pipelineEditor.config.branch.modeSeparation")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -154,7 +156,7 @@ export function BranchRenderer({
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Routing Strategy</Label>
+                  <Label className="text-sm font-medium">{t("pipelineEditor.config.branch.routingStrategy")}</Label>
                   <Select
                     value={separationConfig.kind}
                     onValueChange={(value) => {
@@ -165,10 +167,10 @@ export function BranchRenderer({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-popover">
-                      <SelectItem value="by_tag">By Tag</SelectItem>
-                      <SelectItem value="by_metadata">By Metadata</SelectItem>
-                      <SelectItem value="by_filter">By Filter</SelectItem>
-                      <SelectItem value="by_source">By Source</SelectItem>
+                      <SelectItem value="by_tag">{t("pipelineEditor.config.branch.byTag")}</SelectItem>
+                      <SelectItem value="by_metadata">{t("pipelineEditor.config.branch.byMetadata")}</SelectItem>
+                      <SelectItem value="by_filter">{t("pipelineEditor.config.branch.byFilter")}</SelectItem>
+                      <SelectItem value="by_source">{t("pipelineEditor.config.branch.bySource")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -177,7 +179,7 @@ export function BranchRenderer({
                   separationConfig.kind === "by_metadata") && (
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">
-                      {separationConfig.kind === "by_tag" ? "Tag Name" : "Metadata Column"}
+                      {separationConfig.kind === "by_tag" ? t("pipelineEditor.config.branch.tagName") : t("pipelineEditor.config.branch.metadataColumn")}
                     </Label>
                     <Input
                       value={separationConfig.key ?? ""}
@@ -186,8 +188,8 @@ export function BranchRenderer({
                       }
                       placeholder={
                         separationConfig.kind === "by_tag"
-                          ? "e.g. y_outlier_iqr"
-                          : "e.g. instrument"
+                          ? t("pipelineEditor.config.branch.tagPlaceholder")
+                          : t("pipelineEditor.config.branch.metadataPlaceholder")
                       }
                     />
                   </div>
@@ -195,7 +197,7 @@ export function BranchRenderer({
 
                 {separationConfig.kind === "by_filter" && (
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Filter Payload</Label>
+                    <Label className="text-sm font-medium">{t("pipelineEditor.config.branch.filterPayload")}</Label>
                     <Textarea
                       value={filterText}
                       onChange={(event) => setFilterText(event.target.value)}
@@ -220,20 +222,21 @@ export function BranchRenderer({
                       placeholder='{"class":"nirs4all.operators.filters.y_outlier.YOutlierFilter","params":{"method":"iqr"}}'
                     />
                     <p className="text-xs text-muted-foreground">
-                      Enter canonical JSON for the filter used to split pass/fail samples.
+                      {t("pipelineEditor.config.branch.filterPayloadHint")}
                     </p>
                   </div>
                 )}
 
                 <div className="flex items-center justify-between rounded-lg border border-dashed p-3">
                   <div>
-                    <Label className="text-sm font-medium">Shared Steps</Label>
+                    <Label className="text-sm font-medium">{t("pipelineEditor.config.branch.sharedSteps")}</Label>
                     <p className="text-xs text-muted-foreground">
-                      Use one shared branch pipeline for all routed values.
+                      {t("pipelineEditor.config.branch.sharedStepsHint")}
                     </p>
                   </div>
                   <Switch
                     checked={Boolean(separationConfig.sharedSteps)}
+                    aria-label={t("pipelineEditor.config.branch.sharedSteps")}
                     onCheckedChange={(checked) => updateSeparation({ sharedSteps: checked })}
                   />
                 </div>
@@ -247,7 +250,7 @@ export function BranchRenderer({
             <div className="flex items-center gap-2">
               <GitBranch className="h-4 w-4 text-cyan-500" />
               <Label className="text-sm font-medium">
-                {branchMode === "separation" ? "Route Values" : "Branch Labels"}
+                {branchMode === "separation" ? t("pipelineEditor.config.branch.routeValues") : t("pipelineEditor.config.branch.branchLabels")}
               </Label>
             </div>
 
@@ -256,7 +259,7 @@ export function BranchRenderer({
                 {branchMetadata.map((entry, index) => (
                   <div key={`${step.id}-branch-meta-${index}`} className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">
-                      {branchMode === "separation" ? `Route ${index + 1}` : `Branch ${index + 1}`}
+                      {branchMode === "separation" ? t("pipelineEditor.config.branch.routeN", { index: index + 1 }) : t("pipelineEditor.config.branch.branchN", { index: index + 1 })}
                     </Label>
                     <Input
                       value={String(entry.name ?? "")}
@@ -273,8 +276,8 @@ export function BranchRenderer({
                       }}
                       placeholder={
                         branchMode === "separation"
-                          ? "e.g. True, portable, fail"
-                          : `Branch ${index + 1}`
+                          ? t("pipelineEditor.config.branch.routePlaceholder")
+                          : t("pipelineEditor.config.branch.branchN", { index: index + 1 })
                       }
                     />
                   </div>
@@ -282,12 +285,12 @@ export function BranchRenderer({
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Add branches in the tree to configure labels here.
+                {t("pipelineEditor.config.branch.noBranches")}
               </p>
             )}
 
             <p className="text-xs text-muted-foreground">
-              Edit branch contents directly in the pipeline tree. This panel controls routing metadata only.
+              {t("pipelineEditor.config.branch.treeHint")}
             </p>
           </div>
         </div>

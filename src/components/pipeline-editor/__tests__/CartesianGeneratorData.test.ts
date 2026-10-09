@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from "vitest";
+import i18n from "@/lib/i18n";
 import type { PipelineStep, StepOption, StepType } from "../types";
 import {
   computeBaseCombinations,
@@ -32,6 +34,10 @@ function makeOption(name: string, description = ""): StepOption {
   return { name, description, defaultParams: {} } as StepOption;
 }
 
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
+
 describe("pluralize", () => {
   it("omits the trailing s for a count of one", () => {
     expect(pluralize(1, "option")).toBe("1 option");
@@ -45,8 +51,8 @@ describe("pluralize", () => {
 
 describe("pluralizeLocale", () => {
   it("formats large counts with locale separators", () => {
-    expect(pluralizeLocale(1, "base combination")).toBe("1 base combination");
-    expect(pluralizeLocale(1234, "base combination")).toBe(
+    expect(pluralizeLocale(1, "baseCombination")).toBe("1 base combination");
+    expect(pluralizeLocale(1234, "baseCombination")).toBe(
       `${(1234).toLocaleString()} base combinations`,
     );
   });

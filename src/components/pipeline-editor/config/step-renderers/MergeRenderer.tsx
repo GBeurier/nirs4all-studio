@@ -11,6 +11,7 @@
  */
 
 import { useCallback, lazy, Suspense, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { GitBranch, GitMerge, Info, Layers, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -74,6 +75,7 @@ export function MergeRenderer({
   handleResetParams,
   currentOption,
 }: ParameterRendererProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("merge");
   const { getStepOptions } = useStepMetadataCatalog();
 
@@ -119,7 +121,7 @@ export function MergeRenderer({
               className="text-xs data-[state=active]:bg-muted data-[state=active]:shadow-none"
             >
               <GitMerge className="h-3.5 w-3.5 mr-1.5" />
-              Merge
+              {t("pipelineEditor.config.merge.tabMerge")}
             </TabsTrigger>
             <TabsTrigger
               value="sources"
@@ -130,7 +132,7 @@ export function MergeRenderer({
               }`}
             >
               <GitBranch className="h-3.5 w-3.5 mr-1.5" />
-              Sources
+              {t("pipelineEditor.config.merge.tabSources")}
               {hasAdvancedConfig && (
                 <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-blue-500">
                   {advancedConfigCount}
@@ -146,10 +148,10 @@ export function MergeRenderer({
               }`}
             >
               <Layers className="h-3.5 w-3.5 mr-1.5" />
-              Stacking
+              {t("pipelineEditor.config.merge.tabStacking")}
               {hasStackingEnabled && (
                 <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-pink-500">
-                  ON
+                  {t("pipelineEditor.config.merge.stackingOn")}
                 </Badge>
               )}
             </TabsTrigger>
@@ -163,13 +165,13 @@ export function MergeRenderer({
               {/* Merge Strategy Selection */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Merge Strategy</Label>
+                  <Label className="text-sm font-medium">{t("pipelineEditor.config.merge.strategy")}</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent side="left" className="max-w-[200px]">
-                      <p>How to combine outputs from multiple branches</p>
+                      <p>{t("pipelineEditor.config.merge.strategyHelp")}</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -203,7 +205,7 @@ export function MergeRenderer({
               {Object.keys(step.params).length > 0 ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">Parameters</Label>
+                    <Label className="text-sm font-medium">{t("pipelineEditor.config.merge.parameters")}</Label>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -211,7 +213,7 @@ export function MergeRenderer({
                       onClick={handleResetParams}
                     >
                       <RotateCcw className="h-3 w-3 mr-1" />
-                      Reset
+                      {t("pipelineEditor.config.merge.reset")}
                     </Button>
                   </div>
                   {Object.entries(step.params).map(([key, value]) =>
@@ -224,10 +226,10 @@ export function MergeRenderer({
                     <Info className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    No configurable parameters
+                    {t("pipelineEditor.config.merge.noParams")}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    This merge strategy uses default settings
+                    {t("pipelineEditor.config.merge.usesDefaults")}
                   </p>
                 </div>
               )}
@@ -238,11 +240,10 @@ export function MergeRenderer({
                   <Layers className="h-4 w-4 text-pink-500 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="text-sm text-foreground">
-                      Want to use stacking ensemble?
+                      {t("pipelineEditor.config.merge.stackingCta")}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Combine branch predictions with a meta-model for better
-                      results.
+                      {t("pipelineEditor.config.merge.stackingCtaHint")}
                     </p>
                   </div>
                   <Button
@@ -251,7 +252,7 @@ export function MergeRenderer({
                     className="h-7 text-xs border-pink-500/50 text-pink-500 hover:bg-pink-500/10"
                     onClick={() => setActiveTab("stacking")}
                   >
-                    Configure
+                    {t("pipelineEditor.config.merge.configure")}
                   </Button>
                 </div>
               )}

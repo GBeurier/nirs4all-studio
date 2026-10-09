@@ -11,6 +11,7 @@
  * Shows the data shape at each step and highlights changes/warnings.
  */
 
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
@@ -147,6 +148,7 @@ function ShapeTooltipContent({
   hasChange: boolean;
   warnings: ShapeWarning[];
 }) {
+  const { t } = useTranslation();
   const samplesDiff = outputShape.samples - inputShape.samples;
   const featuresDiff = outputShape.features - inputShape.features;
 
@@ -154,16 +156,16 @@ function ShapeTooltipContent({
     <div className="space-y-2 text-xs">
       <div className="flex items-center gap-2">
         <Layers className="h-4 w-4 text-muted-foreground" />
-        <span className="font-medium">Shape Propagation</span>
+        <span className="font-medium">{t("pipelineEditor.tree.shape.propagation")}</span>
       </div>
 
       <div className="space-y-1">
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Input:</span>
+          <span className="text-muted-foreground">{t("pipelineEditor.tree.shape.input")}</span>
           <span className="font-mono">{formatShape(inputShape)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Output:</span>
+          <span className="text-muted-foreground">{t("pipelineEditor.tree.shape.output")}</span>
           <span className={`font-mono ${hasChange ? "text-emerald-500" : ""}`}>
             {formatShape(outputShape)}
           </span>
@@ -174,7 +176,7 @@ function ShapeTooltipContent({
         <div className="pt-1 border-t border-border">
           {samplesDiff !== 0 && (
             <div className="flex justify-between text-muted-foreground">
-              <span>Samples:</span>
+              <span>{t("pipelineEditor.tree.shape.samples")}</span>
               <span className={samplesDiff < 0 ? "text-amber-500" : "text-emerald-500"}>
                 {samplesDiff > 0 ? "+" : ""}{samplesDiff.toLocaleString()}
               </span>
@@ -182,7 +184,7 @@ function ShapeTooltipContent({
           )}
           {featuresDiff !== 0 && (
             <div className="flex justify-between text-muted-foreground">
-              <span>Features:</span>
+              <span>{t("pipelineEditor.tree.shape.features")}</span>
               <span className={featuresDiff < 0 ? "text-amber-500" : "text-emerald-500"}>
                 {featuresDiff > 0 ? "+" : ""}{featuresDiff.toLocaleString()}
               </span>
@@ -200,11 +202,12 @@ function ShapeTooltipContent({
  * Warnings list content
  */
 function WarningsContent({ warnings }: { warnings: ShapeWarning[] }) {
+  const { t } = useTranslation();
   return (
     <div className="pt-1 border-t border-border space-y-1">
       <div className="flex items-center gap-1 text-amber-500 font-medium">
         <AlertTriangle className="h-3 w-3" />
-        <span>Warnings</span>
+        <span>{t("pipelineEditor.tree.shape.warnings")}</span>
       </div>
       {warnings.map((warning, idx) => (
         <div key={idx} className={`text-${warning.severity === "error" ? "red" : "amber"}-500`}>

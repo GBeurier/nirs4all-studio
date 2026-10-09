@@ -7,6 +7,7 @@
  */
 
 import { useState, useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, Target, Hash, Trash2, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,7 @@ export function BestModelTrainingConfig({
   onUpdate,
   modelName,
 }: BestModelTrainingConfigProps) {
+  const { t } = useTranslation();
   const [showAddPopover, setShowAddPopover] = useState(false);
 
   // Only show for models that support training parameters
@@ -99,10 +101,10 @@ export function BestModelTrainingConfig({
         <div className="min-w-0 flex-1">
           <Label className="text-sm font-medium flex items-center gap-2">
             <Target className="h-4 w-4 text-emerald-500" />
-            Best Model Training (Final)
+            {t("pipelineEditor.finetune.best.title")}
           </Label>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Full training after tuning (e.g., 500 epochs)
+            {t("pipelineEditor.finetune.best.hint")}
           </p>
         </div>
         <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
@@ -114,14 +116,14 @@ export function BestModelTrainingConfig({
               disabled={unusedPresets.length === 0}
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
-              Add
+              {t("common.add")}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-64 bg-popover p-0">
             <div className="p-3 border-b border-border">
-              <h4 className="font-medium text-sm">Best Model Training</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.finetune.best.popTitle")}</h4>
               <p className="text-xs text-muted-foreground mt-1">
-                Fixed params for final training
+                {t("pipelineEditor.finetune.best.popHint")}
               </p>
             </div>
             <ScrollArea className="max-h-64">
@@ -129,8 +131,9 @@ export function BestModelTrainingConfig({
                 {unusedPresets.map((preset) => (
                   <button
                     key={preset.name}
+                    type="button"
                     onClick={() => handleAddParam(preset)}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted transition-colors"
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-sm">{preset.name}</span>
@@ -139,13 +142,13 @@ export function BestModelTrainingConfig({
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {preset.description}
+                      {t(preset.descriptionKey)}
                     </p>
                   </button>
                 ))}
                 {unusedPresets.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">
-                    All training parameters added
+                    {t("pipelineEditor.finetune.train.allAdded")}
                   </p>
                 )}
               </div>
@@ -157,7 +160,7 @@ export function BestModelTrainingConfig({
       {!hasParams ? (
         <div className="text-center py-3 rounded-lg border border-dashed border-emerald-500/30">
           <p className="text-xs text-muted-foreground">
-            No fixed training parameters
+            {t("pipelineEditor.finetune.best.none")}
           </p>
         </div>
       ) : (
@@ -192,6 +195,7 @@ export function BestModelTrainingConfig({
                   size="sm"
                   className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive flex-shrink-0"
                   onClick={() => handleRemoveParam(paramName)}
+                  aria-label={t("pipelineEditor.finetune.removeParam", { name: paramName })}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>

@@ -24,6 +24,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   CheckCircle2,
   AlertCircle,
@@ -43,7 +44,7 @@ export interface ValidatePipelineButtonProps
   extends Omit<ButtonProps, "onClick"> {
   /** Whether to show the label text (default: true) */
   showLabel?: boolean;
-  /** Label text (default: "Validate") */
+  /** Label text (default: localized "Validate") */
   label?: string;
   /** Callback after validation completes */
   onValidationComplete?: (isValid: boolean, errorCount: number) => void;
@@ -51,7 +52,7 @@ export interface ValidatePipelineButtonProps
 
 export function ValidatePipelineButton({
   showLabel = true,
-  label = "Validate",
+  label,
   onValidationComplete,
   variant = "outline",
   size = "sm",
@@ -59,6 +60,7 @@ export function ValidatePipelineButton({
   disabled,
   ...props
 }: ValidatePipelineButtonProps) {
+  const { t } = useTranslation();
   const { validateNow, isValidating, result, errorCount, warningCount } = useValidationContext();
   const [recentResult, setRecentResult] = useState<
     "success" | "error" | null
@@ -110,12 +112,12 @@ export function ValidatePipelineButton({
 
   // Tooltip content
   const tooltipContent = isValidating
-    ? "Validating pipeline..."
+    ? t("pipelineEditor.validation.ui.validatingPipeline")
     : hasErrors
-      ? `${errorCount} error${errorCount !== 1 ? "s" : ""} found`
+      ? t("pipelineEditor.validation.ui.errorsFound", { count: errorCount })
       : hasWarnings
-        ? `${warningCount} warning${warningCount !== 1 ? "s" : ""}`
-        : "Validate pipeline";
+        ? t("pipelineEditor.validation.ui.warningCount", { count: warningCount })
+        : t("pipelineEditor.validation.ui.validatePipeline");
 
   const button = (
     <Button
@@ -123,6 +125,7 @@ export function ValidatePipelineButton({
       size={size}
       onClick={handleClick}
       disabled={disabled || isValidating}
+      aria-label={showLabel ? undefined : tooltipContent}
       className={cn(
         "gap-2",
         recentResult === "success" && "border-green-500/50",
@@ -132,7 +135,7 @@ export function ValidatePipelineButton({
       {...props}
     >
       <Icon className={cn("h-4 w-4", iconClassName)} />
-      {showLabel && <span>{isValidating ? "Validating..." : label}</span>}
+      {showLabel && <span>{isValidating ? t("pipelineEditor.validation.ui.validating") : label ?? t("pipelineEditor.validation.ui.validate")}</span>}
     </Button>
   );
 

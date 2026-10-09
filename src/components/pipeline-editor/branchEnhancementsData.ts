@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import type { GeneratorKind, PipelineStep } from "./types";
 import { calculateStepVariants } from "./variantCounting";
 
@@ -38,28 +39,29 @@ export function getDefaultBranchName(
   generatorKind?: BranchGeneratorKind,
   index = 0
 ): string {
-  const idx = index + 1;
+  const n = index + 1;
   if (type === "generator") {
-    if (generatorKind === "cartesian") return `Stage ${idx}`;
-    if (generatorKind === "grid" || generatorKind === "zip") return `Param ${idx}`;
-    if (generatorKind === "chain") return `Config ${idx}`;
-    return `Option ${idx}`;
+    if (generatorKind === "cartesian") return i18n.t("pipelineEditor.branch.defaultName.stage", { n });
+    if (generatorKind === "grid" || generatorKind === "zip") return i18n.t("pipelineEditor.branch.defaultName.param", { n });
+    if (generatorKind === "chain") return i18n.t("pipelineEditor.branch.defaultName.config", { n });
+    return i18n.t("pipelineEditor.branch.defaultName.option", { n });
   }
-  return `Branch ${idx}`;
+  return i18n.t("pipelineEditor.branch.defaultName.branch", { n });
 }
 
 export function getBranchSummaryLabel(
   isGenerator: boolean,
-  generatorKind?: BranchGeneratorKind
+  generatorKind?: BranchGeneratorKind,
+  count = 2
 ): string {
   if (!isGenerator) {
-    return "branches";
+    return i18n.t("pipelineEditor.branch.summaryLabel.branch", { count });
   }
 
-  if (generatorKind === "cartesian") return "stages";
-  if (generatorKind === "grid" || generatorKind === "zip") return "params";
-  if (generatorKind === "chain") return "configs";
-  return "options";
+  if (generatorKind === "cartesian") return i18n.t("pipelineEditor.branch.summaryLabel.stage", { count });
+  if (generatorKind === "grid" || generatorKind === "zip") return i18n.t("pipelineEditor.branch.summaryLabel.param", { count });
+  if (generatorKind === "chain") return i18n.t("pipelineEditor.branch.summaryLabel.config", { count });
+  return i18n.t("pipelineEditor.branch.summaryLabel.option", { count });
 }
 
 export function getAddBranchLabel(
@@ -67,13 +69,13 @@ export function getAddBranchLabel(
   generatorKind?: BranchGeneratorKind
 ): string {
   if (!isGenerator) {
-    return "Add Branch";
+    return i18n.t("pipelineEditor.branch.add.branch");
   }
 
-  if (generatorKind === "cartesian") return "Add Stage";
-  if (generatorKind === "grid" || generatorKind === "zip") return "Add Param";
-  if (generatorKind === "chain") return "Add Config";
-  return "Add Option";
+  if (generatorKind === "cartesian") return i18n.t("pipelineEditor.branch.add.stage");
+  if (generatorKind === "grid" || generatorKind === "zip") return i18n.t("pipelineEditor.branch.add.param");
+  if (generatorKind === "chain") return i18n.t("pipelineEditor.branch.add.config");
+  return i18n.t("pipelineEditor.branch.add.option");
 }
 
 export function getBranchVisualClasses(isGenerator: boolean): BranchVisualClasses {
@@ -140,20 +142,20 @@ export function getBranchOutputDescriptor(
     case "parallel":
       return {
         description: modelCount > 0
-          ? `${modelCount} parallel predictions → merge`
-          : `${branchCount} parallel processings`,
+          ? i18n.t("pipelineEditor.branch.output.parallelPredictions", { count: modelCount })
+          : i18n.t("pipelineEditor.branch.output.parallelProcessings", { count: branchCount }),
         icon: "layers",
         colorClass: "text-cyan-500",
       };
     case "or":
       return {
-        description: `1 of ${branchCount} alternatives`,
+        description: i18n.t("pipelineEditor.branch.output.alternatives", { count: branchCount }),
         icon: "arrowRight",
         colorClass: "text-orange-500",
       };
     case "cartesian":
       return {
-        description: `${branchCount} stage combinations`,
+        description: i18n.t("pipelineEditor.branch.output.stageCombinations", { count: branchCount }),
         icon: "hash",
         colorClass: "text-orange-500",
       };

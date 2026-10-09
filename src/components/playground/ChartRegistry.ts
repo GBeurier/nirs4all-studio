@@ -16,6 +16,7 @@
  */
 
 import { ComponentType } from 'react';
+import i18n from 'i18next';
 import {
   Layers,
   BarChart2,
@@ -39,6 +40,7 @@ import {
   shouldRecommendPlaygroundChart,
   type PlaygroundChartId,
 } from '@/lib/playground/chartAvailability';
+import { useTranslation } from 'react-i18next';
 
 // ============= Types =============
 
@@ -66,12 +68,18 @@ export interface BaseChartProps {
 export interface ChartDefinition {
   /** Unique identifier for the chart */
   id: string;
-  /** Display name shown in UI */
-  name: string;
+  /** Display name shown in UI (custom charts; built-in charts use nameKey) */
+  name?: string;
+  /** i18n key of the display name */
+  nameKey?: string;
   /** Short name for compact displays */
   shortName?: string;
+  /** i18n key of the short name */
+  shortNameKey?: string;
   /** Description for tooltips */
   description?: string;
+  /** i18n key of the description */
+  descriptionKey?: string;
   /** Icon component (Lucide icon) */
   icon: LucideIcon;
   /** Chart component to render */
@@ -114,6 +122,8 @@ export interface ChartDefinition {
   category: 'core' | 'analysis' | 'advanced';
   /** Minimum data requirements description */
   dataRequirements?: string;
+  /** i18n key of the data requirements description */
+  dataRequirementsKey?: string;
 }
 
 /**
@@ -164,6 +174,11 @@ function toPlaygroundChartRegistryContext(
   };
 }
 
+/** Resolve a chart text from an i18n key (at call time) or a literal fallback. */
+function resolveChartText(key: string | undefined, text: string | undefined): string | undefined {
+  return key ? i18n.t(key) : text;
+}
+
 // ============= Chart Definitions =============
 
 /**
@@ -172,22 +187,22 @@ function toPlaygroundChartRegistryContext(
 export const CHART_DEFINITIONS: ChartDefinition[] = [
   {
     id: 'spectra',
-    name: 'Spectra Chart',
-    shortName: 'Spectra',
-    description: 'Visualize original and processed spectral data with overlay',
+    nameKey: 'playground.chartRegistry.spectra.name',
+    shortNameKey: 'playground.chartRegistry.spectra.shortName',
+    descriptionKey: 'playground.chartRegistry.spectra.description',
     icon: Layers,
     component: () => null, // Placeholder - actual component passed at render time
     requiresData: (result, rawData, dataView) => isPlaygroundChartAvailable('spectra', { result, rawData, dataView }),
     defaultVisible: true,
     priority: 10,
     category: 'core',
-    dataRequirements: 'Spectral data (X)',
+    dataRequirementsKey: 'playground.chartRegistry.spectra.dataRequirements',
   },
   {
     id: 'histogram',
-    name: 'Y Histogram',
-    shortName: 'Y Hist',
-    description: 'Distribution of target values with fold coloring',
+    nameKey: 'playground.chartRegistry.histogram.name',
+    shortNameKey: 'playground.chartRegistry.histogram.shortName',
+    descriptionKey: 'playground.chartRegistry.histogram.description',
     icon: BarChart2,
     component: () => null,
     requiresData: (result, rawData, dataView) => isPlaygroundChartAvailable('histogram', { result, rawData, dataView }),
@@ -196,26 +211,26 @@ export const CHART_DEFINITIONS: ChartDefinition[] = [
     defaultVisible: true,
     priority: 20,
     category: 'core',
-    dataRequirements: 'Target values (Y)',
+    dataRequirementsKey: 'playground.chartRegistry.histogram.dataRequirements',
   },
   {
     id: 'pca',
-    name: 'Dimension Reduction',
-    shortName: 'PCA/UMAP',
-    description: 'PCA or UMAP projection of spectral data',
+    nameKey: 'playground.chartRegistry.pca.name',
+    shortNameKey: 'playground.chartRegistry.pca.shortName',
+    descriptionKey: 'playground.chartRegistry.pca.description',
     icon: ScatterChart,
     component: () => null,
     requiresData: (result, rawData, dataView) => isPlaygroundChartAvailable('pca', { result, rawData, dataView }),
     defaultVisible: true,
     priority: 30,
     category: 'core',
-    dataRequirements: 'PCA computation enabled',
+    dataRequirementsKey: 'playground.chartRegistry.pca.dataRequirements',
   },
   {
     id: 'folds',
-    name: 'Fold Distribution',
-    shortName: 'Folds',
-    description: 'Cross-validation fold sample counts and Y statistics',
+    nameKey: 'playground.chartRegistry.folds.name',
+    shortNameKey: 'playground.chartRegistry.folds.shortName',
+    descriptionKey: 'playground.chartRegistry.folds.description',
     icon: LayoutGrid,
     component: () => null,
     requiresData: (result, rawData, dataView) => isPlaygroundChartAvailable('folds', { result, rawData, dataView }),
@@ -224,13 +239,13 @@ export const CHART_DEFINITIONS: ChartDefinition[] = [
     defaultVisible: true,
     priority: 40,
     category: 'core',
-    dataRequirements: 'Splitter in pipeline',
+    dataRequirementsKey: 'playground.chartRegistry.folds.dataRequirements',
   },
   {
     id: 'repetitions',
-    name: 'Repetitions Chart',
-    shortName: 'Reps',
-    description: 'Visualize intra-sample variability between repetitions',
+    nameKey: 'playground.chartRegistry.repetitions.name',
+    shortNameKey: 'playground.chartRegistry.repetitions.shortName',
+    descriptionKey: 'playground.chartRegistry.repetitions.description',
     icon: Repeat,
     component: () => null,
     requiresData: (result, rawData, dataView) => isPlaygroundChartAvailable('repetitions', { result, rawData, dataView }),
@@ -239,7 +254,7 @@ export const CHART_DEFINITIONS: ChartDefinition[] = [
     defaultVisible: false, // Not visible by default until reps detected
     priority: 50,
     category: 'analysis',
-    dataRequirements: 'Sample IDs with repetition patterns',
+    dataRequirementsKey: 'playground.chartRegistry.repetitions.dataRequirements',
   },
 ];
 
@@ -364,7 +379,7 @@ class ChartRegistryClass {
     dataView?: PlaygroundDataViewProjection | null,
   ): string | null {
     const chart = this.get(id);
-    if (!chart) return 'Chart not found';
+    if (!chart) return i18n.t('playground.chartRegistry.notFound');
     const context = toPlaygroundChartRegistryContext(result, rawData, dataView);
     if (isRegisteredPlaygroundChartId(id)) {
       return getPlaygroundChartDisabledReason(id, context);
@@ -454,7 +469,7 @@ export function getToggleableCharts(
 
   return chartRegistry.getAll().map(chart => ({
     id: chart.id,
-    label: chart.shortName || chart.name,
+    label: resolveChartText(chart.shortNameKey, chart.shortName) || resolveChartText(chart.nameKey, chart.name) || chart.id,
     disabled: chartRegistry.isDisabled(chart.id, context),
     disabledReason: chartRegistry.getDisabledReason(chart.id, context),
   }));

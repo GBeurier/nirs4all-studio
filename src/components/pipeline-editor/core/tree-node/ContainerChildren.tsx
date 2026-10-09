@@ -7,6 +7,7 @@
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Plus, GripVertical, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { usePipelineDnd } from "../../usePipelineDnd";
 import { getStepColor } from "../../types";
@@ -28,6 +29,7 @@ export function ContainerChildrenNode({
   onAddChild,
   colors,
 }: ContainerChildrenNodeProps) {
+  const { t } = useTranslation();
   const childrenPath = [...parentPath, "children"];
 
   const { setNodeRef: setEmptyDropRef, isOver: isOverEmpty } = useDroppable({
@@ -54,8 +56,8 @@ export function ContainerChildrenNode({
           onClick={() => onAddChild?.(parentStep.id, parentPath)}
         >
           {isOverEmpty
-            ? "Drop transformer here"
-            : `No ${childLabel}s - click to add or drop here`}
+            ? t("pipelineEditor.tree.dropTransformerHere")
+            : t("pipelineEditor.tree.noChildren", { noun: t(`pipelineEditor.tree.childKind_${childLabel}`, { count: 2 }) })}
         </div>
       ) : (
         <div className="space-y-1">
@@ -104,6 +106,7 @@ export function ContainerChildItem({
   onSelect,
   onRemove,
 }: ContainerChildItemProps) {
+  const { t } = useTranslation();
   const Icon = getStepIcon(child);
   const childColors = getStepColor(child);
   const { isDragging: globalIsDragging, activeId } = usePipelineDnd();
@@ -163,7 +166,7 @@ export function ContainerChildItem({
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing p-0.5 rounded hover:bg-muted transition-colors touch-none shrink-0 opacity-50 group-hover:opacity-100"
-        aria-label="Drag to reorder"
+        aria-label={t("pipelineEditor.tree.dragToReorder")}
         onClick={(e) => e.stopPropagation()}
       >
         <GripVertical className="h-3 w-3 text-muted-foreground" />
@@ -188,6 +191,7 @@ export function ContainerChildItem({
           variant="ghost"
           size="icon"
           className="h-5 w-5 flex-shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+          aria-label={t("common.delete")}
           onClick={(e) => {
             e.stopPropagation();
             onRemove();
@@ -211,6 +215,7 @@ function ContainerInsertDropZone({
   index: number;
   childLabel: string;
 }) {
+  const { t } = useTranslation();
   const { dropIndicator } = usePipelineDnd();
   const { setNodeRef, isOver } = useDroppable({
     id,
@@ -238,7 +243,7 @@ function ContainerInsertDropZone({
       {showIndicator && (
         <div className="h-8 rounded-lg border-2 border-dashed border-primary bg-primary/5 flex items-center justify-center gap-1">
           <Plus className="h-3 w-3 text-primary" />
-          <span className="text-[10px] font-medium text-primary">Drop {childLabel}</span>
+          <span className="text-[10px] font-medium text-primary">{t("pipelineEditor.tree.dropChildKind", { noun: t(`pipelineEditor.tree.childKind_${childLabel}`, { count: 1 }) })}</span>
         </div>
       )}
     </div>

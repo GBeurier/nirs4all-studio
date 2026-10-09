@@ -3,6 +3,7 @@ import {
   getCategoricalColor,
   getContinuousColor,
 } from '@/lib/playground/colorConfig';
+import { useTranslation } from 'react-i18next';
 
 export interface FoldDistributionLegendPartition {
   partitionType: 'train' | 'val' | 'test';
@@ -50,6 +51,8 @@ export function FoldDistributionFooter<TPartition extends FoldDistributionLegend
   getPartitionSegmentColor,
   getSegmentLabel,
 }: FoldDistributionFooterProps<TPartition>) {
+  const { t } = useTranslation();
+
   if (compact) {
     return null;
   }
@@ -68,18 +71,18 @@ export function FoldDistributionFooter<TPartition extends FoldDistributionLegend
             <>
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: trainColor }} />
-                Train
+                {t('playground.charts.fold.footer.train')}
               </span>
               {hasValidationPartition && (
                 <span className="flex items-center gap-1">
                   <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: valColor }} />
-                  Val
+                  {t('playground.charts.fold.footer.val')}
                 </span>
               )}
               {hasTestPartition && (
                 <span className="flex items-center gap-1">
                   <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: heldOutTestColor }} />
-                  Test
+                  {t('playground.charts.fold.footer.test')}
                 </span>
               )}
             </>
@@ -93,7 +96,7 @@ export function FoldDistributionFooter<TPartition extends FoldDistributionLegend
                     className="w-2 h-2 rounded-sm"
                     style={{ backgroundColor: getCategoricalColor(foldIndex, categoricalPalette) }}
                   />
-                  Fold {foldIndex + 1}
+                  {t('playground.charts.fold.footer.foldN', { n: foldIndex + 1 })}
                 </span>
               ))}
               {hasTestPartition && (
@@ -102,7 +105,7 @@ export function FoldDistributionFooter<TPartition extends FoldDistributionLegend
                     className="w-2 h-2 rounded-sm"
                     style={{ backgroundColor: heldOutTestColor }}
                   />
-                  Test
+                  {t('playground.charts.fold.footer.test')}
                 </span>
               )}
             </>
@@ -123,13 +126,13 @@ export function FoldDistributionFooter<TPartition extends FoldDistributionLegend
 
         {selectedFold !== null && (
           <span>
-            Fold {selectedFold + 1} selected
+            {t('playground.charts.fold.footer.foldSelected', { n: selectedFold + 1 })}
           </span>
         )}
 
         {selectedCount > 0 && (
           <span className="text-primary font-medium">
-            {selectedCount} selected
+            {t('playground.charts.fold.footer.selected', { count: selectedCount })}
           </span>
         )}
       </div>
@@ -137,7 +140,7 @@ export function FoldDistributionFooter<TPartition extends FoldDistributionLegend
       {showYLegend && effectiveColorMode === 'target' && hasYValues && (
         isClassificationMode ? (
           <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px]">
-            <span className="text-muted-foreground">Class:</span>
+            <span className="text-muted-foreground">{t('playground.charts.fold.footer.classLabel')}</span>
             {classLabels.map((label, index) => (
               <div key={label} className="flex items-center gap-0.5">
                 <span
@@ -150,15 +153,15 @@ export function FoldDistributionFooter<TPartition extends FoldDistributionLegend
           </div>
         ) : (
           <div className="flex items-center gap-2 mt-1 text-[10px]">
-            <span className="text-muted-foreground">Y Value:</span>
+            <span className="text-muted-foreground">{t('playground.charts.fold.footer.yValue')}</span>
             <div className="flex items-center gap-0.5">
               <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: getContinuousColor(0, continuousPalette) }} />
-              <span>Low</span>
+              <span>{t('playground.charts.fold.footer.low')}</span>
             </div>
             <div className="w-12 h-2 rounded-sm bg-gradient-to-r from-blue-500 via-cyan-500 to-red-500" />
             <div className="flex items-center gap-0.5">
               <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: getContinuousColor(1, continuousPalette) }} />
-              <span>High</span>
+              <span>{t('playground.charts.fold.footer.high')}</span>
             </div>
           </div>
         )

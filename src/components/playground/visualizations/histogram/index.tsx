@@ -30,6 +30,7 @@ import { getPresentPartitionRoles } from '@/lib/playground/colorConfig';
 import { useHistogramData } from './useHistogramData';
 import HistogramBase from './HistogramBase';
 import type { YHistogramProps, HistogramChartProps, BinData } from './types';
+import { useTranslation } from 'react-i18next';
 
 // ============= Lazy-loaded mode components =============
 
@@ -44,9 +45,11 @@ const HistogramClassification = React.lazy(() => import('./HistogramClassificati
 // ============= Loading fallback =============
 
 function ChartLoadingFallback() {
+  const { t } = useTranslation();
+
   return (
     <div className="h-full flex items-center justify-center text-muted-foreground text-xs">
-      Loading...
+      {t('playground.charts.histogram.loading')}
     </div>
   );
 }
@@ -54,6 +57,7 @@ function ChartLoadingFallback() {
 // ============= Component =============
 
 export function YHistogram(props: YHistogramProps) {
+  const { t } = useTranslation();
   const data = useHistogramData(props);
 
   const {
@@ -111,7 +115,7 @@ export function YHistogram(props: YHistogramProps) {
       <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
         <div className="text-center">
           <BarChart3 className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
-          <p>No Y values available</p>
+          <p>{t('playground.charts.histogram.noYValues')}</p>
         </div>
       </div>
     );

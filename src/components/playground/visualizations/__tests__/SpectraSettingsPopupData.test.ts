@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from 'vitest';
 
+import i18n from '@/lib/i18n';
 import { DEFAULT_SPECTRA_CHART_CONFIG } from '@/lib/playground/spectraConfig';
 
 import {
@@ -13,6 +15,10 @@ import {
 } from '../SpectraSettingsPopupData';
 
 describe('SpectraSettingsPopupData', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en');
+  });
+
   it('counts focus modifications from range, derivative, and edge mask settings', () => {
     expect(countFocusModifiedSettings(DEFAULT_SPECTRA_CHART_CONFIG.wavelengthFocus)).toBe(0);
 
@@ -91,11 +97,11 @@ describe('SpectraSettingsPopupData', () => {
   });
 
   it('builds metadata preview text without rendering-specific branching', () => {
-    expect(buildMetadataPreviewText(undefined)).toBeNull();
-    expect(buildMetadataPreviewText([])).toBeNull();
-    expect(buildMetadataPreviewText(['batch'])).toBe('Coming soon: Filter by batch');
-    expect(buildMetadataPreviewText(['batch', 'site'])).toBe('Coming soon: Filter by batch, site');
-    expect(buildMetadataPreviewText(['batch', 'site', 'operator'])).toBe(
+    expect(buildMetadataPreviewText(undefined, i18n.t)).toBeNull();
+    expect(buildMetadataPreviewText([], i18n.t)).toBeNull();
+    expect(buildMetadataPreviewText(['batch'], i18n.t)).toBe('Coming soon: Filter by batch');
+    expect(buildMetadataPreviewText(['batch', 'site'], i18n.t)).toBe('Coming soon: Filter by batch, site');
+    expect(buildMetadataPreviewText(['batch', 'site', 'operator'], i18n.t)).toBe(
       'Coming soon: Filter by batch, site +1 more'
     );
   });
@@ -121,6 +127,7 @@ describe('SpectraSettingsPopupData', () => {
       wavelengthUnitSuffix: ' nm',
       yRange: [10, 20],
       metadataColumns: ['batch', 'site', 'instrument', 'operator'],
+      t: i18n.t,
     });
 
     expect(readModel).toEqual({

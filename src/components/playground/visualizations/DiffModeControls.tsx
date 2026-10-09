@@ -14,6 +14,7 @@
  */
 
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeftRight,
   Repeat2,
@@ -54,22 +55,24 @@ import type {
 
 // ============= Constants =============
 
-const METRIC_OPTIONS: { value: DiffDistanceMetric; label: string; description: string }[] = [
-  { value: 'euclidean', label: 'Euclidean', description: 'L2 norm of difference' },
-  { value: 'manhattan', label: 'Manhattan', description: 'L1 norm of difference' },
-  { value: 'cosine', label: 'Cosine', description: 'Cosine distance (1 - cos similarity)' },
-  { value: 'spectral_angle', label: 'Spectral Angle', description: 'Angular distance in spectral space' },
-  { value: 'correlation', label: 'Correlation', description: 'Pearson correlation distance' },
-  { value: 'mahalanobis', label: 'Mahalanobis', description: 'Covariance-weighted distance' },
-  { value: 'pca_distance', label: 'PCA Distance', description: 'Distance in PCA score space' },
+const DK = 'playground.charts.diff.';
+
+const METRIC_OPTIONS: { value: DiffDistanceMetric; labelKey: string; descriptionKey: string }[] = [
+  { value: 'euclidean', labelKey: `${DK}metricEuclidean`, descriptionKey: `${DK}metricEuclideanDesc` },
+  { value: 'manhattan', labelKey: `${DK}metricManhattan`, descriptionKey: `${DK}metricManhattanDesc` },
+  { value: 'cosine', labelKey: `${DK}metricCosine`, descriptionKey: `${DK}metricCosineDesc` },
+  { value: 'spectral_angle', labelKey: `${DK}metricSpectralAngle`, descriptionKey: `${DK}metricSpectralAngleDesc` },
+  { value: 'correlation', labelKey: `${DK}metricCorrelation`, descriptionKey: `${DK}metricCorrelationDesc` },
+  { value: 'mahalanobis', labelKey: `${DK}metricMahalanobis`, descriptionKey: `${DK}metricMahalanobisDesc` },
+  { value: 'pca_distance', labelKey: `${DK}metricPca`, descriptionKey: `${DK}metricPcaDesc` },
 ];
 
 const QUANTILE_OPTIONS: DiffQuantile[] = [50, 75, 90, 95];
 
-const REPETITION_REFERENCE_OPTIONS: { value: RepetitionReference; label: string; description: string }[] = [
-  { value: 'group_mean', label: 'Group Mean', description: 'Distance from group mean' },
-  { value: 'leave_one_out', label: 'Leave-One-Out', description: 'Distance from mean of others' },
-  { value: 'first', label: 'First', description: 'Distance from first sample' },
+const REPETITION_REFERENCE_OPTIONS: { value: RepetitionReference; labelKey: string; descriptionKey: string }[] = [
+  { value: 'group_mean', labelKey: `${DK}refGroupMean`, descriptionKey: `${DK}refGroupMeanDesc` },
+  { value: 'leave_one_out', labelKey: `${DK}refLeaveOneOut`, descriptionKey: `${DK}refLeaveOneOutDesc` },
+  { value: 'first', labelKey: `${DK}refFirst`, descriptionKey: `${DK}refFirstDesc` },
 ];
 
 // ============= Types =============
@@ -102,6 +105,7 @@ export function DiffModeControls({
   showGrid = true,
   onGridToggle,
 }: DiffModeControlsProps) {
+  const { t } = useTranslation();
   const { config } = configResult;
   const diffConfig = config.diffConfig;
 
@@ -139,7 +143,12 @@ export function DiffModeControls({
   const isRepetitionMode = diffConfig.analysisMode === 'repetition_variance';
   const showRepetitionReference = isRepetitionMode && hasRepetitions;
   const activeQuantilesCount = diffConfig.quantiles.length;
-  const currentMetricLabel = METRIC_OPTIONS.find(m => m.value === diffConfig.metric)?.label ?? 'Euclidean';
+  const currentMetricLabel = t(METRIC_OPTIONS.find(m => m.value === diffConfig.metric)?.labelKey ?? `${DK}metricEuclidean`);
+  const currentRepetitionRefLabel = t(
+    REPETITION_REFERENCE_OPTIONS.find(r => r.value === diffConfig.repetitionReference)?.labelKey ?? `${DK}refMean`,
+  );
+  const referenceVsFinalLabel = hasReferenceDataset ? t(`${DK}referenceVsFinal`) : t(`${DK}noReferenceDataset`);
+  const repetitionVarianceLabel = hasRepetitions ? t(`${DK}repetitionVariance`) : t(`${DK}noRepetitions`);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -157,15 +166,12 @@ export function DiffModeControls({
                 value="reference_vs_final"
                 className="h-7 w-7 p-0"
                 disabled={!hasReferenceDataset}
+                aria-label={referenceVsFinalLabel}
               >
                 <ArrowLeftRight className="w-3.5 h-3.5" />
               </ToggleGroupItem>
             </TooltipTrigger>
-            <TooltipContent>
-              {hasReferenceDataset
-                ? 'Reference vs Final: Compare original and processed spectra'
-                : 'No reference dataset available'}
-            </TooltipContent>
+            <TooltipContent>{referenceVsFinalLabel}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -176,15 +182,12 @@ export function DiffModeControls({
                   !hasRepetitions && 'opacity-50'
                 )}
                 disabled={!hasRepetitions}
+                aria-label={repetitionVarianceLabel}
               >
                 <Repeat2 className="w-3.5 h-3.5" />
               </ToggleGroupItem>
             </TooltipTrigger>
-            <TooltipContent>
-              {hasRepetitions
-                ? 'Repetition Variance: Analyze variance within repetition groups'
-                : 'No repetitions available in dataset'}
-            </TooltipContent>
+            <TooltipContent>{repetitionVarianceLabel}</TooltipContent>
           </Tooltip>
         </ToggleGroup>
 
@@ -200,17 +203,18 @@ export function DiffModeControls({
                     'h-7 px-2 text-xs gap-1',
                     compact && 'px-1.5'
                   )}
+                  aria-label={t(`${DK}distanceMetricTooltip`, { metric: currentMetricLabel })}
                 >
                   <Ruler className="w-3 h-3" />
                   {!compact && currentMetricLabel}
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <TooltipContent>Distance metric: {currentMetricLabel}</TooltipContent>
+            <TooltipContent>{t(`${DK}distanceMetricTooltip`, { metric: currentMetricLabel })}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent side="bottom" align="start" className="w-52">
             <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-              Distance Metric
+              {t(`${DK}distanceMetric`)}
             </DropdownMenuLabel>
             <DropdownMenuRadioGroup
               value={diffConfig.metric}
@@ -223,9 +227,9 @@ export function DiffModeControls({
                   className="text-xs"
                 >
                   <div className="flex flex-col">
-                    <span>{option.label}</span>
+                    <span>{t(option.labelKey)}</span>
                     <span className="text-[10px] text-muted-foreground">
-                      {option.description}
+                      {t(option.descriptionKey)}
                     </span>
                   </div>
                 </DropdownMenuRadioItem>
@@ -243,6 +247,7 @@ export function DiffModeControls({
                   variant={activeQuantilesCount > 0 ? 'secondary' : 'ghost'}
                   size="sm"
                   className="h-7 px-2 text-xs gap-1"
+                  aria-label={t(`${DK}quantileLines`)}
                 >
                   <Percent className="w-3 h-3" />
                   {!compact && activeQuantilesCount > 0 && (
@@ -251,11 +256,11 @@ export function DiffModeControls({
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <TooltipContent>Quantile reference lines</TooltipContent>
+            <TooltipContent>{t(`${DK}quantileLines`)}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent side="bottom" align="start" className="w-40">
             <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-              Show Quantile Lines
+              {t(`${DK}showQuantileLines`)}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {QUANTILE_OPTIONS.map(quantile => (
@@ -282,17 +287,15 @@ export function DiffModeControls({
                     size="sm"
                     className="h-7 px-2 text-xs"
                   >
-                    Ref: {REPETITION_REFERENCE_OPTIONS.find(
-                      r => r.value === diffConfig.repetitionReference
-                    )?.label ?? 'Mean'}
+                    {t(`${DK}refButton`, { ref: currentRepetitionRefLabel })}
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>Reference point for repetition variance</TooltipContent>
+              <TooltipContent>{t(`${DK}repetitionRefTooltip`)}</TooltipContent>
             </Tooltip>
             <DropdownMenuContent side="bottom" align="start" className="w-48">
               <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                Reference Point
+                {t(`${DK}referencePoint`)}
               </DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={diffConfig.repetitionReference}
@@ -305,9 +308,9 @@ export function DiffModeControls({
                     className="text-xs"
                   >
                     <div className="flex flex-col">
-                      <span>{option.label}</span>
+                      <span>{t(option.labelKey)}</span>
                       <span className="text-[10px] text-muted-foreground">
-                        {option.description}
+                        {t(option.descriptionKey)}
                       </span>
                     </div>
                   </DropdownMenuRadioItem>
@@ -326,19 +329,19 @@ export function DiffModeControls({
         >
           <Tooltip>
             <TooltipTrigger asChild>
-              <ToggleGroupItem value="linear" className="h-7 px-2 text-xs">
-                Lin
+              <ToggleGroupItem value="linear" className="h-7 px-2 text-xs" aria-label={t(`${DK}linearScale`)}>
+                {t(`${DK}linShort`)}
               </ToggleGroupItem>
             </TooltipTrigger>
-            <TooltipContent>Linear scale</TooltipContent>
+            <TooltipContent>{t(`${DK}linearScale`)}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <ToggleGroupItem value="log" className="h-7 px-2 text-xs">
-                Log
+              <ToggleGroupItem value="log" className="h-7 px-2 text-xs" aria-label={t(`${DK}logScale`)}>
+                {t(`${DK}logShort`)}
               </ToggleGroupItem>
             </TooltipTrigger>
-            <TooltipContent>Logarithmic scale</TooltipContent>
+            <TooltipContent>{t(`${DK}logScale`)}</TooltipContent>
           </Tooltip>
         </ToggleGroup>
 
@@ -351,11 +354,12 @@ export function DiffModeControls({
                 size="sm"
                 className="h-7 w-7 p-0"
                 onClick={onGridToggle}
+                aria-label={t(`${DK}toggleGrid`)}
               >
                 <Grid3X3 className="w-3.5 h-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Toggle grid</TooltipContent>
+            <TooltipContent>{t(`${DK}toggleGrid`)}</TooltipContent>
           </Tooltip>
         )}
       </div>

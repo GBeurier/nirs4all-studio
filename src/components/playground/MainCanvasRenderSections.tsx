@@ -26,6 +26,7 @@ import type { DataSection, UnifiedOperator } from '@/types/playground';
 import type { ProcessedData } from '@/types/spectral';
 import type { ChartRefs } from './hooks/usePlaygroundExport';
 import type { MainCanvasChartActions } from './hooks/useMainCanvasViewState';
+import { useTranslation } from 'react-i18next';
 
 interface MainCanvasSampleDetailsMountProps {
   data: ProcessedData | null;
@@ -130,6 +131,7 @@ function MainCanvasChartGrid({
   onRestore,
   onHide,
 }: MainCanvasChartGridProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -139,7 +141,7 @@ function MainCanvasChartGrid({
         gridRows
       )}
       role="region"
-      aria-label="Data visualization charts"
+      aria-label={t('playground.canvas.chartsRegion')}
     >
       <MainCanvasSpectraPanel
         ref={chartRefs.spectra}

@@ -12,6 +12,7 @@
  */
 
 import { useState, useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Repeat,
   X,
@@ -48,29 +49,29 @@ import {
 // Sweep type configurations
 const sweepTypeConfig: Record<
   SweepType,
-  { label: string; description: string; icon: typeof Repeat; color: string }
+  { labelKey: string; descriptionKey: string; icon: typeof Repeat; color: string }
 > = {
   range: {
-    label: "Linear Range",
-    description: "Values with fixed step",
+    labelKey: "pipelineEditor.sweeps.types.range.label",
+    descriptionKey: "pipelineEditor.sweeps.types.range.description",
     icon: TrendingUp,
     color: "text-blue-500",
   },
   log_range: {
-    label: "Log Range",
-    description: "Logarithmically spaced",
+    labelKey: "pipelineEditor.sweeps.types.log_range.label",
+    descriptionKey: "pipelineEditor.sweeps.types.log_range.description",
     icon: Sparkles,
     color: "text-purple-500",
   },
   or: {
-    label: "Discrete",
-    description: "Specific values",
+    labelKey: "pipelineEditor.sweeps.types.or.label",
+    descriptionKey: "pipelineEditor.sweeps.types.or.description",
     icon: List,
     color: "text-green-500",
   },
   grid: {
-    label: "Grid",
-    description: "Grid search",
+    labelKey: "pipelineEditor.sweeps.types.grid.label",
+    descriptionKey: "pipelineEditor.sweeps.types.grid.description",
     icon: List,
     color: "text-orange-500",
   },
@@ -93,6 +94,7 @@ export function SweepConfigPopover({
   disabled = false,
   className,
 }: SweepConfigPopoverProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [localSweep, setLocalSweep] = useState<ParameterSweep | undefined>(sweep);
 
@@ -174,7 +176,7 @@ export function SweepConfigPopover({
           )}
         >
           <Repeat className="h-3.5 w-3.5" />
-          {hasSweep ? `${variantCount}×` : "Sweep"}
+          {hasSweep ? `${variantCount}×` : t("pipelineEditor.sweeps.popover.trigger")}
         </Button>
       </PopoverTrigger>
 
@@ -191,7 +193,7 @@ export function SweepConfigPopover({
               <Repeat className="h-4 w-4 text-orange-500" />
             </div>
             <div>
-              <h4 className="font-medium text-sm">Parameter Sweep</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.sweeps.popover.title")}</h4>
               <p className="text-xs text-muted-foreground font-mono">{paramKey}</p>
             </div>
           </div>
@@ -199,7 +201,7 @@ export function SweepConfigPopover({
             variant="secondary"
             className="bg-orange-500/10 text-orange-600 text-xs px-2"
           >
-            {variantCount} value{variantCount !== 1 ? "s" : ""}
+            {t("pipelineEditor.sweeps.popover.valuesBadge", { count: variantCount })}
           </Badge>
         </div>
 
@@ -207,11 +209,11 @@ export function SweepConfigPopover({
           {/* Sweep Type Selection */}
           <div className="space-y-2">
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Sweep Type
+              {t("pipelineEditor.sweeps.popover.sweepType")}
             </Label>
             <div className="flex gap-2">
               {SWEEP_TYPE_OPTIONS
-                .filter((t) => t === "or" || isNumeric)
+                .filter((sweepType) => sweepType === "or" || isNumeric)
                 .map((type) => {
                   const config = sweepTypeConfig[type];
                   const Icon = config.icon;
@@ -222,6 +224,7 @@ export function SweepConfigPopover({
                       variant={isActive ? "default" : "outline"}
                       size="sm"
                       onClick={() => handleTypeChange(type)}
+                      title={t(config.descriptionKey)}
                       className={cn(
                         "flex-1 h-9 gap-1.5",
                         isActive
@@ -230,7 +233,7 @@ export function SweepConfigPopover({
                       )}
                     >
                       <Icon className="h-3.5 w-3.5" />
-                      <span className="text-xs">{config.label}</span>
+                      <span className="text-xs">{t(config.labelKey)}</span>
                     </Button>
                   );
                 })}
@@ -244,7 +247,7 @@ export function SweepConfigPopover({
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Start</Label>
+                  <Label className="text-xs font-medium">{t("pipelineEditor.sweeps.popover.start")}</Label>
                   <Input
                     type="number"
                     value={localSweep.from ?? 0}
@@ -258,7 +261,7 @@ export function SweepConfigPopover({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">End</Label>
+                  <Label className="text-xs font-medium">{t("pipelineEditor.sweeps.popover.end")}</Label>
                   <Input
                     type="number"
                     value={localSweep.to ?? 10}
@@ -272,7 +275,7 @@ export function SweepConfigPopover({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Step</Label>
+                  <Label className="text-xs font-medium">{t("pipelineEditor.sweeps.popover.step")}</Label>
                   <Input
                     type="number"
                     value={localSweep.step ?? 1}
@@ -291,7 +294,7 @@ export function SweepConfigPopover({
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <TrendingUp className="h-3.5 w-3.5" />
                 <span>
-                  {localSweep.from} → {localSweep.to} (step {localSweep.step})
+                  {t("pipelineEditor.sweeps.popover.rangeSummary", { from: localSweep.from, to: localSweep.to, step: localSweep.step })}
                 </span>
               </div>
             </div>
@@ -302,7 +305,7 @@ export function SweepConfigPopover({
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Min (10^x)</Label>
+                  <Label className="text-xs font-medium">{t("pipelineEditor.sweeps.popover.minLog")}</Label>
                   <Input
                     type="number"
                     value={localSweep.from ?? 0.001}
@@ -317,7 +320,7 @@ export function SweepConfigPopover({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Max (10^x)</Label>
+                  <Label className="text-xs font-medium">{t("pipelineEditor.sweeps.popover.maxLog")}</Label>
                   <Input
                     type="number"
                     value={localSweep.to ?? 100}
@@ -332,7 +335,7 @@ export function SweepConfigPopover({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Count</Label>
+                  <Label className="text-xs font-medium">{t("pipelineEditor.sweeps.popover.count")}</Label>
                   <Input
                     type="number"
                     value={localSweep.count ?? 5}
@@ -351,7 +354,7 @@ export function SweepConfigPopover({
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Sparkles className="h-3.5 w-3.5" />
                 <span>
-                  {formatSweepValue(localSweep.from)} → {formatSweepValue(localSweep.to)} ({localSweep.count} values, log scale)
+                  {t("pipelineEditor.sweeps.popover.logSummary", { from: formatSweepValue(localSweep.from), to: formatSweepValue(localSweep.to), count: localSweep.count ?? 0 })}
                 </span>
               </div>
             </div>
@@ -361,7 +364,7 @@ export function SweepConfigPopover({
           {localSweep?.type === "or" && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Values (comma-separated)</Label>
+                <Label className="text-xs font-medium">{t("pipelineEditor.sweeps.popover.valuesLabel")}</Label>
                 <Input
                   value={localSweep.choices?.join(", ") ?? ""}
                   onChange={(e) => {
@@ -369,12 +372,12 @@ export function SweepConfigPopover({
                     setLocalSweep({ ...localSweep, choices });
                   }}
                   className="h-9 text-sm font-mono"
-                  placeholder="1, 2, 3 or value1, value2"
+                  placeholder={t("pipelineEditor.sweeps.popover.valuesPlaceholder")}
                 />
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <List className="h-3.5 w-3.5" />
-                <span>{localSweep.choices?.length || 0} discrete value(s)</span>
+                <span>{t("pipelineEditor.sweeps.popover.discreteCount", { count: localSweep.choices?.length || 0 })}</span>
               </div>
             </div>
           )}
@@ -383,7 +386,7 @@ export function SweepConfigPopover({
           {previewValues.length > 0 && (
             <div className="space-y-2">
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Preview
+                {t("pipelineEditor.sweeps.popover.preview")}
               </Label>
               <div className="flex flex-wrap gap-1.5 p-3 rounded-lg bg-muted/50 border">
                 {previewValues.map((val, idx) => (
@@ -398,7 +401,7 @@ export function SweepConfigPopover({
                 ))}
                 {variantCount > 8 && (
                   <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                    +{variantCount - 8} more
+                    {t("pipelineEditor.sweeps.popover.moreValues", { count: variantCount - 8 })}
                   </Badge>
                 )}
               </div>
@@ -409,7 +412,7 @@ export function SweepConfigPopover({
           {relevantPresets.length > 0 && (
             <div className="space-y-2">
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Quick Presets
+                {t("pipelineEditor.sweeps.popover.quickPresets")}
               </Label>
               <div className="flex flex-wrap gap-1.5">
                 {relevantPresets.slice(0, SWEEP_PRESET_LIMIT).map((preset, idx) => (
@@ -437,7 +440,7 @@ export function SweepConfigPopover({
             className="h-8 px-3 text-xs text-muted-foreground hover:text-destructive"
           >
             <X className="h-3.5 w-3.5 mr-1.5" />
-            Clear Sweep
+            {t("pipelineEditor.sweeps.popover.clear")}
           </Button>
           <Button
             size="sm"
@@ -445,7 +448,7 @@ export function SweepConfigPopover({
             className="h-8 px-4 bg-orange-500 hover:bg-orange-600 text-xs font-medium"
           >
             <Check className="h-3.5 w-3.5 mr-1.5" />
-            Apply ({variantCount} values)
+            {t("pipelineEditor.sweeps.popover.apply", { count: variantCount })}
           </Button>
         </div>
       </PopoverContent>

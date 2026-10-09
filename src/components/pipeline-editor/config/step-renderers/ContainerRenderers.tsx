@@ -14,6 +14,7 @@
  * @see docs/_internals/implementation_roadmap.md
  */
 
+import { useTranslation } from "react-i18next";
 import { Zap, Layers, Filter, Combine, Trash2, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,7 @@ function ChildrenList({
   onRemoveChild,
   stepId,
 }: ChildrenListProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -103,7 +105,8 @@ function ChildrenList({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-destructive"
+                  aria-label={t("pipelineEditor.config.container.removeChild", { name: child.name })}
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemoveChild(stepId, child.id);
@@ -143,6 +146,7 @@ export function SampleAugmentationRenderer({
   onAddChild,
   onRemoveChild,
 }: StepRendererProps) {
+  const { t } = useTranslation();
   const children = step.children ?? [];
 
   const handleParamChange = (key: string, value: string | number | boolean) => {
@@ -158,9 +162,9 @@ export function SampleAugmentationRenderer({
           <div className="flex items-center gap-3 p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <Zap className="h-5 w-5 text-violet-500" />
             <div>
-              <h4 className="font-medium text-sm">Sample Augmentation</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.config.container.sampleAug.title")}</h4>
               <p className="text-xs text-muted-foreground">
-                Augment training samples with multiple transformers
+                {t("pipelineEditor.config.container.sampleAug.subtitle")}
               </p>
             </div>
           </div>
@@ -168,7 +172,7 @@ export function SampleAugmentationRenderer({
           {/* Configuration */}
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Augmentation Count</Label>
+              <Label className="text-sm font-medium">{t("pipelineEditor.config.container.sampleAug.count")}</Label>
               <Input
                 type="number"
                 value={Number(step.params.count) || 1}
@@ -179,12 +183,12 @@ export function SampleAugmentationRenderer({
                 className="h-9"
               />
               <p className="text-xs text-muted-foreground">
-                Number of augmented samples per original
+                {t("pipelineEditor.config.container.sampleAug.countHint")}
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Selection Strategy</Label>
+              <Label className="text-sm font-medium">{t("pipelineEditor.config.container.sampleAug.selection")}</Label>
               <Select
                 value={String(step.params.selection || "random")}
                 onValueChange={(v) => handleParamChange("selection", v)}
@@ -193,15 +197,15 @@ export function SampleAugmentationRenderer({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
-                  <SelectItem value="random">Random</SelectItem>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="sequential">Sequential</SelectItem>
+                  <SelectItem value="random">{t("pipelineEditor.config.container.sampleAug.selectRandom")}</SelectItem>
+                  <SelectItem value="all">{t("pipelineEditor.config.container.sampleAug.selectAll")}</SelectItem>
+                  <SelectItem value="sequential">{t("pipelineEditor.config.container.sampleAug.selectSequential")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Random State</Label>
+              <Label className="text-sm font-medium">{t("pipelineEditor.config.container.sampleAug.randomState")}</Label>
               <Input
                 type="number"
                 value={Number(step.params.random_state) || 42}
@@ -217,10 +221,10 @@ export function SampleAugmentationRenderer({
 
           <ChildrenList
             children={children}
-            label="Transformers"
-            addLabel="Add Transformer"
-            emptyLabel="No transformers configured"
-            emptySubLabel="Click to add a transformer"
+            label={t("pipelineEditor.config.container.sampleAug.transformers")}
+            addLabel={t("pipelineEditor.config.container.sampleAug.addTransformer")}
+            emptyLabel={t("pipelineEditor.config.container.sampleAug.noTransformers")}
+            emptySubLabel={t("pipelineEditor.config.container.sampleAug.addTransformerHint")}
             icon={Zap}
             onSelectStep={onSelectStep}
             onAddChild={onAddChild}
@@ -252,6 +256,7 @@ export function FeatureAugmentationRenderer({
   onAddChild,
   onRemoveChild,
 }: StepRendererProps) {
+  const { t } = useTranslation();
   const children = step.children ?? [];
   const generatorOptions = step.generatorOptions;
   const isGeneratorMode = step.generatorKind === "or";
@@ -269,16 +274,16 @@ export function FeatureAugmentationRenderer({
           <div className="flex items-center gap-3 p-3 rounded-lg bg-fuchsia-500/10 border border-fuchsia-500/30">
             <Layers className="h-5 w-5 text-fuchsia-500" />
             <div>
-              <h4 className="font-medium text-sm">Feature Augmentation</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.config.container.featureAug.title")}</h4>
               <p className="text-xs text-muted-foreground">
-                Generate multiple preprocessing channels
+                {t("pipelineEditor.config.container.featureAug.subtitle")}
               </p>
             </div>
           </div>
 
           {/* Action Mode */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Action Mode</Label>
+            <Label className="text-sm font-medium">{t("pipelineEditor.config.container.featureAug.actionMode")}</Label>
             <Select
               value={String(step.params.action || "extend")}
               onValueChange={handleActionChange}
@@ -288,11 +293,11 @@ export function FeatureAugmentationRenderer({
               </SelectTrigger>
               <SelectContent className="bg-popover">
                 <SelectItem value="extend">
-                  Extend - Add each as independent channel
+                  {t("pipelineEditor.config.container.featureAug.extend")}
                 </SelectItem>
-                <SelectItem value="add">Add - Chain, keep originals</SelectItem>
+                <SelectItem value="add">{t("pipelineEditor.config.container.featureAug.add")}</SelectItem>
                 <SelectItem value="replace">
-                  Replace - Chain, discard originals
+                  {t("pipelineEditor.config.container.featureAug.replace")}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -303,10 +308,10 @@ export function FeatureAugmentationRenderer({
             <>
               <Separator />
               <div className="space-y-3">
-                <Label className="text-sm font-medium">Generator Options</Label>
+                <Label className="text-sm font-medium">{t("pipelineEditor.config.container.featureAug.generatorOptions")}</Label>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">Pick</Label>
+                    <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.container.featureAug.pick")}</Label>
                     <Input
                       type="text"
                       value={
@@ -326,12 +331,12 @@ export function FeatureAugmentationRenderer({
                         });
                       }}
                       className="h-8"
-                      placeholder="e.g., 2 or [1,3]"
+                      placeholder={t("pipelineEditor.config.container.featureAug.pickPlaceholder")}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs text-muted-foreground">
-                      Count
+                      {t("pipelineEditor.config.container.featureAug.countLabel")}
                     </Label>
                     <Input
                       type="number"
@@ -345,7 +350,7 @@ export function FeatureAugmentationRenderer({
                         });
                       }}
                       className="h-8"
-                      placeholder="Limit variants"
+                      placeholder={t("pipelineEditor.config.container.featureAug.countPlaceholder")}
                     />
                   </div>
                 </div>
@@ -357,10 +362,10 @@ export function FeatureAugmentationRenderer({
 
           <ChildrenList
             children={children}
-            label="Transforms"
-            addLabel="Add Transform"
-            emptyLabel="No transforms configured"
-            emptySubLabel="Click to add a transform"
+            label={t("pipelineEditor.config.container.transforms")}
+            addLabel={t("pipelineEditor.config.container.addTransform")}
+            emptyLabel={t("pipelineEditor.config.container.noTransforms")}
+            emptySubLabel={t("pipelineEditor.config.container.addTransformHint")}
             icon={Layers}
             onSelectStep={onSelectStep}
             onAddChild={onAddChild}
@@ -392,6 +397,7 @@ export function SampleFilterRenderer({
   onAddChild,
   onRemoveChild,
 }: StepRendererProps) {
+  const { t } = useTranslation();
   const children = step.children ?? [];
   const filterOrigin = step.filterOrigin ?? "sample_filter";
 
@@ -418,9 +424,9 @@ export function SampleFilterRenderer({
           <div className="flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
             <Filter className="h-5 w-5 text-red-500" />
             <div>
-              <h4 className="font-medium text-sm">Sample Filter</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.config.container.sampleFilter.title")}</h4>
               <p className="text-xs text-muted-foreground">
-                Filter samples with multiple criteria
+                {t("pipelineEditor.config.container.sampleFilter.subtitle")}
               </p>
             </div>
           </div>
@@ -428,7 +434,7 @@ export function SampleFilterRenderer({
           {/* Configuration */}
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Filter Origin</Label>
+              <Label className="text-sm font-medium">{t("pipelineEditor.config.container.sampleFilter.origin")}</Label>
               <Select value={filterOrigin} onValueChange={(value) => handleOriginChange(value as "sample_filter" | "exclude" | "tag")}>
                 <SelectTrigger>
                   <SelectValue />
@@ -440,13 +446,13 @@ export function SampleFilterRenderer({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Preserve the canonical wrapper keyword used on import/export.
+                {t("pipelineEditor.config.container.sampleFilter.originHint")}
               </p>
             </div>
 
             {filterOrigin !== "tag" && (
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Filter Mode</Label>
+              <Label className="text-sm font-medium">{t("pipelineEditor.config.container.sampleFilter.mode")}</Label>
               <Select
                 value={String(step.params.mode || "any")}
                 onValueChange={handleModeChange}
@@ -456,13 +462,13 @@ export function SampleFilterRenderer({
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
                   <SelectItem value="any">
-                    Any - Remove if any filter triggers
+                    {t("pipelineEditor.config.container.sampleFilter.modeAny")}
                   </SelectItem>
                   <SelectItem value="all">
-                    All - Remove only if all filters trigger
+                    {t("pipelineEditor.config.container.sampleFilter.modeAll")}
                   </SelectItem>
                   <SelectItem value="vote">
-                    Vote - Majority vote decision
+                    {t("pipelineEditor.config.container.sampleFilter.modeVote")}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -472,10 +478,11 @@ export function SampleFilterRenderer({
             {filterOrigin === "sample_filter" && (
               <div className="flex items-center justify-between py-2">
                 <div className="flex items-center gap-2">
-                  <Label className="text-sm">Generate Report</Label>
+                  <Label className="text-sm">{t("pipelineEditor.config.container.sampleFilter.report")}</Label>
                 </div>
                 <Switch
                   checked={Boolean(step.params.report ?? true)}
+                  aria-label={t("pipelineEditor.config.container.sampleFilter.report")}
                   onCheckedChange={handleReportChange}
                 />
               </div>
@@ -486,10 +493,10 @@ export function SampleFilterRenderer({
 
           <ChildrenList
             children={children}
-            label="Filters"
-            addLabel="Add Filter"
-            emptyLabel="No filters configured"
-            emptySubLabel="Click to add a filter"
+            label={t("pipelineEditor.config.container.sampleFilter.filters")}
+            addLabel={t("pipelineEditor.config.container.sampleFilter.addFilter")}
+            emptyLabel={t("pipelineEditor.config.container.sampleFilter.noFilters")}
+            emptySubLabel={t("pipelineEditor.config.container.sampleFilter.addFilterHint")}
             icon={Filter}
             onSelectStep={onSelectStep}
             onAddChild={onAddChild}
@@ -521,6 +528,7 @@ export function ConcatTransformRenderer({
   onAddChild,
   onRemoveChild,
 }: StepRendererProps) {
+  const { t } = useTranslation();
   const children = step.children ?? [];
 
   return (
@@ -530,9 +538,9 @@ export function ConcatTransformRenderer({
           <div className="flex items-center gap-3 p-3 rounded-lg bg-teal-500/10 border border-teal-500/30">
             <Combine className="h-5 w-5 text-teal-500" />
             <div>
-              <h4 className="font-medium text-sm">Concat Transform</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.config.container.concat.title")}</h4>
               <p className="text-xs text-muted-foreground">
-                Concatenate features from multiple transformation branches
+                {t("pipelineEditor.config.container.concat.subtitle")}
               </p>
             </div>
           </div>
@@ -541,10 +549,10 @@ export function ConcatTransformRenderer({
 
           <ChildrenList
             children={children}
-            label="Transforms"
-            addLabel="Add Transform"
-            emptyLabel="No transforms configured"
-            emptySubLabel="Click to add a transform"
+            label={t("pipelineEditor.config.container.transforms")}
+            addLabel={t("pipelineEditor.config.container.addTransform")}
+            emptyLabel={t("pipelineEditor.config.container.noTransforms")}
+            emptySubLabel={t("pipelineEditor.config.container.addTransformHint")}
             icon={Combine}
             onSelectStep={onSelectStep}
             onAddChild={onAddChild}

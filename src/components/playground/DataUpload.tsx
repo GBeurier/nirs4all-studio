@@ -31,6 +31,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatApiErrorDetail } from '@/api/transport';
 import { formatWavelengthUnit } from '@/components/playground/visualizations/chartConfig';
+import { useTranslation } from 'react-i18next';
 
 export type PlaygroundDatasetInfo = WorkspaceDatasetInfo & {
   selectedSourceIndex?: number | null;
@@ -71,6 +72,7 @@ export function DataUpload({
   showDatasetSelector = false,
   onToggleDatasetSelector,
 }: DataUploadProps) {
+  const { t } = useTranslation();
   // Shared dataset cache — see src/hooks/useDatasetQueries.ts. This is the
   // same source of data the Datasets page uses, persisted to localStorage,
   // so the picker is populated instantly on Playground mount instead of
@@ -107,7 +109,7 @@ export function DataUpload({
   );
   const selectedSourceValue = String(currentDatasetInfo?.selectedSourceIndex ?? 0);
   const selectedTargetValue = String(currentDatasetInfo?.selectedTargetIndex ?? 0);
-  const selectedSourceLabel = sourceOptions.find(option => option.value === selectedSourceValue)?.label ?? 'Source 1';
+  const selectedSourceLabel = sourceOptions.find(option => option.value === selectedSourceValue)?.label ?? t('playground.upload.sourceDefault');
   const selectedTargetLabel = targetOptions.find(option => option.value === selectedTargetValue)?.label ?? targetOptions[0]?.label;
   const showSourceSelector = dataSource === 'workspace' && sourceOptions.length > 1;
   const showTargetSelector = dataSource === 'workspace' && targetOptions.length > 1;
@@ -142,12 +144,12 @@ export function DataUpload({
                 {dataSource === 'workspace' && currentDatasetInfo
                   ? currentDatasetInfo.datasetName
                   : dataSource === 'demo'
-                    ? 'Demo Data'
-                    : 'Loaded Data'}
+                    ? t('playground.upload.demoData')
+                    : t('playground.upload.loadedData')}
               </span>
               <div className="flex items-center gap-1.5 mt-0.5">
                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
-                  {dataSource === 'workspace' ? 'Workspace' : dataSource === 'demo' ? 'Synthetic' : 'Data'}
+                  {t(`playground.upload.sourceKind.${dataSource === 'workspace' ? 'workspace' : dataSource === 'demo' ? 'demo' : 'data'}`)}
                 </span>
               </div>
             </div>
@@ -159,7 +161,8 @@ export function DataUpload({
                 size="icon"
                 className="h-7 w-7 text-muted-foreground hover:text-foreground"
                 onClick={onToggleDatasetSelector}
-                title="Change dataset"
+                title={t('playground.upload.changeDataset')}
+                aria-label={t('playground.upload.changeDataset')}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </Button>
@@ -169,7 +172,8 @@ export function DataUpload({
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-destructive -mr-1"
               onClick={onClear}
-              title="Clear dataset and pipeline"
+              title={t('playground.upload.clearDataset')}
+              aria-label={t('playground.upload.clearDataset')}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -178,9 +182,9 @@ export function DataUpload({
 
         {dataSource === 'workspace' && currentDatasetInfo && hasCurrentTestPartition && (
           <div className="mb-3 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Dataset Split</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t('playground.upload.datasetSplit')}</p>
             <p className="mt-1 text-xs font-medium text-foreground">
-              {(currentTrainSamples ?? 0).toLocaleString()} train · {(currentTestSamples ?? 0).toLocaleString()} test
+              {t('playground.upload.trainTest', { train: (currentTrainSamples ?? 0).toLocaleString(), test: (currentTestSamples ?? 0).toLocaleString() })}
             </p>
           </div>
         )}
@@ -189,14 +193,14 @@ export function DataUpload({
           <div className="mb-3 grid grid-cols-1 gap-2 rounded-md border border-border/40 bg-muted/20 p-2">
             {showSourceSelector && (
               <div className="space-y-1">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Source</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t('playground.upload.source')}</p>
                 <Select
                   value={selectedSourceValue}
                   onValueChange={(value) => currentDatasetInfo.onSelectedSourceIndexChange?.(Number(value))}
                   disabled={!currentDatasetInfo.onSelectedSourceIndexChange}
                 >
                   <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Source" />
+                    <SelectValue placeholder={t('playground.upload.source')} />
                   </SelectTrigger>
                   <SelectContent>
                     {sourceOptions.map(option => (
@@ -210,14 +214,14 @@ export function DataUpload({
             )}
             {showTargetSelector && (
               <div className="space-y-1">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Target</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t('playground.upload.target')}</p>
                 <Select
                   value={selectedTargetValue}
                   onValueChange={(value) => currentDatasetInfo.onSelectedTargetIndexChange?.(Number(value))}
                   disabled={!currentDatasetInfo.onSelectedTargetIndexChange}
                 >
                   <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Target" />
+                    <SelectValue placeholder={t('playground.upload.target')} />
                   </SelectTrigger>
                   <SelectContent>
                     {targetOptions.map(option => (
@@ -236,38 +240,38 @@ export function DataUpload({
         <div className="bg-muted/30 rounded-md border border-border/40 divide-y divide-border/40">
            <div className="grid grid-cols-2 divide-x divide-border/40">
              <div className="p-2 pl-3 flex justify-between items-center gap-2">
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Samples</span>
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{t('playground.upload.samples')}</span>
                 <span className="font-mono text-xs">{data.spectra.length}</span>
              </div>
              <div className="p-2 pr-3 flex justify-between items-center gap-2">
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Points</span>
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{t('playground.upload.points')}</span>
                 <span className="font-mono text-xs">{data.wavelengths.length}</span>
              </div>
            </div>
            {dataSource === 'workspace' && currentDatasetInfo && (
              <div className="p-2 px-3 flex items-center justify-between">
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Partition</span>
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{t('playground.upload.partition')}</span>
                 <span className="font-mono text-xs text-foreground">
-                   {effectiveCurrentPartition === 'all' ? 'both' : effectiveCurrentPartition}
+                   {t(`playground.upload.partitions.${effectiveCurrentPartition}`)}
                 </span>
              </div>
            )}
            {showSourceSelector && (
              <div className="p-2 px-3 flex items-center justify-between">
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Source</span>
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{t('playground.upload.source')}</span>
                 <span className="font-mono text-xs text-foreground">{selectedSourceLabel}</span>
              </div>
            )}
            {showTargetSelector && selectedTargetLabel && (
              <div className="p-2 px-3 flex items-center justify-between gap-2">
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Target</span>
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{t('playground.upload.target')}</span>
                 <span className="font-mono text-xs text-foreground truncate max-w-[9rem]" title={selectedTargetLabel}>
                   {selectedTargetLabel}
                 </span>
              </div>
            )}
            <div className="p-2 px-3 flex items-center justify-between">
-              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Range</span>
+              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{t('playground.upload.range')}</span>
               <span className="font-mono text-xs text-foreground">
                  {Number.isFinite(data.wavelengths[0]) ? data.wavelengths[0].toFixed(0) : '0'} - {Number.isFinite(data.wavelengths[data.wavelengths.length - 1]) ? data.wavelengths[data.wavelengths.length - 1].toFixed(0) : String(data.wavelengths.length - 1)}{(() => { const u = formatWavelengthUnit(data.wavelengthUnit); return u ? ` ${u}` : ''; })()}
               </span>
@@ -287,21 +291,21 @@ export function DataUpload({
             <div className="h-10 w-10 rounded-full border-2 border-primary/20" />
             <div className="absolute inset-0 h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
           </div>
-          <span className="text-sm text-muted-foreground font-medium">Loading dataset...</span>
+          <span className="text-sm text-muted-foreground font-medium">{t('playground.upload.loadingDataset')}</span>
         </div>
       )}
 
       {/* Header with back button when changing dataset */}
       {showDatasetSelector && data && onToggleDatasetSelector && (
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Select Dataset</span>
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('playground.upload.selectDataset')}</span>
           <Button
             variant="ghost"
             size="sm"
             className="h-6 text-xs"
             onClick={onToggleDatasetSelector}
           >
-            Cancel
+            {t('common.cancel')}
           </Button>
         </div>
       )}
@@ -317,7 +321,7 @@ export function DataUpload({
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
           <FolderOpen className="w-3.5 h-3.5" />
-          <span>From Workspace</span>
+          <span>{t('playground.upload.fromWorkspace')}</span>
           {workspaceLoading && <Loader2 className="w-3 h-3 animate-spin ml-auto" />}
         </div>
 
@@ -328,7 +332,7 @@ export function DataUpload({
             <p role="alert" className="break-words text-destructive">{workspaceError}</p>
             <Button variant="outline" size="sm" className="mt-2" onClick={() => void datasetsQuery.refetch()}>
               <RefreshCw className="mr-2 h-3 w-3" />
-              Retry loading datasets
+              {t('playground.upload.retry')}
             </Button>
           </div>
         )}
@@ -339,8 +343,8 @@ export function DataUpload({
             {workspaceDatasets.length === 0 ? (
               <div className="bg-muted/30 rounded-md p-4 text-center border border-dashed border-border">
                 <Database className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">No datasets available</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">Link a dataset folder to get started</p>
+                <p className="text-sm text-muted-foreground">{t('playground.upload.noDatasets')}</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">{t('playground.upload.linkHint')}</p>
               </div>
             ) : (
               <ScrollArea className="h-[200px]">
@@ -376,18 +380,18 @@ export function DataUpload({
                           <div className="flex items-center gap-1.5 mt-1">
                             {totalSamples != null && (
                               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-normal">
-                                {totalSamples.toLocaleString()} samples
+                                {t('playground.upload.samplesBadge', { count: totalSamples.toLocaleString() })}
                               </Badge>
                             )}
                             {totalFeatures != null && (
                               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-normal">
-                                {totalFeatures.toLocaleString()} features
+                                {t('playground.upload.featuresBadge', { count: totalFeatures.toLocaleString() })}
                               </Badge>
                             )}
                           </div>
                           {hasTestPartition && (
                             <div className="mt-1 text-[10px] tabular-nums text-muted-foreground">
-                              {(dataset.train_samples ?? 0).toLocaleString()} train · {dataset.test_samples!.toLocaleString()} test
+                              {t('playground.upload.trainTest', { train: (dataset.train_samples ?? 0).toLocaleString(), test: dataset.test_samples!.toLocaleString() })}
                             </div>
                           )}
                               </>
@@ -407,7 +411,7 @@ export function DataUpload({
       {/* Divider */}
       <div className="flex items-center gap-3 py-1">
         <div className="flex-1 h-px bg-border" />
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">or</span>
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{t('playground.upload.or')}</span>
         <div className="flex-1 h-px bg-border" />
       </div>
 
@@ -420,7 +424,7 @@ export function DataUpload({
         disabled={isLoading}
       >
         <FlaskConical className="w-4 h-4 mr-2" />
-        Load Demo Data
+        {t('playground.upload.loadDemo')}
       </Button>
     </div>
   );

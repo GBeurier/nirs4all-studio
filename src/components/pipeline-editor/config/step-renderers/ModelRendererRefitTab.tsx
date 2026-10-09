@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   RefreshCcw,
   RotateCcw,
@@ -14,7 +15,15 @@ interface ModelRefitTabProps {
   onUpdate: (updates: Partial<PipelineStep>) => void;
 }
 
+const REFIT_PRESETS = [
+  { id: "moreEpochs", params: { epochs: 200 } },
+  { id: "lowerLr", params: { learning_rate: 0.0001 } },
+  { id: "noEarlyStop", params: { patience: 999 } },
+  { id: "largerBatch", params: { batch_size: 64 } },
+] as const;
+
 export function ModelRefitTab({ step, onUpdate }: ModelRefitTabProps) {
+  const { t } = useTranslation();
   const config: RefitConfig = step.refitConfig ?? {
     enabled: true,
   };
@@ -65,19 +74,18 @@ export function ModelRefitTab({ step, onUpdate }: ModelRefitTabProps) {
         <div className="flex items-center justify-between">
           <Label className="text-sm font-medium flex items-center gap-2">
             <RefreshCcw className="h-4 w-4" />
-            Refit Configuration
+            {t("pipelineEditor.config.refit.title")}
           </Label>
           <Switch
             checked={config.enabled}
             onCheckedChange={handleToggle}
+            aria-label={t("pipelineEditor.config.refit.title")}
           />
         </div>
 
         <div className="p-3 rounded-lg bg-muted/30">
           <p className="text-xs text-muted-foreground">
-            When enabled, the best model from cross-validation is retrained on the
-            full training set to produce a deployment-ready "final model". The
-            exported .n4a bundle will contain this refit model.
+            {t("pipelineEditor.config.refit.description")}
           </p>
         </div>
       </div>
@@ -88,21 +96,19 @@ export function ModelRefitTab({ step, onUpdate }: ModelRefitTabProps) {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Parameter Overrides</Label>
+              <Label className="text-sm font-medium">{t("pipelineEditor.config.refit.overrides")}</Label>
               <Button
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
                 onClick={handleAddParam}
               >
-                Add Override
+                {t("pipelineEditor.config.refit.addOverride")}
               </Button>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Override specific model parameters for the refit phase. For example,
-              you can use more epochs or a lower learning rate when retraining on
-              all data.
+              {t("pipelineEditor.config.refit.overridesHint")}
             </p>
 
             {config.refit_params && Object.keys(config.refit_params).length > 0 ? (
@@ -110,7 +116,7 @@ export function ModelRefitTab({ step, onUpdate }: ModelRefitTabProps) {
                 {Object.entries(config.refit_params).map(([key, value], index) => (
                   <div key={index} className="flex items-center gap-2">
                     <Input
-                      placeholder="Parameter name"
+                      placeholder={t("pipelineEditor.config.refit.paramName")}
                       value={key}
                       onChange={(e) => {
                         const newParams = { ...(config.refit_params || {}) };
@@ -125,7 +131,7 @@ export function ModelRefitTab({ step, onUpdate }: ModelRefitTabProps) {
                     />
                     <Input
                       type="number"
-                      placeholder="Value"
+                      placeholder={t("pipelineEditor.config.refit.value")}
                       value={String(value ?? "")}
                       onChange={(e) => handleParamChange(key || `param_${index}`, e.target.value)}
                       className="h-8 font-mono text-xs w-24"
@@ -134,6 +140,7 @@ export function ModelRefitTab({ step, onUpdate }: ModelRefitTabProps) {
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                      aria-label={t("pipelineEditor.config.refit.removeOverride")}
                       onClick={() => handleRemoveParam(key)}
                     >
                       <RotateCcw className="h-3 w-3" />
@@ -144,8 +151,7 @@ export function ModelRefitTab({ step, onUpdate }: ModelRefitTabProps) {
             ) : (
               <div className="text-center py-4 text-muted-foreground border border-dashed rounded-lg">
                 <p className="text-xs">
-                  No overrides configured. The refit model will use the same
-                  parameters as the best CV model.
+                  {t("pipelineEditor.config.refit.noOverrides")}
                 </p>
               </div>
             )}
@@ -154,16 +160,11 @@ export function ModelRefitTab({ step, onUpdate }: ModelRefitTabProps) {
           <Separator />
 
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Common Overrides</Label>
+            <Label className="text-sm font-medium">{t("pipelineEditor.config.refit.commonOverrides")}</Label>
             <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: "More Epochs", params: { epochs: 200 } },
-                { label: "Lower LR", params: { learning_rate: 0.0001 } },
-                { label: "No Early Stop", params: { patience: 999 } },
-                { label: "Larger Batch", params: { batch_size: 64 } },
-              ].map((preset) => (
+              {REFIT_PRESETS.map((preset) => (
                 <Button
-                  key={preset.label}
+                  key={preset.id}
                   variant="outline"
                   size="sm"
                   className="h-auto py-1.5 justify-start text-left text-xs"
@@ -177,7 +178,7 @@ export function ModelRefitTab({ step, onUpdate }: ModelRefitTabProps) {
                     });
                   }}
                 >
-                  {preset.label}
+                  {t(`pipelineEditor.config.refit.preset.${preset.id}`)}
                 </Button>
               ))}
             </div>

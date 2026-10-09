@@ -5,7 +5,8 @@
 import type { ReactNode } from 'react';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import i18n from '@/lib/i18n';
 
 import { MainCanvasHistogramPanel } from '../MainCanvasHistogramPanel';
 import { DEFAULT_GLOBAL_COLOR_CONFIG, type ColorContext } from '@/lib/playground/colorConfig';
@@ -121,6 +122,10 @@ function renderPanel({
     />
   );
 }
+
+beforeAll(async () => {
+  await i18n.changeLanguage('en');
+});
 
 describe('MainCanvasHistogramPanel', () => {
   it('renders nothing when render state disables the histogram', async () => {

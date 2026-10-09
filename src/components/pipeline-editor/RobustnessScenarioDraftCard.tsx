@@ -1,4 +1,5 @@
 import { useMemo, useState, type ChangeEvent } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Activity } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -125,6 +126,7 @@ export function RobustnessScenarioDraftCard({
   value,
   onChange,
 }: RobustnessScenarioDraftCardProps) {
+  const { t } = useTranslation();
   const [localDraft, setLocalDraft] = useState<RobustnessScenarioDraft>(DEFAULT_ROBUSTNESS_SCENARIO_DRAFT);
   const draft = value ?? localDraft;
   const viewModel = useMemo(
@@ -197,27 +199,27 @@ export function RobustnessScenarioDraftCard({
         <div>
           <h4 className="flex items-center gap-2 text-sm font-medium">
             <Activity className="h-4 w-4 text-sky-500" />
-            Robustness scenario draft
+            {t("pipelineEditor.robustness.title")}
           </h4>
           <p className="mt-1 text-xs text-muted-foreground">
-            Compose one audit scenario with the native nirs4all vocabulary. This preview is not sent to the run yet.
+            {t("pipelineEditor.robustness.subtitle")}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <Badge variant="outline" className="text-[10px]">
-            registry {viewModel.registrySource}
+            {t("pipelineEditor.robustness.registryBadge", { source: t(`pipelineEditor.robustness.registrySource.${viewModel.registrySource}`) })}
           </Badge>
           <Badge variant={viewModel.valid ? "outline" : "destructive"} className="text-[10px]">
-            {viewModel.valid ? "valid draft" : "invalid draft"}
+            {viewModel.valid ? t("pipelineEditor.robustness.validDraft") : t("pipelineEditor.robustness.invalidDraft")}
           </Badge>
         </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
         <label className="space-y-1.5 text-xs">
-          <span className="font-medium text-foreground">Mode</span>
+          <span className="font-medium text-foreground">{t("pipelineEditor.robustness.mode")}</span>
           <select
-            aria-label="Robustness mode"
+            aria-label={t("pipelineEditor.robustness.modeAria")}
             className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
             disabled={disabled}
             name="mode"
@@ -226,21 +228,21 @@ export function RobustnessScenarioDraftCard({
           >
             {viewModel.modeOptions.map((option) => (
               <option disabled={option.disabled} key={option.value} value={option.value}>
-                {option.label}{option.executable ? "" : " (reserved)"}
+                {option.label}{option.executable ? "" : ` ${t("pipelineEditor.robustness.reservedSuffix")}`}
               </option>
             ))}
           </select>
           {!viewModel.modeExecutable && (
             <p className="text-[10px] text-muted-foreground">
-              Reserved mode: visible in the vocabulary, but not executable by Studio yet.
+              {t("pipelineEditor.robustness.reservedModeHint")}
             </p>
           )}
         </label>
 
         <label className="space-y-1.5 text-xs">
-          <span className="font-medium text-foreground">Scenario kind</span>
+          <span className="font-medium text-foreground">{t("pipelineEditor.robustness.scenarioKind")}</span>
           <select
-            aria-label="Robustness scenario kind"
+            aria-label={t("pipelineEditor.robustness.scenarioKindAria")}
             className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
             disabled={disabled}
             name="kind"
@@ -256,9 +258,9 @@ export function RobustnessScenarioDraftCard({
         </label>
 
         <label className="space-y-1.5 text-xs">
-          <span className="font-medium text-foreground">Severity</span>
+          <span className="font-medium text-foreground">{t("pipelineEditor.robustness.severity")}</span>
           <input
-            aria-label="Robustness scenario severity"
+            aria-label={t("pipelineEditor.robustness.severityAria")}
             className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
             disabled={disabled}
             min="0"
@@ -271,16 +273,16 @@ export function RobustnessScenarioDraftCard({
         </label>
 
         <label className="space-y-1.5 text-xs">
-          <span className="font-medium text-foreground">Distribution</span>
+          <span className="font-medium text-foreground">{t("pipelineEditor.robustness.distribution")}</span>
           <select
-            aria-label="Robustness scenario distribution"
+            aria-label={t("pipelineEditor.robustness.distributionAria")}
             className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs disabled:opacity-60"
             disabled={disabled || !distributionEnabled}
             name="distribution"
             value={stringValue(draft.distribution)}
             onChange={handleDistributionChange}
           >
-            <option value="">none</option>
+            <option value="">{t("pipelineEditor.robustness.distributionNone")}</option>
             {viewModel.distributionOptions.map((option) => (
               <option disabled={option.disabled} key={option.value} value={option.value}>
                 {option.label}
@@ -292,7 +294,7 @@ export function RobustnessScenarioDraftCard({
 
       <label className="mt-3 flex items-start gap-2 rounded border border-border/50 bg-background/60 p-2 text-[11px]">
         <input
-          aria-label="Attach robustness scenario draft to launch metadata"
+          aria-label={t("pipelineEditor.robustness.attachAria")}
           checked={attachToLaunch}
           className="mt-0.5"
           disabled={disabled || !viewModel.valid}
@@ -300,14 +302,13 @@ export function RobustnessScenarioDraftCard({
           onChange={(event) => onAttachToLaunchChange?.(event.target.checked)}
         />
         <span>
-          Attach this draft to launch metadata as <code>robustness.mode</code> and <code>robustness.scenarios</code>. This transports the native
-          robustness plan for downstream execution drivers, but still does not compute a report in Studio.
+          <Trans i18nKey="pipelineEditor.robustness.attachLabel" components={{ code: <code /> }} />
         </span>
       </label>
 
       <label className="mt-2 flex items-start gap-2 rounded border border-border/50 bg-background/60 p-2 text-[11px]">
         <input
-          aria-label="Publish spectral/OOD replay evidence when available"
+          aria-label={t("pipelineEditor.robustness.publishAria")}
           checked={attachToLaunch && publishSpectralEvidence}
           className="mt-0.5"
           disabled={!canPublishSpectralEvidence}
@@ -315,26 +316,24 @@ export function RobustnessScenarioDraftCard({
           onChange={(event) => onPublishSpectralEvidenceChange?.(event.target.checked)}
         />
         <span>
-          Publish spectral/OOD replay evidence when the execution driver can provide it: row-aligned <code>X</code> from
-          the selected dataset partition and the exported predictor bundle path under <code>result_metadata.robustness_evidence</code>.
-          This is fail-closed metadata publication, not a Studio-side recomputation.
+          <Trans i18nKey="pipelineEditor.robustness.publishLabel" components={{ code: <code /> }} />
         </span>
       </label>
 
       <div className="mt-3 grid gap-2 md:grid-cols-[1fr_1.2fr]">
         <div className="rounded border border-border/50 bg-background/60 p-2 text-[11px]">
-          <p className="font-medium text-foreground">Effects</p>
+          <p className="font-medium text-foreground">{t("pipelineEditor.robustness.effects.title")}</p>
           <ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
-            <li>Audit-only diagnostic; it does not create a conformal guarantee.</li>
-            <li>Only executable modes can be attached; reserved modes stay visible but disabled.</li>
-            <li>Distribution is accepted only for stochastic perturbations.</li>
-            <li>Evidence publication asks native drivers to persist replay inputs; Studio does not synthesize them.</li>
-            <li>Native execution support remains controlled by `robustness.mode` and backend capabilities.</li>
+            <li>{t("pipelineEditor.robustness.effects.auditOnly")}</li>
+            <li>{t("pipelineEditor.robustness.effects.executableOnly")}</li>
+            <li>{t("pipelineEditor.robustness.effects.stochasticOnly")}</li>
+            <li>{t("pipelineEditor.robustness.effects.evidence")}</li>
+            <li>{t("pipelineEditor.robustness.effects.nativeSupport")}</li>
           </ul>
         </div>
 
         <div className="rounded border border-border/50 bg-background/60 p-2">
-          <p className="text-[11px] font-medium text-foreground">Experiment Settings</p>
+          <p className="text-[11px] font-medium text-foreground">{t("pipelineEditor.robustness.experimentSettings")}</p>
           <pre className="mt-1 max-h-24 overflow-auto rounded bg-muted p-2 text-[10px] text-muted-foreground">
             {JSON.stringify(normalizedLaunchPayload, null, 2)}
           </pre>
@@ -350,8 +349,7 @@ export function RobustnessScenarioDraftCard({
       )}
 
       <p className="mt-3 text-[11px] text-muted-foreground">
-        Studio validates vocabulary and shape here, but does not perturb spectra or recompute metrics. Report execution
-        remains owned by nirs4all robustness APIs.
+        {t("pipelineEditor.robustness.footer")}
       </p>
     </div>
   );

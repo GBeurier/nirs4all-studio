@@ -7,6 +7,7 @@
  * (that lives in `YProcessingPanel.tsx`).
  */
 
+import { useTranslation } from "react-i18next";
 import {
   BarChart3,
   Info,
@@ -52,6 +53,7 @@ export function YProcessingHeader({
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -67,21 +69,22 @@ export function YProcessingHeader({
         </div>
         <div>
           <h3 className="font-semibold text-foreground flex items-center gap-2">
-            Target Processing
+            {t("pipelineEditor.yProcessing.title")}
             {enabled && (
               <Badge className="text-[10px] px-1.5 h-4 bg-amber-500">
-                Active
+                {t("pipelineEditor.yProcessing.active")}
               </Badge>
             )}
           </h3>
           <p className="text-xs text-muted-foreground">
-            Scale or transform your target variable
+            {t("pipelineEditor.yProcessing.subtitle")}
           </p>
         </div>
       </div>
       <Switch
         checked={enabled}
         onCheckedChange={onToggle}
+        aria-label={t("pipelineEditor.yProcessing.toggleAria")}
         className="data-[state=checked]:bg-amber-500"
       />
     </div>
@@ -98,9 +101,10 @@ export function YProcessingScalerSelect({
   selectedOption: YProcessingOption | undefined;
   onChange: (scaler: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
-      <Label className="text-sm font-medium">Scaler / Transformer</Label>
+      <Label className="text-sm font-medium">{t("pipelineEditor.yProcessing.scalerLabel")}</Label>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger>
           <SelectValue />
@@ -109,7 +113,7 @@ export function YProcessingScalerSelect({
           {groupYProcessingOptionsByCategory().map(({ category, options }) => (
             <div key={category}>
               <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50">
-                {category}
+                {t(`pipelineEditor.yProcessing.category.${category}`)}
               </div>
               {options.map((opt) => (
                 <SelectItem key={opt.name} value={opt.name}>
@@ -118,7 +122,7 @@ export function YProcessingScalerSelect({
                     <div className="flex flex-col">
                       <span className="font-medium">{opt.name}</span>
                       <span className="text-xs text-muted-foreground">
-                        {opt.description}
+                        {t(opt.descriptionKey)}
                       </span>
                     </div>
                   </div>
@@ -130,7 +134,7 @@ export function YProcessingScalerSelect({
       </Select>
       {selectedOption && (
         <p className="text-xs text-muted-foreground">
-          {selectedOption.description}
+          {t(selectedOption.descriptionKey)}
         </p>
       )}
     </div>
@@ -149,13 +153,14 @@ export function YProcessingParamsSection({
   onParamChange: (key: string, value: unknown) => void;
   onReset: () => void;
 }) {
+  const { t } = useTranslation();
   const defaults = getYProcessingDefaultParams(option);
   if (Object.keys(defaults).length === 0) return null;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Parameters</Label>
+        <Label className="text-sm font-medium">{t("pipelineEditor.yProcessing.parameters")}</Label>
         <Button
           variant="ghost"
           size="sm"
@@ -163,7 +168,7 @@ export function YProcessingParamsSection({
           onClick={onReset}
         >
           <RotateCcw className="h-3 w-3 mr-1" />
-          Reset
+          {t("pipelineEditor.yProcessing.reset")}
         </Button>
       </div>
       {Object.entries(defaults).map(([key, defaultValue]) => (
@@ -219,6 +224,7 @@ export function YProcessingParamInput({
   description?: string;
   onChange: (value: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const choices = getYProcessingParamSelect(paramKey);
   const handleWheel = useSelectWheel(String(value), (v) => onChange(v), choices ?? [], true);
 
@@ -234,7 +240,7 @@ export function YProcessingParamInput({
             <SelectContent className="bg-popover">
               {choices.map((choice) => (
                 <SelectItem key={choice.value} value={choice.value}>
-                  {choice.label}
+                  {t(choice.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -260,18 +266,19 @@ export function YProcessingParamInput({
 
 /** "Recommended for" callout listing the selected option's recommendations. */
 export function YProcessingRecommendations({ option }: { option: YProcessingOption }) {
-  if (option.recommendations.length === 0) return null;
+  const { t } = useTranslation();
+  if (option.recommendationKeys.length === 0) return null;
 
   return (
     <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
       <Lightbulb className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
       <div className="flex-1">
-        <p className="text-xs font-medium text-foreground mb-1">Recommended for:</p>
+        <p className="text-xs font-medium text-foreground mb-1">{t("pipelineEditor.yProcessing.recommendedFor")}</p>
         <ul className="text-xs text-muted-foreground space-y-0.5">
-          {option.recommendations.map((rec, idx) => (
-            <li key={idx} className="flex items-center gap-1">
+          {option.recommendationKeys.map((recKey) => (
+            <li key={recKey} className="flex items-center gap-1">
               <Check className="h-3 w-3 text-amber-500" />
-              {rec}
+              {t(recKey)}
             </li>
           ))}
         </ul>
@@ -282,12 +289,12 @@ export function YProcessingRecommendations({ option }: { option: YProcessingOpti
 
 /** Static note explaining inverse-transform behavior. */
 export function YProcessingInfoNote() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50">
       <Info className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
       <p className="text-xs text-muted-foreground">
-        Target values will be scaled before training. Predictions are
-        automatically inverse-transformed to the original scale.
+        {t("pipelineEditor.yProcessing.infoNote")}
       </p>
     </div>
   );
@@ -295,13 +302,14 @@ export function YProcessingInfoNote() {
 
 /** Placeholder shown when target processing is disabled. */
 export function YProcessingDisabledState() {
+  const { t } = useTranslation();
   return (
     <div className="text-center py-4 text-muted-foreground">
       <p className="text-xs">
-        Enable to configure target variable scaling or transformation
+        {t("pipelineEditor.yProcessing.disabledHint")}
       </p>
       <p className="text-[10px] mt-1 text-muted-foreground/70">
-        Recommended for neural networks or when Y has extreme values
+        {t("pipelineEditor.yProcessing.disabledRecommendation")}
       </p>
     </div>
   );

@@ -10,6 +10,7 @@ import {
 
 import type { UnifiedOperatorFilterStats } from './UnifiedOperatorCardTypes';
 import { getFilterStatsBadgeViewModel } from './UnifiedOperatorCardViewData';
+import { useTranslation } from 'react-i18next';
 
 interface UnifiedOperatorCardHeaderProps {
   index: number;
@@ -44,7 +45,8 @@ export function UnifiedOperatorCardHeader({
   onToggleExpanded,
   onRemove,
 }: UnifiedOperatorCardHeaderProps) {
-  const filterStatsBadge = getFilterStatsBadgeViewModel({ isFilter, filterStats });
+  const { t } = useTranslation();
+  const filterStatsBadge = getFilterStatsBadgeViewModel({ isFilter, filterStats, t });
 
   return (
     <div className="flex items-center gap-1 p-1.5">
@@ -54,7 +56,7 @@ export function UnifiedOperatorCardHeader({
             <GripVertical className="w-4 h-4 text-muted-foreground" />
           </div>
         </TooltipTrigger>
-        <TooltipContent side="left">Drag to reorder</TooltipContent>
+        <TooltipContent side="left">{t('playground.operators.card.dragToReorder')}</TooltipContent>
       </Tooltip>
 
       <div className="flex-1 min-w-0">
@@ -91,11 +93,11 @@ export function UnifiedOperatorCardHeader({
                   className="inline-flex items-center gap-0.5 h-4 px-1.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-medium leading-none hover:bg-destructive/90 focus:outline-none focus:ring-1 focus:ring-destructive/40 cursor-pointer flex-shrink-0"
                 >
                   <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
-                  <span>Failed</span>
+                  <span>{t('playground.operators.card.failed')}</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-xs">
-                <p className="text-xs">Click to view error log</p>
+                <p className="text-xs">{t('playground.operators.card.viewErrorLog')}</p>
               </TooltipContent>
             </Tooltip>
           )}
@@ -126,6 +128,7 @@ export function UnifiedOperatorCardHeader({
               size="icon"
               className="h-6 w-6 text-muted-foreground hover:text-foreground"
               onClick={onToggleEnabled}
+              aria-label={enabled ? t('playground.operators.card.disableStep') : t('playground.operators.card.enableStep')}
             >
               {enabled ? (
                 <Eye className="w-3.5 h-3.5" />
@@ -135,7 +138,7 @@ export function UnifiedOperatorCardHeader({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
-            {enabled ? 'Disable step' : 'Enable step'}
+            {enabled ? t('playground.operators.card.disableStep') : t('playground.operators.card.enableStep')}
           </TooltipContent>
         </Tooltip>
 
@@ -147,6 +150,8 @@ export function UnifiedOperatorCardHeader({
                 size="icon"
                 className="h-6 w-6 text-muted-foreground hover:text-foreground"
                 onClick={onToggleExpanded}
+                aria-label={isExpanded ? t('playground.operators.card.hideParams') : t('playground.operators.card.showParams')}
+                aria-expanded={isExpanded}
               >
                 {isExpanded ? (
                   <ChevronUp className="w-3.5 h-3.5" />
@@ -156,7 +161,7 @@ export function UnifiedOperatorCardHeader({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">
-              {isExpanded ? 'Hide parameters' : 'Show parameters'}
+              {isExpanded ? t('playground.operators.card.hideParams') : t('playground.operators.card.showParams')}
             </TooltipContent>
           </Tooltip>
         )}
@@ -168,11 +173,12 @@ export function UnifiedOperatorCardHeader({
               size="icon"
               className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               onClick={onRemove}
+              aria-label={t('playground.operators.card.removeStep')}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="top">Remove step</TooltipContent>
+          <TooltipContent side="top">{t('playground.operators.card.removeStep')}</TooltipContent>
         </Tooltip>
       </div>
     </div>

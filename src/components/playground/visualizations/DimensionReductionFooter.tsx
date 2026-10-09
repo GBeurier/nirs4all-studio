@@ -4,6 +4,7 @@ import type {
   GlobalColorConfig,
 } from '@/lib/playground/colorConfig';
 import { CHART_THEME } from './chartConfig';
+import { useTranslation } from 'react-i18next';
 
 export interface DimensionReductionFooterProps {
   compact: boolean;
@@ -28,6 +29,8 @@ export function DimensionReductionFooter({
   hasReferenceData,
   referenceLabel,
 }: DimensionReductionFooterProps) {
+  const { t } = useTranslation();
+
   if (compact) {
     return null;
   }
@@ -37,12 +40,12 @@ export function DimensionReductionFooter({
       <div className="flex items-center gap-2">
         {showVarianceSummary && (
           <span>
-            Var: {xAxisLabel}, {yAxisLabel}
+            {t('playground.charts.dimReduction.footer.variance', { x: xAxisLabel, y: yAxisLabel })}
           </span>
         )}
         {selectedCount > 0 && (
           <span className="text-primary font-medium">
-            • {selectedCount} selected
+            {t('playground.charts.dimReduction.footer.selected', { count: selectedCount })}
           </span>
         )}
         {globalColorConfig && colorContext && (
