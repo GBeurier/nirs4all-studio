@@ -8,6 +8,7 @@
  */
 
 import { useTranslation } from "react-i18next";
+import i18n from "i18next";
 import { useState, useEffect, useCallback } from "react";
 import {
   Card,
@@ -142,7 +143,7 @@ function SpaceUsageBar({ item }: SpaceUsageBarProps) {
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
           {getCategoryIcon(item.name)}
-          <span className="capitalize font-medium">{item.name}</span>
+          <span className="font-medium">{item.label}</span>
           <Badge variant="outline" className="text-xs">
             {item.fileCountLabel}
           </Badge>
@@ -166,6 +167,7 @@ interface CleanCacheDialogProps {
 }
 
 function CleanCacheDialog({ onClean, isLoading }: CleanCacheDialogProps) {
+  const { t } = useTranslation();
   const [cleanTemp, setCleanTemp] = useState(true);
   const [cleanOrphan, setCleanOrphan] = useState(false);
   const [cleanOldPredictions, setCleanOldPredictions] = useState(false);
@@ -184,14 +186,14 @@ function CleanCacheDialog({ onClean, isLoading }: CleanCacheDialogProps) {
       <AlertDialogTrigger asChild>
         <Button variant="outline" size="sm" disabled={isLoading}>
           <Trash2 className="mr-2 h-4 w-4" />
-          Clean Cache
+          {t("settings.workspaceStats.cleanCache")}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Clean Workspace Cache</AlertDialogTitle>
+          <AlertDialogTitle>{t("settings.workspaceStats.cleanTitle")}</AlertDialogTitle>
           <AlertDialogDescription>
-            Select what you want to clean. This action cannot be undone.
+            {t("settings.workspaceStats.cleanDescription")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="space-y-4 py-4">
@@ -202,9 +204,9 @@ function CleanCacheDialog({ onClean, isLoading }: CleanCacheDialogProps) {
               onCheckedChange={(checked) => setCleanTemp(checked === true)}
             />
             <Label htmlFor="clean-temp" className="text-sm">
-              <span className="font-medium">Temporary files</span>
+              <span className="font-medium">{t("settings.workspaceStats.cleanTemp")}</span>
               <span className="text-muted-foreground ml-2">
-                (.tmp and .cache directories)
+                {t("settings.workspaceStats.cleanTempHint")}
               </span>
             </Label>
           </div>
@@ -215,9 +217,9 @@ function CleanCacheDialog({ onClean, isLoading }: CleanCacheDialogProps) {
               onCheckedChange={(checked) => setCleanOrphan(checked === true)}
             />
             <Label htmlFor="clean-orphan" className="text-sm">
-              <span className="font-medium">Orphan results</span>
+              <span className="font-medium">{t("settings.workspaceStats.cleanOrphan")}</span>
               <span className="text-muted-foreground ml-2">
-                (results without associated runs)
+                {t("settings.workspaceStats.cleanOrphanHint")}
               </span>
             </Label>
           </div>
@@ -228,23 +230,23 @@ function CleanCacheDialog({ onClean, isLoading }: CleanCacheDialogProps) {
               onCheckedChange={(checked) => setCleanOldPredictions(checked === true)}
             />
             <Label htmlFor="clean-old" className="text-sm">
-              <span className="font-medium">Old predictions</span>
+              <span className="font-medium">{t("settings.workspaceStats.cleanOld")}</span>
               <span className="text-muted-foreground ml-2">
-                (older than 30 days)
+                {t("settings.workspaceStats.cleanOldHint")}
               </span>
             </Label>
           </div>
         </div>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
           <AlertDialogAction onClick={handleClean} disabled={isLoading}>
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Cleaning...
+                {t("settings.workspaceStats.cleaning")}
               </>
             ) : (
-              "Clean Selected"
+              t("settings.workspaceStats.cleanSelected")
             )}
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -302,7 +304,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to load workspace statistics"
+          : i18n.t("settings.workspaceStats.loadFailed")
       );
     } finally {
       setIsLoading(false);
@@ -319,12 +321,12 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
       const result = await cleanWorkspaceCache(options);
       setLastAction({
         type: "clean",
-        message: getCleanCacheSuccessMessage(result),
+        message: getCleanCacheSuccessMessage(result, t),
       });
       await loadStats();
       onStatsChange?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to clean cache");
+      setError(err instanceof Error ? err.message : t("settings.workspaceStats.cleanFailed"));
     } finally {
       setIsActionLoading(false);
     }
@@ -334,7 +336,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
     // TODO: Implement backup functionality when backend API is available
     setLastAction({
       type: "backup",
-      message: "Backup feature coming soon",
+      message: t("settings.workspaceStats.backupSoon"),
     });
   };
 
@@ -349,17 +351,17 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
       setLastAction({
         type: "conversion",
         message: result.job_id
-          ? `Legacy workspace conversion started (${result.job_id})`
+          ? t("settings.workspaceStats.conversionStarted", { jobId: result.job_id })
           : result.best_effort
-            ? `Legacy workspace conversion completed with warnings at ${result.output_path}; review the preserved output before linking it manually`
+            ? t("settings.workspaceStats.conversionWarnings", { path: result.output_path })
             : result.link_error
-              ? `Legacy workspace conversion completed at ${result.output_path}; link the converted workspace manually (${result.link_error})`
-              : `Legacy workspace conversion completed at ${result.output_path}`,
+              ? t("settings.workspaceStats.conversionLinkError", { path: result.output_path, error: result.link_error })
+              : t("settings.workspaceStats.conversionDone", { path: result.output_path }),
       });
       await loadStats();
       onStatsChange?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start legacy conversion");
+      setError(err instanceof Error ? err.message : t("settings.workspaceStats.conversionFailed"));
     } finally {
       setIsActionLoading(false);
     }
@@ -392,9 +394,9 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
     return null;
   }
 
-  const countCards = getWorkspaceCountCards(stats);
-  const storageSummaryCards = getWorkspaceStorageSummaryCards(stats);
-  const spaceUsageRows = getWorkspaceSpaceUsageRows(stats.space_usage);
+  const countCards = getWorkspaceCountCards(stats, t);
+  const storageSummaryCards = getWorkspaceStorageSummaryCards(stats, t);
+  const spaceUsageRows = getWorkspaceSpaceUsageRows(stats.space_usage, t);
   const actionFeedbackDescriptors = getWorkspaceActionFeedbackDescriptors({
     lastAction,
     error,
@@ -407,7 +409,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
           <div>
             <CardTitle className="flex items-center gap-2">
               <HardDrive className="h-5 w-5" />
-              Workspace Statistics
+              {t("settings.workspace.stats.title")}
             </CardTitle>
             <CardDescription>
               {stats.path}
@@ -427,7 +429,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
                   />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Refresh statistics</TooltipContent>
+              <TooltipContent>{t("settings.workspaceStats.refreshTooltip")}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
@@ -438,7 +440,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
               <div className="min-w-0 flex-1 space-y-2">
-                <div className="font-medium">Legacy workspace conversion required</div>
+                <div className="font-medium">{t("settings.workspaceStats.legacyTitle")}</div>
                 <p>{transitionStatus.message}</p>
                 {transitionStatus.conversion_command && (
                   <code className="block overflow-x-auto rounded bg-background/70 px-2 py-1 text-xs">
@@ -457,11 +459,11 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
                     ) : (
                       <Database className="mr-2 h-4 w-4" />
                     )}
-                    Convert to V1 Workspace
+                    {t("settings.workspaceStats.convert")}
                   </Button>
                   {!transitionStatus.converter_available && (
                     <span className="self-center text-xs">
-                      Install nirs4all-tools in the Studio Python environment to convert from the UI.
+                      {t("settings.workspaceStats.needTools")}
                     </span>
                   )}
                 </div>
@@ -504,7 +506,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
 
         {/* Space Usage Breakdown */}
         <div className="space-y-3">
-          <h4 className="text-sm font-medium">Space Usage</h4>
+          <h4 className="text-sm font-medium">{t("settings.workspaceStats.spaceUsage")}</h4>
           {spaceUsageRows.length > 0 ? (
             <div className="space-y-4">
               {spaceUsageRows.map((item) => (
@@ -513,7 +515,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              No data stored yet
+              {t("settings.workspaceStats.noData")}
             </p>
           )}
         </div>
@@ -546,7 +548,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
             ) : (
               <Archive className="mr-2 h-4 w-4" />
             )}
-            Backup Now
+            {t("settings.workspaceStats.backupNow")}
           </Button>
         </div>
       </CardContent>

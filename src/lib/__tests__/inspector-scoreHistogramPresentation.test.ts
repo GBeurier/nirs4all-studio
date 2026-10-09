@@ -8,6 +8,7 @@ import {
   getScoreHistogramEmptyMessage,
 } from '@/lib/inspector/scoreHistogramPresentation';
 import type { HistogramResponse } from '@/types/inspector';
+import { tStub } from './helpers/i18nStub';
 
 const response: HistogramResponse = {
   bins: [],
@@ -29,21 +30,21 @@ describe('inspector score histogram presentation helpers', () => {
       hasSelected: true,
     };
 
-    expect(getScoreHistogramEmptyMessage()).toBe('No score data available.');
+    expect(getScoreHistogramEmptyMessage(tStub)).toBe('inspector.charts.empty.histogram');
     expect(formatScoreHistogramValue(0.123456)).toBe('0.1235');
-    expect(buildScoreHistogramStatsSegments(response)).toEqual([
-      'min: 0.0000',
-      'mean: 0.1235',
-      'max: 0.3000',
+    expect(buildScoreHistogramStatsSegments(response, tStub)).toEqual([
+      'inspector.charts.histogram.statMin {"value":"0.0000"}',
+      'inspector.charts.histogram.statMean {"value":"0.1235"}',
+      'inspector.charts.histogram.statMax {"value":"0.3000"}',
     ]);
-    expect(buildScoreHistogramStatsSegments(null)).toEqual([]);
+    expect(buildScoreHistogramStatsSegments(null, tStub)).toEqual([]);
     expect(formatScoreHistogramMeanReference(0.123456)).toBe('0.123');
     expect(formatScoreHistogramMeanReference(null)).toBeNull();
-    expect(buildScoreHistogramTooltipData(bar, 4)).toEqual({
+    expect(buildScoreHistogramTooltipData(bar, 4, tStub)).toEqual({
       rangeLabel: '[0.0000, 0.1000)',
       countLabel: '2',
-      percentageLabel: '50.0% of total',
+      percentageLabel: 'inspector.charts.tooltip.percentOfTotal {"value":"50.0"}',
     });
-    expect(buildScoreHistogramTooltipData(bar, 0).percentageLabel).toBe('200.0% of total');
+    expect(buildScoreHistogramTooltipData(bar, 0, tStub).percentageLabel).toBe('inspector.charts.tooltip.percentOfTotal {"value":"200.0"}');
   });
 });

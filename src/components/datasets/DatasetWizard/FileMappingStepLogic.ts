@@ -26,22 +26,22 @@ export const FILE_MAPPING_DIALOG_FILTERS = [
 ];
 
 export const FILE_ROLE_OPTIONS = [
-  { value: "X", label: "X (Features/Spectra)" },
-  { value: "Y", label: "Y (Targets/Analyte)" },
-  { value: "metadata", label: "Metadata" },
-  { value: "unknown", label: "Unknown" },
+  { value: "X", labelKey: "datasets.wizard.fileMapping.roles.X" },
+  { value: "Y", labelKey: "datasets.wizard.fileMapping.roles.Y" },
+  { value: "metadata", labelKey: "datasets.wizard.fileMapping.roles.metadata" },
+  { value: "unknown", labelKey: "datasets.wizard.fileMapping.roles.unknown" },
 ] as const satisfies ReadonlyArray<{
   value: DetectedFile["type"];
-  label: string;
+  labelKey: string;
 }>;
 
 export const FILE_SPLIT_OPTIONS = [
-  { value: "train", label: "Train" },
-  { value: "test", label: "Test" },
-  { value: "unknown", label: "Unknown" },
+  { value: "train", labelKey: "datasets.wizard.fileMapping.splits.train" },
+  { value: "test", labelKey: "datasets.wizard.fileMapping.splits.test" },
+  { value: "unknown", labelKey: "datasets.wizard.fileMapping.splits.unknown" },
 ] as const satisfies ReadonlyArray<{
   value: DetectedFile["split"];
-  label: string;
+  labelKey: string;
 }>;
 
 export function formatSize(bytes: number): string {

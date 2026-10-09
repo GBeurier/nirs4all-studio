@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { InspectorDataFilters } from '@/types/inspector';
 
 export const INSPECTOR_ALL_FILTER_VALUE = '__all__';
@@ -13,7 +14,6 @@ export type InspectorSourceValueFilterKey = 'task_type' | 'metric';
 export interface InspectorSourceFacetFilterModel {
   id: InspectorSourceArrayFilterKey;
   labelKey: string;
-  defaultLabel: string;
   values: string[];
   selected: string[];
 }
@@ -47,12 +47,13 @@ export interface BuildInspectorSourceFilterBarModelInput {
   availableMetrics: string[];
   totalChains: number;
   isLoading: boolean;
+  t: TFunction;
 }
 
 export const INSPECTOR_TASK_TYPE_FILTER_OPTIONS = [
-  { value: INSPECTOR_ALL_FILTER_VALUE, label: 'All Types' },
-  { value: 'regression', label: 'Regression' },
-  { value: 'classification', label: 'Classification' },
+  { value: INSPECTOR_ALL_FILTER_VALUE, labelKey: 'inspector.sourceBar.allTypes' },
+  { value: 'regression', labelKey: 'inspector.filters.regression' },
+  { value: 'classification', labelKey: 'inspector.filters.classification' },
 ] as const;
 
 export function patchInspectorSourceFilters(
@@ -107,8 +108,8 @@ export function toggleInspectorFacetValue(selected: readonly string[], value: st
     : [...selected, value];
 }
 
-export function getInspectorChainCountLabel(isLoading: boolean, totalChains: number): string {
-  return isLoading ? '...' : `${totalChains} chains`;
+export function getInspectorChainCountLabel(isLoading: boolean, totalChains: number, t: TFunction): string {
+  return isLoading ? '...' : t('inspector.counts.chains', { count: totalChains });
 }
 
 export function buildInspectorSourceFilterBarModel({
@@ -120,56 +121,53 @@ export function buildInspectorSourceFilterBarModel({
   availableMetrics,
   totalChains,
   isLoading,
+  t,
 }: BuildInspectorSourceFilterBarModelInput): InspectorSourceFilterBarModel {
   return {
     facets: [
       {
         id: 'run_ids',
         labelKey: 'inspector.filter.runs',
-        defaultLabel: 'Runs',
         values: availableRuns,
         selected: filters.run_ids ?? [],
       },
       {
         id: 'dataset_names',
         labelKey: 'inspector.filter.datasets',
-        defaultLabel: 'Datasets',
         values: availableDatasets,
         selected: filters.dataset_names ?? [],
       },
       {
         id: 'model_classes',
         labelKey: 'inspector.filter.models',
-        defaultLabel: 'Models',
         values: availableModels,
         selected: filters.model_classes ?? [],
       },
       {
         id: 'preprocessings',
         labelKey: 'inspector.filter.preprocessing',
-        defaultLabel: 'Preprocessing',
         values: availablePreprocessings,
         selected: filters.preprocessings ?? [],
       },
     ],
     taskType: {
       id: 'task_type',
-      placeholder: 'Type',
+      placeholder: t('inspector.sourceBar.typePlaceholder'),
       value: filters.task_type ?? INSPECTOR_ALL_FILTER_VALUE,
-      options: [...INSPECTOR_TASK_TYPE_FILTER_OPTIONS],
+      options: INSPECTOR_TASK_TYPE_FILTER_OPTIONS.map(option => ({ value: option.value, label: t(option.labelKey) })),
     },
     metric: availableMetrics.length > 0
       ? {
           id: 'metric',
-          placeholder: 'Metric',
+          placeholder: t('inspector.sourceBar.metricPlaceholder'),
           value: filters.metric ?? INSPECTOR_ALL_FILTER_VALUE,
           options: [
-            { value: INSPECTOR_ALL_FILTER_VALUE, label: 'All Metrics' },
+            { value: INSPECTOR_ALL_FILTER_VALUE, label: t('inspector.sourceBar.allMetrics') },
             ...availableMetrics.map(metric => ({ value: metric, label: metric })),
           ],
         }
       : null,
     hasFilters: hasInspectorSourceFilters(filters),
-    chainCountLabel: getInspectorChainCountLabel(isLoading, totalChains),
+    chainCountLabel: getInspectorChainCountLabel(isLoading, totalChains, t),
   };
 }

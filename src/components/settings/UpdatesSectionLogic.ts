@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import type { GPUDetectionResponse } from "@/api/config";
 import type { RuntimeInfo, StagedUpdateInfo, UpdateStatus } from "@/api/updates";
 import type { RuntimeSummaryResponse } from "@/types/settings";
@@ -94,10 +96,12 @@ export function getWebappUpdateRowState({
   status,
   stagedUpdate,
   download,
+  t,
 }: {
   status: UpdateStatus | null | undefined;
   stagedUpdate: StagedUpdateInfo | null | undefined;
   download: WebappDownloadPresentationState;
+  t: TFunction;
 }): WebappUpdateRowState {
   const { hasWebappUpdate } = getUpdateAvailability(status);
   const canApplyInPlace = canApplyWebappUpdateInPlace(status);
@@ -121,7 +125,7 @@ export function getWebappUpdateRowState({
   return {
     action,
     canApplyInPlace,
-    currentVersion: status?.webapp?.current_version || "unknown",
+    currentVersion: status?.webapp?.current_version || t("settings.updates.unknownVersion"),
     downloadProgressPercent: Math.round(download.downloadProgress),
     hasStagedUpdate,
     hasUpdate: hasWebappUpdate,
@@ -158,16 +162,18 @@ export function getCurrentRuntime(
 export function getRuntimeExecutablePath(
   runtimeSummary: RuntimeSummaryResponse | null | undefined,
   currentRuntime: Pick<RuntimeInfo, "python_executable"> | null | undefined,
+  t: TFunction,
 ): string {
-  return runtimeSummary?.running_python ?? currentRuntime?.python_executable ?? "Unavailable";
+  return runtimeSummary?.running_python ?? currentRuntime?.python_executable ?? t("settings.updates.runtime.unavailable");
 }
 
 export function getGpuDisplay(
   gpuInfo: GPUDetectionResponse | null | undefined,
   isLoading: boolean,
+  t: TFunction,
 ): TextDisplay {
   if (isLoading) {
-    return { label: "Detecting...", muted: true };
+    return { label: t("settings.updates.runtime.detecting"), muted: true };
   }
 
   if (gpuInfo?.has_cuda) {
@@ -176,7 +182,7 @@ export function getGpuDisplay(
       return { label: `${label} (CUDA ${gpuInfo.cuda_version})`, muted: false };
     }
     if (gpuInfo.driver_version) {
-      return { label: `${label} (Driver ${gpuInfo.driver_version})`, muted: false };
+      return { label: t("settings.updates.runtime.gpuDriver", { name: label, version: gpuInfo.driver_version }), muted: false };
     }
     return { label, muted: false };
   }
@@ -185,22 +191,23 @@ export function getGpuDisplay(
     return { label: "Apple Metal", muted: false };
   }
 
-  return { label: "CPU only", muted: true };
+  return { label: t("settings.updates.runtime.cpuOnly"), muted: true };
 }
 
 export function getTorchRuntimeDisplay(
   gpuInfo: GPUDetectionResponse | null | undefined,
+  t: TFunction,
 ): TextDisplay | null {
   if (!gpuInfo) {
     return null;
   }
 
   if (!gpuInfo.torch_version) {
-    return { label: "Not installed", muted: true };
+    return { label: t("settings.updates.runtime.torchNotInstalled"), muted: true };
   }
 
   return {
-    label: `${gpuInfo.torch_version} (${gpuInfo.torch_cuda_available ? "CUDA ready" : "CUDA unavailable"})`,
+    label: t(gpuInfo.torch_cuda_available ? "settings.updates.runtime.torchCudaReady" : "settings.updates.runtime.torchCudaUnavailable", { version: gpuInfo.torch_version }),
     muted: false,
   };
 }
@@ -208,26 +215,28 @@ export function getTorchRuntimeDisplay(
 export function getWebappDialogCopy({
   download,
   latestVersion,
+  t,
 }: {
   download: WebappDialogDownloadState;
   latestVersion: string | null | undefined;
+  t: TFunction;
 }): WebappDialogCopy {
   if (download.readyToApply) {
     return {
-      title: "Update Ready to Apply",
-      description: `Version ${download.stagedVersion || latestVersion} is ready to install`,
+      title: t("settings.updates.webappDialog.readyTitle"),
+      description: t("settings.updates.webappDialog.readyDescription", { version: download.stagedVersion || latestVersion }),
     };
   }
 
   if (download.isDownloading) {
     return {
-      title: "Downloading Update...",
-      description: download.downloadMessage || "Downloading...",
+      title: t("settings.updates.webappDialog.downloadingTitle"),
+      description: download.downloadMessage || t("settings.updates.webappDialog.downloadingDefault"),
     };
   }
 
   return {
-    title: "Webapp Update Available",
-    description: `Version ${latestVersion} is available`,
+    title: t("settings.updates.webappDialog.availableTitle"),
+    description: t("settings.updates.webappDialog.availableDescription", { version: latestVersion }),
   };
 }

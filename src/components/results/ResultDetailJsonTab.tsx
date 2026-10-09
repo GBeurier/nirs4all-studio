@@ -1,4 +1,5 @@
 import { Check, Copy } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { TabsContent } from "@/components/ui/tabs";
 
@@ -13,17 +14,18 @@ export function ResultDetailJsonTab({
   copied,
   onCopyJson,
 }: ResultDetailJsonTabProps) {
+  const { t } = useTranslation();
   return (
     <TabsContent value="json" className="m-0 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">Pipeline Configuration</span>
+        <span className="text-sm text-muted-foreground">{t("results.detail.pipelineConfiguration")}</span>
         <Button variant="outline" size="sm" onClick={onCopyJson}>
           {copied ? (
             <Check className="h-3.5 w-3.5 mr-1.5 text-green-500" />
           ) : (
             <Copy className="h-3.5 w-3.5 mr-1.5" />
           )}
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("common.copied") : t("common.copy")}
         </Button>
       </div>
 

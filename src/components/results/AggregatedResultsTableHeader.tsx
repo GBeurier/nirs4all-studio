@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   ArrowDown,
   ArrowUp,
@@ -21,29 +22,30 @@ export function AggregatedResultsTableHeader({
   sortAsc,
   onSort,
 }: AggregatedResultsTableHeaderProps) {
+  const { t } = useTranslation();
   return (
     <TableHeader>
       <TableRow>
         <SortableHead columnKey="model" sortKey={sortKey} sortAsc={sortAsc} onSort={onSort}>
-          Model
+          {t("aggregatedResults.columns.model")}
         </SortableHead>
         <SortableHead columnKey="dataset" sortKey={sortKey} sortAsc={sortAsc} onSort={onSort}>
-          Dataset
+          {t("aggregatedResults.columns.dataset")}
         </SortableHead>
         <SortableHead columnKey="metric" sortKey={sortKey} sortAsc={sortAsc} onSort={onSort}>
-          Metric
+          {t("aggregatedResults.columns.metric")}
         </SortableHead>
         <SortableHead columnKey="cv_val" sortKey={sortKey} sortAsc={sortAsc} onSort={onSort} align="right">
-          CV Val
+          {t("aggregatedResults.columns.cvVal")}
         </SortableHead>
         <SortableHead columnKey="cv_test" sortKey={sortKey} sortAsc={sortAsc} onSort={onSort} align="right">
-          CV Test
+          {t("aggregatedResults.columns.cvTest")}
         </SortableHead>
         <SortableHead columnKey="final_test" sortKey={sortKey} sortAsc={sortAsc} onSort={onSort} align="right">
-          Final
+          {t("aggregatedResults.columns.final")}
         </SortableHead>
         <SortableHead columnKey="folds" sortKey={sortKey} sortAsc={sortAsc} onSort={onSort} align="center">
-          Folds
+          {t("aggregatedResults.columns.folds")}
         </SortableHead>
         <TableHead className="w-20" />
       </TableRow>

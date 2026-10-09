@@ -103,7 +103,7 @@ describe('ResultsPanelData', () => {
   it('formats the summary, execution time, and positive reduction', () => {
     const summary = getResultsPanelSummaryModel(transferResults());
 
-    expect(summary.description).toBe('4 datasets, 3 preprocessings, 6 pairwise comparisons');
+    expect(summary.counts).toEqual({ datasets: 4, preprocessings: 3, pairs: 6 });
     expect(summary.executionTimeLabel).toBe('124ms');
     expect(summary.bestPreprocessing).toBe('SNV');
     expect(summary.reduction).toEqual({
@@ -111,7 +111,7 @@ describe('ResultsPanelData', () => {
       tone: 'positive',
       className: 'text-green-600',
     });
-    expect(summary.preprocessingsTestedLabel).toBe('3 tested');
+    expect(summary.preprocessingsTestedCount).toBe(3);
   });
 
   it('formats negative reductions without a positive sign', () => {

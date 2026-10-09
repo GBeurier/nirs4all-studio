@@ -1,9 +1,11 @@
+import type { TFunction } from "i18next";
 import type { ExecutionJobRecord, ExecutionJobRecordObject } from "./executionJobRecords";
 import {
   isActiveExecutionStatus,
   isRetryableExecutionStatus,
 } from "./executionJobStatus";
 import { formatRunProgress, formatRunTokenLabel } from "./format";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 export type ExecutionJobRecordDetailActionId = "cancel" | "retry" | "workerLogs";
 
@@ -83,7 +85,7 @@ function formatTimestamp(value: string | null | undefined): string {
     return value;
   }
 
-  return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return date.toLocaleString(getActiveLocale(), { dateStyle: "medium", timeStyle: "short" });
 }
 
 function getRunId(record: ExecutionJobRecord): string | null {
@@ -110,7 +112,7 @@ function hasEmbeddedWorkerLogs(record: ExecutionJobRecord): boolean {
     || hasObjectContent(nestedObjectField(record.driver, "logs"));
 }
 
-function buildExecutionJobRecordActions(record: ExecutionJobRecord): ExecutionJobRecordDetailAction[] {
+function buildExecutionJobRecordActions(record: ExecutionJobRecord, t: TFunction): ExecutionJobRecordDetailAction[] {
   const runId = getRunId(record);
   const canTargetRun = runId != null;
   const canTargetJob = record.job_id.trim().length > 0;
@@ -122,31 +124,31 @@ function buildExecutionJobRecordActions(record: ExecutionJobRecord): ExecutionJo
   return [
     {
       id: "cancel",
-      label: "Cancel job",
+      label: t("runs.jobDetail.cancelJob"),
       enabled: canCancel,
       visible: canCancel,
       availability: canCancel ? "available" : "unavailable",
-      reason: canCancel ? null : "Only active execution jobs can be cancelled.",
+      reason: canCancel ? null : t("runs.jobDetail.cancelUnavailable"),
       runId,
       jobId: record.job_id,
     },
     {
       id: "retry",
-      label: "Retry run",
+      label: t("runs.jobDetail.retryRun"),
       enabled: canRetry,
       visible: canRetry,
       availability: canRetry ? "available" : "unavailable",
-      reason: canTargetRun ? null : "No Studio run is linked to this job.",
+      reason: canTargetRun ? null : t("runs.jobDetail.noLinkedRun"),
       runId,
       jobId: record.job_id,
     },
     {
       id: "workerLogs",
-      label: "Worker logs",
+      label: t("runs.jobDetail.workerLogs"),
       enabled: hasWorkerLogs,
       visible: true,
       availability: hasWorkerLogs ? "available" : "unavailable",
-      reason: hasWorkerLogs ? null : "Worker logs are not attached to this execution snapshot yet.",
+      reason: hasWorkerLogs ? null : t("runs.jobDetail.workerLogsUnavailable"),
       runId,
       jobId: record.job_id,
       ...(workerLogsHref ? { href: workerLogsHref } : {}),
@@ -162,61 +164,61 @@ function getMetadataSection(record: ExecutionJobRecord): ExecutionJobRecordObjec
   return nestedObjectField(record.request, "metadata");
 }
 
-export function buildExecutionJobRecordDetail(record: ExecutionJobRecord): ExecutionJobRecordDetail {
+export function buildExecutionJobRecordDetail(record: ExecutionJobRecord, t: TFunction): ExecutionJobRecordDetail {
   const summaryFields: ExecutionJobRecordDetailSummaryField[] = [
-    { id: "job_id", label: "Job ID", value: record.job_id },
-    { id: "job_type", label: "Type", value: record.job_type },
-    { id: "run_id", label: "Run ID", value: record.run_id || null },
-    { id: "run_name", label: "Run name", value: record.run_name || null },
-    { id: "run_status", label: "Run status", value: record.run_status },
-    { id: "requested_backend", label: "Requested backend", value: record.requested_backend },
-    { id: "execution_backend", label: "Execution backend", value: record.execution_backend },
-    { id: "execution_status", label: "Execution status", value: record.status },
-    { id: "created_at", label: "Created", value: record.created_at },
-    { id: "started_at", label: "Started", value: record.started_at },
-    { id: "completed_at", label: "Completed", value: record.completed_at },
-    { id: "progress", label: "Progress", value: record.progress },
-    { id: "progress_message", label: "Progress message", value: record.progress_message },
-    { id: "error", label: "Error", value: record.error ?? null },
+    { id: "job_id", label: t("runs.jobDetail.jobId"), value: record.job_id },
+    { id: "job_type", label: t("runs.jobDetail.type"), value: record.job_type },
+    { id: "run_id", label: t("runs.jobDetail.runId"), value: record.run_id || null },
+    { id: "run_name", label: t("runs.jobDetail.runName"), value: record.run_name || null },
+    { id: "run_status", label: t("runs.jobDetail.runStatus"), value: record.run_status },
+    { id: "requested_backend", label: t("runs.jobDetail.requestedBackend"), value: record.requested_backend },
+    { id: "execution_backend", label: t("runs.jobDetail.executionBackend"), value: record.execution_backend },
+    { id: "execution_status", label: t("runs.jobDetail.executionStatus"), value: record.status },
+    { id: "created_at", label: t("runs.jobDetail.created"), value: record.created_at },
+    { id: "started_at", label: t("runs.jobDetail.started"), value: record.started_at },
+    { id: "completed_at", label: t("runs.jobDetail.completed"), value: record.completed_at },
+    { id: "progress", label: t("runs.jobDetail.progress"), value: record.progress },
+    { id: "progress_message", label: t("runs.jobDetail.progressMessage"), value: record.progress_message },
+    { id: "error", label: t("runs.jobDetail.error"), value: record.error ?? null },
   ];
 
   const fields: ExecutionJobRecordDetailField[] = [
-    { id: "job_id", label: "Job ID", value: record.job_id },
-    { id: "job_type", label: "Type", value: formatRunTokenLabel(record.job_type) },
-    { id: "status", label: "Status", value: formatRunTokenLabel(record.status) },
-    { id: "progress", label: "Progress", value: formatRunProgress(record.progress) },
-    { id: "run_id", label: "Run ID", value: record.run_id || "-" },
-    { id: "run_name", label: "Run name", value: record.run_name || "-" },
-    { id: "run_status", label: "Run status", value: formatRunTokenLabel(record.run_status) },
-    { id: "requested_backend", label: "Requested backend", value: formatRunTokenLabel(record.requested_backend) },
-    { id: "execution_backend", label: "Execution backend", value: formatRunTokenLabel(record.execution_backend) },
-    { id: "created_at", label: "Created", value: formatTimestamp(record.created_at) },
-    { id: "started_at", label: "Started", value: formatTimestamp(record.started_at) },
-    { id: "completed_at", label: "Completed", value: formatTimestamp(record.completed_at) },
+    { id: "job_id", label: t("runs.jobDetail.jobId"), value: record.job_id },
+    { id: "job_type", label: t("runs.jobDetail.type"), value: formatRunTokenLabel(record.job_type, t) },
+    { id: "status", label: t("runs.jobDetail.status"), value: formatRunTokenLabel(record.status, t) },
+    { id: "progress", label: t("runs.jobDetail.progress"), value: formatRunProgress(record.progress) },
+    { id: "run_id", label: t("runs.jobDetail.runId"), value: record.run_id || "-" },
+    { id: "run_name", label: t("runs.jobDetail.runName"), value: record.run_name || "-" },
+    { id: "run_status", label: t("runs.jobDetail.runStatus"), value: formatRunTokenLabel(record.run_status, t) },
+    { id: "requested_backend", label: t("runs.jobDetail.requestedBackend"), value: formatRunTokenLabel(record.requested_backend, t) },
+    { id: "execution_backend", label: t("runs.jobDetail.executionBackend"), value: formatRunTokenLabel(record.execution_backend, t) },
+    { id: "created_at", label: t("runs.jobDetail.created"), value: formatTimestamp(record.created_at) },
+    { id: "started_at", label: t("runs.jobDetail.started"), value: formatTimestamp(record.started_at) },
+    { id: "completed_at", label: t("runs.jobDetail.completed"), value: formatTimestamp(record.completed_at) },
   ];
 
   if (record.error) {
     fields.push({
       id: "error",
-      label: "Error",
+      label: t("runs.jobDetail.error"),
       value: record.error,
       tone: "destructive",
     });
   }
 
   const candidateJsonSections: ExecutionJobRecordDetailJsonSection[] = [
-    { id: "request", label: "Request", value: record.request },
-    { id: "driver", label: "Driver", value: record.driver },
-    { id: "metadata", label: "Metadata", value: getMetadataSection(record) },
-    { id: "metrics", label: "Metrics", value: record.metrics ?? {} },
+    { id: "request", label: t("runs.jobDetail.request"), value: record.request },
+    { id: "driver", label: t("runs.jobDetail.driver"), value: record.driver },
+    { id: "metadata", label: t("runs.jobDetail.metadata"), value: getMetadataSection(record) },
+    { id: "metrics", label: t("runs.jobDetail.metrics"), value: record.metrics ?? {} },
   ];
 
   return {
-    description: record.job_id ? `Job ${record.job_id}` : "Execution snapshot",
+    description: record.job_id ? t("runs.jobDetail.jobTitle", { id: record.job_id }) : t("runs.jobDetail.snapshot"),
     summaryFields,
     fields,
     jsonSections: candidateJsonSections.filter(section => hasObjectContent(section.value)),
-    actions: buildExecutionJobRecordActions(record),
+    actions: buildExecutionJobRecordActions(record, t),
     errorMessage: record.error || null,
   };
 }

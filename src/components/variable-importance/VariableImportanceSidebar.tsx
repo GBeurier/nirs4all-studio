@@ -50,7 +50,7 @@ export function VariableImportanceSidebar({
             <TrendingUp className="h-4 w-4 text-primary" />
           </div>
           <CardTitle className="text-lg">
-            {t('shap.title', 'SHAP Analysis')}
+            {t('shap.title')}
           </CardTitle>
         </div>
       </CardHeader>
@@ -79,12 +79,12 @@ export function VariableImportanceSidebar({
           {isRunning ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t('shap.computing', 'Computing...')}
+              {t('shap.computing')}
             </>
           ) : (
             <>
               <PlayCircle className="mr-2 h-4 w-4" />
-              {t('shap.compute', 'Compute Explanations')}
+              {t('shap.compute')}
             </>
           )}
         </Button>
@@ -93,14 +93,14 @@ export function VariableImportanceSidebar({
           <div className="space-y-2">
             <Progress value={progress} className="h-2" />
             <p className="text-xs text-muted-foreground text-center">
-              {progressMessage || 'Starting...'}
+              {progressMessage || t('results.variableImportance.starting')}
             </p>
           </div>
         )}
 
         {!chainId && (
           <p className="text-xs text-muted-foreground text-center">
-            {t('shap.selectModel', 'Select a model to explain')}
+            {t('shap.selectModel')}
           </p>
         )}
       </CardContent>

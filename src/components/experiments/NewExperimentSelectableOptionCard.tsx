@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 export interface NewExperimentSelectableOptionCardProps {
   children: ReactNode;
   dataAttributeName: "data-experiment-dataset-id" | "data-experiment-pipeline-id";
+  /** Accessible name of the selection checkbox (the option name). */
+  label?: string;
   optionId: string;
   selected: boolean;
   onToggle: (optionId: string) => void;
@@ -14,6 +16,7 @@ export interface NewExperimentSelectableOptionCardProps {
 export function NewExperimentSelectableOptionCard({
   children,
   dataAttributeName,
+  label,
   optionId,
   selected,
   onToggle,
@@ -29,6 +32,7 @@ export function NewExperimentSelectableOptionCard({
     >
       <div className="flex items-center gap-3">
         <Checkbox
+          aria-label={label}
           checked={selected}
           onClick={(event) => event.stopPropagation()}
           onCheckedChange={() => onToggle(optionId)}

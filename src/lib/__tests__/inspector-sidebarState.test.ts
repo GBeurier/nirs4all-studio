@@ -7,6 +7,7 @@ import {
   getInspectorSidebarStatusLabel,
   isInspectorSelectAllDisabled,
 } from "@/lib/inspector/sidebarState";
+import { tStub } from "./helpers/i18nStub";
 
 describe("inspector sidebar state", () => {
   it("derives the sidebar status label by priority", () => {
@@ -14,27 +15,27 @@ describe("inspector sidebar state", () => {
       error: "Backend failed",
       isLoading: true,
       chainCount: 4,
-    })).toBe("Error");
+    })).toBe("error");
     expect(getInspectorSidebarStatusLabel({
       error: null,
       isLoading: true,
       chainCount: 4,
-    })).toBe("Loading");
+    })).toBe("loading");
     expect(getInspectorSidebarStatusLabel({
       error: null,
       isLoading: false,
       chainCount: 0,
-    })).toBe("No data");
+    })).toBe("noData");
     expect(getInspectorSidebarStatusLabel({
       error: null,
       isLoading: false,
       chainCount: 2,
-    })).toBe("Ready");
+    })).toBe("ready");
   });
 
   it("describes the selection card from pinned count", () => {
-    expect(getInspectorSelectionSubtitle(0)).toBe("active chains");
-    expect(getInspectorSelectionSubtitle(3)).toBe("3 pinned");
+    expect(getInspectorSelectionSubtitle(0, tStub)).toBe("inspector.sidebar.selectionSubtitle.activeChains");
+    expect(getInspectorSelectionSubtitle(3, tStub)).toBe('inspector.counts.pinned {"count":3}');
   });
 
   it("keeps select-all disabled without available ids or when all chains are already selected", () => {

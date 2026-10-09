@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { RefreshCw, AlertTriangle, FileText, Plus, Minus, ArrowRight } from "lucide-react";
 import {
   Dialog,
@@ -46,6 +47,7 @@ export function RefreshDialog({
   onConfirm,
   isLoading = false,
 }: RefreshDialogProps) {
+  const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
 
   const handleConfirm = async () => {
@@ -54,7 +56,7 @@ export function RefreshDialog({
       await onConfirm();
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refresh dataset");
+      setError(err instanceof Error ? err.message : t("datasets.refresh.failed"));
     }
   };
 
@@ -71,11 +73,10 @@ export function RefreshDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
-            Dataset Modified
+            {t("datasets.refresh.title")}
           </DialogTitle>
           <DialogDescription>
-            The dataset "{dataset.name}" has changed since it was last verified.
-            Review the changes and confirm to update the stored version.
+            {t("datasets.refresh.description", { name: dataset.name })}
           </DialogDescription>
         </DialogHeader>
 
@@ -83,9 +84,9 @@ export function RefreshDialog({
           {/* Hash comparison */}
           {changeSummary && (
             <div className="rounded-lg border p-3 bg-muted/50">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Hash Change</p>
+              <p className="text-xs font-medium text-muted-foreground mb-2">{t("datasets.refresh.hashChange")}</p>
               <div className="flex items-center gap-2 text-sm font-mono">
-                <span className="text-muted-foreground">{changeSummary.old_hash || "none"}</span>
+                <span className="text-muted-foreground">{changeSummary.old_hash || t("datasets.multimodal.none")}</span>
                 <ArrowRight className="h-4 w-4 text-muted-foreground" />
                 <span className="text-foreground">{changeSummary.new_hash}</span>
               </div>
@@ -98,7 +99,7 @@ export function RefreshDialog({
               {/* Size change */}
               {changeSummary.size_change_bytes !== 0 && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Size change</span>
+                  <span className="text-muted-foreground">{t("datasets.refresh.sizeChange")}</span>
                   <Badge
                     variant={changeSummary.size_change_bytes > 0 ? "default" : "secondary"}
                   >
@@ -113,7 +114,7 @@ export function RefreshDialog({
                   <div className="flex items-center gap-2 text-sm">
                     <Plus className="h-4 w-4 text-green-500" />
                     <span className="text-muted-foreground">
-                      {changeSummary.files_added!.length} file(s) added
+                      {t("datasets.refresh.filesAdded", { count: changeSummary.files_added!.length })}
                     </span>
                   </div>
                   <ScrollArea className="max-h-24">
@@ -134,7 +135,7 @@ export function RefreshDialog({
                   <div className="flex items-center gap-2 text-sm">
                     <Minus className="h-4 w-4 text-red-500" />
                     <span className="text-muted-foreground">
-                      {changeSummary.files_removed!.length} file(s) removed
+                      {t("datasets.refresh.filesRemoved", { count: changeSummary.files_removed!.length })}
                     </span>
                   </div>
                   <ScrollArea className="max-h-24">
@@ -155,7 +156,7 @@ export function RefreshDialog({
                   <div className="flex items-center gap-2 text-sm">
                     <FileText className="h-4 w-4 text-amber-500" />
                     <span className="text-muted-foreground">
-                      {changeSummary.files_changed!.length} file(s) modified
+                      {t("datasets.refresh.filesModified", { count: changeSummary.files_changed!.length })}
                     </span>
                   </div>
                   <ScrollArea className="max-h-24">
@@ -174,7 +175,7 @@ export function RefreshDialog({
 
           {!hasChanges && (
             <p className="text-sm text-muted-foreground">
-              Content hash has changed but specific file changes could not be determined.
+              {t("datasets.refresh.contentChanged")}
             </p>
           )}
 
@@ -191,18 +192,18 @@ export function RefreshDialog({
             onClick={() => onOpenChange(false)}
             disabled={isLoading}
           >
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleConfirm} disabled={isLoading}>
             {isLoading ? (
               <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Refreshing...
+                {t("datasets.refresh.refreshing")}
               </>
             ) : (
               <>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Accept Changes
+                {t("datasets.card.acceptChanges")}
               </>
             )}
           </Button>

@@ -131,7 +131,7 @@ describe("Dataset wizard regressions", () => {
     );
     expect(wizard.state.validationError).toBeNull();
     const next = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find(button => button.textContent?.trim() === "Next")!;
+      .find(button => button.textContent?.trim() === "common.next")!;
     expect(next.disabled).toBe(false);
     await act(async () => next.click());
     expect(previewDataset).toHaveBeenCalledWith(expect.objectContaining({
@@ -149,7 +149,7 @@ describe("Dataset wizard regressions", () => {
       skipToStep: "targets",
     });
     expect(detectFormat).toHaveBeenCalled();
-    const next = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Next")!;
+    const next = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "common.next")!;
     expect(next.disabled).toBe(true);
     expect(previewDataset).not.toHaveBeenCalled();
   });
@@ -165,7 +165,7 @@ describe("Dataset wizard regressions", () => {
     });
     await act(async () => vi.advanceTimersByTimeAsync(200));
     expect(validateFiles).toHaveBeenCalledTimes(1);
-    const next = () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Next")!;
+    const next = () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "common.next")!;
     await act(async () => resolveColumns({ format: "csv", column_info: [{ name: "concentration", data_type: "numeric", task_type: "regression" }] }));
     expect(wizard.state.targets[0].column).toBe("concentration");
     expect(next().disabled).toBe(true);
@@ -220,11 +220,11 @@ describe("Dataset wizard regressions", () => {
       files: [xFile, { ...xFile, path: "Ycal.csv", filename: "Ycal.csv", type: "Y" }], skipToStep: "targets",
     });
     const button = (name: string) => [...container.querySelectorAll<HTMLButtonElement>("button")].find(candidate => candidate.textContent?.trim() === name)!;
-    expect(button("Back").disabled).toBe(false);
-    await act(async () => button("Back").click());
+    expect(button("common.back").disabled).toBe(false);
+    await act(async () => button("common.back").click());
     expect(wizard.state.step).toBe("parsing");
-    expect(button("Cancel").disabled).toBe(false);
-    await act(async () => button("Cancel").click());
+    expect(button("common.cancel").disabled).toBe(false);
+    await act(async () => button("common.cancel").click());
     expect(onClose).toHaveBeenCalledTimes(1);
     await act(async () => root.unmount());
     await act(async () => resolveColumns({ format: "csv", column_info: [{ name: "late", data_type: "numeric", task_type: "regression" }] }));
@@ -269,10 +269,10 @@ describe("Dataset wizard regressions", () => {
     expect(wizard.canProceed()).toBe(false);
 
     await act(async () => {
-      [...container.querySelectorAll("button")].find(button => button.textContent?.includes("Retry"))!.click();
+      [...container.querySelectorAll("button")].find(button => button.textContent?.includes("common.retry"))!.click();
     });
     expect(previewDataset).toHaveBeenCalledTimes(2);
-    expect(container.textContent).toContain("Dataset is ready to add");
+    expect(container.textContent).toContain("datasets.wizard.preview.ready");
     expect(wizard.canProceed()).toBe(true);
   });
 
@@ -304,7 +304,7 @@ describe("Dataset wizard regressions", () => {
     await act(async () => switches[switches.length - 1].click());
     const forms = container.querySelectorAll('[data-state="open"]');
     expect(forms.length).toBeGreaterThan(0);
-    expect(container.textContent?.match(/Comma \(,\)/g)?.length).toBe(2);
+    expect(container.textContent?.match(/datasets\.wizard\.parsing\.delimiters\.comma/g)?.length).toBe(2);
     expect(container.textContent).toContain("settings.dataDefaults.missing.policies.ignore");
     const headerSwitches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')]
       .filter(button => button.getAttribute("aria-checked") === "false");

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { RANKINGS_TABLE_COLUMNS } from '@/lib/inspector/rankingsTablePresentation';
@@ -12,6 +13,8 @@ export function RankingsTableHeader({
   sort,
   onSort,
 }: RankingsTableHeaderProps) {
+  const { t } = useTranslation();
+
   return (
     <thead className="sticky top-0 z-10 bg-card">
       <tr className="border-b border-border">
@@ -27,7 +30,7 @@ export function RankingsTableHeader({
             onClick={() => onSort(column.field)}
           >
             <div className={cn('inline-flex items-center gap-0.5', column.align === 'right' && 'justify-end')}>
-              {column.label}
+              {t(column.labelKey)}
               {sort?.field === column.field && (
                 sort.asc
                   ? <ArrowUp className="h-3 w-3" />

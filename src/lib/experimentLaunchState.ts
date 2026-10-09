@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   CampaignPlanPreview,
 } from "./campaignPlanPreviewTypes";
@@ -40,7 +42,7 @@ function buildExperimentLaunchPayloadBlockingNotice(
   return {
     id: "native-payload-submission-blocked",
     severity: "blocking",
-    title: "Experiment not ready",
+    title: i18n.t("newExperiment.launch.notReadyNotice"),
     message,
   };
 }
@@ -48,9 +50,9 @@ function buildExperimentLaunchPayloadBlockingNotice(
 function getExperimentLaunchNativeReadyButtonLabel(
   executionBackend: CampaignExecutionBackend,
 ): string {
-  if (executionBackend === "cluster") return "Launch on Compute Server";
-  if (executionBackend === "wasm-local") return "Run in Browser";
-  return "Launch Experiment";
+  if (executionBackend === "cluster") return i18n.t("newExperiment.launch.actions.launchOnCluster");
+  if (executionBackend === "wasm-local") return i18n.t("newExperiment.launch.actions.runInBrowser");
+  return i18n.t("newExperiment.launch.actions.launch");
 }
 
 function getExperimentLaunchReadyButtonLabel(
@@ -64,7 +66,7 @@ function getExperimentLaunchReadyButtonLabel(
     return getExperimentLaunchNativeReadyButtonLabel(campaignPreview.summary.executionBackend);
   }
 
-  return "Launch Experiment";
+  return i18n.t("newExperiment.launch.actions.launch");
 }
 
 export function getExperimentLaunchState({
@@ -83,7 +85,7 @@ export function getExperimentLaunchState({
     return {
       actionState: "checking",
       blockingNotices,
-      buttonLabel: "Checking...",
+      buttonLabel: i18n.t("newExperiment.launch.actions.checking"),
       isLaunchDisabled: true,
       showSpinner: true,
     };
@@ -93,7 +95,7 @@ export function getExperimentLaunchState({
     return {
       actionState: "launching",
       blockingNotices,
-      buttonLabel: "Starting...",
+      buttonLabel: i18n.t("newExperiment.launch.actions.starting"),
       isLaunchDisabled: true,
       showSpinner: true,
     };
@@ -103,7 +105,7 @@ export function getExperimentLaunchState({
     return {
       actionState: "blocked",
       blockingNotices,
-      buttonLabel: "Review Experiment Settings",
+      buttonLabel: i18n.t("newExperiment.launch.actions.reviewSettings"),
       isLaunchDisabled: true,
       showSpinner: false,
     };
@@ -113,7 +115,7 @@ export function getExperimentLaunchState({
     return {
       actionState: "blocked",
       blockingNotices,
-      buttonLabel: "Review Experiment Settings",
+      buttonLabel: i18n.t("newExperiment.launch.actions.reviewSettings"),
       isLaunchDisabled: true,
       showSpinner: false,
     };

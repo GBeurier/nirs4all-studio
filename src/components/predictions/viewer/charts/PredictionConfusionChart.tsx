@@ -11,6 +11,7 @@
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { AlertCircle } from "lucide-react";
 import {
   buildConfusionMatrixFromVectors,
@@ -51,6 +52,7 @@ function toMatrixNormalize(n: ChartConfig["confusionNormalize"]): ConfusionMatri
 
 export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionConfusionChartProps>(
   function PredictionConfusionChart({ datasets, config, variant, compact, className }, ref) {
+    const { t } = useTranslation();
     const resolved: ChartVariant = variant ?? (compact ? "thumbnail" : "full");
     const isThumbnail = resolved === "thumbnail";
     const showAxisTitles = resolved === "full";
@@ -131,10 +133,9 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
             <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-muted">
               <AlertCircle className="h-5 w-5 text-muted-foreground" />
             </div>
-            <div className="text-sm font-medium text-foreground">No confusion data</div>
+            <div className="text-sm font-medium text-foreground">{t("predictions.charts.confusion.noData")}</div>
             <div className="mt-1 text-xs leading-5 text-muted-foreground">
-              {matrix.reason ??
-                "The selected partitions did not produce discrete labels for this task."}
+              {matrix.reason ?? t("predictions.charts.confusion.noDiscreteLabels")}
             </div>
           </div>
         </div>
@@ -175,7 +176,7 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
                   fontSize={12}
                   fontWeight={600}
                 >
-                  Predicted
+                  {t("predictions.charts.predicted")}
                 </text>
                 <text
                   x={12}
@@ -186,7 +187,7 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
                   fontWeight={600}
                   transform={`rotate(-90, 12, ${marginTop + plotSide / 2})`}
                 >
-                  Actual
+                  {t("predictions.charts.actual")}
                 </text>
               </>
             )}
@@ -339,11 +340,11 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
                 <div className="font-medium">
                   {hovered.true_label} → {hovered.pred_label}
                 </div>
-                <div>Count: {hovered.count}</div>
+                <div>{t("predictions.charts.confusion.count", { value: hovered.count })}</div>
                 {hovered.normalized != null && (
-                  <div>Normalized: {(hovered.normalized * 100).toFixed(1)}%</div>
+                  <div>{t("predictions.charts.confusion.normalized", { value: `${(hovered.normalized * 100).toFixed(1)}%` })}</div>
                 )}
-                <div className="mt-1 text-muted-foreground">Total samples: {totalSamples}</div>
+                <div className="mt-1 text-muted-foreground">{t("predictions.charts.confusion.totalSamples", { value: totalSamples })}</div>
               </div>,
               document.body,
             )}

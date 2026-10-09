@@ -13,6 +13,8 @@
  * - Allows selecting default or specific target
  */
 import { useState, useEffect } from "react";
+import i18n from "i18next";
+import { useTranslation } from "react-i18next";
 import {
   Target,
   ChevronDown,
@@ -80,18 +82,18 @@ function getTaskTypeBadgeVariant(type: TaskType): "default" | "secondary" | "out
 /**
  * Get short label for task type
  */
-function getTaskTypeLabel(type: TaskType): string {
+function getTaskTypeLabelKey(type: TaskType): string {
   switch (type) {
     case "regression":
-      return "reg";
+      return "datasets.targetSelector.typeReg";
     case "classification":
-      return "class";
+      return "datasets.targetSelector.typeClass";
     case "binary_classification":
-      return "binary";
+      return "datasets.targetSelector.typeBinary";
     case "multiclass_classification":
-      return "multi";
+      return "datasets.targetSelector.typeMulti";
     default:
-      return "auto";
+      return "datasets.targetSelector.typeAuto";
   }
 }
 
@@ -104,9 +106,10 @@ export function TargetSelector({
   defaultTarget: providedDefaultTarget,
   disabled = false,
   compact = false,
-  placeholder = "Select target",
+  placeholder,
   onError,
 }: TargetSelectorProps) {
+  const { t } = useTranslation();
   const [targets, setTargets] = useState<TargetConfig[]>(providedTargets || []);
   const [defaultTarget, setDefaultTarget] = useState<string | null>(
     providedDefaultTarget || null
@@ -139,7 +142,7 @@ export function TargetSelector({
         setLoading(false);
       })
       .catch((e) => {
-        const message = e instanceof Error ? e.message : "Failed to load targets";
+        const message = e instanceof Error ? e.message : i18n.t("datasets.targetSelector.loadFailed");
         setError(message);
         onError?.(message);
         setLoading(false);
@@ -160,7 +163,7 @@ export function TargetSelector({
     return (
       <Button variant="outline" disabled className={compact ? "h-8" : ""}>
         <Loader2 className="h-4 w-4 animate-spin mr-2" />
-        Loading...
+        {t("common.loading")}
       </Button>
     );
   }
@@ -172,7 +175,7 @@ export function TargetSelector({
           <TooltipTrigger asChild>
             <Button variant="outline" disabled className={compact ? "h-8" : ""}>
               <AlertCircle className="h-4 w-4 text-destructive mr-2" />
-              Error
+              {t("common.error")}
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -187,7 +190,7 @@ export function TargetSelector({
     return (
       <Button variant="outline" disabled className={compact ? "h-8" : ""}>
         <Target className="h-4 w-4 mr-2 opacity-50" />
-        No targets
+        {t("datasets.quickView.noTargets")}
       </Button>
     );
   }
@@ -206,7 +209,7 @@ export function TargetSelector({
           variant={getTaskTypeBadgeVariant(target.type)}
           className="ml-2 text-xs"
         >
-          {getTaskTypeLabel(target.type)}
+          {t(getTaskTypeLabelKey(target.type))}
         </Badge>
       </Button>
     );
@@ -231,18 +234,18 @@ export function TargetSelector({
                 variant={getTaskTypeBadgeVariant(selectedTarget.type)}
                 className="ml-2 text-xs"
               >
-                {getTaskTypeLabel(selectedTarget.type)}
+                {t(getTaskTypeLabelKey(selectedTarget.type))}
               </Badge>
             </>
           ) : isUsingDefault && defaultTarget ? (
             <>
               {defaultTarget}
               <Badge variant="outline" className="ml-2 text-xs">
-                default
+                {t("datasets.targetSelector.defaultBadge")}
               </Badge>
             </>
           ) : (
-            <span className="opacity-70">{placeholder}</span>
+            <span className="opacity-70">{placeholder ?? t("datasets.targetSelector.placeholder")}</span>
           )}
           <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
         </Button>
@@ -250,7 +253,7 @@ export function TargetSelector({
       <DropdownMenuContent align="start" className="w-56">
         <DropdownMenuLabel className="flex items-center gap-2">
           <Target className="h-4 w-4" />
-          Select Target
+          {t("datasets.targetSelector.menuLabel")}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
@@ -261,7 +264,7 @@ export function TargetSelector({
               className={isUsingDefault ? "bg-accent" : ""}
             >
               <div className="flex items-center justify-between w-full">
-                <span>Use default</span>
+                <span>{t("datasets.targetSelector.useDefault")}</span>
                 <Badge variant="outline" className="text-xs">
                   {defaultTarget}
                 </Badge>
@@ -288,7 +291,7 @@ export function TargetSelector({
                 variant={getTaskTypeBadgeVariant(target.type)}
                 className="text-xs"
               >
-                {getTaskTypeLabel(target.type)}
+                {t(getTaskTypeLabelKey(target.type))}
               </Badge>
             </div>
           </DropdownMenuItem>
@@ -307,6 +310,7 @@ interface TargetBadgeProps {
 }
 
 export function TargetBadge({ target, isDefault }: TargetBadgeProps) {
+  const { t } = useTranslation();
   return (
     <Badge
       variant={isDefault ? "default" : "outline"}
@@ -316,8 +320,8 @@ export function TargetBadge({ target, isDefault }: TargetBadgeProps) {
       {target.column}
       {target.unit && <span className="opacity-70">({target.unit})</span>}
       <span className="opacity-50">•</span>
-      <span className="opacity-70">{getTaskTypeLabel(target.type)}</span>
-      {isDefault && <span className="opacity-50">(default)</span>}
+      <span className="opacity-70">{t(getTaskTypeLabelKey(target.type))}</span>
+      {isDefault && <span className="opacity-50">({t("datasets.targetSelector.defaultBadge")})</span>}
     </Badge>
   );
 }
@@ -336,9 +340,10 @@ export function TargetsList({
   defaultTarget,
   maxVisible = 3,
 }: TargetsListProps) {
+  const { t } = useTranslation();
   if (!targets || targets.length === 0) {
     return (
-      <span className="text-xs text-muted-foreground">No targets configured</span>
+      <span className="text-xs text-muted-foreground">{t("datasets.targetSelector.noneConfigured")}</span>
     );
   }
 
@@ -356,7 +361,7 @@ export function TargetsList({
       ))}
       {hiddenCount > 0 && (
         <Badge variant="outline" className="text-xs">
-          +{hiddenCount} more
+          {t("datasets.targetSelector.more", { count: hiddenCount })}
         </Badge>
       )}
     </div>

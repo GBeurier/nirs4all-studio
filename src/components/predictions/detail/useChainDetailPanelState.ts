@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { buildCanonicalPreviewSteps } from "@/lib/canonicalPipelinePreview";
 import { computePipelineStats } from "@/lib/pipelineStats";
 import { isClassificationTask } from "@/components/runs/modelDetailClassification";
@@ -207,38 +209,26 @@ const CHAIN_DETAIL_STORED_PREDICTION_SCENARIOS = new Set<RobustnessScenarioKind>
   "prediction_noise",
 ]);
 
-const CHAIN_DETAIL_ROBUSTNESS_LABELS: Partial<Record<ChainDetailRobustnessScenarioKind, string>> = {
-  observed: "Observed",
-  prediction_bias: "Prediction bias",
-  prediction_noise: "Prediction noise",
-  spectral_noise: "Spectral noise",
-  spectral_offset: "Spectral offset",
-  spectral_scale: "Spectral scale",
-  spectral_slope: "Spectral slope",
-  spectral_shift: "Spectral shift",
-};
+const CHAIN_DETAIL_ROBUSTNESS_SCENARIO_KINDS = new Set<string>([
+  "observed",
+  "prediction_bias",
+  "prediction_noise",
+  "spectral_noise",
+  "spectral_offset",
+  "spectral_scale",
+  "spectral_slope",
+  "spectral_shift",
+]);
 
-const CHAIN_DETAIL_ROBUSTNESS_DESCRIPTIONS: Partial<Record<ChainDetailRobustnessScenarioKind, string>> = {
-  observed: "Baseline audit on stored predictions.",
-  prediction_bias: "Adds a deterministic offset to stored predictions.",
-  prediction_noise: "Adds seeded normal or uniform noise to stored predictions.",
-  spectral_noise: "Adds seeded normal or uniform noise to stored X/spectra and replays the saved predictor bundle.",
-  spectral_offset: "Applies a deterministic offset to stored X/spectra and replays the saved predictor bundle.",
-  spectral_scale: "Applies a multiplicative scale delta to stored X/spectra and replays the saved predictor bundle.",
-  spectral_slope: "Applies a linear spectral ramp to stored X/spectra and replays the saved predictor bundle.",
-  spectral_shift: "Applies a spectral shift to stored X/spectra and replays the saved predictor bundle.",
-};
-
-const CHAIN_DETAIL_ROBUSTNESS_SEVERITY_LABELS: Partial<Record<ChainDetailRobustnessScenarioKind, string>> = {
-  observed: "Forced to 0",
-  prediction_bias: "Offset",
-  prediction_noise: "Severity",
-  spectral_noise: "Severity",
-  spectral_offset: "Offset",
-  spectral_scale: "Scale delta",
-  spectral_slope: "Ramp amplitude",
-  spectral_shift: "Shift",
-};
+function robustnessScenarioText(
+  t: TFunction,
+  kind: RobustnessScenarioKind,
+  field: "label" | "description" | "severity",
+): string | undefined {
+  return CHAIN_DETAIL_ROBUSTNESS_SCENARIO_KINDS.has(kind)
+    ? t(`predictions.robustness.scenarios.${kind}.${field}`)
+    : undefined;
+}
 
 interface ChainDetailRobustnessScenarioAvailability {
   includeSpectralReplay?: boolean;
@@ -254,13 +244,8 @@ function isChainDetailScenarioAvailable(
   return availability.includeSpectralReplay === true && option.requiresExplicitPredictor;
 }
 
-export const CHAIN_DETAIL_ROBUSTNESS_SCENARIO_OPTIONS: ChainDetailRobustnessScenarioOption[] =
-  buildChainDetailRobustnessScenarioOptions();
-
-export const CHAIN_DETAIL_ROBUSTNESS_UNAVAILABLE_SCENARIOS: ChainDetailRobustnessUnavailableScenario[] =
-  buildChainDetailRobustnessUnavailableScenarios();
-
 export function buildChainDetailRobustnessScenarioOptions(
+  t: TFunction,
   registry?: KeywordRegistryDocument | null,
   availability: ChainDetailRobustnessScenarioAvailability = {},
 ): ChainDetailRobustnessScenarioOption[] {
@@ -274,15 +259,17 @@ export function buildChainDetailRobustnessScenarioOptions(
       ...option,
       kind: option.value,
       label: registry
-        ? option.label || CHAIN_DETAIL_ROBUSTNESS_LABELS[option.value] || option.value
-        : CHAIN_DETAIL_ROBUSTNESS_LABELS[option.value] || option.label,
-      description: CHAIN_DETAIL_ROBUSTNESS_DESCRIPTIONS[option.value]
-        ?? "Native robustness scenario delegated to nirs4all.",
-      severityLabel: CHAIN_DETAIL_ROBUSTNESS_SEVERITY_LABELS[option.value] ?? "Severity",
+        ? option.label || robustnessScenarioText(t, option.value, "label") || option.value
+        : robustnessScenarioText(t, option.value, "label") || option.label,
+      description: robustnessScenarioText(t, option.value, "description")
+        ?? t("predictions.robustness.defaultDescription"),
+      severityLabel: robustnessScenarioText(t, option.value, "severity")
+        ?? t("predictions.robustness.defaultSeverity"),
     }));
 }
 
 export function buildChainDetailRobustnessUnavailableScenarios(
+  t: TFunction,
   registry?: KeywordRegistryDocument | null,
   availability: ChainDetailRobustnessScenarioAvailability = {},
 ): ChainDetailRobustnessUnavailableScenario[] {
@@ -296,8 +283,8 @@ export function buildChainDetailRobustnessUnavailableScenarios(
       kind: option.value,
       label: option.label,
       reason: option.requiresExplicitPredictor
-        ? "Requires explicit spectra and a frozen predictor replay surface."
-        : "Not exposed by the stored-prediction robustness endpoint yet.",
+        ? t("predictions.robustness.unavailableNeedsReplay")
+        : t("predictions.robustness.unavailableNotExposed"),
     }));
 }
 
@@ -467,14 +454,14 @@ function tuningResultCandidates(summary: ChainSummary): unknown[] {
   return [...direct, ...fromRefs].filter(candidate => candidate != null);
 }
 
-function adaptChainTuningSummaryArtifact(artifact: TuningSummaryArtifact): ChainDetailTuningSummary {
+function adaptChainTuningSummaryArtifact(artifact: TuningSummaryArtifact, t: TFunction): ChainDetailTuningSummary {
   const card = createTuningSummaryCard(artifact);
   const rows = createTuningSummaryTrialRows(artifact).map((row): TuningTrialRow => ({
     diagnostics: row.diagnostics,
     isBest: row.value !== null && row.value === card.bestValue,
     number: row.number,
     params: {},
-    paramsLabel: "summary artifact",
+    paramsLabel: t("predictions.detail.tuningSummaryArtifact"),
     status: row.status,
     statusLabel: row.statusLabel,
     tone: row.tone,
@@ -547,7 +534,7 @@ function buildChainDetailConformalSummary(summary: ChainSummary): ChainDetailCon
   return null;
 }
 
-function buildChainDetailTuningSummary(summary: ChainSummary): ChainDetailTuningSummary | null {
+function buildChainDetailTuningSummary(summary: ChainSummary, t: TFunction): ChainDetailTuningSummary | null {
   for (const candidate of tuningResultCandidates(summary)) {
     if (isTuningResultArtifact(candidate)) {
       return {
@@ -557,7 +544,7 @@ function buildChainDetailTuningSummary(summary: ChainSummary): ChainDetailTuning
       };
     }
     if (isTuningSummaryArtifact(candidate)) {
-      return adaptChainTuningSummaryArtifact(candidate);
+      return adaptChainTuningSummaryArtifact(candidate, t);
     }
   }
   return null;
@@ -592,18 +579,19 @@ function buildChainDetailRobustnessSummaryFromArtifact(value: unknown): ChainDet
   };
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown, t: TFunction): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim().length > 0) return error;
-  return "Failed to compute native robustness report.";
+  return t("predictions.robustness.reportFailed");
 }
 
 function robustnessScenarioLabel(
   kind: ChainDetailRobustnessScenarioKind,
   options: readonly ChainDetailRobustnessScenarioOption[],
+  t: TFunction,
 ): string {
   return options.find((option) => option.kind === kind)?.label
-    ?? CHAIN_DETAIL_ROBUSTNESS_LABELS[kind]
+    ?? robustnessScenarioText(t, kind, "label")
     ?? kind;
 }
 
@@ -611,7 +599,8 @@ function buildRobustnessScenarioPayload(
   kind: ChainDetailRobustnessScenarioKind,
   severityInput: string,
   distribution: RobustnessScenarioDistribution,
-  options: readonly ChainDetailRobustnessScenarioOption[] = CHAIN_DETAIL_ROBUSTNESS_SCENARIO_OPTIONS,
+  options: readonly ChainDetailRobustnessScenarioOption[],
+  t: TFunction,
 ): {
   error: string | null;
   scenario: PredictionRobustnessReportRequest["robustness"]["scenarios"][number] | null;
@@ -619,7 +608,7 @@ function buildRobustnessScenarioPayload(
   const option = options.find((candidate) => candidate.kind === kind);
   if (!option) {
     return {
-      error: "This robustness scenario is not available for the selected prediction evidence.",
+      error: t("predictions.robustness.scenarioUnavailable"),
       scenario: null,
     };
   }
@@ -628,13 +617,13 @@ function buildRobustnessScenarioPayload(
   }
   const severity = Number(severityInput);
   if (!Number.isFinite(severity)) {
-    return { error: "Severity must be a finite number.", scenario: null };
+    return { error: t("predictions.robustness.severityFinite"), scenario: null };
   }
   if ((kind === "prediction_noise" || kind === "spectral_noise") && severity < 0) {
-    return { error: `${robustnessScenarioLabel(kind, options)} severity must be non-negative.`, scenario: null };
+    return { error: t("predictions.robustness.severityNonNegative", { scenario: robustnessScenarioLabel(kind, options, t) }), scenario: null };
   }
   if (kind === "spectral_scale" && severity <= -1) {
-    return { error: "Spectral scale severity must keep 1 + severity positive.", scenario: null };
+    return { error: t("predictions.robustness.spectralScalePositive"), scenario: null };
   }
   const scenario: PredictionRobustnessReportRequest["robustness"]["scenarios"][number] = option.stochastic
     ? { kind, severity, distribution }
@@ -654,6 +643,7 @@ export function useChainDetailPanelState({
   keywordRegistry,
   onOpenViewer,
 }: UseChainDetailPanelStateOptions) {
+  const { t } = useTranslation();
   const [detail, setDetail] = useState<ChainDetailResponse | null>(null);
   const [partitionRows, setPartitionRows] = useState<PartitionPrediction[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -675,16 +665,16 @@ export function useChainDetailPanelState({
 
   const includeSpectralReplayScenarios = robustnessEvidence?.can_compute_spectral_report === true;
   const robustnessScenarioOptions = useMemo(
-    () => buildChainDetailRobustnessScenarioOptions(keywordRegistry, {
+    () => buildChainDetailRobustnessScenarioOptions(t, keywordRegistry, {
       includeSpectralReplay: includeSpectralReplayScenarios,
     }),
-    [includeSpectralReplayScenarios, keywordRegistry],
+    [includeSpectralReplayScenarios, keywordRegistry, t],
   );
   const robustnessUnavailableScenarios = useMemo(
-    () => buildChainDetailRobustnessUnavailableScenarios(keywordRegistry, {
+    () => buildChainDetailRobustnessUnavailableScenarios(t, keywordRegistry, {
       includeSpectralReplay: includeSpectralReplayScenarios,
     }),
-    [includeSpectralReplayScenarios, keywordRegistry],
+    [includeSpectralReplayScenarios, keywordRegistry, t],
   );
   const robustnessDistributionOptions = useMemo(
     () => getRobustnessScenarioDistributionOptionsFromRegistry(keywordRegistry, robustnessScenarioKind),
@@ -831,8 +821,9 @@ export function useChainDetailPanelState({
       robustnessSeverity,
       robustnessDistribution,
       robustnessScenarioOptions,
+      t,
     ),
-    [robustnessDistribution, robustnessScenarioKind, robustnessScenarioOptions, robustnessSeverity],
+    [robustnessDistribution, robustnessScenarioKind, robustnessScenarioOptions, robustnessSeverity, t],
   );
 
   const computeRobustnessReport = useCallback(async () => {
@@ -842,9 +833,10 @@ export function useChainDetailPanelState({
       robustnessSeverity,
       robustnessDistribution,
       robustnessScenarioOptions,
+      t,
     );
     if (error || !scenario) {
-      setRobustnessActionError(error ?? "Invalid robustness scenario.");
+      setRobustnessActionError(error ?? t("predictions.robustness.invalidScenario"));
       return;
     }
     setComputingRobustness(true);
@@ -855,16 +847,16 @@ export function useChainDetailPanelState({
           mode: "clean_frozen",
           scenarios: [scenario],
         },
-        name: `Studio ${robustnessScenarioLabel(robustnessScenarioKind, robustnessScenarioOptions)} robustness report`,
+        name: t("predictions.robustness.reportName", { scenario: robustnessScenarioLabel(robustnessScenarioKind, robustnessScenarioOptions, t) }),
       });
       const summary = buildChainDetailRobustnessSummaryFromArtifact(response.summary_artifact);
       if (!summary) {
-        throw new Error("Native robustness endpoint returned an invalid summary artifact.");
+        throw new Error(t("predictions.robustness.invalidSummary"));
       }
       setGeneratedRobustnessSummary(summary);
       setGeneratedRobustnessId(response.robustness_id);
     } catch (error) {
-      setRobustnessActionError(errorMessage(error));
+      setRobustnessActionError(errorMessage(error, t));
     } finally {
       setComputingRobustness(false);
     }
@@ -875,6 +867,7 @@ export function useChainDetailPanelState({
     robustnessScenarioOptions,
     robustnessSeverity,
     selectedPrediction,
+    t,
   ]);
 
   const attachedRobustnessSummary = useMemo(
@@ -887,8 +880,8 @@ export function useChainDetailPanelState({
     [prediction],
   );
   const tuningSummary = useMemo(
-    () => buildChainDetailTuningSummary(prediction),
-    [prediction],
+    () => buildChainDetailTuningSummary(prediction, t),
+    [prediction, t],
   );
   useEffect(() => {
     setSelectedConformalCoverage(resolveDefaultConformalCoverage(conformalSummary));
@@ -988,7 +981,7 @@ export function useChainDetailPanelState({
   const canCustomize = !!onOpenViewer && !!chartHeader && chartTargets.length > 0;
   const chartBodyKey = `${previewKind}:${selectedGroup?.foldId ?? "none"}:${chartTargets.map((target) => target.predictionId).join("|")}`;
 
-  const preprocessLabel = prediction.preprocessings || "None";
+  const preprocessLabel = prediction.preprocessings || t("predictions.detail.noPreprocessing");
   const variantParams = useMemo(() => {
     const parsed = parseRecord(prediction.variant_params);
     return parsed && Object.keys(parsed).length > 0 ? parsed : null;

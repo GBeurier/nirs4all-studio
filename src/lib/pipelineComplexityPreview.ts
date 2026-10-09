@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { PipelineGraphSpec } from "./pipelineGraphSpec";
 
 export interface PipelineComplexityPreview {
@@ -11,10 +13,9 @@ export interface PipelineComplexityPreview {
 
 function formatPipelineComplexityCount(
   count: number,
-  singular: string,
-  plural = `${singular}s`,
+  noun: "generator" | "stepGenerator" | "parameterSweep" | "finetuneNode" | "refitNode",
 ): string {
-  return `${count} ${count === 1 ? singular : plural}`;
+  return i18n.t(`newExperiment.counts.${noun}`, { count });
 }
 
 export function buildPipelineComplexityPreview(
@@ -27,7 +28,7 @@ export function buildPipelineComplexityPreview(
       parameterSweepCount: null,
       finetuneNodeCount: null,
       refitNodeCount: null,
-      labels: ["Unknown pipeline complexity"],
+      labels: [i18n.t("newExperiment.campaign.complexity.unknown")],
     };
   }
 
@@ -41,16 +42,16 @@ export function buildPipelineComplexityPreview(
     labels.push(formatPipelineComplexityCount(graph.stats.generatorCount, "generator"));
   }
   if (stepGeneratorCount > 0) {
-    labels.push(formatPipelineComplexityCount(stepGeneratorCount, "step generator"));
+    labels.push(formatPipelineComplexityCount(stepGeneratorCount, "stepGenerator"));
   }
   if (parameterSweepCount > 0) {
-    labels.push(formatPipelineComplexityCount(parameterSweepCount, "parameter sweep"));
+    labels.push(formatPipelineComplexityCount(parameterSweepCount, "parameterSweep"));
   }
   if (finetuneNodeCount > 0) {
-    labels.push(formatPipelineComplexityCount(finetuneNodeCount, "finetune node"));
+    labels.push(formatPipelineComplexityCount(finetuneNodeCount, "finetuneNode"));
   }
   if (refitNodeCount > 0) {
-    labels.push(formatPipelineComplexityCount(refitNodeCount, "refit node"));
+    labels.push(formatPipelineComplexityCount(refitNodeCount, "refitNode"));
   }
 
   return {
@@ -59,6 +60,6 @@ export function buildPipelineComplexityPreview(
     parameterSweepCount,
     finetuneNodeCount,
     refitNodeCount,
-    labels: labels.length > 0 ? labels : ["No refit, finetune, sweeps, or generators"],
+    labels: labels.length > 0 ? labels : [i18n.t("newExperiment.campaign.complexity.none")],
   };
 }

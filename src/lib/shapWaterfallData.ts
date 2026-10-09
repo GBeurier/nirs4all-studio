@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { FeatureContribution, SampleExplanationResponse } from '@/types/shap';
 
 export interface ShapWaterfallBarData {
@@ -27,9 +28,10 @@ export function sortShapWaterfallContributions(
 
 export function buildShapWaterfallBars(
   data: Pick<SampleExplanationResponse, 'base_value' | 'predicted_value' | 'contributions'>,
+  t: TFunction,
 ): ShapWaterfallBarData[] {
   const bars: ShapWaterfallBarData[] = [{
-    name: 'Base Value',
+    name: t('results.variableImportance.waterfall.baseValueBar'),
     start: 0,
     end: data.base_value,
     value: data.base_value,
@@ -55,7 +57,7 @@ export function buildShapWaterfallBars(
   });
 
   bars.push({
-    name: 'Prediction',
+    name: t('results.variableImportance.waterfall.predictionBar'),
     start: 0,
     end: data.predicted_value,
     value: data.predicted_value,

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { tEn } from "./support/enTranslator";
+
 import {
   buildExecutionJobRecordDetail,
   type ExecutionJobRecordDetail,
@@ -39,7 +41,7 @@ function executionJobRecord(overrides: Partial<ExecutionJobRecord> = {}): Execut
 }
 
 function buildDetail(record: ExecutionJobRecord): ExecutionJobRecordDetail {
-  return buildExecutionJobRecordDetail(record);
+  return buildExecutionJobRecordDetail(record, tEn);
 }
 
 function summaryValues(detail: ExecutionJobRecordDetail): Record<string, unknown> {

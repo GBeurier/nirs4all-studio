@@ -16,8 +16,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.features",
     type: "features",
     method: "with_features",
-    name: "Features",
-    description: "Configure spectral feature generation with detailed physics-based parameters",
     category: "basic",
     icon: "Waves",
     color: {
@@ -289,8 +287,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.targets",
     type: "targets",
     method: "with_targets",
-    name: "Targets (Regression)",
-    description: "Configure continuous target values for regression tasks",
     category: "targets",
     icon: "Target",
     color: {
@@ -350,8 +346,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.classification",
     type: "classification",
     method: "with_classification",
-    name: "Classification",
-    description: "Configure discrete class labels for classification tasks",
     category: "targets",
     icon: "Tags",
     color: {
@@ -408,8 +402,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.metadata",
     type: "metadata",
     method: "with_metadata",
-    name: "Metadata",
-    description: "Configure sample IDs, groups, and repetitions",
     category: "metadata",
     icon: "FileText",
     color: {
@@ -465,8 +457,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.partitions",
     type: "partitions",
     method: "with_partitions",
-    name: "Partitions",
-    description: "Configure train/test split",
     category: "metadata",
     icon: "Split",
     color: {
@@ -507,8 +497,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.batch_effects",
     type: "batch_effects",
     method: "with_batch_effects",
-    name: "Batch Effects",
-    description: "Simulate batch/session variations in measurements",
     category: "effects",
     icon: "Layers",
     color: {
@@ -539,8 +527,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.sources",
     type: "sources",
     method: "with_sources",
-    name: "Multi-Source",
-    description: "Configure multiple data sources (NIR + auxiliary data)",
     category: "effects",
     icon: "GitMerge",
     color: {
@@ -566,8 +552,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.nonlinear_targets",
     type: "nonlinear_targets",
     method: "with_nonlinear_targets",
-    name: "Non-linear Targets",
-    description: "Add polynomial or other non-linear interactions to targets",
     category: "complexity",
     icon: "TrendingUp",
     color: {
@@ -623,8 +607,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.target_complexity",
     type: "target_complexity",
     method: "with_target_complexity",
-    name: "Target Complexity",
-    description: "Add confounders and partial predictability",
     category: "complexity",
     icon: "Shuffle",
     color: {
@@ -676,8 +658,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.complex_landscape",
     type: "complex_landscape",
     method: "with_complex_target_landscape",
-    name: "Complex Landscape",
-    description: "Multi-regime target relationships with heteroscedasticity",
     category: "complexity",
     icon: "Mountain",
     color: {
@@ -736,8 +716,6 @@ export const SYNTHESIS_STEPS: SynthesisStepDefinition[] = [
     id: "synthesis.output",
     type: "output",
     method: "with_output",
-    name: "Output Format",
-    description: "Configure output format preferences",
     category: "output",
     icon: "FileOutput",
     color: {

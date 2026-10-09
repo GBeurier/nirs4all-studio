@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import "@/lib/__tests__/support/initEnglish";
 
 import {
   buildPipelineCompactSummary,

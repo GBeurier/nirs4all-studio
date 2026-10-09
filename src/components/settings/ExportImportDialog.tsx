@@ -10,6 +10,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Download,
   Upload,
@@ -61,6 +62,7 @@ interface ExportPanelProps {
 }
 
 function ExportPanel({ onSuccess, onError }: ExportPanelProps) {
+  const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
   const [outputPath, setOutputPath] = useState("");
   const [includeModels, setIncludeModels] = useState(true);
@@ -77,7 +79,7 @@ function ExportPanel({ onSuccess, onError }: ExportPanelProps) {
 
   const handleExport = async () => {
     if (!outputPath.trim()) {
-      onError("Please specify an output path");
+      onError(t("settings.exportImport.export.pathRequired"));
       return;
     }
 
@@ -102,7 +104,7 @@ function ExportPanel({ onSuccess, onError }: ExportPanelProps) {
 
       onSuccess(result);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Export failed";
+      const message = err instanceof Error ? err.message : t("settings.exportImport.export.failed");
       const apiError = err as { detail?: string };
       onError(apiError.detail || message);
     } finally {
@@ -114,11 +116,11 @@ function ExportPanel({ onSuccess, onError }: ExportPanelProps) {
     <div className="space-y-4">
       {/* Output path */}
       <div className="space-y-2">
-        <Label htmlFor="export-path">Export Location</Label>
+        <Label htmlFor="export-path">{t("settings.exportImport.export.location")}</Label>
         <div className="flex gap-2">
           <Input
             id="export-path"
-            placeholder="/path/to/workspace_export.zip"
+            placeholder={t("settings.exportImport.export.locationPlaceholder")}
             value={outputPath}
             onChange={(e) => setOutputPath(e.target.value)}
             className="flex-1"
@@ -130,14 +132,14 @@ function ExportPanel({ onSuccess, onError }: ExportPanelProps) {
             disabled={isExporting}
           >
             <FolderOpen className="mr-2 h-4 w-4" />
-            Browse
+            {t("common.browse")}
           </Button>
         </div>
       </div>
 
       {/* Export options */}
       <div className="space-y-3">
-        <Label>Include in Export</Label>
+        <Label>{t("settings.exportImport.export.include")}</Label>
 
         <div className="flex items-center space-x-2">
           <Checkbox
@@ -149,10 +151,10 @@ function ExportPanel({ onSuccess, onError }: ExportPanelProps) {
           <div className="grid gap-0.5">
             <Label htmlFor="export-models" className="text-sm font-medium flex items-center gap-2">
               <Database className="h-4 w-4 text-muted-foreground" />
-              Trained Models
+              {t("settings.exportImport.export.models")}
             </Label>
             <span className="text-xs text-muted-foreground">
-              Include model files (.n4a, .pkl, etc.)
+              {t("settings.exportImport.export.modelsHint")}
             </span>
           </div>
         </div>
@@ -167,10 +169,10 @@ function ExportPanel({ onSuccess, onError }: ExportPanelProps) {
           <div className="grid gap-0.5">
             <Label htmlFor="export-results" className="text-sm font-medium flex items-center gap-2">
               <FileBox className="h-4 w-4 text-muted-foreground" />
-              Results & Predictions
+              {t("settings.exportImport.export.results")}
             </Label>
             <span className="text-xs text-muted-foreground">
-              Include results and prediction files
+              {t("settings.exportImport.export.resultsHint")}
             </span>
           </div>
         </div>
@@ -185,10 +187,10 @@ function ExportPanel({ onSuccess, onError }: ExportPanelProps) {
           <div className="grid gap-0.5">
             <Label htmlFor="export-datasets" className="text-sm font-medium flex items-center gap-2">
               <FileText className="h-4 w-4 text-muted-foreground" />
-              Dataset Files
+              {t("settings.exportImport.export.datasets")}
             </Label>
             <span className="text-xs text-muted-foreground text-amber-600">
-              ⚠️ May significantly increase archive size
+              {t("settings.exportImport.export.datasetsWarning")}
             </span>
           </div>
         </div>
@@ -198,7 +200,7 @@ function ExportPanel({ onSuccess, onError }: ExportPanelProps) {
       {isExporting && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Exporting...</span>
+            <span className="text-muted-foreground">{t("settings.exportImport.export.exporting")}</span>
             <span>{progress}%</span>
           </div>
           <Progress value={progress} className="h-2" />
@@ -214,12 +216,12 @@ function ExportPanel({ onSuccess, onError }: ExportPanelProps) {
         {isExporting ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Exporting...
+            {t("settings.exportImport.export.exporting")}
           </>
         ) : (
           <>
             <Download className="mr-2 h-4 w-4" />
-            Export Workspace
+            {t("settings.workspace.export.title")}
           </>
         )}
       </Button>
@@ -233,6 +235,7 @@ interface ImportPanelProps {
 }
 
 function ImportPanel({ onSuccess, onError }: ImportPanelProps) {
+  const { t } = useTranslation();
   const [isImporting, setIsImporting] = useState(false);
   const [archivePath, setArchivePath] = useState("");
   const [destinationPath, setDestinationPath] = useState("");
@@ -261,11 +264,11 @@ function ImportPanel({ onSuccess, onError }: ImportPanelProps) {
 
   const handleImport = async () => {
     if (!archivePath.trim()) {
-      onError("Please select an archive file");
+      onError(t("settings.exportImport.import.archiveRequired"));
       return;
     }
     if (!destinationPath.trim()) {
-      onError("Please specify a destination folder");
+      onError(t("settings.exportImport.import.destinationRequired"));
       return;
     }
 
@@ -289,7 +292,7 @@ function ImportPanel({ onSuccess, onError }: ImportPanelProps) {
 
       onSuccess(result);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Import failed";
+      const message = err instanceof Error ? err.message : t("settings.exportImport.import.failed");
       const apiError = err as { detail?: string };
       onError(apiError.detail || message);
     } finally {
@@ -301,11 +304,11 @@ function ImportPanel({ onSuccess, onError }: ImportPanelProps) {
     <div className="space-y-4">
       {/* Archive file */}
       <div className="space-y-2">
-        <Label htmlFor="import-archive">Archive File</Label>
+        <Label htmlFor="import-archive">{t("settings.workspace.import.archivePath")}</Label>
         <div className="flex gap-2">
           <Input
             id="import-archive"
-            placeholder="/path/to/workspace.zip"
+            placeholder={t("settings.exportImport.import.archivePlaceholder")}
             value={archivePath}
             onChange={(e) => setArchivePath(e.target.value)}
             className="flex-1"
@@ -317,18 +320,18 @@ function ImportPanel({ onSuccess, onError }: ImportPanelProps) {
             disabled={isImporting}
           >
             <FileArchive className="mr-2 h-4 w-4" />
-            Select
+            {t("settings.exportImport.import.select")}
           </Button>
         </div>
       </div>
 
       {/* Destination folder */}
       <div className="space-y-2">
-        <Label htmlFor="import-destination">Destination Folder</Label>
+        <Label htmlFor="import-destination">{t("settings.exportImport.import.destination")}</Label>
         <div className="flex gap-2">
           <Input
             id="import-destination"
-            placeholder="/path/to/destination"
+            placeholder={t("settings.exportImport.import.destinationPlaceholder")}
             value={destinationPath}
             onChange={(e) => setDestinationPath(e.target.value)}
             className="flex-1"
@@ -340,17 +343,17 @@ function ImportPanel({ onSuccess, onError }: ImportPanelProps) {
             disabled={isImporting}
           >
             <FolderOpen className="mr-2 h-4 w-4" />
-            Browse
+            {t("common.browse")}
           </Button>
         </div>
       </div>
 
       {/* Workspace name */}
       <div className="space-y-2">
-        <Label htmlFor="import-name">Workspace Name (optional)</Label>
+        <Label htmlFor="import-name">{t("settings.exportImport.import.nameOptional")}</Label>
         <Input
           id="import-name"
-          placeholder="Extracted from archive or folder name"
+          placeholder={t("settings.exportImport.import.namePlaceholder")}
           value={workspaceName}
           onChange={(e) => setWorkspaceName(e.target.value)}
           disabled={isImporting}
@@ -361,7 +364,7 @@ function ImportPanel({ onSuccess, onError }: ImportPanelProps) {
       {isImporting && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Importing...</span>
+            <span className="text-muted-foreground">{t("settings.exportImport.import.importing")}</span>
             <span>{progress}%</span>
           </div>
           <Progress value={progress} className="h-2" />
@@ -377,12 +380,12 @@ function ImportPanel({ onSuccess, onError }: ImportPanelProps) {
         {isImporting ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Importing...
+            {t("settings.exportImport.import.importing")}
           </>
         ) : (
           <>
             <Upload className="mr-2 h-4 w-4" />
-            Import Workspace
+            {t("settings.workspace.import.title")}
           </>
         )}
       </Button>
@@ -404,6 +407,7 @@ export function ExportImportDialog({
   trigger,
   defaultTab = "export",
 }: ExportImportDialogProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportResult, setExportResult] = useState<ExportWorkspaceResponse | null>(null);
@@ -448,7 +452,7 @@ export function ExportImportDialog({
         {trigger || (
           <Button variant="outline" size="sm">
             <Download className="mr-2 h-4 w-4" />
-            Export/Import
+            {t("settings.exportImport.trigger")}
           </Button>
         )}
       </DialogTrigger>
@@ -456,10 +460,10 @@ export function ExportImportDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileArchive className="h-5 w-5" />
-            Export / Import Workspace
+            {t("settings.exportImport.title")}
           </DialogTitle>
           <DialogDescription>
-            Export your workspace for backup or sharing, or import an existing workspace archive.
+            {t("settings.exportImport.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -468,24 +472,24 @@ export function ExportImportDialog({
           <div className="space-y-4 py-4">
             <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
               <CheckCircle2 className="h-5 w-5" />
-              <span className="font-medium">Export completed successfully!</span>
+              <span className="font-medium">{t("settings.exportImport.export.completed")}</span>
             </div>
             <div className="bg-muted p-4 rounded-md space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Archive:</span>
+                <span className="text-muted-foreground">{t("settings.exportImport.archiveLabel")}</span>
                 <span className="font-mono text-xs truncate max-w-[250px]">
                   {exportResult.output_path}
                 </span>
               </div>
               <Separator />
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Size:</span>
+                <span className="text-muted-foreground">{t("settings.exportImport.sizeLabel")}</span>
                 <span className="font-medium">
                   {formatBytes(exportResult.archive_size_bytes)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Items exported:</span>
+                <span className="text-muted-foreground">{t("settings.exportImport.export.itemsExported")}</span>
                 <span className="font-medium">{exportResult.items_exported}</span>
               </div>
             </div>
@@ -497,27 +501,27 @@ export function ExportImportDialog({
           <div className="space-y-4 py-4">
             <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
               <CheckCircle2 className="h-5 w-5" />
-              <span className="font-medium">Import completed successfully!</span>
+              <span className="font-medium">{t("settings.exportImport.import.completed")}</span>
             </div>
             <div className="bg-muted p-4 rounded-md space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Workspace:</span>
+                <span className="text-muted-foreground">{t("settings.exportImport.workspaceLabel")}</span>
                 <span className="font-medium">{importResult.workspace_name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Path:</span>
+                <span className="text-muted-foreground">{t("settings.exportImport.pathLabel")}</span>
                 <span className="font-mono text-xs truncate max-w-[250px]">
                   {importResult.workspace_path}
                 </span>
               </div>
               <Separator />
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Items imported:</span>
+                <span className="text-muted-foreground">{t("settings.exportImport.import.itemsImported")}</span>
                 <span className="font-medium">{importResult.items_imported}</span>
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              Switching to the imported workspace...
+              {t("settings.exportImport.import.switching")}
             </p>
           </div>
         )}
@@ -536,11 +540,11 @@ export function ExportImportDialog({
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="export">
                 <Download className="mr-2 h-4 w-4" />
-                Export
+                {t("common.export")}
               </TabsTrigger>
               <TabsTrigger value="import">
                 <Upload className="mr-2 h-4 w-4" />
-                Import
+                {t("common.import")}
               </TabsTrigger>
             </TabsList>
             <TabsContent value="export" className="mt-4">
@@ -561,7 +565,7 @@ export function ExportImportDialog({
         <DialogFooter>
           {(exportResult || importResult) && (
             <Button onClick={() => handleOpenChange(false)}>
-              Close
+              {t("common.close")}
             </Button>
           )}
         </DialogFooter>

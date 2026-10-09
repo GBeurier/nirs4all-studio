@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   CampaignSinglePairSplitCandidatePreview,
   CampaignSinglePairSplitPreview,
@@ -57,9 +59,9 @@ function buildSplitCandidatePreview(
     datasetLabel,
     pipelineLabel,
     suggestedCampaignName: buildSuggestedCampaignName(campaign.name, datasetLabel, pipelineLabel),
-    summaryLabel: "1 dataset x 1 pipeline x 1 planned run",
+    summaryLabel: i18n.t("newExperiment.campaign.split.candidateSummary"),
     splitGroupBy: run.splitGroupBy,
-    positionLabel: `Campaign ${runIndex + 1}`,
+    positionLabel: i18n.t("newExperiment.campaign.split.position", { n: runIndex + 1 }),
   };
 }
 
@@ -115,8 +117,8 @@ export function buildCampaignSinglePairSplitPreview(
   if (campaign.datasets.length === 0 || campaign.pipelines.length === 0 || campaign.runMatrix.length === 0) {
     return {
       status: "not_evaluated",
-      statusLabel: "Pending inputs",
-      summary: "Select dataset and pipeline inputs before single-pair campaign splits can be previewed.",
+      statusLabel: i18n.t("newExperiment.campaign.split.pending.status"),
+      summary: i18n.t("newExperiment.campaign.split.pending.summary"),
       candidatePreviews: [],
       hiddenCandidateCount: 0,
     };
@@ -125,8 +127,8 @@ export function buildCampaignSinglePairSplitPreview(
   if (campaign.datasets.length === 1 && campaign.pipelines.length === 1 && campaign.runMatrix.length === 1) {
     return {
       status: "already_single_pair",
-      statusLabel: "No split needed",
-      summary: "This campaign already targets one dataset, one pipeline, and one planned run.",
+      statusLabel: i18n.t("newExperiment.campaign.split.single.status"),
+      summary: i18n.t("newExperiment.campaign.split.single.summary"),
       candidatePreviews: [],
       hiddenCandidateCount: 0,
     };
@@ -139,8 +141,8 @@ export function buildCampaignSinglePairSplitPreview(
 
   return {
     status: "split_recommended",
-    statusLabel: "Split recommended",
-    summary: `${campaign.runMatrix.length} planned runs can become ${campaign.runMatrix.length} one-pair campaigns for strict execution.`,
+    statusLabel: i18n.t("newExperiment.campaign.split.recommended.status"),
+    summary: i18n.t("newExperiment.campaign.split.recommended.summary", { count: campaign.runMatrix.length }),
     candidatePreviews,
     hiddenCandidateCount: Math.max(0, campaign.runMatrix.length - candidatePreviews.length),
   };

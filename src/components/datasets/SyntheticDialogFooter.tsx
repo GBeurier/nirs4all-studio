@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
@@ -23,10 +24,11 @@ export function SyntheticDialogFooter({
   selectedPreset,
   name,
 }: SyntheticDialogFooterProps) {
+  const { t } = useTranslation();
   return (
     <DialogFooter>
       <Button variant="outline" onClick={onCancel} disabled={isGenerating}>
-        Cancel
+        {t("common.cancel")}
       </Button>
       <Button
         onClick={onGenerate}
@@ -40,12 +42,12 @@ export function SyntheticDialogFooter({
         {isGenerating ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Generating...
+            {t("datasets.synthetic.generating")}
           </>
         ) : (
           <>
             <Sparkles className="mr-2 h-4 w-4" />
-            Generate Dataset
+            {t("datasets.synthetic.generate")}
           </>
         )}
       </Button>

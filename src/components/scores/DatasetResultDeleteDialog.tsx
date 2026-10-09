@@ -9,6 +9,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Loader2, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface DatasetResultDeleteDialogProps {
   open: boolean;
@@ -25,20 +26,21 @@ export function DatasetResultDeleteDialog({
   busy,
   onDelete,
 }: DatasetResultDeleteDialogProps) {
+  const { t } = useTranslation();
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete dataset predictions?</AlertDialogTitle>
+          <AlertDialogTitle>{t("results.scores.datasetDeleteDialog.title")}</AlertDialogTitle>
           <AlertDialogDescription>
-            This removes all stored predictions for {datasetName} in the active workspace. Empty chains, pipelines, arrays, and orphaned artifacts will be cleaned automatically.
+            {t("results.scores.datasetDeleteDialog.description", { name: datasetName })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={busy}>{t("common.cancel")}</AlertDialogCancel>
           <AlertDialogAction onClick={onDelete} disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-            Delete predictions
+            {t("results.scores.datasetDeleteDialog.confirm")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

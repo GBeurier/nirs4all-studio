@@ -40,7 +40,7 @@ export interface DatasetResultViewerHeader {
 export interface DatasetResultHeaderSummary {
   bestRow: ScoreCardRow | undefined;
   bestContext: ScoreCardType;
-  bestSummaryLabel: string;
+  bestSummaryKind: 'cvEstimate' | 'bestRefit' | 'bestTraining' | 'bestCv';
   delta: number | null;
   deltaDirection: 'up' | 'down';
   topChain: TopChainResult | null;
@@ -218,7 +218,7 @@ export function buildDatasetResultHeaderSummary({
   return {
     bestRow,
     bestContext,
-    bestSummaryLabel: bestRow?.syntheticRefit ? 'CV estimate' : bestContext === 'refit' ? 'Best Refit' : bestContext === 'train' ? 'Best Training' : 'Best CV',
+    bestSummaryKind: bestRow?.syntheticRefit ? 'cvEstimate' : bestContext === 'refit' ? 'bestRefit' : bestContext === 'train' ? 'bestTraining' : 'bestCv',
     delta,
     deltaDirection: lowerBetter ? 'down' : 'up',
     topChain: bestRow ? chains.find((chain) => chain.chain_id === bestRow.chainId) ?? null : null,

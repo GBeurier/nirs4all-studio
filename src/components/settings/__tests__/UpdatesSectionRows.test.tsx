@@ -5,7 +5,10 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import i18n from "i18next";
+
+import "@/lib/i18n";
 
 import { Nirs4allUpdateRow, WebappUpdateRow } from "../UpdatesSectionRows";
 import type {
@@ -15,6 +18,10 @@ import type {
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 const mountedRoots: Array<{ container: HTMLDivElement; root: Root }> = [];
 

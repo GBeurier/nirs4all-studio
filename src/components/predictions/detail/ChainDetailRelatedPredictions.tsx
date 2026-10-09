@@ -1,10 +1,12 @@
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { foldLabel } from "@/lib/fold-utils";
 import { partitionBadgeClass } from "@/lib/partitionColors";
 import { formatMetricValue } from "@/lib/scores";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
+import { getPartitionLabel } from "@/components/predictions/predictionLabels";
 import { scoreForPartition } from "./chainDetailScoreUtils";
 
 interface RelatedPredictionFoldGroup {
@@ -27,23 +29,24 @@ export function ChainDetailRelatedPredictions({
   selectedFoldId,
   onSelectFold,
 }: ChainDetailRelatedPredictionsProps) {
+  const { t } = useTranslation();
   return (
     <section className="space-y-3">
       <div>
-        <div className="text-sm font-semibold tracking-tight">Related predictions</div>
+        <div className="text-sm font-semibold tracking-tight">{t("predictions.detail.related.title")}</div>
         <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
-          Switch between refit, CV summaries, and numbered folds.
+          {t("predictions.detail.related.description")}
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center rounded-2xl border border-border/70 bg-card/40 py-10 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Loading related predictions...
+          {t("predictions.detail.related.loading")}
         </div>
       ) : foldGroups.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 px-4 py-8 text-center text-sm text-muted-foreground">
-          No related predictions are available for this chain.
+          {t("predictions.detail.related.none")}
         </div>
       ) : (
         <div className="grid gap-3 xl:grid-cols-2">
@@ -66,14 +69,14 @@ export function ChainDetailRelatedPredictions({
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold">{foldLabel(group.foldId)}</span>
                 <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                  {group.rows.length} part.
+                  {t("predictions.detail.related.partitionCount", { count: group.rows.length })}
                 </Badge>
                 {group.isAggregated && (
                   <Badge
                     variant="outline"
                     className="h-5 px-1.5 text-[10px] border-purple-500/30 text-purple-500"
                   >
-                    Aggregated
+                    {t("predictions.detail.related.aggregated")}
                   </Badge>
                 )}
               </div>
@@ -86,7 +89,7 @@ export function ChainDetailRelatedPredictions({
                       className="rounded-xl border border-border/60 bg-background/65 px-3 py-2"
                     >
                       <div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                        {partition}
+                        {getPartitionLabel(t, partition)}
                       </div>
                       <div className="mt-1 font-mono text-sm font-semibold">
                         {row ? formatMetricValue(scoreForPartition(row, partition), row.metric) : "-"}
@@ -105,7 +108,7 @@ export function ChainDetailRelatedPredictions({
                       variant="outline"
                       className={cn("h-4 px-1 text-[9px]", partitionBadgeClass(row.partition))}
                     >
-                      {row.partition}
+                      {getPartitionLabel(t, row.partition)}
                     </Badge>
                     <span className="font-mono">{row.n_samples ?? "-"}</span>
                   </span>

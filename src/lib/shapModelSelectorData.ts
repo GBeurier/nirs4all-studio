@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { isLowerBetter } from '@/lib/scores';
 import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 import type { AvailableBundle, AvailableChain, DatasetChains } from '@/types/shap';
@@ -134,8 +135,8 @@ export function formatShapModelScore(score: number | null | undefined): string |
   return score.toFixed(4);
 }
 
-export function getShapModelScoreDisplays(scoreSource: ShapModelScoreSource): ShapModelScoreDisplay[] {
-  const labels = getShapModelScoreLabels(scoreSource.metric);
+export function getShapModelScoreDisplays(scoreSource: ShapModelScoreSource, t: TFunction): ShapModelScoreDisplay[] {
+  const labels = getShapModelScoreLabels(scoreSource.metric, t);
   const scoreDisplays: ShapModelScoreDisplay[] = [];
 
   const finalScore = formatShapModelScore(scoreSource.final_test_score);
@@ -164,18 +165,18 @@ export function buildShapChainLabel(chain: AvailableChain): string {
   return chain.preprocessings ? `${chain.preprocessings} → ${modelLabel}` : modelLabel;
 }
 
-export function buildShapChainTooltip(chain: AvailableChain): string {
-  const lines = [`Full chain: ${buildShapChainLabel(chain)}`];
+export function buildShapChainTooltip(chain: AvailableChain, t: TFunction): string {
+  const lines = [t('results.variableImportance.model.fullChain', { label: buildShapChainLabel(chain) })];
 
-  for (const scoreDisplay of getShapModelScoreDisplays(chain)) {
+  for (const scoreDisplay of getShapModelScoreDisplays(chain, t)) {
     lines.push(`${scoreDisplay.label}: ${scoreDisplay.value}`);
   }
 
   return lines.join('\n');
 }
 
-export function getVisibleShapChainScore(chain: AvailableChain): string | null {
-  return getShapModelScoreDisplays(chain)[0]?.value ?? null;
+export function getVisibleShapChainScore(chain: AvailableChain, t: TFunction): string | null {
+  return getShapModelScoreDisplays(chain, t)[0]?.value ?? null;
 }
 
 function sortShapChainsByScore(chains: AvailableChain[], metric: string): AvailableChain[] {
@@ -197,12 +198,15 @@ function getShapChainScore(chain: AvailableChain): number | null {
   return chain.final_test_score ?? chain.cv_val_score;
 }
 
-function getShapModelScoreLabels(metric: string | null | undefined): ShapModelScoreLabels {
+function getShapModelScoreLabels(metric: string | null | undefined, t: TFunction): ShapModelScoreLabels {
   const normalizedMetric = (metric || '').toLowerCase();
   if (normalizedMetric === 'rmse') {
     return { finalTest: 'RMSEP', cvVal: 'RMSECV' };
   }
 
-  const metricLabel = normalizedMetric ? normalizedMetric.toUpperCase() : 'SCORE';
-  return { finalTest: `Final ${metricLabel}`, cvVal: `CV ${metricLabel}` };
+  const metricLabel = normalizedMetric ? normalizedMetric.toUpperCase() : t('results.variableImportance.model.scoreFallback');
+  return {
+    finalTest: t('results.variableImportance.model.finalMetric', { metric: metricLabel }),
+    cvVal: t('results.variableImportance.model.cvMetric', { metric: metricLabel }),
+  };
 }

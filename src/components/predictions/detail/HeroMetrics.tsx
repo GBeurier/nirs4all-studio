@@ -5,6 +5,8 @@
  * gets the "how did this chain score" answer before scrolling.
  */
 
+import { useTranslation } from "react-i18next";
+
 import { cn } from "@/lib/utils";
 
 interface HeroMetricsProps {
@@ -76,6 +78,7 @@ export function HeroMetrics({
   finalTest,
   metric,
 }: HeroMetricsProps) {
+  const { t } = useTranslation();
   const hasFinal = finalTest != null;
   return (
     <div
@@ -84,16 +87,16 @@ export function HeroMetrics({
         hasFinal ? "grid-cols-2 md:grid-cols-5" : "grid-cols-2 md:grid-cols-4",
       )}
     >
-      <MetricCard label={`CV Val · ${metric}`} value={formatScore(cvVal)} accent="primary" />
-      <MetricCard label="CV Test" value={formatScore(cvTest)} />
-      <MetricCard label="CV Train" value={formatScore(cvTrain)} />
+      <MetricCard label={t("predictions.detail.hero.cvVal", { metric })} value={formatScore(cvVal)} accent="primary" />
+      <MetricCard label={t("predictions.detail.hero.cvTest")} value={formatScore(cvTest)} />
+      <MetricCard label={t("predictions.detail.hero.cvTrain")} value={formatScore(cvTrain)} />
       {hasFinal && (
-        <MetricCard label="Refit Test" value={formatScore(finalTest)} accent="success" />
+        <MetricCard label={t("predictions.detail.hero.refitTest")} value={formatScore(finalTest)} accent="success" />
       )}
       <MetricCard
-        label="Folds"
+        label={t("predictions.detail.hero.folds")}
         value={foldCount != null ? String(foldCount) : "—"}
-        hint={foldCount === 1 ? "single fit" : undefined}
+        hint={foldCount === 1 ? t("predictions.detail.hero.singleFit") : undefined}
       />
     </div>
   );

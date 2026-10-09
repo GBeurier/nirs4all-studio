@@ -3,6 +3,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import "@/lib/i18n";
 
 const mocks = vi.hoisted(() => ({
   readiness: vi.fn(async () => ({ ml_ready: true })),

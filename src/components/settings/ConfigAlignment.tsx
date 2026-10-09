@@ -138,12 +138,13 @@ export function ConfigAlignment() {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="outline">Runtime: {runtimeMode}</Badge>
+            <Badge variant="outline">{t("settings.configAlignment.runtime", { mode: runtimeMode })}</Badge>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => refetchDiff()}
               disabled={diffLoading}
+              aria-label={t("common.a11y.refresh")}
             >
               <RefreshCw className={`h-4 w-4 ${diffLoading ? "animate-spin" : ""}`} />
             </Button>
@@ -162,8 +163,8 @@ export function ConfigAlignment() {
               <Alert>
                 <AlertDescription>
                   {runtimeMode === "bundled"
-                    ? "This all-in-one bundle uses an embedded Python runtime. Config alignment is disabled because the environment is read-only."
-                    : "Package management is unavailable for this runtime. Install an updated Studio release to update its included packages."}
+                    ? t("settings.configAlignment.readOnlyBundled")
+                    : t("settings.configAlignment.readOnlyNative")}
                 </AlertDescription>
               </Alert>
             )}
@@ -243,17 +244,17 @@ export function ConfigAlignment() {
                     </div>
                     <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
                       <div>
-                        <p className="uppercase tracking-wide">Installed</p>
+                        <p className="uppercase tracking-wide">{t("settings.configAlignment.installed")}</p>
                         <p className="mt-1 font-mono text-foreground">
-                          {pkg.installed_version ?? "Not present"}
+                          {pkg.installed_version ?? t("settings.configAlignment.notPresent")}
                         </p>
                       </div>
                       <div>
-                        <p className="uppercase tracking-wide">Recommended</p>
+                        <p className="uppercase tracking-wide">{t("settings.configAlignment.recommended")}</p>
                         <p className="mt-1 font-mono text-foreground">{pkg.recommended_version}</p>
                       </div>
                       <div>
-                        <p className="uppercase tracking-wide">Latest</p>
+                        <p className="uppercase tracking-wide">{t("settings.configAlignment.latest")}</p>
                         <p className="mt-1 font-mono text-foreground">
                           {pkg.latest_version ?? "\u2014"}
                         </p>

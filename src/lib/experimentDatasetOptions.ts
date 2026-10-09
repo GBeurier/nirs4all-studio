@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { Dataset } from "@/types/datasets";
 
 import {
@@ -42,7 +44,7 @@ export function toExperimentDatasetOption(dataset: Dataset): ExperimentDatasetOp
 
   return {
     id: dataset.id,
-    name: dataset.name || dataset.path?.split(/[\\/]/).filter(Boolean).pop() || "Unknown",
+    name: dataset.name || dataset.path?.split(/[\\/]/).filter(Boolean).pop() || i18n.t("newExperiment.dataset.unknown"),
     samples: multimodalSummary?.samples ?? counts.sampleCount ?? 0,
     trainSamples: dataset.train_samples,
     testSamples: dataset.test_samples,
@@ -50,10 +52,12 @@ export function toExperimentDatasetOption(dataset: Dataset): ExperimentDatasetOp
     sourceCount: counts.sourceCount,
     isMultiSource: schemaRef.isMultiSource,
     representationCount: schemaRef.representations.length,
-    dataViewLabel: multimodalSummary ? "Typed multimodal cohort" : defaultDataView?.label ?? "Unknown data view",
+    dataViewLabel: multimodalSummary
+      ? i18n.t("newExperiment.dataset.multimodalCohort")
+      : defaultDataView?.label ?? i18n.t("newExperiment.dataset.unknownDataView"),
     dataViewTaskType: multimodalSummary?.task === "regression" || multimodalSummary?.task === "classification"
       ? multimodalSummary.task : defaultDataView?.taskType ?? schemaRef.taskType,
-    target: multimodalSummary?.targets[0] || schemaRef.defaultTargetColumn || "Unknown",
+    target: multimodalSummary?.targets[0] || schemaRef.defaultTargetColumn || i18n.t("newExperiment.dataset.unknown"),
     targetCount: multimodalSummary?.targets.length ?? schemaRef.targetColumns.length,
     metadataColumns: schemaRef.metadataColumns,
     repetitionColumn: schemaRef.repetitionColumn ?? undefined,

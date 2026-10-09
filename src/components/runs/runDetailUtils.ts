@@ -1,8 +1,9 @@
+import i18next from "i18next";
 import type { ChainPipelineReloadMetadata, RunPipelineReloadMetadata } from "@/api/aggregatedPredictions";
 import { buildCanonicalPreviewSteps } from "@/lib/canonicalPipelinePreview";
-import { getActiveLocale } from "@/lib/activeLocale";
 import { buildPipelinePreview } from "@/lib/pipelineStats";
 import type { WorkspaceRunPipelineLogEntry } from "@/types/enriched-runs";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 const DROP_PIPELINE_STEP = Symbol("drop-pipeline-step");
 
@@ -37,29 +38,20 @@ export function formatDatetime(iso: string | null | undefined): string {
 }
 
 export function formatBoolean(value: unknown): string {
-  if (value === true) return "Yes";
-  if (value === false) return "No";
+  if (value === true) return i18next.t("common.yes");
+  if (value === false) return i18next.t("common.no");
   return "-";
 }
 
 export function formatCVStrategy(strategy?: unknown): string {
   if (typeof strategy !== "string" || !strategy) return "-";
-  const labelMap: Record<string, string> = {
-    kfold: "K-Fold",
-    stratified: "Stratified K-Fold",
-    stratified_kfold: "Stratified K-Fold",
-    group_kfold: "Group K-Fold",
-    stratified_group_kfold: "Stratified Group K-Fold",
-    loo: "Leave-One-Out",
-    holdout: "Holdout",
-    repeated_kfold: "Repeated K-Fold",
-    repeated_stratified_kfold: "Repeated Stratified K-Fold",
-    shuffle_split: "Shuffle Split",
-    stratified_shuffle_split: "Stratified Shuffle Split",
-    group_shuffle_split: "Group Shuffle Split",
-    time_series_split: "Time Series Split",
-  };
-  return labelMap[strategy.toLowerCase()] || strategy;
+  const known = [
+    "kfold", "stratified", "stratified_kfold", "group_kfold", "stratified_group_kfold", "loo", "holdout",
+    "repeated_kfold", "repeated_stratified_kfold", "shuffle_split", "stratified_shuffle_split",
+    "group_shuffle_split", "time_series_split",
+  ];
+  const key = strategy.toLowerCase();
+  return known.includes(key) ? i18next.t(`runs.detail.cvStrategies.${key}`) : strategy;
 }
 
 export function extractExpandedPipelineSteps(expandedConfig: unknown): unknown[] {
@@ -87,21 +79,21 @@ function fallbackPipelineLabel(step: unknown): string {
     }
     return step.split(".").pop() || step;
   }
-  if (!step || typeof step !== "object") return "Step";
+  if (!step || typeof step !== "object") return i18next.t("runs.detail.stepFallback");
 
   const record = step as Record<string, unknown>;
   if (record.model && typeof record.model === "object") {
     const model = record.model as Record<string, unknown>;
-    const classReference = typeof model.class === "string" ? model.class : typeof record.name === "string" ? record.name : "Model";
+    const classReference = typeof model.class === "string" ? model.class : typeof record.name === "string" ? record.name : i18next.t("runs.detail.modelFallback");
     return classReference.split(".").pop() || classReference;
   }
   if (typeof record.class === "string") {
     return record.class.split(".").pop() || record.class;
   }
-  if (record.branch) return "Branch";
-  if (record.merge) return "Merge";
-  if (record.y_processing) return "Y Processing";
-  return "Step";
+  if (record.branch) return i18next.t("runs.detail.branchFallback");
+  if (record.merge) return i18next.t("runs.detail.mergeFallback");
+  if (record.y_processing) return i18next.t("runs.detail.yProcessingFallback");
+  return i18next.t("runs.detail.stepFallback");
 }
 
 export function buildStoredPipelinePreview(expandedConfig: unknown) {
@@ -136,18 +128,17 @@ export function describeRunPipelineReload(
   loadedStepCount: number,
 ): { title: string; description: string } {
   const stepCount = Math.max(0, Math.round(loadedStepCount));
-  const stepLabel = `${stepCount} step${stepCount === 1 ? "" : "s"} loaded`;
 
   if (reload?.source === "authoring_template" && reload.is_editable_template && !reload.is_legacy_fallback) {
     return {
-      title: "Original template loaded",
-      description: `${stepLabel} from the original editable template.`,
+      title: i18next.t("runs.detail.reload.templateTitle"),
+      description: i18next.t("runs.detail.reload.templateDescription", { count: stepCount }),
     };
   }
 
   return {
-    title: "Legacy run snapshot loaded",
-    description: `${stepLabel} from an expanded executed snapshot, not the original template.`,
+    title: i18next.t("runs.detail.reload.legacyTitle"),
+    description: i18next.t("runs.detail.reload.legacyDescription", { count: stepCount }),
   };
 }
 
@@ -156,7 +147,6 @@ export function describeChainPipelineReload(
   loadedStepCount: number,
 ): { title: string; description: string } {
   const stepCount = Math.max(0, Math.round(loadedStepCount));
-  const stepLabel = `${stepCount} step${stepCount === 1 ? "" : "s"} loaded`;
 
   if (
     reload?.source === "chain_snapshot"
@@ -164,14 +154,14 @@ export function describeChainPipelineReload(
     && !reload.is_editable_template
   ) {
     return {
-      title: "Chain snapshot loaded",
-      description: `${stepLabel} from this chain snapshot (preprocessing chain + selected model), not the original template.`,
+      title: i18next.t("runs.detail.reload.chainTitle"),
+      description: i18next.t("runs.detail.reload.chainModelDescription", { count: stepCount }),
     };
   }
 
   return {
-    title: "Chain snapshot loaded",
-    description: `${stepLabel} from this chain snapshot, not the original template.`,
+    title: i18next.t("runs.detail.reload.chainTitle"),
+    description: i18next.t("runs.detail.reload.chainDescription", { count: stepCount }),
   };
 }
 
@@ -220,9 +210,9 @@ function cleanExpandedPipelineStep(step: unknown): unknown | typeof DROP_PIPELIN
 }
 
 export function formatLogLine(entry: WorkspaceRunPipelineLogEntry): string {
-  const createdAt = entry.created_at ? new Date(entry.created_at).toLocaleTimeString() : "--:--:--";
+  const createdAt = entry.created_at ? new Date(entry.created_at).toLocaleTimeString(getActiveLocale()) : "--:--:--";
   const level = (entry.level || "info").toUpperCase();
-  const step = entry.step_idx != null ? `step ${entry.step_idx}` : "pipeline";
+  const step = entry.step_idx != null ? i18next.t("runs.detail.logStep", { index: entry.step_idx }) : i18next.t("runs.detail.logPipeline");
   const operator = entry.operator_class ? ` ${entry.operator_class}` : "";
   const event = entry.event ? ` [${entry.event}]` : "";
   const message = entry.message || "";

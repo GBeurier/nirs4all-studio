@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import i18next from "i18next";
+import { beforeAll, describe, expect, it } from "vitest";
 
+import { initEnglishI18n } from "../../predictionsTestI18n";
 import {
   buildPredictionViewerBaseFilename,
   buildPredictionViewerCsvExport,
@@ -31,6 +33,10 @@ const header: ViewerHeader = {
   taskType: "regression",
 };
 
+beforeAll(async () => {
+  await initEnglishI18n();
+});
+
 describe("predictionViewerData", () => {
   it("derives task kind, available chart kinds, and initial chart kind", () => {
     expect(getPredictionViewerTaskKind("classification")).toBe("classification");
@@ -43,9 +49,9 @@ describe("predictionViewerData", () => {
   });
 
   it("builds header copy and sanitized export filenames", () => {
-    expect(buildPredictionViewerHeaderTitle(header)).toBe("PLS / tuned · corn dataset");
-    expect(buildPredictionViewerHeaderDescription(header)).toBe(
-      "Inspect prediction charts for dataset corn dataset, model PLS / tuned, regression task.",
+    expect(buildPredictionViewerHeaderTitle(header, i18next.t)).toBe("PLS / tuned · corn dataset");
+    expect(buildPredictionViewerHeaderDescription(header, i18next.t)).toBe(
+      "Inspect prediction charts for dataset corn dataset, model PLS / tuned, Regression task.",
     );
     expect(buildPredictionViewerBaseFilename(header, "scatter")).toBe("corn_dataset_PLS_tuned_scatter");
   });

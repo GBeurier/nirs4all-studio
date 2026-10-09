@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { getScoreCardCrossvalChildren } from "@/lib/scoreCardTreeData";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
@@ -227,10 +228,11 @@ function ScoreCardCrossvalChildren({
   defaultExpanded?: boolean;
   emptyClassName?: string;
 }) {
+  const { t } = useTranslation();
   if (crossvalChildren.length === 0) {
     return (
       <div className={["text-xs text-muted-foreground py-1", emptyClassName].filter(Boolean).join(" ")}>
-        No CV data
+        {t("results.scores.tree.noCvData")}
       </div>
     );
   }
@@ -268,11 +270,12 @@ function ScoreCardTrainChildren({
   selectedMetrics: string[];
   workspaceId?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {isLoading && (
         <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading folds...
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("results.scores.tree.loadingFoldsShort")}
         </div>
       )}
       {trainChildren.map((child) => (
@@ -287,7 +290,7 @@ function ScoreCardTrainChildren({
         />
       ))}
       {!isLoading && trainChildren.length === 0 && (
-        <div className="text-xs text-muted-foreground py-1">No fold data</div>
+        <div className="text-xs text-muted-foreground py-1">{t("results.scores.tree.noFoldDataShort")}</div>
       )}
     </>
   );

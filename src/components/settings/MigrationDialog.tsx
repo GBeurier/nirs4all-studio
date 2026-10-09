@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import i18n from "i18next";
 import { Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -23,6 +24,7 @@ import {
 } from "@/api/workspace";
 import { useJobUpdates } from "@/hooks/useWebSocket";
 import type { MigrationReport, MigrationStatusResponse } from "@/types/storage";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 interface MigrationDialogProps {
   open: boolean;
@@ -66,7 +68,7 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
         if (mounted) setMigrationStatus(data);
       } catch (error) {
         if (mounted) {
-          const message = describeApiError(error, t, "Failed to load migration status").message;
+          const message = describeApiError(error, t, t("settings.migration.statusLoadFailed")).message;
           setActionError(message);
         }
       } finally {
@@ -85,13 +87,13 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
     if (isMigrationReport(maybeReport)) {
       setReport(maybeReport);
     }
-    toast.success("Migration completed");
+    toast.success(i18n.t("settings.migration.completed"));
     onCompleted?.();
   }, [jobStatus, result, onCompleted]);
 
   useEffect(() => {
     if (jobStatus !== "failed") return;
-    const message = jobError || "Migration failed";
+    const message = jobError || i18n.t("settings.migration.failed");
     setActionError(message);
     toast.error(message);
   }, [jobStatus, jobError]);
@@ -111,12 +113,12 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
       });
       if (isMigrationReport(response)) {
         setReport(response);
-        toast.success("Dry run completed");
+        toast.success(t("settings.migration.dryRunCompleted"));
       } else {
-        throw new Error("Unexpected dry-run response");
+        throw new Error(t("settings.migration.unexpectedDryRun"));
       }
     } catch (error) {
-      const message = describeApiError(error, t, "Dry run failed").message;
+      const message = describeApiError(error, t, t("settings.migration.dryRunFailed")).message;
       setActionError(message);
       toast.error(message);
     }
@@ -132,12 +134,12 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
       });
       if ("job_id" in response) {
         setJobId(response.job_id);
-        toast.info("Migration started in background");
+        toast.info(t("settings.migration.startedBackground"));
       } else {
-        throw new Error("Unexpected migration response");
+        throw new Error(t("settings.migration.unexpectedResponse"));
       }
     } catch (error) {
-      const message = describeApiError(error, t, "Failed to start migration").message;
+      const message = describeApiError(error, t, t("settings.migration.startFailed")).message;
       setActionError(message);
       toast.error(message);
     }
@@ -156,36 +158,35 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
-            Array Storage Migration
+            {t("settings.migration.title")}
           </DialogTitle>
           <DialogDescription>
-            Migrate legacy prediction arrays into Parquet sidecar files.
-            Back up your store database before running a full migration.
+            {t("settings.migration.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <Badge variant="outline">
-              Mode: {migrationStatus?.storage_mode ?? "unknown"}
+              {t("settings.migration.mode", { mode: migrationStatus?.storage_mode ?? t("settings.migration.unknown") })}
             </Badge>
             <Badge variant={migrationStatus?.migration_needed ? "secondary" : "outline"}>
-              {migrationStatus?.migration_needed ? "Migration required" : "Up to date"}
+              {migrationStatus?.migration_needed ? t("settings.migration.required") : t("settings.migration.upToDate")}
             </Badge>
             {migrationStatus?.legacy_row_count != null && (
               <span className="text-muted-foreground">
-                Legacy rows: {migrationStatus.legacy_row_count.toLocaleString()}
+                {t("settings.migration.legacyRows", { count: migrationStatus.legacy_row_count.toLocaleString(getActiveLocale()) })}
               </span>
             )}
             {migrationStatus?.estimated_duration_seconds != null && (
               <span className="text-muted-foreground">
-                ETA: {migrationStatus.estimated_duration_seconds}s
+                {t("settings.migration.eta", { seconds: migrationStatus.estimated_duration_seconds })}
               </span>
             )}
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Batch size</label>
+            <label className="text-sm font-medium">{t("settings.migration.batchSize")}</label>
             <Input
               type="number"
               min={1000}
@@ -200,7 +201,7 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
             <div className="space-y-2">
               <Progress value={progress} />
               <p className="text-sm text-muted-foreground">
-                {progressMessage || `Migration in progress (${Math.round(progress)}%)`}
+                {progressMessage || t("settings.migration.inProgress", { percent: Math.round(progress) })}
               </p>
             </div>
           )}
@@ -212,7 +213,7 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
           {statusLoading && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading migration status...
+              {t("settings.migration.loadingStatus")}
             </div>
           )}
 
@@ -222,17 +223,17 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  Migration Report
+                  {t("settings.migration.report.title")}
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>Total rows: {report.total_rows.toLocaleString()}</div>
-                  <div>Rows migrated: {report.rows_migrated.toLocaleString()}</div>
-                  <div>Verification: {report.verification_passed ? "Passed" : "Failed"}</div>
-                  <div>Mismatches: {report.verification_mismatches}</div>
-                  <div>DB before: {formatBytes(report.duckdb_size_before)}</div>
-                  <div>DB after: {formatBytes(report.duckdb_size_after)}</div>
-                  <div>Parquet size: {formatBytes(report.parquet_total_size)}</div>
-                  <div>Duration: {report.duration_seconds.toFixed(2)}s</div>
+                  <div>{t("settings.migration.report.totalRows", { count: report.total_rows.toLocaleString(getActiveLocale()) })}</div>
+                  <div>{t("settings.migration.report.rowsMigrated", { count: report.rows_migrated.toLocaleString(getActiveLocale()) })}</div>
+                  <div>{t("settings.migration.report.verification", { result: report.verification_passed ? t("settings.migration.report.passed") : t("settings.migration.report.failed") })}</div>
+                  <div>{t("settings.migration.report.mismatches", { count: report.verification_mismatches })}</div>
+                  <div>{t("settings.migration.report.dbBefore", { size: formatBytes(report.duckdb_size_before) })}</div>
+                  <div>{t("settings.migration.report.dbAfter", { size: formatBytes(report.duckdb_size_after) })}</div>
+                  <div>{t("settings.migration.report.parquetSize", { size: formatBytes(report.parquet_total_size) })}</div>
+                  <div>{t("settings.migration.report.duration", { seconds: report.duration_seconds.toFixed(2) })}</div>
                 </div>
                 {report.errors.length > 0 && (
                   <div className="text-sm text-destructive">
@@ -246,20 +247,20 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
 
         <DialogFooter>
           <Button variant="outline" onClick={runDryRun} disabled={isRunning}>
-            Run Dry Run
+            {t("settings.migration.runDryRun")}
           </Button>
           <Button onClick={startFullMigration} disabled={isRunning}>
             {isRunning ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Running...
+                {t("settings.migration.running")}
               </>
             ) : (
-              "Start Migration"
+              t("settings.migration.start")
             )}
           </Button>
           <Button variant="ghost" onClick={resetDialog} disabled={isRunning}>
-            Close
+            {t("common.close")}
           </Button>
         </DialogFooter>
       </DialogContent>

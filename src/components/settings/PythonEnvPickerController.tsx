@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   alignConfig,
   type PackageFailure,
@@ -33,12 +35,15 @@ import {
   type SetupProgress,
 } from "./PythonEnvPickerRuntime";
 
-const INITIAL_ALIGN_STATUS: Pick<BusyProgressState, "title" | "detail"> = {
-  title: "Aligning runtime",
-  detail: "Installing or upgrading the selected runtime packages. This can take a few moments.",
-};
+function getInitialAlignStatus(t: TFunction): Pick<BusyProgressState, "title" | "detail"> {
+  return {
+    title: t("settings.pythonEnvPicker.aligningTitle"),
+    detail: t("settings.pythonEnvPicker.aligningDetail"),
+  };
+}
 
 export function usePythonEnvPickerController() {
+  const { t } = useTranslation();
   const [electronApi] = useState(getElectronApi);
   const [envInfo, setEnvInfo] = useState<EnvInfo | null>(null);
   const [runtimeSummary, setRuntimeSummary] = useState<RuntimeSummaryResponse | null>(null);
@@ -60,7 +65,7 @@ export function usePythonEnvPickerController() {
   const [alignFailures, setAlignFailures] = useState<PackageFailure[]>([]);
   const [isAligning, setIsAligning] = useState(false);
   const [alignProgress, setAlignProgress] = useState(14);
-  const [alignStatus, setAlignStatus] = useState<Pick<BusyProgressState, "title" | "detail">>(INITIAL_ALIGN_STATUS);
+  const [alignStatus, setAlignStatus] = useState<Pick<BusyProgressState, "title" | "detail">>(() => getInitialAlignStatus(t));
 
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [setupProgress, setSetupProgress] = useState<SetupProgress>({ percent: 0, step: "", detail: "" });
@@ -289,23 +294,23 @@ export function usePythonEnvPickerController() {
     if (!electronApi) return;
     try {
       beginSwitchProgress(
-        "Inspecting environment",
-        "Reading Python details, write access, and missing package information for the selected environment.",
+        t("settings.pythonEnvPicker.inspectingEnv"),
+        t("settings.pythonEnvPicker.inspectingEnvDetail"),
         18,
         48,
       );
       setSwitchResult(null);
       const result = await electronApi.inspectExistingEnv(envPath);
-      handleInspectResult(result, "Failed to inspect environment");
+      handleInspectResult(result, t("settings.pythonEnvPicker.inspectFailed"));
     } catch (err) {
       setSwitchResult({
         success: false,
-        message: getErrorMessage(err, "Failed to inspect environment"),
+        message: getErrorMessage(err, t("settings.pythonEnvPicker.inspectFailed")),
       });
     } finally {
       finishSwitchProgress();
     }
-  }, [beginSwitchProgress, electronApi, finishSwitchProgress, handleInspectResult]);
+  }, [beginSwitchProgress, electronApi, finishSwitchProgress, handleInspectResult, t]);
 
   const handleBrowse = useCallback(async () => {
     if (!electronApi) return;
@@ -313,23 +318,23 @@ export function usePythonEnvPickerController() {
     if (!pythonPath) return;
     try {
       beginSwitchProgress(
-        "Inspecting Python executable",
-        "Validating the selected interpreter and checking whether the required backend packages are available.",
+        t("settings.pythonEnvPicker.inspectingExe"),
+        t("settings.pythonEnvPicker.inspectingExeDetail"),
         18,
         48,
       );
       setSwitchResult(null);
       const result = await electronApi.inspectExistingPython(pythonPath);
-      handleInspectResult(result, "Failed to inspect environment");
+      handleInspectResult(result, t("settings.pythonEnvPicker.inspectFailed"));
     } catch (err) {
       setSwitchResult({
         success: false,
-        message: getErrorMessage(err, "Failed to inspect environment"),
+        message: getErrorMessage(err, t("settings.pythonEnvPicker.inspectFailed")),
       });
     } finally {
       finishSwitchProgress();
     }
-  }, [beginSwitchProgress, electronApi, finishSwitchProgress, handleInspectResult]);
+  }, [beginSwitchProgress, electronApi, finishSwitchProgress, handleInspectResult, t]);
 
   const handleApplyInspection = useCallback(async (installCorePackages: boolean) => {
     if (!electronApi || !inspection) {
@@ -338,10 +343,10 @@ export function usePythonEnvPickerController() {
 
     try {
       beginSwitchProgress(
-        installCorePackages ? "Installing core packages" : "Applying runtime",
+        installCorePackages ? t("settings.pythonEnvPicker.installingCore") : t("settings.pythonEnvPicker.applyingRuntime"),
         installCorePackages
-          ? "Installing the backend packages required to start nirs4all in the selected environment."
-          : "Switching the app to the selected interpreter and preparing the backend.",
+          ? t("settings.pythonEnvPicker.installingCoreDetail")
+          : t("settings.pythonEnvPicker.applyingRuntimeDetail"),
         24,
         80,
       );
@@ -360,8 +365,8 @@ export function usePythonEnvPickerController() {
       }
 
       updateSwitchProgress(
-        "Verifying environment",
-        "Checking the scientific library in the selected Python environment.",
+        t("settings.pythonEnvPicker.verifyingEnv"),
+        t("settings.pythonEnvPicker.verifyingEnvDetail"),
         86,
         96,
       );
@@ -377,7 +382,7 @@ export function usePythonEnvPickerController() {
     } catch (err) {
       setSwitchResult({
         success: false,
-        message: getErrorMessage(err, "Failed to switch environment"),
+        message: getErrorMessage(err, t("settings.pythonEnvPicker.switchFailed")),
       });
     } finally {
       finishSwitchProgress();
@@ -388,6 +393,7 @@ export function usePythonEnvPickerController() {
     finishSwitchProgress,
     inspection,
     loadEnvInfo,
+    t,
     updateSwitchProgress,
   ]);
 
@@ -396,7 +402,7 @@ export function usePythonEnvPickerController() {
     setDialogOpen(false);
     setIsSettingUp(true);
     setSetupError(null);
-    setSetupProgress({ percent: 0, step: "starting", detail: "Starting setup..." });
+    setSetupProgress({ percent: 0, step: "starting", detail: t("settings.pythonEnvPicker.startingSetup") });
 
     try {
       const result = await electronApi.startEnvSetup(targetDir);
@@ -406,17 +412,17 @@ export function usePythonEnvPickerController() {
         setPostSwitchValidation(validation);
         setReviewProfileDiff(null);
         setReviewDependencies(null);
-        setSwitchResult({ success: true, message: "Python environment created." });
+        setSwitchResult({ success: true, message: t("settings.pythonEnvPicker.envCreated") });
         await loadEnvInfo();
       } else {
-        setSetupError(result.error || "Setup failed");
+        setSetupError(result.error || t("settings.pythonEnvPicker.setupFailed"));
       }
     } catch (err) {
-      setSetupError(getErrorMessage(err, "Setup failed"));
+      setSetupError(getErrorMessage(err, t("settings.pythonEnvPicker.setupFailed")));
     } finally {
       setIsSettingUp(false);
     }
-  }, [electronApi, loadEnvInfo]);
+  }, [electronApi, loadEnvInfo, t]);
 
   const handleAutoSetup = useCallback(() => {
     void handleSetup();
@@ -440,9 +446,9 @@ export function usePythonEnvPickerController() {
       setPostSwitchValidation(validation);
       await loadReviewDetails(validation.selectedProfile);
     } catch (err) {
-      setReviewError(getErrorMessage(err, "Failed to load runtime review"));
+      setReviewError(getErrorMessage(err, t("settings.pythonEnvPicker.reviewLoadFailed")));
     }
-  }, [loadReviewDetails, postSwitchValidation]);
+  }, [loadReviewDetails, postSwitchValidation, t]);
 
   const handleOpenReviewClick = useCallback(() => {
     void handleOpenReview();
@@ -477,7 +483,7 @@ export function usePythonEnvPickerController() {
     try {
       setIsAligning(true);
       setAlignProgress(18);
-      setAlignStatus(INITIAL_ALIGN_STATUS);
+      setAlignStatus(getInitialAlignStatus(t));
       setReviewError(null);
       setAlignFailures([]);
 
@@ -498,13 +504,13 @@ export function usePythonEnvPickerController() {
       if (result.requires_restart) {
         setAlignProgress(96);
         setAlignStatus({
-          title: "Verifying environment",
-          detail: "The runtime was updated successfully. Restarting the backend to load the aligned packages.",
+          title: t("settings.pythonEnvPicker.verifyingEnv"),
+          detail: t("settings.pythonEnvPicker.alignVerifyDetail"),
         });
 
         const restartResult = await electronApi.restartBackend({ skipEnsure: true });
         if (!restartResult.success) {
-          setReviewError(restartResult.error || "Runtime aligned, but the backend could not be restarted automatically.");
+          setReviewError(restartResult.error || t("settings.pythonEnvPicker.alignRestartFailed"));
           return;
         }
 
@@ -531,7 +537,7 @@ export function usePythonEnvPickerController() {
       }
     } catch (err) {
       announceBackendRestarted();
-      setReviewError(getErrorMessage(err, "Failed to align runtime"));
+      setReviewError(getErrorMessage(err, t("settings.pythonEnvPicker.alignFailed")));
       try {
         const refreshedValidation = await loadPostSwitchValidation();
         setPostSwitchValidation(refreshedValidation);
@@ -552,6 +558,7 @@ export function usePythonEnvPickerController() {
     loadReviewDetails,
     postSwitchValidation,
     selectedReviewProfile,
+    t,
   ]);
 
   const runtimeView = derivePythonEnvRuntimeView({

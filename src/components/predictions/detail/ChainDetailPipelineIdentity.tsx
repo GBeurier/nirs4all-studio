@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { ChainDetailAdditionalCvMetrics } from "./ChainDetailPipelineIdentityCvMetrics";
 import { ChainDetailIdentityRows } from "./ChainDetailPipelineIdentityRows";
 import { ChainDetailPipelineParams } from "./ChainDetailPipelineIdentityParams";
@@ -17,9 +18,10 @@ export function ChainDetailPipelineIdentity({
   additionalCvMetricRows,
   cvFoldCount,
 }: ChainDetailPipelineIdentityProps) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
-      <div className="text-sm font-semibold tracking-tight">Pipeline and identity</div>
+      <div className="text-sm font-semibold tracking-tight">{t("predictions.detail.identity.title")}</div>
       <div className="mt-1 text-[11px] leading-5 text-muted-foreground">{title}</div>
 
       {pipelineStats && pipelineTree && (

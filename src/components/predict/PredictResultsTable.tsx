@@ -37,7 +37,7 @@ export function PredictResultsTable({
               {t("predict.results.table.sample")}
             </TableHead>
             {showPartitionColumn && (
-              <TableHead className="w-24">Partition</TableHead>
+              <TableHead className="w-24">{t("predict.data.dataset.partition")}</TableHead>
             )}
             <TableHead className="text-right">
               {t("predict.results.table.predicted")}
@@ -60,7 +60,7 @@ export function PredictResultsTable({
               <TableCell className="font-mono text-xs">{String(row.index)}</TableCell>
               {showPartitionColumn && (
                 <TableCell className="font-mono text-xs text-muted-foreground">
-                  {row.partition ? formatPredictPartitionLabel(row.partition) : "-"}
+                  {row.partition ? formatPredictPartitionLabel(row.partition, t) : "-"}
                 </TableCell>
               )}
               <TableCell className="text-right font-mono text-sm">

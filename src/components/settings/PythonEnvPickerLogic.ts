@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import type { OptionalPackageInfo } from "@/api/config";
 import type { DependenciesResponse, DependencyInfo } from "@/api/dependencies";
 
@@ -7,8 +9,8 @@ export type PackageStatusBadge = {
 };
 
 /** Extract short version like "3.11.13" from full version string. */
-export function shortVersion(version: string | null): string {
-  if (!version) return "Unknown";
+export function shortVersion(version: string | null, t: TFunction): string {
+  if (!version) return t("settings.pythonEnvPicker.unknown");
   const match = version.match(/(\d+\.\d+\.\d+)/);
   return match ? match[1] : version;
 }
@@ -20,8 +22,8 @@ export function isSamePath(filePath: string, otherPath: string): boolean {
 }
 
 /** Shorten a path for display by showing only the last three segments. */
-export function shortenPath(path: string | null): string {
-  if (!path) return "Not configured";
+export function shortenPath(path: string | null, t: TFunction): string {
+  if (!path) return t("common.notConfigured");
   const sep = path.includes("\\") ? "\\" : "/";
   const parts = path.split(sep);
   if (parts.length <= 4) return path;
@@ -51,14 +53,14 @@ export function getOptionalTargetVersion(pkg: OptionalPackageInfo): string {
   return pkg.recommended ?? pkg.min;
 }
 
-export function getPackageStatusBadge(status: string): PackageStatusBadge {
+export function getPackageStatusBadge(status: string, t: TFunction): PackageStatusBadge {
   switch (status) {
     case "aligned":
-      return { label: "Present", variant: "outline" };
+      return { label: t("settings.pythonEnvPicker.packagePresent"), variant: "outline" };
     case "outdated":
-      return { label: "Update needed", variant: "secondary" };
+      return { label: t("settings.pythonEnvPicker.packageUpdateNeeded"), variant: "secondary" };
     case "missing":
-      return { label: "Not present", variant: "destructive" };
+      return { label: t("settings.pythonEnvPicker.packageNotPresent"), variant: "destructive" };
     default:
       return { label: status, variant: "secondary" };
   }

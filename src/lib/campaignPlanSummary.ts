@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   CampaignPlanMode,
   CampaignPlanSummary,
@@ -30,8 +32,8 @@ export function getCampaignRunCount(campaign: CampaignSpec): number {
   return campaign.runMatrix.length;
 }
 
-function formatCount(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : plural}`;
+function formatCount(key: string, count: number): string {
+  return i18n.t(`newExperiment.counts.${key}`, { count });
 }
 
 export function summarizeCampaignPlan(campaign: CampaignSpec): CampaignPlanSummary {
@@ -39,10 +41,10 @@ export function summarizeCampaignPlan(campaign: CampaignSpec): CampaignPlanSumma
   const datasetCount = campaign.datasets.length;
   const pipelineCount = campaign.pipelines.length;
   const matrixCapacity = datasetCount * pipelineCount;
-  const datasetCountLabel = formatCount(campaign.datasets.length, "dataset");
-  const pipelineCountLabel = formatCount(campaign.pipelines.length, "pipeline");
-  const runCountLabel = formatCount(runCount, "run");
-  const matrixCapacityLabel = formatCount(matrixCapacity, "possible pair");
+  const datasetCountLabel = formatCount("dataset", campaign.datasets.length);
+  const pipelineCountLabel = formatCount("pipeline", campaign.pipelines.length);
+  const runCountLabel = formatCount("run", runCount);
+  const matrixCapacityLabel = formatCount("possiblePair", matrixCapacity);
 
   return {
     mode: campaign.mode,
@@ -54,81 +56,69 @@ export function summarizeCampaignPlan(campaign: CampaignSpec): CampaignPlanSumma
     datasetCountLabel,
     pipelineCountLabel,
     runCountLabel,
-    inputCardinalityLabel: `${datasetCountLabel} x ${pipelineCountLabel}`,
+    inputCardinalityLabel: i18n.t("newExperiment.campaign.summary.inputCardinality", {
+      datasets: datasetCountLabel,
+      pipelines: pipelineCountLabel,
+    }),
     matrixCapacityLabel,
-    matrixCoverageLabel: `${runCountLabel} planned from ${matrixCapacityLabel}`,
-    launchSummary: `${runCountLabel} across ${datasetCountLabel} and ${pipelineCountLabel}`,
+    matrixCoverageLabel: i18n.t("newExperiment.campaign.summary.matrixCoverage", {
+      runs: runCountLabel,
+      pairs: matrixCapacityLabel,
+    }),
+    launchSummary: i18n.t("newExperiment.campaign.summary.launch", {
+      runs: runCountLabel,
+      datasets: datasetCountLabel,
+      pipelines: pipelineCountLabel,
+    }),
   };
 }
 
 export function getCampaignPlanModeLabel(mode: CampaignPlanMode): string {
-  if (mode === "legacy_cartesian") return "All combinations";
-  if (mode === "paired_by_index") return "Selected combinations";
+  if (mode === "legacy_cartesian") return i18n.t("newExperiment.campaign.mode.allCombinations");
+  if (mode === "paired_by_index") return i18n.t("newExperiment.campaign.mode.selectedCombinations");
   return mode;
 }
 
-const campaignPairingModeReadModels: Record<CampaignPairingModeKind, CampaignPairingModeReadModel> = {
+const campaignPairingModeReadModels: Record<
+  CampaignPairingModeKind,
+  { labelKey: string; strictLabelKey: string; isStrictPairingReady: boolean }
+> = {
   incomplete: {
-    kind: "incomplete",
-    label: "Pending pairing",
-    strictPairingLabel: "Pending inputs",
+    labelKey: "incomplete.label",
+    strictLabelKey: "incomplete.strict",
     isStrictPairingReady: false,
   },
   single_pair: {
-    kind: "single_pair",
-    label: "One dataset / one pipeline",
-    strictPairingLabel: "One analysis ready",
+    labelKey: "singlePair.label",
+    strictLabelKey: "singlePair.strict",
     isStrictPairingReady: true,
   },
   strict_pairs: {
-    kind: "strict_pairs",
-    label: "Explicit dataset/pipeline pairs",
-    strictPairingLabel: "Selected analyses ready",
+    labelKey: "strictPairs.label",
+    strictLabelKey: "strictPairs.strict",
     isStrictPairingReady: true,
   },
   cartesian_matrix: {
-    kind: "cartesian_matrix",
-    label: "All dataset/pipeline pairs",
-    strictPairingLabel: "All combinations",
+    labelKey: "cartesian.label",
+    strictLabelKey: "cartesian.strict",
     isStrictPairingReady: false,
   },
   explicit_matrix: {
-    kind: "explicit_matrix",
-    label: "Selected analyses",
-    strictPairingLabel: "Review each combination",
+    labelKey: "explicit.label",
+    strictLabelKey: "explicit.strict",
     isStrictPairingReady: false,
   },
 };
 
 const campaignStrictOnePairReadinessReadModels: Record<
   CampaignPairingModeKind,
-  CampaignStrictOnePairReadinessReadModel
+  { status: CampaignStrictOnePairReadinessStatus; labelKey: string; isReady: boolean }
 > = {
-  incomplete: {
-    status: "not_ready",
-    label: "Pending inputs",
-    isReady: false,
-  },
-  single_pair: {
-    status: "ready",
-    label: "One analysis ready",
-    isReady: true,
-  },
-  strict_pairs: {
-    status: "not_ready",
-    label: "Several selected analyses",
-    isReady: false,
-  },
-  cartesian_matrix: {
-    status: "not_ready",
-    label: "All combinations",
-    isReady: false,
-  },
-  explicit_matrix: {
-    status: "not_ready",
-    label: "Select one combination",
-    isReady: false,
-  },
+  incomplete: { status: "not_ready", labelKey: "incomplete", isReady: false },
+  single_pair: { status: "ready", labelKey: "singlePair", isReady: true },
+  strict_pairs: { status: "not_ready", labelKey: "strictPairs", isReady: false },
+  cartesian_matrix: { status: "not_ready", labelKey: "cartesian", isReady: false },
+  explicit_matrix: { status: "not_ready", labelKey: "explicit", isReady: false },
 };
 
 function getCampaignPairingModeKind(
@@ -154,11 +144,22 @@ export function getCampaignPairingModeReadModel(
   campaign: CampaignSpec,
 ): CampaignPairingModeReadModel {
   const kind = getCampaignPairingModeKind(campaign, summarizeCampaignPlan(campaign));
-  return { ...campaignPairingModeReadModels[kind] };
+  const { labelKey, strictLabelKey, isStrictPairingReady } = campaignPairingModeReadModels[kind];
+  return {
+    kind,
+    label: i18n.t(`newExperiment.campaign.pairing.${labelKey}`),
+    strictPairingLabel: i18n.t(`newExperiment.campaign.pairing.${strictLabelKey}`),
+    isStrictPairingReady,
+  };
 }
 
 export function getCampaignStrictOnePairReadinessReadModel(
   pairingMode: CampaignPairingModeReadModel,
 ): CampaignStrictOnePairReadinessReadModel {
-  return { ...campaignStrictOnePairReadinessReadModels[pairingMode.kind] };
+  const { status, labelKey, isReady } = campaignStrictOnePairReadinessReadModels[pairingMode.kind];
+  return {
+    status,
+    label: i18n.t(`newExperiment.campaign.pairing.readiness.${labelKey}`),
+    isReady,
+  };
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useDatasetsQuery } from "@/hooks/useDatasetQueries";
 import { exportDataAsCSV } from "@/lib/chartExport";
@@ -63,6 +64,7 @@ export function PredictResults({ result, model, input, onReset }: PredictResults
 }
 
 function NumericPredictResults({ result, model, input, onReset }: Omit<PredictResultsProps, "result"> & { result: PredictResponse }) {
+  const { t } = useTranslation();
   const { data: datasetsData } = useDatasetsQuery();
 
   const resolvedInput = useMemo<PredictionInput | null>(() => {
@@ -90,12 +92,13 @@ function NumericPredictResults({ result, model, input, onReset }: Omit<PredictRe
       fallbackPartition,
       hasActuals,
       result,
+      t,
     }),
-    [result, hasActuals, fallbackPartition],
+    [result, hasActuals, fallbackPartition, t],
   );
 
-  const displayName = getPredictInputLabel(resolvedInput, model?.dataset_name ?? "Prediction input");
-  const displaySubLabel = getPredictInputSubLabel(resolvedInput) ?? null;
+  const displayName = getPredictInputLabel(resolvedInput, model?.dataset_name ?? t("predict.view.inputFallback"), t);
+  const displaySubLabel = getPredictInputSubLabel(resolvedInput, t) ?? null;
 
   const header = useMemo(
     () => buildPredictViewerHeader({ displayName, result, taskKind }),
@@ -153,25 +156,26 @@ function NumericPredictResults({ result, model, input, onReset }: Omit<PredictRe
         numSamples: result.num_samples,
         partitionCount: partitionDatasets.length,
         summaryMetric,
+        t,
       }),
-    [hasActuals, partitionDatasets.length, result.num_samples, summaryMetric],
+    [hasActuals, partitionDatasets.length, result.num_samples, summaryMetric, t],
   );
   const metricCards = useMemo(
-    () => buildPredictMetricCards(metricEntries),
-    [metricEntries],
+    () => buildPredictMetricCards(metricEntries, t),
+    [metricEntries, t],
   );
   const statsCards = useMemo(
-    () => buildPredictStatsCards(predictionStats),
-    [predictionStats],
+    () => buildPredictStatsCards(predictionStats, t),
+    [predictionStats, t],
   );
   const preprocessingBadges = useMemo(
     () => buildPredictPreprocessingBadges(result.preprocessing_steps),
     [result.preprocessing_steps],
   );
-  const taskBadge = useMemo(() => buildPredictTaskBadge(taskKind), [taskKind]);
+  const taskBadge = useMemo(() => buildPredictTaskBadge(taskKind, t), [taskKind, t]);
   const referenceBadge = useMemo(
-    () => buildPredictReferenceBadge(hasActuals),
-    [hasActuals],
+    () => buildPredictReferenceBadge(hasActuals, t),
+    [hasActuals, t],
   );
   const fullscreenTitle = useMemo(
     () => buildPredictFullscreenTitle({ displayName, modelName: result.model_name }),
@@ -183,8 +187,9 @@ function NumericPredictResults({ result, model, input, onReset }: Omit<PredictRe
         displaySubLabel,
         nSamples: result.num_samples,
         preprocessings: header.preprocessings ?? null,
+        t,
       }),
-    [displaySubLabel, header.preprocessings, result.num_samples],
+    [displaySubLabel, header.preprocessings, result.num_samples, t],
   );
 
   const handleExportTableCsv = () => {

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useInspectorSelection } from '@/context/useInspectorSelection';
 import {
@@ -20,6 +21,7 @@ interface BiasVarianceProps {
 }
 
 export function BiasVariance({ data, isLoading }: BiasVarianceProps) {
+  const { t } = useTranslation();
   const { select, selectedChains, hasSelection } = useInspectorSelection();
   const chartData = data;
   const reason = chartData?.reason?.trim() || null;
@@ -38,7 +40,7 @@ export function BiasVariance({ data, isLoading }: BiasVarianceProps) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        <span className="text-sm">Loading bias-variance data...</span>
+        <span className="text-sm">{t('inspector.charts.loading.biasVariance')}</span>
       </div>
     );
   }
@@ -47,8 +49,8 @@ export function BiasVariance({ data, isLoading }: BiasVarianceProps) {
     return (
       <BiasVarianceStateCard
         icon={AlertCircle}
-        title="No bias-variance signal"
-        description={getBiasVarianceEmptyDescription(reason)}
+        title={t('inspector.charts.biasVariance.noSignal')}
+        description={getBiasVarianceEmptyDescription(reason, t)}
       />
     );
   }

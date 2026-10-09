@@ -5,6 +5,8 @@
  * metadata hints); the panel fetches the full ChainSummary internally.
  */
 
+import { useTranslation } from "react-i18next";
+
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import type {
   ChartKind,
@@ -63,6 +65,7 @@ export function ChainDetailSheet({
   onOpenViewer,
   isViewerOpen,
 }: ChainDetailSheetProps) {
+  const { t } = useTranslation();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -70,7 +73,7 @@ export function ChainDetailSheet({
         className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(1180px,86vw)] xl:max-w-[1240px]"
       >
         <SheetTitle className="sr-only">
-          {metaHint?.modelName || metaHint?.modelClass || "Prediction details"}
+          {metaHint?.modelName || metaHint?.modelClass || t("predictions.detail.fallbackTitle")}
         </SheetTitle>
         {chainId && (
           <ChainDetailPanel

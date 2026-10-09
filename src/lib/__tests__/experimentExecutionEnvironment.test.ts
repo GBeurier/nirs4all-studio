@@ -1,3 +1,4 @@
+import "@/lib/__tests__/support/experimentI18n";
 import { describe, expect, it, vi } from "vitest";
 
 import {

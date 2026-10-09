@@ -5,7 +5,7 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type {
   ChainDetailResponse,
   ChainSummary,
@@ -47,6 +47,7 @@ vi.mock("@/hooks/useKeywordRegistry", () => ({
 }));
 
 import { ChainDetailPanel } from "./ChainDetailPanel";
+import { initEnglishI18n } from "../predictionsTestI18n";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -384,6 +385,10 @@ afterEach(async () => {
   mountedContainers = [];
   vi.clearAllMocks();
   localStorage.clear();
+});
+
+beforeAll(async () => {
+  await initEnglishI18n();
 });
 
 describe("ChainDetailPanel", () => {

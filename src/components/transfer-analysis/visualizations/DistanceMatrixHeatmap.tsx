@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { DatasetPairDistance, TransferMetricType } from '@/types/transfer';
 
 interface DistanceMatrixHeatmapProps {
@@ -8,6 +9,7 @@ interface DistanceMatrixHeatmapProps {
 }
 
 export function DistanceMatrixHeatmap({ distances, datasets, metric }: DistanceMatrixHeatmapProps) {
+  const { t: translate } = useTranslation();
   // Build distance matrix
   const matrix = useMemo(() => {
     const n = datasets.length;
@@ -63,7 +65,7 @@ export function DistanceMatrixHeatmap({ distances, datasets, metric }: DistanceM
   if (datasets.length === 0 || distances.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
-        No distance data available
+        {translate('transferAnalysis.charts.noDistance')}
       </div>
     );
   }
@@ -114,7 +116,7 @@ export function DistanceMatrixHeatmap({ distances, datasets, metric }: DistanceM
                     backgroundColor: getColor(value),
                     color: getTextColor(value),
                   }}
-                  title={value !== null ? value.toFixed(4) : 'N/A'}
+                  title={value !== null ? value.toFixed(4) : translate('transferAnalysis.charts.notAvailable')}
                 >
                   {i === j ? '-' : value !== null ? value.toFixed(2) : ''}
                 </div>
@@ -126,16 +128,16 @@ export function DistanceMatrixHeatmap({ distances, datasets, metric }: DistanceM
 
       {/* Legend */}
       <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
-        <span>Low</span>
+        <span>{translate('transferAnalysis.charts.low')}</span>
         <div
           className="h-3 w-32 rounded"
           style={{
             background: 'linear-gradient(to right, rgb(255,255,255), rgb(255,178,102), rgb(255,77,77))',
           }}
         />
-        <span>High</span>
+        <span>{translate('transferAnalysis.charts.high')}</span>
         <span className="ml-4">
-          ({metric === 'centroid' ? 'Centroid' : 'Spread'} Distance)
+          {translate('transferAnalysis.charts.distanceLegend', { metric: translate(metric === 'centroid' ? 'transferAnalysis.metrics.centroid' : 'transferAnalysis.metrics.spread') })}
         </span>
       </div>
     </div>

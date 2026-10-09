@@ -1,3 +1,4 @@
+import "@/lib/__tests__/support/experimentI18n";
 import { describe, expect, it } from "vitest";
 
 import type { Dataset } from "@/types/datasets";
@@ -37,6 +38,10 @@ describe("campaignDatasetSchemaLabels", () => {
     expect(formatCampaignPreviewCount(1, "target")).toBe("1 target");
     expect(formatCampaignPreviewCount(2, "target")).toBe("2 targets");
     expect(formatOptionalCampaignPreviewCount(undefined, "source")).toBe("Unknown sources");
+    expect(formatCampaignPreviewCount(1, "source")).toBe("1 source");
+    expect(formatCampaignPreviewCount(2, "activeNode")).toBe("2 active nodes");
+    expect(formatOptionalCampaignPreviewCount(undefined, "feature")).toBe("Unknown features");
+    expect(formatOptionalCampaignPreviewCount(0, "feature")).toBe("0 features");
   });
 
   it("formats source mode and task type labels", () => {

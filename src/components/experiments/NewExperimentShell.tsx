@@ -56,8 +56,8 @@ export function NewExperimentShell({
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">New Experiment</h1>
-          <p className="text-muted-foreground">Create and launch pipeline experiments</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t("newExperiment.title")}</h1>
+          <p className="text-muted-foreground">{t("newExperiment.shell.subtitle")}</p>
         </div>
       </motion.div>
 
@@ -90,19 +90,19 @@ export function NewExperimentShell({
         onOpenChange={launchFlow.handleMissingNodesDialogOpenChange}
         issues={launchFlow.pendingMissingIssues}
         onConfirm={launchFlow.handleConfirmPrunedLaunch}
-        title="Launch experiment without missing nodes?"
-        description="Unavailable operators will be removed from temporary copies of the affected pipelines before the experiment starts. Saved pipelines stay unchanged."
-        confirmLabel="Launch Experiment"
+        title={t("newExperiment.launch.missingNodes.title")}
+        description={t("newExperiment.launch.missingNodes.description")}
+        confirmLabel={t("newExperiment.launch.actions.launch")}
       />
       <Dialog open={Boolean(launchFlow.launchError)} onOpenChange={(open) => {
         if (!open) launchFlow.clearLaunchError();
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cannot start experiment</DialogTitle>
+            <DialogTitle>{t("newExperiment.launch.errors.cannotStart")}</DialogTitle>
             <DialogDescription>{launchFlow.launchError}</DialogDescription>
           </DialogHeader>
-          <DialogFooter><Button onClick={launchFlow.clearLaunchError}>Close</Button></DialogFooter>
+          <DialogFooter><Button onClick={launchFlow.clearLaunchError}>{t("common.close")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </motion.div>

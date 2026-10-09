@@ -32,7 +32,7 @@ it("shows only compatible linked cohorts and the dataset tab for a multimodal ar
     preprocessing: null, bundle_path: "exports/model.n4a", input_kind: "multimodal" } as AvailableModel;
   await act(async () => root.render(<DataInput model={model} isLoading={false} onRunPrediction={vi.fn()} />));
   expect(container.querySelectorAll('[role="tab"]')).toHaveLength(1);
-  expect(container.textContent).toContain("1 linked multimodal dataset available");
+  expect(container.textContent).toContain("predict.input.linkedMultimodalDatasets");
   expect(container.textContent).not.toContain("predict.data.tabs.upload");
   expect(container.textContent).not.toContain("predict.data.tabs.paste");
   expect([...container.querySelectorAll("button")].find((button) =>

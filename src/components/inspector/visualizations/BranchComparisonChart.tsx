@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { useInspectorSelection } from '@/context/useInspectorSelection';
 import {
@@ -17,6 +18,7 @@ interface BranchComparisonChartProps {
 }
 
 export function BranchComparisonChart({ data, isLoading }: BranchComparisonChartProps) {
+  const { t } = useTranslation();
   const { select } = useInspectorSelection();
   const { viewportRef, dimensions } = useInspectorChartViewport();
   const [hovered, setHovered] = useState<BranchComparisonHoveredBar | null>(null);
@@ -31,7 +33,7 @@ export function BranchComparisonChart({ data, isLoading }: BranchComparisonChart
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        <span className="text-sm">Loading branch comparison data...</span>
+        <span className="text-sm">{t('inspector.charts.loading.branchComparison')}</span>
       </div>
     );
   }
@@ -39,7 +41,7 @@ export function BranchComparisonChart({ data, isLoading }: BranchComparisonChart
   if (branches.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        {getBranchComparisonEmptyMessage()}
+        {getBranchComparisonEmptyMessage(t)}
       </div>
     );
   }

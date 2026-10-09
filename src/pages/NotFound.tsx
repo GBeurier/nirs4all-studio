@@ -1,9 +1,11 @@
+import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import { Home, AlertCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
+  const { t } = useTranslation();
   return (
     <motion.div
       className="flex flex-col items-center justify-center min-h-[60vh] text-center"
@@ -16,15 +18,15 @@ export default function NotFound() {
       </div>
       <h1 className="text-4xl font-bold text-foreground mb-2">404</h1>
       <h2 className="text-xl font-semibold text-foreground mb-4">
-        Page Not Found
+        {t("notFound.title")}
       </h2>
       <p className="text-muted-foreground max-w-md mb-8">
-        The page you're looking for doesn't exist or has been moved.
+        {t("notFound.description")}
       </p>
       <Button asChild>
         <Link to="/datasets">
           <Home className="mr-2 h-4 w-4" />
-          Back to Datasets
+          {t("notFound.backToDatasets")}
         </Link>
       </Button>
     </motion.div>

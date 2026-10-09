@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { enT } from "@/lib/__tests__/enT";
+
 import {
   buildDataInputDatasetReadModel,
   buildDataInputFileReadModel,
@@ -69,15 +71,15 @@ describe("DataInputData", () => {
     expect(buildDataInputDatasetReadModel([
       { id: "corn", name: "Corn" },
       { id: "wheat", name: null },
-    ])).toEqual({
+    ], enT)).toEqual({
       options: [
         { id: "corn", label: "Corn" },
         { id: "wheat", label: "wheat" },
       ],
       availabilityLabel: "2 linked datasets available.",
     });
-    expect(formatDataInputPartitionLabel("all")).toBe("All partitions");
-    expect(formatDataInputPartitionLabel("external")).toBe("External");
+    expect(formatDataInputPartitionLabel("all", enT)).toBe("All partitions");
+    expect(formatDataInputPartitionLabel("external", enT)).toBe("External");
     expect(buildDataInputFileReadModel({ name: "spectra.csv", size: 1536 })).toEqual({
       name: "spectra.csv",
       sizeLabel: "1.5 KB",
@@ -160,7 +162,7 @@ describe("DataInputData", () => {
   });
 
   it("builds the model read-model with badges and metric pills", () => {
-    expect(buildDataInputModelReadModel(null)).toMatchObject({
+    expect(buildDataInputModelReadModel(null, enT)).toMatchObject({
       isSelected: false,
       title: "Model required",
       badges: [],
@@ -170,7 +172,7 @@ describe("DataInputData", () => {
     const readModel = buildDataInputModelReadModel(model({
       prediction_metric: "rmse",
       prediction_score: 0.23456,
-    }));
+    }), enT);
 
     expect(readModel).toMatchObject({
       isSelected: true,

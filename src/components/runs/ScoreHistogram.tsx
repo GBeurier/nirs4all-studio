@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import type { ScoreDistribution } from "@/types/enriched-runs";
 
@@ -14,10 +15,12 @@ const PARTITION_COLORS: Record<string, string> = {
 };
 
 export function ScoreHistogram({ distribution, selectedPartitions }: ScoreHistogramProps) {
+  const { t } = useTranslation();
+
   if (!distribution || Object.keys(distribution.partitions).length === 0) {
     return (
       <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
-        No score data available
+        {t("runs.quickView.noScores")}
       </div>
     );
   }
@@ -28,7 +31,7 @@ export function ScoreHistogram({ distribution, selectedPartitions }: ScoreHistog
   if (activeParts.length === 0) {
     return (
       <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
-        Select a partition to view scores
+        {t("runs.quickView.selectPartition")}
       </div>
     );
   }

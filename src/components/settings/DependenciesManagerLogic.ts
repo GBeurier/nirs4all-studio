@@ -7,6 +7,7 @@
  * makes the rules unit-testable and keeps the components declarative.
  */
 
+import type { TFunction } from "i18next";
 import type {
   DependenciesResponse,
   DependencyCategory,
@@ -103,8 +104,8 @@ export function countOutdatedPackages(dependencies: DependenciesResponse): numbe
 }
 
 /** Human-readable text for the last-action notification banner. */
-export function formatLastActionText(lastAction: LastActionState): string {
+export function formatLastActionText(lastAction: LastActionState, t: TFunction): string {
   return lastAction.success
-    ? `Successfully ${lastAction.type}ed ${lastAction.package}`
+    ? t(`settings.dependencies.actionSuccess.${lastAction.type}`, { package: lastAction.package })
     : lastAction.message;
 }

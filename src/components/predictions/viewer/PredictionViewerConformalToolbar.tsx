@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type {
@@ -76,6 +78,7 @@ export function getPredictionViewerConformalDisplayState(
   partitions: readonly ViewerPartitionTarget[],
   datasets: readonly PartitionDataset[],
   selectedCoverage: number | null,
+  t: TFunction,
 ): PredictionViewerConformalDisplayState {
   const options = createPredictionViewerConformalCoverageOptions(partitions);
   if (options.length === 0) {
@@ -93,7 +96,7 @@ export function getPredictionViewerConformalDisplayState(
   if (conformalTargetCount !== 1) {
     return {
       coverageLabel,
-      message: "Conformal intervals are displayed only when a single calibrated partition is open.",
+      message: t("predictions.viewer.conformal.singlePartitionOnly"),
       tone: "warning",
       visible: true,
     };
@@ -101,7 +104,7 @@ export function getPredictionViewerConformalDisplayState(
   if (selectedCoverage == null || !option) {
     return {
       coverageLabel,
-      message: "The selected conformal coverage is not materialized in this artifact.",
+      message: t("predictions.viewer.conformal.notMaterialized"),
       tone: "warning",
       visible: true,
     };
@@ -109,7 +112,7 @@ export function getPredictionViewerConformalDisplayState(
   if (datasets.length === 0) {
     return {
       coverageLabel,
-      message: "Select the calibrated partition to display conformal intervals.",
+      message: t("predictions.viewer.conformal.selectCalibrated"),
       tone: "muted",
       visible: true,
     };
@@ -117,7 +120,7 @@ export function getPredictionViewerConformalDisplayState(
   if (datasets.length !== 1) {
     return {
       coverageLabel,
-      message: "Conformal intervals are displayed only for one visible partition at a time.",
+      message: t("predictions.viewer.conformal.oneVisibleOnly"),
       tone: "warning",
       visible: true,
     };
@@ -127,7 +130,7 @@ export function getPredictionViewerConformalDisplayState(
   if (dataset.conformalCoverage === selectedCoverage && dataset.conformalIntervals?.some(interval => interval != null)) {
     return {
       coverageLabel: dataset.conformalCoverageLabel ?? coverageLabel,
-      message: `${dataset.conformalCoverageLabel ?? coverageLabel} conformal intervals are displayed from the attached calibrated artifact.`,
+      message: t("predictions.viewer.conformal.displayed", { coverage: dataset.conformalCoverageLabel ?? coverageLabel }),
       tone: "active",
       visible: true,
     };
@@ -135,7 +138,7 @@ export function getPredictionViewerConformalDisplayState(
 
   return {
     coverageLabel,
-    message: "Conformal intervals could not be aligned with the current prediction sample order.",
+    message: t("predictions.viewer.conformal.misaligned"),
     tone: "warning",
     visible: true,
   };
@@ -147,8 +150,9 @@ export function PredictionViewerConformalToolbar({
   partitions,
   selectedCoverage,
 }: PredictionViewerConformalToolbarProps) {
+  const { t } = useTranslation();
   const options = createPredictionViewerConformalCoverageOptions(partitions);
-  const state = getPredictionViewerConformalDisplayState(partitions, datasets, selectedCoverage);
+  const state = getPredictionViewerConformalDisplayState(partitions, datasets, selectedCoverage, t);
   if (!state.visible) return null;
 
   return (
@@ -158,7 +162,7 @@ export function PredictionViewerConformalToolbar({
           variant={state.tone === "active" ? "default" : "outline"}
           className="h-5 px-1.5"
         >
-          Conformal
+          {t("predictions.viewer.conformal.badge")}
         </Badge>
         <span className={state.tone === "warning" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}>
           {state.message}

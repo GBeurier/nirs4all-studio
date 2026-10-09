@@ -1,4 +1,5 @@
 import { BarChart3 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +20,8 @@ export function MetricsCard({
   variantText?: string | null;
   pendingMessage?: string;
 }) {
+  const { t } = useTranslation();
+
   if (!metrics && !pendingMessage) return null;
 
   return (
@@ -44,7 +47,7 @@ export function MetricsCard({
             {metrics.score != null && metrics.r2 == null && metrics.rmse == null && metrics.mae == null && metrics.rpd == null && (
               <div>
                 <div className="text-2xl font-bold text-chart-2">{metrics.score.toFixed(4)}</div>
-                <div className="text-xs text-muted-foreground">{metrics.score_metric?.replace(/_/g, " ").toUpperCase() || "Score"}</div>
+                <div className="text-xs text-muted-foreground">{metrics.score_metric?.replace(/_/g, " ").toUpperCase() || t("runs.metrics.score")}</div>
               </div>
             )}
             {metrics.r2 != null && (
@@ -52,7 +55,7 @@ export function MetricsCard({
                 <div className="text-2xl font-bold text-chart-1">
                   {(metrics.r2 * 100).toFixed(2)}%
                 </div>
-                <div className="text-xs text-muted-foreground">R² Score</div>
+                <div className="text-xs text-muted-foreground">{t("runs.metrics.r2Score")}</div>
               </div>
             )}
             {metrics.rmse != null && (

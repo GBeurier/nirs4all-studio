@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import {
   collectPresentMetricKeys,
   isClassificationTaskType,
@@ -6,6 +7,7 @@ import {
 import { formatRunTokenLabel } from "@/lib/runs/format";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import type { Run, RunStatsResponse } from "@/types/runs";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 export {
   EXECUTION_JOB_RECORD_DETAIL_REFETCH_MS,
@@ -119,12 +121,12 @@ function readArtifactCount(source: unknown): number | null {
   return Array.isArray(artifactItems) ? artifactItems.length : null;
 }
 
-function formatArtifactCountLabel(count: number | null): string {
+function formatArtifactCountLabel(count: number | null, t: TFunction): string {
   if (count == null) {
-    return "Not reported";
+    return t("runs.storage.notReported");
   }
 
-  return `${count} ${count === 1 ? "artifact" : "artifacts"}`;
+  return t("runs.storage.artifactCount", { count });
 }
 
 function formatArtifactSizeLabel(bytes: number): string {
@@ -136,7 +138,8 @@ function formatArtifactSizeLabel(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
   const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(unitSize)), units.length - 1);
 
-  return `${parseFloat((bytes / Math.pow(unitSize, unitIndex)).toFixed(1))} ${units[unitIndex]}`;
+  const value = (bytes / Math.pow(unitSize, unitIndex)).toLocaleString(getActiveLocale(), { maximumFractionDigits: 1 });
+  return `${value} ${units[unitIndex]}`;
 }
 
 function metadataField(
@@ -274,9 +277,9 @@ export function buildRunPageIdLookup(activeRuns: readonly Run[] | undefined): Ma
   return lookup;
 }
 
-export function buildRunStorageArtifactMetadata(run: EnrichedRun | Run): RunsStorageArtifactMetadata {
+export function buildRunStorageArtifactMetadata(run: EnrichedRun | Run, t: TFunction): RunsStorageArtifactMetadata {
   const artifactCount = readArtifactCount(run);
-  const artifactCountLabel = formatArtifactCountLabel(artifactCount);
+  const artifactCountLabel = formatArtifactCountLabel(artifactCount, t);
   const artifactSizeBytes = readNonNegativeNumberField(run, ["artifact_size_bytes", "artifactSizeBytes"]) ?? 0;
   const artifactSizeLabel = formatArtifactSizeLabel(artifactSizeBytes);
   const executionBackend = readRunExecutionBackend(run);
@@ -289,8 +292,8 @@ export function buildRunStorageArtifactMetadata(run: EnrichedRun | Run): RunsSto
     storeRunId: readStringField(run, ["store_run_id", "storeRunId"]),
     workspaceId: readStringField(run, ["workspace_id", "workspaceId"]),
   };
-  const executionBackendLabel = executionBackend ? formatRunTokenLabel(executionBackend) : null;
-  const storageBackendLabel = storageBackend ? formatRunTokenLabel(storageBackend) : null;
+  const executionBackendLabel = executionBackend ? formatRunTokenLabel(executionBackend, t) : null;
+  const storageBackendLabel = storageBackend ? formatRunTokenLabel(storageBackend, t) : null;
 
   return {
     runId: getRunStorageMetadataRunId(run),
@@ -304,23 +307,24 @@ export function buildRunStorageArtifactMetadata(run: EnrichedRun | Run): RunsSto
     storageBackendLabel,
     provenance,
     fields: compactMetadataFields([
-      metadataField("artifact-count", "Artifacts", artifactCountLabel),
-      metadataField("artifact-size", "Artifact size", artifactSizeLabel),
-      metadataField("execution-backend", "Execution backend", executionBackendLabel),
-      metadataField("storage-backend", "Storage backend", storageBackendLabel),
-      metadataField("store-run-id", "Store run ID", provenance.storeRunId),
-      metadataField("manifest-path", "Manifest path", provenance.manifestPath),
-      metadataField("run-directory", "Run directory", provenance.runDirectory),
-      metadataField("repository-id", "Repository ID", provenance.repositoryId),
-      metadataField("workspace-id", "Workspace ID", provenance.workspaceId),
+      metadataField("artifact-count", t("runs.storage.artifacts"), artifactCountLabel),
+      metadataField("artifact-size", t("runs.storage.artifactSize"), artifactSizeLabel),
+      metadataField("execution-backend", t("runs.storage.executionBackend"), executionBackendLabel),
+      metadataField("storage-backend", t("runs.storage.storageBackend"), storageBackendLabel),
+      metadataField("store-run-id", t("runs.storage.storeRunId"), provenance.storeRunId),
+      metadataField("manifest-path", t("runs.storage.manifestPath"), provenance.manifestPath),
+      metadataField("run-directory", t("runs.storage.runDirectory"), provenance.runDirectory),
+      metadataField("repository-id", t("runs.storage.repositoryId"), provenance.repositoryId),
+      metadataField("workspace-id", t("runs.storage.workspaceId"), provenance.workspaceId),
     ]),
   };
 }
 
 export function buildRunsStorageArtifactMetadata(
   runs: readonly (EnrichedRun | Run)[],
+  t: TFunction,
 ): RunsStorageArtifactMetadata[] {
-  return runs.map(buildRunStorageArtifactMetadata);
+  return runs.map(run => buildRunStorageArtifactMetadata(run, t));
 }
 
 export function buildRunsMetricSelectionContext(

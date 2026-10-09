@@ -2,6 +2,7 @@
  * DatasetSpectraTab - Full spectra visualization tab for dataset detail page
  */
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,8 @@ import { PartitionToggle } from "../PartitionToggle";
 import { getPartitionTheme } from "../partitionTheme";
 import { getDatasetSpectraPreviewReadModel } from "../DatasetPreviewData";
 import type { PartitionKey, PreviewDataResponse } from "@/types/datasets";
-
+import { getActiveLocale } from "@/lib/activeLocale";
+
 interface DatasetSpectraTabProps {
   preview: PreviewDataResponse | null;
   loading: boolean;
@@ -25,6 +27,7 @@ export function DatasetSpectraTab({
   error,
   onRefresh,
 }: DatasetSpectraTabProps) {
+  const { t } = useTranslation();
   const [partition, setPartition] = useState<PartitionKey>("all");
   const [selectedSource, setSelectedSource] = useState(0);
   const {
@@ -46,7 +49,7 @@ export function DatasetSpectraTab({
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground">Loading spectra data...</p>
+        <p className="text-muted-foreground">{t("datasets.detail.spectra.loading")}</p>
       </div>
     );
   }
@@ -55,13 +58,13 @@ export function DatasetSpectraTab({
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <AlertCircle className="h-8 w-8 text-destructive mb-4" />
-        <p className="text-destructive font-medium mb-2">Failed to load spectra</p>
+        <p className="text-destructive font-medium mb-2">{t("datasets.detail.spectra.loadFailed")}</p>
         <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
           {error}
         </p>
         <Button onClick={onRefresh} variant="outline">
           <RefreshCw className="h-4 w-4 mr-2" />
-          Retry
+          {t("common.retry")}
         </Button>
       </div>
     );
@@ -71,10 +74,10 @@ export function DatasetSpectraTab({
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <BarChart3 className="h-8 w-8 text-muted-foreground mb-4 opacity-50" />
-        <p className="text-muted-foreground">No spectra data available</p>
+        <p className="text-muted-foreground">{t("datasets.detail.spectra.noData")}</p>
         <Button onClick={onRefresh} variant="outline" className="mt-4">
           <RefreshCw className="h-4 w-4 mr-2" />
-          Load Preview
+          {t("datasets.detail.spectra.loadPreview")}
         </Button>
       </div>
     );
@@ -91,20 +94,21 @@ export function DatasetSpectraTab({
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
-              Spectral Overview
+              {t("datasets.detail.spectra.overview")}
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               {hasPerSource && (
                 <div className="flex items-center gap-2 mr-2">
-                  <span className="text-sm text-muted-foreground whitespace-nowrap">Source:</span>
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">{t("datasets.detail.spectra.source")}</span>
                   <select
+                    aria-label={t("datasets.detail.spectra.sourceLabel")}
                     className="flex h-8 w-32 items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                     value={selectedSource}
                     onChange={(e) => setSelectedSource(Number(e.target.value))}
                   >
                     {Array.from({ length: sourceCount }).map((_, i) => (
                       <option key={i} value={i}>
-                        Source {i + 1}
+                        {t("datasets.wizard.fileMapping.row.sourceN", { n: i + 1 })}
                       </option>
                     ))}
                   </select>
@@ -119,9 +123,9 @@ export function DatasetSpectraTab({
                 size="xs"
               />
               <Badge variant="outline" className="text-xs">
-                {spectra.wavelengths.length} points
+                {t("datasets.detail.spectra.points", { count: spectra.wavelengths.length })}
               </Badge>
-              <Button variant="ghost" size="sm" onClick={onRefresh}>
+              <Button variant="ghost" size="sm" onClick={onRefresh} aria-label={t("common.refresh")}>
                 <RefreshCw className="h-4 w-4" />
               </Button>
             </div>
@@ -137,13 +141,13 @@ export function DatasetSpectraTab({
               width={960}
               height={360}
               unit={preview?.summary?.header_unit}
-              yLabel="Absorbance"
+              yLabel={t("datasets.detail.spectra.absorbance")}
               lineColor={partitionTheme.lineColor}
               rangeFillColor={partitionTheme.rangeFillColor}
             />
           </div>
           <p className="text-xs text-muted-foreground mt-3 text-center">
-            Mean spectrum with min-max range shading
+            {t("datasets.detail.spectra.caption")}
           </p>
         </CardContent>
       </Card>
@@ -152,40 +156,40 @@ export function DatasetSpectraTab({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground">Wavelength Range</p>
+            <p className="text-sm text-muted-foreground">{t("datasets.detail.spectra.wavelengthRange")}</p>
             <p className="text-lg font-semibold">
               {wavelengthMin.toFixed(0)} - {wavelengthMax.toFixed(0)}
             </p>
             <p className="text-xs text-muted-foreground">
-              {preview?.summary?.header_unit === "nm" ? "nm" : preview?.summary?.header_unit === "cm-1" ? "cm⁻¹" : "units"}
+              {preview?.summary?.header_unit === "nm" ? "nm" : preview?.summary?.header_unit === "cm-1" ? "cm⁻¹" : t("datasets.detail.spectra.units")}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground">Data Points</p>
+            <p className="text-sm text-muted-foreground">{t("datasets.detail.spectra.dataPoints")}</p>
             <p className="text-lg font-semibold">
-              {spectra.wavelengths.length.toLocaleString()}
+              {spectra.wavelengths.length.toLocaleString(getActiveLocale())}
             </p>
-            <p className="text-xs text-muted-foreground">per spectrum</p>
+            <p className="text-xs text-muted-foreground">{t("datasets.detail.spectra.perSpectrum")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground">Mean Range</p>
+            <p className="text-sm text-muted-foreground">{t("datasets.detail.spectra.meanRange")}</p>
             <p className="text-lg font-semibold">
               {Math.min(...spectra.mean_spectrum).toFixed(3)} - {Math.max(...spectra.mean_spectrum).toFixed(3)}
             </p>
-            <p className="text-xs text-muted-foreground">absorbance</p>
+            <p className="text-xs text-muted-foreground">{t("datasets.detail.spectra.absorbanceLower")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground">Samples</p>
+            <p className="text-sm text-muted-foreground">{t("datasets.detail.spectra.samples")}</p>
             <p className="text-lg font-semibold">
-              {spectraSampleCount.toLocaleString() || "--"}
+              {spectraSampleCount.toLocaleString(getActiveLocale()) || "--"}
             </p>
-            <p className="text-xs text-muted-foreground">{effectivePartition}</p>
+            <p className="text-xs text-muted-foreground">{t(`datasets.detail.partitions.${effectivePartition}`)}</p>
           </CardContent>
         </Card>
       </div>
@@ -196,9 +200,9 @@ export function DatasetSpectraTab({
           <div className="flex items-center gap-3">
             <Settings className="h-5 w-5 text-muted-foreground" />
             <div>
-              <p className="text-sm font-medium">Configure visualization</p>
+              <p className="text-sm font-medium">{t("datasets.detail.spectra.configure")}</p>
               <p className="text-xs text-muted-foreground">
-                Use the Playground to explore spectra with preprocessing and custom views
+                {t("datasets.detail.spectra.configureHint")}
               </p>
             </div>
           </div>

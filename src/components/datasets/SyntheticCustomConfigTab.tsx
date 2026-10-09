@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { useTranslation } from "react-i18next";
 import { Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,11 +34,12 @@ export function SyntheticCustomConfigTab({
   config,
   setConfig,
 }: SyntheticCustomConfigTabProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label className="text-sm">Task Type</Label>
+          <Label className="text-sm">{t("datasets.synthetic.taskType")}</Label>
           <Select
             value={config.task_type}
             onValueChange={(value) =>
@@ -57,19 +59,19 @@ export function SyntheticCustomConfigTab({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="regression">Regression</SelectItem>
+              <SelectItem value="regression">{t("datasets.synthetic.taskTypes.regression")}</SelectItem>
               <SelectItem value="binary_classification">
-                Binary Classification
+                {t("datasets.synthetic.taskTypes.binary_classification")}
               </SelectItem>
               <SelectItem value="multiclass_classification">
-                Multiclass Classification
+                {t("datasets.synthetic.taskTypes.multiclass_classification")}
               </SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div className="space-y-2">
-          <Label className="text-sm">Complexity</Label>
+          <Label className="text-sm">{t("datasets.synthetic.complexity")}</Label>
           <Select
             value={config.complexity}
             onValueChange={(value) =>
@@ -83,16 +85,16 @@ export function SyntheticCustomConfigTab({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="simple">Simple (fast training)</SelectItem>
-              <SelectItem value="realistic">Realistic</SelectItem>
-              <SelectItem value="complex">Complex (challenging)</SelectItem>
+              <SelectItem value="simple">{t("datasets.synthetic.complexitySimpleHint")}</SelectItem>
+              <SelectItem value="realistic">{t("datasets.synthetic.complexities.realistic")}</SelectItem>
+              <SelectItem value="complex">{t("datasets.synthetic.complexityComplexHint")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div className="space-y-2">
           <div className="flex justify-between">
-            <Label className="text-sm">Number of Samples</Label>
+            <Label className="text-sm">{t("datasets.synthetic.samples")}</Label>
             <span className="text-xs text-muted-foreground">
               {config.n_samples}
             </span>
@@ -111,7 +113,7 @@ export function SyntheticCustomConfigTab({
 
         {isClassificationTask(config.task_type) && (
           <div className="space-y-2">
-            <Label className="text-sm">Number of Classes</Label>
+            <Label className="text-sm">{t("datasets.synthetic.classes")}</Label>
             <Input
               type="number"
               min={config.task_type === "binary_classification" ? 2 : 3}
@@ -137,7 +139,7 @@ export function SyntheticCustomConfigTab({
 
         <div className="space-y-2">
           <div className="flex justify-between">
-            <Label className="text-sm">Train Ratio</Label>
+            <Label className="text-sm">{t("datasets.synthetic.trainRatio")}</Label>
             <span className="text-xs text-muted-foreground">
               {((config.train_ratio ?? 0.8) * 100).toFixed(0)}%
             </span>
@@ -160,9 +162,9 @@ export function SyntheticCustomConfigTab({
 
       <div className="grid grid-cols-2 gap-4 pt-4 border-t">
         <div className="space-y-2">
-          <Label className="text-sm">Dataset Name (optional)</Label>
+          <Label className="text-sm">{t("datasets.synthetic.nameOptional")}</Label>
           <Input
-            placeholder="Auto-generated if empty"
+            placeholder={t("datasets.synthetic.namePlaceholder")}
             maxLength={128}
             value={config.name ?? ""}
             onChange={(event) =>
@@ -172,7 +174,7 @@ export function SyntheticCustomConfigTab({
               }))
             }
           />
-          <p className="text-xs text-muted-foreground">Start with a letter or number. Use letters, numbers, dots, underscores or hyphens.</p>
+          <p className="text-xs text-muted-foreground">{t("datasets.synthetic.nameHint")}</p>
         </div>
         <div className="flex items-end">
           <div className="flex items-center gap-2">
@@ -184,17 +186,16 @@ export function SyntheticCustomConfigTab({
               }
             />
             <Label htmlFor="auto-link-custom" className="text-sm">
-              Auto-link to workspace
+              {t("datasets.synthetic.options.autoLink")}
             </Label>
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger>
+                <TooltipTrigger aria-label={t("datasets.synthetic.autoLinkHint")}>
                   <Info className="h-3.5 w-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="max-w-xs">
-                    Automatically add the generated dataset to your workspace
-                    for immediate use.
+                    {t("datasets.synthetic.autoLinkHint")}
                   </p>
                 </TooltipContent>
               </Tooltip>

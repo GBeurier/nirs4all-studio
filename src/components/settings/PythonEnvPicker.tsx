@@ -132,7 +132,7 @@ export function PythonEnvPicker() {
               isSettingUp={isSettingUp}
               readyLabel={t("settings.pythonEnv.ready")}
               notReadyLabel={t("settings.pythonEnv.notReady")}
-              reviewPackagesLabel="Review packages"
+              reviewPackagesLabel={t("settings.pythonEnvPicker.reviewPackages")}
               changeLabel={t("settings.pythonEnv.change")}
               onOpenReview={handleOpenReviewClick}
               onOpenDialog={handleOpenDialog}

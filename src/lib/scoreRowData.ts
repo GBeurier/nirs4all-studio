@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import {
   canonicalMetricKey,
   filterMetricsForTaskType,
@@ -109,7 +110,7 @@ function regressionPrimaryLabel(primaryMetric: string): string {
     : getScoreRowMetricLabel(primaryMetric);
 }
 
-export function buildRefitScorePairs(row: ScoreCardRow, selectedMetrics: string[]): ScorePairData[] {
+export function buildRefitScorePairs(row: ScoreCardRow, selectedMetrics: string[], t: TFunction): ScorePairData[] {
   const primaryMetric = getScoreCardPrimaryMetric(row);
   const secondaryMetrics = getSecondaryMetrics(row, selectedMetrics);
   const primaryLabel = isClassificationTaskType(row.taskType)
@@ -124,7 +125,7 @@ export function buildRefitScorePairs(row: ScoreCardRow, selectedMetrics: string[
       colorClass: 'text-emerald-500 font-semibold',
     },
     {
-      label: 'Train',
+      label: t('results.scores.pair.train'),
       value: row.primaryTrainScore ?? getTrainScore(row, primaryMetric),
       metric: primaryMetric,
       colorClass: 'text-orange-400',
@@ -137,7 +138,7 @@ export function buildRefitScorePairs(row: ScoreCardRow, selectedMetrics: string[
   ];
 }
 
-export function buildCrossvalScorePairs(row: ScoreCardRow, selectedMetrics: string[]): ScorePairData[] {
+export function buildCrossvalScorePairs(row: ScoreCardRow, selectedMetrics: string[], t: TFunction): ScorePairData[] {
   const primaryMetric = getScoreCardPrimaryMetric(row);
   const secondaryMetrics = getSecondaryMetrics(row, selectedMetrics);
 
@@ -146,16 +147,16 @@ export function buildCrossvalScorePairs(row: ScoreCardRow, selectedMetrics: stri
 
     return [
       {
-        label: `${primaryLabel} CV`,
+        label: t('results.scores.pair.cvOf', { metric: primaryLabel }),
         value: row.primaryValScore ?? getScoreMapValue(row.avgValScores, primaryMetric),
         metric: primaryMetric,
         colorClass: 'text-chart-1 font-semibold',
       },
-      { label: 'Mean Val', value: getScoreMapValue(row.meanValScores, primaryMetric), metric: primaryMetric, colorClass: 'text-blue-400' },
-      { label: 'Min Val', value: getScoreMapValue(row.minValScores, primaryMetric), metric: primaryMetric, colorClass: 'text-blue-400' },
-      { label: 'Max Val', value: getScoreMapValue(row.maxValScores, primaryMetric), metric: primaryMetric, colorClass: 'text-blue-400' },
+      { label: t('results.scores.pair.mean', { part: t('results.scores.pair.val') }), value: getScoreMapValue(row.meanValScores, primaryMetric), metric: primaryMetric, colorClass: 'text-blue-400' },
+      { label: t('results.scores.pair.min', { part: t('results.scores.pair.val') }), value: getScoreMapValue(row.minValScores, primaryMetric), metric: primaryMetric, colorClass: 'text-blue-400' },
+      { label: t('results.scores.pair.max', { part: t('results.scores.pair.val') }), value: getScoreMapValue(row.maxValScores, primaryMetric), metric: primaryMetric, colorClass: 'text-blue-400' },
       {
-        label: `${primaryLabel} Test`,
+        label: t('results.scores.pair.testOf', { metric: primaryLabel }),
         value: row.primaryTestScore ?? getScoreMapValue(row.avgTestScores, primaryMetric),
         metric: primaryMetric,
       },
@@ -169,6 +170,7 @@ export function buildCrossvalScorePairs(row: ScoreCardRow, selectedMetrics: stri
   }
 
   const rmseLike = primaryMetric === 'rmse';
+  const testPart = rmseLike ? 'RMSEP' : t('results.scores.pair.test');
   const primaryKey = primaryMetric || 'rmse';
   const meanVal = getScoreMapValue(row.meanValScores, primaryMetric) ?? getScoreMapValue(row.meanValScores, 'rmse');
   const minVal = getScoreMapValue(row.minValScores, primaryMetric) ?? getScoreMapValue(row.minValScores, 'rmse');
@@ -186,14 +188,14 @@ export function buildCrossvalScorePairs(row: ScoreCardRow, selectedMetrics: stri
       metric: primaryKey,
       colorClass: 'text-chart-1 font-semibold',
     },
-    { label: 'Mean Val', value: meanVal, metric: primaryKey, colorClass: 'text-blue-400' },
-    { label: 'Min Val', value: minVal, metric: primaryKey, colorClass: 'text-blue-400' },
-    { label: 'Max Val', value: maxVal, metric: primaryKey, colorClass: 'text-blue-400' },
-    { label: rmseLike ? 'RMSEP Avg' : 'Test Avg', value: avgTest, metric: primaryKey },
-    { label: rmseLike ? 'RMSEP W-Avg' : 'Test W-Avg', value: weightedTest, metric: primaryKey },
-    { label: rmseLike ? 'Mean RMSEP' : 'Mean Test', value: meanTest, metric: primaryKey, colorClass: 'text-green-400' },
-    { label: 'Min Test', value: minTest, metric: primaryKey, colorClass: 'text-green-400' },
-    { label: 'Max Test', value: maxTest, metric: primaryKey, colorClass: 'text-green-400' },
+    { label: t('results.scores.pair.mean', { part: t('results.scores.pair.val') }), value: meanVal, metric: primaryKey, colorClass: 'text-blue-400' },
+    { label: t('results.scores.pair.min', { part: t('results.scores.pair.val') }), value: minVal, metric: primaryKey, colorClass: 'text-blue-400' },
+    { label: t('results.scores.pair.max', { part: t('results.scores.pair.val') }), value: maxVal, metric: primaryKey, colorClass: 'text-blue-400' },
+    { label: t('results.scores.pair.avg', { part: testPart }), value: avgTest, metric: primaryKey },
+    { label: t('results.scores.pair.wAvg', { part: testPart }), value: weightedTest, metric: primaryKey },
+    { label: t('results.scores.pair.mean', { part: testPart }), value: meanTest, metric: primaryKey, colorClass: 'text-green-400' },
+    { label: t('results.scores.pair.min', { part: t('results.scores.pair.test') }), value: minTest, metric: primaryKey, colorClass: 'text-green-400' },
+    { label: t('results.scores.pair.max', { part: t('results.scores.pair.test') }), value: maxTest, metric: primaryKey, colorClass: 'text-green-400' },
     ...secondaryMetrics.map((metric) => ({
       label: metric.label,
       value: getScoreMapValue(row.avgValScores, metric.key) ?? getScoreMapValue(row.avgTestScores, metric.key),
@@ -203,19 +205,19 @@ export function buildCrossvalScorePairs(row: ScoreCardRow, selectedMetrics: stri
   ];
 }
 
-export function buildTrainScorePairs(row: ScoreCardRow, selectedMetrics: string[]): ScorePairData[] {
+export function buildTrainScorePairs(row: ScoreCardRow, selectedMetrics: string[], t: TFunction): ScorePairData[] {
   const primaryMetric = getScoreCardPrimaryMetric(row);
   const secondaryMetrics = getSecondaryMetrics(row, selectedMetrics);
   if (row.foldCount === 0 && row.partition === 'train') {
     return [
       {
-        label: `Train ${getScoreRowMetricLabel(primaryMetric)}`,
+        label: t('results.scores.pair.trainOf', { metric: getScoreRowMetricLabel(primaryMetric) }),
         value: row.primaryTrainScore ?? getScoreMapValue(row.trainScores, primaryMetric),
         metric: primaryMetric,
         colorClass: 'font-semibold',
       },
       ...secondaryMetrics.map(metric => ({
-        label: `Train ${metric.label}`,
+        label: t('results.scores.pair.trainOf', { metric: metric.label }),
         value: getScoreMapValue(row.trainScores, metric.key),
         metric: metric.key,
       })),
@@ -235,7 +237,7 @@ export function buildTrainScorePairs(row: ScoreCardRow, selectedMetrics: string[
       colorClass: 'font-semibold',
     },
     {
-      label: 'Val',
+      label: t('results.scores.pair.val'),
       value: row.primaryValScore ?? getValScore(row, primaryMetric),
       metric: primaryMetric,
       colorClass: 'text-blue-400',

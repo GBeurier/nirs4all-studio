@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import "@/lib/i18n";
 import type { ArchiveV2ArrayPredictionResponse } from "@/types/archiveV2Prediction";
 
 import { ArchiveV2PredictionResults } from "./ArchiveV2PredictionResults";

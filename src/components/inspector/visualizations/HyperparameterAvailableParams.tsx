@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { getHyperparameterAvailableParamTags } from '@/lib/inspector/hyperparameterSensitivityPresentation';
 
 interface HyperparameterAvailableParamsProps {
@@ -5,6 +6,7 @@ interface HyperparameterAvailableParamsProps {
 }
 
 export function HyperparameterAvailableParams({ params }: HyperparameterAvailableParamsProps) {
+  const { t } = useTranslation();
   const { visibleParams, overflowCount } = getHyperparameterAvailableParamTags(params);
 
   return (
@@ -16,7 +18,7 @@ export function HyperparameterAvailableParams({ params }: HyperparameterAvailabl
       ))}
       {overflowCount > 0 && (
         <span className="rounded-full border border-border/60 bg-background px-2 py-0.5">
-          +{overflowCount} more
+          {t('inspector.charts.hyperparameter.moreParams', { count: overflowCount })}
         </span>
       )}
     </div>

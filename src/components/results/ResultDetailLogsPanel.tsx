@@ -1,4 +1,5 @@
 import { Download, RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ResultLogLineData, ResultLogLineTone } from "./resultDetailData";
@@ -8,12 +9,6 @@ interface ResultDetailLogsPanelProps {
   isRunning: boolean;
 }
 
-const resultDetailLogLabels = {
-  title: "Execution Logs",
-  download: "Download",
-  running: "Processing...",
-};
-
 const logToneClasses: Record<ResultLogLineTone, string | undefined> = {
   default: undefined,
   error: "text-destructive",
@@ -21,13 +16,14 @@ const logToneClasses: Record<ResultLogLineTone, string | undefined> = {
 };
 
 export function ResultDetailLogsPanel({ logRows, isRunning }: ResultDetailLogsPanelProps) {
+  const { t } = useTranslation();
   return (
     <>
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{resultDetailLogLabels.title}</span>
+        <span className="text-sm text-muted-foreground">{t("results.detail.logs.title")}</span>
         <Button variant="outline" size="sm">
           <Download className="h-3.5 w-3.5 mr-1.5" />
-          {resultDetailLogLabels.download}
+          {t("common.download")}
         </Button>
       </div>
 
@@ -58,10 +54,11 @@ function ResultDetailLogRow({ logRow }: { logRow: ResultLogLineData }) {
 }
 
 function ResultDetailRunningLogRow() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 text-chart-2">
       <RefreshCw className="h-3 w-3 animate-spin" />
-      <span>{resultDetailLogLabels.running}</span>
+      <span>{t("results.detail.logs.processing")}</span>
     </div>
   );
 }

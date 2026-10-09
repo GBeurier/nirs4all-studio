@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { getDatasetTaskLabel } from "../datasetTask";
+import { getDatasetTaskLabel as label } from "../datasetTask";
+import { tEn } from "./support/enTranslator";
+
+const getDatasetTaskLabel = (taskType: string | null | undefined, options?: Parameters<typeof label>[2]) => label(taskType, tEn, options);
 
 describe("getDatasetTaskLabel", () => {
   it("renders compact labels for explicit classification task types", () => {

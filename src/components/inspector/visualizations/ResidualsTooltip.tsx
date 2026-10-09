@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   formatPredictionDiagnosticValue,
   formatStandardizedResidual,
@@ -20,15 +21,16 @@ function ResidualsTooltipContent({
   residual,
   stdResidual,
 }: ResidualsTooltipContentProps) {
+  const { t } = useTranslation();
   const standardizedResidual = formatStandardizedResidual(residual, stdResidual);
 
   return (
     <div className="rounded border border-border bg-popover p-2 text-xs text-popover-foreground shadow-md">
       <div className="font-medium">{modelClass}</div>
-      <div>Observed: {formatPredictionDiagnosticValue(observed)}</div>
-      <div>Predicted: {formatPredictionDiagnosticValue(predicted)}</div>
-      <div>Residual: {formatPredictionDiagnosticValue(residual)}</div>
-      {standardizedResidual && <div>Std. Residual: {standardizedResidual}</div>}
+      <div>{t('inspector.charts.tooltip.observed', { value: formatPredictionDiagnosticValue(observed) })}</div>
+      <div>{t('inspector.charts.tooltip.predicted', { value: formatPredictionDiagnosticValue(predicted) })}</div>
+      <div>{t('inspector.charts.tooltip.residual', { value: formatPredictionDiagnosticValue(residual) })}</div>
+      {standardizedResidual && <div>{t('inspector.charts.tooltip.stdResidual', { value: standardizedResidual })}</div>}
     </div>
   );
 }

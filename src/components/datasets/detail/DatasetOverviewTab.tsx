@@ -2,6 +2,7 @@
  * DatasetOverviewTab - Summary and metadata tab for dataset detail page
  */
 import { useMemo, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
@@ -33,6 +34,7 @@ interface DatasetOverviewTabProps {
 }
 
 export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps) {
+  const { t } = useTranslation();
   const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
   const repetitionColumnWarning = getRepeatIndexColumnWarning(repetitionColumn);
 
@@ -65,9 +67,9 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Target className="h-4 w-4" />
-                Target Distribution
+                {t("datasets.detail.overview.targetDistribution")}
                 <Badge variant="outline" className="text-xs capitalize">
-                  {distribution.type}
+                  {distribution.type === "regression" || distribution.type === "classification" ? t(`datasets.detail.distType.${distribution.type}`) : distribution.type}
                 </Badge>
               </CardTitle>
               <PartitionToggle
@@ -95,34 +97,34 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
                   </div>
                 ) : (
                   <div className="h-[220px] flex items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-                    No distribution preview available
+                    {t("datasets.detail.overview.noDistribution")}
                   </div>
                 )}
               </div>
               <div className="space-y-3">
                 <div className="p-3 bg-muted/30 rounded-lg">
-                  <p className="text-xs text-muted-foreground">Partition</p>
-                  <p className="font-medium mt-1">{partitionTheme.label}</p>
+                  <p className="text-xs text-muted-foreground">{t("datasets.detail.overview.partition")}</p>
+                  <p className="font-medium mt-1">{t(`datasets.detail.partitions.${effectivePartition}`)}</p>
                   <p className="text-[10px] tabular-nums text-muted-foreground mt-1">
-                    {formatCount(partitionSampleCount)} samples
+                    {t("datasets.detail.overview.samplesCount", { count: partitionSampleCount ?? 0, value: formatCount(partitionSampleCount) })}
                   </p>
                 </div>
                 {distribution.type === "regression" && (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 bg-muted/30 rounded-lg">
-                      <p className="text-xs text-muted-foreground">Min</p>
+                      <p className="text-xs text-muted-foreground">{t("datasets.detail.stats.min")}</p>
                       <p className="font-mono font-medium">{distribution.min?.toFixed(3) || "--"}</p>
                     </div>
                     <div className="p-3 bg-muted/30 rounded-lg">
-                      <p className="text-xs text-muted-foreground">Max</p>
+                      <p className="text-xs text-muted-foreground">{t("datasets.detail.stats.max")}</p>
                       <p className="font-mono font-medium">{distribution.max?.toFixed(3) || "--"}</p>
                     </div>
                     <div className="p-3 bg-muted/30 rounded-lg">
-                      <p className="text-xs text-muted-foreground">Mean</p>
+                      <p className="text-xs text-muted-foreground">{t("datasets.detail.stats.mean")}</p>
                       <p className="font-mono font-medium">{distribution.mean?.toFixed(3) || "--"}</p>
                     </div>
                     <div className="p-3 bg-muted/30 rounded-lg">
-                      <p className="text-xs text-muted-foreground">Std</p>
+                      <p className="text-xs text-muted-foreground">{t("datasets.detail.stats.std")}</p>
                       <p className="font-mono font-medium">{distribution.std?.toFixed(3) || "--"}</p>
                     </div>
                   </div>
@@ -152,10 +154,10 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
                   <Target className="h-4 w-4" />
                   {target.column}
                   {target.column === dataset.default_target && (
-                    <Badge variant="default" className="text-xs">Default</Badge>
+                    <Badge variant="default" className="text-xs">{t("common.default")}</Badge>
                   )}
                   <Badge variant="outline" className="text-xs capitalize">
-                    {getDatasetTaskLabel(target.type, { fallback: "Auto" })}
+                    {getDatasetTaskLabel(target.type, t, { fallback: t("datasets.task.auto") })}
                   </Badge>
                 </CardTitle>
               </CardHeader>
@@ -164,39 +166,39 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
                   {distribution?.type === "regression" ? (
                     <>
                       <div>
-                        <p className="text-muted-foreground">Min</p>
+                        <p className="text-muted-foreground">{t("datasets.detail.stats.min")}</p>
                         <p className="font-mono font-medium">{distribution.min?.toFixed(3) || "--"}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Max</p>
+                        <p className="text-muted-foreground">{t("datasets.detail.stats.max")}</p>
                         <p className="font-mono font-medium">{distribution.max?.toFixed(3) || "--"}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Mean</p>
+                        <p className="text-muted-foreground">{t("datasets.detail.stats.mean")}</p>
                         <p className="font-mono font-medium">{distribution.mean?.toFixed(3) || "--"}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Std</p>
+                        <p className="text-muted-foreground">{t("datasets.detail.stats.std")}</p>
                         <p className="font-mono font-medium">{distribution.std?.toFixed(3) || "--"}</p>
                       </div>
                     </>
                   ) : (
                     <>
                       <div>
-                        <p className="text-muted-foreground">Type</p>
+                        <p className="text-muted-foreground">{t("datasets.detail.overview.type")}</p>
                         <p className="font-medium">
-                          {getDatasetTaskLabel(target.type, { fallback: "Auto" })}
+                          {getDatasetTaskLabel(target.type, t, { fallback: t("datasets.task.auto") })}
                         </p>
                       </div>
                       {target.unit && (
                         <div>
-                          <p className="text-muted-foreground">Unit</p>
+                          <p className="text-muted-foreground">{t("datasets.detail.overview.unit")}</p>
                           <p className="font-medium">{target.unit}</p>
                         </div>
                       )}
                       {target.classes && (
                         <div className="col-span-2">
-                          <p className="text-muted-foreground">Classes</p>
+                          <p className="text-muted-foreground">{t("datasets.detail.overview.classes")}</p>
                           <p className="font-medium">{target.classes.length}</p>
                         </div>
                       )}
@@ -213,18 +215,22 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <GitBranch className="h-4 w-4" />
-            Splitting & Grouping
+            {t("datasets.detail.overview.splitting")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {repetitionColumn ? (
             <>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary">Configured repetition</Badge>
+                <Badge variant="secondary">{t("datasets.detail.overview.configuredRepetition")}</Badge>
                 <code className="rounded bg-muted px-2 py-1 text-xs">{repetitionColumn}</code>
               </div>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                This dataset repetition is always applied during splitting. If a runtime <code>group_by</code> is selected in the playground or run wizard, it adds an extra split constraint on top of <code>{repetitionColumn}</code>. Samples sharing either value stay in the same fold. The runtime <code>group_by</code> never replaces dataset repetition.
+                <Trans
+                  i18nKey="datasets.detail.overview.repetitionApplied"
+                  values={{ column: repetitionColumn }}
+                  components={{ code: <code /> }}
+                />
               </p>
               {repetitionColumnWarning && (
                 <p className="text-sm leading-relaxed text-amber-700 dark:text-amber-400">
@@ -234,7 +240,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
             </>
           ) : (
             <p className="text-sm leading-relaxed text-muted-foreground">
-              No dataset repetition is currently configured. Group-required splitters will need an explicit runtime <code>group_by</code> unless a repetition column is configured later.
+              <Trans i18nKey="datasets.detail.overview.noRepetition" components={{ code: <code /> }} />
             </p>
           )}
         </CardContent>
@@ -244,31 +250,31 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Info className="h-4 w-4" />
-            Dataset Information
+            {t("datasets.detail.overview.info")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
             <div>
-              <p className="text-sm text-muted-foreground">Task Type</p>
+              <p className="text-sm text-muted-foreground">{t("datasets.detail.overview.taskType")}</p>
               <Badge variant="outline" className="mt-1">
-                {getDatasetTaskLabel(dataset.task_type, {
+                {getDatasetTaskLabel(dataset.task_type, t, {
                   numClasses: dataset.num_classes,
-                  fallback: "Auto",
+                  fallback: t("datasets.task.auto"),
                 })}
               </Badge>
             </div>
             {testCount != null && testCount > 0 && (
               <div>
-                <p className="text-sm text-muted-foreground">Partitions</p>
+                <p className="text-sm text-muted-foreground">{t("datasets.detail.overview.partitions")}</p>
                 <p className="font-mono text-sm font-medium mt-1 tabular-nums">
-                  {formatCount(trainCount)} train · {formatCount(testCount)} test
+                  {t("datasets.detail.overview.trainTest", { train: formatCount(trainCount), test: formatCount(testCount) })}
                 </p>
               </div>
             )}
             {dataset.signal_types && dataset.signal_types.length > 0 && (
               <div>
-                <p className="text-sm text-muted-foreground">Signal Type</p>
+                <p className="text-sm text-muted-foreground">{t("datasets.detail.overview.signalType")}</p>
                 <div className="flex gap-1 mt-1">
                   {Array.from(new Set(dataset.signal_types)).map((type) => (
                     <Badge key={type} variant="outline" className="text-xs">
@@ -279,20 +285,20 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
               </div>
             )}
             <div>
-              <p className="text-sm text-muted-foreground">Multi-source</p>
+              <p className="text-sm text-muted-foreground">{t("datasets.detail.overview.multiSource")}</p>
               <Badge variant={dataset.is_multi_source ? "default" : "secondary"} className="mt-1">
-                {dataset.is_multi_source ? "Yes" : "No"}
+                {dataset.is_multi_source ? t("common.yes") : t("common.no")}
               </Badge>
             </div>
             {dataset.n_sources && dataset.n_sources > 1 && (
               <div>
-                <p className="text-sm text-muted-foreground">Sources</p>
+                <p className="text-sm text-muted-foreground">{t("datasets.detail.overview.sources")}</p>
                 <p className="font-medium mt-1">{dataset.n_sources}</p>
               </div>
             )}
             {repetitionColumn && (
               <div>
-                <p className="text-sm text-muted-foreground">Repetition Group Column</p>
+                <p className="text-sm text-muted-foreground">{t("datasets.detail.overview.repetitionGroupColumn")}</p>
                 <p className="font-mono text-sm font-medium mt-1" title={repetitionColumn}>
                   {repetitionColumn}
                 </p>
@@ -306,30 +312,30 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Clock className="h-4 w-4" />
-            Version History
+            {t("datasets.detail.overview.versionHistory")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Linked</span>
-            <span>{getRelativeTime(dataset.linked_at)}</span>
+            <span className="text-muted-foreground">{t("datasets.detail.overview.linked")}</span>
+            <span>{getRelativeTime(dataset.linked_at, t)}</span>
           </div>
           {dataset.version && (
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Version</span>
+              <span className="text-muted-foreground">{t("datasets.detail.overview.version")}</span>
               <span className="font-mono">{dataset.version}</span>
             </div>
           )}
           {dataset.hash && (
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Hash</span>
+              <span className="text-muted-foreground">{t("datasets.detail.overview.hash")}</span>
               <span className="font-mono text-xs">{dataset.hash.slice(0, 12)}...</span>
             </div>
           )}
           {dataset.last_verified && (
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Last Verified</span>
-              <span>{getRelativeTime(dataset.last_verified)}</span>
+              <span className="text-muted-foreground">{t("datasets.detail.overview.lastVerified")}</span>
+              <span>{getRelativeTime(dataset.last_verified, t)}</span>
             </div>
           )}
         </CardContent>
@@ -339,7 +345,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <FileSpreadsheet className="h-4 w-4" />
-            Location
+            {t("datasets.detail.overview.location")}
           </CardTitle>
         </CardHeader>
         <CardContent>

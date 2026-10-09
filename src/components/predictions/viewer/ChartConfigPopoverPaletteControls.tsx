@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import {
   CATEGORICAL_PALETTES,
   getCategoricalPaletteLabel,
@@ -41,17 +43,18 @@ export function MetadataColorControls({
   update: ChartConfigUpdater;
   updateMetadataKey: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <SelectField
-        label="Metadata column"
+        label={t("predictions.viewer.config.metadataColumn")}
         value={effectiveMetadataKey}
         onValueChange={updateMetadataKey}
         disabled={!hasMetadata}
-        placeholder="No metadata columns"
+        placeholder={t("predictions.viewer.config.noMetadataColumns")}
         footer={(
           <p className="text-[10px] leading-4 text-muted-foreground">
-            Uses the same automatic metadata type detection as Playground. This column is currently treated as {effectiveMetadataType}.
+            {t("predictions.viewer.config.metadataDetection", { type: t(`predictions.viewer.config.metadataTypes.${effectiveMetadataType}`) })}
           </p>
         )}
       >
@@ -84,9 +87,10 @@ function ContinuousPaletteField({
   palette: ContinuousPalette;
   onValueChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <SelectField
-      label="Continuous palette"
+      label={t("predictions.viewer.config.continuousPalette")}
       value={palette}
       onValueChange={onValueChange}
       triggerContent={<ContinuousPalettePreview palette={palette} truncate />}
@@ -128,9 +132,10 @@ function CategoricalPaletteField({
   palette: CategoricalPalette;
   onValueChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <SelectField
-      label="Categorical palette"
+      label={t("predictions.viewer.config.categoricalPalette")}
       value={palette}
       onValueChange={onValueChange}
       triggerContent={<CategoricalPalettePreview palette={palette} truncate />}
@@ -172,22 +177,23 @@ export function PartitionColorControls({
   applyPartitionPalette: (value: string) => void;
   updatePartitionColor: (key: PartitionColorKey, value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <SelectField
-        label="Partition palette"
+        label={t("predictions.viewer.config.partitionPalette")}
         value={config.palette}
         onValueChange={applyPartitionPalette}
         triggerContent={(
           <PartitionPalettePreview
             colors={currentPaletteColors}
-            label={getPaletteLabel(config.palette)}
+            label={config.palette === "custom" ? t("common.custom") : getPaletteLabel(config.palette)}
             truncate
           />
         )}
         footer={(
           <p className="text-[10px] leading-4 text-muted-foreground">
-            Choosing a preset updates the editable train, validation, and test colors below.
+            {t("predictions.viewer.config.partitionPaletteHelp")}
           </p>
         )}
       >
@@ -197,23 +203,23 @@ export function PartitionColorControls({
           </SelectItem>
         ))}
         <SelectItem value="custom" className="text-xs">
-          <PartitionPalettePreview colors={currentPaletteColors} label="Custom" />
+          <PartitionPalettePreview colors={currentPaletteColors} label={t("common.custom")} />
         </SelectItem>
       </SelectField>
 
       <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
         <ColorInputRow
-          label="Train"
+          label={t("predictions.partitions.train")}
           value={config.partitionColors.train}
           onChange={(value) => updatePartitionColor("train", value)}
         />
         <ColorInputRow
-          label="Validation"
+          label={t("predictions.partitions.val")}
           value={config.partitionColors.val}
           onChange={(value) => updatePartitionColor("val", value)}
         />
         <ColorInputRow
-          label="Test"
+          label={t("predictions.partitions.test")}
           value={config.partitionColors.test}
           onChange={(value) => updatePartitionColor("test", value)}
         />

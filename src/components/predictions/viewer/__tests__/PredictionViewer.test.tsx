@@ -5,7 +5,7 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { PredictionViewer } from "../PredictionViewer";
 import type {
@@ -13,6 +13,7 @@ import type {
   PredictionViewerProps,
   ViewerPartitionTarget,
 } from "../types";
+import { initEnglishI18n } from "../../predictionsTestI18n";
 
 const mocks = vi.hoisted(() => ({
   getPredictionArrays: vi.fn(),
@@ -119,6 +120,10 @@ function conformalTarget(overrides: Partial<ViewerPartitionTarget> = {}): Viewer
     ...overrides,
   };
 }
+
+beforeAll(async () => {
+  await initEnglishI18n();
+});
 
 describe("PredictionViewer conformal integration", () => {
   it("renders attached conformal coverage and updates the decorated dataset when coverage changes", async () => {

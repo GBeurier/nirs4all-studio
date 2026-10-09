@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { InlinePipelinePayload } from "@/api/runs";
 import type {
   CampaignSinglePairSplitSpecResult,
@@ -256,7 +258,7 @@ export function buildExperimentPreflightRequest(
   config: ExperimentConfig,
 ): ExperimentPreflightRequest {
   if (!adapter.buildPreflightRequest) {
-    throw new Error(`${adapter.label} validates the campaign during native submission.`);
+    throw new Error(i18n.t("newExperiment.adapter.validatesDuringSubmission", { label: adapter.label }));
   }
   return adapter.buildPreflightRequest(config);
 }
@@ -291,7 +293,7 @@ export function submitExperimentLaunchSubmission(
   }
 
   return Promise.reject(new Error(
-    `${submission.requestedBackend} launch submissions are typed but no transport is wired yet.`,
+    i18n.t("newExperiment.adapter.noTransport", { backend: submission.requestedBackend }),
   ));
 }
 
@@ -305,7 +307,7 @@ export function getRunPreflightArgs(request: ExperimentPreflightRequest): RunPre
 
 export const LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = {
   id: "legacy-local",
-  label: "Local analysis",
+  get label() { return i18n.t("newExperiment.adapter.localAnalysis"); },
   nativeBackends: ["local-python"],
   buildPreflightRequest: buildLegacyLocalExperimentPreflightRequest,
   buildLaunchSubmission: buildLegacyLocalExperimentLaunchSubmission,
@@ -313,14 +315,14 @@ export const LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapt
 
 export const NATIVE_LOCAL_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = {
   id: "native-local",
-  label: "Local analysis",
+  get label() { return i18n.t("newExperiment.adapter.localAnalysis"); },
   nativeBackends: ["local-python"],
   buildLaunchSubmission: buildNativeLocalExperimentLaunchSubmission,
 };
 
 export const CLUSTER_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = {
   id: "cluster",
-  label: "Compute server",
+  get label() { return i18n.t("newExperiment.adapter.computeServer"); },
   nativeBackends: ["cluster"],
   buildPreflightRequest: buildLegacyLocalExperimentPreflightRequest,
   buildLaunchSubmission: buildClusterExperimentLaunchSubmission,
@@ -328,7 +330,7 @@ export const CLUSTER_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = 
 
 export const WASM_LOCAL_EXPERIMENT_EXECUTION_ADAPTER: ExperimentExecutionAdapter = {
   id: "wasm-local",
-  label: "Browser analysis",
+  get label() { return i18n.t("newExperiment.adapter.browserAnalysis"); },
   nativeBackends: ["wasm-local"],
   buildPreflightRequest: buildLegacyLocalExperimentPreflightRequest,
   buildLaunchSubmission: buildWasmLocalExperimentLaunchSubmission,
@@ -354,11 +356,13 @@ export function resolveExperimentExecutionAdapter(
     adapter,
     requestedBackend: backend,
     isNativeForBackend,
-    statusLabel: isNativeForBackend ? "Native adapter" : "Legacy fallback",
+    statusLabel: isNativeForBackend
+      ? i18n.t("newExperiment.campaign.adapter.native")
+      : i18n.t("newExperiment.campaign.adapter.legacyFallback"),
     message: isLegacyNative
-      ? "The experiment will run on this computer."
+      ? i18n.t("newExperiment.adapter.runsHere")
       : isNativeForBackend
-        ? `The experiment will use ${adapter.label}.`
-      : "This calculation option is not available yet. The experiment will run on this computer.",
+        ? i18n.t("newExperiment.adapter.willUse", { label: adapter.label })
+        : i18n.t("newExperiment.adapter.unavailableFallback"),
   };
 }

@@ -143,7 +143,7 @@ export function RunsStatsGrid({ stats, scope }: RunsStatsGridProps) {
   const { t } = useTranslation();
 
   return (
-    <section aria-label={scope || "Run summary"} className="space-y-2">
+    <section aria-label={scope || t("runs.list.summary")} className="space-y-2">
       {scope && <p className="text-xs text-muted-foreground">{scope}</p>}
       <div className={cn("grid grid-cols-1 gap-3", (stats.cancelledCount ?? 0) > 0 ? "sm:grid-cols-6" : "sm:grid-cols-5")}>
       <RunsStatCard
@@ -179,7 +179,7 @@ export function RunsStatsGrid({ stats, scope }: RunsStatsGridProps) {
           icon={X}
           iconClassName="text-muted-foreground"
           iconContainerClassName="bg-muted/50"
-          label={t("runs.stats.cancelled", { defaultValue: "Cancelled" })}
+          label={t("runs.stats.cancelled")}
           value={stats.cancelledCount!}
         />
       )}
@@ -210,6 +210,7 @@ function formatJsonValue(value: unknown): string {
 }
 
 export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: RunsExecutionTasksPanelProps) {
+  const { t } = useTranslation();
   const [isPanelExpanded, setPanelExpanded] = useState(false);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
   const isDeveloperMode = useIsDeveloperMode();
@@ -241,29 +242,29 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
             <button
               type="button"
               className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
-              aria-label={isPanelExpanded ? "Collapse execution tasks" : "Expand execution tasks"}
+              aria-label={isPanelExpanded ? t("runs.tasks.collapse") : t("runs.tasks.expand")}
             >
               <div className="flex items-center gap-2">
                 <div className="rounded-md bg-primary/10 p-1.5">
                   <Activity className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold">Execution tasks</h2>
+                  <h2 className="text-sm font-semibold">{t("runs.tasks.title")}</h2>
                   <p className="text-xs text-muted-foreground">
-                    {data.activeCount} active / {data.totalCount} tracked
+                    {t("runs.tasks.activeTracked", { active: data.activeCount, total: data.totalCount })}
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-1.5">
                 {orphanedCount > 0 && (
                   <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                    {orphanedCount} orphaned
+                    {t("runs.tasks.orphanedCount", { count: orphanedCount })}
                   </Badge>
                 )}
-                <Badge variant="outline">{data.remoteRequestedCount} remote requested</Badge>
-                <Badge variant="outline">{data.completedCount} completed</Badge>
+                <Badge variant="outline">{t("runs.tasks.remoteRequested", { count: data.remoteRequestedCount })}</Badge>
+                <Badge variant="outline">{t("runs.tasks.completedCount", { count: data.completedCount })}</Badge>
                 {data.failedCount > 0 && (
-                  <Badge variant="destructive">{data.failedCount} failed / cancelled</Badge>
+                  <Badge variant="destructive">{t("runs.tasks.failedCancelled", { count: data.failedCount })}</Badge>
                 )}
                 {isPanelExpanded ? (
                   <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -291,9 +292,9 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                       <div className="min-w-0">
                         <div className="truncate text-xs font-medium">{item.runName || item.runId}</div>
                         <div className="truncate text-[11px] text-muted-foreground">
-                          {formatRunTokenLabel(item.requestedBackend)}
+                          {formatRunTokenLabel(item.requestedBackend, t)}
                           {item.executionBackend !== item.requestedBackend
-                            ? ` -> ${formatRunTokenLabel(item.executionBackend)}`
+                            ? ` -> ${formatRunTokenLabel(item.executionBackend, t)}`
                             : ""}
                         </div>
                       </div>
@@ -303,11 +304,11 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                             variant="outline"
                             className="h-5 border-amber-500/40 bg-amber-500/10 px-1.5 text-[10px] text-amber-700 dark:text-amber-300"
                           >
-                            Orphaned
+                            {t("runs.tasks.orphaned")}
                           </Badge>
                         )}
                         <Badge variant={item.isActive ? "default" : "outline"} className="h-5 px-1.5 text-[10px]">
-                          {formatRunTokenLabel(item.executionStatus)}
+                          {formatRunTokenLabel(item.executionStatus, t)}
                         </Badge>
                         {!item.isActive && onDismissJobs && (
                           <Button
@@ -315,8 +316,8 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                             variant="ghost"
                             size="icon"
                             className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                            aria-label={`Dismiss execution job ${item.jobId}`}
-                            title="Dismiss finished task"
+                            aria-label={t("runs.tasks.dismissJob", { id: item.jobId })}
+                            title={t("runs.tasks.dismissFinishedTask")}
                             onClick={() => onDismissJobs([item.jobId])}
                           >
                             <X className="h-3.5 w-3.5" />
@@ -334,10 +335,10 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                                   onClick={() => onInspectJob(item.jobId)}
                                 >
                                   <Eye className="h-3.5 w-3.5" />
-                                  <span className="sr-only">Inspect execution job</span>
+                                  <span className="sr-only">{t("runs.tasks.inspectJob")}</span>
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>Inspect job record</TooltipContent>
+                              <TooltipContent>{t("runs.tasks.inspectRecord")}</TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
                         )}
@@ -345,10 +346,10 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                     </div>
                     <div className="mt-2 space-y-1">
                       <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span className="truncate">{item.progressMessage || item.runStatus}</span>
+                        <span className="truncate">{item.progressMessage || formatRunTokenLabel(item.runStatus, t)}</span>
                         {item.progressUnavailable ? (
                           <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                            Telemetry unavailable
+                            {t("runs.tasks.telemetryUnavailable")}
                           </Badge>
                         ) : (
                           <span className="font-mono">{formatRunProgress(item.progress)}</span>
@@ -364,9 +365,9 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
             {visibleGroups.length > 0 && (
               <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-semibold text-muted-foreground">Grouped jobs</h3>
+              <h3 className="text-xs font-semibold text-muted-foreground">{t("runs.tasks.groupedJobs")}</h3>
               <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                {visibleGroups.length} runs
+                {t("runs.tasks.groupRuns", { count: visibleGroups.length })}
               </Badge>
             </div>
             <div className="grid gap-2 lg:grid-cols-2">
@@ -393,16 +394,16 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                         </div>
                         <div className="flex flex-wrap gap-1 pt-1">
                           <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                            {group.totalCount} jobs
+                            {t("runs.tasks.jobs", { count: group.totalCount })}
                           </Badge>
                           {group.activeCount > 0 && (
                             <Badge variant="default" className="h-5 px-1.5 text-[10px]">
-                              {group.activeCount} active
+                              {t("runs.tasks.activeCount", { count: group.activeCount })}
                             </Badge>
                           )}
                           {group.failedCount > 0 && (
                             <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
-                              {group.failedCount} failed / cancelled
+                              {t("runs.tasks.failedCancelled", { count: group.failedCount })}
                             </Badge>
                           )}
                         </div>
@@ -412,7 +413,7 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                           variant="outline"
                           className="h-5 shrink-0 border-amber-500/40 bg-amber-500/10 px-1.5 text-[10px] text-amber-700 dark:text-amber-300"
                         >
-                          Orphaned
+                          {t("runs.tasks.orphaned")}
                         </Badge>
                       )}
                       {group.activeCount === 0 && onDismissJobs && (
@@ -421,8 +422,8 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                          aria-label={`Dismiss execution group ${groupLabel}`}
-                          title="Dismiss finished tasks"
+                          aria-label={t("runs.tasks.dismissGroup", { name: groupLabel })}
+                          title={t("runs.tasks.dismissFinishedTasks")}
                           onClick={() => onDismissJobs(group.items.map(item => item.jobId))}
                         >
                           <X className="h-3.5 w-3.5" />
@@ -436,17 +437,17 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                           className="flex min-w-0 items-center justify-between gap-2 rounded-sm bg-background/60 px-2 py-1 text-[11px]"
                         >
                           <div className="min-w-0 truncate text-muted-foreground">
-                            {formatRunTokenLabel(item.executionStatus)}
+                            {formatRunTokenLabel(item.executionStatus, t)}
                             {" · "}
-                            {formatRunTokenLabel(item.requestedBackend)}
+                            {formatRunTokenLabel(item.requestedBackend, t)}
                             {item.executionBackend !== item.requestedBackend
-                              ? ` -> ${formatRunTokenLabel(item.executionBackend)}`
+                              ? ` -> ${formatRunTokenLabel(item.executionBackend, t)}`
                               : ""}
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
                             {item.progressUnavailable ? (
                               <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                                No telemetry
+                                {t("runs.tasks.noTelemetry")}
                               </Badge>
                             ) : (
                               <span className="font-mono text-muted-foreground">{formatRunProgress(item.progress)}</span>
@@ -460,7 +461,7 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                                 onClick={() => onInspectJob(item.jobId)}
                               >
                                 <Eye className="h-3 w-3" />
-                                <span className="sr-only">Inspect execution job {item.jobId}</span>
+                                <span className="sr-only">{t("runs.tasks.inspectJobId", { id: item.jobId })}</span>
                               </Button>
                             )}
                           </div>
@@ -476,19 +477,19 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                           aria-expanded={isGroupExpanded}
                           aria-label={
                             isGroupExpanded
-                              ? `Collapse execution jobs for ${groupLabel}`
-                              : `Expand ${hiddenJobCount} hidden execution jobs for ${groupLabel}`
+                              ? t("runs.tasks.collapseGroup", { name: groupLabel })
+                              : t("runs.tasks.expandGroup", { count: hiddenJobCount, name: groupLabel })
                           }
                         >
                           {isGroupExpanded ? (
                             <>
                               <ChevronUp className="mr-1 h-3 w-3" />
-                              Show fewer
+                              {t("runs.tasks.showFewer")}
                             </>
                           ) : (
                             <>
                               <ChevronDown className="mr-1 h-3 w-3" />
-                              +{hiddenJobCount} more
+                              {t("runs.tasks.moreCount", { count: hiddenJobCount })}
                             </>
                           )}
                         </Button>
@@ -569,8 +570,8 @@ export function RunsExecutionJobRecordDialog({
 }: RunsExecutionJobRecordDialogProps) {
   const { t } = useTranslation();
   const isDeveloperMode = useIsDeveloperMode();
-  const detail = record ? buildExecutionJobRecordDetail(record) : null;
-  const displayJobId = detail?.description ?? (jobId ? `Job ${jobId}` : "");
+  const detail = record ? buildExecutionJobRecordDetail(record, t) : null;
+  const displayJobId = detail?.description ?? (jobId ? t("runs.jobDetail.jobTitle", { id: jobId }) : "");
   const isControlAction = (action: ExecutionJobRecordDetailAction) => action.id === "cancel" || action.id === "retry";
   // Readiness badges are diagnostics; everyone keeps the cancel / retry buttons.
   const visibleActions = (detail?.actions ?? []).filter(action => action.visible && (isDeveloperMode || isControlAction(action)));
@@ -590,14 +591,14 @@ export function RunsExecutionJobRecordDialog({
         <DialogHeader>
           <DialogTitle>{t(isDeveloperMode ? "runs.jobRecord.titleDeveloper" : "runs.jobRecord.title")}</DialogTitle>
           <DialogDescription className="truncate">
-            {displayJobId || "Execution snapshot"}
+            {displayJobId || t("runs.jobDetail.snapshot")}
           </DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
           <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Loading job record
+            {t("runs.jobDetail.loading")}
           </div>
         ) : errorMessage ? (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -639,7 +640,7 @@ export function RunsExecutionJobRecordDialog({
                             </Button>
                           ) : (
                             <Badge variant={action.enabled ? "default" : "outline"} className="h-5 px-1.5 text-[10px]">
-                              {action.enabled ? "Available" : "Unavailable"}
+                              {action.enabled ? t("runs.jobDetail.available") : t("runs.jobDetail.unavailable")}
                             </Badge>
                           )}
                         </div>
@@ -705,10 +706,10 @@ export function RunsList({
       {isLoading ? (
         <CardSkeleton count={3} />
       ) : !hasActiveWorkspace ? (
-        <NoWorkspaceState title="No workspace linked" description="Link a nirs4all workspace to see your runs. Go to Settings." />
+        <NoWorkspaceState title={t("runs.list.noWorkspaceTitle")} description={t("runs.list.noWorkspaceDescription")} />
       ) : errorMessage && runs.length === 0 ? (
         <ErrorState
-          title="Failed to load run history"
+          title={t("runs.list.loadFailed")}
           message={errorMessage}
           onRetry={() => {
             void onRetry();

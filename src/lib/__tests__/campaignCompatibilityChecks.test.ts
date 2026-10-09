@@ -1,11 +1,10 @@
+import "@/lib/__tests__/support/experimentI18n";
 import { describe, expect, it } from "vitest";
 
 import type { Dataset } from "@/types/datasets";
 
 import {
   buildDatasetPipelineCompatibilityChecks,
-  formatCompatibilityCount,
-  formatOptionalCompatibilityCount,
   getDatasetPipelineCompatibilityPreviewStatus,
   getDatasetPipelineCompatibilityPreviewSummary,
   getDatasetPipelineCompatibilityStatusLabel,
@@ -39,13 +38,6 @@ function dataset(overrides: Partial<Dataset> = {}): Dataset {
 }
 
 describe("campaignCompatibilityChecks", () => {
-  it("formats counts and optional counts for compatibility preview copy", () => {
-    expect(formatCompatibilityCount(1, "source")).toBe("1 source");
-    expect(formatCompatibilityCount(2, "active node")).toBe("2 active nodes");
-    expect(formatOptionalCompatibilityCount(undefined, "feature")).toBe("Unknown features");
-    expect(formatOptionalCompatibilityCount(0, "feature")).toBe("0 features");
-  });
-
   it("labels statuses and summarizes compatibility preview readiness", () => {
     expect(getDatasetPipelineCompatibilityStatusLabel("passed")).toBe("Ready");
     expect(getDatasetPipelineCompatibilityStatusLabel("warning")).toBe("Warning");

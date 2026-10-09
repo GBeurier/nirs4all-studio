@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { useInspectorSelection } from '@/context/useInspectorSelection';
 import {
@@ -17,6 +18,7 @@ interface CandlestickChartProps {
 }
 
 export function CandlestickChart({ data, isLoading }: CandlestickChartProps) {
+  const { t } = useTranslation();
   const { select } = useInspectorSelection();
   const { viewportRef, dimensions } = useInspectorChartViewport();
   const [hovered, setHovered] = useState<CandlestickHoveredBox | null>(null);
@@ -31,7 +33,7 @@ export function CandlestickChart({ data, isLoading }: CandlestickChartProps) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        <span className="text-sm">Loading box plot data...</span>
+        <span className="text-sm">{t('inspector.charts.loading.candlestick')}</span>
       </div>
     );
   }
@@ -39,7 +41,7 @@ export function CandlestickChart({ data, isLoading }: CandlestickChartProps) {
   if (categories.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        {getCandlestickEmptyMessage()}
+        {getCandlestickEmptyMessage(t)}
       </div>
     );
   }

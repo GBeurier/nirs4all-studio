@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -50,6 +51,7 @@ export function ModelActionMenu({
   chainId, predictChainId, modelName, datasetName, runId: _runId,
   taskType: _taskType, hasRefit, workspaceId, deleteScope, foldId, onViewDetails, onViewChart, onExport, onDeleted,
 }: ModelActionMenuProps) {
+  const { t } = useTranslation();
   const actionLinks = buildModelActionLinks({
     chainId,
     predictChainId,
@@ -62,7 +64,7 @@ export function ModelActionMenu({
     foldId,
     modelName,
     workspaceId,
-  });
+  }, t);
   const {
     deleteOpen,
     setDeleteOpen,
@@ -81,19 +83,19 @@ export function ModelActionMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-7 w-7">
+          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t("results.scores.menu.moreActions")}>
             <MoreVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           {onViewChart && (
             <DropdownMenuItem onClick={onViewChart}>
-              <Eye className="h-4 w-4 mr-2" /> Chart view
+              <Eye className="h-4 w-4 mr-2" /> {t("results.scores.menu.chartView")}
             </DropdownMenuItem>
           )}
           {onViewDetails && (
             <DropdownMenuItem onClick={onViewDetails}>
-              <Eye className="h-4 w-4 mr-2" /> View details
+              <Eye className="h-4 w-4 mr-2" /> {t("results.scores.menu.viewDetails")}
             </DropdownMenuItem>
           )}
 
@@ -102,7 +104,7 @@ export function ModelActionMenu({
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link to={actionLinks.predictUrl}>
-                  <Zap className="h-4 w-4 mr-2" /> Predict (new data)
+                  <Zap className="h-4 w-4 mr-2" /> {t("results.scores.menu.predict")}
                 </Link>
               </DropdownMenuItem>
             </>
@@ -112,12 +114,12 @@ export function ModelActionMenu({
 
           {onExport && (
             <DropdownMenuItem onClick={onExport}>
-              <Download className="h-4 w-4 mr-2" /> Export (.parquet)
+              <Download className="h-4 w-4 mr-2" /> {t("results.scores.menu.exportParquet")}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onSelect={(event) => { event.preventDefault(); handleCsvExport(); }} disabled={csvBusy}>
             {csvBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />}
-            Export (.csv)
+            {t("results.scores.menu.exportCsv")}
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
@@ -125,14 +127,14 @@ export function ModelActionMenu({
           {actionLinks.pipelineEditorUrl && (
             <DropdownMenuItem asChild>
               <Link to={actionLinks.pipelineEditorUrl}>
-                <Pencil className="h-4 w-4 mr-2" /> Open chain snapshot
+                <Pencil className="h-4 w-4 mr-2" /> {t("results.scores.menu.openChainSnapshot")}
               </Link>
             </DropdownMenuItem>
           )}
           {actionLinks.datasetUrl && (
             <DropdownMenuItem asChild>
               <Link to={actionLinks.datasetUrl}>
-                <Database className="h-4 w-4 mr-2" /> Goto dataset
+                <Database className="h-4 w-4 mr-2" /> {t("results.scores.menu.gotoDataset")}
               </Link>
             </DropdownMenuItem>
           )}
@@ -161,7 +163,7 @@ export function ModelActionMenu({
             <AlertDialogDescription>{deleteDescriptor.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteBusy}>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} disabled={deleteBusy}>
               {deleteBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
               {deleteDescriptor.label}

@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import { buildCampaignPipelineRefFromSteps } from "./campaignPipelineAdapter";
 import {
   buildLegacyCampaignSpec,
@@ -86,10 +88,10 @@ export function buildPipelineExecutionPlanPreview(
   const firstPipeline = campaign.pipelines[0];
   const firstSplitGroupBy = getPipelineExecutionSplitGroupBy(campaign);
   const pipelineSourceLabel = firstPipeline?.source === "inline-pruned"
-    ? "Pruned inline pipeline"
+    ? i18n.t("newExperiment.campaign.pipelineSource.prunedInlinePipeline")
     : firstPipeline?.source === "inline"
-      ? "Inline pipeline"
-      : "Saved pipeline";
+      ? i18n.t("newExperiment.campaign.pipelineSource.inlinePipeline")
+      : i18n.t("newExperiment.campaign.pipelineSource.saved");
 
   return {
     backendLabel: getCampaignExecutionBackendLabel(campaign.executionBackend),
@@ -97,6 +99,8 @@ export function buildPipelineExecutionPlanPreview(
     matrixCoverageLabel: summary.matrixCoverageLabel,
     pipelineSourceLabel,
     runCountLabel: summary.runCountLabel,
-    splitGroupByLabel: firstSplitGroupBy ? `grouped by ${firstSplitGroupBy}` : "no runtime grouping",
+    splitGroupByLabel: firstSplitGroupBy
+      ? i18n.t("newExperiment.campaign.groupedBy", { value: firstSplitGroupBy })
+      : i18n.t("newExperiment.campaign.noRuntimeGrouping"),
   };
 }

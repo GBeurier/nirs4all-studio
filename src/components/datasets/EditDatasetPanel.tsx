@@ -1,4 +1,5 @@
 import { useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { UpdateDatasetRequest } from "@/api/datasets";
 import { DatasetWizard } from "./DatasetWizard";
 import { buildInitialState } from "./editDatasetPanelState";
@@ -22,6 +23,7 @@ export function EditDatasetPanel({
   dataset,
   onSave,
 }: EditDatasetPanelProps) {
+  const { t } = useTranslation();
   const initialState = useMemo(() => (dataset ? buildInitialState(dataset) : undefined), [dataset]);
 
   const handleSave = useCallback(async (_path: string, config?: Partial<DatasetConfig>) => {
@@ -47,8 +49,8 @@ export function EditDatasetPanel({
       onOpenChange={onOpenChange}
       onAdd={handleSave}
       initialState={initialState}
-      submitLabel="Save Changes"
-      submitErrorMessage="Failed to save dataset"
+      submitLabel={t("datasets.editPanel.saveChanges")}
+      submitErrorMessage={t("datasets.editPanel.saveFailed")}
     />
   );
 }

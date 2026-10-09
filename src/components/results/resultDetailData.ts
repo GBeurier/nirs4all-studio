@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+import { formatDateTime } from "@/utils/formatters";
 import type { PipelineRun, RunStatus } from "@/types/runs";
 import {
   buildRuntimeResultStatusView,
@@ -221,22 +223,22 @@ export interface ResultLogLineData {
   tone: ResultLogLineTone;
 }
 
-export function hasResultMetrics(pipeline: PipelineRun): boolean {
+export function hasResultMetrics(pipeline: PipelineRun, t: TFunction): boolean {
   return !!pipeline.metrics
     || pipeline.score != null
     || pipeline.val_score != null
     || pipeline.test_score != null
     || buildResultConformalSummary(pipeline) != null
     || buildResultRobustnessSummary(pipeline) != null
-    || buildResultRobustnessLaunchPlan(pipeline) != null
-    || buildResultTuningSummary(pipeline) != null;
+    || buildResultRobustnessLaunchPlan(pipeline, t) != null
+    || buildResultTuningSummary(pipeline, t) != null;
 }
 
-export function getResultEmptyMetricsMessage(status: RunStatus): string {
+export function getResultEmptyMetricsMessage(status: RunStatus, t: TFunction): string {
   return getRuntimeResultEmptyMessage(status, {
-    queued: "Waiting to start...",
-    running: "Results will appear when training completes",
-    fallback: "No results available",
+    queued: t("results.detail.empty.queued"),
+    running: t("results.detail.empty.running"),
+    fallback: t("results.detail.empty.fallback"),
   });
 }
 
@@ -252,36 +254,36 @@ export function buildResultHeaderStatus(pipeline: PipelineRun): ResultHeaderStat
   };
 }
 
-export function buildResultQuickFacts(pipeline: PipelineRun): ResultQuickFactData[] {
+export function buildResultQuickFacts(pipeline: PipelineRun, t: TFunction): ResultQuickFactData[] {
   return [
     {
       id: "model",
-      label: "Model",
+      label: t("results.detail.quickFacts.model"),
       value: pipeline.model,
       icon: "model",
     },
     {
       id: "preprocessing",
-      label: "Preprocessing",
+      label: t("results.detail.quickFacts.preprocessing"),
       value: pipeline.preprocessing,
       icon: "preprocessing",
     },
     {
       id: "split",
-      label: "Split",
+      label: t("results.detail.quickFacts.split"),
       value: pipeline.split_strategy,
       icon: "split",
     },
   ];
 }
 
-export function buildResultScoreMetricCards(pipeline: PipelineRun): ResultMetricCardData[] {
+export function buildResultScoreMetricCards(pipeline: PipelineRun, t: TFunction): ResultMetricCardData[] {
   const cards: ResultMetricCardData[] = [];
 
   if (pipeline.val_score != null) {
     cards.push({
       id: "cv_score",
-      label: "CV Score",
+      label: t("results.detail.metrics.cvScore"),
       value: pipeline.val_score,
       format: 4,
       icon: "target",
@@ -292,7 +294,7 @@ export function buildResultScoreMetricCards(pipeline: PipelineRun): ResultMetric
   if (pipeline.test_score != null) {
     cards.push({
       id: "final_score",
-      label: "Final Score",
+      label: t("results.detail.metrics.finalScore"),
       value: pipeline.test_score,
       format: 4,
       icon: "trophy",
@@ -303,13 +305,13 @@ export function buildResultScoreMetricCards(pipeline: PipelineRun): ResultMetric
   return cards;
 }
 
-export function buildResultMetricCards(pipeline: PipelineRun): ResultMetricCardData[] {
+export function buildResultMetricCards(pipeline: PipelineRun, t: TFunction): ResultMetricCardData[] {
   const cards: ResultMetricCardData[] = [];
 
   if (pipeline.score != null && pipeline.val_score == null) {
     cards.push({
       id: "score",
-      label: (pipeline.score_metric || "Score").toUpperCase(),
+      label: (pipeline.score_metric || t("results.detail.metrics.score")).toUpperCase(),
       value: pipeline.score,
       format: 4,
       icon: "target",
@@ -320,7 +322,7 @@ export function buildResultMetricCards(pipeline: PipelineRun): ResultMetricCardD
   if (pipeline.metrics?.r2 != null) {
     cards.push({
       id: "r2",
-      label: "R² Score",
+      label: t("results.detail.metrics.r2Score"),
       value: pipeline.metrics.r2,
       format: 4,
       icon: "target",
@@ -375,28 +377,28 @@ export function buildResultMetricCards(pipeline: PipelineRun): ResultMetricCardD
   return cards;
 }
 
-export function buildResultExecutionTimeRows(pipeline: PipelineRun): ResultExecutionTimeRow[] {
+export function buildResultExecutionTimeRows(pipeline: PipelineRun, t: TFunction): ResultExecutionTimeRow[] {
   const rows: ResultExecutionTimeRow[] = [];
   if (pipeline.started_at) {
-    rows.push({ id: "started", label: "Started", value: pipeline.started_at });
+    rows.push({ id: "started", label: t("results.detail.times.started"), value: formatDateTime(pipeline.started_at) });
   }
   if (pipeline.completed_at) {
-    rows.push({ id: "completed", label: "Completed", value: pipeline.completed_at });
+    rows.push({ id: "completed", label: t("results.detail.times.completed"), value: formatDateTime(pipeline.completed_at) });
   }
   return rows;
 }
 
-export function buildResultRelatedLinks(pipeline: PipelineRun, datasetName: string): ResultRelatedLinkData[] {
+export function buildResultRelatedLinks(pipeline: PipelineRun, datasetName: string, t: TFunction): ResultRelatedLinkData[] {
   return [
     {
       id: "predictions",
-      label: "Predictions",
+      label: t("results.detail.links.predictions"),
       to: `/predictions?dataset=${encodeURIComponent(datasetName)}&config=${encodeURIComponent(pipeline.pipeline_name)}`,
       icon: "predictions",
     },
     {
       id: "runs",
-      label: "Runs",
+      label: t("results.detail.links.runs"),
       to: "/runs",
       icon: "runs",
     },
@@ -676,14 +678,14 @@ function collectTuningResultCandidates(pipeline: PipelineRun): unknown[] {
   return [...directCandidates, ...artifactCandidates].filter(candidate => candidate != null);
 }
 
-function adaptTuningSummaryArtifact(artifact: TuningSummaryArtifact): ResultTuningSummaryData {
+function adaptTuningSummaryArtifact(artifact: TuningSummaryArtifact, t: TFunction): ResultTuningSummaryData {
   const card = createTuningSummaryCard(artifact);
   const rows = createTuningSummaryTrialRows(artifact).map((row): TuningTrialRow => ({
     diagnostics: row.diagnostics,
     isBest: row.value !== null && row.value === card.bestValue,
     number: row.number,
     params: {},
-    paramsLabel: "summary artifact",
+    paramsLabel: t("results.tuning.summaryArtifact"),
     status: row.status,
     statusLabel: row.statusLabel,
     tone: row.tone,
@@ -757,7 +759,7 @@ export function buildResultConformalSummary(pipeline: PipelineRun): ResultConfor
   return null;
 }
 
-export function buildResultTuningSummary(pipeline: PipelineRun): ResultTuningSummaryData | null {
+export function buildResultTuningSummary(pipeline: PipelineRun, t: TFunction): ResultTuningSummaryData | null {
   for (const candidate of collectTuningResultCandidates(pipeline)) {
     if (isTuningResultArtifact(candidate)) {
       return {
@@ -767,7 +769,7 @@ export function buildResultTuningSummary(pipeline: PipelineRun): ResultTuningSum
       };
     }
     if (isTuningSummaryArtifact(candidate)) {
-      return adaptTuningSummaryArtifact(candidate);
+      return adaptTuningSummaryArtifact(candidate, t);
     }
   }
 
@@ -842,7 +844,7 @@ function normalizeRobustnessSliceBy(value: unknown): string[] {
     .map(item => item.trim());
 }
 
-function normalizeRobustnessExecutionDiagnostic(value: unknown): ResultRobustnessExecutionDiagnosticData | null {
+function normalizeRobustnessExecutionDiagnostic(value: unknown, t: TFunction): ResultRobustnessExecutionDiagnosticData | null {
   const record = readRecord(value);
   if (!record || typeof record.status !== "string" || record.status.trim().length === 0) {
     return null;
@@ -854,7 +856,7 @@ function normalizeRobustnessExecutionDiagnostic(value: unknown): ResultRobustnes
       : [],
     message: typeof record.message === "string" && record.message.trim().length > 0
       ? record.message
-      : "Robustness execution status is available.",
+      : t("results.robustness.executionStatusAvailable"),
     requiresPredictor: record.requires_predictor === true || record.requiresPredictor === true,
     requiresPredictions: record.requires_predictions === true || record.requiresPredictions === true,
     requiresSpectra: record.requires_X === true || record.requiresX === true || record.requiresSpectra === true,
@@ -863,15 +865,15 @@ function normalizeRobustnessExecutionDiagnostic(value: unknown): ResultRobustnes
   };
 }
 
-function buildResultRobustnessExecutionDiagnostic(pipeline: PipelineRun): ResultRobustnessExecutionDiagnosticData | null {
+function buildResultRobustnessExecutionDiagnostic(pipeline: PipelineRun, t: TFunction): ResultRobustnessExecutionDiagnosticData | null {
   for (const candidate of collectRobustnessExecutionCandidates(pipeline)) {
-    const diagnostic = normalizeRobustnessExecutionDiagnostic(candidate);
+    const diagnostic = normalizeRobustnessExecutionDiagnostic(candidate, t);
     if (diagnostic) return diagnostic;
   }
   return null;
 }
 
-export function buildResultRobustnessLaunchPlan(pipeline: PipelineRun): ResultRobustnessLaunchPlanData | null {
+export function buildResultRobustnessLaunchPlan(pipeline: PipelineRun, t: TFunction): ResultRobustnessLaunchPlanData | null {
   for (const candidate of collectRobustnessLaunchPlanCandidates(pipeline)) {
     const record = readRecord(candidate);
     if (!record || !Array.isArray(record.scenarios)) continue;
@@ -882,7 +884,7 @@ export function buildResultRobustnessLaunchPlan(pipeline: PipelineRun): ResultRo
     if (scenarios.length === 0) continue;
 
     return {
-      execution: buildResultRobustnessExecutionDiagnostic(pipeline),
+      execution: buildResultRobustnessExecutionDiagnostic(pipeline, t),
       mode: typeof record.mode === "string" && record.mode.trim().length > 0 ? record.mode : "clean_frozen",
       scenarioCount: scenarios.length,
       scenarios,
@@ -893,12 +895,12 @@ export function buildResultRobustnessLaunchPlan(pipeline: PipelineRun): ResultRo
   return null;
 }
 
-export function getResultExportModelLabel(hasRefit: boolean | undefined): string {
-  return hasRefit ? "Export Final Model (.n4a)" : "Export Model (.n4a)";
+export function getResultExportModelLabel(hasRefit: boolean | undefined, t: TFunction): string {
+  return hasRefit ? t("results.detail.export.finalModel") : t("results.detail.export.model");
 }
 
-export function getResultExportModelDescription(hasRefit: boolean | undefined): string | null {
-  return hasRefit ? "Exports the refit model trained on the full dataset" : null;
+export function getResultExportModelDescription(hasRefit: boolean | undefined, t: TFunction): string | null {
+  return hasRefit ? t("results.detail.export.refitDescription") : null;
 }
 
 export function getResultLogLineTone(log: string): ResultLogLineTone {

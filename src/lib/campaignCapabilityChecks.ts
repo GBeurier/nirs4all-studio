@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   CampaignExecutionAdapterPreview,
 } from "./campaignPlanPreviewTypes";
@@ -14,10 +16,10 @@ import type { CampaignSchemaConstraintPreview } from "./campaignSchemaConstraint
 import { getCampaignExecutionBackendCapabilityStatus } from "./campaignExecutionCapabilities";
 
 export function getCampaignCapabilityCheckStatusLabel(status: CampaignCapabilityCheckStatus): string {
-  if (status === "passed") return "Passed";
-  if (status === "warning") return "Warning";
-  if (status === "blocking") return "Blocking";
-  return "Not evaluated";
+  if (status === "passed") return i18n.t("newExperiment.campaign.status.passed");
+  if (status === "warning") return i18n.t("newExperiment.campaign.status.warning");
+  if (status === "blocking") return i18n.t("newExperiment.campaign.status.blocking");
+  return i18n.t("newExperiment.campaign.status.notEvaluated");
 }
 
 export interface CampaignCompatibilityStatusSummary {
@@ -31,16 +33,20 @@ export interface CampaignCompatibilityStatusSummary {
   missingPreviewCount: number;
 }
 
-function formatPairPreviewCount(count: number): string {
-  return `${count} dataset/pipeline pair preview${count === 1 ? "" : "s"}`;
-}
-
 function formatIssueCounts(summary: CampaignCompatibilityStatusSummary): string {
   return [
-    summary.blockingCount > 0 ? `${summary.blockingCount} blocking` : null,
-    summary.warningCount > 0 ? `${summary.warningCount} warning` : null,
-    summary.notEvaluatedCount > 0 ? `${summary.notEvaluatedCount} not evaluated` : null,
-    summary.missingPreviewCount > 0 ? `${summary.missingPreviewCount} missing` : null,
+    summary.blockingCount > 0
+      ? i18n.t("newExperiment.campaign.capability.issues.blocking", { count: summary.blockingCount })
+      : null,
+    summary.warningCount > 0
+      ? i18n.t("newExperiment.campaign.capability.issues.warning", { count: summary.warningCount })
+      : null,
+    summary.notEvaluatedCount > 0
+      ? i18n.t("newExperiment.campaign.capability.issues.notEvaluated", { count: summary.notEvaluatedCount })
+      : null,
+    summary.missingPreviewCount > 0
+      ? i18n.t("newExperiment.campaign.capability.issues.missing", { count: summary.missingPreviewCount })
+      : null,
   ].filter((label): label is string => label != null).join(", ");
 }
 
@@ -74,21 +80,21 @@ export function getCampaignCompatibilityCapabilityStatus(
   if (summary.runCount === 0 || summary.previewCount === 0) {
     return {
       status: "not_evaluated",
-      message: "Reserved for dataset-specific pipeline schema previews before launch.",
+      message: i18n.t("newExperiment.campaign.capability.reserved"),
     };
   }
 
   if (summary.evaluatedCount === 0) {
     return {
       status: "not_evaluated",
-      message: "Reserved for dataset-specific pipeline schema previews before launch.",
+      message: i18n.t("newExperiment.campaign.capability.reserved"),
     };
   }
 
   if (summary.blockingCount > 0) {
     return {
       status: "blocking",
-      message: `${formatPairPreviewCount(summary.blockingCount)} ${summary.blockingCount === 1 ? "needs" : "need"} campaign reference fixes before launch.`,
+      message: i18n.t("newExperiment.campaign.capability.blocking", { count: summary.blockingCount }),
     };
   }
 
@@ -100,13 +106,17 @@ export function getCampaignCompatibilityCapabilityStatus(
     const issueCounts = formatIssueCounts(summary);
     return {
       status: "warning",
-      message: `${summary.evaluatedCount} of ${summary.runCount} dataset/pipeline pair previews are schema-evaluated (${issueCounts}); resolve these before stricter execution modes.`,
+      message: i18n.t("newExperiment.campaign.capability.warning", {
+        evaluated: summary.evaluatedCount,
+        total: summary.runCount,
+        issues: issueCounts,
+      }),
     };
   }
 
   return {
     status: "passed",
-    message: `${summary.runCount} of ${summary.runCount} dataset/pipeline pair previews are schema-ready.`,
+    message: i18n.t("newExperiment.campaign.capability.passed", { total: summary.runCount }),
   };
 }
 
@@ -139,27 +149,30 @@ export function getCampaignSinglePairCapabilityStatus(
   if (summary.datasetCount === 0 || summary.pipelineCount === 0 || summary.runCount === 0) {
     return {
       status: "not_evaluated",
-      message: "Select one dataset and one pipeline before single-pair campaign readiness can be evaluated.",
+      message: i18n.t("newExperiment.campaign.capability.singlePair.select"),
     };
   }
 
   if (summary.datasetCount === 1 && summary.pipelineCount === 1 && summary.runCount === 1) {
     return {
       status: "passed",
-      message: "Campaign already targets one dataset, one pipeline, and one planned run.",
+      message: i18n.t("newExperiment.campaign.capability.singlePair.ok"),
     };
   }
 
   if (summary.runCount === 1) {
     return {
       status: "warning",
-      message: `1 run is planned, but selected inputs still span ${summary.inputCardinalityLabel}; strict one-pair modes should keep one dataset and one pipeline per campaign.`,
+      message: i18n.t("newExperiment.campaign.capability.singlePair.oneRun", { cardinality: summary.inputCardinalityLabel }),
     };
   }
 
   return {
     status: "warning",
-    message: `${summary.runCountLabel} are planned across ${summary.inputCardinalityLabel}; split campaign work into one dataset/pipeline pair per campaign for strict one-pair execution.`,
+    message: i18n.t("newExperiment.campaign.capability.singlePair.manyRuns", {
+      runs: summary.runCountLabel,
+      cardinality: summary.inputCardinalityLabel,
+    }),
   };
 }
 
@@ -184,7 +197,7 @@ export function buildCampaignCapabilityChecks(
       id: "campaign-schema-binding",
       status: schemaBindingStatus.status,
       statusLabel: getCampaignCapabilityCheckStatusLabel(schemaBindingStatus.status),
-      title: "Campaign schema binding",
+      title: i18n.t("newExperiment.campaign.capability.titles.schemaBinding"),
       message: schemaBindingStatus.message,
     });
     const singlePairStatus = getCampaignSinglePairCapabilityStatus(summary);
@@ -192,7 +205,7 @@ export function buildCampaignCapabilityChecks(
       id: "single-pair-campaign-shape",
       status: singlePairStatus.status,
       statusLabel: getCampaignCapabilityCheckStatusLabel(singlePairStatus.status),
-      title: "Single-pair campaign shape",
+      title: i18n.t("newExperiment.campaign.capability.titles.singlePair"),
       message: singlePairStatus.message,
     });
   }
@@ -201,7 +214,7 @@ export function buildCampaignCapabilityChecks(
     id: "dataset-pipeline-schema",
     status: compatibilityStatus.status,
     statusLabel: getCampaignCapabilityCheckStatusLabel(compatibilityStatus.status),
-    title: "Dataset/pipeline schema compatibility",
+    title: i18n.t("newExperiment.campaign.capability.titles.compatibility"),
     message: compatibilityStatus.message,
   });
 
@@ -211,7 +224,7 @@ export function buildCampaignCapabilityChecks(
     id: "execution-backend-capabilities",
     status: backendCapability.status,
     statusLabel: getCampaignCapabilityCheckStatusLabel(backendCapability.status),
-    title: "Execution backend capabilities",
+    title: i18n.t("newExperiment.campaign.capability.titles.backend"),
     message: backendCapability.message,
   });
 

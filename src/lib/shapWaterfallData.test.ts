@@ -9,6 +9,9 @@ import {
   parseShapWaterfallSampleInput,
   sortShapWaterfallContributions,
 } from './shapWaterfallData';
+import i18n from '@/lib/i18n';
+
+const t = i18n.getFixedT('en');
 
 function contribution(overrides: Partial<FeatureContribution> = {}): FeatureContribution {
   return {
@@ -47,7 +50,7 @@ describe('shapWaterfallData', () => {
   });
 
   it('builds cumulative waterfall bars with base and final markers', () => {
-    expect(buildShapWaterfallBars(sampleExplanation())).toEqual([
+    expect(buildShapWaterfallBars(sampleExplanation(), t)).toEqual([
       {
         name: 'Base Value',
         start: 0,

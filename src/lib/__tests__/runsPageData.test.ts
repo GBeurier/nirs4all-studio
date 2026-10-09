@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { tEn } from "./support/enTranslator";
 import {
   buildRunPageIdLookup,
   buildRunsExecutionJobListItems,
@@ -625,7 +626,7 @@ describe("runs page data projections", () => {
       storage_backend: "result-repository",
       store_run_id: "store-repository-run",
       workspace_id: "workspace-1",
-    } as EnrichedRun & Record<string, unknown>);
+    } as EnrichedRun & Record<string, unknown>, tEn);
 
     expect(metadata).toMatchObject({
       runId: "repository-run",
@@ -659,7 +660,7 @@ describe("runs page data projections", () => {
   });
 
   it("keeps missing optional storage metadata explicit and derives counts from artifact lists", () => {
-    expect(buildRunStorageArtifactMetadata(enrichedRun({ artifact_size_bytes: 0 }))).toMatchObject({
+    expect(buildRunStorageArtifactMetadata(enrichedRun({ artifact_size_bytes: 0 }), tEn)).toMatchObject({
       artifactCount: null,
       artifactCountLabel: "Not reported",
       artifactSizeBytes: 0,
@@ -687,7 +688,7 @@ describe("runs page data projections", () => {
         },
         storage_mode: "workspace-store",
       } as EnrichedRun & Record<string, unknown>,
-    ])).toEqual([
+    ], tEn)).toEqual([
       expect.objectContaining({
         runId: "manifest-list",
         artifactCount: 2,
@@ -704,7 +705,7 @@ describe("runs page data projections", () => {
       manifest_path: "/runtime/manifest.json",
       run_dir: "/runtime",
       store_run_id: "store-cluster-run",
-    }))).toMatchObject({
+    }), tEn)).toMatchObject({
       runId: "runtime-cluster-run",
       artifactCount: null,
       artifactSizeBytes: 0,

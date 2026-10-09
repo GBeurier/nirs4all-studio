@@ -24,19 +24,24 @@ export interface ResultsPanelReduction {
   className: string;
 }
 
+export interface ResultsPanelMetricOption {
+  value: TransferMetricType;
+  labelKey: string;
+}
+
 export interface ResultsPanelSummaryModel {
-  description: string;
+  counts: { datasets: number; preprocessings: number; pairs: number };
   executionTimeLabel: string;
   bestPreprocessing: string;
   reduction: ResultsPanelReduction;
   datasetBadges: ResultsPanelDatasetBadge[];
   datasetOverflowLabel: string | null;
-  preprocessingsTestedLabel: string;
+  preprocessingsTestedCount: number;
 }
 
 export interface ResultsPanelControlsModel {
   preprocessingOptions: ResultsPanelOption[];
-  metricOptions: ResultsPanelOption<TransferMetricType>[];
+  metricOptions: ResultsPanelMetricOption[];
   activePreprocessingSelectValue: string;
 }
 
@@ -48,9 +53,9 @@ export interface ResultsPanelChartModel {
   convergenceData: MetricConvergenceItem[];
 }
 
-export const RESULTS_PANEL_METRIC_OPTIONS: ResultsPanelOption<TransferMetricType>[] = [
-  { value: 'centroid', label: 'Centroid' },
-  { value: 'spread', label: 'Spread' },
+export const RESULTS_PANEL_METRIC_OPTIONS: ResultsPanelMetricOption[] = [
+  { value: 'centroid', labelKey: 'transferAnalysis.metrics.centroid' },
+  { value: 'spread', labelKey: 'transferAnalysis.metrics.spread' },
 ];
 
 const DATASET_BADGE_LIMIT = 3;
@@ -89,13 +94,17 @@ export function getResultsPanelSummaryModel(results: TransferAnalysisResponse): 
   const { datasetBadges, datasetOverflowLabel } = getResultsPanelDatasetBadges(results.datasets);
 
   return {
-    description: `${results.summary.n_datasets} datasets, ${results.summary.n_preprocessings} preprocessings, ${results.summary.n_pairs} pairwise comparisons`,
+    counts: {
+      datasets: results.summary.n_datasets,
+      preprocessings: results.summary.n_preprocessings,
+      pairs: results.summary.n_pairs,
+    },
     executionTimeLabel: formatTransferExecutionTime(results.execution_time_ms),
     bestPreprocessing: results.summary.best_preprocessing,
     reduction: formatTransferReduction(results.summary.best_reduction_pct),
     datasetBadges,
     datasetOverflowLabel,
-    preprocessingsTestedLabel: `${results.preprocessings.length} tested`,
+    preprocessingsTestedCount: results.preprocessings.length,
   };
 }
 
@@ -106,7 +115,7 @@ export function getPreprocessingOptions(preprocessings: string[]): ResultsPanelO
   }));
 }
 
-export function getMetricOptions(): ResultsPanelOption<TransferMetricType>[] {
+export function getMetricOptions(): ResultsPanelMetricOption[] {
   return RESULTS_PANEL_METRIC_OPTIONS;
 }
 

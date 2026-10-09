@@ -3,7 +3,8 @@ import { act, memo } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import i18n from "@/lib/i18n";
 import { ActiveRunProvider } from "./ActiveRunContext";
 import { useActiveRuns, type ActiveRunContextValue } from "./useActiveRuns";
 
@@ -22,6 +23,9 @@ class Socket {
   send = vi.fn();
   constructor(public url: string) { Socket.instances.push(this); }
 }
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();

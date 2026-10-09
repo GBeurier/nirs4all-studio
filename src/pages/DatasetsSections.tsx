@@ -53,6 +53,7 @@ import type {
   DatasetSortDirection,
   DatasetSortField,
 } from "@/lib/datasetCatalog";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 interface DatasetsHeaderProps {
   isDeveloperMode: boolean;
@@ -180,7 +181,7 @@ export function DatasetsStatsCards({
   const { t } = useTranslation();
   const featureValue = hasFeatureCounts
     ? minFeatures === maxFeatures
-      ? minFeatures.toLocaleString()
+      ? minFeatures.toLocaleString(getActiveLocale())
       : `${minFeatures}-${maxFeatures}`
     : "--";
 
@@ -194,7 +195,7 @@ export function DatasetsStatsCards({
       <DatasetsStatCard
         icon={BarChart3}
         label={t("datasets.stats.totalSamples")}
-        value={totalSamples.toLocaleString()}
+        value={totalSamples.toLocaleString(getActiveLocale())}
       />
       <DatasetsStatCard
         icon={Grid3x3}

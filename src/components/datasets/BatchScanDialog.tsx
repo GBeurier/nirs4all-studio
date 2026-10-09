@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   FolderSearch,
   Loader2,
@@ -53,6 +54,7 @@ export function BatchScanDialog({
   folderPath,
   onComplete,
 }: BatchScanDialogProps) {
+  const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>("confirm");
   const [scannedDatasets, setScannedDatasets] = useState<ScannedDataset[]>([]);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
@@ -61,7 +63,7 @@ export function BatchScanDialog({
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [importProgress, setImportProgress] = useState(0);
 
-  const folderName = folderPath.split(/[/\\]/).filter(Boolean).pop() || "folder";
+  const folderName = folderPath.split(/[/\\]/).filter(Boolean).pop() || t("datasets.batchScan.folderFallback");
 
   const handleScan = useCallback(async () => {
     setPhase("scanning");
@@ -74,10 +76,10 @@ export function BatchScanDialog({
       setSelectedIndices(new Set(result.datasets.map((_, i) => i)));
       setPhase("results");
     } catch (err) {
-      setScanWarnings([`Scan failed: ${err instanceof Error ? err.message : String(err)}`]);
+      setScanWarnings([t("datasets.batchScan.scanFailed", { message: err instanceof Error ? err.message : String(err) })]);
       setPhase("results");
     }
-  }, [folderPath]);
+  }, [folderPath, t]);
 
   const handleToggle = (index: number) => {
     setSelectedIndices((prev) => {
@@ -220,14 +222,14 @@ export function BatchScanDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderSearch className="h-5 w-5" />
-            Batch Folder Scan
+            {t("datasets.batchScan.title")}
           </DialogTitle>
           <DialogDescription>
-            {phase === "confirm" && `Scan "${folderName}" for datasets in subfolders`}
-            {phase === "scanning" && "Scanning subfolders..."}
-            {phase === "results" && `Found ${scannedDatasets.length} datasets in ${totalScanned} folders`}
-            {phase === "importing" && `Importing ${importProgress} of ${selectedIndices.size} datasets...`}
-            {phase === "done" && `Import complete: ${successCount} succeeded, ${failCount} failed`}
+            {phase === "confirm" && t("datasets.batchScan.descConfirm", { name: folderName })}
+            {phase === "scanning" && t("datasets.batchScan.descScanning")}
+            {phase === "results" && t("datasets.batchScan.descResults", { count: scannedDatasets.length, folders: totalScanned })}
+            {phase === "importing" && t("datasets.batchScan.descImporting", { current: importProgress, total: selectedIndices.size })}
+            {phase === "done" && t("datasets.batchScan.descDone", { success: successCount, failed: failCount })}
           </DialogDescription>
         </DialogHeader>
 
@@ -235,11 +237,10 @@ export function BatchScanDialog({
         {phase === "confirm" && (
           <div className="py-4 space-y-3">
             <p className="text-sm text-muted-foreground">
-              No dataset files were detected directly in this folder.
-              Would you like to recursively scan subfolders for datasets?
+              {t("datasets.batchScan.confirmQuestion")}
             </p>
             <p className="text-sm text-muted-foreground">
-              Datasets will be named after their folder. Parent folder names will be used as groups.
+              {t("datasets.batchScan.confirmNaming")}
             </p>
             <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
               <FolderTree className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -252,7 +253,7 @@ export function BatchScanDialog({
         {phase === "scanning" && (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Scanning subfolders for datasets...</p>
+            <p className="text-sm text-muted-foreground">{t("datasets.batchScan.scanningBody")}</p>
           </div>
         )}
 
@@ -278,10 +279,10 @@ export function BatchScanDialog({
                     onClick={handleToggleAll}
                     className="text-xs text-primary hover:underline"
                   >
-                    {selectedIndices.size === scannedDatasets.length ? "Deselect all" : "Select all"}
+                    {selectedIndices.size === scannedDatasets.length ? t("datasets.batchScan.deselectAll") : t("datasets.batchScan.selectAll")}
                   </button>
                   <span className="text-xs text-muted-foreground">
-                    {selectedIndices.size} of {scannedDatasets.length} selected
+                    {t("datasets.batchScan.selectedCount", { selected: selectedIndices.size, total: scannedDatasets.length })}
                   </span>
                 </div>
                 <ScrollArea className="h-[350px]">
@@ -298,6 +299,7 @@ export function BatchScanDialog({
                       >
                         <Checkbox
                           checked={selectedIndices.has(i)}
+                          aria-label={ds.folder_name}
                           onCheckedChange={() => handleToggle(i)}
                         />
                         <FileSpreadsheet className="h-4 w-4 text-primary flex-shrink-0" />
@@ -315,11 +317,11 @@ export function BatchScanDialog({
                             ))}
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {ds.files.length} files
+                            {t("datasets.batchScan.fileCount", { count: ds.files.length })}
                             {ds.files.filter(f => f.type === "X").map(f =>
-                              f.num_rows ? ` \u00b7 ${f.num_rows} samples` : ""
+                              f.num_rows ? ` \u00b7 ${t("datasets.batchScan.sampleCount", { count: f.num_rows })}` : ""
                             ).join("")}
-                            {ds.has_fold_file ? " \u00b7 folds" : ""}
+                            {ds.has_fold_file ? ` \u00b7 ${t("datasets.batchScan.folds")}` : ""}
                           </p>
                         </div>
                         {ds.warnings.length > 0 && (
@@ -333,7 +335,7 @@ export function BatchScanDialog({
             ) : (
               <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
                 <FolderSearch className="h-8 w-8" />
-                <p className="text-sm">No datasets found in subfolders</p>
+                <p className="text-sm">{t("datasets.batchScan.noneFound")}</p>
               </div>
             )}
           </div>
@@ -344,7 +346,7 @@ export function BatchScanDialog({
           <div className="flex flex-col items-center justify-center py-12 gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="text-sm text-muted-foreground">
-              Importing dataset {importProgress} of {selectedIndices.size}...
+              {t("datasets.batchScan.importingBody", { current: importProgress, total: selectedIndices.size })}
             </p>
             <div className="w-full max-w-xs bg-muted rounded-full h-2">
               <div
@@ -367,8 +369,8 @@ export function BatchScanDialog({
               <div>
                 <p className="font-medium">
                   {failCount === 0
-                    ? `All ${successCount} datasets imported successfully`
-                    : `${successCount} imported, ${failCount} failed`}
+                    ? t("datasets.batchScan.allImported", { count: successCount })
+                    : t("datasets.batchScan.partialImported", { success: successCount, failed: failCount })}
                 </p>
               </div>
             </div>
@@ -398,31 +400,31 @@ export function BatchScanDialog({
           {phase === "confirm" && (
             <>
               <Button variant="outline" onClick={handleClose}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button onClick={handleScan}>
                 <FolderSearch className="h-4 w-4 mr-2" />
-                Scan
+                {t("datasets.batchScan.scan")}
               </Button>
             </>
           )}
           {phase === "results" && (
             <>
               <Button variant="outline" onClick={handleClose}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={handleImport}
                 disabled={selectedIndices.size === 0}
               >
                 <Import className="h-4 w-4 mr-2" />
-                Import {selectedIndices.size > 0 ? `${selectedIndices.size} Datasets` : ""}
+                {selectedIndices.size > 0 ? t("datasets.batchScan.importCount", { count: selectedIndices.size }) : t("common.import")}
               </Button>
             </>
           )}
           {phase === "done" && (
             <Button onClick={handleClose}>
-              Done
+              {t("datasets.batchScan.done")}
             </Button>
           )}
         </DialogFooter>

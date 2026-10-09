@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { DatasetResultCard } from "@/components/scores/DatasetResultCard";
 import type { EnrichedDatasetRun } from "@/types/enriched-runs";
@@ -17,6 +18,8 @@ export function RunDetailSheetDatasets({
   workspaceId: string;
   status: string;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="space-y-4">
       {datasets.map((dataset) => (
@@ -25,10 +28,10 @@ export function RunDetailSheetDatasets({
             <div>
               <h4 className="text-sm font-medium">{dataset.dataset_name}</h4>
               <p className="text-xs text-muted-foreground">
-                Folded scores, per-model drill-down, and prediction access for this dataset.
+                {t("runs.detail.datasetHint")}
               </p>
             </div>
-            <Badge variant="outline">{dataset.pipeline_count} pipelines</Badge>
+            <Badge variant="outline">{t("runs.detail.pipelineCount", { count: dataset.pipeline_count })}</Badge>
           </div>
 
           <DatasetResultCard
@@ -51,7 +54,7 @@ export function RunDetailSheetDatasets({
 
       {datasets.length === 0 && (
         <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-          {getEmptyDatasetsMessage(status)}
+          {getEmptyDatasetsMessage(status, t)}
         </div>
       )}
     </div>

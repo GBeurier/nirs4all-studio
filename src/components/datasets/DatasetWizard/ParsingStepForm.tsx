@@ -30,6 +30,7 @@ import { useTranslation } from "react-i18next";
 
 // Confidence indicator component
 export function ConfidenceIndicator({ value, field }: { value?: number; field: string }) {
+  const { t } = useTranslation();
   if (value === undefined || value === null) return null;
 
   const getColor = () => {
@@ -49,7 +50,7 @@ export function ConfidenceIndicator({ value, field }: { value?: number; field: s
   return (
     <span
       className={`text-xs ml-1 ${getColor()}`}
-      title={`${field} detected with ${pct}% confidence`}
+      title={t("datasets.wizard.parsing.form.confidenceTitle", { field, pct })}
     >
       {getIcon()} {pct}%
     </span>
@@ -78,8 +79,8 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
         {/* Delimiter */}
         <div>
           <Label className="text-xs text-muted-foreground mb-1 block">
-            Delimiter
-            <ConfidenceIndicator value={confidence?.delimiter} field="Delimiter" />
+            {t("datasets.wizard.parsing.form.delimiter")}
+            <ConfidenceIndicator value={confidence?.delimiter} field={t("datasets.wizard.parsing.form.delimiter")} />
           </Label>
           <Select
             value={options.delimiter || DEFAULT_PARSING.delimiter}
@@ -91,7 +92,7 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
             <SelectContent>
               {DELIMITER_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -101,8 +102,8 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
         {/* Decimal separator */}
         <div>
           <Label className="text-xs text-muted-foreground mb-1 block">
-            Decimal
-            <ConfidenceIndicator value={confidence?.decimal_separator} field="Decimal" />
+            {t("datasets.wizard.parsing.form.decimal")}
+            <ConfidenceIndicator value={confidence?.decimal_separator} field={t("datasets.wizard.parsing.form.decimal")} />
           </Label>
           <Select
             value={options.decimal_separator || DEFAULT_PARSING.decimal_separator}
@@ -114,7 +115,7 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
             <SelectContent>
               {DECIMAL_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -124,8 +125,8 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
         {/* Has header */}
         <div>
           <Label className="text-xs text-muted-foreground mb-1 block">
-            Header Row
-            <ConfidenceIndicator value={confidence?.has_header} field="Header" />
+            {t("datasets.wizard.parsing.form.headerRow")}
+            <ConfidenceIndicator value={confidence?.has_header} field={t("datasets.wizard.parsing.form.headerRow")} />
           </Label>
           <div className="flex items-center gap-2 h-9">
             <Switch
@@ -133,7 +134,7 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
               onCheckedChange={(v) => onChange({ has_header: v })}
             />
             <span className="text-sm">
-              {options.has_header ?? DEFAULT_PARSING.has_header ? "Yes" : "No"}
+              {options.has_header ?? DEFAULT_PARSING.has_header ? t("common.yes") : t("common.no")}
             </span>
           </div>
         </div>
@@ -141,8 +142,8 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
         {/* Header unit */}
         <div>
           <Label className="text-xs text-muted-foreground mb-1 block">
-            Header Unit
-            <ConfidenceIndicator value={confidence?.header_unit} field="Header unit" />
+            {t("datasets.wizard.parsing.form.headerUnit")}
+            <ConfidenceIndicator value={confidence?.header_unit} field={t("datasets.wizard.parsing.form.headerUnit")} />
           </Label>
           <Select
             value={options.header_unit || DEFAULT_PARSING.header_unit}
@@ -154,7 +155,7 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
             <SelectContent>
               {HEADER_UNIT_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -164,8 +165,8 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
         {/* Signal type */}
         <div>
           <Label className="text-xs text-muted-foreground mb-1 block">
-            Signal Type
-            <ConfidenceIndicator value={confidence?.signal_type} field="Signal type" />
+            {t("datasets.wizard.parsing.form.signalType")}
+            <ConfidenceIndicator value={confidence?.signal_type} field={t("datasets.wizard.parsing.form.signalType")} />
           </Label>
           <Select
             value={options.signal_type || DEFAULT_PARSING.signal_type}
@@ -177,7 +178,7 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
             <SelectContent>
               {SIGNAL_TYPE_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -187,7 +188,7 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
         {/* NA policy */}
         <div>
           <Label className="text-xs text-muted-foreground mb-1 block">
-            NA Handling
+            {t("datasets.wizard.parsing.form.naHandling")}
           </Label>
           <Select
             value={currentNaPolicy}

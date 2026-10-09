@@ -5,6 +5,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -44,6 +45,14 @@ interface AllModelsPanelProps {
 type SortColumn = "cv_val_score" | "cv_test_score" | "cv_train_score" | "final_test_score" | "final_train_score";
 type SortDir = "asc" | "desc";
 
+const SORT_COLUMN_LABEL_KEYS: Record<SortColumn, string> = {
+  cv_val_score: "runs.models.cvVal",
+  cv_test_score: "runs.models.cvTest",
+  cv_train_score: "runs.models.cvTrain",
+  final_test_score: "runs.models.refitTest",
+  final_train_score: "runs.models.refitTrain",
+};
+
 function formatParam(k: string, v: unknown): string {
   if (typeof v === "number") {
     if (Number.isInteger(v)) return `${k}=${v}`;
@@ -73,6 +82,7 @@ function partitionSortValue(partition: string): number {
 }
 
 function ModelFoldRows({ chainId, metric }: { chainId: string; metric: string }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ["chain-fold-scores", chainId],
     queryFn: () => getChainPartitionDetail(chainId),
@@ -92,7 +102,7 @@ function ModelFoldRows({ chainId, metric }: { chainId: string; metric: string })
     return (
       <div className="flex items-center justify-center py-6">
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        <span className="text-xs text-muted-foreground ml-2">Loading fold scores...</span>
+        <span className="text-xs text-muted-foreground ml-2">{t("runs.models.loadingFolds")}</span>
       </div>
     );
   }
@@ -100,7 +110,7 @@ function ModelFoldRows({ chainId, metric }: { chainId: string; metric: string })
   if (rows.length === 0) {
     return (
       <div className="py-4 text-center text-xs text-muted-foreground">
-        No fold-level scores available for this model.
+        {t("runs.models.noFoldScores")}
       </div>
     );
   }
@@ -110,7 +120,7 @@ function ModelFoldRows({ chainId, metric }: { chainId: string; metric: string })
   return (
     <div className="rounded-lg border bg-background">
       <div className="px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-medium border-b">
-        Per-fold scores (train / val / test)
+        {t("runs.models.perFoldScores")}
       </div>
       <ScrollArea className="max-h-96">
         <div className="p-3 space-y-4">
@@ -119,12 +129,12 @@ function ModelFoldRows({ chainId, metric }: { chainId: string; metric: string })
             return (
               <div key={foldId} className="space-y-2">
                 <div className="text-xs font-semibold text-muted-foreground">
-                  {foldId.toLowerCase() === "final" ? "Refit" : `Fold ${foldId}`}
+                  {foldId.toLowerCase() === "final" ? t("runs.models.refit") : t("runs.models.foldLabel", { fold: foldId })}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {["train", "val", "test"].map(partition => {
                     const row = foldRows.find(r => r.partition === partition);
-                    if (!row) return <div key={partition} className="border rounded p-2 bg-muted/5 border-dashed opacity-50 flex items-center justify-center text-[10px] text-muted-foreground">No {partition} data</div>;
+                    if (!row) return <div key={partition} className="border rounded p-2 bg-muted/5 border-dashed opacity-50 flex items-center justify-center text-[10px] text-muted-foreground">{t("runs.models.noPartitionData", { partition })}</div>;
 
                     return (
                       <div key={partition} className="border rounded p-2 bg-muted/10 flex flex-col gap-2">
@@ -172,6 +182,7 @@ function ModelFoldRows({ chainId, metric }: { chainId: string; metric: string })
 }
 
 export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, totalPipelines }: AllModelsPanelProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [sortCol, setSortCol] = useState<SortColumn>("cv_val_score");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -264,10 +275,10 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
           <div className="flex items-center gap-1.5 px-1 py-1.5 cursor-pointer hover:bg-muted/30 rounded text-xs text-muted-foreground transition-colors">
             {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
             <span className="font-medium">
-              {expanded && data ? `All ${loadedModelCount} models` : "Show all trained models"}
+              {expanded && data ? t("runs.models.allModels", { count: loadedModelCount }) : t("runs.models.showAll")}
             </span>
             {!expanded && expectedModelCount > 0 && (
-              <Badge variant="outline" className="text-[10px] ml-1">{expectedModelCount} expected</Badge>
+              <Badge variant="outline" className="text-[10px] ml-1">{t("runs.models.expected", { count: expectedModelCount })}</Badge>
             )}
           </div>
         </CollapsibleTrigger>
@@ -275,11 +286,11 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
           {isLoading ? (
             <div className="flex items-center justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              <span className="text-xs text-muted-foreground ml-2">Loading all models...</span>
+              <span className="text-xs text-muted-foreground ml-2">{t("runs.models.loading")}</span>
             </div>
           ) : sorted.length === 0 ? (
             <div className="text-xs text-muted-foreground py-4 text-center">
-              No models found
+              {t("runs.models.none")}
             </div>
           ) : (
             <div className="mt-1 rounded-lg border overflow-hidden" data-testid="all-models-table">
@@ -289,26 +300,26 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
                     <TableRow className="bg-muted/30">
                       <TableHead className="text-[10px] w-8" />
                       <TableHead className="text-[10px] w-8">#</TableHead>
-                      <TableHead className="text-[10px]">Model</TableHead>
-                      <TableHead className="text-[10px]">Preprocessing</TableHead>
-                      <TableHead className="text-[10px]">Params</TableHead>
+                      <TableHead className="text-[10px]">{t("runs.models.model")}</TableHead>
+                      <TableHead className="text-[10px]">{t("runs.models.preprocessing")}</TableHead>
+                      <TableHead className="text-[10px]">{t("runs.models.params")}</TableHead>
                       <TableHead className="text-[10px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => handleSort("cv_val_score")}>
-                        CV Val <SortIcon col="cv_val_score" />
+                        {t("runs.models.cvVal")} <SortIcon col="cv_val_score" />
                       </TableHead>
                       <TableHead className="text-[10px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => handleSort("cv_test_score")}>
-                        CV Test <SortIcon col="cv_test_score" />
+                        {t("runs.models.cvTest")} <SortIcon col="cv_test_score" />
                       </TableHead>
                       <TableHead className="text-[10px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => handleSort("cv_train_score")}>
-                        CV Train <SortIcon col="cv_train_score" />
+                        {t("runs.models.cvTrain")} <SortIcon col="cv_train_score" />
                       </TableHead>
                       <TableHead className="text-[10px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => handleSort("final_test_score")}>
-                        Refit Test <SortIcon col="final_test_score" />
+                        {t("runs.models.refitTest")} <SortIcon col="final_test_score" />
                       </TableHead>
                       <TableHead className="text-[10px] text-right cursor-pointer select-none whitespace-nowrap" onClick={() => handleSort("final_train_score")}>
-                        Refit Train <SortIcon col="final_train_score" />
+                        {t("runs.models.refitTrain")} <SortIcon col="final_train_score" />
                       </TableHead>
-                      <TableHead className="text-[10px] text-center w-12">Folds</TableHead>
-                      <TableHead className="text-[10px] w-16">Actions</TableHead>
+                      <TableHead className="text-[10px] text-center w-12">{t("runs.models.folds")}</TableHead>
+                      <TableHead className="text-[10px] w-16">{t("runs.models.actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -332,7 +343,9 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
                                 size="sm"
                                 className="h-6 w-6 p-0"
                                 onClick={() => toggleFoldRows(chain.chain_id)}
-                                title="Toggle fold scores"
+                                title={t("runs.models.toggleFolds")}
+                                aria-label={t("runs.models.toggleFolds")}
+                                aria-expanded={rowExpanded}
                               >
                                 {rowExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                               </Button>
@@ -367,7 +380,7 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
                                   )}
                                 </div>
                               ) : (
-                                <span className="text-muted-foreground/50">\u2014</span>
+                                <span className="text-muted-foreground/50">{"\u2014"}</span>
                               )}
                             </TableCell>
                             <TableCell className="text-xs text-right font-mono">
@@ -387,7 +400,7 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
                                   {formatMetricValue(chain.final_test_score, metric)}
                                 </span>
                               ) : (
-                                <span className="text-muted-foreground/50">\u2014</span>
+                                <span className="text-muted-foreground/50">{"\u2014"}</span>
                               )}
                             </TableCell>
                             <TableCell className="text-xs text-right font-mono text-muted-foreground/70">
@@ -402,7 +415,8 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
                                 size="sm"
                                 className="h-6 w-6 p-0"
                                 onClick={() => openDetail(chain)}
-                                title="Open model details"
+                                title={t("runs.models.openDetails")}
+                                aria-label={t("runs.models.openDetails")}
                               >
                                 <Eye className="h-3 w-3" />
                               </Button>
@@ -423,15 +437,15 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
                 </Table>
               </div>
               <div className="px-3 py-1.5 bg-muted/20 border-t text-[10px] text-muted-foreground flex items-center gap-2 flex-wrap">
-                <span>{loadedModelCount} model{loadedModelCount !== 1 ? "s" : ""} loaded</span>
+                <span>{t("runs.models.loadedCount", { count: loadedModelCount })}</span>
                 <span>·</span>
-                <span>{sorted.filter((c) => c.final_test_score != null).length} refitted</span>
+                <span>{t("runs.models.refittedCount", { count: sorted.filter((c) => c.final_test_score != null).length })}</span>
                 <span>·</span>
-                <span>{`sorted by ${sortCol.replace(/_/g, " ")} ${sortDir}`}</span>
+                <span>{t(sortDir === "asc" ? "runs.models.sortedAsc" : "runs.models.sortedDesc", { column: t(SORT_COLUMN_LABEL_KEYS[sortCol]) })}</span>
                 {expectedModelCount > loadedModelCount && (
                   <>
                     <span>·</span>
-                    <span className="text-amber-600">{missingModels} missing from expected count</span>
+                    <span className="text-amber-600">{t("runs.models.missing", { count: missingModels })}</span>
                   </>
                 )}
               </div>

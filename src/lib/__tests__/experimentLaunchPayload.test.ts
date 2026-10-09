@@ -1,3 +1,4 @@
+import "@/lib/__tests__/support/experimentI18n";
 import { describe, expect, it } from "vitest";
 
 import type { CampaignSinglePairSplitSpecResult } from "../campaignPlan";

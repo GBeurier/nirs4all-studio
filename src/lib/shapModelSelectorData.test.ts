@@ -17,6 +17,9 @@ import {
   resolveShapModelSelection,
   SHAP_MODEL_SELECTOR_ALL_VALUE,
 } from './shapModelSelectorData';
+import i18n from '@/lib/i18n';
+
+const t = i18n.getFixedT('en');
 
 function chain(overrides: Partial<AvailableChain> = {}): AvailableChain {
   return {
@@ -183,23 +186,23 @@ describe('shapModelSelectorData', () => {
     expect(getShortShapModelClass('a.b.Model')).toBe('Model');
     expect(formatShapModelScore(null)).toBeNull();
     expect(formatShapModelScore(0.123456)).toBe('0.1235');
-    expect(getShapModelScoreDisplays(labelled)).toEqual([
+    expect(getShapModelScoreDisplays(labelled, t)).toEqual([
       { kind: 'final_test_score', label: 'RMSEP', value: '0.1235' },
       { kind: 'cv_val_score', label: 'RMSECV', value: '0.2346' },
     ]);
-    expect(getShapModelScoreDisplays(chain({ metric: 'r2', cv_val_score: 0.98765 }))).toEqual([
+    expect(getShapModelScoreDisplays(chain({ metric: 'r2', cv_val_score: 0.98765 }), t)).toEqual([
       { kind: 'cv_val_score', label: 'CV R2', value: '0.9877' },
     ]);
-    expect(getShapModelScoreDisplays({ final_test_score: 0.42 })).toEqual([
+    expect(getShapModelScoreDisplays({ final_test_score: 0.42 }, t)).toEqual([
       { kind: 'final_test_score', label: 'Final SCORE', value: '0.4200' },
     ]);
     expect(buildShapChainLabel(labelled)).toBe('SNV → SG → Best RF');
-    expect(buildShapChainTooltip(labelled)).toBe([
+    expect(buildShapChainTooltip(labelled, t)).toBe([
       'Full chain: SNV → SG → Best RF',
       'RMSEP: 0.1235',
       'RMSECV: 0.2346',
     ].join('\n'));
-    expect(getVisibleShapChainScore(labelled)).toBe('0.1235');
+    expect(getVisibleShapChainScore(labelled, t)).toBe('0.1235');
     expect(countShapModelChains([dataset()])).toBe(3);
     expect(hasVisibleShapModelOptions([], [])).toBe(false);
     expect(hasVisibleShapModelOptions([], [bundle()])).toBe(true);

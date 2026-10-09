@@ -9,6 +9,7 @@
  */
 
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,6 +29,7 @@ interface MetadataSummary {
 }
 
 export function MetadataView({ data, className }: MetadataViewProps) {
+  const { t } = useTranslation();
   const metadata = useMemo(() => {
     // Extract metadata from statistics if available
     const stats = data.statistics as PreviewStatistics & {
@@ -42,7 +44,7 @@ export function MetadataView({ data, className }: MetadataViewProps) {
     if (stats?.batch_distribution) {
       const batches = Object.keys(stats.batch_distribution);
       summaries.push({
-        name: "Batch ID",
+        name: t("spectraSynthesis.metadata.batchId"),
         type: "batch",
         uniqueCount: batches.length,
         sampleValues: batches.slice(0, 5),
@@ -53,7 +55,7 @@ export function MetadataView({ data, className }: MetadataViewProps) {
     if (stats?.group_distribution) {
       const groups = Object.keys(stats.group_distribution);
       summaries.push({
-        name: "Group",
+        name: t("spectraSynthesis.metadata.group"),
         type: "group",
         uniqueCount: groups.length,
         sampleValues: groups.slice(0, 5),
@@ -64,31 +66,31 @@ export function MetadataView({ data, className }: MetadataViewProps) {
     if (stats?.class_distribution && data.target_type === "classification") {
       const classes = Object.keys(stats.class_distribution);
       summaries.push({
-        name: "Class",
+        name: t("spectraSynthesis.metadata.class"),
         type: "partition",
         uniqueCount: classes.length,
-        sampleValues: classes.map((c) => `Class ${c}`),
+        sampleValues: classes.map((c) => t("spectraSynthesis.metadata.classValue", { label: c })),
       });
     }
 
     // Sample count info
     summaries.push({
-      name: "Samples",
+      name: t("spectraSynthesis.metadata.samples"),
       type: "id",
       uniqueCount: data.actual_samples,
       sampleValues: [
-        `Preview: ${data.spectra.length}`,
-        `Total: ${data.actual_samples}`,
+        t("spectraSynthesis.metadata.preview", { count: data.spectra.length }),
+        t("spectraSynthesis.metadata.total", { count: data.actual_samples }),
       ],
     });
 
     return summaries;
-  }, [data]);
+  }, [data, t]);
 
   if (metadata.length === 0) {
     return (
       <div className={cn("flex items-center justify-center h-full", className)}>
-        <p className="text-sm text-muted-foreground">No metadata available</p>
+        <p className="text-sm text-muted-foreground">{t("spectraSynthesis.metadata.none")}</p>
       </div>
     );
   }
@@ -98,10 +100,10 @@ export function MetadataView({ data, className }: MetadataViewProps) {
     return (
       <div className={cn("p-2 space-y-3", className)}>
         <div className="text-xs font-medium text-muted-foreground">
-          Dataset Info
+          {t("spectraSynthesis.metadata.datasetInfo")}
         </div>
         {metadata.map((meta) => (
-          <MetadataCard key={meta.name} metadata={meta} />
+          <MetadataCard key={meta.type} metadata={meta} />
         ))}
       </div>
     );
@@ -110,12 +112,12 @@ export function MetadataView({ data, className }: MetadataViewProps) {
   // Multiple metadata types - use tabs
   return (
     <div className={cn("h-full flex flex-col", className)}>
-      <Tabs defaultValue={metadata[0].name} className="flex-1 flex flex-col">
+      <Tabs defaultValue={metadata[0].type} className="flex-1 flex flex-col">
         <TabsList className="h-7 w-full justify-start bg-transparent border-b rounded-none px-2">
           {metadata.map((meta) => (
             <TabsTrigger
-              key={meta.name}
-              value={meta.name}
+              key={meta.type}
+              value={meta.type}
               className="h-6 text-xs px-2 data-[state=active]:bg-muted"
             >
               {meta.name}
@@ -124,8 +126,8 @@ export function MetadataView({ data, className }: MetadataViewProps) {
         </TabsList>
         {metadata.map((meta) => (
           <TabsContent
-            key={meta.name}
-            value={meta.name}
+            key={meta.type}
+            value={meta.type}
             className="flex-1 mt-0 p-2"
           >
             <MetadataCard metadata={meta} expanded />
@@ -142,6 +144,7 @@ interface MetadataCardProps {
 }
 
 function MetadataCard({ metadata, expanded }: MetadataCardProps) {
+  const { t } = useTranslation();
   const typeColors = {
     id: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
     group: "bg-green-500/10 text-green-600 dark:text-green-400",
@@ -155,7 +158,7 @@ function MetadataCard({ metadata, expanded }: MetadataCardProps) {
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium">{metadata.name}</span>
         <Badge variant="secondary" className="h-5 text-[10px]">
-          {metadata.uniqueCount} unique
+          {t("spectraSynthesis.metadata.unique", { count: metadata.uniqueCount })}
         </Badge>
       </div>
       {expanded && (
@@ -172,7 +175,7 @@ function MetadataCard({ metadata, expanded }: MetadataCardProps) {
             ))}
             {metadata.uniqueCount > metadata.sampleValues.length && (
               <span className="text-[10px] text-muted-foreground">
-                +{metadata.uniqueCount - metadata.sampleValues.length} more
+                {t("spectraSynthesis.metadata.more", { count: metadata.uniqueCount - metadata.sampleValues.length })}
               </span>
             )}
           </div>

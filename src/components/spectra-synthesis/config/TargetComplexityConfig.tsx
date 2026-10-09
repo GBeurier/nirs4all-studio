@@ -2,12 +2,14 @@
  * TargetComplexityConfig - Configuration panel for with_target_complexity() step
  */
 
+import { useTranslation } from "react-i18next";
 import { Shuffle } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import type { SynthesisStepDefinition } from "../types";
+import { getStepDescription } from "../definitionLabels";
 
 interface TargetComplexityConfigProps {
   params: Record<string, unknown>;
@@ -20,6 +22,7 @@ export function TargetComplexityConfig({
   definition,
   onChange,
 }: TargetComplexityConfigProps) {
+  const { t } = useTranslation();
   const signalToConfoundRatio = (params.signal_to_confound_ratio as number) ?? 1.0;
   const nConfounders = (params.n_confounders as number) || 0;
   const spectralMasking = (params.spectral_masking as number) || 0;
@@ -33,8 +36,8 @@ export function TargetComplexityConfig({
           <Shuffle className="h-4 w-4 text-indigo-600" />
         </div>
         <div>
-          <h3 className="text-sm font-semibold">Target Complexity</h3>
-          <p className="text-xs text-muted-foreground">{definition.description}</p>
+          <h3 className="text-sm font-semibold">{t("spectraSynthesis.config.targetComplexity.title")}</h3>
+          <p className="text-xs text-muted-foreground">{getStepDescription(t, definition.type)}</p>
         </div>
       </div>
 
@@ -43,7 +46,7 @@ export function TargetComplexityConfig({
       {/* Signal-to-Confound Ratio */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">Signal-to-Confound Ratio</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.targetComplexity.ratio.label")}</Label>
           <span className="text-sm font-medium">{(signalToConfoundRatio * 100).toFixed(0)}%</span>
         </div>
         <Slider
@@ -54,14 +57,14 @@ export function TargetComplexityConfig({
           onValueChange={(v) => onChange({ signal_to_confound_ratio: v[0] })}
         />
         <p className="text-xs text-muted-foreground">
-          100% = fully predictable, 50% = half confounded
+          {t("spectraSynthesis.config.targetComplexity.ratio.hint")}
         </p>
       </div>
 
       {/* Number of Confounders */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">Number of Confounders</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.targetComplexity.confounders.label")}</Label>
           <span className="text-sm font-medium">{nConfounders}</span>
         </div>
         <Slider
@@ -76,7 +79,7 @@ export function TargetComplexityConfig({
       {/* Spectral Masking */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">Spectral Masking</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.targetComplexity.masking.label")}</Label>
           <span className="text-sm font-medium">{(spectralMasking * 100).toFixed(0)}%</span>
         </div>
         <Slider
@@ -87,16 +90,16 @@ export function TargetComplexityConfig({
           onValueChange={(v) => onChange({ spectral_masking: v[0] })}
         />
         <p className="text-xs text-muted-foreground">
-          Fraction of signal hidden in noisy regions
+          {t("spectraSynthesis.config.targetComplexity.masking.hint")}
         </p>
       </div>
 
       {/* Temporal Drift */}
       <div className="flex items-center justify-between">
         <div className="space-y-0.5">
-          <Label className="text-sm font-medium">Temporal Drift</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.targetComplexity.drift.label")}</Label>
           <p className="text-xs text-muted-foreground">
-            Target relationship changes over sample order
+            {t("spectraSynthesis.config.targetComplexity.drift.hint")}
           </p>
         </div>
         <Switch

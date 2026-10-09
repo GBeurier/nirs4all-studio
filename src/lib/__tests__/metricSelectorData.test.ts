@@ -5,12 +5,16 @@ import {
   getMetricDirectionSymbol,
   toggleMetricSelection,
 } from '@/lib/metricSelectorData';
+import i18n from "@/lib/i18n";
+
+const t = i18n.getFixedT("en");
 
 describe('metric selector data helpers', () => {
   it('builds regression selector sections and presets by default', () => {
     const data = buildMetricSelectorData({
       taskType: 'regression',
       selectedMetrics: ['rmse', 'r2'],
+      t,
     });
 
     expect(data.selectedCount).toBe(2);
@@ -24,6 +28,7 @@ describe('metric selector data helpers', () => {
       taskType: 'regression',
       selectedMetrics: [],
       availableMetricKeys: ['rmse', 'r2', 'accuracy'],
+      t,
     });
 
     expect(data.availableSections.map((section) => section.group)).toEqual(['regression', 'multiclass']);
@@ -40,6 +45,7 @@ describe('metric selector data helpers', () => {
       taskType: 'regression',
       selectedMetrics: ['benchmark_latency_ms'],
       availableMetricKeys: ['rmse', 'benchmark_latency_ms', 'repository_score'],
+      t,
     });
 
     expect(data.availableSections.map((section) => [section.group, section.label])).toEqual([
@@ -77,6 +83,7 @@ describe('metric selector data helpers', () => {
       taskType: 'regression',
       selectedMetrics: [],
       availableMetricKeys: ['root_mean_squared_error', 'rmse', 'custom-loss'],
+      t,
     });
 
     expect(data.availableSections[0].metrics.map((metric) => metric.key)).toEqual(['rmse']);
@@ -89,6 +96,7 @@ describe('metric selector data helpers', () => {
       taskTypes: ['regression', 'classification'],
       selectedMetrics: [],
       availableMetricKeys: ['rmse', 'r2', 'accuracy', 'f1'],
+      t,
     });
 
     expect(data.presets).toEqual([

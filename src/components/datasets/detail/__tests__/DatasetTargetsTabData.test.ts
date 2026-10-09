@@ -10,6 +10,7 @@ import {
   hasDatasetTargets,
   hasTargetTestPartition,
 } from "../DatasetTargetsTabData";
+import { tEn } from "@/lib/__tests__/support/enTranslator";
 import type { TargetDistribution } from "@/types/datasets";
 
 const trainDistribution: TargetDistribution = {
@@ -124,17 +125,17 @@ describe("DatasetTargetsTabData", () => {
   });
 
   it("builds regression +/-3 sigma range visibility and label", () => {
-    expect(getRegressionThreeSigmaRange({ mean: 10, std: 2 })).toEqual({
+    expect(getRegressionThreeSigmaRange({ mean: 10, std: 2 }, tEn)).toEqual({
       isVisible: true,
       label: "4.00 to 16.00",
     });
 
-    expect(getRegressionThreeSigmaRange({ mean: 0, std: 0 })).toEqual({
+    expect(getRegressionThreeSigmaRange({ mean: 0, std: 0 }, tEn)).toEqual({
       isVisible: true,
       label: "0.00 to 0.00",
     });
 
-    expect(getRegressionThreeSigmaRange({ mean: undefined, std: 2 })).toEqual({
+    expect(getRegressionThreeSigmaRange({ mean: undefined, std: 2 }, tEn)).toEqual({
       isVisible: false,
       label: "",
     });

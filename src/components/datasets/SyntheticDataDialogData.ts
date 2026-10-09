@@ -8,6 +8,7 @@
  * the dialog ready for future multimodal synthetic datasets.
  */
 
+import type { TFunction } from "i18next";
 import type {
   GenerateSyntheticRequest,
   SyntheticPreset,
@@ -88,6 +89,6 @@ export function isGenerateDisabled(params: {
 }
 
 /** Extract a human-readable message from a generation error. */
-export function getGenerationErrorMessage(error: unknown): string {
-  return getApiErrorMessage(error) || "Unknown error";
+export function getGenerationErrorMessage(error: unknown, t: TFunction): string {
+  return getApiErrorMessage(error) || t("datasets.synthetic.unknownError");
 }

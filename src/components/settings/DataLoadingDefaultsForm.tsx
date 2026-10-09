@@ -124,7 +124,7 @@ export function DataLoadingDefaultsForm({
       // Clear saved message after 3 seconds
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save defaults");
+      setError(err instanceof Error ? err.message : t("settings.dataDefaults.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -190,7 +190,7 @@ export function DataLoadingDefaultsForm({
             {t("settings.dataDefaults.parsing.title")}
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger>
+                <TooltipTrigger aria-label={t("settings.dataDefaults.parsing.tooltip")}>
                   <Info className="h-4 w-4 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent>

@@ -2,20 +2,20 @@ import type { ExplainerType, Partition } from '@/types/shap';
 
 export interface ShapSelectOption<TValue extends string> {
   value: TValue;
-  label: string;
+  labelKey: string;
 }
 
 export const SHAP_PARTITION_OPTIONS: ShapSelectOption<Partition>[] = [
-  { value: 'test', label: 'Test' },
-  { value: 'train', label: 'Train' },
-  { value: 'all', label: 'All' },
+  { value: 'test', labelKey: 'results.variableImportance.partitionOptions.test' },
+  { value: 'train', labelKey: 'results.variableImportance.partitionOptions.train' },
+  { value: 'all', labelKey: 'results.variableImportance.partitionOptions.all' },
 ];
 
 export const SHAP_EXPLAINER_OPTIONS: ShapSelectOption<ExplainerType>[] = [
-  { value: 'auto', label: 'Auto-detect' },
-  { value: 'tree', label: 'Tree (RF, GBR, XGBoost)' },
-  { value: 'linear', label: 'Linear (PLS, Ridge)' },
-  { value: 'kernel', label: 'Kernel (any model)' },
+  { value: 'auto', labelKey: 'results.variableImportance.explainerOptions.auto' },
+  { value: 'tree', labelKey: 'results.variableImportance.explainerOptions.tree' },
+  { value: 'linear', labelKey: 'results.variableImportance.explainerOptions.linear' },
+  { value: 'kernel', labelKey: 'results.variableImportance.explainerOptions.kernel' },
 ];
 
 export function normalizeShapPartition(value: string): Partition {

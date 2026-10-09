@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Ruler } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import type { ChainDetailConformalSummary } from "./useChainDetailPanelState";
 
@@ -16,6 +17,7 @@ export function ChainDetailConformalPredictionPreview({
   selectedCoverage,
   summary,
 }: ChainDetailConformalPredictionPreviewProps) {
+  const { t } = useTranslation();
   const defaultCoverage = useMemo(() => resolveDefaultCoverage(summary), [summary]);
   const [localSelectedCoverage, setLocalSelectedCoverage] = useState<number | null>(defaultCoverage);
 
@@ -41,14 +43,14 @@ export function ChainDetailConformalPredictionPreview({
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold tracking-tight">
             <Ruler className="h-4 w-4 text-muted-foreground" />
-            Calibrated prediction preview
+            {t("predictions.detail.conformal.title")}
           </div>
           <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-            Materialized prediction intervals from the attached calibrated result. Studio displays these bounds as produced by nirs4all and does not recompute coverage.
+            {t("predictions.detail.conformal.description")}
           </p>
         </div>
         <Badge variant="outline" className="text-[10px]">
-          {summary.rows.length} rows
+          {t("predictions.detail.conformal.rows", { count: summary.rows.length })}
         </Badge>
       </div>
 
@@ -59,19 +61,19 @@ export function ChainDetailConformalPredictionPreview({
         <span>{summary.guarantee.scope}</span>
         {summary.guarantee.calibrationReplaySource && (
           <Badge variant="outline" className="text-[10px]">
-            calibration replay: {summary.guarantee.calibrationReplayLabel}
+            {t("predictions.detail.conformal.calibrationReplay", { label: summary.guarantee.calibrationReplayLabel })}
           </Badge>
         )}
         {summary.guarantee.tuningCalibrationSource && (
           <Badge variant="outline" className="text-[10px]">
-            tuning calibration: {summary.guarantee.tuningCalibrationLabel}
+            {t("predictions.detail.conformal.tuningCalibration", { label: summary.guarantee.tuningCalibrationLabel })}
           </Badge>
         )}
       </div>
 
       {summary.coverages.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[11px] text-muted-foreground">Coverage</span>
+          <span className="mr-1 text-[11px] text-muted-foreground">{t("predictions.detail.conformal.coverage")}</span>
           {summary.coverages.map(option => (
             <button
               key={option.coverage}
@@ -94,9 +96,9 @@ export function ChainDetailConformalPredictionPreview({
 
       <div className="mt-4 overflow-hidden rounded-xl border border-border/60">
         <div className="grid grid-cols-[minmax(90px,0.8fr)_minmax(80px,0.6fr)_minmax(0,1.8fr)] gap-2 border-b border-border/60 bg-muted/40 px-3 py-2 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-          <span>Sample</span>
-          <span>Prediction</span>
-          <span>{selectedCoverageLabel ? `${selectedCoverageLabel} interval` : "Intervals"}</span>
+          <span>{t("predictions.detail.conformal.sample")}</span>
+          <span>{t("predictions.detail.conformal.prediction")}</span>
+          <span>{selectedCoverageLabel ? t("predictions.detail.conformal.intervalFor", { coverage: selectedCoverageLabel }) : t("predictions.detail.conformal.intervals")}</span>
         </div>
         <div className="divide-y divide-border/60">
           {rows.map(row => (
@@ -128,7 +130,7 @@ export function ChainDetailConformalPredictionPreview({
 
       {remainingRows > 0 && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Showing {rows.length} of {summary.rows.length} calibrated prediction rows. Full-table pagination belongs to the dedicated prediction viewer.
+          {t("predictions.detail.conformal.showing", { shown: rows.length, total: summary.rows.length })}
         </p>
       )}
     </div>

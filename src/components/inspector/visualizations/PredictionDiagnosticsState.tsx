@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { getPredictionDiagnosticsEmptyMessage } from '@/lib/inspector/predictionDiagnosticsPresentation';
 
@@ -17,9 +18,11 @@ export function PredictionDiagnosticsLoadingState({
 }
 
 export function PredictionDiagnosticsEmptyState() {
+  const { t } = useTranslation();
+
   return (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-      {getPredictionDiagnosticsEmptyMessage()}
+      {getPredictionDiagnosticsEmptyMessage(t)}
     </div>
   );
 }

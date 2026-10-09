@@ -11,6 +11,7 @@ import {
   getBranchTopologyNodeColor,
 } from '@/lib/inspector/branchTopologyPresentation';
 import type { BranchTopologyResponse, TopologyNode } from '@/types/inspector';
+import { tStub } from './helpers/i18nStub';
 
 function node(overrides: Partial<TopologyNode> = {}): TopologyNode {
   return {
@@ -54,12 +55,12 @@ function sampleTree(): TopologyNode {
 
 describe('inspector branch topology presentation helpers', () => {
   it('formats topology labels, scores, colors, and pipeline copy', () => {
-    expect(getBranchTopologyEmptyMessage()).toBe('No branch topology data available.');
+    expect(getBranchTopologyEmptyMessage(tStub)).toBe('inspector.charts.empty.branchTopology');
     expect(formatBranchTopologyLabel('short')).toBe('short');
     expect(formatBranchTopologyLabel('very-long-topology-label')).toBe('very-long-to\u2026');
     expect(formatBranchTopologyScore(0.123456)).toBe('0.1235');
     expect(formatBranchTopologyScore(null)).toBeNull();
-    expect(formatBranchTopologyPipelineLabel('Pipeline A')).toBe('Pipeline: Pipeline A');
+    expect(formatBranchTopologyPipelineLabel('Pipeline A', tStub)).toBe('inspector.charts.tooltip.pipeline {"value":"Pipeline A"}');
     expect(getBranchTopologyNodeColor('branch')).toBe('#ea580c');
     expect(BRANCH_TOPOLOGY_FALLBACK_COLOR).toBe('#64748b');
   });

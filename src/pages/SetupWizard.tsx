@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import i18n from "i18next";
 import { motion, AnimatePresence } from "@/lib/motion";
 import {
   Cpu,
@@ -112,7 +113,7 @@ function DesktopSetupWizard() {
       await completeSetup.mutateAsync({ profile: "cpu" });
       await getElectronApi()?.markWizardComplete?.(false);
       navigate("/datasets", { replace: true });
-    } catch (err) { setError(setupErrorMessage(err, "Could not save setup.")); }
+    } catch (err) { setError(setupErrorMessage(err, t("setupWizard.desktop.saveFailed"))); }
   };
   const defer = async () => {
     await getElectronApi()?.markWizardComplete?.(true);
@@ -121,22 +122,23 @@ function DesktopSetupWizard() {
   return <div className="min-h-screen bg-background p-4 sm:p-8">
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">{t("pythonSetup.title", "Choose your Python environment")}</h1>
-        <p className="text-muted-foreground">{t("pythonSetup.description", "Reuse your previous Studio environment or a local Python environment. Studio will install the nirs4all version it needs in that environment and keep your other compatible packages.")}</p>
-        <p className="text-sm text-muted-foreground">{t("pythonSetup.settingsHint", "You can make the same choice later in Settings → Advanced → Python Environment.")}</p>
+        <h1 className="text-2xl font-semibold">{t("pythonSetup.title")}</h1>
+        <p className="text-muted-foreground">{t("pythonSetup.description")}</p>
+        <p className="text-sm text-muted-foreground">{t("pythonSetup.settingsHint")}</p>
       </div>
       <PythonEnvPicker />
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-      <p role="status" className="text-sm">{checking ? t("pythonSetup.checking", "Checking the analysis engine…") : ready ? t("pythonSetup.ready", "Your environment is ready for analysis.") : t("pythonSetup.prepare", "Choose an environment below Change… to prepare it. An older nirs4all version can be updated in place.")}</p>
+      <p role="status" className="text-sm">{checking ? t("pythonSetup.checking") : ready ? t("pythonSetup.ready") : t("pythonSetup.prepare")}</p>
       <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="outline" onClick={() => void defer()} disabled={completeSetup.isPending}>{t("pythonSetup.later", "Set up later")}</Button>
-        <Button onClick={() => void finish()} disabled={!ready || checking || completeSetup.isPending}>{t("pythonSetup.open", "Open Studio")}</Button>
+        <Button variant="outline" onClick={() => void defer()} disabled={completeSetup.isPending}>{t("pythonSetup.later")}</Button>
+        <Button onClick={() => void finish()} disabled={!ready || checking || completeSetup.isPending}>{t("pythonSetup.open")}</Button>
       </div>
     </div>
   </div>;
 }
 
 function WebSetupWizard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const completeSetupMutation = useCompleteSetup();
   const [mode, setMode] = useState<"checking" | "writable" | "packaged">("checking");
@@ -161,19 +163,19 @@ function WebSetupWizard() {
         api.get<{ ml_ready?: boolean; ml_error?: string | null }>("/system/readiness"),
       ]);
       if (!inventory.runtime_valid || !runtime.core_ready || !runtime.coherent) {
-        throw new Error("The analysis tools are not ready. Repair or reinstall Studio, then check again.");
+        throw new Error(i18n.t("setupWizard.verify.notReady"));
       }
       if (readiness.ml_ready !== true) {
-        throw new Error(readiness.ml_error || "The analysis tools are not ready. Repair or reinstall Studio, then check again.");
+        throw new Error(readiness.ml_error || i18n.t("setupWizard.verify.notReady"));
       }
       if (!diff.is_aligned) {
         const packages = diff.packages.filter((pkg) => pkg.status === "missing" || pkg.status === "outdated");
-        throw new Error(`Required packages are missing or incompatible: ${packages.map((pkg) => pkg.name).join(", ")}. Repair or reinstall Studio, then retry verification.`);
+        throw new Error(i18n.t("setupWizard.verify.packagesMissing", { packages: packages.map((pkg) => pkg.name).join(", ") }));
       }
       setReady(true);
       return true;
     } catch (err) {
-      setError(setupErrorMessage(err, "Could not check the analysis tools"));
+      setError(setupErrorMessage(err, i18n.t("setupWizard.verify.checkFailed")));
       return false;
     } finally {
       setChecking(false);
@@ -190,7 +192,7 @@ function WebSetupWizard() {
       await completeSetupMutation.mutateAsync({ profile: "cpu" });
       navigate("/datasets", { replace: true });
     } catch (err) {
-      setError(setupErrorMessage(err, "Failed to save setup completion"));
+      setError(setupErrorMessage(err, t("setupWizard.verify.saveFailed")));
     }
   };
 
@@ -200,16 +202,16 @@ function WebSetupWizard() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-2xl">
         <CardHeader>
-          <CardTitle>Verify Studio installation</CardTitle>
-          <CardDescription>Studio includes the tools needed for analysis. Check the installation before opening your datasets.</CardDescription>
+          <CardTitle>{t("setupWizard.verify.title")}</CardTitle>
+          <CardDescription>{t("setupWizard.verify.description")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {checking && <p role="status">Checking the analysis tools…</p>}
+          {checking && <p role="status">{t("setupWizard.verify.checking")}</p>}
           {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-          {ready && !checking && <p role="status">The analysis tools are ready.</p>}
+          {ready && !checking && <p role="status">{t("setupWizard.verify.ready")}</p>}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => void verifyRuntime(true)} disabled={checking || completeSetupMutation.isPending}>Retry verification</Button>
-            <Button onClick={() => void finishPackagedSetup()} disabled={!ready || checking || completeSetupMutation.isPending}>Open Studio</Button>
+            <Button variant="outline" onClick={() => void verifyRuntime(true)} disabled={checking || completeSetupMutation.isPending}>{t("setupWizard.verify.retry")}</Button>
+            <Button onClick={() => void finishPackagedSetup()} disabled={!ready || checking || completeSetupMutation.isPending}>{t("pythonSetup.open")}</Button>
           </div>
         </CardContent>
       </Card>
@@ -442,7 +444,7 @@ function WritableSetupWizard() {
                         <div className="flex items-center gap-2 justify-center">
                           <Gpu className="h-5 w-5 text-green-500" />
                           <span className="font-medium">
-                            NVIDIA GPU: {gpuInfo.gpu_name}
+                            {t("setupWizard.detect.nvidiaGpu", { name: gpuInfo.gpu_name })}
                           </span>
                           {gpuInfo.cuda_version && (
                             <Badge variant="secondary">
@@ -693,7 +695,7 @@ function WritableSetupWizard() {
                           {t("setupWizard.ready.extras")}
                         </span>
                         <span className="font-medium">
-                          {effectiveExtras.length} packages
+                          {t("setupWizard.ready.packagesCount", { count: effectiveExtras.length })}
                         </span>
                       </div>
                     )}

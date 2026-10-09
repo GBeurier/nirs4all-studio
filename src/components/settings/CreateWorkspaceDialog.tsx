@@ -170,7 +170,7 @@ export function CreateWorkspaceDialog({
 
       onWorkspaceCreated?.(workspace);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create workspace";
+      const message = err instanceof Error ? err.message : t("settings.workspace.create.error");
       // Extract detail from API error if available
       const apiError = err as { detail?: string };
       setError(apiError.detail || message);

@@ -24,6 +24,7 @@ export function NewExperimentDatasetOptionCard({
   return (
     <NewExperimentSelectableOptionCard
       dataAttributeName="data-experiment-dataset-id"
+      label={dataset.name}
       optionId={dataset.id}
       selected={selected}
       onToggle={onToggleDataset}

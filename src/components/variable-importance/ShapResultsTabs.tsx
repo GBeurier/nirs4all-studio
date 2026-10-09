@@ -55,25 +55,25 @@ export function ShapResultsTabs({
           <TabsTrigger value="spectral" className="flex items-center gap-1">
             <Activity className="h-4 w-4" />
             <span className="hidden sm:inline">
-              {t('shap.tabs.spectral', 'Spectral')}
+              {t('shap.tabs.spectral')}
             </span>
           </TabsTrigger>
           <TabsTrigger value="beeswarm" className="flex items-center gap-1">
             <Droplets className="h-4 w-4" />
             <span className="hidden sm:inline">
-              {t('shap.tabs.beeswarm', 'Beeswarm')}
+              {t('shap.tabs.beeswarm')}
             </span>
           </TabsTrigger>
           <TabsTrigger value="waterfall" className="flex items-center gap-1">
             <BarChart3 className="h-4 w-4" />
             <span className="hidden sm:inline">
-              {t('shap.tabs.waterfall', 'Waterfall')}
+              {t('shap.tabs.waterfall')}
             </span>
           </TabsTrigger>
           <TabsTrigger value="ranking" className="flex items-center gap-1">
             <List className="h-4 w-4" />
             <span className="hidden sm:inline">
-              {t('shap.tabs.ranking', 'Ranking')}
+              {t('shap.tabs.ranking')}
             </span>
           </TabsTrigger>
         </TabsList>

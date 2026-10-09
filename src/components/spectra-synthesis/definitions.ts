@@ -11,7 +11,6 @@ export {
 } from "./definitionCatalogs";
 export {
   getCategoryDefinition,
-  getComponentOptions,
   getComponentsByCategory,
   getDefaultStepParams,
   getDefaultSynthesisConfig,

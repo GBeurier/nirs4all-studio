@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { CampaignPlanPreview } from "./campaignPlanPreviewTypes";
 import { formatCampaignSchemaConstraintLine } from "./campaignPlanPresentation";
 import type {
@@ -32,12 +34,9 @@ export interface ExperimentLaunchDatasetLabelSource {
   name?: string | null;
 }
 
-function formatExperimentLaunchCount(
-  count: number,
-  singular: string,
-  plural = `${singular}s`,
-): string {
-  return `${count} ${count === 1 ? singular : plural}`;
+/** `countKey` is a pluralised key relative to `newExperiment` (e.g. `counts.dataset`). */
+function formatExperimentLaunchCount(count: number, countKey: string): string {
+  return i18n.t(`newExperiment.${countKey}`, { count });
 }
 
 function formatExperimentLaunchRunIdPreview(runIds: readonly string[]): Pick<
@@ -45,13 +44,13 @@ function formatExperimentLaunchRunIdPreview(runIds: readonly string[]): Pick<
   "value" | "title"
 > {
   if (runIds.length === 0) {
-    return { value: "None" };
+    return { value: i18n.t("common.none") };
   }
 
   const visibleRunIds = runIds.slice(0, 2);
   const hiddenCount = runIds.length - visibleRunIds.length;
   const value = hiddenCount > 0
-    ? `${visibleRunIds.join(", ")} + ${hiddenCount} more`
+    ? i18n.t("newExperiment.launch.runIds.more", { ids: visibleRunIds.join(", "), count: hiddenCount })
     : visibleRunIds.join(", ");
 
   return {
@@ -65,15 +64,15 @@ function formatExperimentLaunchPayloadReadinessDetail(
 ): Pick<ExperimentLaunchPayloadManifestDetail, "value" | "title"> {
   const { payloadDiagnostics } = launchPayloadPlan;
   if (!payloadDiagnostics.nativePayloadRequired) {
-    return { value: "Local experiment" };
+    return { value: i18n.t("newExperiment.launch.readiness.local") };
   }
 
   if (payloadDiagnostics.canSubmitNativePayload) {
-    return { value: "Ready to launch" };
+    return { value: i18n.t("newExperiment.launch.readiness.ready") };
   }
 
   return {
-    value: "Settings need review",
+    value: i18n.t("newExperiment.launch.readiness.needsReview"),
     title: payloadDiagnostics.blockedReason ?? undefined,
   };
 }
@@ -101,7 +100,7 @@ function formatExperimentLaunchSchemaBindingDetail(
 ): ExperimentLaunchPayloadManifestDetail {
   return {
     id: "schema-binding",
-    label: "Data and pipeline pairing",
+    label: i18n.t("newExperiment.launch.details.schemaBinding"),
     value: [
       campaignPreview.schemaConstraint.label,
       campaignPreview.schemaConstraint.strictPairingStatusLabel,
@@ -119,15 +118,21 @@ function formatExperimentLaunchRobustnessEvidencePublicationDetail(
   const effectCount = payloadDiagnostics.robustnessEvidencePublicationRequiredEffects?.length ?? 0;
   return {
     id: "robustness-evidence-publication",
-    label: "Save robustness results",
+    label: i18n.t("newExperiment.launch.details.robustness"),
     value: [
-      "Requested",
-      formatExperimentLaunchCount(keywordCount, "keyword"),
-      formatExperimentLaunchCount(effectCount, "effect"),
+      i18n.t("newExperiment.launch.details.requested"),
+      formatExperimentLaunchCount(keywordCount, "launch.counts.keyword"),
+      formatExperimentLaunchCount(effectCount, "launch.counts.effect"),
     ].join(" · "),
     title: [
-      `Destination: ${payloadDiagnostics.robustnessEvidencePublicationDestination ?? "unknown"}`,
-      `Conformal artifacts: ${payloadDiagnostics.robustnessEvidencePublicationConformalArtifactPolicy ?? "not declared"}`,
+      i18n.t("newExperiment.launch.details.destination", {
+        value: payloadDiagnostics.robustnessEvidencePublicationDestination
+          ?? i18n.t("newExperiment.launch.details.destinationUnknown"),
+      }),
+      i18n.t("newExperiment.launch.details.conformal", {
+        value: payloadDiagnostics.robustnessEvidencePublicationConformalArtifactPolicy
+          ?? i18n.t("newExperiment.launch.details.conformalNotDeclared"),
+      }),
     ].join(" · "),
   };
 }
@@ -137,7 +142,7 @@ function formatExperimentLaunchCampaignCardinalityDetail(
 ): ExperimentLaunchPayloadManifestDetail {
   return {
     id: "campaign-cardinality",
-    label: "Planned analyses",
+    label: i18n.t("newExperiment.launch.details.plannedAnalyses"),
     value: [
       campaignPreview.summary.inputCardinalityLabel,
       campaignPreview.summary.runCountLabel,
@@ -165,17 +170,17 @@ export function formatExperimentLaunchAdapterStatusLine(
 function getExperimentLaunchStrictPayloadStatusLabel(
   status: ExperimentLaunchStrictCampaignPayloadStatus,
 ): string {
-  if (status === "ready") return "Ready";
-  if (status === "partial") return "Partial";
-  if (status === "unavailable") return "Unavailable";
-  return "Local analysis";
+  if (status === "ready") return i18n.t("newExperiment.campaign.status.ready");
+  if (status === "partial") return i18n.t("newExperiment.launch.payloadStatus.partial");
+  if (status === "unavailable") return i18n.t("newExperiment.environment.status.unavailable");
+  return i18n.t("newExperiment.adapter.localAnalysis");
 }
 
 function getExperimentLaunchCurrentSubmissionKindLabel(
   kind: ExperimentLaunchCurrentSubmissionKind,
 ): string {
-  if (kind === "native_payload") return "Experiment preparation";
-  return "Local analysis";
+  if (kind === "native_payload") return i18n.t("newExperiment.launch.payloadKind.nativePayload");
+  return i18n.t("newExperiment.adapter.localAnalysis");
 }
 
 export function getExperimentLaunchPayloadBadgeVariant(
@@ -193,12 +198,16 @@ export function buildExperimentLaunchPayloadBadgeLabels(
   return [
     {
       id: "current-submission",
-      label: `Analysis: ${getExperimentLaunchCurrentSubmissionKindLabel(launchPayloadPlan.currentSubmissionKind)}`,
+      label: i18n.t("newExperiment.launch.badges.analysis", {
+        value: getExperimentLaunchCurrentSubmissionKindLabel(launchPayloadPlan.currentSubmissionKind),
+      }),
       variant: launchPayloadPlan.currentSubmissionKind === "native_payload" ? "secondary" : "outline",
     },
     {
       id: "strict-campaigns",
-      label: `Preparation: ${getExperimentLaunchStrictPayloadStatusLabel(launchPayloadPlan.strictCampaignPayloadStatus)}`,
+      label: i18n.t("newExperiment.launch.badges.preparation", {
+        value: getExperimentLaunchStrictPayloadStatusLabel(launchPayloadPlan.strictCampaignPayloadStatus),
+      }),
       variant: getExperimentLaunchPayloadBadgeVariant(launchPayloadPlan.strictCampaignPayloadStatus),
     },
   ];
@@ -219,35 +228,35 @@ export function buildExperimentLaunchPayloadManifestDetails(
   const details: ExperimentLaunchPayloadManifestDetail[] = [
     {
       id: "legacy-inputs",
-      label: "Selected data and pipelines",
+      label: i18n.t("newExperiment.launch.details.selectedInputs"),
       value: [
-        formatExperimentLaunchCount(payloadDiagnostics.legacyDatasetCount, "dataset"),
-        formatExperimentLaunchCount(payloadDiagnostics.legacyPipelineCount, "pipeline"),
+        formatExperimentLaunchCount(payloadDiagnostics.legacyDatasetCount, "counts.dataset"),
+        formatExperimentLaunchCount(payloadDiagnostics.legacyPipelineCount, "counts.pipeline"),
       ].join(" · "),
     },
     {
       id: "native-payload",
-      label: "Experiment preparation",
+      label: i18n.t("newExperiment.launch.details.preparation"),
       value: [
-        formatExperimentLaunchCount(payloadDiagnostics.strictCampaignCount, "prepared analysis"),
-        formatExperimentLaunchCount(payloadDiagnostics.skippedRunCount, "skipped run"),
+        formatExperimentLaunchCount(payloadDiagnostics.strictCampaignCount, "launch.counts.preparedAnalysis"),
+        formatExperimentLaunchCount(payloadDiagnostics.skippedRunCount, "launch.counts.skippedRun"),
       ].join(" · "),
     },
     {
       id: "submission-target",
-      label: "Calculate with",
+      label: i18n.t("newExperiment.launch.details.calculateWith"),
       ...submissionTargetPreview,
     },
     formatExperimentLaunchCampaignCardinalityDetail(campaignPreview),
     formatExperimentLaunchSchemaBindingDetail(campaignPreview),
     {
       id: "payload-readiness",
-      label: "Preparation status",
+      label: i18n.t("newExperiment.launch.details.preparationStatus"),
       ...readinessPreview,
     },
     {
       id: "source-runs",
-      label: "Selected analyses",
+      label: i18n.t("newExperiment.launch.details.selectedAnalyses"),
       ...sourceRunPreview,
     },
   ];
@@ -255,7 +264,7 @@ export function buildExperimentLaunchPayloadManifestDetails(
   if (payloadDiagnostics.skippedRunIds.length > 0) {
     details.push({
       id: "skipped-runs",
-      label: "Skipped runs",
+      label: i18n.t("newExperiment.launch.details.skippedRuns"),
       ...skippedRunPreview,
     });
   }

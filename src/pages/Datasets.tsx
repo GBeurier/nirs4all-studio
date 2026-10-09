@@ -235,7 +235,7 @@ export default function Datasets() {
   };
 
   const handleDeleteDataset = async (dataset: Dataset) => {
-    if (!confirm(`Remove "${dataset.name}" from workspace?`)) return;
+    if (!confirm(t("datasets.confirmRemove", { name: dataset.name }))) return;
     await datasetActions.removeDataset(dataset.id);
     // Clear quick view if deleted dataset was selected
     if (quickViewDataset?.id === dataset.id) {
@@ -316,14 +316,14 @@ export default function Datasets() {
               <div className="flex flex-col items-center justify-center text-center">
                 <Database className="h-10 w-10 text-destructive mb-4" />
                 <h3 className="text-xl font-semibold text-foreground mb-2">
-                  Failed to load datasets
+                  {t("datasets.loadError")}
                 </h3>
                 <p className="text-muted-foreground max-w-md mb-6">
                   {loadError}
                 </p>
                 <Button onClick={handleRefreshAll}>
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Retry
+                  {t("common.retry")}
                 </Button>
               </div>
             </CardContent>

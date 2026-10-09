@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   deleteWorkspaceChainPredictions,
   deleteWorkspacePredictionGroup,
@@ -20,12 +21,12 @@ export function useModelPredictionDeleteAction({
   workspaceId,
   onDeleted,
 }: UseModelPredictionDeleteActionInput) {
+  const { t } = useTranslation();
   return usePredictionDeletionAction({
-    validate: () => (!workspaceId || !chainId ? "Missing workspace or chain identifier" : null),
+    validate: () => (!workspaceId || !chainId ? t("results.scores.delete.missingIdentifier") : null),
     deleteRequest: () => deleteScope === "group"
       ? deleteWorkspacePredictionGroup(workspaceId!, chainId, foldId || "")
       : deleteWorkspaceChainPredictions(workspaceId!, chainId),
     onDeleted,
-    failureMessage: "Deletion failed",
   });
 }

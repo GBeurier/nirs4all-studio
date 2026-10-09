@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,13 +25,15 @@ export function MetricSelector({
   onSelectedMetricsChange,
   availableMetricKeys,
 }: MetricSelectorProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const selectorData = useMemo(() => buildMetricSelectorData({
     taskType,
     taskTypes,
     selectedMetrics,
     availableMetricKeys,
-  }), [taskType, taskTypes, selectedMetrics, availableMetricKeys]);
+    t,
+  }), [taskType, taskTypes, selectedMetrics, availableMetricKeys, t]);
 
   const toggleMetric = useCallback((key: string) => {
     onSelectedMetricsChange(toggleMetricSelection(selectedMetrics, key));
@@ -47,13 +50,13 @@ export function MetricSelector({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button variant="outline" size="sm" className="h-6 px-2 text-xs gap-1">
-            <Plus className="h-3 w-3" /> Metrics ({selectorData.selectedCount})
+            <Plus className="h-3 w-3" /> {t("results.scores.metrics.button", { count: selectorData.selectedCount })}
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-64 p-3">
           <div className="space-y-3">
             <div className="text-[11px] text-muted-foreground">
-              {selectorData.selectedCount} selected
+              {t("results.scores.metrics.selected", { count: selectorData.selectedCount })}
             </div>
             {selectorData.presets.length > 0 && (
               <div className="flex flex-wrap gap-1">

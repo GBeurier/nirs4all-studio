@@ -7,16 +7,16 @@ import {
   getHyperparameterEmptyDescription,
   getHyperparameterScaleDescription,
   getHyperparameterSelectionSummary,
-  HYPERPARAMETER_EMPTY_DESCRIPTION,
 } from '@/lib/inspector/hyperparameterSensitivityPresentation';
+import { tStub } from './helpers/i18nStub';
 
 describe('inspector hyperparameter sensitivity presentation helpers', () => {
   it('derives empty-state and scale descriptions', () => {
-    expect(getHyperparameterEmptyDescription(null)).toBe(HYPERPARAMETER_EMPTY_DESCRIPTION);
-    expect(getHyperparameterEmptyDescription(' No numeric params ')).toBe('No numeric params');
-    expect(getHyperparameterScaleDescription(false, true)).toBe('Linear scale is active.');
-    expect(getHyperparameterScaleDescription(true, true)).toBe('Log scale is active.');
-    expect(getHyperparameterScaleDescription(false, false)).toContain('Log scale is disabled');
+    expect(getHyperparameterEmptyDescription(null, tStub)).toBe('inspector.charts.empty.hyperparameter');
+    expect(getHyperparameterEmptyDescription(' No numeric params ', tStub)).toBe('No numeric params');
+    expect(getHyperparameterScaleDescription(false, true, tStub)).toBe('inspector.charts.hyperparameter.linearActive');
+    expect(getHyperparameterScaleDescription(true, true, tStub)).toBe('inspector.charts.hyperparameter.logActive');
+    expect(getHyperparameterScaleDescription(false, false, tStub)).toContain('inspector.charts.hyperparameter.logDisabled');
   });
 
   it('splits available parameters into visible chips and overflow', () => {
@@ -32,9 +32,9 @@ describe('inspector hyperparameter sensitivity presentation helpers', () => {
 
   it('formats trend and selection labels', () => {
     const trend = { slope: 0.123456, intercept: 1, r: -0.98765 };
-    expect(formatHyperparameterTrendSlope(trend)).toBe('slope 0.1235');
+    expect(formatHyperparameterTrendSlope(trend, tStub)).toBe('inspector.charts.hyperparameter.slope {"value":"0.1235"}');
     expect(formatHyperparameterTrendCorrelation(trend)).toBe('r -0.988');
-    expect(getHyperparameterSelectionSummary(false, 0)).toBe('No selection');
-    expect(getHyperparameterSelectionSummary(true, 3)).toBe('3 selected');
+    expect(getHyperparameterSelectionSummary(false, 0, tStub)).toBe('inspector.charts.noSelection');
+    expect(getHyperparameterSelectionSummary(true, 3, tStub)).toBe('inspector.counts.selected {"count":3}');
   });
 });

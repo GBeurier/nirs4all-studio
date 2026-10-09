@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import { getPredictionMetricLabel } from "@/lib/predict-metrics";
 import {
   formatMetricName,
@@ -131,10 +133,10 @@ export function computePredictStats(values: number[]): PredictStats | null {
   };
 }
 
-export function getPredictMetricLabel(metric: string): string {
+export function getPredictMetricLabel(metric: string, t: TFunction): string {
   const normalized = metric.toLowerCase();
   if (normalized === "rmse" || normalized === "rmsep") {
-    return getPredictionMetricLabel(normalized);
+    return getPredictionMetricLabel(normalized, t);
   }
   if (normalized === "r2") return "R²";
   return formatMetricName(normalized);
@@ -194,8 +196,17 @@ export function detectPredictTaskKind({
   return "regression";
 }
 
-export function formatPredictPartitionLabel(value: string): string {
+const KNOWN_PARTITION_LABEL_KEYS: Record<string, string> = {
+  train: "predict.view.partitions.train",
+  val: "predict.view.partitions.val",
+  test: "predict.view.partitions.test",
+  pred: "predict.view.partitions.pred",
+};
+
+export function formatPredictPartitionLabel(value: string, t: TFunction): string {
   if (!value) return value;
+  const key = KNOWN_PARTITION_LABEL_KEYS[value.toLowerCase()];
+  if (key) return t(key);
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
@@ -231,9 +242,9 @@ export function buildPredictViewerHeader({
   };
 }
 
-export function buildPredictTaskBadge(taskKind: TaskKind): PredictBadgeReadModel {
+export function buildPredictTaskBadge(taskKind: TaskKind, t: TFunction): PredictBadgeReadModel {
   return {
-    label: taskKind === "classification" ? "Classification" : "Regression",
+    label: t(taskKind === "classification" ? "predict.view.classification" : "predict.view.regression"),
     className:
       taskKind === "classification"
         ? `${PREDICT_BADGE_BASE_CLASS} border-violet-500/40 bg-violet-500/10 text-violet-600 dark:text-violet-300`
@@ -241,9 +252,9 @@ export function buildPredictTaskBadge(taskKind: TaskKind): PredictBadgeReadModel
   };
 }
 
-export function buildPredictReferenceBadge(hasActuals: boolean): PredictBadgeReadModel {
+export function buildPredictReferenceBadge(hasActuals: boolean, t: TFunction): PredictBadgeReadModel {
   return {
-    label: hasActuals ? "Reference values available" : "No reference values",
+    label: t(hasActuals ? "predict.view.referenceAvailable" : "predict.view.referenceMissing"),
     className: hasActuals
       ? `${PREDICT_BADGE_BASE_CLASS} border-primary/40 bg-primary/10 text-primary`
       : `${PREDICT_BADGE_BASE_CLASS} border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300`,
@@ -254,10 +265,12 @@ export function buildPredictPartitionDatasets({
   fallbackPartition,
   hasActuals,
   result,
+  t,
 }: {
   fallbackPartition: string;
   hasActuals: boolean;
   result: PredictResponse;
+  t: TFunction;
 }): PartitionDataset[] {
   const n = result.predictions.length;
   const perSample = result.partitions ?? null;
@@ -283,7 +296,7 @@ export function buildPredictPartitionDatasets({
       return {
         predictionId: `predict-inline-${result.model_name}-${key}`,
         partition: key,
-        label: formatPredictPartitionLabel(key),
+        label: formatPredictPartitionLabel(key, t),
         yTrue: hasActuals ? indices.map((index) => result.actual_values![index]) : [],
         yPred: indices.map((index) => result.predictions[index]),
         nSamples: indices.length,
@@ -297,7 +310,7 @@ export function buildPredictPartitionDatasets({
     {
       predictionId: `predict-inline-${result.model_name}-${partitionKey}`,
       partition: partitionKey,
-      label: formatPredictPartitionLabel(partitionKey),
+      label: formatPredictPartitionLabel(partitionKey, t),
       yTrue: hasActuals ? result.actual_values ?? [] : [],
       yPred: result.predictions,
       nSamples: n,
@@ -306,20 +319,20 @@ export function buildPredictPartitionDatasets({
   ];
 }
 
-export function getPredictInputLabel(input: PredictionInput | null | undefined, fallback: string): string {
+export function getPredictInputLabel(input: PredictionInput | null | undefined, fallback: string, t: TFunction): string {
   if (!input) return fallback;
   if (input.type === "dataset") {
     return input.datasetName || input.datasetId;
   }
   if (input.type === "file") return input.fileName;
-  return `${input.rowCount} pasted row${input.rowCount === 1 ? "" : "s"}`;
+  return t("predict.view.pastedRows", { count: input.rowCount });
 }
 
-export function getPredictInputSubLabel(input: PredictionInput | null | undefined): string | null {
+export function getPredictInputSubLabel(input: PredictionInput | null | undefined, t: TFunction): string | null {
   if (!input) return null;
-  if (input.type === "dataset") return `partition: ${input.partition}`;
-  if (input.type === "file") return "uploaded file";
-  if (input.type === "array") return "pasted spectra";
+  if (input.type === "dataset") return t("predict.view.subPartition", { partition: input.partition });
+  if (input.type === "file") return t("predict.view.subUploadedFile");
+  if (input.type === "array") return t("predict.view.subPastedSpectra");
   return null;
 }
 
@@ -388,60 +401,58 @@ export function buildPredictSummaryCards({
   numSamples,
   partitionCount,
   summaryMetric,
+  t,
 }: {
   hasActuals: boolean;
   numSamples: number;
   partitionCount: number;
   summaryMetric: PredictMetricEntry | null;
+  t: TFunction;
 }): PredictSummaryCardReadModel[] {
   return [
     {
       key: "samples",
-      label: "Samples",
+      label: t("predict.view.cards.samples"),
       value: String(numSamples),
       description:
         partitionCount > 1
-          ? `${partitionCount} partitions`
-          : "Predictions in this run",
+          ? t("predict.view.cards.partitionsCount", { count: partitionCount })
+          : t("predict.view.cards.predictionsInRun"),
     },
     {
       key: "reference",
-      label: "Reference",
-      value: hasActuals ? "Available" : "Missing",
-      description: hasActuals
-        ? "Quality metrics computed against targets"
-        : "Upload data with targets for scatter / residuals / confusion",
+      label: t("predict.view.cards.reference"),
+      value: t(hasActuals ? "predict.view.cards.available" : "predict.view.cards.missing"),
+      description: t(hasActuals ? "predict.view.cards.referenceAvailableHint" : "predict.view.cards.referenceMissingHint"),
     },
     {
       key: "metric",
-      label: summaryMetric ? getPredictMetricLabel(summaryMetric.key) : "Prediction metric",
+      label: summaryMetric ? getPredictMetricLabel(summaryMetric.key, t) : t("predict.view.cards.predictionMetric"),
       value: summaryMetric ? formatMetricValue(summaryMetric.value, summaryMetric.key) : "—",
-      description: summaryMetric
-        ? "Primary metric for this prediction"
-        : "No comparable score available",
+      description: t(summaryMetric ? "predict.view.cards.primaryMetric" : "predict.view.cards.noScore"),
     },
   ];
 }
 
-export function buildPredictMetricCards(metricEntries: PredictMetricEntry[]): PredictMetricCardReadModel[] {
+export function buildPredictMetricCards(metricEntries: PredictMetricEntry[], t: TFunction): PredictMetricCardReadModel[] {
   return metricEntries.map((entry) => ({
     key: entry.key,
-    label: getPredictMetricLabel(entry.key),
+    label: getPredictMetricLabel(entry.key, t),
     value: formatMetricValue(entry.value, entry.key),
   }));
 }
 
-export function buildPredictStatsCards(stats: PredictStats | null): PredictStatCardReadModel[] {
+export function buildPredictStatsCards(stats: PredictStats | null, t: TFunction): PredictStatCardReadModel[] {
   if (!stats) return [];
   return [
-    { label: "N", value: String(stats.count) },
-    { label: "Mean", value: formatMetricValue(stats.mean) },
-    { label: "Std", value: formatMetricValue(stats.std) },
-    { label: "Min", value: formatMetricValue(stats.min) },
-    { label: "Q1", value: formatMetricValue(stats.q1) },
-    { label: "Median", value: formatMetricValue(stats.median) },
-    { label: "Q3", value: formatMetricValue(stats.q3) },
-    { label: "Max", value: formatMetricValue(stats.max) },
+    { label: t("predict.view.stats.count"), value: String(stats.count) },
+    { label: t("predict.view.stats.mean"), value: formatMetricValue(stats.mean) },
+    { label: t("predict.view.stats.std"), value: formatMetricValue(stats.std) },
+    { label: t("predict.view.stats.min"), value: formatMetricValue(stats.min) },
+    { label: t("predict.view.stats.q1"), value: formatMetricValue(stats.q1) },
+    { label: t("predict.view.stats.median"), value: formatMetricValue(stats.median) },
+    { label: t("predict.view.stats.q3"), value: formatMetricValue(stats.q3) },
+    { label: t("predict.view.stats.max"), value: formatMetricValue(stats.max) },
   ];
 }
 
@@ -465,13 +476,15 @@ export function buildPredictFullscreenSubtitleParts({
   displaySubLabel,
   nSamples,
   preprocessings,
+  t,
 }: {
   displaySubLabel: string | null;
   nSamples: number;
   preprocessings: string | null;
+  t: TFunction;
 }): string[] {
   return [
-    `${nSamples} samples`,
+    t("predict.view.samplesCount", { count: nSamples }),
     ...(displaySubLabel ? [displaySubLabel] : []),
     ...(preprocessings ? [preprocessings] : []),
   ];
@@ -520,7 +533,7 @@ export function buildPredictChartCsvExport({
         for (let index = 0; index < dataset.yPred.length; index++) {
           rows.push({
             sample_id: String(dataset.sampleIds?.[index] ?? index + 1),
-            partition: dataset.label,
+            partition: dataset.partition,
             y_pred: dataset.yPred[index],
             y_true: hasActuals && dataset.yTrue[index] !== undefined ? dataset.yTrue[index] : "",
           });
@@ -567,7 +580,7 @@ export function buildPredictChartCsvExport({
     for (let index = 0; index < n; index++) {
       rows.push({
         sample_id: String(dataset.sampleIds?.[index] ?? index + 1),
-        partition: dataset.label,
+        partition: dataset.partition,
         y_true: dataset.yTrue[index],
         y_pred: dataset.yPred[index],
         residual: dataset.yTrue[index] - dataset.yPred[index],

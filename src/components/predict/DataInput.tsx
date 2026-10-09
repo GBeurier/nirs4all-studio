@@ -25,9 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { AvailableModel } from "@/types/predict";
 import {
-  DATA_INPUT_FIELD_LABELS,
   DATA_INPUT_FILE_ACCEPT,
-  DATA_INPUT_PARTITION_HINT,
   DATA_INPUT_PARTITION_OPTIONS,
   DEFAULT_DATA_INPUT_PARTITION,
   DEFAULT_DATA_INPUT_TAB,
@@ -77,8 +75,8 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
   const sourceTabs = buildDataInputSourceTabs(isModelSelected, multimodalOnly);
   const compatibleDatasets = compatiblePredictionDatasets(datasets, model);
   const selectedDatasetId = compatibleDatasets.some((dataset) => dataset.id === datasetId) ? datasetId : "";
-  const modelReadModel = buildDataInputModelReadModel(model);
-  const datasetReadModel = buildDataInputDatasetReadModel(compatibleDatasets);
+  const modelReadModel = buildDataInputModelReadModel(model, t);
+  const datasetReadModel = buildDataInputDatasetReadModel(compatibleDatasets, t, multimodalOnly);
   const fileReadModel = buildDataInputFileReadModel(file);
   const canSubmit = getDataInputCanSubmit({
     isModelSelected,
@@ -193,7 +191,7 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {DATA_INPUT_FIELD_LABELS.dataset}
+                  {t("predict.data.tabs.dataset")}
                 </p>
                 <Select value={selectedDatasetId} onValueChange={setDatasetId} disabled={!isModelSelected}>
                   <SelectTrigger>
@@ -208,13 +206,13 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {multimodalOnly ? `${datasetReadModel.options.length} linked multimodal dataset${datasetReadModel.options.length === 1 ? "" : "s"} available.` : datasetReadModel.availabilityLabel}
+                  {datasetReadModel.availabilityLabel}
                 </p>
               </div>
 
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {DATA_INPUT_FIELD_LABELS.partition}
+                  {t("predict.data.dataset.partition")}
                 </p>
                 <Select value={partition} onValueChange={setPartition} disabled={!isModelSelected}>
                   <SelectTrigger>
@@ -223,13 +221,13 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
                   <SelectContent>
                     {DATA_INPUT_PARTITION_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.labelKey ? t(option.labelKey) : option.label}
+                        {t(option.labelKey)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {multimodalOnly ? "Test includes the declared predict partition; All replays every sample." : DATA_INPUT_PARTITION_HINT}
+                  {t(multimodalOnly ? "predict.input.partitionHintMultimodal" : "predict.input.partitionHint")}
                 </p>
               </div>
             </div>
@@ -303,7 +301,7 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
           ) : (
             <>
               <Play className="mr-2 h-4 w-4" />
-              {isModelSelected ? t("predict.data.runPrediction") : "Select a model first"}
+              {isModelSelected ? t("predict.data.runPrediction") : t("predict.input.selectModelFirst")}
             </>
           )}
         </Button>
