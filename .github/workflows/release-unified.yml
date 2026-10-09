@@ -221,7 +221,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      nirs4all_library_ref: 1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc
+      nirs4all_library_ref: 48542f1a48ee005eea8d49da3756cd6b192d03df
       dag_ml_ref: 6f4044b45028a90a92d3f29287e67779bb5fd0b9
       dag_ml_data_ref: 78719b68c8e9ffd4c2035792574b8da33387d237
 
