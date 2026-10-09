@@ -17,7 +17,6 @@ export class SidebarPage extends BasePage {
 
   // Workflow navigation links
   readonly pipelinesLink: Locator;
-  readonly pipelineEditorLink: Locator;
   readonly runEditorLink: Locator;
   readonly runsLink: Locator;
   readonly resultsLink: Locator;
@@ -45,7 +44,6 @@ export class SidebarPage extends BasePage {
     this.inspectorLink = this.sidebar.locator('a[href="/inspector"]');
 
     this.pipelinesLink = this.sidebar.locator('a[href="/pipelines"]');
-    this.pipelineEditorLink = this.sidebar.locator('a[href="/pipelines/new"]');
     this.runEditorLink = this.sidebar.locator('a[href="/editor"]');
     this.runsLink = this.sidebar.locator('a[href="/runs"]');
     this.resultsLink = this.sidebar.locator('a[href="/results"]');
@@ -59,13 +57,12 @@ export class SidebarPage extends BasePage {
   /**
    * Navigate to a specific section via sidebar
    */
-  async navigateTo(section: 'datasets' | 'playground' | 'inspector' | 'pipelines' | 'pipelineEditor' | 'runEditor' | 'runs' | 'results' | 'predictions' | 'lab' | 'settings'): Promise<void> {
+  async navigateTo(section: 'datasets' | 'playground' | 'inspector' | 'pipelines' | 'runEditor' | 'runs' | 'results' | 'predictions' | 'lab' | 'settings'): Promise<void> {
     const linkMap: Record<string, Locator> = {
       datasets: this.datasetsLink,
       playground: this.playgroundLink,
       inspector: this.inspectorLink,
       pipelines: this.pipelinesLink,
-      pipelineEditor: this.pipelineEditorLink,
       runEditor: this.runEditorLink,
       runs: this.runsLink,
       results: this.resultsLink,

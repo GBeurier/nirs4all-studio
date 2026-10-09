@@ -129,9 +129,10 @@ test.describe('Workflow Navigation', () => {
 });
 
 test.describe('Workflow - Pipeline Editor', () => {
-  test('should navigate to pipeline editor from new experiment', async ({ sidebar, page }) => {
+  test('should open the pipeline editor from the Pipelines page', async ({ sidebar, pipelinesPage, page }) => {
     await page.goto('/');
-    await sidebar.navigateTo('pipelineEditor');
+    await sidebar.navigateTo('pipelines');
+    await pipelinesPage.createNewPipeline();
 
     await expect(page).toHaveURL(/pipelines\/new/);
 
