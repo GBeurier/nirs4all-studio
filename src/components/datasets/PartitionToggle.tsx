@@ -6,10 +6,12 @@
  * disabled when the dataset has no test partition.
  */
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PartitionKey } from "@/types/datasets";
 import { getPartitionTheme } from "./partitionTheme";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 interface PartitionToggleProps {
   value: PartitionKey;
@@ -22,15 +24,15 @@ interface PartitionToggleProps {
   size?: "sm" | "xs";
 }
 
-const OPTIONS: { value: PartitionKey; label: string }[] = [
-  { value: "train", label: "Train" },
-  { value: "test", label: "Test" },
-  { value: "all", label: "Both" },
+const OPTIONS: { value: PartitionKey; labelKey: string }[] = [
+  { value: "train", labelKey: "datasets.partition.train" },
+  { value: "test", labelKey: "datasets.partition.test" },
+  { value: "all", labelKey: "datasets.partition.both" },
 ];
 
 function formatCount(n: number | undefined): string | null {
   if (n === undefined || n === null) return null;
-  return n.toLocaleString();
+  return n.toLocaleString(getActiveLocale());
 }
 
 export const PartitionToggle = memo(function PartitionToggle({
@@ -42,11 +44,12 @@ export const PartitionToggle = memo(function PartitionToggle({
   className,
   size = "sm",
 }: PartitionToggleProps) {
+  const { t } = useTranslation();
   const heightClass = size === "xs" ? "h-7" : "h-8";
   return (
     <div
       role="group"
-      aria-label="Partition filter"
+      aria-label={t("datasets.partition.filter")}
       className={cn("inline-flex rounded-md border border-border bg-background overflow-hidden", className)}
     >
       {OPTIONS.map((opt) => {
@@ -71,7 +74,7 @@ export const PartitionToggle = memo(function PartitionToggle({
             )}
           >
             <span className={cn("h-2 w-2 rounded-full", !disabled && theme.dotClass, disabled && "bg-muted-foreground/30")} />
-            <span>{opt.label}</span>
+            <span>{t(opt.labelKey)}</span>
             {countLabel !== null && (
               <span className={cn("text-[10px] tabular-nums opacity-70", active && "opacity-90")}>
                 {countLabel}

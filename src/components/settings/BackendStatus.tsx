@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import i18n from "i18next";
 import { useTranslation } from "react-i18next";
 import {
   Activity,
@@ -86,7 +87,7 @@ export function BackendStatus({
       });
     } catch (err) {
       setStatus("disconnected");
-      setError(err instanceof Error ? err.message : "Connection failed");
+      setError(err instanceof Error ? err.message : i18n.t("settings.backendStatus.connectionFailed"));
 
       setHistory((prev) => {
         const newEntry: StatusHistoryEntry = {

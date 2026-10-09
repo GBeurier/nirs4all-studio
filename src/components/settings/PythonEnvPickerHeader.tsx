@@ -55,6 +55,7 @@ export function PythonEnvPickerHeader({
           onClick={onRefresh}
           disabled={isRefreshing || isSettingUp}
           title={refreshLabel}
+          aria-label={refreshLabel}
         >
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
         </Button>

@@ -7,6 +7,7 @@
  */
 
 import { forwardRef, useCallback, type ReactNode, type MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Loader2,
   Maximize2,
@@ -87,10 +88,11 @@ function PanelHeader({
   onDoubleClick: () => void;
   headerContent?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const def = PANEL_MAP.get(panelType);
   const Icon = def?.icon;
-  const label = def?.name ?? panelType;
-  const help = def?.help;
+  const label = def ? t(def.nameKey) : panelType;
+  const help = def ? t(def.helpKey) : undefined;
 
   const handleDoubleClick = useCallback((e: MouseEvent) => {
     e.preventDefault();
@@ -113,7 +115,7 @@ function PanelHeader({
                 size="icon"
                 className="h-5 w-5 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
                 onClick={(e) => e.stopPropagation()}
-                aria-label={`Help for ${label}`}
+                aria-label={t('inspector.panel.helpFor', { label })}
               >
                 <CircleHelp className="h-3.5 w-3.5" />
               </Button>
@@ -131,66 +133,66 @@ function PanelHeader({
         {!isMinimized && onExportPng && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onExportPng(); }}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={t('inspector.panel.exportPng')} onClick={(e) => { e.stopPropagation(); onExportPng(); }}>
                 <Download className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Export PNG</TooltipContent>
+            <TooltipContent side="bottom">{t('inspector.panel.exportPng')}</TooltipContent>
           </Tooltip>
         )}
 
         {isMinimized && onRestore && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onRestore(); }}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={t('inspector.panel.restore')} onClick={(e) => { e.stopPropagation(); onRestore(); }}>
                 <ChevronUp className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Restore</TooltipContent>
+            <TooltipContent side="bottom">{t('inspector.panel.restore')}</TooltipContent>
           </Tooltip>
         )}
 
         {!isMinimized && !isMaximized && onMinimize && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onMinimize(); }}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={t('inspector.panel.minimize')} onClick={(e) => { e.stopPropagation(); onMinimize(); }}>
                 <Minimize2 className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Minimize</TooltipContent>
+            <TooltipContent side="bottom">{t('inspector.panel.minimize')}</TooltipContent>
           </Tooltip>
         )}
 
         {!isMaximized && onMaximize && !isMinimized && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onMaximize(); }}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={t('inspector.panel.maximize')} onClick={(e) => { e.stopPropagation(); onMaximize(); }}>
                 <Maximize2 className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Maximize</TooltipContent>
+            <TooltipContent side="bottom">{t('inspector.panel.maximize')}</TooltipContent>
           </Tooltip>
         )}
 
         {isMaximized && onRestore && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onRestore(); }}>
+              <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={t('inspector.panel.restore')} onClick={(e) => { e.stopPropagation(); onRestore(); }}>
                 <Minimize2 className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Restore</TooltipContent>
+            <TooltipContent side="bottom">{t('inspector.panel.restore')}</TooltipContent>
           </Tooltip>
         )}
 
         {onHide && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); onHide(); }}>
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" aria-label={t('inspector.panel.hide')} onClick={(e) => { e.stopPropagation(); onHide(); }}>
                 <X className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Hide</TooltipContent>
+            <TooltipContent side="bottom">{t('inspector.panel.hide')}</TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -199,15 +201,16 @@ function PanelHeader({
 }
 
 function PanelFooter({ itemCount, selectedCount }: { itemCount?: number; selectedCount?: number }) {
+  const { t } = useTranslation();
   if (itemCount === undefined && selectedCount === undefined) return null;
 
   return (
     <div className="mt-auto flex items-center gap-3 border-t border-border/40 pt-1.5">
       {itemCount !== undefined && (
-        <span className="tabular-nums text-[11px] text-muted-foreground">{itemCount} chains</span>
+        <span className="tabular-nums text-[11px] text-muted-foreground">{t('inspector.counts.chains', { count: itemCount })}</span>
       )}
       {selectedCount !== undefined && selectedCount > 0 && (
-        <span className="tabular-nums text-[11px] font-medium text-primary">{selectedCount} selected</span>
+        <span className="tabular-nums text-[11px] font-medium text-primary">{t('inspector.counts.selected', { count: selectedCount })}</span>
       )}
     </div>
   );

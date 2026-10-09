@@ -11,6 +11,8 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { foldLabel, foldLabelShort } from "@/lib/fold-utils";
 import type {
   ChartKind,
@@ -60,11 +62,11 @@ export type { ChainDetailFocus, ChainDetailMetaHint } from "./useChainDetailPane
 const ROBUSTNESS_REPORT_EXPORTS: Array<{
   extension: string;
   format: RobustnessReportExportFormat;
-  label: string;
+  formatLabel: string;
 }> = [
-  { extension: "json", format: "json", label: "Export JSON" },
-  { extension: "md", format: "markdown", label: "Export Markdown" },
-  { extension: "html", format: "html", label: "Export HTML" },
+  { extension: "json", format: "json", formatLabel: "JSON" },
+  { extension: "md", format: "markdown", formatLabel: "Markdown" },
+  { extension: "html", format: "html", formatLabel: "HTML" },
 ];
 
 interface ChainDetailPanelProps {
@@ -83,6 +85,7 @@ interface ChainDetailPanelProps {
 }
 
 export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewer, isViewerOpen }: ChainDetailPanelProps) {
+  const { t } = useTranslation();
   const keywordRegistry = useKeywordRegistry();
   const {
     detail,
@@ -169,7 +172,7 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
           />
 
           <ChainDetailFoldSummary
-            selectedLabel={selectedGroup ? foldLabelShort(selectedGroup.foldId) : "Auto"}
+            selectedLabel={selectedGroup ? foldLabelShort(selectedGroup.foldId) : t("predictions.detail.panel.autoFold")}
             refitCount={foldGroups.filter((group) => group.kind === "refit").length}
             cvViewCount={foldGroups.filter((group) => group.kind === "cv").length}
             foldCount={foldGroups.filter((group) => group.kind === "fold" && !group.isAggregated).length}
@@ -212,7 +215,7 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
             />
 
             <ChainDetailPipelineIdentity
-              title={detail?.pipeline?.name || prediction.model_class || "Pipeline structure and chosen variants for this chain."}
+              title={detail?.pipeline?.name || prediction.model_class || t("predictions.detail.panel.pipelineFallbackTitle")}
               modelClass={prediction.model_class || null}
               pipelineName={detail?.pipeline?.name ?? null}
               pipelineStats={pipelineStats}
@@ -300,14 +303,14 @@ function robustnessExportFilename(robustnessId: string, extension: string): stri
   return `${stem}.${extension}`;
 }
 
-function exportErrorMessage(error: unknown): string {
+function exportErrorMessage(error: unknown, t: TFunction): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error;
   if (error && typeof error === "object" && "detail" in error) {
     const detail = (error as { detail?: unknown }).detail;
     if (typeof detail === "string" && detail.trim()) return detail;
   }
-  return "Failed to export robustness report.";
+  return t("predictions.detail.artifacts.exportFailed");
 }
 
 function ChainDetailRobustnessAction({
@@ -329,6 +332,7 @@ function ChainDetailRobustnessAction({
   onSeverityChange,
   onDistributionChange,
 }: ChainDetailRobustnessActionProps) {
+  const { t } = useTranslation();
   const selectedOption = scenarioOptions.find((option) => option.kind === scenarioKind)
     ?? scenarioOptions[0];
   const selectedScenarioUsesSpectralReplay = selectedOption?.requiresExplicitPredictor === true;
@@ -345,7 +349,7 @@ function ChainDetailRobustnessAction({
       const blob = await exportWorkspaceRobustnessReport(generatedRobustnessId, format);
       downloadBlob(blob, robustnessExportFilename(generatedRobustnessId, extension));
     } catch (error) {
-      setExportError(exportErrorMessage(error));
+      setExportError(exportErrorMessage(error, t));
     } finally {
       setExportingFormat(null);
     }
@@ -355,15 +359,13 @@ function ChainDetailRobustnessAction({
     <div className="rounded-lg border border-border/70 bg-background/70 p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
-          <h4 className="text-sm font-medium">Robustness Report</h4>
+          <h4 className="text-sm font-medium">{t("predictions.detail.robustness.title")}</h4>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Compute an audit-only robustness report from the selected stored prediction evidence. This calls nirs4all
-            and persists a `RobustnessReport`; Studio does not synthesize missing truth labels or replay spectral
-            perturbations locally.
+            {t("predictions.detail.robustness.description")}
           </p>
           <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_140px]">
             <label className="grid gap-1 text-[11px] text-muted-foreground">
-              Scenario
+              {t("predictions.detail.robustness.scenario")}
               <select
                 className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
                 disabled={computing}
@@ -378,7 +380,7 @@ function ChainDetailRobustnessAction({
               </select>
             </label>
             <label className="grid gap-1 text-[11px] text-muted-foreground">
-              {selectedOption?.severityLabel ?? "Severity"}
+              {selectedOption?.severityLabel ?? t("predictions.detail.robustness.severity")}
               <input
                 className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground disabled:opacity-60"
                 disabled={computing || scenarioKind === "observed"}
@@ -391,7 +393,7 @@ function ChainDetailRobustnessAction({
             </label>
             {showDistributionSelect && (
               <label className="grid gap-1 text-[11px] text-muted-foreground">
-                Distribution
+                {t("predictions.detail.robustness.distribution")}
                 <select
                   className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
                   disabled={computing}
@@ -408,21 +410,17 @@ function ChainDetailRobustnessAction({
             )}
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {selectedOption?.description ?? "Stored-prediction robustness scenario."}{" "}
+            {selectedOption?.description ?? t("predictions.detail.robustness.fallbackDescription")}{" "}
             {showDistributionSelect
-              ? distribution === "uniform"
-                ? "Uniform uses bounded centered noise in [-severity, +severity]. "
-                : "Normal uses seeded Gaussian noise with severity as sigma. "
+              ? `${t(distribution === "uniform" ? "predictions.detail.robustness.uniformNote" : "predictions.detail.robustness.normalNote")} `
               : ""}
-            {selectedScenarioUsesSpectralReplay
-              ? "This scenario is available because the selected prediction evidence includes row-aligned X/spectra and a saved predictor bundle/path."
-              : "Spectral perturbations stay unavailable until row-aligned X/spectra and a frozen saved predictor bundle/path are present."}
+            {t(selectedScenarioUsesSpectralReplay ? "predictions.detail.robustness.spectralAvailable" : "predictions.detail.robustness.spectralUnavailable")}
           </p>
           <RobustnessEvidencePreflightCard evidence={evidence} loading={loadingEvidence} />
           {unavailableScenarios.length > 0 && (
             <details className="mt-2 rounded-md border border-dashed border-border/70 bg-muted/30 px-2 py-1.5 text-[11px] text-muted-foreground">
               <summary className="cursor-pointer text-foreground">
-                Unavailable from stored predictions ({unavailableScenarios.length})
+                {t("predictions.detail.robustness.unavailableSummary", { count: unavailableScenarios.length })}
               </summary>
               <ul className="mt-1 list-disc space-y-1 pl-4">
                 {unavailableScenarios.map((scenario) => (
@@ -436,7 +434,7 @@ function ChainDetailRobustnessAction({
           {generatedRobustnessId && (
             <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2 py-1.5">
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                Report persisted: <code>{generatedRobustnessId}</code>
+                {t("predictions.detail.robustness.persisted")} <code>{generatedRobustnessId}</code>
               </p>
               <div className="mt-1 flex flex-wrap gap-1">
                 {ROBUSTNESS_REPORT_EXPORTS.map((exportTarget) => (
@@ -448,7 +446,7 @@ function ChainDetailRobustnessAction({
                     type="button"
                     variant="outline"
                   >
-                    {exportingFormat === exportTarget.format ? "Exporting..." : exportTarget.label}
+                    {exportingFormat === exportTarget.format ? t("predictions.export.exporting") : t("predictions.detail.robustness.exportFormat", { format: exportTarget.formatLabel })}
                   </Button>
                 ))}
               </div>
@@ -471,7 +469,7 @@ function ChainDetailRobustnessAction({
           size="sm"
           variant="outline"
         >
-          {computing ? "Computing..." : "Compute report"}
+          {computing ? t("predictions.detail.robustness.computing") : t("predictions.detail.robustness.compute")}
         </Button>
       </div>
     </div>

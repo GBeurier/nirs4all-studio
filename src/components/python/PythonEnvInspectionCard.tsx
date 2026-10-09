@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   CheckCircle2,
@@ -28,13 +29,14 @@ interface PythonEnvInspectionCardProps {
 export function PythonEnvInspectionCard({
   inspection,
   busy = false,
-  busyTitle = "Working...",
-  busyDetail = "Please wait while the selected environment is prepared.",
+  busyTitle,
+  busyDetail,
   busyProgress = 20,
   onBack,
   onUseAsIs,
   onInstallCoreAndSwitch,
 }: PythonEnvInspectionCardProps) {
+  const { t } = useTranslation();
   const coreReady = inspection.missingCorePackages.length === 0;
 
   return (
@@ -43,7 +45,7 @@ export function PythonEnvInspectionCard({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-sm">Python {inspection.pythonVersion}</span>
           <Badge variant="outline" className="text-xs">
-            {coreReady ? "nirs4all available" : "nirs4all update needed"}
+            {coreReady ? t("common.pythonEnv.inspection.nirs4allAvailable") : t("common.pythonEnv.inspection.nirs4allUpdateNeeded")}
           </Badge>
           <Badge variant="secondary" className="text-xs">
             {getDesktopEnvKindLabel(inspection.envKind)}
@@ -54,12 +56,12 @@ export function PythonEnvInspectionCard({
         </div>
 
         <div className="space-y-1">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Python executable</p>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t("common.pythonEnv.inspection.executable")}</p>
           <p className="text-xs font-mono break-all">{inspection.pythonPath}</p>
         </div>
 
         <div className="space-y-1">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Environment root</p>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t("common.pythonEnv.inspection.root")}</p>
           <p className="text-xs font-mono break-all">{inspection.path}</p>
         </div>
 
@@ -67,19 +69,19 @@ export function PythonEnvInspectionCard({
           <div className="rounded-md bg-muted/50 p-3">
             <div className="flex items-center gap-2 text-xs font-medium">
               <HardDrive className="h-3.5 w-3.5" />
-              Runtime
+              {t("common.pythonEnv.inspection.runtime")}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {inspection.hasNirs4all ? "nirs4all installed" : "nirs4all missing"}
+              {inspection.hasNirs4all ? t("common.pythonEnv.inspection.nirs4allInstalled") : t("common.pythonEnv.inspection.nirs4allMissing")}
             </p>
           </div>
           <div className="rounded-md bg-muted/50 p-3">
             <div className="flex items-center gap-2 text-xs font-medium">
               <Package className="h-3.5 w-3.5" />
-              Optional features
+              {t("common.pythonEnv.inspection.optionalFeatures")}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {inspection.missingOptionalPackages.length} package{inspection.missingOptionalPackages.length === 1 ? "" : "s"} not installed (optional)
+              {t("common.pythonEnv.inspection.optionalMissing", { count: inspection.missingOptionalPackages.length })}
             </p>
           </div>
 
@@ -89,14 +91,14 @@ export function PythonEnvInspectionCard({
           <Alert>
             <CheckCircle2 className="h-4 w-4 text-green-600" />
             <AlertDescription>
-              Studio will verify this environment before activating it. Your existing packages are kept; optional features can be reviewed later in Settings.
+              {t("common.pythonEnv.inspection.verifyNote")}
             </AlertDescription>
           </Alert>
         ) : (
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Studio needs to install or update {inspection.missingCorePackages.join(", ")} in this environment. Your other packages are kept unless a dependency must change for nirs4all to work.
+              {t("common.pythonEnv.inspection.installNote", { packages: inspection.missingCorePackages.join(", ") })}
             </AlertDescription>
           </Alert>
         )}
@@ -105,10 +107,10 @@ export function PythonEnvInspectionCard({
           <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
             <div className="flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              <span className="text-sm font-medium">{busyTitle}</span>
+              <span className="text-sm font-medium">{busyTitle ?? t("common.pythonEnv.inspection.busyTitle")}</span>
             </div>
             <Progress value={busyProgress} className="h-2" />
-            <p className="text-xs text-muted-foreground">{busyDetail}</p>
+            <p className="text-xs text-muted-foreground">{busyDetail ?? t("common.pythonEnv.inspection.busyDetail")}</p>
           </div>
         )}
       </div>
@@ -116,12 +118,12 @@ export function PythonEnvInspectionCard({
       <div className="flex justify-between gap-2">
         <Button variant="outline" onClick={onBack} disabled={busy}>
           <ChevronLeft className="mr-2 h-4 w-4" />
-          Back
+          {t("common.back")}
         </Button>
         {coreReady ? (
           <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={onInstallCoreAndSwitch} disabled={busy}>
-            Update and use this environment
+            {t("common.pythonEnv.inspection.updateAndUse")}
           </Button>
           <Button onClick={onUseAsIs} disabled={busy}>
             {busy ? (
@@ -129,7 +131,7 @@ export function PythonEnvInspectionCard({
             ) : (
               <CheckCircle2 className="mr-2 h-4 w-4" />
             )}
-            {busy ? "Applying runtime..." : "Use this environment"}
+            {busy ? t("common.pythonEnv.inspection.applying") : t("common.pythonEnv.inspection.useThis")}
           </Button>
           </div>
         ) : (
@@ -139,7 +141,7 @@ export function PythonEnvInspectionCard({
             ) : (
               <Download className="mr-2 h-4 w-4" />
             )}
-            {busy ? "Installing core packages..." : "Update and use this environment"}
+            {busy ? t("common.pythonEnv.inspection.installingCore") : t("common.pythonEnv.inspection.updateAndUse")}
           </Button>
         )}
       </div>

@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   CampaignPlanSummary,
   CampaignSpec,
@@ -34,11 +36,11 @@ export function buildCampaignSchemaConstraintPreview(
   if (summary.datasetCount === 0 || summary.pipelineCount === 0) {
     return {
       kind: "incomplete",
-      label: "Selection incomplete",
-      description: "Select the data and pipelines to analyse.",
+      label: i18n.t("newExperiment.campaign.constraint.incomplete.label"),
+      description: i18n.t("newExperiment.campaign.constraint.incomplete.description"),
       strictPairingStatus: "not_evaluated",
-      strictPairingStatusLabel: "Pending inputs",
-      strictModeRecommendation: "Select dataset and pipeline inputs before strict schema-bound readiness can be evaluated.",
+      strictPairingStatusLabel: i18n.t("newExperiment.campaign.constraint.incomplete.status"),
+      strictModeRecommendation: i18n.t("newExperiment.campaign.constraint.incomplete.recommendation"),
       notice: null,
     };
   }
@@ -46,11 +48,11 @@ export function buildCampaignSchemaConstraintPreview(
   if (campaign.mode === "paired_by_index") {
     return {
       kind: "paired_by_index",
-      label: "Selected combinations",
-      description: "Each dataset is matched with its selected pipeline.",
+      label: i18n.t("newExperiment.campaign.constraint.paired.label"),
+      description: i18n.t("newExperiment.campaign.constraint.paired.description"),
       strictPairingStatus: "ready",
-      strictPairingStatusLabel: "Selected combinations",
-      strictModeRecommendation: "Ready for strict schema-bound execution because each run is already an explicit dataset/pipeline pair.",
+      strictPairingStatusLabel: i18n.t("newExperiment.campaign.constraint.paired.status"),
+      strictModeRecommendation: i18n.t("newExperiment.campaign.constraint.paired.recommendation"),
       notice: null,
     };
   }
@@ -58,16 +60,16 @@ export function buildCampaignSchemaConstraintPreview(
   if (summary.datasetCount > 1 && summary.pipelineCount > 1) {
     return {
       kind: "cartesian_matrix",
-      label: "All combinations",
-      description: "Every selected pipeline is paired with every selected dataset.",
+      label: i18n.t("newExperiment.campaign.constraint.cartesian.label"),
+      description: i18n.t("newExperiment.campaign.constraint.cartesian.description"),
       strictPairingStatus: "needs_explicit_pairs",
-      strictPairingStatusLabel: "All combinations",
-      strictModeRecommendation: "Convert the cartesian matrix to explicit dataset/pipeline pair previews before strict schema-bound execution.",
+      strictPairingStatusLabel: i18n.t("newExperiment.campaign.constraint.cartesian.status"),
+      strictModeRecommendation: i18n.t("newExperiment.campaign.constraint.cartesian.recommendation"),
       notice: {
         id: "legacy-cartesian-matrix",
         severity: "info",
-        title: "All combinations",
-        message: "Every selected pipeline will run on every selected dataset.",
+        title: i18n.t("newExperiment.campaign.constraint.cartesian.noticeTitle"),
+        message: i18n.t("newExperiment.campaign.constraint.cartesian.noticeMessage"),
       },
     };
   }
@@ -75,16 +77,16 @@ export function buildCampaignSchemaConstraintPreview(
   if (summary.datasetCount === 1 && summary.pipelineCount > 1) {
     return {
       kind: "shared_dataset",
-      label: "One dataset, several pipelines",
-      description: "One dataset is paired with multiple pipelines.",
+      label: i18n.t("newExperiment.campaign.constraint.sharedDataset.label"),
+      description: i18n.t("newExperiment.campaign.constraint.sharedDataset.description"),
       strictPairingStatus: "needs_explicit_pairs",
-      strictPairingStatusLabel: "Same dataset for each pipeline",
-      strictModeRecommendation: "Keep the shared dataset shape only if each pipeline pairing has an explicit schema preview before strict schema-bound execution.",
+      strictPairingStatusLabel: i18n.t("newExperiment.campaign.constraint.sharedDataset.status"),
+      strictModeRecommendation: i18n.t("newExperiment.campaign.constraint.sharedDataset.recommendation"),
       notice: {
         id: "shared-dataset-campaign",
         severity: "info",
-        title: "Shared dataset campaign",
-        message: "Each selected pipeline will analyse the same dataset.",
+        title: i18n.t("newExperiment.campaign.constraint.sharedDataset.noticeTitle"),
+        message: i18n.t("newExperiment.campaign.constraint.sharedDataset.noticeMessage"),
       },
     };
   }
@@ -92,27 +94,27 @@ export function buildCampaignSchemaConstraintPreview(
   if (summary.datasetCount > 1 && summary.pipelineCount === 1) {
     return {
       kind: "shared_pipeline",
-      label: "One pipeline, several datasets",
-      description: "One pipeline is paired with multiple datasets.",
+      label: i18n.t("newExperiment.campaign.constraint.sharedPipeline.label"),
+      description: i18n.t("newExperiment.campaign.constraint.sharedPipeline.description"),
       strictPairingStatus: "needs_explicit_pairs",
-      strictPairingStatusLabel: "Same pipeline for each dataset",
-      strictModeRecommendation: "Keep the shared pipeline shape only if each dataset pairing has an explicit schema preview before strict schema-bound execution.",
+      strictPairingStatusLabel: i18n.t("newExperiment.campaign.constraint.sharedPipeline.status"),
+      strictModeRecommendation: i18n.t("newExperiment.campaign.constraint.sharedPipeline.recommendation"),
       notice: {
         id: "shared-pipeline-campaign",
         severity: "info",
-        title: "Shared pipeline campaign",
-        message: "The selected pipeline will analyse each dataset.",
+        title: i18n.t("newExperiment.campaign.constraint.sharedPipeline.noticeTitle"),
+        message: i18n.t("newExperiment.campaign.constraint.sharedPipeline.noticeMessage"),
       },
     };
   }
 
   return {
     kind: "single_pair",
-    label: "One dataset, one pipeline",
-    description: "One pipeline will analyse one dataset.",
+    label: i18n.t("newExperiment.campaign.constraint.singlePair.label"),
+    description: i18n.t("newExperiment.campaign.constraint.singlePair.description"),
     strictPairingStatus: "ready",
-    strictPairingStatusLabel: "One analysis",
-    strictModeRecommendation: "Ready for strict schema-bound execution with one dataset and one pipeline.",
+    strictPairingStatusLabel: i18n.t("newExperiment.campaign.constraint.singlePair.status"),
+    strictModeRecommendation: i18n.t("newExperiment.campaign.constraint.singlePair.recommendation"),
     notice: null,
   };
 }

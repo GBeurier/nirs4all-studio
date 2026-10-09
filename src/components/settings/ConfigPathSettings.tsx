@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { FolderCog, RotateCcw, FolderOpen, AlertCircle, CheckCircle2 } from "lucide-react";
 import {
   Card,
@@ -39,6 +40,7 @@ import {
 } from "@/api/appSettings";
 
 export function ConfigPathSettings() {
+  const { t } = useTranslation();
   const [configPath, setConfigPathState] = useState<ConfigPathResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -60,7 +62,7 @@ export function ConfigPathSettings() {
           await new Promise((r) => setTimeout(r, delay));
         } else {
           console.error("Failed to load config path:", err);
-          setError("Failed to load config path settings");
+          setError(t("settings.configPath.loadFailed"));
         }
       } finally {
         setIsLoading(false);
@@ -110,12 +112,12 @@ export function ConfigPathSettings() {
         });
         setSuccess(
           response.requires_restart
-            ? "Config path updated. Please restart the application for changes to take full effect."
-            : "Config path has been updated."
+            ? t("settings.configPath.updatedRestart")
+            : t("settings.configPath.updated")
         );
       }
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : "Failed to set config path";
+      const errorMsg = err instanceof Error ? err.message : t("settings.configPath.setFailed");
       if (typeof err === "object" && err !== null && "detail" in err) {
         setError(String((err as { detail: string }).detail));
       } else {
@@ -141,12 +143,12 @@ export function ConfigPathSettings() {
         setNewPath(response.current_path);
         setSuccess(
           response.requires_restart
-            ? "Config path reset to default. Please restart the application for changes to take full effect."
-            : "Config path has been reset to default."
+            ? t("settings.configPath.resetRestart")
+            : t("settings.configPath.resetDone")
         );
       }
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : "Failed to reset config path";
+      const errorMsg = err instanceof Error ? err.message : t("settings.configPath.resetFailed");
       if (typeof err === "object" && err !== null && "detail" in err) {
         setError(String((err as { detail: string }).detail));
       } else {
@@ -163,7 +165,7 @@ export function ConfigPathSettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FolderCog className="h-5 w-5" />
-            App Config Folder
+            {t("settings.configPath.title")}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -178,13 +180,13 @@ export function ConfigPathSettings() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FolderCog className="h-5 w-5" />
-          App Config Folder
+          {t("settings.configPath.title")}
           {configPath?.is_custom && (
-            <Badge variant="secondary" className="ml-2">Custom</Badge>
+            <Badge variant="secondary" className="ml-2">{t("common.custom")}</Badge>
           )}
         </CardTitle>
         <CardDescription>
-          The config folder stores global settings like linked datasets, UI preferences, and workspace links.
+          {t("settings.configPath.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -203,7 +205,7 @@ export function ConfigPathSettings() {
         )}
 
         <div className="space-y-2">
-          <Label>Current Config Path</Label>
+          <Label>{t("settings.configPath.currentPath")}</Label>
           <div className="flex gap-2">
             <Input
               value={newPath}
@@ -215,13 +217,13 @@ export function ConfigPathSettings() {
               placeholder={configPath?.default_path || ""}
               className="font-mono text-sm"
             />
-            <Button variant="outline" onClick={handleBrowse} disabled={isSaving}>
+            <Button variant="outline" onClick={handleBrowse} disabled={isSaving} aria-label={t("common.browse")}>
               <FolderOpen className="h-4 w-4" />
             </Button>
           </div>
           {configPath?.is_custom && configPath?.default_path && (
             <p className="text-xs text-muted-foreground">
-              Default: <span className="font-mono">{configPath.default_path}</span>
+              {t("settings.configPath.defaultLabel")} <span className="font-mono">{configPath.default_path}</span>
             </p>
           )}
         </div>
@@ -231,7 +233,7 @@ export function ConfigPathSettings() {
             onClick={handleSave}
             disabled={isSaving || newPath === configPath?.current_path || !newPath}
           >
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? t("common.saving") : t("common.save")}
           </Button>
 
           {configPath?.is_custom && (
@@ -239,27 +241,26 @@ export function ConfigPathSettings() {
               <AlertDialogTrigger asChild>
                 <Button variant="outline" disabled={isSaving}>
                   <RotateCcw className="mr-2 h-4 w-4" />
-                  Reset to Default
+                  {t("settings.configPath.resetToDefault")}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Reset Config Path?</AlertDialogTitle>
+                  <AlertDialogTitle>{t("settings.configPath.resetConfirmTitle")}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will reset the config folder to the default location:
+                    {t("settings.configPath.resetConfirmIntro")}
                     <br />
                     <code className="text-sm bg-muted px-1 py-0.5 rounded">
                       {configPath?.default_path}
                     </code>
                     <br /><br />
-                    Your existing config files at the custom location will not be deleted,
-                    but the app will use the default location after restart.
+                    {t("settings.configPath.resetConfirmNote")}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                   <AlertDialogAction onClick={handleReset}>
-                    Reset
+                    {t("common.reset")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -268,9 +269,13 @@ export function ConfigPathSettings() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          <strong>Tip:</strong> You can also set the config path using the{" "}
-          <code className="bg-muted px-1 py-0.5 rounded">NIRS4ALL_CONFIG</code>{" "}
-          environment variable before starting the application.
+          <Trans
+            i18nKey="settings.configPath.tip"
+            components={{
+              strong: <strong />,
+              code: <code className="bg-muted px-1 py-0.5 rounded" />,
+            }}
+          />
         </p>
       </CardContent>
     </Card>

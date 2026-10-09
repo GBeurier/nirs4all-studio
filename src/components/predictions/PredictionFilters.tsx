@@ -1,4 +1,5 @@
 import { Brain, Database } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +49,7 @@ export function PredictionFilters({
   hasActiveFilters,
   onClearFilters,
 }: PredictionFiltersProps) {
+  const { t } = useTranslation();
   const readModel = getPredictionFiltersReadModel({ hasActiveFilters });
   const {
     dataset: datasetFacet,
@@ -66,8 +68,8 @@ export function PredictionFilters({
         value={filterDataset}
         onValueChange={onFilterDatasetChange}
         options={datasetOptions}
-        allLabel={datasetFacet.allLabel}
-        placeholder={datasetFacet.placeholder}
+        allLabel={t(datasetFacet.allLabelKey)}
+        placeholder={t(datasetFacet.placeholderKey)}
         triggerClassName={datasetFacet.triggerClassName}
         icon={<Database className="mr-1 h-3.5 w-3.5" />}
       />
@@ -75,8 +77,8 @@ export function PredictionFilters({
         value={filterModel}
         onValueChange={onFilterModelChange}
         options={modelOptions}
-        allLabel={modelFacet.allLabel}
-        placeholder={modelFacet.placeholder}
+        allLabel={t(modelFacet.allLabelKey)}
+        placeholder={t(modelFacet.placeholderKey)}
         triggerClassName={modelFacet.triggerClassName}
         icon={<Brain className="mr-1 h-3.5 w-3.5" />}
       />
@@ -84,25 +86,25 @@ export function PredictionFilters({
         value={filterTaskType}
         onValueChange={onFilterTaskTypeChange}
         options={taskTypeOptions}
-        allLabel={taskTypeFacet.allLabel}
-        placeholder={taskTypeFacet.placeholder}
+        allLabel={t(taskTypeFacet.allLabelKey)}
+        placeholder={t(taskTypeFacet.placeholderKey)}
         triggerClassName={taskTypeFacet.triggerClassName}
       />
       <PredictionVisibilityToggleGroup
-        label={foldTypes.label}
+        label={t(foldTypes.labelKey)}
         value={visibleFoldTypes}
-        options={foldTypes.options}
+        options={foldTypes.options.map(({ value, labelKey }) => ({ value, label: t(labelKey) }))}
         onValueChange={onVisibleFoldTypesChange}
       />
       <PredictionVisibilityToggleGroup
-        label={dataKinds.label}
+        label={t(dataKinds.labelKey)}
         value={visibleDataKinds}
-        options={dataKinds.options}
+        options={dataKinds.options.map(({ value, labelKey }) => ({ value, label: t(labelKey) }))}
         onValueChange={onVisibleDataKindsChange}
       />
       {readModel.clearAction.isVisible && (
         <Button variant="ghost" size="sm" onClick={onClearFilters} className="h-7 text-xs text-muted-foreground">
-          {readModel.clearAction.label}
+          {t(readModel.clearAction.labelKey)}
         </Button>
       )}
     </div>

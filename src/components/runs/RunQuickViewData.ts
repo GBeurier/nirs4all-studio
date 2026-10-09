@@ -6,11 +6,11 @@ export const RUN_QUICK_VIEW_PARTITIONS = ["val", "test", "train", "final"] as co
 
 export type RunQuickViewPartition = typeof RUN_QUICK_VIEW_PARTITIONS[number];
 
-export const RUN_QUICK_VIEW_PARTITION_LABELS: Record<string, string> = {
-  val: "Validation",
-  test: "Test",
-  train: "Train",
-  final: "Final",
+export const RUN_QUICK_VIEW_PARTITION_LABEL_KEYS: Record<string, string> = {
+  val: "runs.quickView.partitions.val",
+  test: "runs.quickView.partitions.test",
+  train: "runs.quickView.partitions.train",
+  final: "runs.quickView.partitions.final",
 };
 
 export const RUN_QUICK_VIEW_PARTITION_COLORS: Record<string, string> = {

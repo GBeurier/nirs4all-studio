@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { Archive, ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { exportWorkspaceRobustnessReport } from "@/api/aggregatedPredictions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,35 +40,36 @@ function robustnessExportFilename(robustnessId: string, extension: string): stri
   return `${stem}.${extension}`;
 }
 
-function exportErrorMessage(error: unknown): string {
+function exportErrorMessage(error: unknown, t: TFunction): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error;
   if (error && typeof error === "object" && "detail" in error) {
     const detail = (error as { detail?: unknown }).detail;
     if (typeof detail === "string" && detail.trim()) return detail;
   }
-  return "Failed to export robustness report.";
+  return t("predictions.detail.artifacts.exportFailed");
 }
 
-function buildRobustnessReportExportItems(summary: ChainDetailArtifactSummaryData): RobustnessReportExportItem[] {
+function buildRobustnessReportExportItems(summary: ChainDetailArtifactSummaryData, t: TFunction): RobustnessReportExportItem[] {
   return summary.refs.flatMap((ref) => {
     if (ref.role !== "robustness-summary") return [];
     const robustnessId = stringOrNull(ref.metadata?.robustness_id) ?? stringOrNull(ref.artifactId);
     if (!robustnessId) return [];
     return [{
       id: `robustness-export:${ref.id}`,
-      label: ref.label || "Robustness report",
+      label: ref.label || t("predictions.detail.artifacts.defaultReportLabel"),
       robustnessId,
     }];
   });
 }
 
 export function ChainDetailArtifactSummary({ summary }: ChainDetailArtifactSummaryProps) {
+  const { t } = useTranslation();
   const [exportingKey, setExportingKey] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const robustnessExportItems = useMemo(
-    () => buildRobustnessReportExportItems(summary),
-    [summary],
+    () => buildRobustnessReportExportItems(summary, t),
+    [summary, t],
   );
 
   const handleRobustnessExport = async (
@@ -82,7 +85,7 @@ export function ChainDetailArtifactSummary({ summary }: ChainDetailArtifactSumma
       const blob = await exportWorkspaceRobustnessReport(item.robustnessId, format);
       downloadBlob(blob, robustnessExportFilename(item.robustnessId, extension));
     } catch (error) {
-      setExportError(exportErrorMessage(error));
+      setExportError(exportErrorMessage(error, t));
     } finally {
       setExportingKey(null);
     }
@@ -103,7 +106,7 @@ export function ChainDetailArtifactSummary({ summary }: ChainDetailArtifactSumma
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
             <Archive className="h-3.5 w-3.5" />
           </span>
-          <span className="truncate text-sm font-semibold tracking-tight">Artifacts and provenance</span>
+          <span className="truncate text-sm font-semibold tracking-tight">{t("predictions.detail.artifacts.title")}</span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Badge variant="outline" className="text-[10px]">
@@ -142,7 +145,7 @@ export function ChainDetailArtifactSummary({ summary }: ChainDetailArtifactSumma
 
         {summary.auditItems.length > 0 && (
           <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2">
-            <p className="text-xs font-medium text-foreground">Audit metadata</p>
+            <p className="text-xs font-medium text-foreground">{t("predictions.detail.artifacts.auditMetadata")}</p>
             <div className="mt-2 space-y-2">
               {summary.auditItems.map(item => (
                 <div key={item.id}>
@@ -158,14 +161,14 @@ export function ChainDetailArtifactSummary({ summary }: ChainDetailArtifactSumma
 
         {robustnessExportItems.length > 0 && (
           <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-            <p className="text-xs font-medium text-foreground">Robustness report exports</p>
+            <p className="text-xs font-medium text-foreground">{t("predictions.detail.artifacts.robustnessExports")}</p>
             <div className="mt-2 space-y-2">
               {robustnessExportItems.map(item => (
                 <div key={item.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <p className="truncate text-[11px] font-medium text-foreground">{item.label}</p>
                     <p className="break-words text-[11px] text-muted-foreground">
-                      Report id <code>{item.robustnessId}</code>
+                      {t("predictions.detail.artifacts.reportId")} <code>{item.robustnessId}</code>
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-1">
@@ -180,7 +183,7 @@ export function ChainDetailArtifactSummary({ summary }: ChainDetailArtifactSumma
                           type="button"
                           variant="outline"
                         >
-                          {exportingKey === exportKey ? "Exporting..." : exportTarget.label}
+                          {exportingKey === exportKey ? t("predictions.export.exporting") : exportTarget.label}
                         </Button>
                       );
                     })}

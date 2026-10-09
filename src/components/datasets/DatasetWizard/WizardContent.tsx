@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useCallback, type ReactNode } from "react";
+import i18n from "i18next";
+import { useTranslation } from "react-i18next";
 import { detectUnified, validateFiles, type FileShapeInfo } from "@/api/datasets";
 import {
   DialogHeader,
@@ -27,45 +29,33 @@ import { PreviewStep } from "./PreviewStep";
 import { buildDatasetWizardConfig, buildDatasetWizardFiles } from "./DatasetWizardConfig";
 import type { WizardStep, DatasetConfig } from "@/types/datasets";
 
-const STEP_CONFIG: Record<
-  WizardStep,
-  { title: string; description: string; icon: ReactNode }
-> = {
+const STEP_CONFIG: Record<WizardStep, { icon: ReactNode }> = {
   source: {
-    title: "Select Source",
-    description: "Choose how to add your dataset",
     icon: <FolderOpen className="h-4 w-4" />,
   },
   files: {
-    title: "Map Files",
-    description: "Configure file roles and splits",
     icon: <Files className="h-4 w-4" />,
   },
   parsing: {
-    title: "Parsing Options",
-    description: "Configure CSV and data parsing",
     icon: <Settings2 className="h-4 w-4" />,
   },
   targets: {
-    title: "Targets",
-    description: "Configure target columns and task type",
     icon: <Target className="h-4 w-4" />,
   },
   preview: {
-    title: "Preview",
-    description: "Review and confirm dataset",
     icon: <Eye className="h-4 w-4" />,
   },
 };
 
 function StepIndicator() {
+  const { t } = useTranslation();
   const { state, goToStep } = useWizard();
   const currentIndex = STEP_ORDER.indexOf(state.step);
 
   return (
     <div className="flex items-center gap-2 mb-4">
       {STEP_ORDER.map((step, index) => {
-        const config = STEP_CONFIG[step];
+        const title = t(`datasets.wizard.steps.${step}.title`);
         const isActive = step === state.step;
         const isCompleted = index < currentIndex;
         const isClickable = index <= currentIndex;
@@ -82,6 +72,8 @@ function StepIndicator() {
             <button
               onClick={() => isClickable && goToStep(step)}
               disabled={!isClickable}
+              aria-label={title}
+              aria-current={isActive ? "step" : undefined}
               className={`
                 flex items-center gap-2 px-3 py-1.5 rounded-full text-sm
                 transition-colors
@@ -100,7 +92,7 @@ function StepIndicator() {
               ) : (
                 <span className="w-4 text-center">{index + 1}</span>
               )}
-              <span className="hidden sm:inline">{config.title}</span>
+              <span className="hidden sm:inline">{title}</span>
             </button>
           </div>
         );
@@ -110,6 +102,7 @@ function StepIndicator() {
 }
 
 export function DataStats() {
+  const { t } = useTranslation();
   const { state, dispatch, beginInspection } = useWizard();
   const validatedFiles = useRef(new Map<string, { key: string; shape: FileShapeInfo }>());
   const configuredFiles = buildDatasetWizardFiles(state);
@@ -175,7 +168,7 @@ export function DataStats() {
         const result = await validateFiles(state.basePath, changedFiles, state.parsing, overrides);
         if (cancelled) return;
         if (result.error || !result.success) {
-          dispatch({ type: "SET_VALIDATION_ERROR", payload: result.error || "Failed to validate files" });
+          dispatch({ type: "SET_VALIDATION_ERROR", payload: result.error || i18n.t("datasets.wizard.validateFailed") });
         } else {
           for (const file of changedFiles) {
             const shape = result.shapes[file.path];
@@ -185,7 +178,7 @@ export function DataStats() {
         }
       } catch (error) {
         if (!cancelled) dispatch({ type: "SET_VALIDATION_ERROR", payload:
-          error instanceof Error ? error.message : "Failed to validate files" });
+          error instanceof Error ? error.message : i18n.t("datasets.wizard.validateFailed") });
       } finally {
         finishInspection();
       }
@@ -229,7 +222,7 @@ export function DataStats() {
     return (
       <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4 px-1">
         <Loader2 className="h-3 w-3 animate-spin" />
-        <span>Detecting files...</span>
+        <span>{t("datasets.wizard.stats.detectingFiles")}</span>
       </div>
     );
   }
@@ -238,7 +231,7 @@ export function DataStats() {
     return (
       <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4 px-1">
         <Loader2 className="h-3 w-3 animate-spin" />
-        <span>Loading files...</span>
+        <span>{t("datasets.wizard.stats.loadingFiles")}</span>
       </div>
     );
   }
@@ -250,7 +243,7 @@ export function DataStats() {
   if (xFiles.length === 0) {
     return (
       <div className="flex items-center gap-2 text-xs text-amber-600 mb-4 px-1">
-        <span>No X files mapped - select file roles below</span>
+        <span>{t("datasets.wizard.stats.noXFiles")}</span>
       </div>
     );
   }
@@ -258,21 +251,21 @@ export function DataStats() {
   if (state.validationError && !isWebMode) {
     return (
       <div className="flex items-center gap-2 text-xs text-destructive mb-4 px-2 py-2 bg-destructive/10 rounded-md">
-        <span>Error loading files: {state.validationError}</span>
+        <span>{t("datasets.wizard.stats.loadError", { error: state.validationError })}</span>
       </div>
     );
   }
 
   const formatShape = (shape: { rows: number; cols: number; hasError: boolean }, files: typeof xTrainFiles, rowsOverride?: number) => {
     if (shape.hasError && !isWebMode) {
-      return <span className="text-destructive">Error</span>;
+      return <span className="text-destructive">{t("common.error")}</span>;
     }
     const rows = rowsOverride ?? shape.rows;
     if (rows > 0 && shape.cols > 0) {
       return <span className="text-foreground">({rows}, {shape.cols})</span>;
     }
     if (files.length > 0) {
-      return <span className="text-muted-foreground">{files.length} file{files.length !== 1 ? "s" : ""}</span>;
+      return <span className="text-muted-foreground">{t("datasets.wizard.stats.files", { count: files.length })}</span>;
     }
     return <span className="text-muted-foreground">?</span>;
   };
@@ -281,7 +274,7 @@ export function DataStats() {
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs mb-4 px-2 py-2 bg-muted/30 rounded-md font-mono">
       {(xTrainFiles.length > 0 || yTrainFiles.length > 0 || metadataTrainFiles.length > 0) && (
         <div className="flex items-center gap-1.5">
-          <span className="text-muted-foreground font-sans">Train:</span>
+          <span className="text-muted-foreground font-sans">{t("datasets.wizard.stats.train")}</span>
           {xTrainFiles.length > 0 && (
             <span>
               <span className="text-primary">X</span>
@@ -298,7 +291,7 @@ export function DataStats() {
           )}
           {metadataTrainFiles.length > 0 && (
             <span>
-              <span className="text-purple-500">Meta</span>
+              <span className="text-purple-500">{t("datasets.wizard.stats.meta")}</span>
               <span className="text-muted-foreground">=</span>
               {formatShape(metaTrainShape, metadataTrainFiles, xTrainShape.rows)}
             </span>
@@ -308,7 +301,7 @@ export function DataStats() {
 
       {(xTestFiles.length > 0 || yTestFiles.length > 0 || metadataTestFiles.length > 0) && (
         <div className="flex items-center gap-1.5">
-          <span className="text-muted-foreground font-sans">Test:</span>
+          <span className="text-muted-foreground font-sans">{t("datasets.wizard.stats.test")}</span>
           {xTestFiles.length > 0 && (
             <span>
               <span className="text-primary">X</span>
@@ -325,7 +318,7 @@ export function DataStats() {
           )}
           {metadataTestFiles.length > 0 && (
             <span>
-              <span className="text-purple-500">Meta</span>
+              <span className="text-purple-500">{t("datasets.wizard.stats.meta")}</span>
               <span className="text-muted-foreground">=</span>
               {formatShape(metaTestShape, metadataTestFiles, xTestShape.rows)}
             </span>
@@ -335,9 +328,9 @@ export function DataStats() {
 
       {xTrainFiles.length === 0 && xTestFiles.length === 0 && xFiles.length > 0 && (
         <span className="text-muted-foreground font-sans">
-          {xFiles.length} X file{xFiles.length !== 1 ? "s" : ""}
-          {yFiles.length > 0 && `, ${yFiles.length} Y file${yFiles.length !== 1 ? "s" : ""}`}
-          {metadataFiles.length > 0 && `, ${metadataFiles.length} Meta file${metadataFiles.length !== 1 ? "s" : ""}`}
+          {t("datasets.wizard.stats.xFiles", { count: xFiles.length })}
+          {yFiles.length > 0 && `, ${t("datasets.wizard.stats.yFiles", { count: yFiles.length })}`}
+          {metadataFiles.length > 0 && `, ${t("datasets.wizard.stats.metaFiles", { count: metadataFiles.length })}`}
         </span>
       )}
 
@@ -351,7 +344,7 @@ export function DataStats() {
       {state.hasFoldFile && (
         <>
           <span className="text-border">|</span>
-          <span className="text-primary font-sans">folds</span>
+          <span className="text-primary font-sans">{t("datasets.wizard.stats.folds")}</span>
         </>
       )}
     </div>
@@ -381,6 +374,7 @@ function WizardFooter({
   onSubmit,
   submitLabel,
 }: WizardFooterProps) {
+  const { t } = useTranslation();
   return (
     <DialogFooter className="gap-2 sm:gap-0 mt-4">
       {!isFirstStep && (
@@ -391,12 +385,12 @@ function WizardFooter({
           className="mr-auto"
         >
           <ChevronLeft className="h-4 w-4 mr-1" />
-          Back
+          {t("common.back")}
         </Button>
       )}
 
       <Button variant="outline" onClick={onCancel} disabled={isLoading}>
-        Cancel
+        {t("common.cancel")}
       </Button>
 
       {isLastStep ? (
@@ -412,7 +406,7 @@ function WizardFooter({
           onClick={onNext}
           disabled={isLoading || !canProceed()}
         >
-          Next
+          {t("common.next")}
           <ChevronRight className="h-4 w-4 ml-1" />
         </Button>
       )}
@@ -428,7 +422,8 @@ interface WizardContentProps {
   submitErrorMessage?: string;
 }
 
-export function WizardContent({ onAdd, onClose, onScanFolder, submitLabel = "Add Dataset", submitErrorMessage = "Failed to add dataset" }: WizardContentProps) {
+export function WizardContent({ onAdd, onClose, onScanFolder, submitLabel, submitErrorMessage }: WizardContentProps) {
+  const { t } = useTranslation();
   const { state, dispatch, nextStep, prevStep, canProceed } = useWizard();
   const currentIndex = STEP_ORDER.indexOf(state.step);
   const isFirstStep = currentIndex === 0;
@@ -482,7 +477,7 @@ export function WizardContent({ onAdd, onClose, onScanFolder, submitLabel = "Add
       if (!state.basePath) {
         const files = (config.files ?? []).map(({ path }) => {
           const file = state.fileBlobs.get(path);
-          if (!file) throw new Error(`Selected file is no longer available: ${path}`);
+          if (!file) throw new Error(t("datasets.wizard.fileUnavailable", { path }));
           return file;
         });
         await onAdd("", config, [...new Set(files)]);
@@ -496,7 +491,7 @@ export function WizardContent({ onAdd, onClose, onScanFolder, submitLabel = "Add
         type: "SET_ERROR",
         payload: {
           key: "submit",
-          message: error instanceof Error ? error.message : submitErrorMessage,
+          message: error instanceof Error ? error.message : (submitErrorMessage ?? t("datasets.wizard.submitFailed")),
         },
       });
     } finally {
@@ -526,9 +521,9 @@ export function WizardContent({ onAdd, onClose, onScanFolder, submitLabel = "Add
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2">
           {stepConfig.icon}
-          {stepConfig.title}
+          {t(`datasets.wizard.steps.${state.step}.title`)}
         </DialogTitle>
-        <DialogDescription>{stepConfig.description}</DialogDescription>
+        <DialogDescription>{t(`datasets.wizard.steps.${state.step}.description`)}</DialogDescription>
       </DialogHeader>
 
       <StepIndicator />
@@ -553,7 +548,7 @@ export function WizardContent({ onAdd, onClose, onScanFolder, submitLabel = "Add
         onCancel={onClose}
         onNext={nextStep}
         onSubmit={handleSubmit}
-        submitLabel={submitLabel}
+        submitLabel={submitLabel ?? t("datasets.addDataset")}
       />
     </>
   );

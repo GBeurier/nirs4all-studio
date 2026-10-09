@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { formatConfusionMatrixNormalizedPercent } from '@/lib/inspector/confusionMatrixData';
 import {
   getConfusionMatrixTooltipTitle,
@@ -23,6 +24,8 @@ export function ConfusionMatrixTooltip({
   hovered,
   totalSamples,
 }: ConfusionMatrixTooltipProps) {
+  const { t } = useTranslation();
+
   if (!hovered) return null;
 
   return createPortal(
@@ -31,9 +34,9 @@ export function ConfusionMatrixTooltip({
       style={{ left: hovered.mouseX + 12, top: hovered.mouseY - 52 }}
     >
       <div className="font-medium">{getConfusionMatrixTooltipTitle(hovered.true_label, hovered.pred_label)}</div>
-      <div>Count: {hovered.count}</div>
-      {hovered.normalized != null && <div>Normalized: {formatConfusionMatrixNormalizedPercent(hovered.normalized)}</div>}
-      <div className="mt-1 text-muted-foreground">{getConfusionMatrixTotalSamplesLabel(totalSamples)}</div>
+      <div>{t('inspector.charts.tooltip.count', { value: hovered.count })}</div>
+      {hovered.normalized != null && <div>{t('inspector.charts.tooltip.normalized', { value: formatConfusionMatrixNormalizedPercent(hovered.normalized) })}</div>}
+      <div className="mt-1 text-muted-foreground">{getConfusionMatrixTotalSamplesLabel(totalSamples, t)}</div>
     </div>,
     document.body,
   );

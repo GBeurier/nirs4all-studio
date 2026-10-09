@@ -1,3 +1,4 @@
+import i18next, { type TFunction } from "i18next";
 import { isClassificationTaskType } from "@/lib/scores";
 
 type DatasetTaskValue = string | null | undefined;
@@ -18,6 +19,7 @@ function humanizeTaskType(taskType: string): string {
 
 export function getDatasetTaskLabel(
   taskType: DatasetTaskValue,
+  t: TFunction = i18next.t,
   options: DatasetTaskLabelOptions = {},
 ): string {
   const {
@@ -28,26 +30,26 @@ export function getDatasetTaskLabel(
   const normalized = (taskType || "").toLowerCase();
 
   if (!normalized) return fallback;
-  if (normalized === "auto") return "Auto";
-  if (normalized === "regression") return short ? "Reg" : "Regression";
+  if (normalized === "auto") return t("datasets.task.auto");
+  if (normalized === "regression") return short ? t("datasets.task.regressionShort") : t("datasets.task.regression");
 
   if (normalized === "classification") {
-    if (short) return numClasses != null && numClasses > 2 ? "Multi" : "Classif";
+    if (short) return numClasses != null && numClasses > 2 ? t("datasets.task.multiclassShort") : t("datasets.task.classificationShort");
     return numClasses != null && numClasses > 2
-      ? "Multi-class Classification"
-      : "Classification";
+      ? t("datasets.task.multiclassClassification")
+      : t("datasets.task.classification");
   }
 
   if (normalized === "binary_classification") {
-    return short ? "Classif" : "Binary Classification";
+    return short ? t("datasets.task.classificationShort") : t("datasets.task.binaryClassification");
   }
 
   if (normalized === "multiclass_classification") {
-    return short ? "Multi" : "Multi-class Classification";
+    return short ? t("datasets.task.multiclassShort") : t("datasets.task.multiclassClassification");
   }
 
   if (isClassificationTaskType(normalized)) {
-    return short ? "Classif" : humanizeTaskType(normalized);
+    return short ? t("datasets.task.classificationShort") : humanizeTaskType(normalized);
   }
 
   return humanizeTaskType(normalized);

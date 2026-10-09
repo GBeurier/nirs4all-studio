@@ -4,6 +4,7 @@ import {
   Layers,
   ScatterChart as ScatterIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   DialogDescription,
   DialogHeader,
@@ -23,11 +24,12 @@ export function PredictionViewerHeader({
   header,
   title,
 }: PredictionViewerHeaderProps) {
+  const { t } = useTranslation();
   return (
     <DialogHeader className="border-b px-5 py-3">
       <DialogTitle className="flex items-center gap-2 text-base">
         <ScatterIcon className="h-4 w-4 text-primary" />
-        <span className="truncate">{title || "Prediction viewer"}</span>
+        <span className="truncate">{title || t("predictions.viewer.header.fallbackTitle")}</span>
       </DialogTitle>
       <DialogDescription className="sr-only">{description}</DialogDescription>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -49,7 +51,7 @@ export function PredictionViewerHeader({
             {header.preprocessings}
           </span>
         )}
-        {header.foldId && <span>Fold: {header.foldId}</span>}
+        {header.foldId && <span>{t("predictions.viewer.header.fold", { fold: header.foldId })}</span>}
       </div>
     </DialogHeader>
   );

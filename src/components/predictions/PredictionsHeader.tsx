@@ -1,9 +1,11 @@
 import { Download, Loader2, RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { MetricSelector } from "@/components/scores/MetricSelector";
 import type { MetricTaskFilter } from "@/lib/predictions/rows";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 interface PredictionsHeaderProps {
   title: string;
@@ -36,12 +38,13 @@ export function PredictionsHeader({
   onExport,
   exportDisabled,
 }: PredictionsHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between">
       <div>
         <h1 className="text-2xl font-bold text-foreground">{title}</h1>
         <p className="mt-1 text-muted-foreground">
-          {totalScored.toLocaleString()} scored models · {workspaceName}
+          {t("predictions.header.scoredModels", { count: totalScored, formatted: totalScored.toLocaleString(getActiveLocale()) })} · {workspaceName}
           {predictionsLoading && <Loader2 className="ml-2 h-3 w-3 animate-spin inline" />}
         </p>
       </div>
@@ -58,13 +61,13 @@ export function PredictionsHeader({
             value="regression"
             className="h-8 px-4 text-xs font-semibold border-0 rounded-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
           >
-            Regression
+            {t("predictions.header.regression")}
           </ToggleGroupItem>
           <ToggleGroupItem
             value="classification"
             className="h-8 px-4 text-xs font-semibold border-0 rounded-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
           >
-            Classification
+            {t("predictions.header.classification")}
           </ToggleGroupItem>
         </ToggleGroup>
         <MetricSelector
@@ -74,10 +77,10 @@ export function PredictionsHeader({
           availableMetricKeys={availableMetricKeys}
         />
         <Button variant="outline" onClick={onRefresh} size="sm">
-          <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+          <RefreshCw className="h-4 w-4 mr-1" /> {t("common.refresh")}
         </Button>
         <Button variant="outline" size="sm" onClick={onExport} disabled={exportDisabled}>
-          <Download className="h-4 w-4 mr-1" /> Export
+          <Download className="h-4 w-4 mr-1" /> {t("common.export")}
         </Button>
       </div>
     </div>

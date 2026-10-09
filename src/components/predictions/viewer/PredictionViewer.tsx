@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,7 @@ export function PredictionViewer({
   workspaceId,
   initialKind,
 }: PredictionViewerProps) {
+  const { t } = useTranslation();
   const configDatasetKey = useMemo(
     () => `${workspaceId ?? "__current__"}::${header.datasetName}`,
     [workspaceId, header.datasetName],
@@ -143,8 +145,8 @@ export function PredictionViewer({
     });
   };
 
-  const headerTitle = useMemo(() => buildPredictionViewerHeaderTitle(header), [header]);
-  const headerDescription = useMemo(() => buildPredictionViewerHeaderDescription(header), [header]);
+  const headerTitle = useMemo(() => buildPredictionViewerHeaderTitle(header, t), [header, t]);
+  const headerDescription = useMemo(() => buildPredictionViewerHeaderDescription(header, t), [header, t]);
 
   const availableKinds = useMemo(() => getPredictionViewerAvailableKinds(taskKind), [taskKind]);
   const legendVisible = shouldShowPredictionColorLegend({
@@ -217,7 +219,7 @@ export function PredictionViewer({
           taskKind={taskKind}
         />
 
-        {outputCount > 1 && <p className="px-5 text-xs">Metrics below are calculated for Output {outputIndex + 1} across visible partitions.</p>}
+        {outputCount > 1 && <p className="px-5 text-xs">{t("predictions.viewer.metricsNote", { n: outputIndex + 1 })}</p>}
         <MetricsStrip taskKind={taskKind} datasets={visibleDatasets} />
       </DialogContent>
     </Dialog>

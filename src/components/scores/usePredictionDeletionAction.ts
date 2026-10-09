@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 
 import {
@@ -21,9 +22,10 @@ export function usePredictionDeletionAction({
   deleteRequest,
   validate,
   onDeleted,
-  nothingDeletedMessage = 'Nothing was deleted',
-  failureMessage = 'Deletion failed',
+  nothingDeletedMessage,
+  failureMessage,
 }: UsePredictionDeletionActionInput) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const notifyApiError = useApiErrorToast();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -40,20 +42,20 @@ export function usePredictionDeletionAction({
     try {
       const result = await deleteRequest();
       if (!result.success) {
-        toast.error(nothingDeletedMessage);
+        toast.error(nothingDeletedMessage ?? t('results.scores.delete.nothingDeleted'));
         return;
       }
 
       await invalidatePredictionRelatedQueries(queryClient);
       onDeleted?.();
       setDeleteOpen(false);
-      toast.success(formatPredictionDeletionSummary(result));
+      toast.success(formatPredictionDeletionSummary(result, t));
     } catch (error) {
-      notifyApiError(error, failureMessage);
+      notifyApiError(error, failureMessage ?? t('results.scores.delete.failed'));
     } finally {
       setDeleteBusy(false);
     }
-  }, [deleteRequest, failureMessage, nothingDeletedMessage, notifyApiError, onDeleted, queryClient, validate]);
+  }, [deleteRequest, failureMessage, nothingDeletedMessage, notifyApiError, onDeleted, queryClient, t, validate]);
 
   return {
     deleteOpen,

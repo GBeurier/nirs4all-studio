@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import "@/lib/i18n";
 
 import { getPythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
 import type { RuntimeSummaryResponse } from "@/types/settings";

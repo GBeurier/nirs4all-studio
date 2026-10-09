@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   BarChart,
   Bar,
@@ -24,6 +25,8 @@ export function BiasVarianceBarChart({
   hasSelection,
   onBarClick,
 }: BiasVarianceBarChartProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="min-h-0 flex-1 rounded-lg border border-border/60 bg-card/40 p-2">
       <ResponsiveContainer width="100%" height="100%">
@@ -40,7 +43,7 @@ export function BiasVarianceBarChart({
           <YAxis
             tick={{ fontSize: 10, fill: 'currentColor' }}
             tickFormatter={value => formatBiasVarianceTotal(Number(value))}
-            label={{ value: 'Error', angle: -90, position: 'insideLeft', style: { fontSize: 10 } }}
+            label={{ value: t('inspector.charts.axis.error'), angle: -90, position: 'insideLeft', style: { fontSize: 10 } }}
           />
           <RechartsTooltip content={<BiasVarianceTooltip />} />
           <Legend wrapperStyle={{ fontSize: 10 }} iconSize={8} />
@@ -48,7 +51,7 @@ export function BiasVarianceBarChart({
             dataKey="bias_squared"
             stackId="error"
             fill="#3b82f6"
-            name="Bias²"
+            name={t('inspector.charts.series.biasSquared')}
             cursor="pointer"
             onClick={(_entry: unknown, index: number) => onBarClick(bars[index])}
             opacity={hasSelection ? 0.95 : 1}
@@ -64,7 +67,7 @@ export function BiasVarianceBarChart({
             dataKey="variance"
             stackId="error"
             fill="#f97316"
-            name="Variance"
+            name={t('inspector.charts.series.variance')}
             cursor="pointer"
             onClick={(_entry: unknown, index: number) => onBarClick(bars[index])}
           >

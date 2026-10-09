@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BookmarkPlus, Check, Palette } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -31,19 +32,20 @@ export function InspectorSaveSelectionDialog({
   selectedCount,
   onSave,
 }: InspectorSaveSelectionDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [color, setColor] = useState(DEFAULT_INSPECTOR_SELECTION_COLOR);
 
   const handleSave = useCallback(() => {
     if (!name.trim()) {
-      toast.error('Please enter a name for the selection');
+      toast.error(t('inspector.saved.nameRequired'));
       return;
     }
     onSave(name.trim(), color);
     setName('');
     setColor(DEFAULT_INSPECTOR_SELECTION_COLOR);
     onOpenChange(false);
-  }, [name, color, onSave, onOpenChange]);
+  }, [name, color, onSave, onOpenChange, t]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -51,25 +53,24 @@ export function InspectorSaveSelectionDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BookmarkPlus className="w-5 h-5" />
-            Save Selection
+            {t('inspector.saved.dialogTitle')}
           </DialogTitle>
           <DialogDescription>
-            Save the current {selectedCount} selected chain{selectedCount !== 1 ? 's' : ''} for
-            later use.
+            {t('inspector.saved.dialogDescription', { count: selectedCount })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
             <label htmlFor="inspector-selection-name" className="text-sm font-medium">
-              Name
+              {t('inspector.saved.name')}
             </label>
             <Input
               id="inspector-selection-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
               onKeyDown={(event) => event.key === 'Enter' && name.trim() && handleSave()}
-              placeholder="e.g., Best PLS models, Branch A chains..."
+              placeholder={t('inspector.saved.namePlaceholder')}
               autoFocus
             />
           </div>
@@ -77,7 +78,7 @@ export function InspectorSaveSelectionDialog({
           <div className="space-y-2">
             <label className="text-sm font-medium flex items-center gap-1.5">
               <Palette className="w-3.5 h-3.5" />
-              Color
+              {t('inspector.saved.color')}
             </label>
             <InspectorSelectionColorPicker value={color} onChange={setColor} />
           </div>
@@ -85,11 +86,11 @@ export function InspectorSaveSelectionDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={!name.trim()}>
             <Check className="w-4 h-4 mr-1.5" />
-            Save Selection
+            {t('inspector.saved.dialogTitle')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -104,6 +105,8 @@ function InspectorSelectionColorPicker({
   value: string;
   onChange: (color: string) => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex flex-wrap gap-1">
       {INSPECTOR_SELECTION_COLORS.map((color) => (
@@ -118,7 +121,9 @@ function InspectorSelectionColorPicker({
           )}
           style={{ backgroundColor: color.value }}
           onClick={() => onChange(color.value)}
-          title={color.name}
+          title={t(color.nameKey)}
+          aria-label={t(color.nameKey)}
+          aria-pressed={value === color.value}
         />
       ))}
     </div>

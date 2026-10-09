@@ -1,14 +1,14 @@
 import type { InspectorSavedSelection } from '@/types/inspector';
 
 export const INSPECTOR_SELECTION_COLORS = [
-  { name: 'Blue', value: '#3b82f6' },
-  { name: 'Green', value: '#22c55e' },
-  { name: 'Orange', value: '#f97316' },
-  { name: 'Purple', value: '#a855f7' },
-  { name: 'Pink', value: '#ec4899' },
-  { name: 'Cyan', value: '#06b6d4' },
-  { name: 'Yellow', value: '#eab308' },
-  { name: 'Red', value: '#ef4444' },
+  { nameKey: 'inspector.saved.colors.blue', value: '#3b82f6' },
+  { nameKey: 'inspector.saved.colors.green', value: '#22c55e' },
+  { nameKey: 'inspector.saved.colors.orange', value: '#f97316' },
+  { nameKey: 'inspector.saved.colors.purple', value: '#a855f7' },
+  { nameKey: 'inspector.saved.colors.pink', value: '#ec4899' },
+  { nameKey: 'inspector.saved.colors.cyan', value: '#06b6d4' },
+  { nameKey: 'inspector.saved.colors.yellow', value: '#eab308' },
+  { nameKey: 'inspector.saved.colors.red', value: '#ef4444' },
 ];
 
 export const DEFAULT_INSPECTOR_SELECTION_COLOR = INSPECTOR_SELECTION_COLORS[0].value;

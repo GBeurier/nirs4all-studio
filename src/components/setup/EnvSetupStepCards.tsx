@@ -116,7 +116,7 @@ export function GpuDetectionStepCard({ gpuInfo }: GpuDetectionStepCardProps) {
             {gpuInfo.has_cuda && (
               <div className="flex items-center gap-2 justify-center">
                 <Gpu className="h-5 w-5 text-green-500" />
-                <span className="font-medium">NVIDIA GPU: {gpuInfo.gpu_name}</span>
+                <span className="font-medium">{t("setupWizard.detect.nvidiaGpu", { name: gpuInfo.gpu_name })}</span>
                 {gpuInfo.cuda_version && (
                   <Badge variant="secondary">CUDA {gpuInfo.cuda_version}</Badge>
                 )}
@@ -423,7 +423,7 @@ export function ReadyStepCard({
           {effectiveExtras.length > 0 && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("setupWizard.ready.extras")}</span>
-              <span className="font-medium">{effectiveExtras.length} packages</span>
+              <span className="font-medium">{t("setupWizard.ready.packagesCount", { count: effectiveExtras.length })}</span>
             </div>
           )}
         </div>

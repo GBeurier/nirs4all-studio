@@ -64,6 +64,7 @@ export function ColorInputRow({
       <div className="flex items-center gap-2">
         <Input
           type="color"
+          aria-label={label}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className="h-8 w-10 cursor-pointer overflow-hidden rounded-md border border-input bg-transparent p-1"

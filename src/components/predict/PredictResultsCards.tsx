@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Activity } from "lucide-react";
 
 import type {
@@ -32,6 +33,7 @@ interface PredictStatsSectionProps {
 }
 
 export function PredictStatsSection({ cards }: PredictStatsSectionProps) {
+  const { t } = useTranslation();
   if (cards.length === 0) return null;
 
   return (
@@ -39,7 +41,7 @@ export function PredictStatsSection({ cards }: PredictStatsSectionProps) {
       <div className="flex items-center gap-2">
         <Activity className="h-3.5 w-3.5 text-muted-foreground" />
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Predicted distribution
+          {t("predict.view.predictedDistribution")}
         </p>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 text-center sm:grid-cols-4 xl:grid-cols-8">

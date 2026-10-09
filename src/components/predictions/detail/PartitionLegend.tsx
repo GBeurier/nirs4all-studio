@@ -1,8 +1,11 @@
+import { useTranslation } from "react-i18next";
+
 import {
   PARTITION_COLORS,
   normalizePartition,
   type PartitionKey,
 } from "@/lib/partitionColors";
+import { getPartitionLabel } from "@/components/predictions/predictionLabels";
 import { getPartitionColor } from "@/components/predictions/viewer/palettes";
 import type { ChartConfig } from "@/components/predictions/viewer/types";
 
@@ -12,6 +15,7 @@ interface PartitionLegendProps {
 }
 
 export function PartitionLegend({ partitions, config }: PartitionLegendProps) {
+  const { t } = useTranslation();
   if (partitions.length === 0) return null;
 
   const seen = new Set<string>();
@@ -38,7 +42,7 @@ export function PartitionLegend({ partitions, config }: PartitionLegendProps) {
               className="h-2 w-2 rounded-full"
               style={{ backgroundColor: color }}
             />
-            {partition.label ?? partition.partition}
+            {partition.label ?? getPartitionLabel(t, partition.partition)}
           </span>
         );
       })}

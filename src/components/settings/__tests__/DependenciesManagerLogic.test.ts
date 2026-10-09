@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   DependenciesResponse,
@@ -211,7 +211,8 @@ describe("formatLastActionText", () => {
       success: true,
       message: "ignored on success",
     };
-    expect(formatLastActionText(action)).toBe("Successfully installed ikpls");
+    const t = vi.fn((key: string, options?: Record<string, unknown>) => `${key}|${String(options?.package)}`);
+    expect(formatLastActionText(action, t as never)).toBe("settings.dependencies.actionSuccess.install|ikpls");
   });
 
   it("surfaces the raw error message on failure", () => {
@@ -221,6 +222,8 @@ describe("formatLastActionText", () => {
       success: false,
       message: "pip exploded",
     };
-    expect(formatLastActionText(action)).toBe("pip exploded");
+    const t = vi.fn((key: string) => key);
+    expect(formatLastActionText(action, t as never)).toBe("pip exploded");
+    expect(t).not.toHaveBeenCalled();
   });
 });

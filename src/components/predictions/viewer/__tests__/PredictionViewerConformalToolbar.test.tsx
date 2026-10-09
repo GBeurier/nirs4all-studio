@@ -5,8 +5,10 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import i18next from "i18next";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { initEnglishI18n } from "../../predictionsTestI18n";
 import {
   createPredictionViewerConformalCoverageOptions,
   getPredictionViewerConformalDisplayState,
@@ -104,6 +106,10 @@ function dataset(overrides: Partial<PartitionDataset> = {}): PartitionDataset {
   };
 }
 
+beforeAll(async () => {
+  await initEnglishI18n();
+});
+
 describe("PredictionViewerConformalToolbar helpers", () => {
   it("derives sorted coverages and default coverage from viewer targets", () => {
     const partitions = [target()];
@@ -119,7 +125,7 @@ describe("PredictionViewerConformalToolbar helpers", () => {
   });
 
   it("reports active and mismatch display states explicitly", () => {
-    expect(getPredictionViewerConformalDisplayState([target()], [dataset()], 0.8)).toMatchObject({
+    expect(getPredictionViewerConformalDisplayState([target()], [dataset()], 0.8, i18next.t)).toMatchObject({
       coverageLabel: "80%",
       tone: "active",
       visible: true,
@@ -129,7 +135,7 @@ describe("PredictionViewerConformalToolbar helpers", () => {
       conformalCoverage: undefined,
       conformalCoverageLabel: undefined,
       conformalIntervals: undefined,
-    })], 0.8)).toMatchObject({
+    })], 0.8, i18next.t)).toMatchObject({
       message: "Conformal intervals could not be aligned with the current prediction sample order.",
       tone: "warning",
       visible: true,

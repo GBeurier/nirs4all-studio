@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type {
   Dataset,
   PartitionKey,
@@ -75,6 +76,7 @@ export function formatClassPercentage(
 
 export function getRegressionThreeSigmaRange(
   distribution: Pick<TargetDistribution, "mean" | "std"> | null | undefined,
+  t: TFunction,
 ): RegressionRangeSummary {
   const mean = distribution?.mean;
   const std = distribution?.std;
@@ -85,6 +87,9 @@ export function getRegressionThreeSigmaRange(
 
   return {
     isVisible: true,
-    label: `${(mean - 3 * std).toFixed(2)} to ${(mean + 3 * std).toFixed(2)}`,
+    label: t("datasets.detail.targets.rangeTo", {
+      lo: (mean - 3 * std).toFixed(2),
+      hi: (mean + 3 * std).toFixed(2),
+    }),
   };
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -29,6 +30,7 @@ export function SliderParam({
   tooltip,
   precision = 3,
 }: SliderParamProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
@@ -36,7 +38,7 @@ export function SliderParam({
           <Label className="text-xs">{label}</Label>
           {tooltip && (
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger aria-label={t("spectraSynthesis.config.moreInfo")}>
                 <span className="text-muted-foreground text-[10px]">(?)</span>
               </TooltipTrigger>
               <TooltipContent side="right" className="max-w-[250px] text-xs">

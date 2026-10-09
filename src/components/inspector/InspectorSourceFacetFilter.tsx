@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronsUpDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ export function InspectorSourceFacetFilter({
   selected,
   onChange,
 }: InspectorSourceFacetFilterProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const count = selected.length;
   const total = values.length;
@@ -43,17 +45,17 @@ export function InspectorSourceFacetFilter({
       </PopoverTrigger>
       <PopoverContent className="w-56 p-0" align="start">
         <Command>
-          <CommandInput placeholder={`Search ${label.toLowerCase()}...`} className="h-8 text-xs" />
+          <CommandInput placeholder={t('inspector.sourceBar.searchPlaceholder')} className="h-8 text-xs" />
           <div className="flex items-center gap-1 px-2 py-1.5 border-b">
             <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px]" onClick={() => onChange([...values])}>
-              All
+              {t('common.all')}
             </Button>
             <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px]" onClick={() => onChange([])}>
-              None
+              {t('common.none')}
             </Button>
           </div>
           <CommandList>
-            <CommandEmpty className="py-3 text-xs">No results.</CommandEmpty>
+            <CommandEmpty className="py-3 text-xs">{t('common.noResults')}</CommandEmpty>
             <CommandGroup>
               {values.map(value => {
                 const isSelected = selected.includes(value);

@@ -1,7 +1,7 @@
-export const FOLD_STABILITY_EMPTY_MESSAGE = 'No fold stability data available. Select chains with multiple folds.';
+import type { TFunction } from 'i18next';
 
-export function getFoldStabilityEmptyMessage(): string {
-  return FOLD_STABILITY_EMPTY_MESSAGE;
+export function getFoldStabilityEmptyMessage(t: TFunction): string {
+  return t('inspector.charts.empty.foldStability');
 }
 
 export function formatFoldStabilityChainPreview(chainId: string, maxLength = 12): string {

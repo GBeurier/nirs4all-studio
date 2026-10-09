@@ -44,9 +44,9 @@ export default function Results() {
   const errorMessage = state.error instanceof Error ? state.error.message : state.error ? String(state.error) : null;
 
   if (!activeWorkspace && errorMessage) {
-    return <Alert variant="destructive"><AlertTitle>Error loading results</AlertTitle>
+    return <Alert variant="destructive"><AlertTitle>{t("results.error")}</AlertTitle>
       <AlertDescription>{errorMessage}</AlertDescription>
-      <Button variant="outline" onClick={() => { void state.refetch(); }}>Retry</Button>
+      <Button variant="outline" onClick={() => { void state.refetch(); }}>{t("common.retry")}</Button>
     </Alert>;
   }
 
@@ -58,7 +58,7 @@ export default function Results() {
           <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
           <p className="text-muted-foreground">{t("results.subtitle")}</p>
         </motion.div>
-        <NoWorkspaceState title="No workspace linked" description="Link a nirs4all workspace to view results. Go to Settings to configure." />
+        <NoWorkspaceState title={t("results.noWorkspace.title")} description={t("results.noWorkspace.description")} />
       </motion.div>
     );
   }
@@ -70,7 +70,7 @@ export default function Results() {
 	      <motion.div variants={itemVariants} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 	        <div>
 	          <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
-		          <p className="text-muted-foreground text-sm">Workspace: {activeWorkspace.name}</p>
+		          <p className="text-muted-foreground text-sm">{t("results.workspaceLabel", { name: activeWorkspace.name })}</p>
 	        </div>
 	        <div className="flex items-center gap-2 flex-wrap">
 	          <MetricSelector
@@ -81,13 +81,13 @@ export default function Results() {
 	            availableMetricKeys={state.metricContext.availableMetricKeys}
 	          />
 	          <Button variant="outline" size="sm" onClick={() => { void state.refetch(); }}>
-	            <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+	            <RefreshCw className="h-4 w-4 mr-1" /> {t("common.refresh")}
 	          </Button>
           <Button variant="outline" size="sm" asChild>
             <Link to="/results/aggregated"><Layers className="h-4 w-4 mr-1" /> {t("aggregatedResults.title")}</Link>
           </Button>
           <Button variant="outline" size="sm" disabled>
-            <Download className="h-4 w-4 mr-1" /> Export
+            <Download className="h-4 w-4 mr-1" /> {t("common.export")}
           </Button>
         </div>
       </motion.div>
@@ -97,7 +97,8 @@ export default function Results() {
 	        <div className="relative flex-1 max-w-md">
 	          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 	          <Input
-	            placeholder="Search datasets..."
+	            placeholder={t("results.filters.searchPlaceholder")}
+	            aria-label={t("results.filters.searchPlaceholder")}
 	            className="pl-9 h-8 text-sm"
 	            value={state.searchQuery}
 	            onChange={event => state.setSearchQuery(event.target.value)}
@@ -106,13 +107,13 @@ export default function Results() {
 	      </div>
 
 	      {/* Dataset Cards */}
-        {errorMessage && <Alert variant="destructive"><AlertTitle>Error loading results</AlertTitle>
+        {errorMessage && <Alert variant="destructive"><AlertTitle>{t("results.error")}</AlertTitle>
           <AlertDescription>{errorMessage}</AlertDescription>
         </Alert>}
 	      {state.filteredDatasets.length === 0 && !errorMessage ? (
 	        <NoResultsState
-	          title={t("results.noResults", { defaultValue: "No results found" })}
-	          description="Run experiments to generate results."
+	          title={t("results.noResults")}
+	          description={t("results.noResultsHint")}
         />
 	      ) : (
 	        <div className="space-y-3">

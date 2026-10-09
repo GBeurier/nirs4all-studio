@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { PipelineRun } from "@/types/runs";
 import {
   buildResultPipelineJson,
@@ -9,6 +10,7 @@ import {
 } from "./resultDetailData";
 
 export function useResultDetailSheetState(pipeline: PipelineRun | null) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ResultDetailTab>("results");
   const [copied, setCopied] = useState(false);
   const copyResetTimeoutRef = useRef<number | null>(null);
@@ -37,8 +39,8 @@ export function useResultDetailSheetState(pipeline: PipelineRun | null) {
   );
 
   const hasMetrics = useMemo(
-    () => pipeline ? hasResultMetrics(pipeline) : false,
-    [pipeline],
+    () => pipeline ? hasResultMetrics(pipeline, t) : false,
+    [pipeline, t],
   );
 
   const handleCopyJson = useCallback(async () => {

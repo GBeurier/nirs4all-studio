@@ -1,4 +1,5 @@
 import { Box, TrendingUp } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,6 +32,7 @@ export function PipelineProgress({
   currentStepMessage?: string;
   granularProgress?: GranularProgress;
 }) {
+  const { t } = useTranslation();
   const chainLabel = formatPipelineChainLabel(pipeline.preprocessing, pipeline.pipeline_name, pipeline.model);
   const fitCount = getPipelineFitCount(pipeline);
   const foldCount = getPipelineFoldCount(pipeline);
@@ -44,9 +46,9 @@ export function PipelineProgress({
   const variantFallbackLabel = variantLabel || (
     hasVariants
       ? pipeline.tested_variants !== undefined
-        ? `${pipeline.tested_variants} variants tested`
+        ? t("runs.progress.variantsTested", { count: pipeline.tested_variants })
         : pipeline.estimated_variants !== undefined
-          ? `~${pipeline.estimated_variants} variants`
+          ? t("runs.progress.variantsEstimated", { count: pipeline.estimated_variants })
           : null
       : null
   );
@@ -67,7 +69,7 @@ export function PipelineProgress({
               <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                 {foldCount != null && (
                   <Badge variant="outline" className="text-[10px] bg-cyan-500/10 text-cyan-600 border-cyan-500/30">
-                    {foldCount} folds
+                    {t("runs.progress.folds", { count: foldCount })}
                   </Badge>
                 )}
                 <Badge className="text-[10px] bg-teal-500/15 text-teal-600 border-teal-500/30 hover:bg-teal-500/20" variant="outline">
@@ -75,7 +77,7 @@ export function PipelineProgress({
                 </Badge>
                 {chainLabel && <span className="min-w-0 truncate">{chainLabel}</span>}
                 {!chainLabel && fitCount != null && (
-                  <span className="text-muted-foreground">{fitCount} fits</span>
+                  <span className="text-muted-foreground">{t("runs.progress.fits", { count: fitCount })}</span>
                 )}
               </div>
               {variantFallbackLabel && (
@@ -95,7 +97,7 @@ export function PipelineProgress({
           <div className="flex flex-wrap gap-2 mb-2">
             {granularProgress.currentFold != null && granularProgress.totalFolds != null && (
               <Badge variant="outline" className="text-[10px] bg-cyan-500/10 text-cyan-600 border-cyan-500/30">
-                Fold {granularProgress.currentFold}/{granularProgress.totalFolds}
+                {t("runs.progress.foldOf", { current: granularProgress.currentFold, total: granularProgress.totalFolds })}
               </Badge>
             )}
             {granularProgress.currentBranch && (
@@ -105,7 +107,7 @@ export function PipelineProgress({
             )}
             {granularProgress.currentVariant != null && granularProgress.totalVariants != null && (
               <Badge variant="outline" className="text-[10px] bg-violet-500/10 text-violet-600 border-violet-500/30">
-                Variant {granularProgress.currentVariant}/{granularProgress.totalVariants}
+                {t("runs.progress.variantOf", { current: granularProgress.currentVariant, total: granularProgress.totalVariants })}
               </Badge>
             )}
           </div>
@@ -117,8 +119,10 @@ export function PipelineProgress({
             <div className="flex justify-between text-xs text-muted-foreground">
               <span className="truncate max-w-[70%]">
                 {currentStepMessage || (hasVariants
-                  ? `Testing ${pipeline.estimated_variants ?? "multiple"} variants...`
-                  : "Training...")}
+                  ? (pipeline.estimated_variants != null
+                    ? t("runs.progress.testingVariants", { count: pipeline.estimated_variants })
+                    : t("runs.progress.testingMultipleVariants"))
+                  : t("runs.progress.training"))}
               </span>
               <span>{pipeline.progress}%</span>
             </div>
@@ -142,12 +146,12 @@ export function PipelineProgress({
             )}
             {pipeline.status !== "completed" && (
               <div className="text-muted-foreground text-xs">
-                partial
+                {t("runs.progress.partial")}
               </div>
             )}
             {pipeline.status === "completed" && pipeline.tested_variants && pipeline.tested_variants > 1 && (
               <div className="text-muted-foreground text-xs">
-                (best of {pipeline.tested_variants})
+                {t("runs.progress.bestOf", { count: pipeline.tested_variants })}
               </div>
             )}
           </div>

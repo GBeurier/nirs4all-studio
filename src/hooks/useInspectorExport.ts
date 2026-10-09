@@ -6,6 +6,7 @@
  */
 
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useInspectorData } from '@/context/useInspectorDataContext';
 import { useInspectorFilter } from '@/context/useInspectorFilter';
@@ -64,6 +65,7 @@ async function elementToCanvas(element: HTMLElement, scale = 2): Promise<HTMLCan
 }
 
 export function useInspectorExport() {
+  const { t } = useTranslation();
   const { filters } = useInspectorData();
   const { filteredChains } = useInspectorFilter();
   const { isPanelVisible } = useInspectorView();
@@ -71,7 +73,7 @@ export function useInspectorExport() {
   const exportPanelAsPng = useCallback(async (panelType: InspectorPanelType) => {
     const el = document.querySelector<HTMLElement>(`[data-panel-type="${panelType}"]`);
     if (!el) {
-      toast.error(`Panel "${panelType}" not found.`);
+      toast.error(t('inspector.export.panelNotFound', { panel: panelType }));
       return;
     }
     try {
@@ -79,18 +81,18 @@ export function useInspectorExport() {
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Failed'))), 'image/png', 0.95);
       });
-      const panelName = INSPECTOR_PANELS.find(p => p.id === panelType)?.shortName ?? panelType;
-      downloadBlob(blob, `inspector-${panelName}-${timestampStr()}.png`);
-      toast.success(`Exported ${panelName} as PNG`);
+      const panelDef = INSPECTOR_PANELS.find(p => p.id === panelType);
+      downloadBlob(blob, `inspector-${panelDef?.shortName ?? panelType}-${timestampStr()}.png`);
+      toast.success(t('inspector.export.panelExported', { panel: panelDef ? t(panelDef.nameKey) : panelType }));
     } catch {
-      toast.error(`Failed to export panel as PNG.`);
+      toast.error(t('inspector.export.panelFailed'));
     }
-  }, []);
+  }, [t]);
 
   const exportAllVisiblePanelsPng = useCallback(async () => {
     const visiblePanels = INSPECTOR_PANELS.filter(p => isPanelVisible(p.id));
     if (visiblePanels.length === 0) {
-      toast.error('No visible panels to export.');
+      toast.error(t('inspector.export.noVisiblePanels'));
       return;
     }
     let exported = 0;
@@ -109,15 +111,15 @@ export function useInspectorExport() {
       }
     }
     if (exported > 0) {
-      toast.success(`Exported ${exported} panels as PNG`);
+      toast.success(t('inspector.export.panelsExported', { count: exported }));
     } else {
-      toast.error('Failed to export any panels.');
+      toast.error(t('inspector.export.panelsFailed'));
     }
-  }, [isPanelVisible]);
+  }, [isPanelVisible, t]);
 
   const exportDataAsCsv = useCallback(() => {
     if (filteredChains.length === 0) {
-      toast.error('No chain data to export.');
+      toast.error(t('inspector.export.noChainData'));
       return;
     }
 
@@ -144,8 +146,8 @@ export function useInspectorExport() {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const prefix = filters.run_ids?.length ? `run-${filters.run_ids[0]}` : 'inspector';
     downloadBlob(blob, `${prefix}-chains-${timestampStr()}.csv`);
-    toast.success(`Exported ${filteredChains.length} chains as CSV`);
-  }, [filteredChains, filters]);
+    toast.success(t('inspector.export.csvExported', { count: filteredChains.length }));
+  }, [filteredChains, filters, t]);
 
   return {
     exportPanelAsPng,

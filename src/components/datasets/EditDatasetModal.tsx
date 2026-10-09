@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,8 @@ import {
 import { Loader2, Info, FolderOpen } from "lucide-react";
 import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import type { Dataset, DatasetConfig } from "@/types/datasets";
-
+import { getActiveLocale } from "@/lib/activeLocale";
+
 interface EditDatasetModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -34,6 +36,7 @@ export function EditDatasetModal({
   dataset,
   onSave,
 }: EditDatasetModalProps) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
 
   // Config state
@@ -115,7 +118,7 @@ export function EditDatasetModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Dataset Configuration</DialogTitle>
+          <DialogTitle>{t("datasets.editModal.title")}</DialogTitle>
           <DialogDescription>{dataset.name}</DialogDescription>
         </DialogHeader>
 
@@ -123,7 +126,7 @@ export function EditDatasetModal({
           {/* Path (read-only) */}
           <div>
             <Label className="text-sm text-muted-foreground">
-              Dataset Path
+              {t("datasets.editModal.path")}
             </Label>
             <div className="mt-1 flex items-center gap-2">
               <Input
@@ -134,6 +137,7 @@ export function EditDatasetModal({
               <Button
                 variant="outline"
                 size="icon"
+                aria-label={t("datasets.card.openFolder")}
                 onClick={() => {
                   if (dataset.path) {
                     window.open(`file://${dataset.path}`, "_blank");
@@ -144,35 +148,35 @@ export function EditDatasetModal({
               </Button>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              To use a different path, add a new dataset
+              {t("datasets.editModal.pathHint")}
             </p>
           </div>
 
           {/* CSV Parsing Options */}
           <div className="border-t pt-4">
-            <Label className="text-base font-medium">CSV Parsing Options</Label>
+            <Label className="text-base font-medium">{t("datasets.editModal.csvOptions")}</Label>
             <div className="grid grid-cols-3 gap-4 mt-4">
               <div>
                 <Label className="text-sm text-muted-foreground">
-                  Delimiter
+                  {t("datasets.editModal.delimiter")}
                 </Label>
                 <Select value={delimiter} onValueChange={setDelimiter}>
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value=";">Semicolon (;)</SelectItem>
-                    <SelectItem value=",">Comma (,)</SelectItem>
-                    <SelectItem value="\t">Tab</SelectItem>
-                    <SelectItem value="|">Pipe (|)</SelectItem>
-                    <SelectItem value=" ">Space</SelectItem>
+                    <SelectItem value=";">{t("datasets.editModal.semicolon")}</SelectItem>
+                    <SelectItem value=",">{t("datasets.editModal.comma")}</SelectItem>
+                    <SelectItem value="\t">{t("datasets.editModal.tab")}</SelectItem>
+                    <SelectItem value="|">{t("datasets.editModal.pipe")}</SelectItem>
+                    <SelectItem value=" ">{t("datasets.editModal.space")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
                 <Label className="text-sm text-muted-foreground">
-                  Decimal Separator
+                  {t("datasets.editModal.decimalSeparator")}
                 </Label>
                 <Select
                   value={decimalSeparator}
@@ -182,23 +186,23 @@ export function EditDatasetModal({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value=".">Dot (.)</SelectItem>
-                    <SelectItem value=",">Comma (,)</SelectItem>
+                    <SelectItem value=".">{t("datasets.editModal.dot")}</SelectItem>
+                    <SelectItem value=",">{t("datasets.editModal.comma")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-sm text-muted-foreground">Header</Label>
+                <Label className="text-sm text-muted-foreground">{t("datasets.editModal.header")}</Label>
                 <Select value={headerType} onValueChange={setHeaderType}>
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    <SelectItem value="nm">Wavelength (nm)</SelectItem>
-                    <SelectItem value="cm-1">Wavenumber (cm⁻¹)</SelectItem>
-                    <SelectItem value="text">Text</SelectItem>
+                    <SelectItem value="none">{t("common.none")}</SelectItem>
+                    <SelectItem value="nm">{t("datasets.editModal.headerWavelength")}</SelectItem>
+                    <SelectItem value="cm-1">{t("datasets.editModal.headerWavenumber")}</SelectItem>
+                    <SelectItem value="text">{t("datasets.editModal.headerText")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -208,10 +212,10 @@ export function EditDatasetModal({
           {/* File Path Configuration */}
           <div className="border-t pt-4">
             <Label className="text-base font-medium">
-              File Paths (Optional)
+              {t("datasets.editModal.filePaths")}
             </Label>
             <p className="text-sm text-muted-foreground mt-1 mb-4">
-              Leave empty for auto-detection based on naming patterns
+              {t("datasets.editModal.filePathsHint")}
             </p>
 
             <div className="space-y-4">
@@ -219,23 +223,23 @@ export function EditDatasetModal({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm text-muted-foreground">
-                    Train X (Features)
+                    {t("datasets.editModal.trainX")}
                   </Label>
                   <Input
                     value={trainXPath}
                     onChange={(e) => setTrainXPath(e.target.value)}
-                    placeholder="e.g., Xcal.csv"
+                    placeholder={t("datasets.editModal.placeholder", { file: "Xcal.csv" })}
                     className="mt-1"
                   />
                 </div>
                 <div>
                   <Label className="text-sm text-muted-foreground">
-                    Train Y (Targets)
+                    {t("datasets.editModal.trainY")}
                   </Label>
                   <Input
                     value={trainYPath}
                     onChange={(e) => setTrainYPath(e.target.value)}
-                    placeholder="e.g., Ycal.csv"
+                    placeholder={t("datasets.editModal.placeholder", { file: "Ycal.csv" })}
                     className="mt-1"
                   />
                 </div>
@@ -245,23 +249,23 @@ export function EditDatasetModal({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm text-muted-foreground">
-                    Test X (Features)
+                    {t("datasets.editModal.testX")}
                   </Label>
                   <Input
                     value={testXPath}
                     onChange={(e) => setTestXPath(e.target.value)}
-                    placeholder="e.g., Xval.csv"
+                    placeholder={t("datasets.editModal.placeholder", { file: "Xval.csv" })}
                     className="mt-1"
                   />
                 </div>
                 <div>
                   <Label className="text-sm text-muted-foreground">
-                    Test Y (Targets)
+                    {t("datasets.editModal.testY")}
                   </Label>
                   <Input
                     value={testYPath}
                     onChange={(e) => setTestYPath(e.target.value)}
-                    placeholder="e.g., Yval.csv"
+                    placeholder={t("datasets.editModal.placeholder", { file: "Yval.csv" })}
                     className="mt-1"
                   />
                 </div>
@@ -271,23 +275,23 @@ export function EditDatasetModal({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm text-muted-foreground">
-                    Train Groups (Metadata)
+                    {t("datasets.editModal.trainGroups")}
                   </Label>
                   <Input
                     value={trainGroupPath}
                     onChange={(e) => setTrainGroupPath(e.target.value)}
-                    placeholder="e.g., Gcal.csv"
+                    placeholder={t("datasets.editModal.placeholder", { file: "Gcal.csv" })}
                     className="mt-1"
                   />
                 </div>
                 <div>
                   <Label className="text-sm text-muted-foreground">
-                    Test Groups (Metadata)
+                    {t("datasets.editModal.testGroups")}
                   </Label>
                   <Input
                     value={testGroupPath}
                     onChange={(e) => setTestGroupPath(e.target.value)}
-                    placeholder="e.g., Gval.csv"
+                    placeholder={t("datasets.editModal.placeholder", { file: "Gval.csv" })}
                     className="mt-1"
                   />
                 </div>
@@ -297,8 +301,7 @@ export function EditDatasetModal({
             <div className="mt-4 p-3 bg-muted/50 rounded-lg flex items-start gap-2">
               <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
               <p className="text-sm text-muted-foreground">
-                Paths can be relative to the dataset folder or absolute paths.
-                Common patterns like X_train, Y_cal, etc. are auto-detected.
+                {t("datasets.editModal.pathsNote")}
               </p>
             </div>
           </div>
@@ -306,24 +309,24 @@ export function EditDatasetModal({
           {/* Dataset Info */}
           {dataset.num_samples !== undefined && (
             <div className="border-t pt-4">
-              <Label className="text-base font-medium">Dataset Info</Label>
+              <Label className="text-base font-medium">{t("datasets.editModal.datasetInfo")}</Label>
               <div className="grid grid-cols-3 gap-4 mt-3">
                 <div className="p-3 bg-muted/30 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Samples</p>
+                  <p className="text-sm text-muted-foreground">{t("datasets.info.samples")}</p>
                   <p className="text-lg font-semibold">
-                    {dataset.num_samples?.toLocaleString() ?? "--"}
+                    {dataset.num_samples?.toLocaleString(getActiveLocale()) ?? "--"}
                   </p>
                 </div>
                 <div className="p-3 bg-muted/30 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Features</p>
+                  <p className="text-sm text-muted-foreground">{t("datasets.info.features")}</p>
                   <p className="text-lg font-semibold">
-                    {dataset.num_features?.toLocaleString() ?? "--"}
+                    {dataset.num_features?.toLocaleString(getActiveLocale()) ?? "--"}
                   </p>
                 </div>
                 <div className="p-3 bg-muted/30 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Task</p>
+                  <p className="text-sm text-muted-foreground">{t("datasets.card.task")}</p>
                   <p className="text-lg font-semibold">
-                    {getDatasetTaskLabel(dataset.task_type, {
+                    {getDatasetTaskLabel(dataset.task_type, t, {
                       numClasses: dataset.num_classes,
                     })}
                   </p>
@@ -335,11 +338,11 @@ export function EditDatasetModal({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={loading}>
             {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save Configuration
+            {t("datasets.editModal.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -7,7 +7,8 @@ export interface FloatingRunWidgetRunItemReadModel {
   runName: string;
   message: string;
   progress: number;
-  progressLabel: string;
+  /** Percentage label, or null while the backend reports no progress telemetry. */
+  progressLabel: string | null;
   progressUnavailable: boolean;
   containerClassName: string;
 }
@@ -50,7 +51,7 @@ export function buildRunItemReadModel(
     runName: run.runName,
     message: run.message,
     progress: run.progress,
-    progressLabel: run.progressUnavailable ? "Unavailable" : `${run.progress}%`,
+    progressLabel: run.progressUnavailable ? null : `${run.progress}%`,
     progressUnavailable: run.progressUnavailable === true,
     containerClassName: isSelected
       ? "bg-chart-2/10 border border-chart-2/30"

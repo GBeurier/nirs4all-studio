@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { formatPerformanceHeatmapTooltipValue } from '@/lib/inspector/performanceHeatmapPresentation';
 import type { PerformanceHeatmapHoverPayload } from '@/lib/inspector/performanceHeatmapData';
 
@@ -17,6 +18,8 @@ export function PerformanceHeatmapTooltip({
   xVariable,
   yVariable,
 }: PerformanceHeatmapTooltipProps) {
+  const { t } = useTranslation();
+
   if (!hovered) {
     return null;
   }
@@ -28,8 +31,8 @@ export function PerformanceHeatmapTooltip({
     >
       <div className="font-medium">{xVariable}: {hovered.x_label}</div>
       <div>{yVariable}: {hovered.y_label}</div>
-      <div>Score: {formatPerformanceHeatmapTooltipValue(hovered.value)}</div>
-      <div>Chains: {hovered.count}</div>
+      <div>{t('inspector.charts.tooltip.score', { value: formatPerformanceHeatmapTooltipValue(hovered.value, t) })}</div>
+      <div>{t('inspector.charts.tooltip.chains', { value: hovered.count })}</div>
     </div>
   );
 }

@@ -16,19 +16,15 @@ const mocks = vi.hoisted(() => ({
   listRunExecutionJobRecords: vi.fn().mockResolvedValue({ records: [] }),
 }));
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const readable: Record<string, string> = {
-        "runs.jobRecord.title": "Execution details",
-        "runs.jobRecord.titleDeveloper": "Execution job record",
-        "runs.jobRecord.actions": "Actions",
-        "runs.jobRecord.controlReadiness": "Control readiness",
-      };
-      return readable[key] ?? key;
-    },
-  }),
-}));
+// Real English copy, except the stat labels which stay as keys so duplicated words ("Failed", "Completed") remain unambiguous.
+vi.mock("react-i18next", async () => {
+  const { tEn } = await import("@/lib/__tests__/support/enTranslator");
+  return {
+    useTranslation: () => ({
+      t: (key: string, options?: Record<string, unknown>) => (key.startsWith("runs.stats.") ? key : tEn(key, options)),
+    }),
+  };
+});
 
 const developerMode = vi.hoisted(() => ({ enabled: true }));
 vi.mock("@/context/useDeveloperMode", () => ({

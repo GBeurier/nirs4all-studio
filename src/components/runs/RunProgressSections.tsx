@@ -46,6 +46,11 @@ import { MetricsCard } from "./MetricsCard";
 import { PipelineProgress } from "./PipelineProgress";
 import { RefitPhaseIndicator } from "./RefitPhaseIndicator";
 import { StatusBadge } from "./StatusBadge";
+import { getActiveLocale } from "@/lib/activeLocale";
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(getActiveLocale());
+}
 
 /** Page header with back link, run name/status, description and stop action. */
 export function RunProgressHeader({
@@ -74,7 +79,7 @@ export function RunProgressHeader({
             <StatusBadge status={run.status} />
           </div>
           <p className="text-muted-foreground text-sm">
-            {run.description || `Started ${new Date(run.created_at).toLocaleString()}`}
+            {run.description || t("runs.progress.started", { date: formatDateTime(run.created_at) })}
           </p>
         </div>
       </div>
@@ -121,6 +126,8 @@ export function ProgressOverviewCard({
   overallProgress: number;
   progressUnavailable?: boolean;
 }) {
+  const { t } = useTranslation();
+
   return (
     <Card>
       <CardContent className="p-4">
@@ -138,7 +145,7 @@ export function ProgressOverviewCard({
               )}
             </div>
           </div>
-          <span className="text-sm font-medium">{progressUnavailable ? "Unavailable" : `${Math.round(overallProgress)}%`}</span>
+          <span className="text-sm font-medium">{progressUnavailable ? t("runs.widget.unavailable") : `${Math.round(overallProgress)}%`}</span>
         </div>
         {progressUnavailable
           ? <IndeterminateProgress className="h-3" />
@@ -160,6 +167,8 @@ export function RunStatsGrid({
   completedCount: number;
   failedCount: number;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       <Card>
@@ -169,7 +178,7 @@ export function RunStatsGrid({
           </div>
           <div>
             <p className="text-2xl font-bold">{datasetCount}</p>
-            <p className="text-xs text-muted-foreground">Datasets</p>
+            <p className="text-xs text-muted-foreground">{t("runs.detail.statDatasets")}</p>
           </div>
         </CardContent>
       </Card>
@@ -180,7 +189,7 @@ export function RunStatsGrid({
           </div>
           <div>
             <p className="text-2xl font-bold">{totalPipelines}</p>
-            <p className="text-xs text-muted-foreground">Pipelines</p>
+            <p className="text-xs text-muted-foreground">{t("runs.detail.statPipelines")}</p>
           </div>
         </CardContent>
       </Card>
@@ -191,7 +200,7 @@ export function RunStatsGrid({
           </div>
           <div>
             <p className="text-2xl font-bold">{completedCount}</p>
-            <p className="text-xs text-muted-foreground">Completed</p>
+            <p className="text-xs text-muted-foreground">{t("runs.stats.completed")}</p>
           </div>
         </CardContent>
       </Card>
@@ -202,7 +211,7 @@ export function RunStatsGrid({
           </div>
           <div>
             <p className="text-2xl font-bold">{failedCount}</p>
-            <p className="text-xs text-muted-foreground">Failed</p>
+            <p className="text-xs text-muted-foreground">{t("runs.stats.failed")}</p>
           </div>
         </CardContent>
       </Card>
@@ -228,9 +237,11 @@ export function PipelinesColumn({
   granularProgress: GranularProgress;
   refitState: RefitState;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="lg:col-span-2 space-y-4">
-      <h2 className="text-lg font-semibold">Pipelines</h2>
+      <h2 className="text-lg font-semibold">{t("runs.detail.statPipelines")}</h2>
       {run.datasets.map(dataset => (
         <div key={dataset.dataset_id} className="space-y-3">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -264,41 +275,43 @@ export function PipelinesColumn({
 
 /** Key/value card describing the run's identity and timing metadata. */
 export function RunInfoCard({ run }: { run: Run }) {
+  const { t } = useTranslation();
+
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Run Info</CardTitle>
+        <CardTitle className="text-sm font-medium">{t("runs.progress.runInfo")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Run ID</span>
+          <span className="text-muted-foreground">{t("runs.jobDetail.runId")}</span>
           <code className="text-xs bg-muted px-1 py-0.5 rounded">{run.id}</code>
         </div>
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Created</span>
-          <span>{new Date(run.created_at).toLocaleString()}</span>
+          <span className="text-muted-foreground">{t("runs.jobDetail.created")}</span>
+          <span>{formatDateTime(run.created_at)}</span>
         </div>
         {run.started_at && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Started</span>
-            <span>{new Date(run.started_at).toLocaleString()}</span>
+            <span className="text-muted-foreground">{t("runs.detail.overview.started")}</span>
+            <span>{formatDateTime(run.started_at)}</span>
           </div>
         )}
         {run.completed_at && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Completed</span>
-            <span>{new Date(run.completed_at).toLocaleString()}</span>
+            <span className="text-muted-foreground">{t("runs.detail.overview.completed")}</span>
+            <span>{formatDateTime(run.completed_at)}</span>
           </div>
         )}
         {run.duration && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Duration</span>
+            <span className="text-muted-foreground">{t("runs.item.duration")}</span>
             <span>{run.duration}</span>
           </div>
         )}
         {run.cv_folds && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground">CV Folds</span>
+            <span className="text-muted-foreground">{t("runs.detail.overview.cvFolds")}</span>
             <span>{run.cv_folds}</span>
           </div>
         )}
@@ -335,6 +348,7 @@ export function RunSidePanel({
   onRefreshLogs: () => void;
   onExportLogs: () => void;
 }) {
+  const { t } = useTranslation();
   const isActive = run.status === "running" || run.status === "queued";
 
   return (
@@ -349,7 +363,7 @@ export function RunSidePanel({
           variantText={summaryVariantText}
           pendingMessage={
             isActive
-              ? "Metrics will appear here after the first completed fit for the current pipeline."
+              ? t("runs.progress.metricsPending")
               : undefined
           }
         />

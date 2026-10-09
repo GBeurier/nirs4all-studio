@@ -19,6 +19,8 @@ import {
   ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import i18next from "i18next";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { getActiveRuns, getWorkspaceExecutionJobRecord } from "@/api/runs";
 import { Button } from "@/components/ui/button";
@@ -51,6 +53,7 @@ interface WsMessage {
 }
 
 export function ActiveRunProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [runProgressMap, setRunProgressMap] = useState<Map<string, RunProgressState>>(new Map());
   const [isMinimized, setIsMinimized] = useState(false);
@@ -58,12 +61,12 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   const wsConnectionsRef = useRef<Map<string, WebSocket | null>>(new Map());
   const notifiedFailures = useRef(new Set<string>());
   const resolvingRuns = useRef(new Set<string>());
-  const [failures, setFailures] = useState<Array<{ runId: string; runName: string; error: string }>>([]);
+  const [failures, setFailures] = useState<Array<{ runId: string; runName: string; error: string | null }>>([]);
   const reportFailure = useCallback((runId: string, runName: string, error?: string | null) => {
     if (error === "Cancelled" || notifiedFailures.current.has(runId)) return;
     notifiedFailures.current.add(runId);
     setFailures((previous) => [...previous, {
-      runId, runName, error: error?.trim() || "The run failed without an error description from the backend.",
+      runId, runName, error: error?.trim() || null,
     }]);
   }, []);
 
@@ -141,7 +144,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
                   newState.progressUnavailable = false;
                 } else if (message.type === "job_failed") {
                   newState.status = "failed";
-                  newState.message = message.data?.error || "Run failed";
+                  newState.message = message.data?.error || i18next.t("runs.failure.messageFallback");
                 }
 
                 if (newState.progressUnavailable === existing.progressUnavailable
@@ -212,14 +215,15 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
           const progressUnavailable = typeof run.progress_unavailable === "boolean"
             ? run.progress_unavailable : existing.progressUnavailable;
           const message = run.progress_message ?? existing.message;
-          if (existing.status !== run.status || existing.runName !== run.name
+          const startedAt = run.started_at ?? existing.startedAt;
+          if (existing.status !== run.status || existing.runName !== run.name || existing.startedAt !== startedAt
               || existing.progress !== progress || existing.message !== message
               || existing.progressUnavailable !== progressUnavailable) {
             updated.set(run.id, {
               ...existing,
               status: run.status,
               runName: run.name,
-              progress, progressUnavailable, message,
+              progress, progressUnavailable, message, startedAt,
               updatedAt: Date.now(),
             });
           }
@@ -231,7 +235,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
             status: run.status,
             progress: run.progress ?? 0,
             progressUnavailable: run.progress_unavailable ?? (run.progress == null),
-            message: run.progress_message || "Starting...",
+            message: run.progress_message || i18next.t("runs.widget.starting"),
             logs: [],
             startedAt: run.started_at,
             updatedAt: Date.now(),
@@ -342,13 +346,13 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Run failed: {failures[0]?.runName}</DialogTitle>
-            <DialogDescription>The execution stopped. The backend reported the following error.</DialogDescription>
+            <DialogTitle>{t("runs.failure.title", { name: failures[0]?.runName })}</DialogTitle>
+            <DialogDescription>{t("runs.failure.description")}</DialogDescription>
           </DialogHeader>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-sm">{failures[0]?.error}</pre>
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-sm">{failures[0]?.error ?? t("runs.failure.noDescription")}</pre>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setFailures((previous) => previous.slice(1))}>Close</Button>
-            <Button asChild><Link to={`/runs/${encodeURIComponent(failures[0]?.runId || "")}`} onClick={() => setFailures((previous) => previous.slice(1))}>View run details</Link></Button>
+            <Button variant="outline" onClick={() => setFailures((previous) => previous.slice(1))}>{t("common.close")}</Button>
+            <Button asChild><Link to={`/runs/${encodeURIComponent(failures[0]?.runId || "")}`} onClick={() => setFailures((previous) => previous.slice(1))}>{t("runs.failure.viewDetails")}</Link></Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

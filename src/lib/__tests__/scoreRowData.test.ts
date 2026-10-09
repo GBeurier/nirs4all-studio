@@ -10,6 +10,9 @@ import {
   getScoreCardRelevantMetricKeys,
 } from '@/lib/scoreRowData';
 import type { ScoreCardRow } from '@/types/score-cards';
+import i18n from "@/lib/i18n";
+
+const t = i18n.getFixedT("en");
 
 function row(overrides: Partial<ScoreCardRow>): ScoreCardRow {
   return {
@@ -46,7 +49,7 @@ describe('score row data helpers', () => {
       cardType: 'refit',
       testScores: { rmse: 0.2, r2: 0.91 },
       trainScores: { rmse: 0.15 },
-    }), ['rmse', 'r2'])).toEqual([
+    }), ['rmse', 'r2'], t)).toEqual([
       { label: 'RMSEP', value: 0.2, metric: 'rmse', colorClass: 'text-emerald-500 font-semibold' },
       { label: 'Train', value: 0.15, metric: 'rmse', colorClass: 'text-orange-400' },
       { label: 'R²', value: 0.91, metric: 'r2' },
@@ -71,7 +74,7 @@ describe('score row data helpers', () => {
       'benchmark_latency_ms',
       'repository_custom_score',
     ]);
-    expect(buildRefitScorePairs(customRow, ['rmse', 'r2', 'benchmark-latency-ms', 'repository custom score'])).toEqual([
+    expect(buildRefitScorePairs(customRow, ['rmse', 'r2', 'benchmark-latency-ms', 'repository custom score'], t)).toEqual([
       { label: 'RMSEP', value: 0.2, metric: 'rmse', colorClass: 'text-emerald-500 font-semibold' },
       { label: 'Train', value: 0.15, metric: 'rmse', colorClass: 'text-orange-400' },
       { label: 'R²', value: 0.91, metric: 'r2' },
@@ -86,7 +89,7 @@ describe('score row data helpers', () => {
       metric: 'repository custom score',
       testScores: { repository_custom_score: 0.7 },
       valScores: { repository_custom_score: 0.6 },
-    }), ['repository custom score'])).toEqual([
+    }), ['repository custom score'], t)).toEqual([
       { label: 'Repository Custom Score', value: 0.7, metric: 'repository_custom_score', colorClass: 'font-semibold' },
       { label: 'Val', value: 0.6, metric: 'repository_custom_score', colorClass: 'text-blue-400' },
     ]);
@@ -104,7 +107,7 @@ describe('score row data helpers', () => {
       meanTestScores: { rmse: 0.26 },
       minTestScores: { rmse: 0.2 },
       maxTestScores: { rmse: 0.31 },
-    }), ['rmse', 'r2', 'benchmark-latency-ms']);
+    }), ['rmse', 'r2', 'benchmark-latency-ms'], t);
 
     expect(pairs.map(({ label, value, metric }) => ({ label, value, metric }))).toEqual([
       { label: 'RMSECV', value: 0.22, metric: 'rmse' },
@@ -131,7 +134,7 @@ describe('score row data helpers', () => {
       minValScores: { accuracy: 0.8 },
       maxValScores: { accuracy: 0.95 },
       avgTestScores: { accuracy: 0.87, f1: 0.84 },
-    }), ['accuracy', 'f1']);
+    }), ['accuracy', 'f1'], t);
 
     expect(pairs.map(({ label, value, metric }) => ({ label, value, metric }))).toEqual([
       { label: 'Acc CV', value: 0.9, metric: 'accuracy' },
@@ -151,7 +154,7 @@ describe('score row data helpers', () => {
       trainScores: { mae: 0.1 },
     });
 
-    expect(buildTrainScorePairs(trainRow, ['rmse', 'r2', 'mae'])).toEqual([
+    expect(buildTrainScorePairs(trainRow, ['rmse', 'r2', 'mae'], t)).toEqual([
       { label: 'RMSEP', value: 0.3, metric: 'rmse', colorClass: 'font-semibold' },
       { label: 'Val', value: 0.28, metric: 'rmse', colorClass: 'text-blue-400' },
       { label: 'R²', value: 0.7, metric: 'r2' },

@@ -9,6 +9,7 @@
  */
 
 import * as Sentry from "@sentry/react";
+import i18n from "i18next";
 
 const SENTRY_DSN = (import.meta.env.VITE_SENTRY_DSN as string | undefined)
   ?? "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960";
@@ -118,11 +119,11 @@ export const SentryErrorBoundary = Sentry.ErrorBoundary;
 export function SentryFallback({ error }: { error: Error }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", gap: "1rem", padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: "1.5rem", fontWeight: "bold" }}>Something went wrong</h1>
+      <h1 style={{ fontSize: "1.5rem", fontWeight: "bold" }}>{i18n.t("common.state.error.title")}</h1>
       <p style={{ color: "#888", textAlign: "center", maxWidth: "28rem" }}>
         {sentryEnabled
-          ? "An unexpected error occurred. The error has been reported automatically."
-          : "An unexpected error occurred. Automatic error reporting is disabled."}
+          ? i18n.t("common.crash.reported")
+          : i18n.t("common.crash.notReported")}
       </p>
       <pre style={{ fontSize: "0.75rem", color: "#e55", background: "#f5f5f5", padding: "1rem", borderRadius: "0.5rem", maxWidth: "32rem", overflow: "auto" }}>
         {error.message}
@@ -131,7 +132,7 @@ export function SentryFallback({ error }: { error: Error }) {
         style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", background: "#0d9488", color: "white", border: "none", cursor: "pointer" }}
         onClick={() => window.location.reload()}
       >
-        Reload application
+        {i18n.t("common.crash.reload")}
       </button>
     </div>
   );

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   buildFoldStabilityLinePath,
   scaleFoldStabilityX,
@@ -45,6 +46,7 @@ export function FoldStabilitySvg({
   onHoverLineChange,
   onContextHoverChange,
 }: FoldStabilitySvgProps) {
+  const { t } = useTranslation();
   const { marginLeft, marginRight, marginTop, marginBottom, plotW } = layout;
   const scaleX = (foldIndex: number) => scaleFoldStabilityX(foldIndex, foldCount, layout);
   const scaleY = (value: number) => scaleFoldStabilityY(value, yMin, layout);
@@ -95,7 +97,7 @@ export function FoldStabilitySvg({
         className="fill-muted-foreground"
         fontSize={10}
       >
-        Fold
+        {t('inspector.charts.axis.fold')}
       </text>
 
       {bandPath && (

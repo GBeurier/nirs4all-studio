@@ -6,6 +6,7 @@
  */
 
 import { useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { useInspectorSelection } from '@/context/useInspectorSelection';
 import {
@@ -30,6 +31,7 @@ interface ScoreHistogramProps {
 }
 
 export function ScoreHistogram({ data, groups, isLoading }: ScoreHistogramProps) {
+  const { t } = useTranslation();
   const { select, selectedChains, hasSelection } = useInspectorSelection();
 
   // Build chain→group color lookup
@@ -47,7 +49,7 @@ export function ScoreHistogram({ data, groups, isLoading }: ScoreHistogramProps)
     return buildScoreHistogramBarColors(bars, chainColorMap);
   }, [bars, chainColorMap]);
 
-  const statsSegments = useMemo(() => buildScoreHistogramStatsSegments(data), [data]);
+  const statsSegments = useMemo(() => buildScoreHistogramStatsSegments(data, t), [data, t]);
   const meanReference = formatScoreHistogramMeanReference(data?.mean_score);
 
   const handleBarClick = useCallback((barData: ScoreHistogramBarData | undefined) => {
@@ -60,7 +62,7 @@ export function ScoreHistogram({ data, groups, isLoading }: ScoreHistogramProps)
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        <span className="text-sm">Loading histogram...</span>
+        <span className="text-sm">{t('inspector.charts.loading.histogram')}</span>
       </div>
     );
   }
@@ -68,7 +70,7 @@ export function ScoreHistogram({ data, groups, isLoading }: ScoreHistogramProps)
   if (bars.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        {getScoreHistogramEmptyMessage()}
+        {getScoreHistogramEmptyMessage(t)}
       </div>
     );
   }

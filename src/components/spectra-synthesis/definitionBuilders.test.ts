@@ -16,7 +16,6 @@ describe("spectra synthesis definition modules", () => {
     expect(definitions.getStepsByCategory).toBe(builders.getStepsByCategory);
     expect(definitions.getCategoryDefinition).toBe(builders.getCategoryDefinition);
     expect(definitions.getComponentsByCategory).toBe(builders.getComponentsByCategory);
-    expect(definitions.getComponentOptions).toBe(builders.getComponentOptions);
     expect(definitions.getDefaultSynthesisConfig).toBe(builders.getDefaultSynthesisConfig);
     expect(definitions.getDefaultStepParams).toBe(builders.getDefaultStepParams);
   });
@@ -36,24 +35,18 @@ describe("spectra synthesis definition modules", () => {
     expect(builders.getStepsByCategory("missing")).toEqual([]);
 
     expect(builders.getCategoryDefinition("targets")).toMatchObject({
-      label: "Target Configuration",
+      icon: "Target",
       exclusive: true,
     });
     expect(builders.getCategoryDefinition("missing")).toBeUndefined();
   });
 
-  it("maps component catalogs to category filters and multiselect options", () => {
+  it("maps component catalogs to category filters", () => {
     expect(builders.getComponentsByCategory("water").map((component) => component.name)).toEqual([
       "water",
       "moisture",
     ]);
     expect(builders.getComponentsByCategory("missing")).toEqual([]);
-
-    expect(builders.getComponentOptions()[0]).toEqual({
-      value: "water",
-      label: "Water",
-      description: "H2O absorption bands",
-    });
   });
 
   it("builds default synthesis config and shallow step params compatibly", () => {

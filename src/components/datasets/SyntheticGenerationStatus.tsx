@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { AnimatePresence, motion } from "@/lib/motion";
 import { getGenerationErrorMessage } from "./SyntheticDataDialogData";
@@ -15,6 +16,7 @@ export function SyntheticGenerationStatus({
   isError,
   isSuccess,
 }: SyntheticGenerationStatusProps) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence mode="wait">
       {isSuccess && data && (
@@ -27,7 +29,7 @@ export function SyntheticGenerationStatus({
           <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="font-medium text-sm">
-              Dataset generated successfully!
+              {t("datasets.synthetic.generated")}
             </p>
             <p className="text-xs truncate">{data.name}</p>
           </div>
@@ -42,8 +44,8 @@ export function SyntheticGenerationStatus({
         >
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm">Generation failed</p>
-            <p className="text-xs">{getGenerationErrorMessage(error)}</p>
+            <p className="font-medium text-sm">{t("datasets.synthetic.failed")}</p>
+            <p className="text-xs">{getGenerationErrorMessage(error, t)}</p>
           </div>
         </motion.div>
       )}

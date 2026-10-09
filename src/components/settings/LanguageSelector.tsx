@@ -124,8 +124,9 @@ function LanguageDisplay({
   languages: readonly { code: string; name: string; nativeName: string; flag: string }[];
   compact: boolean;
 }) {
+  const { t } = useTranslation();
   const lang = languages.find((l) => l.code === code);
-  if (!lang) return <span>Unknown</span>;
+  if (!lang) return <span>{t("settings.languageSelector.unknown")}</span>;
 
   return (
     <div className="flex items-center gap-2">

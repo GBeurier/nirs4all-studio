@@ -6,22 +6,22 @@ import type {
   ScoreColumn,
 } from '@/types/inspector';
 
-export const INSPECTOR_GROUP_BY_OPTIONS: { value: GroupByVariable; label: string }[] = [
-  { value: 'model_class', label: 'Model Class' },
-  { value: 'preprocessings', label: 'Preprocessing' },
-  { value: 'dataset_name', label: 'Dataset' },
-  { value: 'task_type', label: 'Task Type' },
+export const INSPECTOR_GROUP_BY_OPTIONS: { value: GroupByVariable; labelKey: string }[] = [
+  { value: 'model_class', labelKey: 'inspector.fields.modelClass' },
+  { value: 'preprocessings', labelKey: 'inspector.fields.preprocessing' },
+  { value: 'dataset_name', labelKey: 'inspector.fields.dataset' },
+  { value: 'task_type', labelKey: 'inspector.fields.taskType' },
 ];
 
-export const INSPECTOR_GROUP_PRIMARY_MODES: { value: GroupMode; label: string }[] = [
-  { value: 'by_variable', label: 'Variable' },
-  { value: 'by_top_k', label: 'Top K' },
+export const INSPECTOR_GROUP_PRIMARY_MODES: { value: GroupMode; labelKey: string }[] = [
+  { value: 'by_variable', labelKey: 'inspector.groupModes.by_variable' },
+  { value: 'by_top_k', labelKey: 'inspector.groupModes.by_top_k' },
 ];
 
-export const INSPECTOR_GROUP_ADVANCED_MODES: { value: GroupMode; label: string }[] = [
-  { value: 'by_range', label: 'Range' },
-  { value: 'by_branch', label: 'Branch' },
-  { value: 'by_expression', label: 'Expr' },
+export const INSPECTOR_GROUP_ADVANCED_MODES: { value: GroupMode; labelKey: string }[] = [
+  { value: 'by_range', labelKey: 'inspector.groupModes.by_range' },
+  { value: 'by_branch', labelKey: 'inspector.groupModes.by_branch' },
+  { value: 'by_expression', labelKey: 'inspector.groupModes.by_expression' },
 ];
 
 export function isInspectorAdvancedGroupMode(mode: GroupMode): boolean {

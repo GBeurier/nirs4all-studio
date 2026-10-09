@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
+import "@/lib/i18n";
 import { CategoricalPredictResults } from "./CategoricalPredictResults";
 import { buildConfusionMatrixFromVectors } from "@/components/runs/modelDetailClassification";
 

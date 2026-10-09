@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import {
   CLUSTER_EXPERIMENT_EXECUTION_ADAPTER,
   DEFAULT_EXPERIMENT_EXECUTION_ADAPTERS,
@@ -163,39 +165,56 @@ export function normalizeNewExperimentExecutionEnvironmentOptions(
 export const DEFAULT_NEW_EXPERIMENT_LAUNCH_SUBMITTERS: SubmitExperimentLaunchSubmissionOptions = {};
 const WORKSPACE_PREDICTION_PUBLICATION_DESTINATION = "result_metadata.robustness_evidence" as const;
 
-const DEFAULT_NATIVE_BACKEND_AVAILABILITY: readonly NewExperimentNativeBackendAvailability[] = [
+function getNativeBackendLabel(backend: NewExperimentNativeExecutionBackend): string {
+  return i18n.t(backend === "cluster" ? "newExperiment.campaign.backend.cluster" : "newExperiment.campaign.backend.wasmLocal");
+}
+
+/** Caches a language-dependent default so repeated reads keep a stable identity until the language changes. */
+function cacheByLanguage<T>(build: () => T): () => T {
+  let cached: { language: string | undefined; value: T } | undefined;
+  return () => {
+    if (!cached || cached.language !== i18n.language) {
+      cached = { language: i18n.language, value: build() };
+    }
+    return cached.value;
+  };
+}
+
+const getDefaultNativeBackendAvailability = cacheByLanguage<readonly NewExperimentNativeBackendAvailability[]>(() => [
   {
     backend: "cluster",
     adapterId: CLUSTER_EXPERIMENT_EXECUTION_ADAPTER.id,
     status: "not_configured",
-    statusLabel: "Not configured",
-    message: "Cluster execution is typed but no native submitter is configured.",
+    statusLabel: i18n.t("common.notConfigured"),
+    message: i18n.t("newExperiment.environment.messages.notConfiguredSubmitter", { backend: getNativeBackendLabel("cluster") }),
   },
   {
     backend: "wasm-local",
     adapterId: WASM_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.id,
     status: "not_configured",
-    statusLabel: "Not configured",
-    message: "WASM local execution is typed but no native submitter is configured.",
+    statusLabel: i18n.t("common.notConfigured"),
+    message: i18n.t("newExperiment.environment.messages.notConfiguredSubmitter", { backend: getNativeBackendLabel("wasm-local") }),
   },
-];
+]);
 
-const DEFAULT_WORKSPACE_PREDICTION_PUBLICATION_AVAILABILITY: readonly NewExperimentWorkspacePredictionPublicationAvailability[] = [
+const getDefaultWorkspacePredictionPublicationAvailability = cacheByLanguage<
+  readonly NewExperimentWorkspacePredictionPublicationAvailability[]
+>(() => [
   {
     backend: "cluster",
     status: "not_configured",
-    statusLabel: "Not configured",
+    statusLabel: i18n.t("common.notConfigured"),
     destination: WORKSPACE_PREDICTION_PUBLICATION_DESTINATION,
-    message: "Cluster execution is typed but no workspace prediction publisher is configured.",
+    message: i18n.t("newExperiment.environment.messages.notConfiguredPublisher", { backend: getNativeBackendLabel("cluster") }),
   },
   {
     backend: "wasm-local",
     status: "not_configured",
-    statusLabel: "Not configured",
+    statusLabel: i18n.t("common.notConfigured"),
     destination: WORKSPACE_PREDICTION_PUBLICATION_DESTINATION,
-    message: "WASM local execution is typed but no persistent workspace prediction publisher is configured.",
+    message: i18n.t("newExperiment.environment.messages.notConfiguredPersistentPublisher", { backend: getNativeBackendLabel("wasm-local") }),
   },
-];
+]);
 
 export function buildNewExperimentExecutionEnvironmentDiagnostics(
   environment: Pick<
@@ -235,19 +254,22 @@ export function buildNewExperimentExecutionEnvironmentDiagnostics(
   };
 }
 
+const getDefaultDiagnostics = cacheByLanguage(() => buildNewExperimentExecutionEnvironmentDiagnostics({
+  availableExecutionAdapters: DEFAULT_EXPERIMENT_EXECUTION_ADAPTERS,
+  executionBackendCapabilities: [],
+  launchSubmitters: DEFAULT_NEW_EXPERIMENT_LAUNCH_SUBMITTERS,
+  nativeBackendAvailability: getDefaultNativeBackendAvailability(),
+  workspacePredictionPublicationAvailability: getDefaultWorkspacePredictionPublicationAvailability(),
+}));
+
+/** Default environment; the localized availability messages are resolved lazily in the active language. */
 export const DEFAULT_NEW_EXPERIMENT_EXECUTION_ENVIRONMENT: NewExperimentExecutionEnvironment = {
   availableExecutionAdapters: DEFAULT_EXPERIMENT_EXECUTION_ADAPTERS,
   executionBackendCapabilities: [],
   launchSubmitters: DEFAULT_NEW_EXPERIMENT_LAUNCH_SUBMITTERS,
-  nativeBackendAvailability: DEFAULT_NATIVE_BACKEND_AVAILABILITY,
-  workspacePredictionPublicationAvailability: DEFAULT_WORKSPACE_PREDICTION_PUBLICATION_AVAILABILITY,
-  diagnostics: buildNewExperimentExecutionEnvironmentDiagnostics({
-    availableExecutionAdapters: DEFAULT_EXPERIMENT_EXECUTION_ADAPTERS,
-    executionBackendCapabilities: [],
-    launchSubmitters: DEFAULT_NEW_EXPERIMENT_LAUNCH_SUBMITTERS,
-    nativeBackendAvailability: DEFAULT_NATIVE_BACKEND_AVAILABILITY,
-    workspacePredictionPublicationAvailability: DEFAULT_WORKSPACE_PREDICTION_PUBLICATION_AVAILABILITY,
-  }),
+  get nativeBackendAvailability() { return getDefaultNativeBackendAvailability(); },
+  get workspacePredictionPublicationAvailability() { return getDefaultWorkspacePredictionPublicationAvailability(); },
+  get diagnostics() { return getDefaultDiagnostics(); },
 };
 
 function appendAdapterIfMissing(
@@ -309,10 +331,10 @@ function buildNativeBackendAvailabilityEntry({
       backend,
       adapterId,
       status: "backend_unavailable",
-      statusLabel: "Unavailable",
+      statusLabel: i18n.t("newExperiment.environment.status.unavailable"),
       message: getCapabilityMessage(
         capability,
-        `${capability.label} execution is typed but no execution driver is configured.`,
+        i18n.t("newExperiment.environment.messages.noDriver", { label: capability.label }),
       ),
     };
   }
@@ -322,7 +344,7 @@ function buildNativeBackendAvailabilityEntry({
       backend,
       adapterId,
       status: "available",
-      statusLabel: "Available",
+      statusLabel: i18n.t("newExperiment.environment.status.available"),
       message: configuredMessage,
     };
   }
@@ -332,8 +354,8 @@ function buildNativeBackendAvailabilityEntry({
       backend,
       adapterId,
       status: "not_configured",
-      statusLabel: "Not configured",
-      message: `${capability.label} execution backend is available, but no native submitter is configured.`,
+      statusLabel: i18n.t("common.notConfigured"),
+      message: i18n.t("newExperiment.environment.messages.availableNoSubmitter", { label: capability.label }),
     };
   }
 
@@ -341,7 +363,7 @@ function buildNativeBackendAvailabilityEntry({
     backend,
     adapterId,
     status: "not_configured",
-    statusLabel: "Not configured",
+    statusLabel: i18n.t("common.notConfigured"),
     message: defaultMessage,
   };
 }
@@ -356,16 +378,16 @@ function buildNativeBackendAvailability(
       adapterId: CLUSTER_EXPERIMENT_EXECUTION_ADAPTER.id,
       capability: getCapabilityByBackend(capabilities, "cluster"),
       hasSubmitter: Boolean(options.submitClusterRun),
-      configuredMessage: "Cluster execution submitter is configured.",
-      defaultMessage: "Cluster execution is typed but no native submitter is configured.",
+      configuredMessage: i18n.t("newExperiment.environment.messages.submitterConfigured", { backend: getNativeBackendLabel("cluster") }),
+      defaultMessage: i18n.t("newExperiment.environment.messages.notConfiguredSubmitter", { backend: getNativeBackendLabel("cluster") }),
     }),
     buildNativeBackendAvailabilityEntry({
       backend: "wasm-local",
       adapterId: WASM_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.id,
       capability: getCapabilityByBackend(capabilities, "wasm-local"),
       hasSubmitter: Boolean(options.submitWasmLocalRun),
-      configuredMessage: "WASM local execution submitter is configured.",
-      defaultMessage: "WASM local execution is typed but no native submitter is configured.",
+      configuredMessage: i18n.t("newExperiment.environment.messages.submitterConfigured", { backend: getNativeBackendLabel("wasm-local") }),
+      defaultMessage: i18n.t("newExperiment.environment.messages.notConfiguredSubmitter", { backend: getNativeBackendLabel("wasm-local") }),
     }),
   ];
 }
@@ -393,9 +415,12 @@ function buildWorkspacePredictionPublicationAvailabilityEntry({
     return {
       backend,
       status: "backend_unavailable",
-      statusLabel: "Unavailable",
+      statusLabel: i18n.t("newExperiment.environment.status.unavailable"),
       destination,
-      message: `${backendAvailability.statusLabel}: ${backendAvailability.message}`,
+      message: i18n.t("newExperiment.environment.statusWithMessage", {
+        status: backendAvailability.statusLabel,
+        message: backendAvailability.message,
+      }),
     };
   }
 
@@ -403,9 +428,12 @@ function buildWorkspacePredictionPublicationAvailabilityEntry({
     return {
       backend,
       status: "not_configured",
-      statusLabel: "Not configured",
+      statusLabel: i18n.t("common.notConfigured"),
       destination,
-      message: `${backendAvailability?.message ?? `${backend} execution is not configured.`} Workspace prediction publication is not available.`,
+      message: i18n.t("newExperiment.environment.messages.publicationUnavailable", {
+        message: backendAvailability?.message
+          ?? i18n.t("newExperiment.environment.messages.executionNotConfigured", { backend: getNativeBackendLabel(backend) }),
+      }),
     };
   }
 
@@ -413,18 +441,21 @@ function buildWorkspacePredictionPublicationAvailabilityEntry({
     return {
       backend,
       status: "publisher_configured",
-      statusLabel: "Publisher configured",
+      statusLabel: i18n.t("newExperiment.environment.status.publisherConfigured"),
       destination,
-      message: `${backendAvailability.message} Workspace prediction evidence publication is configured for ${destination}.`,
+      message: i18n.t("newExperiment.environment.messages.publicationConfigured", {
+        message: backendAvailability.message,
+        destination,
+      }),
     };
   }
 
   return {
     backend,
     status: "handoff_only",
-    statusLabel: "Handoff only",
+    statusLabel: i18n.t("newExperiment.environment.status.handoffOnly"),
     destination,
-    message: `${backendAvailability.message} Workspace prediction evidence requests remain handoff-only until a concrete publisher/store is configured.`,
+    message: i18n.t("newExperiment.environment.messages.publicationHandoffOnly", { message: backendAvailability.message }),
   };
 }
 

@@ -111,6 +111,7 @@ interface DetectedEnvironmentButtonProps {
 }
 
 function DetectedEnvironmentButton({ env, onInspectExisting }: DetectedEnvironmentButtonProps) {
+  const { t } = useTranslation();
   return (
     <button
       className="w-full flex items-center gap-3 p-3 rounded-lg border hover:border-primary/50 hover:bg-accent/50 transition-colors text-left"
@@ -124,17 +125,17 @@ function DetectedEnvironmentButton({ env, onInspectExisting }: DetectedEnvironme
           <p className="text-sm font-medium truncate">Python {env.pythonVersion}</p>
           <Badge variant="secondary" className="text-xs">{getDesktopEnvKindLabel(env.envKind)}</Badge>
           <Badge variant={env.hasCorePackages ? "outline" : "destructive"} className="text-xs">
-            {env.hasCorePackages ? "Core ready" : "Core missing"}
+            {env.hasCorePackages ? t("setupWizard.env.coreReady") : t("setupWizard.env.coreMissing")}
           </Badge>
           <Badge variant={env.writable ? "outline" : "secondary"} className="text-xs">
             {getDesktopEnvWriteAccessLabel(env.writable)}
           </Badge>
         </div>
         <p className="text-xs text-muted-foreground truncate" title={env.path}>
-          Root: {env.path}
+          {t("setupWizard.env.root", { path: env.path })}
         </p>
         <p className="text-xs text-muted-foreground truncate" title={env.pythonPath}>
-          Executable: {env.pythonPath}
+          {t("setupWizard.env.executable", { path: env.pythonPath })}
         </p>
       </div>
       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />

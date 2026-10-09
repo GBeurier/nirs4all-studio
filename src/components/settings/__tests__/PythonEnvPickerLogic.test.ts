@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+/**
+ * @vitest-environment jsdom
+ */
+
+import i18n from "i18next";
+import { beforeAll, describe, expect, it } from "vitest";
+
+import "@/lib/i18n";
 import type { OptionalPackageInfo } from "@/api/config";
 import type { DependenciesResponse, DependencyInfo } from "@/api/dependencies";
 import {
@@ -10,6 +17,12 @@ import {
   shortenPath,
   shortVersion,
 } from "../PythonEnvPickerLogic";
+
+const t = i18n.t.bind(i18n);
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 function createDependency(name: string): DependencyInfo {
   return {
@@ -55,15 +68,15 @@ function createDependencies(packages: DependencyInfo[]): DependenciesResponse {
 
 describe("PythonEnvPickerLogic", () => {
   it("formats runtime versions and display paths without component state", () => {
-    expect(shortVersion(null)).toBe("Unknown");
-    expect(shortVersion("Python 3.13.1 (main, Apr 18 2026)")).toBe("3.13.1");
-    expect(shortVersion("3.14-dev")).toBe("3.14-dev");
+    expect(shortVersion(null, t)).toBe("Unknown");
+    expect(shortVersion("Python 3.13.1 (main, Apr 18 2026)", t)).toBe("3.13.1");
+    expect(shortVersion("3.14-dev", t)).toBe("3.14-dev");
 
-    expect(shortenPath(null)).toBe("Not configured");
-    expect(shortenPath("C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python313\\python.exe")).toBe(
+    expect(shortenPath(null, t)).toBe("Not configured");
+    expect(shortenPath("C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python313\\python.exe", t)).toBe(
       "...\\Python\\Python313\\python.exe",
     );
-    expect(shortenPath("/opt/nirs4all/python/bin/python")).toBe(".../python/bin/python");
+    expect(shortenPath("/opt/nirs4all/python/bin/python", t)).toBe(".../python/bin/python");
   });
 
   it("normalizes package names and indexes dependencies with pip-name equivalents", () => {
@@ -94,10 +107,10 @@ describe("PythonEnvPickerLogic", () => {
 
     expect(getOptionalTargetVersion(optionalWithRecommended)).toBe("2.0.3");
     expect(getOptionalTargetVersion(optionalWithMinimumOnly)).toBe(">=2.0.0");
-    expect(getPackageStatusBadge("aligned")).toEqual({ label: "Present", variant: "outline" });
-    expect(getPackageStatusBadge("outdated")).toEqual({ label: "Update needed", variant: "secondary" });
-    expect(getPackageStatusBadge("missing")).toEqual({ label: "Not present", variant: "destructive" });
-    expect(getPackageStatusBadge("extra")).toEqual({ label: "extra", variant: "secondary" });
+    expect(getPackageStatusBadge("aligned", t)).toEqual({ label: "Present", variant: "outline" });
+    expect(getPackageStatusBadge("outdated", t)).toEqual({ label: "Update needed", variant: "secondary" });
+    expect(getPackageStatusBadge("missing", t)).toEqual({ label: "Not present", variant: "destructive" });
+    expect(getPackageStatusBadge("extra", t)).toEqual({ label: "extra", variant: "secondary" });
   });
 
   it("matches current Python paths across Windows separator and case differences", () => {

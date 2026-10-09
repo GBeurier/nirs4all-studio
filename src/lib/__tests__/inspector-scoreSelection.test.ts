@@ -9,6 +9,7 @@ import {
   INSPECTOR_SCORE_OPTIONS,
   isInspectorScoreLowerBetter,
 } from "@/lib/inspector/scoreSelection";
+import { tStub } from "./helpers/i18nStub";
 
 function chain(overrides: Partial<InspectorChainSummary> = {}): InspectorChainSummary {
   return {
@@ -47,7 +48,7 @@ describe("inspector score selection", () => {
       "final_test_score",
       "final_train_score",
     ]);
-    expect(getInspectorScoreColumnLabel("cv_val_score")).toBe("CV Val Score");
+    expect(getInspectorScoreColumnLabel("cv_val_score", tStub)).toBe("inspector.scores.cv_val_score");
   });
 
   it("selects the first available metric as the inspector reference metric", () => {
@@ -61,8 +62,8 @@ describe("inspector score selection", () => {
 
   it("centralizes score direction labels", () => {
     expect(isInspectorScoreLowerBetter("rmse")).toBe(true);
-    expect(getInspectorScoreDirectionLabel("rmse")).toBe("Lower is better");
-    expect(getInspectorScoreDirectionLabel("r2")).toBe("Higher is better");
+    expect(getInspectorScoreDirectionLabel("rmse", tStub)).toBe("inspector.scores.lowerIsBetter");
+    expect(getInspectorScoreDirectionLabel("r2", tStub)).toBe("inspector.scores.higherIsBetter");
   });
 
   it("uses metric abbreviation when present and score column when metric is missing", () => {

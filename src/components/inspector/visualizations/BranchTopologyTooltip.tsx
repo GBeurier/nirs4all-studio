@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   formatBranchTopologyScore,
 } from '@/lib/inspector/branchTopologyPresentation';
@@ -15,6 +16,8 @@ interface BranchTopologyTooltipProps {
 }
 
 export function BranchTopologyTooltip({ hovered }: BranchTopologyTooltipProps) {
+  const { t } = useTranslation();
+
   if (!hovered) {
     return null;
   }
@@ -27,18 +30,18 @@ export function BranchTopologyTooltip({ hovered }: BranchTopologyTooltipProps) {
       style={{ left: hovered.mouseX + 12, top: hovered.mouseY - 60 }}
     >
       <div className="font-medium">{node.label}</div>
-      <div className="capitalize">Type: {node.type}</div>
-      <div>Depth: {node.depth}</div>
+      <div>{t('inspector.charts.tooltip.type', { value: t(`inspector.charts.nodeTypes.${node.type}`) })}</div>
+      <div>{t('inspector.charts.tooltip.depth', { value: node.depth })}</div>
       {node.metrics && (
         <>
           {node.metrics.mean_score != null && (
-            <div>Mean score: {formatBranchTopologyScore(node.metrics.mean_score)}</div>
+            <div>{t('inspector.charts.tooltip.meanScore', { value: formatBranchTopologyScore(node.metrics.mean_score) })}</div>
           )}
-          <div>Chains: {node.metrics.chain_count}</div>
+          <div>{t('inspector.charts.tooltip.chains', { value: node.metrics.chain_count })}</div>
         </>
       )}
       {shouldShowBranchTopologyClickHint(node) && (
-        <div className="mt-1 text-[10px] opacity-70">Click to select</div>
+        <div className="mt-1 text-[10px] opacity-70">{t('inspector.charts.tooltip.clickToSelect')}</div>
       )}
     </div>
   );

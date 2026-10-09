@@ -12,36 +12,36 @@ import {
 describe("PredictionFiltersData", () => {
   it("defines the fold and data visibility option catalogs", () => {
     expect(PREDICTION_FOLD_VISIBILITY_OPTIONS).toEqual([
-      { value: "folds", label: "Folds" },
-      { value: "refits", label: "Refits" },
-      { value: "averages", label: "Averages" },
+      { value: "folds", labelKey: "predictions.filters.folds" },
+      { value: "refits", labelKey: "predictions.filters.refits" },
+      { value: "averages", labelKey: "predictions.filters.averages" },
     ]);
 
     expect(PREDICTION_DATA_VISIBILITY_OPTIONS).toEqual([
-      { value: "raw", label: "Raw" },
-      { value: "aggregated", label: "Aggregated" },
+      { value: "raw", labelKey: "predictions.filters.raw" },
+      { value: "aggregated", labelKey: "predictions.filters.aggregated" },
     ]);
   });
 
   it("keeps facet labels, placeholders, and trigger widths in one catalog", () => {
     expect(getPredictionFacetFilter("dataset")).toEqual({
       id: "dataset",
-      allLabel: "All Datasets",
-      placeholder: "Dataset",
+      allLabelKey: "predictions.filters.allDatasets",
+      placeholderKey: "predictions.filters.dataset",
       triggerClassName: "w-[170px]",
     });
 
     expect(getPredictionFacetFilter("model")).toEqual({
       id: "model",
-      allLabel: "All Models",
-      placeholder: "Model",
+      allLabelKey: "predictions.filters.allModels",
+      placeholderKey: "predictions.filters.model",
       triggerClassName: "w-[160px]",
     });
 
     expect(getPredictionFacetFilter("taskType")).toEqual({
       id: "taskType",
-      allLabel: "All Tasks",
-      placeholder: "Task",
+      allLabelKey: "predictions.filters.allTasks",
+      placeholderKey: "predictions.filters.task",
       triggerClassName: "w-[140px]",
     });
   });
@@ -49,13 +49,13 @@ describe("PredictionFiltersData", () => {
   it("groups visibility controls with their labels and typed options", () => {
     expect(getPredictionVisibilityFilter("foldTypes")).toEqual({
       id: "foldTypes",
-      label: "Type",
+      labelKey: "predictions.filters.type",
       options: PREDICTION_FOLD_VISIBILITY_OPTIONS,
     });
 
     expect(getPredictionVisibilityFilter("dataKinds")).toEqual({
       id: "dataKinds",
-      label: "Data",
+      labelKey: "predictions.filters.data",
       options: PREDICTION_DATA_VISIBILITY_OPTIONS,
     });
   });
@@ -63,12 +63,12 @@ describe("PredictionFiltersData", () => {
   it("derives clear action visibility from active filters", () => {
     expect(getPredictionFiltersClearAction(true)).toEqual({
       isVisible: true,
-      label: "Clear",
+      labelKey: "common.clear",
     });
 
     expect(getPredictionFiltersClearAction(false)).toEqual({
       isVisible: false,
-      label: "Clear",
+      labelKey: "common.clear",
     });
   });
 
@@ -81,7 +81,7 @@ describe("PredictionFiltersData", () => {
     );
     expect(readModel.clearAction).toEqual({
       isVisible: true,
-      label: "Clear",
+      labelKey: "common.clear",
     });
   });
 });

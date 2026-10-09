@@ -1,4 +1,5 @@
 import { Archive, Fingerprint } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import type { ResultArtifactSummaryData } from "./resultDetailData";
 
@@ -7,6 +8,7 @@ interface ResultMetricsArtifactSummaryProps {
 }
 
 export function ResultMetricsArtifactSummary({ summary }: ResultMetricsArtifactSummaryProps) {
+  const { t } = useTranslation();
   if (summary.groups.length === 0) return null;
 
   return (
@@ -14,7 +16,7 @@ export function ResultMetricsArtifactSummary({ summary }: ResultMetricsArtifactS
       <div className="mb-3 flex items-center justify-between gap-3">
         <h4 className="flex items-center gap-2 text-sm font-medium">
           <Archive className="h-4 w-4 text-muted-foreground" />
-          Artifacts
+          {t("results.artifacts.title")}
         </h4>
         <Badge variant="outline" className="text-xs">
           {summary.totalCountLabel}
@@ -33,7 +35,7 @@ export function ResultMetricsArtifactSummary({ summary }: ResultMetricsArtifactS
         <div className="mb-3 space-y-2 border-b pb-3">
           <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
             <Fingerprint className="h-3.5 w-3.5" />
-            Repository provenance
+            {t("results.artifacts.repositoryProvenance")}
           </div>
           <div className="space-y-1.5">
             {summary.repositoryItems.map(item => (

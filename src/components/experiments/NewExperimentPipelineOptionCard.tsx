@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Star } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ export function NewExperimentPipelineOptionCard({
   selected,
   onTogglePipeline,
 }: NewExperimentPipelineOptionCardProps) {
+  const { t } = useTranslation();
   const badges = buildExperimentPipelineSelectionBadges(pipeline);
   const details = buildExperimentPipelineSelectionDetails(pipeline);
   const detailChipLabels = buildExperimentPipelineSelectionChipLabels(details);
@@ -30,13 +32,16 @@ export function NewExperimentPipelineOptionCard({
   return (
     <NewExperimentSelectableOptionCard
       dataAttributeName="data-experiment-pipeline-id"
+      label={pipeline.name}
       optionId={pipeline.id}
       selected={selected}
       onToggle={onTogglePipeline}
     >
       <div className="flex items-center gap-2">
         <p className="font-medium text-foreground">{pipeline.name}</p>
-        {badges.showFavorite && <Star className="h-3 w-3 fill-chart-2 text-chart-2" />}
+        {badges.showFavorite && (
+          <Star role="img" aria-label={t("newExperiment.selection.favoriteBadge")} className="h-3 w-3 fill-chart-2 text-chart-2" />
+        )}
         {badges.showPreset && (
           <Badge variant="outline" className="text-xs">{experimentSelectionCopy.pipelinePresetBadge}</Badge>
         )}

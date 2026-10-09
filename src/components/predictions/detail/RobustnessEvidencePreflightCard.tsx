@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import type { PredictionRobustnessEvidenceResponse } from "@/types/aggregated-predictions";
 import { buildRobustnessEvidencePreflightView } from "./robustnessEvidencePreflight";
@@ -11,22 +12,23 @@ export function RobustnessEvidencePreflightCard({
   evidence,
   loading,
 }: RobustnessEvidencePreflightCardProps) {
+  const { t } = useTranslation();
   if (loading) {
     return (
       <div className="mt-2 rounded-md border border-border/70 bg-muted/20 px-2 py-1.5 text-[11px] text-muted-foreground">
-        Checking spectral/OOD replay evidence...
+        {t("predictions.detail.preflight.checking")}
       </div>
     );
   }
 
   if (!evidence) return null;
 
-  const view = buildRobustnessEvidencePreflightView(evidence);
+  const view = buildRobustnessEvidencePreflightView(evidence, t);
 
   return (
     <details className="mt-2 rounded-md border border-dashed border-border/70 bg-muted/20 px-2 py-1.5 text-[11px] text-muted-foreground">
       <summary className="cursor-pointer text-foreground">
-        Spectral/OOD replay preflight: {view.summaryStatusLabel}
+        {t("predictions.detail.preflight.summary", { status: view.summaryStatusLabel })}
       </summary>
       <div className="mt-2 space-y-2">
         <div className="flex flex-wrap gap-1.5">
@@ -46,13 +48,13 @@ export function RobustnessEvidencePreflightCard({
 
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="rounded border border-border/50 bg-background/60 px-2 py-1.5">
-            <p className="font-medium text-foreground">Stored-prediction scenarios</p>
+            <p className="font-medium text-foreground">{t("predictions.detail.preflight.storedScenarios")}</p>
             <p className="mt-1 break-words">
               {view.storedScenarioLabel}
             </p>
           </div>
           <div className="rounded border border-border/50 bg-background/60 px-2 py-1.5">
-            <p className="font-medium text-foreground">Spectral/OOD scenarios</p>
+            <p className="font-medium text-foreground">{t("predictions.detail.preflight.spectralScenarios")}</p>
             <p className="mt-1 break-words">
               {view.spectralScenarioLabel}
             </p>
@@ -60,7 +62,7 @@ export function RobustnessEvidencePreflightCard({
         </div>
 
         <div className="rounded border border-border/50 bg-background/60 px-2 py-1.5">
-          <p className="font-medium text-foreground">Native replay handoff plan</p>
+          <p className="font-medium text-foreground">{t("predictions.detail.preflight.handoffPlan")}</p>
           <div className="mt-1.5 grid gap-1.5">
             {view.replayPlanSteps.map((step) => (
               <div

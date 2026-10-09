@@ -9,6 +9,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Tabs } from "@/components/ui/tabs";
+import "@/lib/i18n";
 import type { PipelineRun } from "@/types/runs";
 import { ResultDetailMetricsTab } from "./ResultDetailMetricsTab";
 

@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useCallback, useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RunDetailSheet } from "@/components/runs/RunDetailSheet";
 import { useMetricSelection } from "@/components/scores/useMetricSelection";
@@ -54,6 +55,7 @@ function formatRunsErrorMessage(error: unknown): string | null {
 }
 
 export default function Runs() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [detailRun, setDetailRun] = useState<EnrichedRun | null>(null);
@@ -201,10 +203,14 @@ export default function Runs() {
     [runs, workspaceRunStats, selectedProjectId],
   );
 
-  const handleViewDetails = (enrichedRun: EnrichedRun) => {
+  const handleViewDetails = useCallback((enrichedRun: EnrichedRun) => {
     setDetailRun(enrichedRun);
     setSheetOpen(true);
-  };
+  }, []);
+
+  const statsScope = selectedProjectId
+    ? t("runs.list.scopeFiltered")
+    : workspaceRunStats ? t("runs.list.scopeWorkspace") : t("runs.list.scopeVisible");
 
   return (
     <div className="p-6 space-y-5">
@@ -216,8 +222,7 @@ export default function Runs() {
         onProjectChange={setSelectedProjectId}
       />
 
-      <RunsStatsGrid stats={stats} scope={selectedProjectId
-        ? "Filtered runs" : workspaceRunStats ? "Workspace totals" : "Visible runs"} />
+      <RunsStatsGrid stats={stats} scope={statsScope} />
 
       <RunsExecutionTasksPanel
         data={executionTaskPanelData}

@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import '@/lib/i18n';
 import { ScoreCardTypeBadge } from './ScoreCardTypeBadge';
 import type { ScoreCardRow } from '@/types/score-cards';
 

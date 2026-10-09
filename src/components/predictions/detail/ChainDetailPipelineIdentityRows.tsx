@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ChainDetailIdentityRowsProps {
   branchPathLabel: string | null;
@@ -13,18 +14,19 @@ export function ChainDetailIdentityRows({
   modelClass,
   pipelineName,
 }: ChainDetailIdentityRowsProps) {
+  const { t } = useTranslation();
   return (
     <>
       {(branchPathLabel || generatorChoiceCount > 0) && (
         <div className="mt-4 space-y-2 text-sm">
           {branchPathLabel && (
-            <KeyValueRow k="Branch path">
+            <KeyValueRow k={t("predictions.detail.identity.branchPath")}>
               <span className="font-mono text-xs">{branchPathLabel}</span>
             </KeyValueRow>
           )}
           {generatorChoiceCount > 0 && (
-            <KeyValueRow k="Pipeline variants">
-              <span className="text-xs">{generatorChoiceCount} expanded</span>
+            <KeyValueRow k={t("predictions.detail.identity.pipelineVariants")}>
+              <span className="text-xs">{t("predictions.detail.identity.expanded", { count: generatorChoiceCount })}</span>
             </KeyValueRow>
           )}
         </div>
@@ -33,12 +35,12 @@ export function ChainDetailIdentityRows({
       {(modelClass || pipelineName) && (
         <div className="mt-4 space-y-2 text-sm">
           {modelClass && (
-            <KeyValueRow k="Class">
+            <KeyValueRow k={t("predictions.detail.identity.class")}>
               <span className="font-mono text-xs">{modelClass}</span>
             </KeyValueRow>
           )}
           {pipelineName && pipelineName !== modelClass && (
-            <KeyValueRow k="Pipeline">{pipelineName}</KeyValueRow>
+            <KeyValueRow k={t("predictions.detail.identity.pipeline")}>{pipelineName}</KeyValueRow>
           )}
         </div>
       )}

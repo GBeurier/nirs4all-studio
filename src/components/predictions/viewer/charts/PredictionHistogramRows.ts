@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import { formatMetricValue } from "@/lib/scores";
 import type {
   ChartConfig,
@@ -55,6 +57,7 @@ export function buildPredictionHistogramRowsModel({
   showErrorBars,
   yAxis,
   effectiveSeries,
+  t,
 }: {
   groups: PredictionHistogramGroupDef[];
   activeVariants: PredictionHistogramVariantKey[];
@@ -67,6 +70,7 @@ export function buildPredictionHistogramRowsModel({
   showErrorBars: boolean;
   yAxis: HistogramYAxis;
   effectiveSeries: HistogramSeries;
+  t: TFunction;
 }): PredictionHistogramRowsModel {
   const entries: PredictionHistogramBarEntry[] = [];
   const stackId = layout === "stacked" ? "stack" : undefined;
@@ -74,11 +78,12 @@ export function buildPredictionHistogramRowsModel({
   for (const group of groups) {
     for (const variant of activeVariants) {
       const dataKey = `${group.key}:${variant}`;
-      const suffix =
-        effectiveSeries === "both" ? ` (${variant === "actual" ? "actual" : "predicted"})` : "";
+      const label = effectiveSeries === "both"
+        ? t(variant === "actual" ? "predictions.charts.histogram.suffixActual" : "predictions.charts.histogram.suffixPredicted", { label: group.label })
+        : group.label;
       entries.push({
         dataKey,
-        label: `${group.label}${suffix}`,
+        label,
         color: group.color,
         stackId,
         errorKey: showErrorBars ? `${dataKey}__err` : undefined,
@@ -219,26 +224,29 @@ export function getPredictionHistogramReferenceLineX({
 export function getPredictionHistogramYAxisLabel(
   yAxis: HistogramYAxis,
   taskKind: TaskKind,
+  t: TFunction,
 ): string {
-  return yAxis === "density" && taskKind === "regression" ? "Density" : "Count";
+  return t(yAxis === "density" && taskKind === "regression" ? "predictions.charts.histogram.density" : "predictions.charts.histogram.count");
 }
 
 export function getPredictionHistogramXAxisLabel(
   taskKind: TaskKind,
   effectiveSeries: HistogramSeries,
+  t: TFunction,
 ): string {
-  if (taskKind === "classification") return "Class";
-  if (effectiveSeries === "residuals") return "Residual (y_true − y_pred)";
-  if (effectiveSeries === "actual") return "Actual";
-  if (effectiveSeries === "predicted") return "Predicted";
-  return "Value";
+  if (taskKind === "classification") return t("predictions.charts.histogram.class");
+  if (effectiveSeries === "residuals") return t("predictions.charts.histogram.residualAxis");
+  if (effectiveSeries === "actual") return t("predictions.charts.actual");
+  if (effectiveSeries === "predicted") return t("predictions.charts.predicted");
+  return t("predictions.charts.histogram.value");
 }
 
 export function getPredictionHistogramTooltipTitle(
   taskKind: TaskKind,
   label: unknown,
+  t: TFunction,
 ): string {
-  return taskKind === "classification" ? `Class ${String(label)}` : `≈ ${String(label)}`;
+  return taskKind === "classification" ? t("predictions.charts.histogram.classTitle", { label: String(label) }) : `≈ ${String(label)}`;
 }
 
 export function formatPredictionHistogramTooltipValue(

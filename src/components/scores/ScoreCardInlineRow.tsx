@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { buildInlineScoreCardRowPresentation } from "@/lib/scoreCardRowPresentation";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ export function ScoreCardInlineRow({
   onViewChart,
   indent = 0,
 }: ScoreCardInlineRowProps) {
+  const { t } = useTranslation();
   const {
     borderClass,
     shellClass,
@@ -79,7 +81,7 @@ export function ScoreCardInlineRow({
 
             {isTrain && row.partition && <Badge variant="secondary" className="text-[9px] shrink-0">{row.partition}</Badge>}
             {row.nSamplesEval != null && <span className="text-[10px] text-muted-foreground shrink-0">n={row.nSamplesEval}</span>}
-            {isCrossval && row.foldCount != null && row.foldCount > 0 && <span className="text-[10px] text-muted-foreground shrink-0">{row.foldCount} folds</span>}
+            {isCrossval && row.foldCount != null && row.foldCount > 0 && <span className="text-[10px] text-muted-foreground shrink-0">{t("results.scores.row.folds", { count: row.foldCount })}</span>}
           </div>
         </button>
 

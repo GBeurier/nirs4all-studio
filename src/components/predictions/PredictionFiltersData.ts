@@ -2,7 +2,7 @@ import type { DataVisibility, FoldVisibility } from "@/lib/predictions/rows";
 
 export interface PredictionFilterOption<TValue extends string> {
   readonly value: TValue;
-  readonly label: string;
+  readonly labelKey: string;
 }
 
 export type PredictionFacetFilterId = "dataset" | "model" | "taskType";
@@ -11,8 +11,8 @@ export interface PredictionFacetFilterDefinition<
   TId extends PredictionFacetFilterId = PredictionFacetFilterId,
 > {
   readonly id: TId;
-  readonly allLabel: string;
-  readonly placeholder: string;
+  readonly allLabelKey: string;
+  readonly placeholderKey: string;
   readonly triggerClassName: string;
 }
 
@@ -25,33 +25,33 @@ export interface PredictionFacetFilterCatalog {
 export const PREDICTION_FACET_FILTERS = {
   dataset: {
     id: "dataset",
-    allLabel: "All Datasets",
-    placeholder: "Dataset",
+    allLabelKey: "predictions.filters.allDatasets",
+    placeholderKey: "predictions.filters.dataset",
     triggerClassName: "w-[170px]",
   },
   model: {
     id: "model",
-    allLabel: "All Models",
-    placeholder: "Model",
+    allLabelKey: "predictions.filters.allModels",
+    placeholderKey: "predictions.filters.model",
     triggerClassName: "w-[160px]",
   },
   taskType: {
     id: "taskType",
-    allLabel: "All Tasks",
-    placeholder: "Task",
+    allLabelKey: "predictions.filters.allTasks",
+    placeholderKey: "predictions.filters.task",
     triggerClassName: "w-[140px]",
   },
 } as const satisfies PredictionFacetFilterCatalog;
 
 export const PREDICTION_FOLD_VISIBILITY_OPTIONS = [
-  { value: "folds", label: "Folds" },
-  { value: "refits", label: "Refits" },
-  { value: "averages", label: "Averages" },
+  { value: "folds", labelKey: "predictions.filters.folds" },
+  { value: "refits", labelKey: "predictions.filters.refits" },
+  { value: "averages", labelKey: "predictions.filters.averages" },
 ] as const satisfies readonly PredictionFilterOption<FoldVisibility>[];
 
 export const PREDICTION_DATA_VISIBILITY_OPTIONS = [
-  { value: "raw", label: "Raw" },
-  { value: "aggregated", label: "Aggregated" },
+  { value: "raw", labelKey: "predictions.filters.raw" },
+  { value: "aggregated", labelKey: "predictions.filters.aggregated" },
 ] as const satisfies readonly PredictionFilterOption<DataVisibility>[];
 
 export interface PredictionVisibilityFilterDefinition<
@@ -59,7 +59,7 @@ export interface PredictionVisibilityFilterDefinition<
   TValue extends string,
 > {
   readonly id: TId;
-  readonly label: string;
+  readonly labelKey: string;
   readonly options: readonly PredictionFilterOption<TValue>[];
 }
 
@@ -80,19 +80,19 @@ export type PredictionVisibilityFilterId =
 export const PREDICTION_VISIBILITY_FILTERS = {
   foldTypes: {
     id: "foldTypes",
-    label: "Type",
+    labelKey: "predictions.filters.type",
     options: PREDICTION_FOLD_VISIBILITY_OPTIONS,
   },
   dataKinds: {
     id: "dataKinds",
-    label: "Data",
+    labelKey: "predictions.filters.data",
     options: PREDICTION_DATA_VISIBILITY_OPTIONS,
   },
 } as const satisfies PredictionVisibilityFilterCatalog;
 
 export interface PredictionFiltersClearActionReadModel {
   readonly isVisible: boolean;
-  readonly label: string;
+  readonly labelKey: string;
 }
 
 export interface PredictionFiltersReadModelInput {
@@ -122,7 +122,7 @@ export function getPredictionFiltersClearAction(
 ): PredictionFiltersClearActionReadModel {
   return {
     isVisible: hasActiveFilters,
-    label: "Clear",
+    labelKey: "common.clear",
   };
 }
 

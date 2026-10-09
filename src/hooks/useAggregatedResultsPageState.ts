@@ -72,11 +72,11 @@ export function useAggregatedResultsPageState() {
       const resp = await getAggregatedPredictions();
       setPredictions(resp.predictions);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load aggregated predictions");
+      setError(err instanceof Error ? err.message : t("aggregatedResults.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadData();
@@ -185,7 +185,7 @@ export function useAggregatedResultsPageState() {
       const detail = await getChainPartitionDetail(pred.chain_id);
       const allPreds: PartitionPrediction[] = detail.predictions || [];
       if (allPreds.length === 0) {
-        toast.error("No predictions found for this model");
+        toast.error(t("aggregatedResults.noModelPredictions"));
         return;
       }
       const bestGroup = selectBestViewerPredictionGroup(allPreds);

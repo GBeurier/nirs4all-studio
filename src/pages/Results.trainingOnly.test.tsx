@@ -5,11 +5,11 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import '@/lib/i18n';
 
 const transport = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/api/transport', () => ({ api: transport }));
 vi.mock('@/context/useMlReadiness', () => ({ useMlReadiness: () => ({ mlReady: true, workspaceReady: true }) }));
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, fallback?: string | { defaultValue?: string }) => typeof fallback === 'string' ? fallback : fallback?.defaultValue ?? key }) }));
 // Closed chart/detail dialogs are outside this page load/refresh regression.
 vi.mock('@/components/predictions/ChainDetailSheet', () => ({ ChainDetailSheet: () => null }));
 vi.mock('@/components/predictions/viewer/PredictionViewer', () => ({ PredictionViewer: () => null }));
@@ -49,7 +49,7 @@ it('shows a results API failure and permits recovery instead of claiming an empt
       <Results />
     </TooltipProvider></MemoryRouter></QueryClientProvider>); });
     await waitFor(() => expect(container.textContent).toContain('Cannot read stored predictions'));
-    expect(container.textContent).toContain('Error loading results');
+    expect(container.textContent).toContain('Failed to load results');
     expect(container.textContent).not.toContain('No results found');
     failing = false;
     await act(async () => {

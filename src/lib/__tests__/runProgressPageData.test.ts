@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import "@/lib/__tests__/support/initEnglish";
 
 import {
   buildRunDerivedLogs,
@@ -304,7 +305,7 @@ describe("run progress page data", () => {
     expect(data).toEqual({
       status: "retrying",
       progress: 0,
-      message: "Job retrying",
+      message: "Job Retrying",
     });
   });
 });

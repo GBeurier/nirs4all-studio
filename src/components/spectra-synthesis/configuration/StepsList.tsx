@@ -8,6 +8,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Waves,
   Target,
@@ -32,6 +33,7 @@ import {
   getStepsByCategory,
   getStepDefinition,
 } from "../definitions";
+import { getCategoryLabel, getStepName } from "../definitionLabels";
 import { FeaturesConfig } from "../config/FeaturesConfig";
 import { TargetsConfig } from "../config/TargetsConfig";
 import { ClassificationConfig } from "../config/ClassificationConfig";
@@ -58,6 +60,7 @@ interface StepsListProps {
 }
 
 export function StepsList({ className }: StepsListProps) {
+  const { t } = useTranslation();
   const { state, addStep, removeStep, updateStep, toggleStep } =
     useSynthesisBuilder();
 
@@ -103,9 +106,9 @@ export function StepsList({ className }: StepsListProps) {
   return (
     <div className={cn("space-y-2", className)}>
       <div className="flex items-center justify-between px-1 mb-2">
-        <h3 className="text-sm font-semibold">Builder Steps</h3>
+        <h3 className="text-sm font-semibold">{t("spectraSynthesis.stepsList.title")}</h3>
         <Badge variant="secondary" className="text-xs">
-          {activeStepsCount} active
+          {t("spectraSynthesis.stepsList.active", { count: activeStepsCount })}
         </Badge>
       </div>
 
@@ -153,6 +156,7 @@ function CategoryGroup({
   onEnableToggle,
   onParamsChange,
 }: CategoryGroupProps) {
+  const { t } = useTranslation();
   const steps = getStepsByCategory(category.id);
   const Icon = CATEGORY_ICONS[category.icon] || Sparkles;
 
@@ -166,7 +170,7 @@ function CategoryGroup({
       {/* Category header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
         <Icon className="h-4 w-4 text-muted-foreground" />
-        <span className="text-xs font-medium flex-1">{category.label}</span>
+        <span className="text-xs font-medium flex-1">{getCategoryLabel(t, category.id)}</span>
         {addedCount > 0 && (
           <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
             {addedCount}
@@ -213,6 +217,8 @@ function StepRow({
   onToggleEnabled,
   onParamsChange,
 }: StepRowProps) {
+  const { t } = useTranslation();
+  const stepName = getStepName(t, definition.type);
   const isAdded = !!addedStep;
   const isEnabled = addedStep?.enabled ?? false;
 
@@ -223,8 +229,8 @@ function StepRow({
         className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer"
         onClick={onToggleAdd}
       >
-        <Checkbox checked={false} className="h-4 w-4" />
-        <span className="text-sm flex-1">{definition.name}</span>
+        <Checkbox checked={false} className="h-4 w-4" aria-label={t("spectraSynthesis.stepsList.addStep", { name: stepName })} />
+        <span className="text-sm flex-1">{stepName}</span>
         <span className="text-[10px] text-muted-foreground">
           .{definition.method}()
         </span>
@@ -247,6 +253,7 @@ function StepRow({
         <Checkbox
           checked={true}
           className="h-4 w-4"
+          aria-label={t("spectraSynthesis.stepsList.removeStep", { name: stepName })}
           onClick={(e) => {
             e.stopPropagation();
             onToggleAdd();
@@ -255,7 +262,7 @@ function StepRow({
         <AccordionTrigger className="flex-1 py-0 hover:no-underline">
           <div className="flex items-center gap-2 flex-1">
             <span className={cn("text-sm font-medium", definition.color.text)}>
-              {definition.name}
+              {stepName}
             </span>
             <span className="text-[10px] text-muted-foreground">
               .{definition.method}()
@@ -265,6 +272,7 @@ function StepRow({
         <Switch
           checked={isEnabled}
           onCheckedChange={onToggleEnabled}
+          aria-label={t("spectraSynthesis.stepsList.enableStep", { name: stepName })}
           className="h-4 w-7"
         />
       </div>

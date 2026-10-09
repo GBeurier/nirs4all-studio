@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { Dataset } from "@/types/datasets";
 
 export type DatasetAggregationMethod = "mean" | "median" | "vote" | "unknown";
@@ -27,13 +29,13 @@ function normalizeMethod(value: unknown): DatasetAggregationMethod {
 }
 
 function formatAggregationMethod(method: DatasetAggregationMethod): string {
-  return method === "unknown" ? "unknown method" : method;
+  return i18n.t(`datasets.schema.aggregation.method.${method}`);
 }
 
 function formatAggregationSource(source: DatasetAggregationSource): string {
-  if (source === "config") return "dataset config";
-  if (source === "legacy-aggregate") return "legacy aggregate field";
-  return "unknown source";
+  if (source === "config") return i18n.t("datasets.schema.aggregation.sourceConfig");
+  if (source === "legacy-aggregate") return i18n.t("datasets.schema.aggregation.sourceLegacy");
+  return i18n.t("datasets.schema.aggregation.sourceUnknown");
 }
 
 export function buildDatasetAggregationRef(
@@ -68,47 +70,51 @@ export function buildDatasetAggregationRef(
 }
 
 export function formatDatasetAggregationLabel(aggregation: DatasetAggregationRef): string {
-  if (!aggregation.enabled) return "No aggregation configured";
+  if (!aggregation.enabled) return i18n.t("datasets.schema.aggregation.noneConfigured");
 
   const methodLabel = formatAggregationMethod(aggregation.method);
-  if (aggregation.column) return `aggregation: ${methodLabel} by ${aggregation.column}`;
-  return `aggregation: ${methodLabel}`;
+  if (aggregation.column) return i18n.t("datasets.schema.aggregation.labelByColumn", { method: methodLabel, column: aggregation.column });
+  return i18n.t("datasets.schema.aggregation.labelMethod", { method: methodLabel });
 }
 
 export function formatDatasetAggregationSourceLabel(aggregation: DatasetAggregationRef): string | null {
   if (!aggregation.enabled) return null;
-  return `aggregation source: ${formatAggregationSource(aggregation.source)}`;
+  return i18n.t("datasets.schema.aggregation.sourceLabel", { source: formatAggregationSource(aggregation.source) });
 }
 
 export function getDatasetAggregationReadiness(aggregation: DatasetAggregationRef): DatasetAggregationReadiness {
   if (!aggregation.enabled) {
     return {
       status: "disabled",
-      label: "No aggregation",
-      message: "No dataset aggregation is configured for this pair.",
+      label: i18n.t("datasets.schema.aggregation.disabledLabel"),
+      message: i18n.t("datasets.schema.aggregation.disabledMessage"),
     };
   }
 
   if (!aggregation.column) {
     return {
       status: "warning",
-      label: "Aggregation incomplete",
-      message: "Aggregation is enabled but no grouping column is configured.",
+      label: i18n.t("datasets.schema.aggregation.incompleteLabel"),
+      message: i18n.t("datasets.schema.aggregation.incompleteMessage"),
     };
   }
 
   if (aggregation.method === "unknown") {
     return {
       status: "warning",
-      label: "Aggregation method unknown",
-      message: `Aggregation uses ${formatAggregationSource(aggregation.source)} "${aggregation.column}" without an explicit method.`,
+      label: i18n.t("datasets.schema.aggregation.methodUnknownLabel"),
+      message: i18n.t("datasets.schema.aggregation.methodUnknownMessage", { source: formatAggregationSource(aggregation.source), column: aggregation.column }),
     };
   }
 
   return {
     status: "ready",
-    label: "Aggregation ready",
-    message: `Aggregation uses ${aggregation.method} by "${aggregation.column}" from ${formatAggregationSource(aggregation.source)}.`,
+    label: i18n.t("datasets.schema.aggregation.readyLabel"),
+    message: i18n.t("datasets.schema.aggregation.readyMessage", {
+      method: formatAggregationMethod(aggregation.method),
+      column: aggregation.column,
+      source: formatAggregationSource(aggregation.source),
+    }),
   };
 }
 
@@ -116,6 +122,6 @@ export function formatDatasetAggregationTitleLabel(aggregation: DatasetAggregati
   if (!aggregation.enabled) return null;
 
   const methodLabel = formatAggregationMethod(aggregation.method);
-  if (aggregation.column) return `Aggregation: ${methodLabel} by ${aggregation.column}`;
-  return `Aggregation: ${methodLabel}`;
+  if (aggregation.column) return i18n.t("datasets.schema.aggregation.titleByColumn", { method: methodLabel, column: aggregation.column });
+  return i18n.t("datasets.schema.aggregation.titleMethod", { method: methodLabel });
 }

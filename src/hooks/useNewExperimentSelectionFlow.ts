@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import i18n from "i18next";
 import { toast } from "sonner";
 
 import type { PipelineInfo } from "@/api/pipelines";
@@ -74,7 +75,7 @@ export function useNewExperimentSelectionFlow({
       if (handoff) {
         setCurrentEditedPipeline(handoff);
         setSelectedPipelineIds([CURRENT_EDITED_PIPELINE_ID]);
-        toast.info(`Pipeline "${handoff.name}" ready for experiment`);
+        toast.info(i18n.t("newExperiment.selection.pipelineReady", { name: handoff.name }));
       }
       onEditorRedirect();
       return;
@@ -90,7 +91,7 @@ export function useNewExperimentSelectionFlow({
     handledRouteSelectionRef.current = routeSelectionKey;
     if (!selectedPipelineIds.includes(pipelineId)) {
       setSelectedPipelineIds([pipelineId]);
-      toast.info(`Pipeline "${pipeline.name}" selected`);
+      toast.info(i18n.t("newExperiment.selection.pipelineSelected", { name: pipeline.name }));
     }
     onEditorRedirect();
   }, [onEditorRedirect, rawPipelines, searchParams, selectedPipelineIds]);

@@ -1,4 +1,5 @@
 import { Target } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { motion } from "@/lib/motion";
 import { EmptyState, NoWorkspaceState } from "@/components/ui/state-display";
@@ -34,6 +35,7 @@ export function PredictionsNoWorkspacePanel({
   title,
   subtitle,
 }: PredictionsNoWorkspacePanelProps) {
+  const { t } = useTranslation();
   return (
     <motion.div className="space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <div>
@@ -41,8 +43,8 @@ export function PredictionsNoWorkspacePanel({
         <p className="mt-1 text-muted-foreground">{subtitle}</p>
       </div>
       <NoWorkspaceState
-        title="No workspace linked"
-        description="Link a nirs4all workspace in Settings to view prediction records."
+        title={t("predictions.noWorkspace.title")}
+        description={t("predictions.noWorkspace.description")}
       />
     </motion.div>
   );
@@ -61,16 +63,17 @@ export function PredictionsEmptyPanel({
   refreshLabel,
   onRefresh,
 }: PredictionsEmptyPanelProps) {
+  const { t } = useTranslation();
   return (
     <motion.div className="space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <div>
         <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-        <p className="mt-1 text-muted-foreground">Workspace: {workspaceName}</p>
+        <p className="mt-1 text-muted-foreground">{t("predictions.empty.workspace", { name: workspaceName })}</p>
       </div>
       <EmptyState
         icon={Target}
-        title="No predictions yet"
-        description="Run nirs4all.run() to generate predictions."
+        title={t("predictions.empty.title")}
+        description={t("predictions.empty.description")}
         action={{ label: refreshLabel, onClick: onRefresh }}
       />
     </motion.div>

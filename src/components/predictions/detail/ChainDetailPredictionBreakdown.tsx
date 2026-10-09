@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { partitionBadgeClass } from "@/lib/partitionColors";
@@ -17,17 +18,18 @@ export function ChainDetailPredictionBreakdown({
   selectedFoldLabel,
   selectedFoldPartitions,
 }: ChainDetailPredictionBreakdownProps) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
-      <div className="text-sm font-semibold tracking-tight">Selected prediction breakdown</div>
+      <div className="text-sm font-semibold tracking-tight">{t("predictions.detail.breakdown.title")}</div>
       <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
         {selectedFoldLabel
-          ? `Partition metrics for ${selectedFoldLabel}.`
-          : "Choose a related prediction to inspect its metric map."}
+          ? t("predictions.detail.breakdown.partitionMetrics", { fold: selectedFoldLabel })
+          : t("predictions.detail.breakdown.choosePrediction")}
       </div>
       {selectedFoldPartitions.length === 0 ? (
         <div className="mt-4 rounded-xl border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
-          No partition-level metrics are available for this selection.
+          {t("predictions.detail.breakdown.noPartitionMetrics")}
         </div>
       ) : (
         <div className="mt-4 space-y-3">
@@ -44,11 +46,11 @@ export function ChainDetailPredictionBreakdown({
                   {row.partition}
                 </Badge>
                 <span className="text-[11px] text-muted-foreground">
-                  {row.n_samples ?? "-"} samples
+                  {row.n_samples != null ? t("predictions.detail.samples", { count: row.n_samples }) : t("predictions.detail.samplesUnknown")}
                 </span>
                 {row.n_features != null && (
                   <span className="text-[11px] text-muted-foreground">
-                    · {row.n_features} features
+                    · {t("predictions.detail.features", { count: row.n_features })}
                   </span>
                 )}
               </div>
@@ -69,7 +71,7 @@ export function ChainDetailPredictionBreakdown({
                   ))
                 ) : (
                   <div className="rounded-lg border border-dashed border-border/60 px-3 py-5 text-sm text-muted-foreground">
-                    No detailed metric map stored.
+                    {t("predictions.detail.breakdown.noMetricMap")}
                   </div>
                 )}
               </div>

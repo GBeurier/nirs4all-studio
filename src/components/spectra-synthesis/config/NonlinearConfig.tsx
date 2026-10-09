@@ -2,6 +2,7 @@
  * NonlinearConfig - Configuration panel for with_nonlinear_targets() step
  */
 
+import { useTranslation } from "react-i18next";
 import { TrendingUp } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import type { SynthesisStepDefinition, InteractionType } from "../types";
+import { getStepDescription } from "../definitionLabels";
 
 interface NonlinearConfigProps {
   params: Record<string, unknown>;
@@ -26,6 +28,7 @@ export function NonlinearConfig({
   definition,
   onChange,
 }: NonlinearConfigProps) {
+  const { t } = useTranslation();
   const interactions = (params.interactions as InteractionType) || "polynomial";
   const interactionStrength = (params.interaction_strength as number) ?? 0.5;
   const hiddenFactors = (params.hidden_factors as number) || 0;
@@ -39,8 +42,8 @@ export function NonlinearConfig({
           <TrendingUp className="h-4 w-4 text-red-600" />
         </div>
         <div>
-          <h3 className="text-sm font-semibold">Non-linear Targets</h3>
-          <p className="text-xs text-muted-foreground">{definition.description}</p>
+          <h3 className="text-sm font-semibold">{t("spectraSynthesis.config.nonlinear.title")}</h3>
+          <p className="text-xs text-muted-foreground">{getStepDescription(t, definition.type)}</p>
         </div>
       </div>
 
@@ -48,7 +51,7 @@ export function NonlinearConfig({
 
       {/* Interaction Type */}
       <div className="space-y-2">
-        <Label className="text-sm font-medium">Interaction Type</Label>
+        <Label className="text-sm font-medium">{t("spectraSynthesis.config.nonlinear.type.label")}</Label>
         <Select
           value={interactions}
           onValueChange={(v) => onChange({ interactions: v })}
@@ -57,9 +60,9 @@ export function NonlinearConfig({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="polynomial">Polynomial</SelectItem>
-            <SelectItem value="synergistic">Synergistic</SelectItem>
-            <SelectItem value="antagonistic">Antagonistic</SelectItem>
+            <SelectItem value="polynomial">{t("spectraSynthesis.config.nonlinear.type.polynomial")}</SelectItem>
+            <SelectItem value="synergistic">{t("spectraSynthesis.config.nonlinear.type.synergistic")}</SelectItem>
+            <SelectItem value="antagonistic">{t("spectraSynthesis.config.nonlinear.type.antagonistic")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -67,7 +70,7 @@ export function NonlinearConfig({
       {/* Interaction Strength */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">Interaction Strength</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.nonlinear.strength.label")}</Label>
           <span className="text-sm font-medium">{interactionStrength.toFixed(1)}</span>
         </div>
         <Slider
@@ -78,14 +81,14 @@ export function NonlinearConfig({
           onValueChange={(v) => onChange({ interaction_strength: v[0] })}
         />
         <p className="text-xs text-muted-foreground">
-          0 = linear, 1 = fully non-linear
+          {t("spectraSynthesis.config.nonlinear.strength.hint")}
         </p>
       </div>
 
       {/* Hidden Factors */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">Hidden Factors</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.nonlinear.hidden.label")}</Label>
           <span className="text-sm font-medium">{hiddenFactors}</span>
         </div>
         <Slider
@@ -96,7 +99,7 @@ export function NonlinearConfig({
           onValueChange={(v) => onChange({ hidden_factors: v[0] })}
         />
         <p className="text-xs text-muted-foreground">
-          Latent variables affecting y but not visible in spectra
+          {t("spectraSynthesis.config.nonlinear.hidden.hint")}
         </p>
       </div>
 
@@ -104,7 +107,7 @@ export function NonlinearConfig({
       {interactions === "polynomial" && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium">Polynomial Degree</Label>
+            <Label className="text-sm font-medium">{t("spectraSynthesis.config.nonlinear.degree.label")}</Label>
             <span className="text-sm font-medium">{polynomialDegree}</span>
           </div>
           <Slider

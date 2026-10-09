@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { tEn } from "@/lib/__tests__/support/enTranslator";
 import {
   getEmptyDatasetsMessage,
   getRunExecutionBackend,
@@ -22,8 +23,8 @@ describe("RunDetailSheetDisplay", () => {
     expect(isBusyRunStatus("running")).toBe(true);
     expect(isBusyRunStatus("queued")).toBe(true);
     expect(isBusyRunStatus("completed")).toBe(false);
-    expect(getEmptyDatasetsMessage("running")).toBe("Fold-level dataset results will appear here as pipelines complete.");
-    expect(getEmptyDatasetsMessage("completed")).toBe("No dataset results are available for this run.");
+    expect(getEmptyDatasetsMessage("running", tEn)).toBe("Fold-level dataset results will appear here as pipelines complete.");
+    expect(getEmptyDatasetsMessage("completed", tEn)).toBe("No dataset results are available for this run.");
   });
 
   it("totals persisted log counts", () => {
@@ -63,25 +64,25 @@ describe("RunDetailSheetDisplay", () => {
 
   it("builds a small execution backend display model", () => {
     expect(getRunExecutionBackend(null)).toBeNull();
-    expect(getRunExecutionBackendDisplay(null)).toEqual({
+    expect(getRunExecutionBackendDisplay(null, tEn)).toEqual({
       backend: null,
       label: "Execution backend not recorded",
       isCluster: false,
     });
 
-    expect(getRunExecutionBackendDisplay({ config: { execution_backend: "local-python" } })).toEqual({
+    expect(getRunExecutionBackendDisplay({ config: { execution_backend: "local-python" } }, tEn)).toEqual({
       backend: "local-python",
       label: "Local Python",
       isCluster: false,
     });
 
-    expect(getRunExecutionBackendDisplay({ config: { execution_backend: "cluster" } })).toEqual({
+    expect(getRunExecutionBackendDisplay({ config: { execution_backend: "cluster" } }, tEn)).toEqual({
       backend: "cluster",
       label: "Cluster",
       isCluster: true,
     });
 
-    expect(getRunExecutionBackendDisplay({ config: { execution_backend: "gpu-grid" } })).toEqual({
+    expect(getRunExecutionBackendDisplay({ config: { execution_backend: "gpu-grid" } }, tEn)).toEqual({
       backend: null,
       label: "Execution backend not recorded",
       isCluster: false,

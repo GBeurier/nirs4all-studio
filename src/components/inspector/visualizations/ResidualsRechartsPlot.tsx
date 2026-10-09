@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   ScatterChart,
   Scatter,
@@ -45,12 +46,13 @@ export function ResidualsRechartsPlot({
   onDotClick,
   onHoverChainChange,
 }: ResidualsRechartsPlotProps) {
+  const { t } = useTranslation();
   const band2Sigma = stdResidual * 2;
 
   return (
     <div className="relative h-full w-full">
       <div className="absolute left-10 top-1 z-10 rounded bg-card/80 px-2 py-1 text-xs text-muted-foreground">
-        {formatResidualSummary({ meanResidual, stdResidual, pointCount: dots.length })}
+        {formatResidualSummary({ meanResidual, stdResidual, pointCount: dots.length, t })}
       </div>
 
       <ResponsiveContainer width="100%" height="100%">
@@ -59,16 +61,16 @@ export function ResidualsRechartsPlot({
           <XAxis
             type="number"
             dataKey="x"
-            name="Predicted"
-            label={{ value: 'Predicted', position: 'insideBottom', offset: -10, style: { fontSize: 12, fill: '#94a3b8' } }}
+            name={t('inspector.charts.axis.predicted')}
+            label={{ value: t('inspector.charts.axis.predicted'), position: 'insideBottom', offset: -10, style: { fontSize: 12, fill: '#94a3b8' } }}
             tick={{ fontSize: 10 }}
             tickFormatter={xTickFormatter}
           />
           <YAxis
             type="number"
             dataKey="y"
-            name="Residual"
-            label={{ value: 'Residual', angle: -90, position: 'insideLeft', offset: -5, style: { fontSize: 12, fill: '#94a3b8' } }}
+            name={t('inspector.charts.axis.residual')}
+            label={{ value: t('inspector.charts.axis.residual'), angle: -90, position: 'insideLeft', offset: -5, style: { fontSize: 12, fill: '#94a3b8' } }}
             tick={{ fontSize: 10 }}
             tickFormatter={yTickFormatter}
             width={45}

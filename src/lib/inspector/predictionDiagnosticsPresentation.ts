@@ -1,11 +1,10 @@
+import type { TFunction } from 'i18next';
 import type { CanvasAnnotation } from '@/lib/inspector/canvasScatterData';
 import type { PredVsObsMetrics } from '@/lib/inspector/predVsObsData';
 import type { ResidualStats } from '@/lib/inspector/residualsData';
 
-export const PREDICTION_DIAGNOSTICS_EMPTY_MESSAGE = 'No prediction data available. Select chains to visualize.';
-
-export function getPredictionDiagnosticsEmptyMessage(): string {
-  return PREDICTION_DIAGNOSTICS_EMPTY_MESSAGE;
+export function getPredictionDiagnosticsEmptyMessage(t: TFunction): string {
+  return t('inspector.charts.empty.predictionDiagnostics');
 }
 
 export function formatPredictionDiagnosticValue(value: number): string {
@@ -43,17 +42,23 @@ export function formatResidualSummary({
   meanResidual,
   stdResidual,
   pointCount,
-}: ResidualStats & { pointCount: number }): string {
-  return `Mean = ${formatPredictionDiagnosticValue(meanResidual)} | Std = ${formatPredictionDiagnosticValue(stdResidual)} | n = ${pointCount}`;
+  t,
+}: ResidualStats & { pointCount: number; t: TFunction }): string {
+  return t('inspector.charts.diagnostics.summaryMean', {
+    mean: formatPredictionDiagnosticValue(meanResidual),
+    std: formatPredictionDiagnosticValue(stdResidual),
+    n: pointCount,
+  });
 }
 
 export function buildResidualCanvasAnnotations({
   meanResidual,
   stdResidual,
   pointCount,
-}: ResidualStats & { pointCount: number }): CanvasAnnotation[] {
+  t,
+}: ResidualStats & { pointCount: number; t: TFunction }): CanvasAnnotation[] {
   return [{
-    text: formatResidualSummary({ meanResidual, stdResidual, pointCount }),
+    text: formatResidualSummary({ meanResidual, stdResidual, pointCount, t }),
     position: 'top-left',
   }];
 }

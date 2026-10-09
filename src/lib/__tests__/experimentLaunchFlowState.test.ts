@@ -1,3 +1,4 @@
+import "@/lib/__tests__/support/experimentI18n";
 import { describe, expect, it } from "vitest";
 
 import type { MissingOperatorIssue } from "@/lib/pipelineOperatorAvailability";
@@ -5,10 +6,7 @@ import type { ExperimentConfig } from "@/types/runs";
 import {
   createClosedExperimentMissingNodesDialogState,
   createOpenExperimentMissingNodesDialogState,
-  EXPERIMENT_LAUNCH_PREFLIGHT_BLOCKED_TITLE,
-  EXPERIMENT_LAUNCH_GROUPING_BLOCKED_MESSAGE,
-  EXPERIMENT_LAUNCH_PREFLIGHT_UNAVAILABLE_MESSAGE,
-  EXPERIMENT_LAUNCH_SUCCESS_MESSAGE,
+  experimentLaunchMessages,
   formatExperimentLaunchFailureMessage,
   getExperimentLaunchFailureDetail,
   setExperimentMissingNodesDialogOpen,
@@ -33,10 +31,10 @@ const missingIssues: MissingOperatorIssue[] = [
 
 describe("experimentLaunchFlowState", () => {
   it("keeps launch messages centralized", () => {
-    expect(EXPERIMENT_LAUNCH_SUCCESS_MESSAGE).toBe("Experiment started!");
-    expect(EXPERIMENT_LAUNCH_GROUPING_BLOCKED_MESSAGE).toBe("Resolve runtime grouping errors before launching this experiment.");
-    expect(EXPERIMENT_LAUNCH_PREFLIGHT_UNAVAILABLE_MESSAGE).toBe("Preflight check unavailable — dependency verification was skipped");
-    expect(EXPERIMENT_LAUNCH_PREFLIGHT_BLOCKED_TITLE).toBe("Cannot start experiment");
+    expect(experimentLaunchMessages.success).toBe("Experiment started!");
+    expect(experimentLaunchMessages.groupingBlocked).toBe("Check sample grouping before launching this experiment.");
+    expect(experimentLaunchMessages.preflightUnavailable).toBe("Required analysis tools could not be checked.");
+    expect(experimentLaunchMessages.preflightBlockedTitle).toBe("Cannot start experiment");
   });
 
   it("opens and closes missing-node confirmation state", () => {

@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import "@/lib/i18n";
 import {
   act,
   type ButtonHTMLAttributes,

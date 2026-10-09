@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { Download, Terminal } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function LogsPanel({
   onRefresh?: () => void;
   onExport?: () => void;
 }) {
+  const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new logs arrive
@@ -39,15 +41,15 @@ export function LogsPanel({
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Terminal className="h-4 w-4" />
-          Logs
+          {t("runs.detail.tabLogs")}
           {isLive && (
             <Badge variant="outline" className="text-[10px] text-chart-2 border-chart-2/50 animate-pulse">
-              Live
+              {t("runs.logs.live")}
             </Badge>
           )}
           {isLoading && (
             <Badge variant="outline" className="text-[10px] text-muted-foreground">
-              Loading
+              {t("runs.logs.loading")}
             </Badge>
           )}
           <div className="ml-auto flex items-center gap-2">
@@ -60,11 +62,11 @@ export function LogsPanel({
                 disabled={logs.length === 0}
               >
                 <Download className="h-3 w-3 mr-1" />
-                Export
+                {t("runs.logs.export")}
               </Button>
             )}
             <span className="text-[10px] text-muted-foreground font-normal">
-              {logs.length} entries
+              {t("runs.detail.logs.entries", { count: logs.length })}
             </span>
           </div>
         </CardTitle>
@@ -75,7 +77,7 @@ export function LogsPanel({
             <span>{errorMessage}</span>
             {onRefresh && (
               <Button variant="ghost" size="sm" onClick={onRefresh}>
-                Retry
+                {t("runs.actions.retry")}
               </Button>
             )}
           </div>
@@ -83,7 +85,7 @@ export function LogsPanel({
         <ScrollArea className="h-64" ref={scrollRef}>
           <div className="font-mono text-xs space-y-0.5">
             {logs.length === 0 ? (
-              <div className="text-muted-foreground">Waiting for logs...</div>
+              <div className="text-muted-foreground">{t("runs.logs.waiting")}</div>
             ) : (
               logs.map((log, i) => {
                 const context = parseLogContext(log);

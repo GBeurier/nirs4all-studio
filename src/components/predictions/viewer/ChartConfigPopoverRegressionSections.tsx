@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import {
   type ChartConfigUpdater,
   SectionHeader,
@@ -15,11 +17,12 @@ export function PointsSection({
   config: ChartConfig;
   update: ChartConfigUpdater;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3 border-t pt-3">
-      <SectionHeader>Points</SectionHeader>
+      <SectionHeader>{t("predictions.viewer.config.points")}</SectionHeader>
       <SliderField
-        label="Size"
+        label={t("predictions.viewer.config.pointSize")}
         valueLabel={`${config.pointSize}px`}
         value={config.pointSize}
         min={2}
@@ -29,7 +32,7 @@ export function PointsSection({
         onValueChange={(value) => update("pointSize", value)}
       />
       <SliderField
-        label="Opacity"
+        label={t("predictions.viewer.config.pointOpacity")}
         valueLabel={config.pointOpacity.toFixed(2)}
         value={config.pointOpacity}
         min={0.3}
@@ -39,7 +42,7 @@ export function PointsSection({
         onValueChange={(value) => update("pointOpacity", value)}
       />
       <SwitchRow
-        label="Jitter discrete values"
+        label={t("predictions.viewer.config.jitter")}
         checked={config.jitter}
         onCheckedChange={(value) => update("jitter", value)}
       />
@@ -54,16 +57,17 @@ export function ScatterSection({
   config: ChartConfig;
   update: ChartConfigUpdater;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3 border-t pt-3">
-      <SectionHeader>Scatter</SectionHeader>
+      <SectionHeader>{t("predictions.viewer.config.scatter")}</SectionHeader>
       <SwitchRow
-        label="Identity line (y=x)"
+        label={t("predictions.viewer.config.identityLine")}
         checked={config.identityLine}
         onCheckedChange={(value) => update("identityLine", value)}
       />
       <SwitchRow
-        label="Regression line"
+        label={t("predictions.viewer.config.regressionLine")}
         checked={config.regressionLine}
         onCheckedChange={(value) => update("regressionLine", value)}
       />
@@ -78,16 +82,17 @@ export function ResidualsSection({
   config: ChartConfig;
   update: ChartConfigUpdater;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3 border-t pt-3">
-      <SectionHeader>Residuals</SectionHeader>
+      <SectionHeader>{t("predictions.viewer.config.residuals")}</SectionHeader>
       <SwitchRow
-        label="Zero line"
+        label={t("predictions.viewer.config.zeroLine")}
         checked={config.zeroLine}
         onCheckedChange={(value) => update("zeroLine", value)}
       />
       <SwitchRow
-        label="Reference band (±1σ)"
+        label={t("predictions.viewer.config.sigmaBand")}
         checked={config.sigmaBand}
         onCheckedChange={(value) => update("sigmaBand", value)}
       />

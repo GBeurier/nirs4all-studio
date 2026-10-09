@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Search } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Input } from "@/components/ui/input";
 import {
@@ -45,11 +46,12 @@ export function PredictionSearchFilter({
   value,
   onValueChange,
 }: PredictionSearchFilterProps) {
+  const { t } = useTranslation();
   return (
     <div className="relative flex-1 min-w-[180px] max-w-sm">
       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
-        placeholder="Search models, datasets..."
+        placeholder={t("predictions.filters.searchModelsDatasets")}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
         className="h-8 bg-muted/50 pl-9 text-sm"

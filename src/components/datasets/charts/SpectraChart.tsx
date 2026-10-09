@@ -5,6 +5,7 @@
  * Used in dataset previews and quick views.
  */
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Area, Line, Tooltip } from "recharts";
 import {
   formatWavelengthUnit,
@@ -65,6 +66,7 @@ export function SpectraChart({
   lineColor,
   rangeFillColor,
 }: SpectraChartProps) {
+  const { t } = useTranslation();
   const resolvedXLabel = xLabel ?? getWavelengthAxisLabel(unit);
   const axisName = getWavelengthAxisName(unit);
   const unitSymbol = formatWavelengthUnit(unit);
@@ -81,7 +83,7 @@ export function SpectraChart({
         className="flex items-center justify-center text-muted-foreground text-sm"
         style={{ width, height }}
       >
-        No spectra data available
+        {t("datasets.charts.noSpectra")}
       </div>
     );
   }
@@ -139,9 +141,9 @@ export function SpectraChart({
             formatter={(value, name) => {
               if (name === "range") {
                 const [lo, hi] = Array.isArray(value) ? value : [value, value];
-                return [`[${Number(lo).toFixed(3)}, ${Number(hi).toFixed(3)}]`, "Min/Max"];
+                return [`[${Number(lo).toFixed(3)}, ${Number(hi).toFixed(3)}]`, t("datasets.charts.minMax")];
               }
-              return [typeof value === "number" ? value.toFixed(3) : value, "Mean"];
+              return [typeof value === "number" ? value.toFixed(3) : value, t("datasets.charts.mean")];
             }}
           />
         }

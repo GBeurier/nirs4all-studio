@@ -47,9 +47,9 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
     setError(null);
     getAvailableModels()
       .then(setData)
-      .catch((err) => setError(err.message || 'Failed to load models'))
+      .catch((err) => setError(err.message || t('results.variableImportance.model.loadFailed')))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   // Flatten all chains for the select with dataset grouping
   const allChains = useMemo(() => {
@@ -84,7 +84,7 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
     return (
       <div className="flex items-center justify-center py-4 text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin mr-2" />
-        <span className="text-sm">{t('shap.loadingModels', 'Loading models...')}</span>
+        <span className="text-sm">{t('shap.loadingModels')}</span>
       </div>
     );
   }
@@ -102,7 +102,7 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
   if (totalChains === 0 && (!data?.bundles || data.bundles.length === 0)) {
     return (
       <div className="text-center py-4 text-muted-foreground text-sm">
-        {t('shap.noModels', 'No trained models found. Run an experiment first.')}
+        {t('shap.noModels')}
       </div>
     );
   }
@@ -118,11 +118,11 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Dataset</Label>
+          <Label className="text-xs text-muted-foreground">{t('results.variableImportance.model.dataset')}</Label>
           <Select value={datasetFilter} onValueChange={setDatasetFilter}>
             <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value={SHAP_MODEL_SELECTOR_ALL_VALUE}>All datasets</SelectItem>
+              <SelectItem value={SHAP_MODEL_SELECTOR_ALL_VALUE}>{t('results.variableImportance.model.allDatasets')}</SelectItem>
               {datasetOptions.map((name) => (
                 <SelectItem key={name} value={name}>{name}</SelectItem>
               ))}
@@ -130,11 +130,11 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
           </Select>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs text-muted-foreground">Model</Label>
+          <Label className="text-xs text-muted-foreground">{t('results.variableImportance.model.model')}</Label>
           <Select value={modelFilter} onValueChange={setModelFilter}>
             <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value={SHAP_MODEL_SELECTOR_ALL_VALUE}>All models</SelectItem>
+              <SelectItem value={SHAP_MODEL_SELECTOR_ALL_VALUE}>{t('results.variableImportance.model.allModels')}</SelectItem>
               {modelOptions.map((name) => (
                 <SelectItem key={name} value={name}>{name}</SelectItem>
               ))}
@@ -145,12 +145,12 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
 
       <Select value={selectedChainId || ''} onValueChange={handleSelect}>
         <SelectTrigger>
-          <SelectValue placeholder={t('shap.selectModel', 'Select a trained model...')} />
+          <SelectValue placeholder={t('shap.selectModel')} />
         </SelectTrigger>
         <SelectContent className="max-h-80">
           {!hasVisible && (
             <div className="px-2 py-2 text-xs text-muted-foreground text-center">
-              No models match these filters
+              {t('results.variableImportance.model.noMatch')}
             </div>
           )}
           {filteredDatasets.map((ds) => (
@@ -164,16 +164,16 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
               </SelectLabel>
               {ds.chains.map((chain) => {
                 const chainLabel = buildShapChainLabel(chain);
-                const chainTooltip = buildShapChainTooltip(chain);
-                const visibleScore = getVisibleShapChainScore(chain);
+                const chainTooltip = buildShapChainTooltip(chain, t);
+                const visibleScore = getVisibleShapChainScore(chain, t);
 
                 return (
                   <SelectItem key={chain.chain_id} value={chain.chain_id} disabled={!chain.linked_dataset_id || chain.dataset_link_status !== 'linked'}>
                     <div className="flex items-center gap-2 min-w-0" title={chainTooltip}>
                       <span className="truncate max-w-[160px]">{chainLabel}</span>
-                      {chain.dataset_link_status !== 'linked' && <span className="text-xs">Dataset link unavailable</span>}
+                      {chain.dataset_link_status !== 'linked' && <span className="text-xs">{t('results.variableImportance.model.linkUnavailable')}</span>}
                       <Badge variant="default" className="text-[10px] px-1 py-0 shrink-0 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/30">
-                        refit
+                        {t('results.variableImportance.model.refit')}
                       </Badge>
                       {visibleScore && (
                         <span className="text-xs text-muted-foreground shrink-0">
@@ -190,13 +190,13 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
             <SelectGroup>
               <SelectLabel className="flex items-center gap-2">
                 <FlaskConical className="h-3 w-3" />
-                {t('shap.bundles', 'Exported Bundles')}
+                {t('shap.bundles')}
               </SelectLabel>
               {filteredBundles.map((bundle) => (
                 <SelectItem key={bundle.bundle_path} value={bundle.bundle_path} disabled={!bundle.linked_dataset_id || bundle.dataset_link_status !== 'linked'}>
                   <div className="flex items-center gap-2">
                     <span className="truncate max-w-[180px]">{bundle.display_name}</span>
-                    {bundle.dataset_link_status !== 'linked' && <span className="text-xs">Dataset link unavailable</span>}
+                    {bundle.dataset_link_status !== 'linked' && <span className="text-xs">{t('results.variableImportance.model.linkUnavailable')}</span>}
                     <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">
                       .n4a
                     </Badge>
@@ -208,7 +208,7 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
         </SelectContent>
       </Select>
       {selectedChainId && !resolveShapModelSelection(selectedChainId, allChains, data?.bundles ?? []).datasetId && (
-        <p className="text-xs text-muted-foreground">This model has no authorized dataset link. Select a model from a linked dataset.</p>
+        <p className="text-xs text-muted-foreground">{t('results.variableImportance.model.noAuthorizedLink')}</p>
       )}
     </div>
   );

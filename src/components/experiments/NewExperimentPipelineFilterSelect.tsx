@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Filter } from "lucide-react";
 
 import {
@@ -19,9 +20,11 @@ export function NewExperimentPipelineFilterSelect({
   value,
   onValueChange,
 }: NewExperimentPipelineFilterSelectProps) {
+  const { t } = useTranslation();
+
   return (
     <Select value={value} onValueChange={(nextValue: PipelineFilterMode) => onValueChange(nextValue)}>
-      <SelectTrigger className="w-40">
+      <SelectTrigger className="w-40" aria-label={t("newExperiment.selection.filterPipelinesAria")}>
         <Filter className="mr-2 h-4 w-4" />
         <SelectValue />
       </SelectTrigger>

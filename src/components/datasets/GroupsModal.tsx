@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ export function GroupsModal({
   onAddDatasetToGroup,
   onRemoveDatasetFromGroup,
 }: GroupsModalProps) {
+  const { t } = useTranslation();
   const [newGroupName, setNewGroupName] = useState("");
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState("");
@@ -83,7 +85,7 @@ export function GroupsModal({
   };
 
   const handleDeleteGroup = async (groupId: string, groupName: string) => {
-    if (!confirm(`Delete group "${groupName}"?`)) return;
+    if (!confirm(t("datasets.groupsModal.confirmDelete", { name: groupName }))) return;
     setLoading(true);
     try {
       await onDeleteGroup(groupId);
@@ -152,22 +154,22 @@ export function GroupsModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Manage Groups</DialogTitle>
+          <DialogTitle>{t("datasets.groupsModal.title")}</DialogTitle>
           <DialogDescription>
-            Organize your datasets into groups for easier management
+            {t("datasets.groupsModal.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden flex flex-col gap-4 py-2">
           {/* Create new group */}
           <div>
-            <Label className="mb-2 block">Create New Group</Label>
+            <Label className="mb-2 block">{t("datasets.groupsModal.createNew")}</Label>
             <div className="flex gap-2">
               <Input
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleCreateGroup()}
-                placeholder="Group name"
+                placeholder={t("datasets.groupsModal.namePlaceholder")}
                 className="flex-1"
               />
               <Button
@@ -179,19 +181,19 @@ export function GroupsModal({
                 ) : (
                   <Plus className="h-4 w-4 mr-1" />
                 )}
-                Create
+                {t("common.create")}
               </Button>
             </div>
           </div>
 
           {/* Groups list */}
           <div className="flex-1 overflow-hidden">
-            <Label className="mb-2 block">Existing Groups</Label>
+            <Label className="mb-2 block">{t("datasets.groupsModal.existing")}</Label>
 
             <ScrollArea className="h-[300px] border rounded-lg">
               {groups.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">
-                  No groups yet. Create one above.
+                  {t("datasets.groupsModal.noGroups")}
                 </div>
               ) : (
                 <div className="divide-y">
@@ -220,6 +222,7 @@ export function GroupsModal({
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
+                              aria-label={t("datasets.groupsModal.confirmRename")}
                               onClick={() => handleRenameGroup(group.id)}
                               disabled={loading}
                             >
@@ -229,6 +232,7 @@ export function GroupsModal({
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
+                              aria-label={t("common.cancel")}
                               onClick={cancelEdit}
                             >
                               <X className="h-4 w-4" />
@@ -241,7 +245,7 @@ export function GroupsModal({
                                 {group.name}
                               </h4>
                               <Badge variant="secondary" className="text-xs">
-                                {group.dataset_ids?.length ?? 0} datasets
+                                {t("datasets.groupsModal.datasetCount", { count: group.dataset_ids?.length ?? 0 })}
                               </Badge>
                             </div>
                             <div className="flex items-center gap-1">
@@ -249,6 +253,7 @@ export function GroupsModal({
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
+                                aria-label={t("datasets.groupsModal.rename")}
                                 onClick={() => startEdit(group)}
                               >
                                 <Pencil className="h-4 w-4" />
@@ -257,6 +262,7 @@ export function GroupsModal({
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8 text-destructive hover:text-destructive"
+                                aria-label={t("datasets.groupsModal.deleteGroup")}
                                 onClick={() =>
                                   handleDeleteGroup(group.id, group.name)
                                 }
@@ -272,7 +278,7 @@ export function GroupsModal({
                       <div className="flex flex-wrap gap-1.5 mb-2">
                         {!group.dataset_ids?.length ? (
                           <span className="text-sm text-muted-foreground">
-                            No datasets assigned
+                            {t("datasets.groupsModal.noneAssigned")}
                           </span>
                         ) : (
                           group.dataset_ids.map((datasetId) => (
@@ -286,6 +292,7 @@ export function GroupsModal({
                                 variant="ghost"
                                 size="icon"
                                 className="h-4 w-4 hover:bg-transparent"
+                                aria-label={t("datasets.groupsModal.removeFromGroup", { name: getDatasetName(datasetId) })}
                                 onClick={() =>
                                   handleRemoveDataset(group.id, datasetId)
                                 }
@@ -307,12 +314,12 @@ export function GroupsModal({
                                 onValueChange={setSelectedDatasetToAdd}
                               >
                                 <SelectTrigger className="h-8 flex-1 text-xs">
-                                  <SelectValue placeholder="Select dataset..." />
+                                  <SelectValue placeholder={t("datasets.groupsModal.selectDataset")} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {getAvailableDatasets(group).length === 0 ? (
                                     <div className="p-2 text-xs text-muted-foreground text-center">
-                                      All datasets are in this group
+                                      {t("datasets.groupsModal.allInGroup")}
                                     </div>
                                   ) : (
                                     getAvailableDatasets(group).map((ds) => (
@@ -327,6 +334,7 @@ export function GroupsModal({
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
+                                aria-label={t("datasets.groupsModal.confirmAdd")}
                                 onClick={() => handleAddDataset(group.id)}
                                 disabled={loading || !selectedDatasetToAdd}
                               >
@@ -336,6 +344,7 @@ export function GroupsModal({
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
+                                aria-label={t("common.cancel")}
                                 onClick={cancelAddingDataset}
                               >
                                 <X className="h-4 w-4" />
@@ -349,7 +358,7 @@ export function GroupsModal({
                               onClick={() => startAddingDataset(group.id)}
                             >
                               <Plus className="h-3 w-3 mr-1" />
-                              Add Dataset
+                              {t("datasets.groupsModal.addDataset")}
                             </Button>
                           )}
                         </div>
@@ -364,7 +373,7 @@ export function GroupsModal({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+            {t("common.close")}
           </Button>
         </DialogFooter>
       </DialogContent>

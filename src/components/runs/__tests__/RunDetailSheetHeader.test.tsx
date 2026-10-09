@@ -6,7 +6,9 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+import i18n from "@/lib/i18n";
 
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import type { EnrichedRun } from "@/types/enriched-runs";
@@ -29,6 +31,10 @@ async function render(element: ReactNode) {
 
   return { container, root };
 }
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 afterEach(() => {
   for (const container of mountedContainers) {

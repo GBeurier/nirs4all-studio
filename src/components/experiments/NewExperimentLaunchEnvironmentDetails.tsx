@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import type { NewExperimentExecutionEnvironmentDiagnostics } from "@/lib/experimentExecutionEnvironment";
 import { buildNewExperimentExecutionEnvironmentDiagnosticFields } from "@/lib/experimentExecutionEnvironmentPresentation";
 
@@ -10,9 +12,10 @@ export interface NewExperimentLaunchEnvironmentDetailsProps {
 export function NewExperimentLaunchEnvironmentDetails({
   diagnostics,
 }: NewExperimentLaunchEnvironmentDetailsProps) {
+  const { t } = useTranslation();
   const fields = buildNewExperimentExecutionEnvironmentDiagnosticFields(diagnostics);
 
   return (
-    <NewExperimentLaunchDetailCard fields={fields} title="Execution environment" />
+    <NewExperimentLaunchDetailCard fields={fields} title={t("newExperiment.environment.title")} />
   );
 }

@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { BinnedImportanceData } from '@/types/shap';
 import { getShapAxisDisplay } from '@/lib/shapAxisDisplay';
 
@@ -48,8 +49,13 @@ export function buildShapFeatureImportanceExportRows(
     .sort((left, right) => right.importance - left.importance);
 }
 
-export function buildShapFeatureImportanceCsv(binnedImportance: BinnedImportanceData, axisUnit?: string | null): string {
-  const headers = ['Rank', `${getShapAxisDisplay(axisUnit).label} range`, 'Center', 'Importance'];
+export function buildShapFeatureImportanceCsv(binnedImportance: BinnedImportanceData, axisUnit: string | null | undefined, t: TFunction): string {
+  const headers = [
+    t('results.variableImportance.ranking.rank'),
+    t('results.variableImportance.axis.range', { axis: getShapAxisDisplay(axisUnit, t).label }),
+    t('results.variableImportance.ranking.center'),
+    t('results.variableImportance.ranking.importance'),
+  ];
   const rows = buildShapFeatureImportanceExportRows(binnedImportance);
 
   return [

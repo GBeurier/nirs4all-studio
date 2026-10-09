@@ -4,6 +4,8 @@
  * Displays the version status of a dataset with appropriate styling and tooltip.
  */
 
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -20,6 +22,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { DatasetVersionStatus } from "@/types/datasets";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 interface DatasetStatusBadgeProps {
   status: DatasetVersionStatus;
@@ -34,37 +37,37 @@ const statusConfig: Record<
   DatasetVersionStatus,
   {
     icon: typeof CheckCircle2;
-    label: string;
-    description: string;
+    labelKey: string;
+    descriptionKey: string;
     variant: "default" | "secondary" | "destructive" | "outline";
     colorClass: string;
   }
 > = {
   current: {
     icon: CheckCircle2,
-    label: "Current",
-    description: "Dataset is up to date. Hash matches stored value.",
+    labelKey: "datasets.status.current.label",
+    descriptionKey: "datasets.status.current.description",
     variant: "secondary",
     colorClass: "text-green-600 dark:text-green-400",
   },
   modified: {
     icon: AlertTriangle,
-    label: "Modified",
-    description: "Dataset has changed since last verification. Consider refreshing.",
+    labelKey: "datasets.status.modified.label",
+    descriptionKey: "datasets.status.modified.description",
     variant: "outline",
     colorClass: "text-amber-600 dark:text-amber-400",
   },
   missing: {
     icon: XCircle,
-    label: "Missing",
-    description: "Dataset path is not accessible. Relink to restore.",
+    labelKey: "datasets.status.missing.label",
+    descriptionKey: "datasets.status.missing.description",
     variant: "destructive",
     colorClass: "text-destructive",
   },
   unchecked: {
     icon: HelpCircle,
-    label: "Unchecked",
-    description: "Dataset has not been verified yet.",
+    labelKey: "datasets.status.unchecked.label",
+    descriptionKey: "datasets.status.unchecked.description",
     variant: "outline",
     colorClass: "text-muted-foreground",
   },
@@ -76,8 +79,8 @@ const sizeClasses = {
   lg: "h-5 w-5",
 };
 
-function formatLastVerified(dateString?: string): string {
-  if (!dateString) return "Never verified";
+function formatLastVerified(t: TFunction, dateString?: string): string {
+  if (!dateString) return t("datasets.status.neverVerified");
 
   const date = new Date(dateString);
   const now = new Date();
@@ -86,11 +89,11 @@ function formatLastVerified(dateString?: string): string {
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins} min ago`;
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
-  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
-  return date.toLocaleDateString();
+  if (diffMins < 1) return t("datasets.status.justNow");
+  if (diffMins < 60) return t("datasets.status.minutesAgo", { count: diffMins });
+  if (diffHours < 24) return t("datasets.status.hoursAgo", { count: diffHours });
+  if (diffDays < 7) return t("datasets.status.daysAgo", { count: diffDays });
+  return date.toLocaleDateString(getActiveLocale());
 }
 
 export function DatasetStatusBadge({
@@ -101,6 +104,7 @@ export function DatasetStatusBadge({
   size = "md",
   className,
 }: DatasetStatusBadgeProps) {
+  const { t } = useTranslation();
   const config = statusConfig[status];
   const Icon = config.icon;
 
@@ -114,7 +118,7 @@ export function DatasetStatusBadge({
               className={cn("gap-1 cursor-default", className)}
             >
               <Icon className={cn(sizeClasses[size], config.colorClass)} />
-              {config.label}
+              {t(config.labelKey)}
             </Badge>
           ) : (
             <span className={cn("cursor-default inline-flex", className)}>
@@ -124,11 +128,11 @@ export function DatasetStatusBadge({
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">
           <div className="space-y-1">
-            <p className="font-medium">{config.label}</p>
-            <p className="text-xs text-muted-foreground">{config.description}</p>
+            <p className="font-medium">{t(config.labelKey)}</p>
+            <p className="text-xs text-muted-foreground">{t(config.descriptionKey)}</p>
             <div className="text-xs text-muted-foreground border-t pt-1 mt-1">
-              <p>Verified: {formatLastVerified(lastVerified)}</p>
-              {hash && <p className="font-mono">Hash: {hash}</p>}
+              <p>{t("datasets.status.verified", { when: formatLastVerified(t, lastVerified) })}</p>
+              {hash && <p className="font-mono">{t("datasets.status.hash", { hash })}</p>}
             </div>
           </div>
         </TooltipContent>

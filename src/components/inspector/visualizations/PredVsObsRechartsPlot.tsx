@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   ScatterChart,
   Scatter,
@@ -38,6 +39,7 @@ export function PredVsObsRechartsPlot({
   onDotClick,
   onHoverChainChange,
 }: PredVsObsRechartsPlotProps) {
+  const { t } = useTranslation();
   const summary = formatPredVsObsSummary({ ...metrics, pointCount: dots.length });
 
   return (
@@ -55,8 +57,8 @@ export function PredVsObsRechartsPlot({
             type="number"
             dataKey="x"
             domain={[minVal, maxVal]}
-            name="Observed"
-            label={{ value: 'Observed', position: 'insideBottom', offset: -10, style: { fontSize: 12, fill: '#94a3b8' } }}
+            name={t('inspector.charts.axis.observed')}
+            label={{ value: t('inspector.charts.axis.observed'), position: 'insideBottom', offset: -10, style: { fontSize: 12, fill: '#94a3b8' } }}
             tick={{ fontSize: 10 }}
             tickFormatter={tickFormatter}
           />
@@ -64,8 +66,8 @@ export function PredVsObsRechartsPlot({
             type="number"
             dataKey="y"
             domain={[minVal, maxVal]}
-            name="Predicted"
-            label={{ value: 'Predicted', angle: -90, position: 'insideLeft', offset: -5, style: { fontSize: 12, fill: '#94a3b8' } }}
+            name={t('inspector.charts.axis.predicted')}
+            label={{ value: t('inspector.charts.axis.predicted'), angle: -90, position: 'insideLeft', offset: -5, style: { fontSize: 12, fill: '#94a3b8' } }}
             tick={{ fontSize: 10 }}
             tickFormatter={tickFormatter}
             width={45}

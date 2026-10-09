@@ -2,6 +2,7 @@
  * ClassificationConfig - Configuration panel for with_classification() step
  */
 
+import { useTranslation } from "react-i18next";
 import { Tags } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import type { SynthesisStepDefinition, SeparationMethod } from "../types";
+import { getStepDescription } from "../definitionLabels";
 
 interface ClassificationConfigProps {
   params: Record<string, unknown>;
@@ -27,6 +29,7 @@ export function ClassificationConfig({
   definition,
   onChange,
 }: ClassificationConfigProps) {
+  const { t } = useTranslation();
   const nClasses = (params.n_classes as number) || 2;
   const separation = (params.separation as number) || 1.5;
   const separationMethod = (params.separation_method as SeparationMethod) || "component";
@@ -39,8 +42,8 @@ export function ClassificationConfig({
           <Tags className="h-4 w-4 text-purple-600" />
         </div>
         <div>
-          <h3 className="text-sm font-semibold">Classification Configuration</h3>
-          <p className="text-xs text-muted-foreground">{definition.description}</p>
+          <h3 className="text-sm font-semibold">{t("spectraSynthesis.config.classification.title")}</h3>
+          <p className="text-xs text-muted-foreground">{getStepDescription(t, definition.type)}</p>
         </div>
       </div>
 
@@ -49,7 +52,7 @@ export function ClassificationConfig({
       {/* Number of Classes */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">Number of Classes</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.classification.nClasses.label")}</Label>
           <span className="text-sm font-medium">{nClasses}</span>
         </div>
         <Slider
@@ -60,14 +63,14 @@ export function ClassificationConfig({
           onValueChange={(v) => onChange({ n_classes: v[0] })}
         />
         <p className="text-xs text-muted-foreground">
-          Total number of discrete classes (2-20)
+          {t("spectraSynthesis.config.classification.nClasses.hint")}
         </p>
       </div>
 
       {/* Class Separation */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">Class Separation</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.classification.separation.label")}</Label>
           <span className="text-sm font-medium">{separation.toFixed(1)}</span>
         </div>
         <Slider
@@ -78,13 +81,13 @@ export function ClassificationConfig({
           onValueChange={(v) => onChange({ separation: v[0] })}
         />
         <p className="text-xs text-muted-foreground">
-          Higher values = more distinguishable classes
+          {t("spectraSynthesis.config.classification.separation.hint")}
         </p>
       </div>
 
       {/* Separation Method */}
       <div className="space-y-2">
-        <Label className="text-sm font-medium">Separation Method</Label>
+        <Label className="text-sm font-medium">{t("spectraSynthesis.config.classification.method.label")}</Label>
         <Select
           value={separationMethod}
           onValueChange={(v) => onChange({ separation_method: v })}
@@ -95,25 +98,25 @@ export function ClassificationConfig({
           <SelectContent>
             <SelectItem value="component">
               <div className="flex flex-col">
-                <span>Component-based</span>
+                <span>{t("spectraSynthesis.config.classification.method.component.name")}</span>
                 <span className="text-xs text-muted-foreground">
-                  Separate by chemical composition
+                  {t("spectraSynthesis.config.classification.method.component.description")}
                 </span>
               </div>
             </SelectItem>
             <SelectItem value="threshold">
               <div className="flex flex-col">
-                <span>Threshold-based</span>
+                <span>{t("spectraSynthesis.config.classification.method.threshold.name")}</span>
                 <span className="text-xs text-muted-foreground">
-                  Threshold on concentration
+                  {t("spectraSynthesis.config.classification.method.threshold.description")}
                 </span>
               </div>
             </SelectItem>
             <SelectItem value="cluster">
               <div className="flex flex-col">
-                <span>Cluster-based</span>
+                <span>{t("spectraSynthesis.config.classification.method.cluster.name")}</span>
                 <span className="text-xs text-muted-foreground">
-                  Cluster-based separation
+                  {t("spectraSynthesis.config.classification.method.cluster.description")}
                 </span>
               </div>
             </SelectItem>

@@ -6,7 +6,7 @@ import { MlReadinessContext, type MlReadiness } from "@/context/useMlReadiness";
 import { MlLoadingOverlay } from "./MlLoadingOverlay";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (_key: string, fallback: string) => fallback }),
+  useTranslation: () => ({ t: (key: string) => key }),
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -30,7 +30,7 @@ describe("capability-specific page readiness", () => {
       ));
       expect(container.querySelector("[inert]")).not.toBeNull();
       expect(container.querySelector('[role="status"]')?.textContent)
-        .toContain("Native prediction is unavailable");
+        .toContain("layout.mlOverlay.nativePredictionUnavailable");
     } finally {
       await act(async () => root.unmount());
     }

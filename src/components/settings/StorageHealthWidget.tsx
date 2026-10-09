@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import i18n from "i18next";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -19,6 +20,8 @@ import { getStorageHealth } from "@/api/workspace";
 import type { StorageHealthResponse } from "@/types/storage";
 import { MigrationDialog } from "./MigrationDialog";
 import { MaintenanceActions } from "./MaintenanceActions";
+import { getStorageModeLabel } from "./WorkspaceStatsData";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 interface StorageHealthWidgetProps {
   className?: string;
@@ -45,7 +48,7 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
       const data = await getStorageHealth();
       setHealth(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load storage health");
+      setError(err instanceof Error ? err.message : i18n.t("settings.storageHealth.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -56,15 +59,15 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
   }, [loadHealth]);
 
   const integrity = useMemo(() => {
-    if (!health) return { label: "Unknown", icon: ShieldAlert, tone: "text-muted-foreground" };
+    if (!health) return { label: t("settings.storageHealth.integrityUnknown"), icon: ShieldAlert, tone: "text-muted-foreground" };
     if (health.corrupt_files.length > 0) {
-      return { label: "Corrupt files detected", icon: ShieldAlert, tone: "text-destructive" };
+      return { label: t("settings.storageHealth.integrityCorrupt"), icon: ShieldAlert, tone: "text-destructive" };
     }
     if (health.orphan_metadata_count > 0 || health.orphan_array_count > 0) {
-      return { label: "Orphans detected", icon: AlertTriangle, tone: "text-amber-600" };
+      return { label: t("settings.storageHealth.integrityOrphans"), icon: AlertTriangle, tone: "text-amber-600" };
     }
-    return { label: "Healthy", icon: CheckCircle2, tone: "text-green-600" };
-  }, [health]);
+    return { label: t("settings.storageHealth.integrityHealthy"), icon: CheckCircle2, tone: "text-green-600" };
+  }, [health, t]);
 
   if (loading) {
     return (
@@ -80,7 +83,7 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
     return (
       <Card className={className}>
         <CardContent className="p-6 text-sm text-destructive">
-          {error || "Storage health is unavailable"}
+          {error || t("settings.storageHealth.unavailable")}
         </CardContent>
       </Card>
     );
@@ -96,10 +99,10 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <HardDrive className="h-5 w-5" />
-                Storage Health
+                {t("settings.storageHealth.title")}
               </CardTitle>
               <CardDescription>
-                Hybrid storage diagnostics and maintenance controls.
+                {t("settings.storageHealth.description")}
               </CardDescription>
             </div>
             <Button variant="ghost" size="icon" aria-label={t("common.a11y.refresh")} onClick={loadHealth}>
@@ -111,10 +114,10 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
           {health.migration_needed && (
             <Alert>
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Legacy array storage detected</AlertTitle>
+              <AlertTitle>{t("settings.storageHealth.legacyTitle")}</AlertTitle>
               <AlertDescription className="space-y-3">
                 <p>
-                  Migration to Parquet is recommended for better read/write performance.
+                  {t("settings.storageHealth.legacyBody")}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -122,10 +125,10 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
                     size="sm"
                     onClick={() => setMigrationDialogOpen(true)}
                   >
-                    Run Dry Run
+                    {t("settings.storageHealth.dryRun")}
                   </Button>
                   <Button size="sm" onClick={() => setMigrationDialogOpen(true)}>
-                    Migrate Now
+                    {t("settings.storageHealth.migrateNow")}
                   </Button>
                 </div>
               </AlertDescription>
@@ -134,25 +137,25 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
 
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={getStatusVariant(health.storage_mode)}>
-              Mode: {health.storage_mode}
+              {t("settings.storageHealth.mode", { mode: getStorageModeLabel(health.storage_mode, t) })}
             </Badge>
             <Badge variant="outline">
-              Predictions: {health.total_predictions.toLocaleString()}
+              {t("settings.storageHealth.predictions", { value: health.total_predictions.toLocaleString(getActiveLocale()) })}
             </Badge>
-            <Badge variant="outline">Datasets: {health.total_datasets}</Badge>
+            <Badge variant="outline">{t("settings.storageHealth.datasets", { value: health.total_datasets })}</Badge>
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-md border p-3">
-              <div className="text-xs text-muted-foreground">Database</div>
+              <div className="text-xs text-muted-foreground">{t("settings.storageHealth.database")}</div>
               <div className="text-sm font-medium">{formatBytes(health.duckdb_size_bytes)}</div>
             </div>
             <div className="rounded-md border p-3">
-              <div className="text-xs text-muted-foreground">Parquet Arrays</div>
+              <div className="text-xs text-muted-foreground">{t("settings.storageHealth.parquetArrays")}</div>
               <div className="text-sm font-medium">{formatBytes(health.parquet_total_size_bytes)}</div>
             </div>
             <div className="rounded-md border p-3">
-              <div className="text-xs text-muted-foreground">Integrity</div>
+              <div className="text-xs text-muted-foreground">{t("settings.storageHealth.integrity")}</div>
               <div className={`text-sm font-medium flex items-center gap-1 ${integrity.tone}`}>
                 <IntegrityIcon className="h-4 w-4" />
                 {integrity.label}
@@ -165,10 +168,10 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
           <div className="space-y-2">
             <p className="text-sm font-medium flex items-center gap-2">
               <Database className="h-4 w-4" />
-              Per-dataset array footprint
+              {t("settings.storageHealth.perDataset")}
             </p>
             {health.datasets.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No dataset parquet files found.</p>
+              <p className="text-sm text-muted-foreground">{t("settings.storageHealth.noParquet")}</p>
             ) : (
               <div className="max-h-56 overflow-auto space-y-1">
                 {health.datasets.map((dataset) => (
@@ -178,7 +181,7 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
                   >
                     <span className="truncate">{dataset.name}</span>
                     <span className="text-muted-foreground">
-                      {dataset.prediction_count.toLocaleString()} preds • {formatBytes(dataset.parquet_size_bytes)}
+                      {t("settings.storageHealth.datasetSummary", { value: dataset.prediction_count.toLocaleString(getActiveLocale()), size: formatBytes(dataset.parquet_size_bytes) })}
                     </span>
                   </div>
                 ))}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Sheet,
   SheetContent,
@@ -76,6 +77,7 @@ const getMockLogs = (pipeline: PipelineRun): string[] => {
 };
 
 export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange }: PipelineDetailSheetProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("results");
   const [copied, setCopied] = useState(false);
 
@@ -109,7 +111,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
             <div className="flex items-center gap-3">
               <RuntimeStatusIconFrame status={pipeline.status} />
               <div>
-                <SheetTitle className="text-lg">Pipeline Details</SheetTitle>
+                <SheetTitle className="text-lg">{t("runs.pipelineSheet.title")}</SheetTitle>
                 <SheetDescription className="flex items-center gap-2 mt-1">
                   <span className="text-sm font-medium text-foreground">
                     {pipeline.pipeline_name}
@@ -132,7 +134,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
             <Button variant="ghost" size="sm" asChild>
               <Link to={`/datasets/${encodeURIComponent(datasetName)}`}>
                 <ExternalLink className="h-3.5 w-3.5 mr-1" />
-                View Dataset
+                {t("runs.pipelineSheet.viewDataset")}
               </Link>
             </Button>
           </div>
@@ -142,17 +144,17 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
             <div className="p-3 rounded-lg bg-muted/30 text-center">
               <Box className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
               <p className="text-sm font-semibold">{pipeline.model}</p>
-              <p className="text-xs text-muted-foreground">Model</p>
+              <p className="text-xs text-muted-foreground">{t("runs.pipelineSheet.model")}</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/30 text-center">
               <Wrench className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
               <p className="text-sm font-semibold">{pipeline.preprocessing}</p>
-              <p className="text-xs text-muted-foreground">Preprocessing</p>
+              <p className="text-xs text-muted-foreground">{t("runs.pipelineSheet.preprocessing")}</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/30 text-center">
               <GitBranch className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
               <p className="text-sm font-semibold">{pipeline.split_strategy}</p>
-              <p className="text-xs text-muted-foreground">Split</p>
+              <p className="text-xs text-muted-foreground">{t("runs.pipelineSheet.split")}</p>
             </div>
           </div>
         </SheetHeader>
@@ -163,7 +165,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
           <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
             <TabsTrigger value="results" className="text-xs">
               <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
-              Metrics
+              {t("runs.pipelineSheet.metrics")}
             </TabsTrigger>
             <TabsTrigger value="json" className="text-xs">
               <FileJson className="h-3.5 w-3.5 mr-1.5" />
@@ -171,7 +173,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
             </TabsTrigger>
             <TabsTrigger value="logs" className="text-xs">
               <Terminal className="h-3.5 w-3.5 mr-1.5" />
-              Logs
+              {t("runs.detail.tabLogs")}
             </TabsTrigger>
           </TabsList>
 
@@ -186,7 +188,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
                   <div className="grid grid-cols-2 gap-3">
                     {pipeline.metrics.r2 != null && (
                       <MetricCard
-                        label="R² Score"
+                        label={t("runs.metrics.r2Score")}
                         value={pipeline.metrics.r2}
                         format={4}
                         icon={<Target className="h-4 w-4" />}
@@ -233,18 +235,18 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
                     <div className="p-3 rounded-lg border">
                       <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
                         <Clock className="h-4 w-4 text-muted-foreground" />
-                        Execution Times
+                        {t("runs.pipelineSheet.executionTimes")}
                       </h4>
                       <div className="space-y-2 text-sm">
                         {pipeline.started_at && (
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Started</span>
+                            <span className="text-muted-foreground">{t("runs.detail.overview.started")}</span>
                             <span>{pipeline.started_at}</span>
                           </div>
                         )}
                         {pipeline.completed_at && (
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Completed</span>
+                            <span className="text-muted-foreground">{t("runs.detail.overview.completed")}</span>
                             <span>{pipeline.completed_at}</span>
                           </div>
                         )}
@@ -259,14 +261,14 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
                       className="text-muted-foreground hover:text-primary flex items-center gap-1"
                     >
                       <Target className="h-3 w-3" />
-                      Predictions
+                      {t("runs.pipelineSheet.predictions")}
                     </Link>
                     <Link
                       to="/results"
                       className="text-muted-foreground hover:text-primary flex items-center gap-1"
                     >
                       <BarChart3 className="h-3 w-3" />
-                      Results
+                      {t("runs.detail.results")}
                     </Link>
                   </div>
                 </>
@@ -275,10 +277,10 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
                   <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">
                     {pipeline.status === "running"
-                      ? "Results will appear when training completes"
+                      ? t("runs.pipelineSheet.resultsPending")
                       : pipeline.status === "queued"
-                      ? "Waiting to start..."
-                      : "No results available"}
+                      ? t("runs.pipelineSheet.waitingToStart")
+                      : t("runs.pipelineSheet.noResults")}
                   </p>
                 </div>
               )}
@@ -288,7 +290,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
                 <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                   <h4 className="font-medium text-sm text-destructive mb-2 flex items-center gap-2">
                     <AlertCircle className="h-4 w-4" />
-                    Error
+                    {t("runs.detail.overview.error")}
                   </h4>
                   <p className="text-sm text-destructive/80">{pipeline.error_message}</p>
                 </div>
@@ -298,14 +300,14 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
             {/* JSON Tab */}
             <TabsContent value="json" className="m-0 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Pipeline Configuration</span>
+                <span className="text-sm text-muted-foreground">{t("runs.pipelineSheet.configuration")}</span>
                 <Button variant="outline" size="sm" onClick={handleCopyJson}>
                   {copied ? (
                     <Check className="h-3.5 w-3.5 mr-1.5 text-green-500" />
                   ) : (
                     <Copy className="h-3.5 w-3.5 mr-1.5" />
                   )}
-                  {copied ? "Copied" : "Copy"}
+                  {copied ? t("common.copied") : t("common.copy")}
                 </Button>
               </div>
 
@@ -319,10 +321,10 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
             {/* Logs Tab */}
             <TabsContent value="logs" className="m-0 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Execution Logs</span>
+                <span className="text-sm text-muted-foreground">{t("runs.pipelineSheet.executionLogs")}</span>
                 <Button variant="outline" size="sm">
                   <Download className="h-3.5 w-3.5 mr-1.5" />
-                  Download
+                  {t("runs.detail.logs.download")}
                 </Button>
               </div>
 
@@ -341,7 +343,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
                 {pipeline.status === "running" && (
                   <div className="flex items-center gap-2 text-chart-2">
                     <RefreshCw className="h-3 w-3 animate-spin" />
-                    <span>Processing...</span>
+                    <span>{t("runs.pipelineSheet.processing")}</span>
                   </div>
                 )}
               </div>

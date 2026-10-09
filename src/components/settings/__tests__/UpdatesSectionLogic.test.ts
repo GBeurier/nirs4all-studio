@@ -1,19 +1,42 @@
-import { describe, expect, it } from "vitest";
+/**
+ * @vitest-environment jsdom
+ */
+
+import i18n from "i18next";
+import { beforeAll, describe, expect, it } from "vitest";
+
+import "@/lib/i18n";
 import type { GPUDetectionResponse } from "@/api/config";
 import type { RuntimeInfo, RuntimeStatus, UpdateStatus } from "@/api/updates";
 import type { RuntimeSummaryResponse } from "@/types/settings";
 import {
   canApplyWebappUpdateInPlace,
   getCurrentRuntime,
-  getGpuDisplay,
+  getGpuDisplay as getGpuDisplayWithT,
   getInstallerUrl,
   getNirs4allUpdateRowState,
-  getRuntimeExecutablePath,
-  getTorchRuntimeDisplay,
+  getRuntimeExecutablePath as getRuntimeExecutablePathWithT,
+  getTorchRuntimeDisplay as getTorchRuntimeDisplayWithT,
   getUpdateAvailability,
-  getWebappDialogCopy,
-  getWebappUpdateRowState,
+  getWebappDialogCopy as getWebappDialogCopyWithT,
+  getWebappUpdateRowState as getWebappUpdateRowStateWithT,
 } from "../UpdatesSectionLogic";
+
+// Real English resources: the logic helpers receive the i18n `t` function.
+const t = i18n.t.bind(i18n);
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
+const getGpuDisplay = (...args: [Parameters<typeof getGpuDisplayWithT>[0], Parameters<typeof getGpuDisplayWithT>[1]]) =>
+  getGpuDisplayWithT(...args, t);
+const getRuntimeExecutablePath = (...args: [Parameters<typeof getRuntimeExecutablePathWithT>[0], Parameters<typeof getRuntimeExecutablePathWithT>[1]]) =>
+  getRuntimeExecutablePathWithT(...args, t);
+const getTorchRuntimeDisplay = (gpuInfo: Parameters<typeof getTorchRuntimeDisplayWithT>[0]) =>
+  getTorchRuntimeDisplayWithT(gpuInfo, t);
+const getWebappDialogCopy = (args: Omit<Parameters<typeof getWebappDialogCopyWithT>[0], "t">) =>
+  getWebappDialogCopyWithT({ ...args, t });
+const getWebappUpdateRowState = (args: Omit<Parameters<typeof getWebappUpdateRowStateWithT>[0], "t">) =>
+  getWebappUpdateRowStateWithT({ ...args, t });
 
 const runtime: RuntimeInfo = {
   path: "/opt/nirs4all/runtime",

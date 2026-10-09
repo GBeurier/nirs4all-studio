@@ -6,12 +6,17 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
+import i18n from "@/lib/i18n";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RunItem } from "../RunItem";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 vi.mock("@/api/linkedWorkspaces", () => ({
   deleteN4AWorkspaceRun: vi.fn(),

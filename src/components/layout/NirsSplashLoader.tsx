@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
 import nirsOscLoaderMarkup from "@/assets/nirs-osc-loader.svg?raw";
 
 type NirsSplashLoaderProps = {
@@ -46,12 +47,13 @@ const loaderMarkup = { __html: svgMarkup };
 
 export const NirsSplashLoader = memo(function NirsSplashLoader({
   className,
-  alt = "NIRS loading animation",
+  alt,
 }: NirsSplashLoaderProps) {
+  const { t } = useTranslation();
   return (
     <div
       role="img"
-      aria-label={alt}
+      aria-label={alt ?? t("layout.splash.alt")}
       className={`pointer-events-none select-none [&>svg]:block [&>svg]:h-full [&>svg]:w-full ${className ?? ""}`.trim()}
       dangerouslySetInnerHTML={loaderMarkup}
     />

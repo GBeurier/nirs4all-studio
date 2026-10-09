@@ -180,10 +180,10 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
       setTimeout(() => setCurrentStep("profile"), validation.gpuInfo ? 1500 : 300);
     } catch (err) {
       console.warn("[EnvSetup] Post-switch validation failed:", err);
-      setError(err instanceof Error ? err.message : "Failed to inspect the selected runtime");
+      setError(err instanceof Error ? err.message : t("setupWizard.errors.inspectRuntime"));
       setCurrentStep("env-progress");
     }
-  }, []);
+  }, [t]);
 
   // --- Pre-backend handlers ---
 
@@ -191,7 +191,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     if (!electronApi) return;
     setCurrentStep("env-progress");
     setError(null);
-    setProgress({ percent: 60, step: "starting", detail: "Starting backend..." });
+    setProgress({ percent: 60, step: "starting", detail: t("setupWizard.progress.startingBackend") });
 
     // Current env is already configured — just start/restart the backend
     try {
@@ -225,24 +225,24 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
 
       await transitionToPostBackend(Promise.resolve(validation));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start backend");
+      setError(err instanceof Error ? err.message : t("setupWizard.errors.startBackend"));
     }
-  }, [transitionToPostBackend]);
+  }, [t, transitionToPostBackend]);
 
   const handleAutoSetup = useCallback(async () => {
     if (!electronApi) return;
     setCurrentStep("env-progress");
     setError(null);
-    setProgress({ percent: 0, step: "starting", detail: "Starting setup..." });
+    setProgress({ percent: 0, step: "starting", detail: t("setupWizard.progress.startingSetup") });
 
     const result = await electronApi.startEnvSetup();
     if (result.success) {
       announceBackendRestarted();
       await transitionToPostBackend(Promise.resolve(loadPostSwitchValidation()));
     } else {
-      setError(result.error || "Setup failed");
+      setError(result.error || t("setupWizard.envProgress.failed"));
     }
-  }, [transitionToPostBackend]);
+  }, [t, transitionToPostBackend]);
 
   const handleCreateInFolder = useCallback(async () => {
     if (!electronApi) return;
@@ -251,16 +251,16 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
 
     setCurrentStep("env-progress");
     setError(null);
-    setProgress({ percent: 0, step: "starting", detail: "Starting setup..." });
+    setProgress({ percent: 0, step: "starting", detail: t("setupWizard.progress.startingSetup") });
 
     const result = await electronApi.startEnvSetup(folder);
     if (result.success) {
       announceBackendRestarted();
       await transitionToPostBackend(Promise.resolve(loadPostSwitchValidation()));
     } else {
-      setError(result.error || "Setup failed");
+      setError(result.error || t("setupWizard.envProgress.failed"));
     }
-  }, [transitionToPostBackend]);
+  }, [t, transitionToPostBackend]);
 
   const handleInspectExisting = useCallback(async (envPath: string) => {
     if (!electronApi) return;
@@ -274,11 +274,11 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
         setError(result.message);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to inspect environment");
+      setError(err instanceof Error ? err.message : t("setupWizard.errors.inspectEnv"));
     } finally {
       setIsInspecting(false);
     }
-  }, []);
+  }, [t]);
 
   const handleBrowsePython = useCallback(async () => {
     if (!electronApi) return;
@@ -295,11 +295,11 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
         setError(result.message);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to inspect Python executable");
+      setError(err instanceof Error ? err.message : t("setupWizard.errors.inspectPython"));
     } finally {
       setIsInspecting(false);
     }
-  }, []);
+  }, [t]);
 
   const handleApplyInspection = useCallback(async (installCorePackages: boolean) => {
     if (!electronApi || !inspection) return;
@@ -310,8 +310,8 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
       percent: 50,
       step: "validating",
       detail: installCorePackages
-        ? "Installing core backend packages..."
-        : "Applying selected Python runtime...",
+        ? t("setupWizard.progress.installingCore")
+        : t("setupWizard.progress.applyingRuntime"),
     });
 
     const result = await electronApi.applyExistingPython(inspection.pythonPath, {
@@ -322,15 +322,15 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
       return;
     }
 
-    setProgress({ percent: 80, step: "starting", detail: "Starting backend..." });
+    setProgress({ percent: 80, step: "starting", detail: t("setupWizard.progress.startingBackend") });
     try {
       const validation = await restartBackendForRuntimeSwitch((options) => electronApi.restartBackend(options));
       setInspection(null);
       await transitionToPostBackend(Promise.resolve(validation));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start backend");
+      setError(err instanceof Error ? err.message : t("setupWizard.errors.startBackend"));
     }
-  }, [inspection, transitionToPostBackend]);
+  }, [inspection, t, transitionToPostBackend]);
 
   const handleRetryEnv = useCallback(() => {
     setCurrentStep("env");

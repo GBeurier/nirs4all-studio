@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
+import "@/lib/i18n";
 
 import {
   buildTuningTrialCsvFilename,

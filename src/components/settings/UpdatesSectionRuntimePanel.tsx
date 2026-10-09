@@ -1,4 +1,5 @@
 import { AlertCircle, ChevronDown, HardDrive } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import type { RuntimeInfo } from "@/api/updates";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -47,19 +48,20 @@ export function RuntimeStatusPanel({
   runtimeSizeLabel,
   torchDisplay,
 }: RuntimeStatusPanelProps) {
+  const { t } = useTranslation();
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger asChild>
         <Button variant="ghost" className="w-full justify-between p-2 h-auto">
           <span className="text-sm font-medium flex items-center gap-2">
             <HardDrive className="h-4 w-4" />
-            Current Python Runtime
+            {t("settings.updates.runtime.title")}
           </span>
           <div className="flex items-center gap-2">
             {currentRuntime?.is_valid ? (
-              <Badge variant="outline" className="text-green-600">Ready</Badge>
+              <Badge variant="outline" className="text-green-600">{t("settings.pythonEnv.ready")}</Badge>
             ) : (
-              <Badge variant="outline" className="text-amber-600">Unavailable</Badge>
+              <Badge variant="outline" className="text-amber-600">{t("settings.updates.runtime.unavailable")}</Badge>
             )}
             <Badge variant="secondary" className="text-xs">{runtimeDisplay.label}</Badge>
             <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -72,43 +74,43 @@ export function RuntimeStatusPanel({
         ) : currentRuntime?.is_valid ? (
           <div className="space-y-2 p-3 bg-muted/30 rounded-lg text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Python:</span>
+              <span className="text-muted-foreground">{t("settings.updates.runtime.python")}</span>
               <span className="font-mono">{currentRuntime.python_version}</span>
             </div>
             <div className="flex justify-between items-start gap-4">
-              <span className="text-muted-foreground">Runtime:</span>
+              <span className="text-muted-foreground">{t("settings.updates.runtime.runtime")}</span>
               <span className="text-right max-w-[60%]">{runtimeDisplay.label}</span>
             </div>
             <div className="flex justify-between items-start gap-4">
-              <span className="text-muted-foreground">Python executable:</span>
+              <span className="text-muted-foreground">{t("settings.updates.runtime.executable")}</span>
               <span className="font-mono text-xs break-all text-right max-w-[60%]">
                 {runtimeExecutablePath}
               </span>
             </div>
             <div className="flex justify-between items-start gap-4">
-              <span className="text-muted-foreground">Detected GPU:</span>
+              <span className="text-muted-foreground">{t("settings.updates.runtime.gpu")}</span>
               <span className="text-right max-w-[60%]">
                 <RuntimeTextValue value={gpuDisplay} />
               </span>
             </div>
             {torchDisplay && (
               <div className="flex justify-between items-start gap-4">
-                <span className="text-muted-foreground">Torch runtime:</span>
+                <span className="text-muted-foreground">{t("settings.updates.runtime.torch")}</span>
                 <span className="text-right max-w-[60%]">
                   <RuntimeTextValue value={torchDisplay} />
                 </span>
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Size:</span>
+              <span className="text-muted-foreground">{t("settings.updates.runtime.size")}</span>
               <span>{runtimeSizeLabel}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Packages:</span>
-              <span>{packageCount} installed</span>
+              <span className="text-muted-foreground">{t("settings.updates.runtime.packages")}</span>
+              <span>{t("settings.updates.runtime.packagesInstalled", { count: packageCount })}</span>
             </div>
             <div className="flex justify-between items-start">
-              <span className="text-muted-foreground">Environment root:</span>
+              <span className="text-muted-foreground">{t("settings.updates.runtime.root")}</span>
               <span className="font-mono text-xs break-all text-right max-w-[60%]">
                 {currentRuntime.path}
               </span>
@@ -118,7 +120,7 @@ export function RuntimeStatusPanel({
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              The current Python runtime is not valid. Use the Python Runtime section above to select or create a runtime before installing packages or restoring snapshots.
+              {t("settings.updates.runtime.invalid")}
             </AlertDescription>
           </Alert>
         )}

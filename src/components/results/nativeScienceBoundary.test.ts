@@ -3,10 +3,12 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import en from "@/locales/en";
+
 interface GuardedSourceFile {
   path: string;
   requiredImports: string[];
-  requiredCopy?: string[];
+  requiredCopy?: { key: string; text: string }[];
 }
 
 const guardedSourceFiles: GuardedSourceFile[] = [
@@ -22,21 +24,24 @@ const guardedSourceFiles: GuardedSourceFile[] = [
     path: "src/components/results/ResultMetricsConformalSummary.tsx",
     requiredImports: ["@/ui/conformal"],
     requiredCopy: [
-      "Studio displays them without recomputing observed coverage or interval scores.",
+      {
+        key: "results.conformal.metrics.description",
+        text: "Studio displays them without recomputing observed coverage or interval scores.",
+      },
     ],
   },
   {
     path: "src/components/results/ResultMetricsRobustnessSummary.tsx",
     requiredImports: ["@/ui/robustness"],
     requiredCopy: [
-      "Studio does not recompute robustness metrics.",
-      "Studio does not recompute slice metrics.",
+      { key: "results.robustness.matrix.description", text: "Studio does not recompute robustness metrics." },
+      { key: "results.robustness.slices.description", text: "Studio does not recompute slice metrics." },
     ],
   },
   {
     path: "src/components/results/ResultMetricsTuningSummary.tsx",
     requiredImports: ["@/ui/tuning"],
-    requiredCopy: ["Native tuning"],
+    requiredCopy: [{ key: "results.tuning.title", text: "Native tuning" }],
   },
 ];
 
@@ -71,6 +76,14 @@ function readProjectFile(path: string): string {
   return readFileSync(resolve(process.cwd(), path), "utf8");
 }
 
+function readEnglishCopy(key: string): string {
+  const value = key.split(".").reduce<unknown>(
+    (node, part) => (node as Record<string, unknown> | undefined)?.[part],
+    en,
+  );
+  return typeof value === "string" ? value : "";
+}
+
 describe("native result science boundary", () => {
   it("keeps Studio native conformal, robustness, and tuning surfaces on shared read-model adapters", () => {
     for (const file of guardedSourceFiles) {
@@ -87,7 +100,8 @@ describe("native result science boundary", () => {
       const source = readProjectFile(file.path);
 
       for (const copy of file.requiredCopy ?? []) {
-        expect(source, `${file.path} must keep native-boundary copy: ${copy}`).toContain(copy);
+        expect(source, `${file.path} must render ${copy.key}`).toContain(`"${copy.key}"`);
+        expect(readEnglishCopy(copy.key), `${copy.key} must keep native-boundary copy`).toContain(copy.text);
       }
     }
   });

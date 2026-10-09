@@ -25,7 +25,7 @@ interface PartitionPaletteDefinition {
 
 interface ConfusionGradientDefinition {
   id: Exclude<ConfusionGradientPreset, "custom">;
-  label: string;
+  labelKey: string;
   colors: ViewerGradientColors;
 }
 
@@ -34,26 +34,26 @@ const PARTITION_PALETTE_IDS = ["default", "tableau10", "set1", "set2", "paired"]
 
 const CONFUSION_GRADIENTS = {
   ocean: {
-    label: "Ocean",
+    labelKey: "predictions.viewer.config.gradients.ocean",
     colors: { low: "#eef6ff", high: "#1d4ed8" },
   },
   lagoon: {
-    label: "Lagoon",
+    labelKey: "predictions.viewer.config.gradients.lagoon",
     colors: { low: "#ecfeff", high: "#0f766e" },
   },
   ember: {
-    label: "Ember",
+    labelKey: "predictions.viewer.config.gradients.ember",
     colors: { low: "#fff4ec", high: "#c2410c" },
   },
   orchid: {
-    label: "Orchid",
+    labelKey: "predictions.viewer.config.gradients.orchid",
     colors: { low: "#f7f1ff", high: "#7c3aed" },
   },
   moss: {
-    label: "Moss",
+    labelKey: "predictions.viewer.config.gradients.moss",
     colors: { low: "#f3fbf4", high: "#2f855a" },
   },
-} as const satisfies Record<Exclude<ConfusionGradientPreset, "custom">, { label: string; colors: ViewerGradientColors }>;
+} as const satisfies Record<Exclude<ConfusionGradientPreset, "custom">, { labelKey: string; colors: ViewerGradientColors }>;
 
 function clampChannel(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
@@ -164,8 +164,8 @@ export function listPalettes(): PartitionPaletteDefinition[] {
   });
 }
 
-export function getPaletteLabel(palette: PaletteId): string {
-  return palette === "custom" ? "Custom" : getCategoricalPaletteLabel(palette);
+export function getPaletteLabel(palette: Exclude<PaletteId, "custom">): string {
+  return getCategoricalPaletteLabel(palette);
 }
 
 /**
@@ -197,13 +197,13 @@ export function getConfusionGradientColors(preset: Exclude<ConfusionGradientPres
 export function listConfusionGradients(): ConfusionGradientDefinition[] {
   return (Object.keys(CONFUSION_GRADIENTS) as Array<Exclude<ConfusionGradientPreset, "custom">>).map((id) => ({
     id,
-    label: CONFUSION_GRADIENTS[id].label,
+    labelKey: CONFUSION_GRADIENTS[id].labelKey,
     colors: CONFUSION_GRADIENTS[id].colors,
   }));
 }
 
-export function getConfusionGradientLabel(preset: ConfusionGradientPreset): string {
-  return preset === "custom" ? "Custom" : CONFUSION_GRADIENTS[preset].label;
+export function getConfusionGradientLabelKey(preset: ConfusionGradientPreset): string {
+  return preset === "custom" ? "common.custom" : CONFUSION_GRADIENTS[preset].labelKey;
 }
 
 export function getConfusionGradientCss(gradient: ViewerGradientColors): string {

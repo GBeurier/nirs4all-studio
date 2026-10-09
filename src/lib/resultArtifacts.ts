@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import { foldIdBase, foldLabel } from "@/lib/fold-utils";
 import type { PredictionArraysResponse } from "@/types/aggregated-predictions";
 import type { PredictionRecord } from "@/types/linked-workspaces";
@@ -296,68 +297,24 @@ export function filterResultArtifactRefsBySourceScope(
   return filterResultArtifactRefs(refs, filter);
 }
 
-const resultArtifactKindLabels: Record<ResultArtifactKind, string> = {
-  model: "Model",
-  pipeline_config: "Pipeline configuration",
-  metric_table: "Metric table",
-  execution_log: "Execution log",
-  prediction_arrays: "Prediction arrays",
-  benchmark_metrics: "Benchmark metrics",
-  shap_explanation: "SHAP explanation",
-  optuna_study: "Optuna study",
-  repository_entry: "Repository entry",
-  native_result: "Native result",
-};
-
-const resultArtifactStatusLabels: Record<ResultArtifactStatus, string> = {
-  available: "Available",
-  virtual: "Virtual",
-  planned: "Planned",
-  missing: "Missing",
-};
-
-const resultArtifactSourceLabels: Record<ResultArtifactSource, string> = {
-  "pipeline-run": "Pipeline run",
-  "model-inventory": "Model inventory",
-  "legacy-fold-artifacts": "Legacy fold artifacts",
-  "prediction-record": "Prediction record",
-  "prediction-arrays": "Prediction arrays",
-  "benchmark-export": "Benchmark export",
-  "result-repository": "Result repository",
-  "native-results": "Analysis results",
-  "cluster-run": "Cluster run",
-  generated: "Generated",
-};
-
-const resultArtifactScopeLabels: Record<ResultArtifactScope, string> = {
-  run: "Run",
-  pipeline: "Pipeline",
-  model: "Model",
-  chain: "Chain",
-  fold: "Fold",
-  prediction: "Prediction",
-  dataset: "Dataset",
-  campaign: "Campaign",
-};
-
 export function getResultArtifactKindLabel(kind: ResultArtifactKind): string {
-  return resultArtifactKindLabels[kind];
+  return i18next.t(`results.artifactRefs.kind.${kind}`);
 }
 
 export function getResultArtifactStatusLabel(status: ResultArtifactStatus): string {
-  return resultArtifactStatusLabels[status];
+  return i18next.t(`results.artifactRefs.status.${status}`);
 }
 
 export function getResultArtifactSourceLabel(source: ResultArtifactSource): string {
-  return resultArtifactSourceLabels[source];
+  return i18next.t(`results.artifactRefs.source.${source}`);
 }
 
 export function getResultArtifactScopeLabel(scope: ResultArtifactScope): string {
-  return resultArtifactScopeLabels[scope];
+  return i18next.t(`results.artifactRefs.scope.${scope}`);
 }
 
 export function formatResultArtifactCountLabel(count: number): string {
-  return `${count} ${count === 1 ? "artifact" : "artifacts"}`;
+  return i18next.t("results.artifactRefs.count", { count });
 }
 
 function buildResultArtifactDimensionCountItems<TValue extends string>(
@@ -473,9 +430,9 @@ function buildResultArtifactRepositoryDetailLabels(ref: ResultArtifactRef, conte
   const sourceRef = readStringField(ref.metadata, ["sourceRef", "source_ref"]);
 
   return [
-    contentAddressLabel ? `Content ${contentAddressLabel}` : null,
-    repositoryId ? `Repository ${repositoryId}` : null,
-    sourceRef ? `Source ${sourceRef}` : null,
+    contentAddressLabel ? i18next.t("results.artifactRefs.detail.content", { value: contentAddressLabel }) : null,
+    repositoryId ? i18next.t("results.artifactRefs.detail.repository", { value: repositoryId }) : null,
+    sourceRef ? i18next.t("results.artifactRefs.detail.source", { value: sourceRef }) : null,
   ].filter((label): label is string => label != null);
 }
 
@@ -523,14 +480,19 @@ function stringArray(value: unknown): string[] {
 
 function formatAuditContext(context: Record<string, unknown> | undefined): string | null {
   if (!context) return null;
+  const runId = readStringField(context, ["run_id", "runId"]);
+  const pipelineId = readStringField(context, ["pipeline_id", "pipelineId"]);
+  const chainId = readStringField(context, ["chain_id", "chainId"]);
+  const partition = readStringField(context, ["partition"]);
+  const foldId = readStringField(context, ["fold_id", "foldId"]);
   const parts = [
-    readStringField(context, ["run_id", "runId"]) ? `run ${readStringField(context, ["run_id", "runId"])}` : null,
-    readStringField(context, ["pipeline_id", "pipelineId"]) ? `pipeline ${readStringField(context, ["pipeline_id", "pipelineId"])}` : null,
-    readStringField(context, ["chain_id", "chainId"]) ? `chain ${readStringField(context, ["chain_id", "chainId"])}` : null,
-    readStringField(context, ["partition"]) ? `partition ${readStringField(context, ["partition"])}` : null,
-    readStringField(context, ["fold_id", "foldId"]) ? `fold ${readStringField(context, ["fold_id", "foldId"])}` : null,
+    runId ? i18next.t("results.artifactRefs.audit.run", { value: runId }) : null,
+    pipelineId ? i18next.t("results.artifactRefs.audit.pipeline", { value: pipelineId }) : null,
+    chainId ? i18next.t("results.artifactRefs.audit.chain", { value: chainId }) : null,
+    partition ? i18next.t("results.artifactRefs.audit.partition", { value: partition }) : null,
+    foldId ? i18next.t("results.artifactRefs.audit.fold", { value: foldId }) : null,
   ].filter((part): part is string => part != null);
-  return parts.length > 0 ? `Context ${parts.join(" · ")}` : null;
+  return parts.length > 0 ? i18next.t("results.artifactRefs.audit.context", { parts: parts.join(" · ") }) : null;
 }
 
 function buildRobustnessAuditDetailLabels(ref: ResultArtifactRef, audit: Record<string, unknown>): string[] {
@@ -544,10 +506,10 @@ function buildRobustnessAuditDetailLabels(ref: ResultArtifactRef, audit: Record<
   const mode = readStringField(requested, ["mode"]);
 
   return [
-    mode ? `Mode ${mode}` : null,
-    scenarioKinds.length > 0 ? `Scenarios ${scenarioKinds.join(", ")}` : null,
-    typeof seed === "number" ? `Seed ${seed}` : seed === null ? "Seed none" : null,
-    predictionId ? `Prediction ${predictionId}` : null,
+    mode ? i18next.t("results.artifactRefs.audit.mode", { value: mode }) : null,
+    scenarioKinds.length > 0 ? i18next.t("results.artifactRefs.audit.scenarios", { value: scenarioKinds.join(", ") }) : null,
+    typeof seed === "number" ? i18next.t("results.artifactRefs.audit.seed", { value: seed }) : seed === null ? i18next.t("results.artifactRefs.audit.seedNone") : null,
+    predictionId ? i18next.t("results.artifactRefs.audit.prediction", { value: predictionId }) : null,
     formatAuditContext(context),
   ].filter((label): label is string => label != null);
 }
@@ -561,7 +523,7 @@ export function buildResultArtifactAuditItems(refs: readonly ResultArtifactRef[]
     return [{
       id: buildResultArtifactRefId(["artifact-audit", ref.id]),
       refId: ref.id,
-      label: `${ref.label} audit`,
+      label: i18next.t("results.artifactRefs.audit.title", { label: ref.label }),
       detailLabels,
     }];
   });
@@ -605,7 +567,7 @@ export function buildFoldModelArtifactRefs(
         id: buildResultArtifactRefId(["legacy-fold-artifacts", anchorId, key, artifactId]),
         kind: "model",
         role,
-        label: `${foldLabel(foldId)} model`,
+        label: i18next.t("results.artifactRefs.foldModel", { fold: foldLabel(foldId) }),
         source: "legacy-fold-artifacts",
         scope: "fold",
         status: "available",
@@ -631,7 +593,7 @@ export function buildPredictionRecordModelArtifactRefs(prediction: PredictionRec
     id: buildResultArtifactRefId(["prediction-record", chainId, foldId, artifactId]),
     kind: "model",
     role: foldModelRole(foldId),
-    label: `${foldLabel(foldId)} model`,
+    label: i18next.t("results.artifactRefs.foldModel", { fold: foldLabel(foldId) }),
     source: "prediction-record",
     scope: "fold",
     status: "available",
@@ -830,10 +792,8 @@ function normalizeNativePipelineRunArtifactRef(
   const format = readStringField(rawRef, ["format"]) ?? backend ?? (artifactType === "native_results_dir" ? "directory" : undefined);
   const label = readStringField(rawRef, ["label", "name"])
     ?? (artifactType === "native_results_dir" || role === "run_dir"
-      ? "Analysis results directory"
-      : kind === "native_result"
-        ? "Native result artifact"
-        : `Native ${getResultArtifactKindLabel(kind).toLowerCase()} artifact`);
+      ? i18next.t("results.artifactRefs.nativeDirectory")
+      : i18next.t(`results.artifactRefs.nativeKind.${kind}`));
   const id = readStringField(rawRef, ["id"]) ?? buildResultArtifactRefId([
     "native-result",
     pipeline.id,
@@ -887,7 +847,7 @@ export function buildPipelineRunArtifactRefs(pipeline: PipelineRun): ResultArtif
       id: buildResultArtifactRefId(["pipeline-run", pipeline.id, "refit-model", pipeline.refit_model_id]),
       kind: "model",
       role: "refit-model",
-      label: "Refit model",
+      label: i18next.t("results.artifactRefs.refitModel"),
       source: "pipeline-run",
       scope: "pipeline",
       status: "available",
@@ -901,7 +861,7 @@ export function buildPipelineRunArtifactRefs(pipeline: PipelineRun): ResultArtif
       id: buildResultArtifactRefId(["pipeline-run", pipeline.id, "pipeline-config"]),
       kind: "pipeline_config",
       role: "pipeline-definition",
-      label: "Pipeline configuration",
+      label: i18next.t("results.artifactRefs.pipelineConfiguration"),
       source: "pipeline-run",
       scope: "pipeline",
       status: "virtual",
@@ -916,7 +876,7 @@ export function buildPipelineRunArtifactRefs(pipeline: PipelineRun): ResultArtif
       id: buildResultArtifactRefId(["pipeline-run", pipeline.id, "metrics"]),
       kind: "metric_table",
       role: "primary-metrics",
-      label: "Primary metrics",
+      label: i18next.t("results.artifactRefs.primaryMetrics"),
       source: "pipeline-run",
       scope: "pipeline",
       status: "virtual",
@@ -935,7 +895,7 @@ export function buildPipelineRunArtifactRefs(pipeline: PipelineRun): ResultArtif
       id: buildResultArtifactRefId(["pipeline-run", pipeline.id, "execution-log"]),
       kind: "execution_log",
       role: "execution-log",
-      label: "Execution log",
+      label: i18next.t("results.artifactRefs.executionLog"),
       source: "pipeline-run",
       scope: "pipeline",
       status: "virtual",
@@ -968,7 +928,7 @@ export function buildPredictionArraysArtifactRef(
     id: buildResultArtifactRefId(["prediction-arrays", arrays.prediction_id]),
     kind: "prediction_arrays",
     role: "prediction-vectors",
-    label: "Prediction arrays",
+    label: i18next.t("results.artifactRefs.predictionArrays"),
     source: "prediction-arrays",
     scope: "prediction",
     status: "available",

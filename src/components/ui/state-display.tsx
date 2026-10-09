@@ -13,7 +13,7 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { LucideIcon, AlertCircle, FolderOpen, RefreshCw, Database, WifiOff, Play, GitBranch, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -101,23 +101,24 @@ interface ErrorStateProps {
 }
 
 export function ErrorState({
-  title = "Something went wrong",
+  title,
   message,
   onRetry,
-  retryLabel = "Try again",
+  retryLabel,
   className,
 }: ErrorStateProps) {
+  const { t } = useTranslation();
   return (
     <Card className={cn("border-destructive/50", className)}>
       <CardContent className="p-8">
         <div className="flex flex-col items-center justify-center text-center">
           <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-          <h3 className="text-lg font-semibold text-foreground mb-2">{title}</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-2">{title ?? t("common.state.error.title")}</h3>
           <p className="text-muted-foreground mb-4">{message}</p>
           {onRetry && (
             <Button variant="outline" onClick={onRetry}>
               <RefreshCw className="h-4 w-4 mr-2" />
-              {retryLabel}
+              {retryLabel ?? t("common.state.error.retry")}
             </Button>
           )}
         </div>
@@ -137,6 +138,7 @@ interface InlineErrorProps {
 }
 
 export function InlineError({ message, onRetry, className }: InlineErrorProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -147,7 +149,7 @@ export function InlineError({ message, onRetry, className }: InlineErrorProps) {
       <AlertCircle className="h-5 w-5 shrink-0" />
       <span className="flex-1 text-sm">{message}</span>
       {onRetry && (
-        <Button variant="ghost" size="sm" onClick={onRetry} className="shrink-0">
+        <Button variant="ghost" size="sm" onClick={onRetry} className="shrink-0" aria-label={t("common.retry")}>
           <RefreshCw className="h-4 w-4" />
         </Button>
       )}
@@ -166,16 +168,16 @@ interface NoWorkspaceStateProps {
 }
 
 export function NoWorkspaceState({
-  title = "No workspace linked",
-  description = "Link a nirs4all workspace to see your data. Go to Settings to link a workspace directory.",
+  title,
+  description,
   className,
 }: NoWorkspaceStateProps) {
   const { t } = useTranslation();
   return (
     <EmptyState
       icon={FolderOpen}
-      title={title}
-      description={description}
+      title={title ?? t("common.state.noWorkspace.title")}
+      description={description ?? t("common.state.noWorkspace.description")}
       action={{
         label: t("common.linkWorkspace"),
         href: "/settings?tab=workspaces",
@@ -196,17 +198,18 @@ interface NoResultsStateProps {
 }
 
 export function NoResultsState({
-  title = "No results found",
-  description = "Run experiments to generate results. Compare model performance, view prediction plots, and analyze residuals.",
+  title,
+  description,
   className,
 }: NoResultsStateProps) {
+  const { t } = useTranslation();
   return (
     <EmptyState
       icon={Play}
-      title={title}
-      description={description}
+      title={title ?? t("common.state.noResults.title")}
+      description={description ?? t("common.state.noResults.description")}
       action={{
-        label: "Start Experiment",
+        label: t("common.state.noResults.action"),
         href: "/editor",
       }}
       className={className}
@@ -227,19 +230,20 @@ interface NoPipelinesStateProps {
 }
 
 export function NoPipelinesState({
-  title = "No pipelines available",
-  description = "Create a pipeline in the Pipeline Editor to get started.",
-  actionLabel = "Create Pipeline",
+  title,
+  description,
+  actionLabel,
   actionPath = "/pipelines/new",
   className,
 }: NoPipelinesStateProps) {
+  const { t } = useTranslation();
   return (
     <EmptyState
       icon={GitBranch}
-      title={title}
-      description={description}
+      title={title ?? t("common.state.noPipelines.title")}
+      description={description ?? t("common.state.noPipelines.description")}
       action={{
-        label: actionLabel,
+        label: actionLabel ?? t("common.state.noPipelines.action"),
         href: actionPath,
       }}
       className={className}
@@ -261,24 +265,25 @@ interface NoDatasetsStateProps {
 }
 
 export function NoDatasetsState({
-  title = "No datasets available",
-  description = "Link a workspace with datasets in Settings, or import a dataset.",
+  title,
+  description,
   actionLabel,
   actionPath,
   onImport,
   className,
 }: NoDatasetsStateProps) {
+  const { t } = useTranslation();
   const action = actionPath
-    ? { label: actionLabel ?? "Go to Settings", href: actionPath }
+    ? { label: actionLabel ?? t("common.state.noDatasets.goToSettings"), href: actionPath }
     : onImport
-      ? { label: actionLabel ?? "Import Dataset", onClick: onImport }
-      : { label: actionLabel ?? "Go to Settings", href: "/settings" };
+      ? { label: actionLabel ?? t("common.state.noDatasets.import"), onClick: onImport }
+      : { label: actionLabel ?? t("common.state.noDatasets.goToSettings"), href: "/settings" };
 
   return (
     <EmptyState
       icon={Database}
-      title={title}
-      description={description}
+      title={title ?? t("common.state.noDatasets.title")}
+      description={description ?? t("common.state.noDatasets.description")}
       action={action}
       className={className}
     />
@@ -295,15 +300,16 @@ interface LoadingStateProps {
 }
 
 export function LoadingState({
-  message = "Loading...",
+  message,
   className,
 }: LoadingStateProps) {
+  const { t } = useTranslation();
   return (
     <Card className={className}>
       <CardContent className="p-12">
         <div className="flex flex-col items-center justify-center text-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">{message}</p>
+          <p className="text-muted-foreground">{message ?? t("common.loading")}</p>
         </div>
       </CardContent>
     </Card>
@@ -320,13 +326,14 @@ interface InlineLoadingProps {
 }
 
 export function InlineLoading({
-  message = "Loading...",
+  message,
   className,
 }: InlineLoadingProps) {
+  const { t } = useTranslation();
   return (
     <div className={cn("flex items-center justify-center py-8", className)}>
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      <span className="ml-2 text-muted-foreground">{message}</span>
+      <span className="ml-2 text-muted-foreground">{message ?? t("common.loading")}</span>
     </div>
   );
 }
@@ -373,11 +380,12 @@ interface ReconnectingIndicatorProps {
 }
 
 export function ReconnectingIndicator({
-  message = "Reconnecting...",
+  message,
   attempt,
   maxAttempts,
   className,
 }: ReconnectingIndicatorProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -386,7 +394,7 @@ export function ReconnectingIndicator({
       )}
     >
       <WifiOff className="h-4 w-4 shrink-0" />
-      <span className="text-sm">{message}</span>
+      <span className="text-sm">{message ?? t("common.state.reconnecting")}</span>
       {attempt !== undefined && maxAttempts !== undefined && (
         <span className="text-xs text-muted-foreground">
           ({attempt}/{maxAttempts})
@@ -413,13 +421,14 @@ export function RunFailedState({
   onViewLogs,
   className,
 }: RunFailedStateProps) {
+  const { t } = useTranslation();
   return (
     <Card className={cn("border-destructive/50", className)}>
       <CardContent className="p-6">
         <div className="flex flex-col items-center justify-center text-center">
           <AlertCircle className="h-12 w-12 text-destructive mb-4" />
           <h3 className="text-lg font-semibold text-foreground mb-2">
-            Run Failed
+            {t("common.state.runFailed.title")}
           </h3>
           {errorMessage && (
             <p className="text-muted-foreground mb-4 font-mono text-sm bg-muted/50 p-3 rounded-lg max-w-md">
@@ -429,13 +438,13 @@ export function RunFailedState({
           <div className="flex gap-3">
             {onViewLogs && (
               <Button variant="outline" onClick={onViewLogs}>
-                View Logs
+                {t("common.state.runFailed.viewLogs")}
               </Button>
             )}
             {onRetry && (
               <Button onClick={onRetry}>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Retry Run
+                {t("common.state.runFailed.retry")}
               </Button>
             )}
           </div>
@@ -460,14 +469,19 @@ export function SearchEmptyState({
   onClear,
   className,
 }: SearchEmptyStateProps) {
+  const { t } = useTranslation();
   return (
     <div className={cn("text-center py-8", className)}>
       <p className="text-muted-foreground mb-4">
-        No results found for "<span className="font-medium text-foreground">{query}</span>"
+        <Trans
+          i18nKey="common.state.searchEmpty.message"
+          values={{ query }}
+          components={{ q: <span className="font-medium text-foreground" /> }}
+        />
       </p>
       {onClear && (
         <Button variant="ghost" onClick={onClear}>
-          Clear search
+          {t("common.state.searchEmpty.clear")}
         </Button>
       )}
     </div>

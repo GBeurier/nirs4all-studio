@@ -10,6 +10,9 @@ import {
   SHAP_BIN_SIZE_LIMITS,
   SHAP_BIN_STRIDE_LIMITS,
 } from './shapBinningControlsData';
+import i18n from '@/lib/i18n';
+
+const t = i18n.getFixedT('en');
 
 describe('shapBinningControlsData', () => {
   it('normalizes aggregation values and exposes the existing options', () => {
@@ -45,7 +48,7 @@ describe('shapBinningControlsData', () => {
       bin_stride: 10,
       bin_aggregation: 'mean_abs',
     });
-    expect(getShapRebinErrorMessage(new Error('backend failed'))).toBe('backend failed');
-    expect(getShapRebinErrorMessage('unknown')).toBe('Rebin failed');
+    expect(getShapRebinErrorMessage(new Error('backend failed'), t)).toBe('backend failed');
+    expect(getShapRebinErrorMessage('unknown', t)).toBe('Rebin failed');
   });
 });

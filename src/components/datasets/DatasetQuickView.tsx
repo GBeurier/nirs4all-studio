@@ -8,6 +8,7 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "@/lib/motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -48,6 +49,7 @@ export function DatasetQuickView({
   onClose,
   onEdit,
 }: DatasetQuickViewProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { workspaceReady } = useMlReadiness();
   const [selectedSource, setSelectedSource] = useState(0);
@@ -125,10 +127,10 @@ export function DatasetQuickView({
           <Tabs key={dataset.id} defaultValue="overview" className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="px-4 pt-2 pb-0 border-b border-border bg-muted/20 flex-shrink-0">
               <TabsList className={`w-full grid ${hasMultimodalDocument ? "grid-cols-1" : "grid-cols-3"} bg-transparent h-10 p-0 border-none`}>
-                <DatasetQuickViewTabTrigger value="overview">Overview</DatasetQuickViewTabTrigger>
+                <DatasetQuickViewTabTrigger value="overview">{t("datasets.detail.tabs.overview")}</DatasetQuickViewTabTrigger>
                 {!hasMultimodalDocument && <>
-                <DatasetQuickViewTabTrigger value="spectra">Spectra</DatasetQuickViewTabTrigger>
-                <DatasetQuickViewTabTrigger value="targets">Targets & Labels</DatasetQuickViewTabTrigger>
+                <DatasetQuickViewTabTrigger value="spectra">{t("datasets.detail.tabs.spectra")}</DatasetQuickViewTabTrigger>
+                <DatasetQuickViewTabTrigger value="targets">{t("datasets.quickView.tabTargets")}</DatasetQuickViewTabTrigger>
                 </>}
               </TabsList>
             </div>
@@ -138,7 +140,7 @@ export function DatasetQuickView({
                 <div className="p-4 space-y-4">
                   {hasMultimodalDocument ? <TabsContent value="overview" className="m-0">{multimodal
                     ? <MultimodalDatasetOverview summary={multimodal} />
-                    : <p role="alert" className="text-sm text-destructive">This multimodal dataset descriptor cannot be displayed.</p>}
+                    : <p role="alert" className="text-sm text-destructive">{t("datasets.detailPage.multimodalUnavailable")}</p>}
                   </TabsContent> : <DatasetQuickViewOverviewTab
                     dataset={dataset}
                     preview={preview}

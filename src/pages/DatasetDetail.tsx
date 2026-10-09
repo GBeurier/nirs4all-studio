@@ -48,7 +48,8 @@ import { getMultimodalDatasetSummary, isStudioMultimodalDatasetDocument } from "
 import { MultimodalDatasetOverview } from "@/components/datasets/MultimodalDatasetOverview";
 import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
 import { getApiErrorMessage } from "@/api/transport";
-
+import { getActiveLocale } from "@/lib/activeLocale";
+
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
@@ -67,7 +68,7 @@ const itemVariants = {
  */
 function formatNumber(num: number | undefined): string {
   if (num === undefined || num === null) return "--";
-  return num.toLocaleString();
+  return num.toLocaleString(getActiveLocale());
 }
 
 export default function DatasetDetail() {
@@ -138,16 +139,16 @@ export default function DatasetDetail() {
 
   if (hasMultimodalDocument && !multimodal) {
     return <div role="alert" className="space-y-4 py-16 text-center">
-      <p className="text-destructive">This multimodal dataset descriptor cannot be displayed.</p>
-      <Button variant="outline" onClick={() => navigate("/datasets")}>Back to datasets</Button>
+      <p className="text-destructive">{t("datasets.detailPage.multimodalUnavailable")}</p>
+      <Button variant="outline" onClick={() => navigate("/datasets")}>{t("datasets.detailPage.backToDatasets")}</Button>
     </div>;
   }
 
   const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
   const repetitionColumnWarning = getRepeatIndexColumnWarning(repetitionColumn);
-  const taskLabel = getDatasetTaskLabel(dataset.task_type, {
+  const taskLabel = getDatasetTaskLabel(dataset.task_type, t, {
     numClasses: dataset.num_classes,
-    fallback: "Auto",
+    fallback: t("datasets.task.auto"),
   });
 
   const statCards = [
@@ -159,37 +160,37 @@ export default function DatasetDetail() {
         if (multimodal) {
           return Object.entries(multimodal.partitions)
             .map(([name, count]) => `${formatNumber(count)} ${name}`)
-            .join(" · ") || "No partitions declared";
+            .join(" · ") || t("datasets.detailPage.stats.noPartitions");
         }
         const trainCount = preview?.summary?.train_samples ?? dataset.train_samples;
         const testCount = preview?.summary?.test_samples ?? dataset.test_samples;
         if (testCount != null && testCount > 0) {
-          return `${formatNumber(trainCount)} train · ${formatNumber(testCount)} test`;
+          return t("datasets.detailPage.stats.trainTest", { train: formatNumber(trainCount), test: formatNumber(testCount) });
         }
-        return "All available samples";
+        return t("datasets.detailPage.stats.allSamples");
       })(),
     },
     {
-      title: multimodal ? "Sources" : t("datasets.info.features"),
+      title: multimodal ? t("datasets.detailPage.stats.sources") : t("datasets.info.features"),
       icon: Hash,
       value: multimodal ? String(multimodal.sources.length) : formatNumber(dataset.num_features),
-      detail: multimodal ? "Typed sources" : preview?.summary?.header_unit
-        ? `Header: ${preview.summary.header_unit}`
-        : "Feature count",
+      detail: multimodal ? t("datasets.detailPage.stats.typedSources") : preview?.summary?.header_unit
+        ? t("datasets.detailPage.stats.headerUnit", { unit: preview.summary.header_unit })
+        : t("datasets.detailPage.stats.featureCount"),
     },
     {
-      title: multimodal ? "Alignment" : t("datasets.info.spectralRange"),
+      title: multimodal ? t("datasets.detailPage.stats.alignment") : t("datasets.info.spectralRange"),
       icon: BarChart3,
       value: multimodal ? multimodal.alignment : preview?.spectra_preview
         ? `${Math.min(...preview.spectra_preview.wavelengths).toFixed(0)}-${Math.max(...preview.spectra_preview.wavelengths).toFixed(0)}`
         : "--",
-      detail: multimodal ? "Declared source alignment" : preview?.summary?.signal_type ?? "Preview pending",
+      detail: multimodal ? t("datasets.detailPage.stats.declaredAlignment") : preview?.summary?.signal_type ?? t("datasets.detailPage.stats.previewPending"),
     },
     {
       title: t("datasets.info.targets"),
       icon: Target,
       value: String(multimodal?.targets.length ?? dataset.targets?.length ?? 0),
-      detail: multimodal?.targets.join(", ") || dataset.default_target || "No default target",
+      detail: multimodal?.targets.join(", ") || dataset.default_target || t("datasets.detailPage.stats.noDefaultTarget"),
     },
   ];
 
@@ -208,7 +209,7 @@ export default function DatasetDetail() {
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Datasets
+          {t("datasets.detailPage.backToDatasets")}
         </Link>
       </motion.div>
 
@@ -239,17 +240,17 @@ export default function DatasetDetail() {
                     </Badge>
                     {dataset.default_target && (
                       <Badge variant="secondary">
-                        Default target: {dataset.default_target}
+                        {t("datasets.detailPage.defaultTarget", { name: dataset.default_target })}
                       </Badge>
                     )}
                     {repetitionColumn && (
                       <Badge variant="outline">
-                        Repetition: {repetitionColumn}
+                        {t("datasets.detailPage.repetition", { column: repetitionColumn })}
                       </Badge>
                     )}
                     {repetitionColumnWarning && (
                       <Badge variant="destructive">
-                        Repetition config needs review
+                        {t("datasets.detailPage.repetitionNeedsReview")}
                       </Badge>
                     )}
                     {Array.from(new Set(dataset.signal_types ?? [])).map((signalType) => (
@@ -264,14 +265,14 @@ export default function DatasetDetail() {
               <div className="flex flex-wrap items-center gap-2 xl:justify-end">
                 {!hasMultimodalDocument && <Button variant="outline" onClick={loadPreview} disabled={previewLoading}>
                   <RefreshCw className={`mr-2 h-4 w-4 ${previewLoading ? "animate-spin" : ""}`} />
-                  Refresh Preview
+                  {t("datasets.detailPage.refreshPreview")}
                 </Button>}
                 {!hasMultimodalDocument && <Button variant="outline" asChild>
                   <Link
                     to={`/playground?datasetId=${encodeURIComponent(dataset.id)}&datasetName=${encodeURIComponent(dataset.name)}`}
                   >
                     <Play className="mr-2 h-4 w-4" />
-                    Open Playground
+                    {t("datasets.detailPage.openPlayground")}
                   </Link>
                 </Button>}
                 <Button asChild>
@@ -283,7 +284,7 @@ export default function DatasetDetail() {
                 <Button variant="outline" asChild>
                   <Link to="/datasets">
                     <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back to Library
+                    {t("datasets.detailPage.backToLibrary")}
                   </Link>
                 </Button>
               </div>
@@ -312,12 +313,12 @@ export default function DatasetDetail() {
         <motion.div variants={itemVariants} role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-4">
           <div className="flex items-center gap-2 text-destructive">
             <AlertCircle className="h-5 w-5" />
-            <p className="font-medium">Failed to load dataset preview</p>
+            <p className="font-medium">{t("datasets.detailPage.previewFailed")}</p>
           </div>
           <p className="mt-2 text-sm">{previewError}</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={loadPreview}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            Retry Preview
+            {t("datasets.detailPage.retryPreview")}
           </Button>
         </motion.div>
       )}
@@ -327,26 +328,26 @@ export default function DatasetDetail() {
         <Tabs value={multimodal ? "overview" : activeTab} onValueChange={setActiveTab}>
           <Card className="border-border/70 bg-card/70 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Dataset Views</CardTitle>
+              <CardTitle className="text-sm">{t("datasets.detailPage.views")}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               <TabsList className={`grid h-auto w-full gap-2 rounded-xl bg-muted/30 p-2 ${multimodal ? "grid-cols-1" : "grid-cols-2 lg:grid-cols-4"}`}>
                 <TabsTrigger value="overview" className="gap-2 rounded-lg py-2.5">
                   <Info className="h-4 w-4" />
-                  Overview
+                  {t("datasets.detail.tabs.overview")}
                 </TabsTrigger>
                 {!multimodal && <>
                 <TabsTrigger value="spectra" className="gap-2 rounded-lg py-2.5">
                   <BarChart3 className="h-4 w-4" />
-                  Spectra
+                  {t("datasets.detail.tabs.spectra")}
                 </TabsTrigger>
                 <TabsTrigger value="targets" className="gap-2 rounded-lg py-2.5">
                   <Target className="h-4 w-4" />
-                  Targets
+                  {t("datasets.detail.tabs.targets")}
                 </TabsTrigger>
                 <TabsTrigger value="data" className="gap-2 rounded-lg py-2.5">
                   <Table className="h-4 w-4" />
-                  Raw Data
+                  {t("datasets.detail.tabs.rawData")}
                 </TabsTrigger>
                 </>}
               </TabsList>

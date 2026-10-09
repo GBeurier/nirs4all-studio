@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   BarChart,
   Bar,
@@ -20,6 +21,7 @@ interface MetricConvergenceChartProps {
 const METRICS = ['EVR', 'CKA', 'RV', 'Procrustes', 'Trustworthiness', 'Grassmann'];
 
 export function MetricConvergenceChart({ convergenceData }: MetricConvergenceChartProps) {
+  const { t } = useTranslation();
   // Group by metric
   const dataByMetric = useMemo(() => {
     const grouped: Record<string, { preproc: string; convergence: number }[]> = {};
@@ -47,7 +49,7 @@ export function MetricConvergenceChart({ convergenceData }: MetricConvergenceCha
   if (convergenceData.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
-        No convergence data available
+        {t('transferAnalysis.charts.noConvergence')}
       </div>
     );
   }
@@ -66,7 +68,7 @@ export function MetricConvergenceChart({ convergenceData }: MetricConvergenceCha
         <div className="bg-background border rounded-lg shadow-lg p-2 text-sm">
           <p className="font-medium">{label}</p>
           <p className={payload[0].value > 0 ? 'text-green-600' : 'text-red-600'}>
-            Convergence: {(payload[0].value * 100).toFixed(1)}%
+            {t('transferAnalysis.charts.convergenceTooltip', { value: (payload[0].value * 100).toFixed(1) })}
           </p>
         </div>
       );
@@ -132,11 +134,10 @@ export function MetricConvergenceChart({ convergenceData }: MetricConvergenceCha
       {/* Legend */}
       <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
         <p>
-          <strong>Convergence:</strong> Positive values indicate preprocessing reduces variance across
-          datasets (datasets become more similar).
+          <strong>{t('transferAnalysis.charts.convergenceLabel')}</strong> {t('transferAnalysis.charts.convergenceText')}
         </p>
         <p>
-          <strong>*</strong> Procrustes and Grassmann are inverted so that positive = better quality.
+          <strong>*</strong> {t('transferAnalysis.charts.invertedNote')}
         </p>
       </div>
     </div>

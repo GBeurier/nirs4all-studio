@@ -5,15 +5,20 @@
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { PredictionFilters } from "./PredictionFilters";
+import { initEnglishI18n } from "./predictionsTestI18n";
 import type { DataVisibility, FoldVisibility } from "@/lib/predictions/rows";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
 
 let mountedContainers: HTMLDivElement[] = [];
+
+beforeAll(async () => {
+  await initEnglishI18n();
+});
 
 async function render(element: ReactNode) {
   const container = document.createElement("div");

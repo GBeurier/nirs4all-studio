@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { CampaignPlanSummary } from "./campaignSpecTypes";
 import {
   getRuntimeGroupingSummary,
@@ -6,14 +8,15 @@ import {
   type SelectedPipelinesRuntimeGrouping,
 } from "./runtimeSplitGrouping";
 
+/** User-visible copy of the review step; getters resolve the active language at read time. */
 export const experimentReviewCopy = {
-  title: "Review Experiment",
-  nameLabel: "Experiment Name",
-  descriptionLabel: "Description (optional)",
-  descriptionPlaceholder: "Add notes about this experiment...",
-  groupingTitle: "Sample Grouping Summary",
-  noSplittersBadge: "No splitters",
-} as const;
+  get title() { return i18n.t("newExperiment.review.title"); },
+  get nameLabel() { return i18n.t("newExperiment.review.nameLabel"); },
+  get descriptionLabel() { return i18n.t("newExperiment.review.descriptionLabel"); },
+  get descriptionPlaceholder() { return i18n.t("newExperiment.review.descriptionPlaceholder"); },
+  get groupingTitle() { return i18n.t("newExperiment.review.groupingTitle"); },
+  get noSplittersBadge() { return i18n.t("newExperiment.review.noSplittersBadge"); },
+};
 
 export interface ExperimentReviewSummaryField {
   id: string;
@@ -35,9 +38,9 @@ export function buildExperimentReviewSummaryFields(
   campaignSummary: CampaignPlanSummary,
 ): ExperimentReviewSummaryField[] {
   return [
-    { id: "datasets", label: "Datasets", value: campaignSummary.datasetCount },
-    { id: "pipelines", label: "Pipelines", value: campaignSummary.pipelineCount },
-    { id: "runs", label: "Total Runs", value: campaignSummary.runCount },
+    { id: "datasets", label: i18n.t("newExperiment.review.summary.datasets"), value: campaignSummary.datasetCount },
+    { id: "pipelines", label: i18n.t("newExperiment.review.summary.pipelines"), value: campaignSummary.pipelineCount },
+    { id: "runs", label: i18n.t("newExperiment.review.summary.runs"), value: campaignSummary.runCount },
   ];
 }
 

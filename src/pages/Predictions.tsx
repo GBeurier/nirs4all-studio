@@ -117,9 +117,9 @@ export default function Predictions() {
 
   useEffect(() => {
     if (isFetchNextPageError) {
-      toast.error(`Could not load all predictions: ${getErrorMessage(predictionsError, "request failed")}`);
+      toast.error(t("predictions.errors.loadIncomplete", { message: getErrorMessage(predictionsError, t("predictions.errors.requestFailed")) }));
     }
-  }, [isFetchNextPageError, predictionsError]);
+  }, [isFetchNextPageError, predictionsError, t]);
 
   const rows = usePredictionRows(rawPredictions, metricTaskFilter);
   const {
@@ -157,7 +157,7 @@ export default function Predictions() {
 
   const handleViewDetails = (row: ScoreCardRow) => {
     if (!row.chainId) {
-      toast.error("Missing chain id for this row");
+      toast.error(t("predictions.errors.missingChainId"));
       return;
     }
     setDetailChainId(row.chainId);

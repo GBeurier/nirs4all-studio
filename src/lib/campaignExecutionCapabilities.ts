@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { CampaignExecutionAdapterPreview } from "./campaignPlanPreviewTypes";
 import type { CampaignCapabilityCheckStatus } from "./campaignCapabilityTypes";
 import type { CampaignExecutionBackend, CampaignSpec } from "./campaignSpecTypes";
@@ -17,7 +19,7 @@ const NATIVE_EXECUTION_ADAPTER_ID_BY_BACKEND: Record<CampaignExecutionBackend, E
 export function isNativeCampaignExecutionAdapter(
   executionAdapter: CampaignExecutionAdapterPreview | undefined,
 ): boolean {
-  return executionAdapter?.statusLabel === "Native adapter";
+  return executionAdapter?.statusLabel === i18n.t("newExperiment.campaign.adapter.native");
 }
 
 export function isNativeCampaignExecutionAdapterForBackend(
@@ -34,19 +36,19 @@ export function getCampaignExecutionBackendCapabilityStatus(
   if (campaign.executionBackend === "local-python") {
     return {
       status: "not_evaluated",
-      message: "Reserved for backend-specific method and compute-option checks.",
+      message: i18n.t("newExperiment.campaign.backendCapability.reserved"),
     };
   }
 
   if (executionAdapter && isNativeCampaignExecutionAdapterForBackend(campaign, executionAdapter)) {
     return {
       status: "not_evaluated",
-      message: `${executionAdapter.label} is selected for this backend; backend-specific method and compute-option checks are not evaluated yet.`,
+      message: i18n.t("newExperiment.campaign.backendCapability.selected", { label: executionAdapter.label }),
     };
   }
 
   return {
     status: "blocking",
-    message: executionAdapter?.message ?? "The campaign can describe this backend, but no native launch adapter is available for it.",
+    message: executionAdapter?.message ?? i18n.t("newExperiment.campaign.backendCapability.noAdapter"),
   };
 }

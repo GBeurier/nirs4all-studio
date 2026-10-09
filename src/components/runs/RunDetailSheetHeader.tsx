@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   BarChart3,
   Box,
@@ -72,7 +73,8 @@ export function RunDetailSheetHeader({
   isRerunning: boolean;
   onRerun: () => void;
 }) {
-  const storageArtifactMetadata = buildRunStorageArtifactMetadata(run);
+  const { t } = useTranslation();
+  const storageArtifactMetadata = buildRunStorageArtifactMetadata(run, t);
   const artifactSizeField = storageArtifactMetadata.fields.find((field) => field.key === "artifact-size");
   const storageArtifactSummary = storageArtifactMetadata.fields
     .map((field) => `${field.label}: ${field.value}`)
@@ -107,14 +109,14 @@ export function RunDetailSheetHeader({
           <Button variant="outline" size="sm" asChild>
             <Link to={`/results?run_id=${encodeURIComponent(run.run_id)}`}>
               <BarChart3 className="mr-2 h-4 w-4" />
-              Results
+              {t("runs.detail.results")}
             </Link>
           </Button>
           {runPageId && (
             <Button variant="outline" size="sm" asChild>
               <Link to={`/runs/${encodeURIComponent(runPageId)}`}>
                 <ExternalLink className="mr-2 h-4 w-4" />
-                Open Run Page
+                {t("runs.detail.openRunPage")}
               </Link>
             </Button>
           )}
@@ -123,28 +125,28 @@ export function RunDetailSheetHeader({
             size="sm"
             onClick={onRerun}
             disabled={!canRerun || isRerunning}
-            title={getRerunDisabledTitle(detail?.rerun_ready)}
+            title={getRerunDisabledTitle(detail?.rerun_ready, t)}
           >
             {isRerunning ? (
               <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Play className="mr-2 h-4 w-4" />
             )}
-            Rerun As Clone
+            {t("runs.detail.rerunClone")}
           </Button>
           <RuntimeStatusBadge status={status} showIcon={false} />
         </div>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
-        <StatCard icon={Database} label="Datasets" value={datasetsCount} />
-        <StatCard icon={Layers} label="Pipelines" value={detail?.pipelines.length ?? run.pipeline_runs_count} />
-        <StatCard icon={Box} label="Models" value={run.total_models_trained} accent />
-        <StatCard icon={BarChart3} label="Results" value={detail?.results_count ?? 0} />
-        <StatCard icon={Terminal} label="Logs" value={getTotalLogCount(detail)} />
+        <StatCard icon={Database} label={t("runs.detail.statDatasets")} value={datasetsCount} />
+        <StatCard icon={Layers} label={t("runs.detail.statPipelines")} value={detail?.pipelines.length ?? run.pipeline_runs_count} />
+        <StatCard icon={Box} label={t("runs.detail.statModels")} value={run.total_models_trained} accent />
+        <StatCard icon={BarChart3} label={t("runs.detail.results")} value={detail?.results_count ?? 0} />
+        <StatCard icon={Terminal} label={t("runs.detail.tabLogs")} value={getTotalLogCount(detail)} />
         <StatCard
           icon={HardDrive}
-          label={artifactSizeField?.label ?? "Artifact size"}
+          label={artifactSizeField?.label ?? t("runs.storage.artifactSize")}
           value={artifactSizeField?.value ?? storageArtifactMetadata.artifactSizeLabel}
           title={storageArtifactSummary}
         />

@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import '@/lib/i18n';
 import { datasetChainsToRows } from '@/lib/score-adapters';
 import type { TopChainResult } from '@/types/enriched-runs';
 import { ScoreCardTypeBadge } from './ScoreCardTypeBadge';

@@ -1,6 +1,7 @@
 /** Tracks the Rust control plane independently from the optional Python plugin. */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import i18n from "i18next";
 import { api } from "@/api/transport";
 import { invalidateLoadedWorkspaceDatasetResults } from "@/api/playground";
 import { hasScientificRequestInFlight } from "@/api/dataset-request-activity";
@@ -142,7 +143,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
         mlReady: info.status === "running" && previous.mlReady,
         mlLoading: info.status === "starting" || info.status === "restarting",
         mlError: info.status === "error"
-          ? info.error ?? "Scientific plugin failed to start"
+          ? info.error ?? i18n.t("errors.scientificPluginStartFailed")
           : info.status === "running" ? null : previous.mlError,
       }));
     });

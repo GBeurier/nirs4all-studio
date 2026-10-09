@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -34,6 +36,7 @@ export function NewExperimentRuntimeGroupingDatasetCard({
   selectedGroupBy,
   onGroupChange,
 }: NewExperimentRuntimeGroupingDatasetCardProps) {
+  const { t } = useTranslation();
   const requirementBadge = getRuntimeGroupingRequirementBadge(
     groupingState,
     hasRequiredSplitters,
@@ -56,7 +59,7 @@ export function NewExperimentRuntimeGroupingDatasetCard({
           onGroupChange(value === NO_ADDITIONAL_GROUP_VALUE ? null : value)
         }
       >
-        <SelectTrigger>
+        <SelectTrigger aria-label={t("newExperiment.runtimeGrouping.selectAria", { dataset: dataset.name })}>
           <SelectValue placeholder={runtimeGroupingPresentationCopy.selectPlaceholder} />
         </SelectTrigger>
         <SelectContent>
@@ -83,7 +86,7 @@ export function NewExperimentRuntimeGroupingDatasetCard({
       )}
       {groupingState.embeddedGroups && hasRequiredSplitters && (
         <p className="text-xs text-muted-foreground">
-          This cohort already defines sample groups. No additional grouping is needed.
+          {t("newExperiment.runtimeGrouping.embeddedGroups")}
         </p>
       )}
       <p className="text-[11px] leading-relaxed text-muted-foreground">

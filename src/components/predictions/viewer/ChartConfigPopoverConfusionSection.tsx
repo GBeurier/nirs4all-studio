@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import { SelectItem } from "@/components/ui/select";
 import {
   ColorInputRow,
@@ -11,7 +13,7 @@ import {
   SwitchRow,
 } from "./ChartConfigPopoverSectionControls";
 import {
-  getConfusionGradientLabel,
+  getConfusionGradientLabelKey,
   listConfusionGradients,
 } from "./palettes";
 import type {
@@ -32,9 +34,10 @@ export function ConfusionSection({
   applyConfusionGradientPreset: (value: string) => void;
   updateConfusionGradient: (key: ConfusionGradientColorKey, value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3 border-t pt-3">
-      <SectionHeader>Confusion matrix</SectionHeader>
+      <SectionHeader>{t("predictions.viewer.config.confusion.title")}</SectionHeader>
       <NormalizeRow normalize={config.confusionNormalize} update={update} />
       <ConfusionGradientField
         preset={config.confusionGradientPreset}
@@ -46,12 +49,12 @@ export function ConfusionSection({
         updateConfusionGradient={updateConfusionGradient}
       />
       <SwitchRow
-        label="Show row/col totals"
+        label={t("predictions.viewer.config.confusion.showTotals")}
         checked={config.confusionShowTotals}
         onCheckedChange={(value) => update("confusionShowTotals", value)}
       />
       <SwitchRow
-        label="Show count + %"
+        label={t("predictions.viewer.config.confusion.showPercent")}
         checked={config.confusionShowPercent}
         onCheckedChange={(value) => update("confusionShowPercent", value)}
       />
@@ -66,15 +69,16 @@ function NormalizeRow({
   normalize: ConfusionNormalize;
   update: ChartConfigUpdater;
 }) {
+  const { t } = useTranslation();
   return (
     <SelectRow
-      label="Normalization"
+      label={t("predictions.viewer.config.confusion.normalization")}
       value={normalize}
       onValueChange={(value) => update("confusionNormalize", value as ConfusionNormalize)}
     >
-      <SelectItem value="none" className="text-xs">Counts</SelectItem>
-      <SelectItem value="row" className="text-xs">Row %</SelectItem>
-      <SelectItem value="col" className="text-xs">Column %</SelectItem>
+      <SelectItem value="none" className="text-xs">{t("predictions.viewer.config.confusion.counts")}</SelectItem>
+      <SelectItem value="row" className="text-xs">{t("predictions.viewer.config.confusion.rowPercent")}</SelectItem>
+      <SelectItem value="col" className="text-xs">{t("predictions.viewer.config.confusion.columnPercent")}</SelectItem>
     </SelectRow>
   );
 }
@@ -88,25 +92,26 @@ function ConfusionGradientField({
   gradient: ViewerGradientColors;
   applyConfusionGradientPreset: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <SelectField
-      label="Gradient preset"
+      label={t("predictions.viewer.config.confusion.gradientPreset")}
       value={preset}
       onValueChange={applyConfusionGradientPreset}
-      triggerContent={<ConfusionGradientPreview gradient={gradient} label={getConfusionGradientLabel(preset)} truncate />}
+      triggerContent={<ConfusionGradientPreview gradient={gradient} label={t(getConfusionGradientLabelKey(preset))} truncate />}
       footer={(
         <p className="text-[10px] leading-4 text-muted-foreground">
-          Presets seed the gradient, then you can fine-tune the low and high stops for the matrix.
+          {t("predictions.viewer.config.confusion.gradientHelp")}
         </p>
       )}
     >
       {listConfusionGradients().map((option) => (
         <SelectItem key={option.id} value={option.id} className="text-xs">
-          <ConfusionGradientPreview gradient={option.colors} label={option.label} />
+          <ConfusionGradientPreview gradient={option.colors} label={t(option.labelKey)} />
         </SelectItem>
       ))}
       <SelectItem value="custom" className="text-xs">
-        <ConfusionGradientPreview gradient={gradient} label="Custom" />
+        <ConfusionGradientPreview gradient={gradient} label={t("common.custom")} />
       </SelectItem>
     </SelectField>
   );
@@ -136,15 +141,16 @@ function ConfusionGradientColorInputs({
   gradient: ViewerGradientColors;
   updateConfusionGradient: (key: ConfusionGradientColorKey, value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
       <ColorInputRow
-        label="Low cells"
+        label={t("predictions.viewer.config.confusion.lowCells")}
         value={gradient.low}
         onChange={(value) => updateConfusionGradient("low", value)}
       />
       <ColorInputRow
-        label="High cells"
+        label={t("predictions.viewer.config.confusion.highCells")}
         value={gradient.high}
         onChange={(value) => updateConfusionGradient("high", value)}
       />

@@ -6,6 +6,7 @@
  */
 
 import { useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { useInspectorSelection } from '@/context/useInspectorSelection';
 import { useInspectorColor } from '@/context/useInspectorColor';
@@ -26,6 +27,7 @@ interface PerformanceHeatmapProps {
 }
 
 export function PerformanceHeatmap({ data, isLoading }: PerformanceHeatmapProps) {
+  const { t } = useTranslation();
   const { select } = useInspectorSelection();
   const { config } = useInspectorColor();
   const { viewportRef, dimensions } = useInspectorChartViewport();
@@ -41,7 +43,7 @@ export function PerformanceHeatmap({ data, isLoading }: PerformanceHeatmapProps)
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        <span className="text-sm">Loading heatmap data...</span>
+        <span className="text-sm">{t('inspector.charts.loading.heatmap')}</span>
       </div>
     );
   }
@@ -49,7 +51,7 @@ export function PerformanceHeatmap({ data, isLoading }: PerformanceHeatmapProps)
   if (!hasPerformanceHeatmapData(data)) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        {getPerformanceHeatmapEmptyMessage()}
+        {getPerformanceHeatmapEmptyMessage(t)}
       </div>
     );
   }

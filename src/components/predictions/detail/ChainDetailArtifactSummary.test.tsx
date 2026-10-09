@@ -5,7 +5,7 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
   exportWorkspaceRobustnessReport: vi.fn(),
@@ -17,6 +17,7 @@ vi.mock("@/api/aggregatedPredictions", () => ({
 
 import { ChainDetailArtifactSummary } from "./ChainDetailArtifactSummary";
 import type { ChainDetailArtifactSummary as ChainDetailArtifactSummaryData } from "./useChainDetailPanelState";
+import { initEnglishI18n } from "../predictionsTestI18n";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -95,6 +96,10 @@ function summary(overrides: Partial<ChainDetailArtifactSummaryData> = {}): Chain
 afterEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = "";
+});
+
+beforeAll(async () => {
+  await initEnglishI18n();
 });
 
 describe("ChainDetailArtifactSummary", () => {

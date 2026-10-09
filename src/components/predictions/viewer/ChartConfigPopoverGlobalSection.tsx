@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import { SelectItem } from "@/components/ui/select";
 import {
   type ChartConfigUpdater,
@@ -46,9 +48,10 @@ export function GlobalSection({
   applyPartitionPalette: (value: string) => void;
   updatePartitionColor: (key: PartitionColorKey, value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
-      <SectionHeader>Global</SectionHeader>
+      <SectionHeader>{t("predictions.viewer.config.global")}</SectionHeader>
       {kind !== "confusion" && (
         <>
           <ColorModeRow
@@ -81,7 +84,7 @@ export function GlobalSection({
       )}
       <ExportThemeRow exportTheme={config.exportTheme} update={update} />
       <SwitchRow
-        label="Rescale axes to visible"
+        label={t("predictions.viewer.config.rescaleAxes")}
         checked={config.rescaleToVisible}
         onCheckedChange={(value) => update("rescaleToVisible", value)}
       />
@@ -98,11 +101,12 @@ function ColorModeRow({
   hasMetadata: boolean;
   updateColorMode: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <SelectRow label="Color by" value={colorMode} onValueChange={updateColorMode}>
-      <SelectItem value="partition" className="text-xs">Partition</SelectItem>
+    <SelectRow label={t("predictions.viewer.config.colorBy")} value={colorMode} onValueChange={updateColorMode}>
+      <SelectItem value="partition" className="text-xs">{t("predictions.viewer.config.colorByPartition")}</SelectItem>
       <SelectItem value="metadata" className="text-xs" disabled={!hasMetadata}>
-        Metadata
+        {t("predictions.viewer.config.colorByMetadata")}
       </SelectItem>
     </SelectRow>
   );
@@ -115,15 +119,16 @@ function ExportThemeRow({
   exportTheme: ExportTheme;
   update: ChartConfigUpdater;
 }) {
+  const { t } = useTranslation();
   return (
     <SelectRow
-      label="PNG export theme"
+      label={t("predictions.viewer.config.exportTheme")}
       value={exportTheme}
       onValueChange={(value) => update("exportTheme", value as ExportTheme)}
     >
-      <SelectItem value="inherit" className="text-xs">Inherit</SelectItem>
-      <SelectItem value="light" className="text-xs">Light</SelectItem>
-      <SelectItem value="dark" className="text-xs">Dark</SelectItem>
+      <SelectItem value="inherit" className="text-xs">{t("predictions.viewer.config.themeInherit")}</SelectItem>
+      <SelectItem value="light" className="text-xs">{t("predictions.viewer.config.themeLight")}</SelectItem>
+      <SelectItem value="dark" className="text-xs">{t("predictions.viewer.config.themeDark")}</SelectItem>
     </SelectRow>
   );
 }

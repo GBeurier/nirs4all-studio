@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Box,
   Database,
@@ -37,12 +38,13 @@ const quickFactIcons: Record<ResultQuickFactIcon, typeof Box> = {
 };
 
 export function ResultDetailHeader({ pipeline, datasetName }: ResultDetailHeaderProps) {
+  const { t } = useTranslation();
   const runtime = useRuntimeResultPresentation({
     source: pipeline,
     status: pipeline.status,
     progress: pipeline.progress,
   });
-  const quickFacts = buildResultQuickFacts(pipeline);
+  const quickFacts = buildResultQuickFacts(pipeline, t);
 
   return (
     <SheetHeader className="flex-shrink-0">
@@ -50,7 +52,7 @@ export function ResultDetailHeader({ pipeline, datasetName }: ResultDetailHeader
         <div className="flex items-center gap-3">
           <RuntimeStatusIconFrame status={pipeline.status} />
           <div>
-            <SheetTitle className="text-lg">Result Details</SheetTitle>
+            <SheetTitle className="text-lg">{t("results.detail.title")}</SheetTitle>
             <SheetDescription className="mt-1 flex items-center gap-2">
               <span className="text-sm font-medium text-foreground">
                 {pipeline.pipeline_name}
@@ -72,7 +74,7 @@ export function ResultDetailHeader({ pipeline, datasetName }: ResultDetailHeader
         <Button variant="ghost" size="sm" asChild>
           <Link to={`/datasets/${encodeURIComponent(datasetName)}`}>
             <ExternalLink className="h-3.5 w-3.5 mr-1" />
-            View Dataset
+            {t("results.detail.viewDataset")}
           </Link>
         </Button>
       </div>

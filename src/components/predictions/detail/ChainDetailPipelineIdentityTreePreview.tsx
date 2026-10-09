@@ -4,6 +4,7 @@ import {
   GitBranch,
   Sparkles,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { formatParamValue } from "./ChainDetailPipelineIdentityFormatting";
 import type {
@@ -21,12 +22,13 @@ export function ChainDetailPipelineTreePreview({
   pipelineStats,
   pipelineTree,
 }: ChainDetailPipelineTreePreviewProps) {
+  const { t } = useTranslation();
   return (
     <div className="mt-4 rounded-xl border border-border/60 bg-background/65 p-3">
       <div className="grid grid-cols-4 gap-2 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
-        <PipelineStat label="ops" value={pipelineStats.operators} />
-        <PipelineStat label="models" value={pipelineStats.models} />
-        <PipelineStat label="branches" value={pipelineStats.branches} />
+        <PipelineStat label={t("predictions.detail.identity.stat.ops")} value={pipelineStats.operators} />
+        <PipelineStat label={t("predictions.detail.identity.stat.models")} value={pipelineStats.models} />
+        <PipelineStat label={t("predictions.detail.identity.stat.branches")} value={pipelineStats.branches} />
         <PipelineVariantStat pipelineStats={pipelineStats} />
       </div>
       {pipelineTree.nodes.length > 0 && (
@@ -50,6 +52,7 @@ function PipelineStat({ label, value }: { label: string; value: number }) {
 }
 
 function PipelineVariantStat({ pipelineStats }: { pipelineStats: PipelineIdentityStats }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col">
       <span
@@ -61,13 +64,14 @@ function PipelineVariantStat({ pipelineStats }: { pipelineStats: PipelineIdentit
         {pipelineStats.hasGenerators ? pipelineStats.variants : 1}
       </span>
       <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-        variants
+        {t("predictions.detail.identity.stat.variants")}
       </span>
     </div>
   );
 }
 
 function PipelineTreeNodes({ pipelineTree }: { pipelineTree: PipelineIdentityTree }) {
+  const { t } = useTranslation();
   const hiddenStepCount = pipelineTree.total - pipelineTree.nodes.length;
 
   return (
@@ -77,8 +81,7 @@ function PipelineTreeNodes({ pipelineTree }: { pipelineTree: PipelineIdentityTre
       ))}
       {hiddenStepCount > 0 && (
         <li className="pl-0.5 text-[11px] italic text-muted-foreground/70">
-          + {hiddenStepCount} more step
-          {hiddenStepCount === 1 ? "" : "s"}
+          {t("predictions.detail.identity.moreSteps", { count: hiddenStepCount })}
         </li>
       )}
     </ul>
@@ -86,6 +89,7 @@ function PipelineTreeNodes({ pipelineTree }: { pipelineTree: PipelineIdentityTre
 }
 
 function PipelineTreeNode({ node }: { node: PipelineIdentityTreeNode }) {
+  const { t } = useTranslation();
   return (
     <li
       className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground"
@@ -94,8 +98,8 @@ function PipelineTreeNode({ node }: { node: PipelineIdentityTreeNode }) {
       <PipelineTreeNodeIcon kind={node.kind} />
       <span className="truncate font-medium text-foreground/85">{node.label}</span>
       {node.hasGenerator && (
-        <span title="Selected from a sweep / generator" className="inline-flex">
-          <Sparkles className="h-3 w-3 shrink-0 text-amber-500" aria-label="sweep / generator" />
+        <span title={t("predictions.detail.identity.fromSweep")} className="inline-flex">
+          <Sparkles className="h-3 w-3 shrink-0 text-amber-500" aria-label={t("predictions.detail.identity.sweepGenerator")} />
         </span>
       )}
       {node.params.length > 0 && (

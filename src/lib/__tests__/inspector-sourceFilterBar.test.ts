@@ -12,6 +12,7 @@ import {
   patchInspectorSourceValueFilter,
   toggleInspectorFacetValue,
 } from '@/lib/inspector/sourceFilterBar';
+import { tStub } from './helpers/i18nStub';
 
 describe('inspector source filter bar helpers', () => {
   it('patches filters without dropping unrelated active filters', () => {
@@ -72,8 +73,8 @@ describe('inspector source filter bar helpers', () => {
   it('toggles facet values and formats chain-count status', () => {
     expect(toggleInspectorFacetValue(['a'], 'b')).toEqual(['a', 'b']);
     expect(toggleInspectorFacetValue(['a', 'b'], 'a')).toEqual(['b']);
-    expect(getInspectorChainCountLabel(true, 12)).toBe('...');
-    expect(getInspectorChainCountLabel(false, 12)).toBe('12 chains');
+    expect(getInspectorChainCountLabel(true, 12, tStub)).toBe('...');
+    expect(getInspectorChainCountLabel(false, 12, tStub)).toBe('inspector.counts.chains {"count":12}');
   });
 
   it('builds the source filter bar read model from available values and active filters', () => {
@@ -90,10 +91,11 @@ describe('inspector source filter bar helpers', () => {
       availableMetrics: ['accuracy', 'f1'],
       totalChains: 7,
       isLoading: false,
+      t: tStub,
     });
 
     expect(model.hasFilters).toBe(true);
-    expect(model.chainCountLabel).toBe('7 chains');
+    expect(model.chainCountLabel).toBe('inspector.counts.chains {"count":7}');
     expect(model.facets.map(facet => facet.id)).toEqual([
       'run_ids',
       'dataset_names',
@@ -102,15 +104,14 @@ describe('inspector source filter bar helpers', () => {
     ]);
     expect(model.facets[0]).toMatchObject({
       labelKey: 'inspector.filter.runs',
-      defaultLabel: 'Runs',
       values: ['run-1', 'run-2'],
       selected: ['run-1'],
     });
     expect(model.taskType.value).toBe('classification');
-    expect(model.taskType.options).toContainEqual({ value: 'regression', label: 'Regression' });
+    expect(model.taskType.options).toContainEqual({ value: 'regression', label: 'inspector.filters.regression' });
     expect(model.metric?.value).toBe('accuracy');
     expect(model.metric?.options).toEqual([
-      { value: INSPECTOR_ALL_FILTER_VALUE, label: 'All Metrics' },
+      { value: INSPECTOR_ALL_FILTER_VALUE, label: 'inspector.sourceBar.allMetrics' },
       { value: 'accuracy', label: 'accuracy' },
       { value: 'f1', label: 'f1' },
     ]);

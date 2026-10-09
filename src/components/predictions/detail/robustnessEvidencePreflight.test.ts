@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import i18next from "i18next";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { PredictionRobustnessEvidenceResponse } from "@/types/aggregated-predictions";
+import { initEnglishI18n } from "../predictionsTestI18n";
 import { buildRobustnessEvidencePreflightView } from "./robustnessEvidencePreflight";
+
+beforeAll(async () => {
+  await initEnglishI18n();
+});
 
 function evidence(overrides: Partial<PredictionRobustnessEvidenceResponse> = {}): PredictionRobustnessEvidenceResponse {
   return {
@@ -36,7 +42,7 @@ function evidence(overrides: Partial<PredictionRobustnessEvidenceResponse> = {})
 
 describe("buildRobustnessEvidencePreflightView", () => {
   it("projects fail-closed spectral/OOD evidence into a render-ready model", () => {
-    expect(buildRobustnessEvidencePreflightView(evidence())).toEqual({
+    expect(buildRobustnessEvidencePreflightView(evidence(), i18next.t)).toEqual({
       blockers: ["Spectral/OOD scenarios require a row-aligned X/spectra matrix."],
       evidenceCountLabel: "Evidence present 1/2",
       replayPlanSteps: [
@@ -100,7 +106,7 @@ describe("buildRobustnessEvidencePreflightView", () => {
       spectral_scenarios: [],
       status: "ready_for_spectral_replay",
       stored_prediction_scenarios: [],
-    }))).toMatchObject({
+    }), i18next.t)).toMatchObject({
       blockers: [],
       evidenceCountLabel: "Evidence present 0/0",
       replayPlanSteps: [

@@ -7,6 +7,9 @@ import {
   buildShapFeatureImportanceRows,
   getShapFeatureImportanceFill,
 } from './shapFeatureImportanceData';
+import i18n from '@/lib/i18n';
+
+const t = i18n.getFixedT('en');
 
 function binnedImportance(overrides: Partial<BinnedImportanceData> = {}): BinnedImportanceData {
   return {
@@ -73,7 +76,7 @@ describe('shapFeatureImportanceData', () => {
       { wavelengthStart: 1100, wavelengthEnd: 1110, center: 1105, importance: 0.2 },
     ]);
 
-    expect(buildShapFeatureImportanceCsv(binnedImportance())).toBe([
+    expect(buildShapFeatureImportanceCsv(binnedImportance(), undefined, t)).toBe([
       'Rank,Spectral coordinate range,Center,Importance',
       '1,1200.0-1210.0,1205.0,0.800000',
       '2,1300.0-1310.0,1305.0,0.400000',
@@ -82,8 +85,8 @@ describe('shapFeatureImportanceData', () => {
   });
 
   it('exports the same data with the actual axis unit and no assumed inverse centimeters', () => {
-    expect(buildShapFeatureImportanceCsv(binnedImportance(), 'nm').split('\n')[0]).toBe('Rank,Wavelength (nm) range,Center,Importance');
-    expect(buildShapFeatureImportanceCsv(binnedImportance(), 'index').split('\n')[0]).toBe('Rank,Feature index range,Center,Importance');
+    expect(buildShapFeatureImportanceCsv(binnedImportance(), 'nm', t).split('\n')[0]).toBe('Rank,Wavelength (nm) range,Center,Importance');
+    expect(buildShapFeatureImportanceCsv(binnedImportance(), 'index', t).split('\n')[0]).toBe('Rank,Feature index range,Center,Importance');
   });
 
   it('builds the existing normalized teal fill', () => {

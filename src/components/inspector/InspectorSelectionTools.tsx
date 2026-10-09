@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { MousePointer2, Square, Lasso, Pin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,12 +26,13 @@ interface InspectorSelectionModeToggleProps {
 }
 
 export function InspectorSelectionModeToggle({ className }: InspectorSelectionModeToggleProps) {
+  const { t } = useTranslation();
   const { selectionToolMode, setSelectionToolMode } = useInspectorSelection();
 
   const tools: { type: InspectorSelectionToolMode; icon: typeof MousePointer2; label: string; shortcut: string }[] = [
-    { type: 'click', icon: MousePointer2, label: 'Click to select', shortcut: 'V' },
-    { type: 'box', icon: Square, label: 'Box selection', shortcut: 'B' },
-    { type: 'lasso', icon: Lasso, label: 'Lasso selection', shortcut: 'L' },
+    { type: 'click', icon: MousePointer2, label: t('inspector.selection.tools.click'), shortcut: 'V' },
+    { type: 'box', icon: Square, label: t('inspector.selection.tools.box'), shortcut: 'B' },
+    { type: 'lasso', icon: Lasso, label: t('inspector.selection.tools.lasso'), shortcut: 'L' },
   ];
 
   // Keyboard shortcuts for tool mode
@@ -67,6 +69,8 @@ export function InspectorSelectionModeToggle({ className }: InspectorSelectionMo
                   selectionToolMode === type && 'bg-background shadow-sm'
                 )}
                 onClick={() => setSelectionToolMode(type)}
+                aria-label={`${label} (${shortcut})`}
+                aria-pressed={selectionToolMode === type}
               >
                 <Icon className="w-3.5 h-3.5" />
               </Button>
@@ -96,6 +100,7 @@ export function InspectorSelectionActionsBar({
   onSave,
   className,
 }: InspectorSelectionActionsBarProps) {
+  const { t } = useTranslation();
   const {
     selectedCount,
     clear,
@@ -121,25 +126,25 @@ export function InspectorSelectionActionsBar({
         )}
       >
         <span className="font-medium text-primary">
-          {selectedCount} of {totalCount} selected
+          {t('inspector.selection.selectedOfTotal', { selected: selectedCount, total: totalCount })}
         </span>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={clear}>
-            Clear
+            {t('common.clear')}
           </Button>
           <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => invert(allChainIds)}>
-            Invert
+            {t('inspector.selection.invert')}
           </Button>
           <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => selectAll(allChainIds)}>
-            All
+            {t('common.all')}
           </Button>
           <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={handlePin}>
             <Pin className="w-3 h-3 mr-1" />
-            Pin
+            {t('inspector.selection.pin')}
           </Button>
           {onSave && (
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onSave}>
-              Save
+              {t('common.save')}
             </Button>
           )}
         </div>

@@ -5,7 +5,7 @@
  * Uses InspectorColorContext for state management.
  */
 
-import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
@@ -25,6 +25,7 @@ import {
 import { InspectorPaletteButton } from './InspectorPaletteButton';
 
 export function ColorConfigPanel() {
+  const { t } = useTranslation();
   const {
     config,
     setMode,
@@ -40,19 +41,19 @@ export function ColorConfigPanel() {
       <div className="space-y-3">
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Mode</span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{t('inspector.colors.modeTitle')}</span>
             <Badge variant="outline" className="border-border/60 text-[10px] uppercase tracking-[0.12em]">
-              {config.mode}
+              {t(`inspector.colors.mode.${config.mode}`)}
             </Badge>
           </div>
           <Select value={config.mode} onValueChange={(val) => setMode(val as InspectorColorMode)}>
-            <SelectTrigger className="h-8 text-xs">
+            <SelectTrigger className="h-8 text-xs" aria-label={t('inspector.colors.modeTitle')}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {INSPECTOR_COLOR_MODE_OPTIONS.map(opt => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -62,7 +63,7 @@ export function ColorConfigPanel() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Palette
+              {t('inspector.colors.palette')}
             </span>
             <span className="text-[10px] text-muted-foreground">
               {getInspectorActivePaletteLabel(config)}
@@ -79,7 +80,7 @@ export function ColorConfigPanel() {
                     active={active}
                     onClick={() => setContinuousPalette(opt.value)}
                     label={opt.label}
-                    description="Continuous gradient for score-based coloring."
+                    description={t('inspector.colors.continuousDescription')}
                   >
                     <div
                       className="h-7 w-14 shrink-0 rounded-md border border-border/60"
@@ -100,7 +101,7 @@ export function ColorConfigPanel() {
                     active={active}
                     onClick={() => setCategoricalPalette(opt.value)}
                     label={opt.label}
-                    description="Categorical palette for groups, datasets, or model classes."
+                    description={t('inspector.colors.categoricalDescription')}
                   >
                     <div className="flex h-7 w-14 shrink-0 overflow-hidden rounded-md border border-border/60">
                       {palette.map((color, idx) => (
@@ -117,11 +118,12 @@ export function ColorConfigPanel() {
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Opacity
+              {t('inspector.colors.opacity')}
             </span>
             <span className="text-[10px] text-muted-foreground">{formatInspectorOpacityValue(config.unselectedOpacity)}</span>
           </div>
           <Slider
+            aria-label={t('inspector.colors.opacity')}
             min={0}
             max={1}
             step={0.05}

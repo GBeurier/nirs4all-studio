@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   BarChart,
@@ -38,6 +39,7 @@ export function WaterfallChart({
   totalSamples,
   onSampleChange,
 }: WaterfallChartProps) {
+  const { t } = useTranslation();
   const [data, setData] = useState<SampleExplanationResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,15 +54,15 @@ export function WaterfallChart({
         setLoading(false);
       })
       .catch((err) => {
-        setError(err.message || 'Failed to load sample explanation');
+        setError(err.message || t('results.variableImportance.waterfall.loadFailed'));
         setLoading(false);
       });
-  }, [jobId, sampleIdx]);
+  }, [jobId, sampleIdx, t]);
 
   const chartData = useMemo(() => {
     if (!data) return [];
-    return buildShapWaterfallBars(data);
-  }, [data]);
+    return buildShapWaterfallBars(data, t);
+  }, [data, t]);
 
   const handlePrevSample = () => {
     const previousSample = getShapWaterfallPreviousSample(sampleIdx);
@@ -91,7 +93,7 @@ export function WaterfallChart({
   if (!data) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
-        No explanation data available
+        {t('results.variableImportance.waterfall.noData')}
       </div>
     );
   }
@@ -101,13 +103,14 @@ export function WaterfallChart({
       {/* Sample selector */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Label className="text-sm">Sample:</Label>
+          <Label className="text-sm">{t('results.variableImportance.waterfall.sampleLabel')}</Label>
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
             onClick={handlePrevSample}
             disabled={sampleIdx === 0}
+            aria-label={t('results.variableImportance.waterfall.previousSample')}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -119,6 +122,7 @@ export function WaterfallChart({
               if (nextSample != null) onSampleChange(nextSample);
             }}
             className="w-20 h-8 text-center"
+            aria-label={t('results.variableImportance.waterfall.sampleLabel')}
             min={0}
             max={totalSamples - 1}
           />
@@ -128,13 +132,14 @@ export function WaterfallChart({
             className="h-8 w-8"
             onClick={handleNextSample}
             disabled={sampleIdx === totalSamples - 1}
+            aria-label={t('results.variableImportance.waterfall.nextSample')}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
-          <span className="text-sm text-muted-foreground">of {totalSamples}</span>
+          <span className="text-sm text-muted-foreground">{t('results.variableImportance.waterfall.ofTotal', { total: totalSamples })}</span>
         </div>
         <div className="text-sm">
-          <span className="text-muted-foreground">Predicted: </span>
+          <span className="text-muted-foreground">{t('results.variableImportance.waterfall.predicted')} </span>
           <span className="font-medium">{data.predicted_value.toFixed(4)}</span>
         </div>
       </div>
@@ -170,13 +175,12 @@ export function WaterfallChart({
                   <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
                     <p className="font-medium">{bar.name}</p>
                     {bar.isBase ? (
-                      <p>Expected value: {bar.value.toFixed(4)}</p>
+                      <p>{t('results.variableImportance.waterfall.expectedValue', { value: bar.value.toFixed(4) })}</p>
                     ) : bar.isFinal ? (
-                      <p>Final prediction: {bar.value.toFixed(4)}</p>
+                      <p>{t('results.variableImportance.waterfall.finalPredictionValue', { value: bar.value.toFixed(4) })}</p>
                     ) : (
                       <p>
-                        Contribution: {bar.value >= 0 ? '+' : ''}
-                        {bar.value.toFixed(4)}
+                        {t('results.variableImportance.waterfall.contributionValue', { value: `${bar.value >= 0 ? '+' : ''}${bar.value.toFixed(4)}` })}
                       </p>
                     )}
                   </div>
@@ -206,19 +210,19 @@ export function WaterfallChart({
       <div className="flex items-center justify-center gap-6 py-2 text-xs text-muted-foreground">
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded bg-gray-400" />
-          <span>Base value</span>
+          <span>{t('results.variableImportance.waterfall.baseValue')}</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded bg-green-500" />
-          <span>Increases prediction</span>
+          <span>{t('results.variableImportance.waterfall.increases')}</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded bg-red-500" />
-          <span>Decreases prediction</span>
+          <span>{t('results.variableImportance.waterfall.decreases')}</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded" style={{ backgroundColor: 'hsl(var(--primary))' }} />
-          <span>Final prediction</span>
+          <span>{t('results.variableImportance.waterfall.finalPrediction')}</span>
         </div>
       </div>
     </div>

@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { CampaignDatasetSchemaSummary } from "./campaignSpecTypes";
 import { getDatasetDefaultDataView } from "./datasetSchemaAccessors";
 import type {
@@ -9,21 +11,31 @@ import {
   formatDatasetSourceModeLabel,
 } from "./datasetSchemaDisplay";
 
-export function formatCampaignPreviewCount(
-  count: number,
-  singular: string,
-  plural = `${singular}s`,
-): string {
-  return `${count} ${count === 1 ? singular : plural}`;
+/** Nouns with a pluralised count label (`newExperiment.counts.<noun>`). */
+export type CampaignPreviewCountNoun =
+  | "sample"
+  | "feature"
+  | "source"
+  | "representation"
+  | "target"
+  | "metadataColumn"
+  | "activeNode"
+  | "step"
+  | "refitNode";
+
+/** Nouns that also have an "Unknown …" label (`newExperiment.unknownCount.<noun>`). */
+export type CampaignPreviewOptionalCountNoun = Exclude<CampaignPreviewCountNoun, "refitNode">;
+
+export function formatCampaignPreviewCount(count: number, noun: CampaignPreviewCountNoun): string {
+  return i18n.t(`newExperiment.counts.${noun}`, { count });
 }
 
 export function formatOptionalCampaignPreviewCount(
   count: number | null | undefined,
-  singular: string,
-  plural = `${singular}s`,
+  noun: CampaignPreviewOptionalCountNoun,
 ): string {
-  if (typeof count !== "number") return `Unknown ${plural}`;
-  return formatCampaignPreviewCount(count, singular, plural);
+  if (typeof count !== "number") return i18n.t(`newExperiment.unknownCount.${noun}`);
+  return formatCampaignPreviewCount(count, noun);
 }
 
 export function getCampaignDatasetDefaultDataView(

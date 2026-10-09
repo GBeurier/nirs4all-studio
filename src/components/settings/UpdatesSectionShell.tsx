@@ -24,6 +24,7 @@ import {
   Settings2,
   Trash2,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import {
   Card,
@@ -59,14 +60,16 @@ import type {
   TextDisplay,
   WebappUpdateRowState,
 } from "./UpdatesSectionLogic";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 export function UpdatesLoadingCard() {
+  const { t } = useTranslation();
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Download className="h-5 w-5" />
-          Updates
+          {t("settings.updates.title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -84,15 +87,16 @@ interface UpdatesErrorCardProps {
 }
 
 export function UpdatesErrorCard({ onRetry, isRetrying }: UpdatesErrorCardProps) {
+  const { t } = useTranslation();
   return (
     <Card className="border-destructive/50">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-destructive">
           <Download className="h-5 w-5" />
-          Updates
+          {t("settings.updates.title")}
         </CardTitle>
         <CardDescription className="text-destructive">
-          Failed to check for updates
+          {t("settings.updates.checkFailed")}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -103,7 +107,7 @@ export function UpdatesErrorCard({ onRetry, isRetrying }: UpdatesErrorCardProps)
           disabled={isRetrying}
         >
           <RefreshCw className={`mr-2 h-4 w-4 ${isRetrying ? "animate-spin" : ""}`} />
-          Retry
+          {t("common.retry")}
         </Button>
       </CardContent>
     </Card>
@@ -220,6 +224,7 @@ export function UpdatesSectionShell({
   isSettingsPending,
   children,
 }: UpdatesSectionShellProps) {
+  const { t } = useTranslation();
   return (
     <Card>
       <CardHeader>
@@ -227,15 +232,15 @@ export function UpdatesSectionShell({
           <div>
             <CardTitle className="flex items-center gap-2">
               <Download className="h-5 w-5" />
-              Updates
+              {t("settings.updates.title")}
               {hasAnyUpdate && (
                 <Badge variant="default" className="ml-2">
-                  {updateCount} available
+                  {t("settings.updates.availableCount", { count: updateCount })}
                 </Badge>
               )}
             </CardTitle>
             <CardDescription>
-              Check for webapp and library updates
+              {t("settings.updates.description")}
             </CardDescription>
           </div>
           <Button
@@ -245,7 +250,7 @@ export function UpdatesSectionShell({
             disabled={isChecking}
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${isChecking ? "animate-spin" : ""}`} />
-            Check Now
+            {t("settings.updates.checkNow")}
           </Button>
         </div>
       </CardHeader>
@@ -255,14 +260,14 @@ export function UpdatesSectionShell({
           <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription className="flex items-center justify-between">
-              <span>Package changes require a backend restart to take effect.</span>
+              <span>{t("settings.updates.restartNeeded")}</span>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={onRestartBackend}
               >
                 <RotateCcw className="mr-2 h-3 w-3" />
-                Restart Backend
+                {t("settings.updates.restartBackend")}
               </Button>
             </AlertDescription>
           </Alert>
@@ -273,8 +278,8 @@ export function UpdatesSectionShell({
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription>
               {runtimeDisplay.isBundledEmbedded
-                ? "This bundled build is still using its embedded Python runtime. nirs4all installs and snapshot restores are disabled because the embedded runtime is read-only."
-                : "Choose or update your Python environment from Python Environment. Studio manages the nirs4all version it requires and keeps your other compatible packages."}
+                ? t("settings.updates.readOnlyEmbedded")
+                : t("settings.updates.readOnlyChoose")}
             </AlertDescription>
           </Alert>
         )}
@@ -283,7 +288,7 @@ export function UpdatesSectionShell({
           <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription>
-              Studio is using your selected Python environment. You can prepare it again or select another one from Python Environment.
+              {t("settings.updates.externalRuntime")}
             </AlertDescription>
           </Alert>
         )}
@@ -294,21 +299,15 @@ export function UpdatesSectionShell({
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="space-y-2">
               <div>
-                The last update didn&apos;t complete — the app is still on{" "}
-                <span className="font-mono">{lastApplyResult.from_version}</span>
-                {lastApplyResult.to_version ? (
-                  <>
-                    {" "}
-                    (expected <span className="font-mono">{lastApplyResult.to_version}</span>)
-                  </>
-                ) : null}
-                . You can install it manually from the release page.
+                {lastApplyResult.to_version
+                  ? t("settings.updates.lastApplyFailedExpected", { from: lastApplyResult.from_version, to: lastApplyResult.to_version })
+                  : t("settings.updates.lastApplyFailed", { from: lastApplyResult.from_version })}
               </div>
               <div className="flex gap-2">
                 {installerUrl && (
                   <Button size="sm" variant="outline" onClick={onOpenInstaller}>
                     <ExternalLink className="mr-2 h-4 w-4" />
-                    Get installer
+                    {t("settings.updates.getInstaller")}
                   </Button>
                 )}
                 <Button
@@ -317,7 +316,7 @@ export function UpdatesSectionShell({
                   onClick={onDismissApplyResult}
                   disabled={isDismissApplyResultPending}
                 >
-                  Dismiss
+                  {t("settings.updates.dismiss")}
                 </Button>
               </div>
             </AlertDescription>
@@ -340,7 +339,7 @@ export function UpdatesSectionShell({
         {/* Last Check Info */}
         {lastCheck && (
           <p className="text-xs text-muted-foreground">
-            Last checked: {new Date(lastCheck).toLocaleString()}
+            {t("settings.updates.lastChecked", { date: new Date(lastCheck).toLocaleString(getActiveLocale()) })}
           </p>
         )}
 
@@ -414,17 +413,18 @@ function SnapshotsSection({
   onDeleteSnapshot,
   isDeletingSnapshot,
 }: SnapshotsSectionProps) {
+  const { t } = useTranslation();
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger asChild>
         <Button variant="ghost" className="w-full justify-between p-2 h-auto">
           <span className="text-sm font-medium flex items-center gap-2">
             <History className="h-4 w-4" />
-            Working Config
+            {t("settings.updates.workingConfig")}
           </span>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-muted-foreground">
-              {snapshots.length ?? 0} saved
+              {t("settings.updates.savedCount", { count: snapshots.length ?? 0 })}
             </Badge>
             <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
           </div>
@@ -433,7 +433,7 @@ function SnapshotsSection({
       <CollapsibleContent className="pt-2 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            Save the current package state to restore later if an upgrade causes issues.
+            {t("settings.updates.snapshotHint")}
           </p>
           <Button
             variant="outline"
@@ -446,7 +446,7 @@ function SnapshotsSection({
             ) : (
               <Save className="mr-2 h-3 w-3" />
             )}
-            Save Current
+            {t("settings.updates.saveCurrent")}
           </Button>
         </div>
 
@@ -457,7 +457,7 @@ function SnapshotsSection({
                 <div>
                   <span className="font-medium">{snap.label}</span>
                   <span className="text-xs text-muted-foreground ml-2">
-                    {new Date(snap.created_at).toLocaleDateString()}
+                    {new Date(snap.created_at).toLocaleDateString(getActiveLocale())}
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
@@ -473,7 +473,7 @@ function SnapshotsSection({
                     ) : (
                       <RotateCcw className="h-3 w-3" />
                     )}
-                    <span className="ml-1">Restore</span>
+                    <span className="ml-1">{t("settings.updates.restore")}</span>
                   </Button>
                   <Button
                     variant="ghost"
@@ -481,6 +481,7 @@ function SnapshotsSection({
                     className="h-7 px-2 text-destructive hover:text-destructive"
                     onClick={() => onDeleteSnapshot(snap.name)}
                     disabled={isDeletingSnapshot}
+                    aria-label={t("settings.updates.deleteSnapshot")}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -490,7 +491,7 @@ function SnapshotsSection({
           </div>
         ) : (
           <p className="text-xs text-muted-foreground italic p-2">
-            No snapshots saved yet. Save one before upgrading.
+            {t("settings.updates.noSnapshots")}
           </p>
         )}
       </CollapsibleContent>
@@ -517,13 +518,14 @@ function UpdateSettingsSection({
   onOfflineModeChange,
   isSettingsPending,
 }: UpdateSettingsSectionProps) {
+  const { t } = useTranslation();
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger asChild>
         <Button variant="ghost" className="w-full justify-between p-2 h-auto">
           <span className="text-sm font-medium flex items-center gap-2">
             <Settings2 className="h-4 w-4" />
-            Update Settings
+            {t("settings.updates.updateSettings")}
           </span>
           <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
         </Button>
@@ -531,9 +533,9 @@ function UpdateSettingsSection({
       <CollapsibleContent className="pt-2 space-y-4">
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <Label htmlFor="auto-check">Automatic update checks</Label>
+            <Label htmlFor="auto-check">{t("settings.updates.autoCheck")}</Label>
             <p className="text-xs text-muted-foreground">
-              Check for updates on startup and periodically
+              {t("settings.updates.autoCheckHint")}
             </p>
           </div>
           <Switch
@@ -545,9 +547,9 @@ function UpdateSettingsSection({
         </div>
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <Label htmlFor="prerelease">Include pre-releases</Label>
+            <Label htmlFor="prerelease">{t("settings.updates.prerelease")}</Label>
             <p className="text-xs text-muted-foreground">
-              Get notified about beta and preview versions
+              {t("settings.updates.prereleaseHint")}
             </p>
           </div>
           <Switch
@@ -559,9 +561,9 @@ function UpdateSettingsSection({
         </div>
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <Label htmlFor="offline-mode">Network mode</Label>
+            <Label htmlFor="offline-mode">{t("settings.updates.networkMode")}</Label>
             <p className="text-xs text-muted-foreground">
-              Auto probes on startup, Offline disables all network calls
+              {t("settings.updates.networkModeHint")}
             </p>
           </div>
           <select
@@ -571,9 +573,9 @@ function UpdateSettingsSection({
             onChange={(e) => onOfflineModeChange(e.target.value as "auto" | "on" | "off")}
             disabled={isSettingsPending}
           >
-            <option value="auto">Auto (detect)</option>
-            <option value="off">Always online</option>
-            <option value="on">Offline</option>
+            <option value="auto">{t("settings.updates.networkAuto")}</option>
+            <option value="off">{t("settings.updates.networkOnline")}</option>
+            <option value="on">{t("settings.updates.networkOffline")}</option>
           </select>
         </div>
       </CollapsibleContent>

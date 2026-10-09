@@ -1,11 +1,14 @@
+import { useTranslation } from "react-i18next";
 import { AlertTriangle, Target } from "lucide-react";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/state-display";
 
 export function InspectorCanvasLoadingState() {
+  const { t } = useTranslation();
+
   return (
     <LoadingState
-      message="Loading predictions inspector..."
+      message={t("inspector.canvas.loading")}
       className="min-h-[420px]"
     />
   );
@@ -20,12 +23,14 @@ export function InspectorCanvasErrorState({
   error,
   onRefresh,
 }: InspectorCanvasErrorStateProps) {
+  const { t } = useTranslation();
+
   return (
     <ErrorState
-      title="Inspector unavailable"
+      title={t("inspector.canvas.errorTitle")}
       message={error}
       onRetry={onRefresh}
-      retryLabel="Reload inspector"
+      retryLabel={t("inspector.canvas.errorRetry")}
     />
   );
 }
@@ -37,12 +42,14 @@ export interface InspectorCanvasNoPredictionsStateProps {
 export function InspectorCanvasNoPredictionsState({
   onRefresh,
 }: InspectorCanvasNoPredictionsStateProps) {
+  const { t } = useTranslation();
+
   return (
     <EmptyState
       icon={Target}
-      title="No predictions to inspect"
-      description="Run or import predictions first, then reopen the inspector."
-      action={{ label: "Refresh", onClick: onRefresh }}
+      title={t("inspector.canvas.noPredictionsTitle")}
+      description={t("inspector.canvas.noPredictionsDescription")}
+      action={{ label: t("common.refresh"), onClick: onRefresh }}
     />
   );
 }
@@ -58,19 +65,21 @@ export function InspectorCanvasFilteredEmptyState({
   onClearFilters,
   onRefresh,
 }: InspectorCanvasFilteredEmptyStateProps) {
+  const { t } = useTranslation();
+
   return (
     <EmptyState
       icon={AlertTriangle}
-      title="No chains match the current scope"
+      title={t("inspector.canvas.noMatchTitle")}
       description={hasActiveFilters
-        ? "Clear local inspector filters to bring chains back into view."
-        : "Adjust source filters to broaden the comparison scope."
+        ? t("inspector.canvas.noMatchFiltered")
+        : t("inspector.canvas.noMatchSources")
       }
       action={hasActiveFilters
-        ? { label: "Clear local filters", onClick: onClearFilters }
-        : { label: "Refresh", onClick: onRefresh }
+        ? { label: t("inspector.canvas.clearLocalFilters"), onClick: onClearFilters }
+        : { label: t("common.refresh"), onClick: onRefresh }
       }
-      secondaryAction={hasActiveFilters ? { label: "Refresh", onClick: onRefresh } : undefined}
+      secondaryAction={hasActiveFilters ? { label: t("common.refresh"), onClick: onRefresh } : undefined}
     />
   );
 }

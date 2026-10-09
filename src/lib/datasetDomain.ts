@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   Dataset,
   DatasetConfig,
@@ -47,7 +49,7 @@ export function normalizeDataset(raw: unknown, index = 0): Dataset {
   const source = isRecord(raw) ? raw : {};
   const path = stringValue(source.path) ?? "";
   const id = stringValue(source.id) ?? (path || `temp-${index}`);
-  const name = stringValue(source.name) ?? basenameFromPath(path) ?? `Dataset ${index + 1}`;
+  const name = stringValue(source.name) ?? basenameFromPath(path) ?? i18n.t("datasets.fallbackName", { index: index + 1 });
   const linkedAt = stringValue(source.linked_at) ?? stringValue(source.created_at) ?? "";
   const targets = normalizeTargets(source.targets);
   const targetCount = numberValue(source.targets);

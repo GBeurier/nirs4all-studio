@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   CampaignDatasetRef,
   CampaignPipelineRef,
@@ -9,32 +11,16 @@ import type {
   DatasetPipelineCompatibilityCheck,
   DatasetPipelineCompatibilityStatus,
 } from "./campaignCompatibilityTypes";
+import { formatCampaignPreviewCount } from "./campaignDatasetSchemaLabels";
 import { getDatasetAggregationReadiness } from "./datasetSchemaAggregation";
-
-export function formatCompatibilityCount(
-  count: number,
-  singular: string,
-  plural = `${singular}s`,
-): string {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-export function formatOptionalCompatibilityCount(
-  count: number | null | undefined,
-  singular: string,
-  plural = `${singular}s`,
-): string {
-  if (typeof count !== "number") return `Unknown ${plural}`;
-  return formatCompatibilityCount(count, singular, plural);
-}
 
 export function getDatasetPipelineCompatibilityStatusLabel(
   status: DatasetPipelineCompatibilityStatus,
 ): string {
-  if (status === "passed") return "Ready";
-  if (status === "warning") return "Warning";
-  if (status === "blocking") return "Blocking";
-  return "Not evaluated";
+  if (status === "passed") return i18n.t("newExperiment.campaign.status.ready");
+  if (status === "warning") return i18n.t("newExperiment.campaign.status.warning");
+  if (status === "blocking") return i18n.t("newExperiment.campaign.status.blocking");
+  return i18n.t("newExperiment.campaign.status.notEvaluated");
 }
 
 export function getDatasetPipelineCompatibilityPreviewStatus(
@@ -50,15 +36,15 @@ export function getDatasetPipelineCompatibilityPreviewSummary(
   status: DatasetPipelineCompatibilityStatus,
 ): string {
   if (status === "passed") {
-    return "Schema preview ready for this dataset/pipeline pair.";
+    return i18n.t("newExperiment.campaign.compat.summary.passed");
   }
   if (status === "warning") {
-    return "Schema preview is available but has warnings for stricter execution modes.";
+    return i18n.t("newExperiment.campaign.compat.summary.warning");
   }
   if (status === "blocking") {
-    return "Campaign data is inconsistent and cannot be previewed safely.";
+    return i18n.t("newExperiment.campaign.compat.summary.blocking");
   }
-  return "Compatibility preview needs both a dataset schema ref and a pipeline graph spec.";
+  return i18n.t("newExperiment.campaign.compat.summary.notEvaluated");
 }
 
 function countActiveRefitNodes(
@@ -84,22 +70,22 @@ export function buildDatasetPipelineCompatibilityChecks({
     checks.push({
       id: "dataset-ref",
       status: "blocking",
-      title: "Dataset ref",
-      message: "The run matrix references a dataset that is not present in the campaign.",
+      title: i18n.t("newExperiment.campaign.compat.datasetRef.title"),
+      message: i18n.t("newExperiment.campaign.compat.datasetRef.missing"),
     });
   } else if (!schemaRef) {
     checks.push({
       id: "dataset-schema-ref",
       status: "not_evaluated",
-      title: "Dataset schema ref",
-      message: "No dataset schema ref is attached to this campaign dataset.",
+      title: i18n.t("newExperiment.campaign.compat.datasetSchemaRef.title"),
+      message: i18n.t("newExperiment.campaign.compat.datasetSchemaRef.missing"),
     });
   } else {
     checks.push({
       id: "dataset-schema-ref",
       status: "passed",
-      title: "Dataset schema ref",
-      message: `Dataset schema ${schemaRef.fingerprint} is available.`,
+      title: i18n.t("newExperiment.campaign.compat.datasetSchemaRef.title"),
+      message: i18n.t("newExperiment.campaign.compat.datasetSchemaRef.available", { fingerprint: schemaRef.fingerprint }),
     });
   }
 
@@ -107,22 +93,22 @@ export function buildDatasetPipelineCompatibilityChecks({
     checks.push({
       id: "pipeline-ref",
       status: "blocking",
-      title: "Pipeline ref",
-      message: "The run matrix references a pipeline that is not present in the campaign.",
+      title: i18n.t("newExperiment.campaign.compat.pipelineRef.title"),
+      message: i18n.t("newExperiment.campaign.compat.pipelineRef.missing"),
     });
   } else if (!graph) {
     checks.push({
       id: "pipeline-graph-spec",
       status: "not_evaluated",
-      title: "Pipeline graph spec",
-      message: "No pipeline graph spec is attached to this campaign pipeline.",
+      title: i18n.t("newExperiment.campaign.compat.pipelineGraphSpec.title"),
+      message: i18n.t("newExperiment.campaign.compat.pipelineGraphSpec.missing"),
     });
   } else {
     checks.push({
       id: "pipeline-graph-spec",
       status: "passed",
-      title: "Pipeline graph spec",
-      message: `Pipeline graph ${graph.version} is available.`,
+      title: i18n.t("newExperiment.campaign.compat.pipelineGraphSpec.title"),
+      message: i18n.t("newExperiment.campaign.compat.pipelineGraphSpec.available", { version: graph.version }),
     });
   }
 
@@ -132,56 +118,66 @@ export function buildDatasetPipelineCompatibilityChecks({
       status: defaultDataView && defaultDataView.representationIds.length > 0
         ? "passed"
         : "warning",
-      title: "Default data view",
+      title: i18n.t("newExperiment.campaign.compat.dataView.title"),
       message: defaultDataView && defaultDataView.representationIds.length > 0
-        ? `Default data view "${defaultDataView.label}" exposes ${formatCompatibilityCount(defaultDataView.representationIds.length, "representation")}.`
-        : "No usable default data view is available for this dataset.",
+        ? i18n.t("newExperiment.campaign.compat.dataView.ok", {
+          label: defaultDataView.label,
+          representations: formatCampaignPreviewCount(defaultDataView.representationIds.length, "representation"),
+        })
+        : i18n.t("newExperiment.campaign.compat.dataView.missing"),
     });
     checks.push({
       id: "feature-axis",
       status: schemaRef.featureCount != null && schemaRef.featureCount > 0
         ? "passed"
         : "warning",
-      title: "Feature axis",
+      title: i18n.t("newExperiment.campaign.compat.featureAxis.title"),
       message: schemaRef.featureCount != null && schemaRef.featureCount > 0
-        ? `Dataset exposes ${formatCompatibilityCount(schemaRef.featureCount, "feature")}.`
-        : "Dataset feature count is unknown or empty.",
+        ? i18n.t("newExperiment.campaign.compat.featureAxis.ok", {
+          features: formatCampaignPreviewCount(schemaRef.featureCount, "feature"),
+        })
+        : i18n.t("newExperiment.campaign.compat.featureAxis.missing"),
     });
     checks.push({
       id: "target",
       status: schemaRef.defaultTargetColumn ? "passed" : "warning",
-      title: "Default target",
+      title: i18n.t("newExperiment.campaign.compat.target.title"),
       message: schemaRef.defaultTargetColumn
-        ? `Default target is "${schemaRef.defaultTargetColumn}".`
-        : "No default target is declared for this dataset.",
+        ? i18n.t("newExperiment.campaign.compat.target.ok", { target: schemaRef.defaultTargetColumn })
+        : i18n.t("newExperiment.campaign.compat.target.missing"),
     });
     const aggregationReadiness = getDatasetAggregationReadiness(schemaRef.aggregation);
     checks.push({
       id: "dataset-aggregation",
       status: aggregationReadiness.status === "warning" ? "warning" : "passed",
-      title: "Dataset aggregation",
+      title: i18n.t("newExperiment.campaign.compat.aggregation.title"),
       message: aggregationReadiness.message,
     });
     const refitNodeCount = countActiveRefitNodes(graph);
     if (schemaRef.aggregation.enabled && refitNodeCount > 0) {
-      const refitNodeCountLabel = formatCompatibilityCount(refitNodeCount, "refit node");
+      const refitNodeCountLabel = formatCampaignPreviewCount(refitNodeCount, "refitNode");
       const aggregationReady = aggregationReadiness.status !== "warning";
       checks.push({
         id: "refit-aggregation",
         status: aggregationReady ? "passed" : "warning",
-        title: "Refit aggregation",
-        message: aggregationReady
-          ? `${refitNodeCountLabel} will refit on aggregated dataset rows. ${aggregationReadiness.message}`
-          : `${refitNodeCountLabel} may refit with aggregation metadata that is not strict-mode ready. ${aggregationReadiness.message}`,
+        title: i18n.t("newExperiment.campaign.compat.refitAggregation.title"),
+        message: i18n.t(
+          aggregationReady
+            ? "newExperiment.campaign.compat.refitAggregation.ready"
+            : "newExperiment.campaign.compat.refitAggregation.warning",
+          { count: refitNodeCount, nodes: refitNodeCountLabel, detail: aggregationReadiness.message },
+        ),
       });
     }
     checks.push({
       id: "pipeline-active-nodes",
       status: graph.stats.activeNodeCount > 0 ? "passed" : "warning",
-      title: "Pipeline active nodes",
+      title: i18n.t("newExperiment.campaign.compat.activeNodes.title"),
       message: graph.stats.activeNodeCount > 0
-        ? `Pipeline exposes ${formatCompatibilityCount(graph.stats.activeNodeCount, "active node")}.`
-        : "Pipeline graph has no active nodes.",
+        ? i18n.t("newExperiment.campaign.compat.activeNodes.ok", {
+          nodes: formatCampaignPreviewCount(graph.stats.activeNodeCount, "activeNode"),
+        })
+        : i18n.t("newExperiment.campaign.compat.activeNodes.missing"),
     });
   }
 

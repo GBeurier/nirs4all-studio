@@ -47,11 +47,11 @@ describe("inspector chart registry", () => {
     }
   });
 
-  it("provides human-facing copy for every panel", () => {
+  it("references localized copy for every panel", () => {
     for (const panel of INSPECTOR_PANELS) {
-      expect(panel.name.trim().length).toBeGreaterThan(0);
+      expect(panel.nameKey).toBe(`inspector.panelDefs.${panel.id}.name`);
       expect(panel.shortName.trim().length).toBeGreaterThan(0);
-      expect(panel.help.trim().length).toBeGreaterThan(0);
+      expect(panel.helpKey).toBe(`inspector.panelDefs.${panel.id}.help`);
       expect(typeof panel.defaultVisible).toBe("boolean");
     }
   });

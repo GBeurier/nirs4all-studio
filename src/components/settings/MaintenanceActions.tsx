@@ -22,6 +22,7 @@ import {
   removeBottomPredictions,
 } from "@/api/workspace";
 import type { CleanDeadLinksReport, RemoveBottomReport } from "@/types/storage";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 interface MaintenanceActionsProps {
   onChanged?: () => void;
@@ -49,10 +50,10 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
         (sum, ds) => sum + (ds.rows_removed || 0),
         0
       );
-      toast.success(`Compaction completed. Rows removed: ${rowsRemoved.toLocaleString()}`);
+      toast.success(t("settings.maintenance.compactDone", { rows: rowsRemoved.toLocaleString(getActiveLocale()) }));
       onChanged?.();
     } catch (error) {
-      const message = describeApiError(error, t, "Compaction failed").message;
+      const message = describeApiError(error, t, t("settings.maintenance.compactFailed")).message;
       toast.error(message);
     } finally {
       setRunning(null);
@@ -64,9 +65,9 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
     try {
       const preview = await cleanDeadLinks(true);
       setCleanPreview(preview);
-      toast.info("Cleanup dry run completed");
+      toast.info(t("settings.maintenance.cleanDryRunDone"));
     } catch (error) {
-      const message = describeApiError(error, t, "Cleanup preview failed").message;
+      const message = describeApiError(error, t, t("settings.maintenance.cleanPreviewFailed")).message;
       toast.error(message);
     } finally {
       setRunning(null);
@@ -79,12 +80,15 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
       const result = await cleanDeadLinks(false);
       setCleanPreview(result);
       toast.success(
-        `Cleanup done. Metadata: ${result.metadata_orphans_removed}, arrays: ${result.array_orphans_removed}`
+        t("settings.maintenance.cleanDone", {
+          metadata: result.metadata_orphans_removed,
+          arrays: result.array_orphans_removed,
+        })
       );
       onChanged?.();
       setCleanOpen(false);
     } catch (error) {
-      const message = describeApiError(error, t, "Cleanup failed").message;
+      const message = describeApiError(error, t, t("settings.maintenance.cleanFailed")).message;
       toast.error(message);
     } finally {
       setRunning(null);
@@ -102,9 +106,9 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
         dry_run: true,
       });
       setRemovePreview(preview);
-      toast.info("Remove-bottom dry run completed");
+      toast.info(t("settings.maintenance.removeDryRunDone"));
     } catch (error) {
-      const message = describeApiError(error, t, "Remove-bottom preview failed").message;
+      const message = describeApiError(error, t, t("settings.maintenance.removePreviewFailed")).message;
       toast.error(message);
     } finally {
       setRunning(null);
@@ -122,11 +126,11 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
         dry_run: false,
       });
       setRemovePreview(result);
-      toast.success(`Removed ${result.removed} predictions`);
+      toast.success(t("settings.maintenance.removeDone", { count: result.removed }));
       onChanged?.();
       setRemoveOpen(false);
     } catch (error) {
-      const message = describeApiError(error, t, "Remove-bottom failed").message;
+      const message = describeApiError(error, t, t("settings.maintenance.removeFailed")).message;
       toast.error(message);
     } finally {
       setRunning(null);
@@ -141,21 +145,21 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
         ) : (
           <Wrench className="mr-2 h-4 w-4" />
         )}
-        Compact
+        {t("settings.maintenance.compact")}
       </Button>
 
       <Dialog open={cleanOpen} onOpenChange={setCleanOpen}>
         <DialogTrigger asChild>
           <Button variant="outline" size="sm" disabled={running !== null}>
             <Trash2 className="mr-2 h-4 w-4" />
-            Clean Dead Links
+            {t("settings.maintenance.cleanDeadLinks")}
           </Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Clean Dead Links</DialogTitle>
+            <DialogTitle>{t("settings.maintenance.cleanDeadLinks")}</DialogTitle>
             <DialogDescription>
-              Run a dry-run preview first, then confirm cleanup.
+              {t("settings.maintenance.cleanDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -163,16 +167,18 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
               {running === "clean-preview" ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Previewing...
+                  {t("settings.maintenance.previewing")}
                 </>
               ) : (
-                "Preview Cleanup"
+                t("settings.maintenance.previewCleanup")
               )}
             </Button>
             {cleanPreview && (
               <div className="text-sm text-muted-foreground">
-                Metadata orphans: {cleanPreview.metadata_orphans_removed} | Array orphans:{" "}
-                {cleanPreview.array_orphans_removed}
+                {t("settings.maintenance.cleanPreviewSummary", {
+                  metadata: cleanPreview.metadata_orphans_removed,
+                  arrays: cleanPreview.array_orphans_removed,
+                })}
               </div>
             )}
           </div>
@@ -184,10 +190,10 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
               {running === "clean-apply" ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Cleaning...
+                  {t("settings.maintenance.cleaning")}
                 </>
               ) : (
-                "Confirm Cleanup"
+                t("settings.maintenance.confirmCleanup")
               )}
             </Button>
           </DialogFooter>
@@ -198,20 +204,20 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
         <DialogTrigger asChild>
           <Button variant="outline" size="sm" disabled={running !== null}>
             <Filter className="mr-2 h-4 w-4" />
-            Remove Bottom %
+            {t("settings.maintenance.removeBottomButton")}
           </Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove Bottom Predictions</DialogTitle>
+            <DialogTitle>{t("settings.maintenance.removeTitle")}</DialogTitle>
             <DialogDescription>
-              Preview the removal first, then confirm.
+              {t("settings.maintenance.removeDescription")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Fraction to remove (0-1)</Label>
+              <Label>{t("settings.maintenance.fraction")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -220,20 +226,20 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
                 value={fraction}
                 onChange={(e) => setFraction(Number(e.target.value) || 0)}
               />
-              <p className="text-xs text-muted-foreground">{fractionPercent}% will be removed</p>
+              <p className="text-xs text-muted-foreground">{t("settings.maintenance.fractionHint", { percent: fractionPercent })}</p>
             </div>
             <div className="space-y-1">
-              <Label>Metric</Label>
+              <Label>{t("settings.maintenance.metric")}</Label>
               <Input value={metric} onChange={(e) => setMetric(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label>Partition</Label>
+              <Label>{t("settings.maintenance.partition")}</Label>
               <Input value={partition} onChange={(e) => setPartition(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label>Dataset (optional)</Label>
+              <Label>{t("settings.maintenance.datasetOptional")}</Label>
               <Input
-                placeholder="all datasets"
+                placeholder={t("settings.maintenance.allDatasets")}
                 value={datasetName}
                 onChange={(e) => setDatasetName(e.target.value)}
               />
@@ -244,16 +250,19 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
               {running === "remove-preview" ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Previewing...
+                  {t("settings.maintenance.previewing")}
                 </>
               ) : (
-                "Preview Removal"
+                t("settings.maintenance.previewRemoval")
               )}
             </Button>
             {removePreview && (
               <div className="text-sm text-muted-foreground">
-                Removed: {removePreview.removed} | Remaining: {removePreview.remaining} | Threshold:{" "}
-                {removePreview.threshold_score}
+                {t("settings.maintenance.removePreviewSummary", {
+                  removed: removePreview.removed,
+                  remaining: removePreview.remaining,
+                  threshold: removePreview.threshold_score,
+                })}
               </div>
             )}
           </div>
@@ -266,10 +275,10 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
               {running === "remove-apply" ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Removing...
+                  {t("settings.maintenance.removing")}
                 </>
               ) : (
-                "Confirm Removal"
+                t("settings.maintenance.confirmRemoval")
               )}
             </Button>
           </DialogFooter>

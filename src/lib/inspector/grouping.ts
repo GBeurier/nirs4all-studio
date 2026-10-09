@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import type {
   ExpressionCombinator,
   ExpressionRule,
@@ -18,6 +19,9 @@ import {
   getResultAnalysisChains,
   type ResultAnalysisStore,
 } from "@/lib/inspector/resultAnalysisStore";
+
+/** Stable bucket key (also part of the group id) for chains without a branch path. */
+const NO_BRANCH_BUCKET = "(no branch)";
 
 export interface InspectorGroupingConfig {
   groupMode: GroupMode;
@@ -164,7 +168,7 @@ function computeGroupsByTopK(
   const groups: InspectorGroup[] = [
     {
       id: "group-top-k",
-      label: `Top ${config.k}`,
+      label: i18n.t("inspector.groups.topK", { k: config.k }),
       color: INSPECTOR_GROUP_COLORS[0],
       chain_ids: topK.map((chain) => chain.chain_id),
     },
@@ -173,7 +177,7 @@ function computeGroupsByTopK(
   if (rest.length > 0) {
     groups.push({
       id: "group-rest",
-      label: `Others (${rest.length})`,
+      label: i18n.t("inspector.groups.others", { count: rest.length }),
       color: INSPECTOR_GROUP_COLORS[1],
       chain_ids: rest.map((chain) => chain.chain_id),
     });
@@ -186,7 +190,7 @@ function computeGroupsByBranch(chains: readonly InspectorChainSummary[]): Inspec
 
   const buckets = new Map<string, string[]>();
   for (const chain of chains) {
-    const label = chain.branch_path != null ? String(chain.branch_path) : "(no branch)";
+    const label = chain.branch_path != null ? String(chain.branch_path) : NO_BRANCH_BUCKET;
     if (!buckets.has(label)) buckets.set(label, []);
     buckets.get(label)!.push(chain.chain_id);
   }
@@ -196,7 +200,7 @@ function computeGroupsByBranch(chains: readonly InspectorChainSummary[]): Inspec
   for (const [label, chainIds] of buckets) {
     groups.push({
       id: `group-branch-${label}`,
-      label,
+      label: label === NO_BRANCH_BUCKET ? i18n.t("inspector.groups.noBranch") : label,
       color: INSPECTOR_GROUP_COLORS[index % INSPECTOR_GROUP_COLORS.length],
       chain_ids: chainIds,
     });
@@ -222,7 +226,7 @@ function computeGroupsByExpression(
 
     groups.push({
       id: `group-expr-${exprGroup.id}`,
-      label: exprGroup.label || `Group ${index + 1}`,
+      label: exprGroup.label || i18n.t("inspector.groups.groupPlaceholder", { index: index + 1 }),
       color: INSPECTOR_GROUP_COLORS[index % INSPECTOR_GROUP_COLORS.length],
       chain_ids: matchingIds,
     });

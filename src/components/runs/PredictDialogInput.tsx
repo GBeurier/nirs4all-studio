@@ -1,6 +1,7 @@
 import { useCallback, useState, type DragEvent } from "react";
 import { CheckCircle2, Database, FileSpreadsheet, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -36,30 +37,33 @@ function PasteInput({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="space-y-2">
-      <Label>Paste spectrum data (CSV format)</Label>
+      <Label>{t("runs.predict.pasteLabel")}</Label>
       <Textarea
-        placeholder="Paste comma or tab-separated spectral values...&#10;&#10;Example:&#10;0.123, 0.456, 0.789, ...&#10;0.234, 0.567, 0.890, ..."
+        placeholder={t("runs.predict.pastePlaceholder")}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="min-h-[200px] font-mono text-xs"
       />
       <p className="text-xs text-muted-foreground">
-        One spectrum per line. Values separated by comma, semicolon, or tab.
+        {t("runs.predict.pasteHint")}
       </p>
     </div>
   );
 }
 
 function FileUpload({ onFileLoad }: { onFileLoad: (data: string) => void }) {
+  const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
 
   const handleFile = useCallback(
     (file: File) => {
       if (!file.name.match(/\.(csv|txt|tsv)$/i)) {
-        toast.error("Please upload a CSV, TXT, or TSV file");
+        toast.error(t("runs.predict.invalidFile"));
         return;
       }
 
@@ -71,7 +75,7 @@ function FileUpload({ onFileLoad }: { onFileLoad: (data: string) => void }) {
       };
       reader.readAsText(file);
     },
-    [onFileLoad]
+    [onFileLoad, t]
   );
 
   const handleDrop = useCallback(
@@ -88,7 +92,7 @@ function FileUpload({ onFileLoad }: { onFileLoad: (data: string) => void }) {
 
   return (
     <div className="space-y-2">
-      <Label>Upload spectrum file</Label>
+      <Label>{t("runs.predict.uploadLabel")}</Label>
       <div
         className={cn(
           "border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer",
@@ -119,14 +123,14 @@ function FileUpload({ onFileLoad }: { onFileLoad: (data: string) => void }) {
           <div className="flex flex-col items-center gap-2">
             <CheckCircle2 className="h-8 w-8 text-chart-1" />
             <p className="font-medium">{fileName}</p>
-            <p className="text-xs text-muted-foreground">Click to change file</p>
+            <p className="text-xs text-muted-foreground">{t("runs.predict.changeFile")}</p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
             <Upload className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">Drop file here or click to upload</p>
+            <p className="font-medium">{t("runs.predict.dropFile")}</p>
             <p className="text-xs text-muted-foreground">
-              Supports CSV, TXT, TSV files
+              {t("runs.predict.supportedFiles")}
             </p>
           </div>
         )}
@@ -146,21 +150,22 @@ function DatasetSelector({
   selectedPartition: string;
   onPartitionChange: (partition: string) => void;
 }) {
+  const { t } = useTranslation();
   const { data: datasetsData, isLoading } = useDatasetsQuery();
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label>Select dataset</Label>
+        <Label>{t("runs.predict.selectDataset")}</Label>
         <Select value={selectedDataset} onValueChange={onSelect}>
           <SelectTrigger>
-            <SelectValue placeholder="Choose a dataset..." />
+            <SelectValue placeholder={t("runs.predict.chooseDataset")} />
           </SelectTrigger>
           <SelectContent>
             {isLoading ? (
-              <div className="p-2 text-sm text-muted-foreground">Loading...</div>
+              <div className="p-2 text-sm text-muted-foreground">{t("common.loading")}</div>
             ) : !datasetsData?.datasets?.length ? (
-              <div className="p-2 text-sm text-muted-foreground">No datasets available</div>
+              <div className="p-2 text-sm text-muted-foreground">{t("runs.predict.noDatasets")}</div>
             ) : (
               datasetsData.datasets.map((dataset) => (
                 <SelectItem key={dataset.id} value={dataset.id}>
@@ -169,7 +174,7 @@ function DatasetSelector({
                     <span>{dataset.name}</span>
                     {dataset.num_samples && (
                       <Badge variant="secondary" className="text-xs">
-                        {dataset.num_samples} samples
+                        {t("runs.predict.sampleCount", { count: dataset.num_samples })}
                       </Badge>
                     )}
                   </div>
@@ -182,15 +187,15 @@ function DatasetSelector({
 
       {selectedDataset && (
         <div className="space-y-2">
-          <Label>Partition</Label>
+          <Label>{t("runs.predict.partition")}</Label>
           <Select value={selectedPartition} onValueChange={onPartitionChange}>
             <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="test">Test</SelectItem>
-              <SelectItem value="train">Train</SelectItem>
-              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="test">{t("runs.quickView.partitions.test")}</SelectItem>
+              <SelectItem value="train">{t("runs.quickView.partitions.train")}</SelectItem>
+              <SelectItem value="all">{t("common.all")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -209,6 +214,8 @@ export function PredictDialogInput({
   selectedPartition,
   onPartitionChange,
 }: PredictDialogInputProps) {
+  const { t } = useTranslation();
+
   return (
     <Tabs
       value={inputMode}
@@ -217,15 +224,15 @@ export function PredictDialogInput({
       <TabsList className="grid w-full grid-cols-3">
         <TabsTrigger value="paste" className="text-xs">
           <FileSpreadsheet className="h-4 w-4 mr-1.5" />
-          Paste
+          {t("runs.predict.tabPaste")}
         </TabsTrigger>
         <TabsTrigger value="upload" className="text-xs">
           <Upload className="h-4 w-4 mr-1.5" />
-          Upload
+          {t("runs.predict.tabUpload")}
         </TabsTrigger>
         <TabsTrigger value="dataset" className="text-xs">
           <Database className="h-4 w-4 mr-1.5" />
-          Dataset
+          {t("runs.predict.tabDataset")}
         </TabsTrigger>
       </TabsList>
 

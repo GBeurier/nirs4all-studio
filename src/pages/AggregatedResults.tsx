@@ -68,15 +68,15 @@ export default function AggregatedResults() {
       <motion.div variants={itemVariants} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            {t("aggregatedResults.title", "Aggregated Results")}
+            {t("aggregatedResults.title")}
           </h1>
           <p className="text-muted-foreground text-sm">
-            {t("aggregatedResults.subtitle", "Chain-level model performance across folds and partitions")}
+            {t("aggregatedResults.subtitle")}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={state.loadData} disabled={state.loading}>
           <RefreshCw className={cn("h-4 w-4 mr-1", state.loading && "animate-spin")} />
-          {t("common.refresh", "Refresh")}
+          {t("common.refresh")}
         </Button>
       </motion.div>
 
@@ -97,8 +97,8 @@ export default function AggregatedResults() {
             metricFilter={state.metricFilter}
             facets={state.facets}
             hasActiveFilters={state.hasActiveFilters}
-            searchPlaceholder={`${t("common.search", "Search")}...`}
-            clearLabel={t("common.clear", "Clear")}
+            searchPlaceholder={t("aggregatedResults.searchPlaceholder")}
+            clearLabel={t("common.clear")}
             onSearchChange={state.setSearch}
             onDatasetFilterChange={state.setDatasetFilter}
             onModelClassFilterChange={state.setModelClassFilter}
@@ -109,17 +109,14 @@ export default function AggregatedResults() {
       )}
 
       {/* Loading */}
-      {state.loading && <LoadingState message={t("aggregatedResults.loading", "Loading aggregated results...")} />}
+      {state.loading && <LoadingState message={t("aggregatedResults.loading")} />}
 
       {/* Empty */}
       {!state.loading && state.displayPredictions.length === 0 && !state.error && (
         <EmptyState
           icon={BarChart3}
-          title={t("aggregatedResults.empty", "No aggregated results yet")}
-          description={t(
-            "aggregatedResults.emptyHint",
-            "Run a pipeline to generate prediction results that will be aggregated here."
-          )}
+          title={t("aggregatedResults.empty")}
+          description={t("aggregatedResults.emptyHint")}
         />
       )}
 
@@ -161,8 +158,8 @@ export default function AggregatedResults() {
         <motion.div variants={itemVariants}>
           <EmptyState
             icon={Search}
-            title="No matching results"
-            description="Try adjusting your filters or search terms."
+            title={t("aggregatedResults.noMatch")}
+            description={t("aggregatedResults.noMatchHint")}
           />
         </motion.div>
       )}

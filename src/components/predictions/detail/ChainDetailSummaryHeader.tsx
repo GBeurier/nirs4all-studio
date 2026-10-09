@@ -3,7 +3,9 @@ import {
   Database,
   Layers,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
+import { getTaskTypeLabel } from "@/components/predictions/predictionLabels";
 import { formatMetricName } from "@/lib/scores";
 import type { ChainSummary } from "@/types/aggregated-predictions";
 
@@ -18,6 +20,7 @@ export function ChainDetailSummaryHeader({
   selectedFoldLabel,
   preprocessLabel,
 }: ChainDetailSummaryHeaderProps) {
+  const { t } = useTranslation();
   return (
     <header className="sticky top-0 z-20 border-b border-border/70 bg-background px-6 py-4">
       <div className="flex items-start gap-3">
@@ -38,7 +41,7 @@ export function ChainDetailSummaryHeader({
             )}
             {prediction.task_type && (
               <Badge variant="outline" className="h-5 px-1.5 text-[10px] capitalize">
-                {prediction.task_type}
+                {getTaskTypeLabel(t, prediction.task_type)}
               </Badge>
             )}
             {selectedFoldLabel && (
@@ -56,7 +59,7 @@ export function ChainDetailSummaryHeader({
               variant={prediction.pipeline_status === "completed" ? "default" : "secondary"}
               className="h-5 px-1.5 text-[10px]"
             >
-              {prediction.pipeline_status || "unknown"}
+              {prediction.pipeline_status || t("predictions.detail.summary.unknownStatus")}
             </Badge>
           </div>
         </div>
@@ -78,21 +81,22 @@ export function ChainDetailFoldSummary({
   cvViewCount,
   foldCount,
 }: ChainDetailFoldSummaryProps) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-2xl border border-border/70 bg-card/60 p-3 shadow-sm">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryCell
-          label="Selected"
+          label={t("predictions.detail.summary.selected")}
           value={selectedLabel}
           className="border-primary/25 bg-primary/[0.06]"
         />
         <SummaryCell
-          label="Refits"
+          label={t("predictions.detail.summary.refits")}
           value={refitCount}
           className="border-emerald-500/25 bg-emerald-500/[0.06]"
         />
-        <SummaryCell label="CV Views" value={cvViewCount} />
-        <SummaryCell label="Folds" value={foldCount} />
+        <SummaryCell label={t("predictions.detail.summary.cvViews")} value={cvViewCount} />
+        <SummaryCell label={t("predictions.detail.summary.folds")} value={foldCount} />
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ArrowDownRight, ArrowUpRight, MousePointerClick } from 'lucide-react';
 import type { HyperparameterTrend } from '@/lib/inspector/hyperparameterSensitivityData';
 import {
@@ -17,11 +18,13 @@ export function HyperparameterTrendSummary({
   hasSelection,
   selectedCount,
 }: HyperparameterTrendSummaryProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
       <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/20 px-2 py-0.5">
         <ArrowUpRight className="h-3 w-3" />
-        {formatHyperparameterTrendSlope(trend)}
+        {formatHyperparameterTrendSlope(trend, t)}
       </span>
       <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/20 px-2 py-0.5">
         <ArrowDownRight className="h-3 w-3" />
@@ -29,7 +32,7 @@ export function HyperparameterTrendSummary({
       </span>
       <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/20 px-2 py-0.5">
         <MousePointerClick className="h-3 w-3" />
-        {getHyperparameterSelectionSummary(hasSelection, selectedCount)}
+        {getHyperparameterSelectionSummary(hasSelection, selectedCount, t)}
       </span>
     </div>
   );
