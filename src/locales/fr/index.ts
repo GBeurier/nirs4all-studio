@@ -9837,7 +9837,7 @@ transferAnalysis: {
       emptyPipeline: "Pipeline vide",
       groupedBy: "regroupé par {{value}}",
       noRuntimeGrouping: "aucun regroupement à l'exécution",
-      runMatrix: "{{runs}} dans la matrice d'exécutions explicite",
+      runMatrix: "{{runs}} sélectionnée(s)",
       runPosition: "Exécution {{n}}",
       split: {
         position: "Campagne {{n}}",

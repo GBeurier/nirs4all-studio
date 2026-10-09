@@ -30,7 +30,7 @@ describe("campaignPlanPreview", () => {
         isStrictPairingReady: false,
       },
       executionBackendLabel: "Local Python",
-      runMatrixLabel: "4 runs in explicit run matrix",
+      runMatrixLabel: "4 runs selected",
       hiddenDatasetPreviewCount: 0,
       hiddenPipelinePreviewCount: 0,
       hiddenRunCount: 3,

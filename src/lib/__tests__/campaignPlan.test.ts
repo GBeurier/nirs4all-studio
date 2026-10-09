@@ -204,7 +204,7 @@ describe("campaignPlan", () => {
         statusLabel: "Native adapter",
         message: "The experiment will run on this computer.",
       },
-      runMatrixLabel: "4 runs in explicit run matrix",
+      runMatrixLabel: "4 runs selected",
       isRunnable: true,
     });
     expect(preview.summary.runCount).toBe(4);
@@ -632,7 +632,7 @@ describe("campaignPlan", () => {
 
     expect(pairedPreview).toMatchObject({
       modeLabel: "Selected combinations",
-      runMatrixLabel: "2 runs in explicit run matrix",
+      runMatrixLabel: "2 runs selected",
       isRunnable: true,
     });
     expect(pairedPreview.notices.some((notice) => notice.id === "legacy-cartesian-matrix")).toBe(false);
