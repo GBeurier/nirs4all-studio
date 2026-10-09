@@ -65,6 +65,8 @@ test.describe('Datasets', () => {
   });
 
   test('should show empty state or dataset cards', async ({ datasetsPage, page }) => {
+    // Pages are lazy-loaded: wait for the route to render before sampling its state.
+    await expect(datasetsPage.pageTitle).toBeVisible();
     // Page should be in a valid state: has cards, empty state, or stats display
     const hasCards = await datasetsPage.getDatasetCount() > 0;
     const isEmpty = await datasetsPage.isEmptyState();

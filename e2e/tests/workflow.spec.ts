@@ -29,12 +29,12 @@ test.describe('Workflow Navigation', () => {
     // Step 2: Navigate to Runs
     await sidebar.navigateTo('runs');
     await runsPage.waitForPageLoad();
+    await expect(runsPage.pageTitle).toBeVisible();
 
     // Check page state - page should be loaded with valid content
-    const hasRuns = await runsPage.getRunCount() > 0;
-    const isEmpty = await runsPage.isEmptyState();
-    const noWorkspace = await runsPage.isNoWorkspaceState();
-    expect(hasRuns || isEmpty || noWorkspace).toBe(true);
+    await expect.poll(async () => (await runsPage.getRunCount()) > 0
+      || await runsPage.isEmptyState()
+      || await runsPage.isNoWorkspaceState(), { timeout: 20_000 }).toBe(true);
     await expect(page.getByText(/route_not_native_qualified|Error loading runs/i)).not.toBeVisible();
 
     // Step 3: Check New Run/Experiment link
@@ -47,11 +47,10 @@ test.describe('Workflow Navigation', () => {
     await sidebar.navigateTo('predictions');
     await predictionsPage.waitForPageLoad();
 
-    // Check predictions page state - page should be in valid state
-    const hasPredictions = await predictionsPage.getPredictionCount() > 0;
-    const predictionsEmpty = await predictionsPage.isEmptyState();
-    const predictionsNoWorkspace = await predictionsPage.isNoWorkspaceState();
-    expect(hasPredictions || predictionsEmpty || predictionsNoWorkspace).toBe(true);
+    // Pages are lazy-loaded: wait until the route has rendered one of its valid states.
+    await expect.poll(async () => (await predictionsPage.getPredictionCount()) > 0
+      || await predictionsPage.isEmptyState()
+      || await predictionsPage.isNoWorkspaceState(), { timeout: 20_000 }).toBe(true);
     await expect(page.getByText(/route_not_native_qualified|Error loading predictions/i)).not.toBeVisible();
 
     // Step 5: Navigate to Results
