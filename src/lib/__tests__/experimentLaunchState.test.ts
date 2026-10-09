@@ -175,7 +175,7 @@ describe("experimentLaunchState", () => {
       launchPayloadPlan: readyNativePayloadPlan,
     })).toMatchObject({
       actionState: "ready",
-      buttonLabel: "Submit to Cluster",
+      buttonLabel: "Launch on Compute Server",
       isLaunchDisabled: false,
     });
 
@@ -192,7 +192,7 @@ describe("experimentLaunchState", () => {
       launchPayloadPlan: readyNativePayloadPlan,
     })).toMatchObject({
       actionState: "ready",
-      buttonLabel: "Run in WASM Local",
+      buttonLabel: "Run in Browser",
       isLaunchDisabled: false,
     });
   });
@@ -247,7 +247,7 @@ describe("experimentLaunchState", () => {
     })).toEqual({
       actionState: "blocked",
       blockingNotices: [notice],
-      buttonLabel: "Resolve Plan Issues",
+      buttonLabel: "Review Experiment Settings",
       isLaunchDisabled: true,
       showSpinner: false,
     });
@@ -265,7 +265,7 @@ describe("experimentLaunchState", () => {
         strictCampaignPayloadActivation: {
           status: "blocked",
           canUseStrictPayload: false,
-          message: "1 run entry must be materialized before strict payload submission.",
+          message: "1 run entry must be prepared before the experiment can start.",
         },
       }),
     })).toEqual({
@@ -274,11 +274,11 @@ describe("experimentLaunchState", () => {
         {
           id: "native-payload-submission-blocked",
           severity: "blocking",
-          title: "Native payload not ready",
-          message: "1 run entry must be materialized before strict payload submission.",
+          title: "Experiment not ready",
+          message: "1 run entry must be prepared before the experiment can start.",
         },
       ],
-      buttonLabel: "Resolve Payload Issues",
+      buttonLabel: "Review Experiment Settings",
       isLaunchDisabled: true,
       showSpinner: false,
     });

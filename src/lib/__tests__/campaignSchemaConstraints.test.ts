@@ -98,10 +98,10 @@ describe("campaignSchemaConstraints", () => {
       summarizeCampaignPlan(singlePair),
     )).toMatchObject({
       kind: "single_pair",
-      label: "Single dataset/pipeline binding",
-      description: "One dataset is paired with one pipeline, the simplest schema-bound campaign shape.",
+      label: "One dataset, one pipeline",
+      description: "One pipeline will analyse one dataset.",
       strictPairingStatus: "ready",
-      strictPairingStatusLabel: "Single explicit pair",
+      strictPairingStatusLabel: "One analysis",
       strictModeRecommendation: "Ready for strict schema-bound execution with one dataset and one pipeline.",
       notice: null,
     });
@@ -110,10 +110,10 @@ describe("campaignSchemaConstraints", () => {
       summarizeCampaignPlan(cartesian),
     )).toMatchObject({
       kind: "cartesian_matrix",
-      label: "Cartesian matrix binding",
+      label: "All combinations",
       description: "Every selected pipeline is paired with every selected dataset.",
       strictPairingStatus: "needs_explicit_pairs",
-      strictPairingStatusLabel: "Implicit all-pairs",
+      strictPairingStatusLabel: "All combinations",
       strictModeRecommendation: "Convert the cartesian matrix to explicit dataset/pipeline pair previews before strict schema-bound execution.",
       notice: {
         id: "legacy-cartesian-matrix",

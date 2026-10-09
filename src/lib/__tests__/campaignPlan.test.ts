@@ -196,13 +196,13 @@ describe("campaignPlan", () => {
     const preview = buildCampaignPlanPreview(campaign);
 
     expect(preview).toMatchObject({
-      modeLabel: "Legacy cartesian",
+      modeLabel: "All combinations",
       executionBackendLabel: "Local Python",
       executionAdapter: {
         id: "legacy-local",
-        label: "Legacy local run API",
+        label: "Local analysis",
         statusLabel: "Native adapter",
-        message: "Launches use the current local run API.",
+        message: "The experiment will run on this computer.",
       },
       runMatrixLabel: "4 runs in explicit run matrix",
       isRunnable: true,
@@ -423,8 +423,8 @@ describe("campaignPlan", () => {
       {
         id: "legacy-cartesian-matrix",
         severity: "info",
-        title: "Cartesian campaign",
-        message: "Every selected pipeline will run on every selected dataset. Future campaign modes can replace this with previewed pairings.",
+        title: "All combinations",
+        message: "Every selected pipeline will run on every selected dataset.",
       },
     ]);
   });
@@ -631,7 +631,7 @@ describe("campaignPlan", () => {
     const pairedPreview = buildCampaignPlanPreview(paired);
 
     expect(pairedPreview).toMatchObject({
-      modeLabel: "Paired by index",
+      modeLabel: "Selected combinations",
       runMatrixLabel: "2 runs in explicit run matrix",
       isRunnable: true,
     });
@@ -672,9 +672,9 @@ describe("campaignPlan", () => {
     expect(preview.isRunnable).toBe(false);
     expect(preview.executionAdapter).toEqual({
       id: "legacy-local",
-      label: "Legacy local run API",
+      label: "Local analysis",
       statusLabel: "Legacy fallback",
-      message: "No native adapter is wired for this backend yet; launches still target the legacy local run API.",
+      message: "This calculation option is not available yet. The experiment will run on this computer.",
     });
     expect(preview.capabilityChecks).toEqual([
       {
@@ -703,7 +703,7 @@ describe("campaignPlan", () => {
         status: "blocking",
         statusLabel: "Blocking",
         title: "Execution backend capabilities",
-        message: "No native adapter is wired for this backend yet; launches still target the legacy local run API.",
+        message: "This calculation option is not available yet. The experiment will run on this computer.",
       },
     ]);
     expect(preview.notices).toEqual([

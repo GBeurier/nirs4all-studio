@@ -93,9 +93,9 @@ describe("NewExperimentRuntimeGroupingStep", () => {
       />,
     );
 
-    expect(container.textContent).toContain("Runtime Grouping");
+    expect(container.textContent).toContain("Sample Grouping");
     expect(container.textContent).toContain("1 dataset");
-    expect(container.textContent).toContain("No splitter was found in the selected pipelines.");
+    expect(container.textContent).toContain("The selected pipelines do not divide the samples into validation sets. No sample grouping is needed.");
 
     await act(async () => {
       root.unmount();
@@ -117,7 +117,7 @@ describe("NewExperimentRuntimeGroupingStep", () => {
       />,
     );
 
-    expect(container.textContent).toContain("A selected pipeline already persists splitter grouping.");
+    expect(container.textContent).toContain("A selected pipeline already defines sample groups.");
     expect(container.textContent).toContain("Saved PLS: GroupKFold");
 
     await act(async () => {

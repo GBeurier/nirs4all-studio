@@ -85,11 +85,11 @@ describe("experimentLaunchPayload", () => {
       strictCampaignSpecs,
       nativePayload: buildNativeExperimentLaunchPayload(legacyConfig, strictCampaignSpecs),
       strictCampaignPayloadStatus: "legacy_only",
-      strictCampaignPayloadSummary: "Legacy local launches submit the current ExperimentConfig payload.",
+      strictCampaignPayloadSummary: "The experiment is prepared for local analysis.",
       strictCampaignPayloadActivation: {
         status: "legacy_not_applicable",
         canUseStrictPayload: false,
-        message: "Strict campaign payloads are not used by legacy local launches.",
+        message: "The experiment uses local analysis settings.",
       },
       payloadDiagnostics: {
         nativePayloadVersion: "studio.native-launch-payload.v1",
@@ -121,11 +121,11 @@ describe("experimentLaunchPayload", () => {
       currentSubmissionKind: "native_payload",
       legacyConfig: { execution_backend: "cluster" },
       strictCampaignPayloadStatus: "ready",
-      strictCampaignPayloadSummary: "1 strict campaign spec ready for Cluster execution adapter.",
+      strictCampaignPayloadSummary: "1 analysis plan ready for Compute server.",
       strictCampaignPayloadActivation: {
         status: "ready",
         canUseStrictPayload: true,
-        message: "Strict campaign payload is ready for native submitters.",
+        message: "The experiment is ready to launch.",
       },
       payloadDiagnostics: {
         nativePayloadVersion: "studio.native-launch-payload.v1",
@@ -159,11 +159,11 @@ describe("experimentLaunchPayload", () => {
     expect(partialPlan).toMatchObject({
       currentSubmissionKind: "native_payload",
       strictCampaignPayloadStatus: "partial",
-      strictCampaignPayloadSummary: "1 strict campaign spec available; 1 run entry could not be materialized.",
+      strictCampaignPayloadSummary: "1 analysis plan available; 1 run entry could not be prepared.",
       strictCampaignPayloadActivation: {
         status: "blocked",
         canUseStrictPayload: false,
-        message: "1 run entry must be materialized before strict payload submission.",
+        message: "1 run entry must be prepared before the experiment can start.",
       },
       payloadDiagnostics: {
         nativePayloadVersion: "studio.native-launch-payload.v1",
@@ -172,7 +172,7 @@ describe("experimentLaunchPayload", () => {
         strictCampaignPayloadActivationStatus: "blocked",
         nativePayloadRequired: true,
         canSubmitNativePayload: false,
-        blockedReason: "1 run entry must be materialized before strict payload submission.",
+        blockedReason: "1 run entry must be prepared before the experiment can start.",
         legacyDatasetCount: 1,
         legacyPipelineCount: 1,
         strictCampaignCount: 1,
@@ -183,7 +183,7 @@ describe("experimentLaunchPayload", () => {
       },
     });
     expect(getExperimentLaunchPayloadSubmissionBlockMessage(partialPlan)).toBe(
-      "1 run entry must be materialized before strict payload submission.",
+      "1 run entry must be prepared before the experiment can start.",
     );
 
     const unavailablePlan = buildExperimentLaunchPayloadPlan({
@@ -197,11 +197,11 @@ describe("experimentLaunchPayload", () => {
     expect(unavailablePlan).toMatchObject({
       currentSubmissionKind: "native_payload",
       strictCampaignPayloadStatus: "unavailable",
-      strictCampaignPayloadSummary: "No strict campaign specs are available for this launch payload.",
+      strictCampaignPayloadSummary: "No analyses could be prepared. Check the selected data and pipelines.",
       strictCampaignPayloadActivation: {
         status: "blocked",
         canUseStrictPayload: false,
-        message: "Strict campaign payload is unavailable for this launch.",
+        message: "The experiment could not be prepared. Check the selected data and pipelines.",
       },
       payloadDiagnostics: {
         nativePayloadVersion: "studio.native-launch-payload.v1",
@@ -210,7 +210,7 @@ describe("experimentLaunchPayload", () => {
         strictCampaignPayloadActivationStatus: "blocked",
         nativePayloadRequired: true,
         canSubmitNativePayload: false,
-        blockedReason: "Strict campaign payload is unavailable for this launch.",
+        blockedReason: "The experiment could not be prepared. Check the selected data and pipelines.",
         legacyDatasetCount: 1,
         legacyPipelineCount: 1,
         strictCampaignCount: 0,
@@ -221,7 +221,7 @@ describe("experimentLaunchPayload", () => {
       },
     });
     expect(getExperimentLaunchPayloadSubmissionBlockMessage(unavailablePlan)).toBe(
-      "Strict campaign payload is unavailable for this launch.",
+      "The experiment could not be prepared. Check the selected data and pipelines.",
     );
   });
 
@@ -250,7 +250,7 @@ describe("experimentLaunchPayload", () => {
       strictCampaignPayloadActivation: {
         status: "blocked",
         canUseStrictPayload: false,
-        message: "1 run entry must be materialized before strict payload submission.",
+        message: "1 run entry must be prepared before the experiment can start.",
       },
       nativePayload,
     })).toEqual({
@@ -260,7 +260,7 @@ describe("experimentLaunchPayload", () => {
       strictCampaignPayloadActivationStatus: "blocked",
       nativePayloadRequired: true,
       canSubmitNativePayload: false,
-      blockedReason: "1 run entry must be materialized before strict payload submission.",
+      blockedReason: "1 run entry must be prepared before the experiment can start.",
       legacyDatasetCount: 1,
       legacyPipelineCount: 1,
       strictCampaignCount: 1,
@@ -294,7 +294,7 @@ describe("experimentLaunchPayload", () => {
       strictCampaignPayloadActivation: {
         status: "ready",
         canUseStrictPayload: true,
-        message: "Strict campaign payload is ready for native submitters.",
+        message: "The experiment is ready to launch.",
       },
       nativePayload,
     })).toMatchObject({
