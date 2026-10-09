@@ -5207,7 +5207,7 @@ fn write_response(stream: &mut TcpStream, response: &HttpResponse) -> std::io::R
     let bytes = response
         .body_bytes
         .as_deref()
-        .unwrap_or_else(|| response.body.as_bytes());
+        .unwrap_or(response.body.as_bytes());
     let content_type = response
         .headers
         .iter()
