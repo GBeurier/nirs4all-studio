@@ -110,7 +110,7 @@ def inside_namespace(runtime_root: Path) -> dict:
     result = scan_runtime(runtime_root)
     probe = Path(__file__).with_name("probe-linux-cpu-threading.py")
     runs = []
-    for mode, layer in [("shap", "default"), ("parallel", "default"), ("parallel", "tbb"), ("parallel", "omp"), ("parallel", "safe")]:
+    for mode, layer in [("lightgbm", "default"), ("shap", "default"), ("parallel", "default"), ("parallel", "tbb"), ("parallel", "omp"), ("parallel", "safe")]:
         environment = {
             "NUMBA_THREADING_LAYER": layer,
             "NUMBA_NUM_THREADS": "2",

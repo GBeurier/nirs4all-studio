@@ -297,6 +297,18 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
+      # Retry immutable application tags with the triggering workflow's packaging fixes.
+      - name: Checkout Linux packaging helpers
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .release-packaging
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/bundle-linux-openmp.py
+            scripts/verify-linux-cpu-closure.py
+            scripts/probe-linux-cpu-threading.py
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -313,6 +325,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             xvfb \
+            libgomp1 \
+            patchelf \
             libgirepository1.0-dev \
             libcairo2-dev \
             gir1.2-gtk-3.0 \
@@ -355,6 +369,9 @@ jobs:
       - name: Build pinned plugin-only CPython runtime
         run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.8-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
 
+      - name: Bundle LightGBM OpenMP before sealing the runtime
+        run: python3 -B .release-packaging/scripts/bundle-linux-openmp.py --runtime-root backend-dist/python-runtime/python
+
       - name: Build and smoke native sidecar
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
@@ -386,7 +403,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends bubblewrap binutils
           PYTHON="$(find release -type f -path '*/resources/backend/python-runtime/python/bin/python3' -print -quit)"
           test -n "$PYTHON"
-          python3 -B scripts/verify-linux-cpu-closure.py --runtime-root "$(dirname "$(dirname "$PYTHON")")" --output "$RUNNER_TEMP/linux-installer-cpu-closure.json"
+          python3 -B .release-packaging/scripts/verify-linux-cpu-closure.py --runtime-root "$(dirname "$(dirname "$PYTHON")")" --output "$RUNNER_TEMP/linux-installer-cpu-closure.json"
 
       - name: Preserve Linux installer CPU closure proof
         uses: actions/upload-artifact@v4

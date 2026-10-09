@@ -17,7 +17,18 @@ for name in ["libtbb.so.12", "libgomp.so.1", "libgomp.so.1.0.0"]:
     except OSError as e:
         result["system_libraries"][name] = str(e)
 assert all(v != "loaded" for v in result["system_libraries"].values()), result
-if sys.argv[2] == "shap":
+if sys.argv[2] == "lightgbm":
+    import lightgbm
+
+    x = np.random.default_rng(42).normal(size=(64, 4))
+    y = x @ np.array([1.0, 2.0, -1.0, 0.5])
+    model = lightgbm.LGBMRegressor(n_estimators=4, n_jobs=2, min_child_samples=4, verbosity=-1).fit(x, y)
+    predictions = model.predict(x[:3])
+    assert predictions.shape == (3,) and np.isfinite(predictions).all()
+    assert model.booster_.num_trees() == 4
+    result["lightgbm_version"] = lightgbm.__version__
+    result["predictions"] = predictions.tolist()
+elif sys.argv[2] == "shap":
     import shap
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.linear_model import LinearRegression
