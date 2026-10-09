@@ -9,6 +9,7 @@ describe("prediction deletion query invalidation", () => {
 
     queryClient.setQueryData(["workspaces", "ws-1", "scores"], { datasets: [] });
     queryClient.setQueryData(["results-summary", "ws-1"], { datasets: [] });
+    queryClient.setQueryData(["general-prediction-models", "ws-1"], { models: [] });
     queryClient.setQueryData(["datasets", "list"], { datasets: [] });
 
     await invalidatePredictionRelatedQueries(queryClient);
@@ -18,6 +19,9 @@ describe("prediction deletion query invalidation", () => {
     ).toBe(true);
     expect(
       queryClient.getQueryCache().find({ queryKey: ["results-summary", "ws-1"] })?.state.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryCache().find({ queryKey: ["general-prediction-models", "ws-1"] })?.state.isInvalidated,
     ).toBe(true);
     expect(
       queryClient.getQueryCache().find({ queryKey: ["datasets", "list"] })?.state.isInvalidated,

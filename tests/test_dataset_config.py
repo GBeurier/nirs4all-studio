@@ -293,6 +293,17 @@ class TestBuildNirs4allConfig:
 
         assert "task_type" not in config
 
+    @pytest.mark.parametrize("studio_task,io_task", [("binary_classification", "binary"), ("multiclass_classification", "multiclass")])
+    def test_classification_task_uses_io_vocabulary(self, studio_task, io_task):
+        files = [{"path": "/data/X.csv", "type": "X", "split": "train"}]
+        config = build_nirs4all_config(files, {"delimiter": ";"}, task_type=studio_task)
+        assert config["task_type"] == io_task
+
+    @pytest.mark.parametrize("studio_task,io_task", [("binary_classification", "binary"), ("multiclass_classification", "multiclass")])
+    def test_stored_classification_task_uses_io_vocabulary(self, studio_task, io_task):
+        config = build_nirs4all_config_from_stored({"path": "/data", "config": {"train_x": "/data/X.csv", "task_type": studio_task}})
+        assert config["task_type"] == io_task
+
     def test_dataset_name(self):
         files = [{"path": "/data/X.csv", "type": "X", "split": "train"}]
         config = build_nirs4all_config(files, {"delimiter": ";"}, dataset_name="my_dataset")

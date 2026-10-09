@@ -2,6 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ catalogue: vi.fn(), predict: vi.fn(), file: vi.fn() }));
@@ -36,15 +37,28 @@ async function waitFor(assertion: () => void) {
   await act(async () => { await vi.waitFor(assertion); });
 }
 
-async function renderPanel() {
+async function renderPanel(entry = "/predict") {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   cleanup = async () => { await act(async () => root.unmount()); client.clear(); container.remove(); };
-  await act(async () => root.render(<QueryClientProvider client={client}><GeneralPredictionPanel /></QueryClientProvider>));
+  await act(async () => root.render(<MemoryRouter initialEntries={[entry]}><QueryClientProvider client={client}><GeneralPredictionPanel /></QueryClientProvider></MemoryRouter>));
   return { container, client };
 }
+
+it("selects the captured model from a Database prediction link after the catalogue loads", async () => {
+  const { container } = await renderPanel(`/predict?model_id=${encodeURIComponent(model.id)}&source=bundle`);
+  await waitFor(() => expect(container.querySelector<HTMLSelectElement>("#general-model")?.value).toContain(model.id));
+  await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent === "Run pasted spectra")!.click());
+  await waitFor(() => expect(mocks.predict).toHaveBeenCalledWith(expect.objectContaining({ model_id: model.id, model_source: "bundle" })));
+});
+
+it("does not select an identically named model from another source", async () => {
+  const { container } = await renderPanel(`/predict?model_id=${encodeURIComponent(model.id)}&source=chain`);
+  await waitFor(() => expect(container.querySelectorAll("#general-model option")).toHaveLength(2));
+  expect(container.querySelector<HTMLSelectElement>("#general-model")?.value).toBe("");
+});
 
 async function selectModel(container: HTMLElement) {
   await waitFor(() => expect(container.querySelectorAll("#general-model option")).toHaveLength(2));

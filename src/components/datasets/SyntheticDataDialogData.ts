@@ -13,6 +13,7 @@ import type {
   SyntheticPreset,
 } from "@/types/settings";
 import { DEFAULT_SYNTHETIC_CONFIG } from "@/types/settings";
+import { getApiErrorMessage } from "@/api/transport";
 
 type TaskType = GenerateSyntheticRequest["task_type"];
 
@@ -79,12 +80,14 @@ export function isGenerateDisabled(params: {
   isGenerating: boolean;
   activeTab: SyntheticDialogTab;
   selectedPreset: string | null;
+  name?: string;
 }): boolean {
   const { isGenerating, activeTab, selectedPreset } = params;
-  return isGenerating || (activeTab === "presets" && !selectedPreset);
+  return isGenerating || (activeTab === "presets" && !selectedPreset)
+    || Boolean(params.name && (params.name.length > 128 || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(params.name)));
 }
 
 /** Extract a human-readable message from a generation error. */
 export function getGenerationErrorMessage(error: unknown): string {
-  return (error as Error | null)?.message || "Unknown error";
+  return getApiErrorMessage(error) || "Unknown error";
 }

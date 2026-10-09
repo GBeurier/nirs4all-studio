@@ -437,44 +437,50 @@ pub fn augment_dataset_links(datasets: &mut [Value], linked: &[DatasetLinkIdenti
             .entry("dataset_name")
             .or_insert_with(|| Value::String(store_name.clone()));
 
+        if object.get("linked_dataset_id").and_then(Value::as_str)
+            .is_some_and(|id| linked.iter().any(|dataset| dataset.id == id)) {
+            continue;
+        }
+
         let store_lower = store_name.to_lowercase();
         let store_key = dataset_match_key(&store_name);
         let exact = linked_info
             .iter()
-            .find_map(|(id, name_lower, name_key, _)| {
+            .filter_map(|(id, name_lower, name_key, _)| {
                 ((store_lower == *name_lower || (!store_key.is_empty() && store_key == *name_key))
                     && !id.is_empty())
                 .then_some(*id)
-            });
-        if let Some(id) = exact {
-            object.insert("linked_dataset_id".into(), Value::String(id.into()));
+            }).collect::<Vec<_>>();
+        if exact.len() > 1 {
+            // A display name is not an identity (several imports can be "raw").
+            object.remove("linked_dataset_id");
+            continue;
+        }
+        if let Some(id) = exact.first() {
+            object.insert("linked_dataset_id".into(), Value::String((*id).into()));
             continue;
         }
 
-        let mut best_id = None;
-        let mut best_len = 0;
-        for (id, _, _, folder_key) in &linked_info {
-            if !folder_key.is_empty()
-                && store_key.starts_with(folder_key)
-                && folder_key.len() > best_len
-            {
-                best_id = (!id.is_empty()).then_some(*id);
-                best_len = folder_key.len();
+        for use_folder in [true, false] {
+            let mut candidates = Vec::new();
+            let mut best_len = 0;
+            for (id, _, name_key, folder_key) in &linked_info {
+                let key = if use_folder { folder_key } else { name_key };
+                if id.is_empty() || key.is_empty() || !store_key.starts_with(key) { continue; }
+                if key.len() > best_len {
+                    candidates.clear();
+                    best_len = key.len();
+                }
+                if key.len() == best_len && !candidates.contains(id) { candidates.push(*id); }
             }
-        }
-        if let Some(id) = best_id {
-            object.insert("linked_dataset_id".into(), Value::String(id.into()));
-            continue;
-        }
-        for (id, _, name_key, _) in &linked_info {
-            if !name_key.is_empty() && store_key.starts_with(name_key) && name_key.len() > best_len
-            {
-                best_id = (!id.is_empty()).then_some(*id);
-                best_len = name_key.len();
+            if candidates.len() == 1 {
+                object.insert("linked_dataset_id".into(), Value::String(candidates[0].into()));
+                break;
             }
-        }
-        if let Some(id) = best_id {
-            object.insert("linked_dataset_id".into(), Value::String(id.into()));
+            if candidates.len() > 1 {
+                object.remove("linked_dataset_id");
+                break;
+            }
         }
     }
 }
@@ -508,6 +514,19 @@ mod tests {
         include_str!("../tests/fixtures/workspace_store_v5_summary.response.json");
     const DATASET_LINKS: &str =
         include_str!("../tests/fixtures/workspace_store_v5_summary_dataset_links.json");
+
+    #[test]
+    fn duplicate_display_names_do_not_invent_dataset_identity() {
+        let links = vec![
+            DatasetLinkIdentity { id:"alpine".into(), name:"raw".into(), path:"/alpine/raw".into() },
+            DatasetLinkIdentity { id:"beer".into(), name:"raw".into(), path:"/beer/raw".into() },
+        ];
+        let mut datasets = vec![json!({"name":"raw"}), json!({"name":"raw","linked_dataset_id":"beer"}), json!({"name":"raw_variant"})];
+        super::augment_dataset_links(&mut datasets, &links);
+        assert!(datasets[0].get("linked_dataset_id").is_none());
+        assert_eq!(datasets[1]["linked_dataset_id"], "beer");
+        assert!(datasets[2].get("linked_dataset_id").is_none());
+    }
 
     #[test]
     fn matches_the_python_results_summary_oracle_exactly() {

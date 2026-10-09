@@ -301,6 +301,9 @@ pub fn adapt(
 /// An explicit dataset refresh requests a new inspection even if its current
 /// file markers still match. Invalidate related projections and configurations.
 pub fn invalidate(root: &Path) {
+    // Dependencies are canonical. Windows canonicalization adds a verbatim
+    // prefix, so compare both sides in the same namespace.
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let mut cache = cache()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -308,7 +311,7 @@ pub fn invalidate(root: &Path) {
         !entry
             .dependencies
             .iter()
-            .any(|dependency| dependency.path.starts_with(root))
+            .any(|dependency| dependency.path.starts_with(&canonical_root))
     });
     cache.bytes = cache.entries.iter().map(|entry| entry.bytes).sum();
 }

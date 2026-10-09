@@ -24,6 +24,7 @@ export function adaptDatasetTopChainsToEnrichedDataset(dataset: DatasetTopChains
 
   return {
     dataset_name: dataset.dataset_name,
+    linked_dataset_id: dataset.linked_dataset_id,
     best_avg_val_score: bestCvChain?.avg_val_score ?? null,
     best_avg_test_score: bestCvChain?.avg_test_score ?? null,
     best_final_score: bestFinalChain?.final_test_score ?? null,

@@ -49,6 +49,7 @@ describe("resultsPageData", () => {
   it("adapts workspace summary datasets for DatasetResultCard", () => {
     expect(adaptDatasetTopChainsToEnrichedDataset(dataset())).toMatchObject({
       dataset_name: "Corn",
+      linked_dataset_id: "dataset-corn",
       best_avg_val_score: 0.1,
       best_avg_test_score: 0.2,
       best_final_score: 0.05,

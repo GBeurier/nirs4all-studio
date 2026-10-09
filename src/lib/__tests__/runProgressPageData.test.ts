@@ -5,10 +5,24 @@ import {
   buildRunExecutionProgressDisplayData,
   buildRunLogLines,
   buildRunFromExecutionJobRecord,
+  buildRunFromWorkspaceDetail,
   buildRunProgressDisplayData,
 } from "@/lib/run-progress/pageData";
 import type { ExecutionJobRecord } from "@/lib/runs/executionJobRecords";
 import type { PipelineRun, Run } from "@/types/runs";
+
+it("opens a stored run with its real dataset identity, pipelines and scores", () => {
+  const restored = buildRunFromWorkspaceDetail({ run_id: "stored-run", name: "Saved campaign", status: "completed",
+    created_at: "2026-10-09T00:00:00Z", completed_at: "2026-10-09T00:01:00Z",
+    datasets: [{ name: "corn", linked_dataset_id: "dataset-corn" }],
+    pipelines: [{ pipeline_id: "pipeline-corn", run_id: "stored-run", name: "PLS12", dataset_name: "corn", status: "completed",
+      created_at: "2026-10-09T00:00:00Z", completed_at: "2026-10-09T00:01:00Z", best_val: 0.16, best_test: 0.15,
+      metric: "rmse", duration_ms: 1000 }],
+  });
+  expect(restored.datasets[0].dataset_id).toBe("dataset-corn");
+  expect(buildRunProgressDisplayData(restored).overallProgress).toBe(100);
+  expect(restored.datasets[0].pipelines[0]).toMatchObject({ id: "pipeline-corn", test_score: 0.15, val_score: 0.16 });
+});
 
 function pipeline(overrides: Partial<PipelineRun>): PipelineRun {
   return {

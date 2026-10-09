@@ -297,8 +297,14 @@ def resolve_class_reference(
     """
     ref = str(reference or "").strip()
     candidates = _reference_lookup().get(ref.lower(), [])
-    node = _select_registry_node(candidates, forced_type=forced_type)
     class_name = _class_name_from_path(ref)
+    node = _select_registry_node(candidates, forced_type=forced_type)
+    # Recipe aliases can share another operator's class (MovingAverage/SG).
+    # An explicit class reference must restore the actual operator name.
+    named_candidates = [candidate for candidate in candidates
+                        if str(candidate.get("name") or "").lower() == class_name.lower()
+                        and node is not None and candidate.get("classPath") == node.get("classPath")]
+    node = _select_registry_node(named_candidates, forced_type=forced_type) or node
 
     if node:
         canonical_class_path = str(node.get("classPath") or ref)

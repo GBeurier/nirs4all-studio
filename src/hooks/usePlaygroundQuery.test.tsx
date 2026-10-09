@@ -38,6 +38,24 @@ beforeEach(() => { vi.useFakeTimers(); mocks.post.mockResolvedValue(response); }
 afterEach(async () => { for (const unmount of cleanup.splice(0)) await unmount(); vi.useRealTimers(); mocks.post.mockReset(); });
 
 describe('playground request lifecycle', () => {
+  it('bounds oversized display curves and retains full-dataset computation on subsequent edits', async () => {
+    mocks.post.mockRejectedValueOnce({ detail: 'Playground response exceeds 32 MiB' }).mockResolvedValue(response);
+    const data = await loadWorkspaceDataset('large');
+    expect(mocks.post).toHaveBeenCalledTimes(2);
+    expect(mocks.post.mock.calls[1][1].options.max_wavelengths_returned).toBe(256);
+    expect(mocks.post.mock.calls[1][1]).not.toHaveProperty('sampling');
+    const view = await mount(() => usePlaygroundQuery(data, [savgol], { ...options, datasetId: 'large' }));
+    await tick();
+    expect(mocks.post.mock.calls.at(-1)?.[1].options.max_wavelengths_returned).toBe(256);
+    expect(mocks.post.mock.calls.at(-1)?.[1].sampling).toBeUndefined();
+    expect(view.current.error).toBeNull();
+  });
+
+  it('does not retry unrelated dataset failures with reduced curves', async () => {
+    mocks.post.mockRejectedValueOnce({ detail: 'Dataset is not available' });
+    await expect(loadWorkspaceDataset('missing')).rejects.toEqual({ detail: 'Dataset is not available' });
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
   it('bounds inactive matrices and removes inactive snapshots without touching unrelated queries', () => {
     const client = new QueryClient();
     for (let index = 0; index < 10; index += 1) client.setQueryData(['playground', 'execute', 'current', `step-${index}`], response, { updatedAt: index + 1 });

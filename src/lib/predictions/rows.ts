@@ -179,6 +179,13 @@ export function createRowComparator(
   const metricSortKey = sortField.startsWith("metric:") ? sortField.slice("metric:".length) : null;
 
   return (a, b) => {
+    if (metricSortKey || sortField === "test_score" || sortField === "val_score") {
+      const score = (row: ScoreCardRow) => metricSortKey ? rowScoreValue(row, metricSortKey, "test")
+        : sortField === "test_score" ? row.primaryTestScore : row.primaryValScore;
+      const missingA = score(a) == null || !Number.isFinite(score(a));
+      const missingB = score(b) == null || !Number.isFinite(score(b));
+      if (missingA || missingB) return missingA === missingB ? 0 : missingA ? 1 : -1;
+    }
     let cmp = 0;
 
     if (metricSortKey) {

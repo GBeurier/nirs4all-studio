@@ -12,6 +12,7 @@ interface SyntheticDialogFooterProps {
   onCancel: () => void;
   onGenerate: () => void;
   selectedPreset: string | null;
+  name?: string;
 }
 
 export function SyntheticDialogFooter({
@@ -20,6 +21,7 @@ export function SyntheticDialogFooter({
   onCancel,
   onGenerate,
   selectedPreset,
+  name,
 }: SyntheticDialogFooterProps) {
   return (
     <DialogFooter>
@@ -32,6 +34,7 @@ export function SyntheticDialogFooter({
           isGenerating,
           activeTab,
           selectedPreset,
+          name,
         })}
       >
         {isGenerating ? (

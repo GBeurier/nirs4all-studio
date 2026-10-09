@@ -290,14 +290,15 @@ mod tests {
             .status,
             409
         );
-        jobs.fail_at(
+        jobs.complete_at(
             &receipt.job_id,
-            "Training failed",
-            None,
+            json!({"result":{"run_ids":["child-a", "child-b"]}}),
             timestamp,
             Instant::now(),
         )
         .unwrap();
+        let record = crate::execution_job_records::read_execution_job_record(&root.path().join("workspace"), &receipt.job_id).unwrap();
+        assert_eq!(record["driver"]["store_run_ids"], json!(["child-a", "child-b"]));
         assert_eq!(
             dispatch(
                 &settings,

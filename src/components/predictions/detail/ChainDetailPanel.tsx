@@ -187,6 +187,7 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
             onPreviewKindChange={setPreviewKind}
             taskKind={taskKind}
             partitions={chartTargets}
+            config={panelConfig}
             selectedFoldLabel={selectedGroup ? foldLabel(selectedGroup.foldId) : null}
             selectedPartitionCount={selectedFoldPartitions.length}
             canCustomize={canCustomize}

@@ -12,6 +12,7 @@ import {
   executeDatasetPlayground,
   buildExecuteRequest,
   getLoadedWorkspaceDatasetResult,
+  getLoadedWorkspaceDatasetDisplayLimit,
 } from '@/api/playground';
 import {
   useDebouncedValue,
@@ -180,6 +181,7 @@ export function usePlaygroundQuery(
   }), [samplingOpts?.method, samplingOpts?.n_samples, samplingOpts?.seed]);
   const repetitionColumn = useMemo(() => getSpectralRepetitionColumn(data), [data]);
   const loadedResponse = data ? getLoadedWorkspaceDatasetResult(data) : undefined;
+  const loadedDisplayLimit = data ? getLoadedWorkspaceDatasetDisplayLimit(data) : undefined;
 
   // Keep a chart's already requested result when it is hidden. Hiding a chart
   // is a display change; the next pipeline/data change uses current visibility.
@@ -204,7 +206,8 @@ export function usePlaygroundQuery(
     bio_sample_column: repetitionColumn,
     dataset_repetition: repetitionColumn,
     subset_mode: executeOptions?.subset_mode ?? 'all',
-  }), [executeOptions, pca, umap, repetitions, cacheable, repetitionColumn]);
+    max_wavelengths_returned: executeOptions?.max_wavelengths_returned ?? loadedDisplayLimit,
+  }), [executeOptions, pca, umap, repetitions, cacheable, repetitionColumn, loadedDisplayLimit]);
   const queryKey = useMemo(() => {
     const baseKey = createPlaygroundQueryKey(data?.spectra ?? null, data?.y, debouncedOperators,
       sampling, effectiveOptions, dataIdentity);
@@ -216,7 +219,7 @@ export function usePlaygroundQuery(
   const initialResponse = data && datasetId && debouncedOperators.length === 0
     && sampling.method === 'all' && effectiveOptions.subset_mode === 'all'
     && !effectiveOptions.compute_umap && !effectiveOptions.compute_repetitions
-    && effectiveOptions.max_wavelengths_returned === undefined
+    && effectiveOptions.max_wavelengths_returned === loadedDisplayLimit
     && effectiveOptions.split_index === undefined
     ? loadedResponse : undefined;
   const query = useQuery({

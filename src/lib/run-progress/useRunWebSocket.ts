@@ -23,19 +23,15 @@ export function useRunWebSocket(
 
     const connect = async () => {
       try {
-        const baseUrl = await getWebSocketBaseUrl();
-        const wsUrl = `${baseUrl}/ws`;
+        const path = `/ws/job/${encodeURIComponent(runId)}`;
+        const baseUrl = await getWebSocketBaseUrl(path);
+        const wsUrl = `${baseUrl}${path}`;
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
           reconnectAttempts = 0;
           onConnected();
-          // Subscribe to job channel
-          ws?.send(JSON.stringify({
-            type: "subscribe",
-            channel: `job:${runId}`,
-            data: {},
-          }));
+          // The native job endpoint subscribes automatically.
         };
 
         ws.onmessage = (event) => {

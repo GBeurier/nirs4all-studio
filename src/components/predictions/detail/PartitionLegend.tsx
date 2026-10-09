@@ -3,12 +3,15 @@ import {
   normalizePartition,
   type PartitionKey,
 } from "@/lib/partitionColors";
+import { getPartitionColor } from "@/components/predictions/viewer/palettes";
+import type { ChartConfig } from "@/components/predictions/viewer/types";
 
 interface PartitionLegendProps {
   partitions: Array<{ partition: string; label?: string }>;
+  config?: Pick<ChartConfig, "palette" | "partitionColors">;
 }
 
-export function PartitionLegend({ partitions }: PartitionLegendProps) {
+export function PartitionLegend({ partitions, config }: PartitionLegendProps) {
   if (partitions.length === 0) return null;
 
   const seen = new Set<string>();
@@ -23,7 +26,8 @@ export function PartitionLegend({ partitions }: PartitionLegendProps) {
     <div className="flex flex-wrap items-center gap-2.5">
       {dedup.map((partition) => {
         const key = normalizePartition(partition.partition) as PartitionKey | null;
-        const color = key ? PARTITION_COLORS[key] : "hsl(var(--muted-foreground))";
+        const color = config ? getPartitionColor(partition.partition, config.palette, config.partitionColors)
+          : key ? PARTITION_COLORS[key] : "hsl(var(--muted-foreground))";
         return (
           <span
             key={partition.partition}

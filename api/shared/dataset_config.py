@@ -237,7 +237,10 @@ def build_nirs4all_config(
 
     # Task type
     if task_type and task_type != "auto":
-        config["task_type"] = task_type
+        config["task_type"] = {
+            "binary_classification": "binary",
+            "multiclass_classification": "multiclass",
+        }.get(task_type, task_type)
 
     # Dataset name
     if dataset_name:
@@ -285,6 +288,9 @@ def build_nirs4all_config_from_stored(dataset_record: dict[str, Any]) -> dict[st
             dataset_name=dataset_record.get("name"),
         )
 
+    task_type = stored_config.get("task_type")
+    normalized_task = {"binary_classification": "binary", "multiclass_classification": "multiclass"}.get(task_type, task_type)
+
     # Existing library configs remain complete: source parameters, selections,
     # repetitions, folds and future library-owned fields must survive reloads.
     x_specific_params: dict[str, Any] = {}
@@ -305,6 +311,8 @@ def build_nirs4all_config_from_stored(dataset_record: dict[str, Any]) -> dict[st
                if key in stored_config},
         }
     }
+    if task_type:
+        config["task_type"] = normalized_task
 
     if stored_config.get("train_x"):
         config["train_x"] = stored_config["train_x"]

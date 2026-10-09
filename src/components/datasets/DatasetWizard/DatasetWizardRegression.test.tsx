@@ -107,13 +107,14 @@ describe("Dataset wizard regressions", () => {
         path: file.path, num_rows: 3, num_columns: 2, column_names: ["batch"],
       }])),
     }));
-    await mount(<DataStats />, { files: [xFile, metadataFile] });
+    await mount(<DataStats />, { files: [xFile, metadataFile], perFileOverrides: { [metadataFile.path]: { has_header: true } } });
     await act(async () => vi.advanceTimersByTimeAsync(200));
     await act(async () => wizard.dispatch({ type: "REMOVE_FILE", payload: 1 }));
     await act(async () => vi.advanceTimersByTimeAsync(200));
     expect(validateFiles).toHaveBeenCalledTimes(1);
     expect(Object.keys(wizard.state.validatedShapes)).toEqual([xFile.path]);
     expect(wizard.state.metadataColumns).toEqual([]);
+    expect(wizard.state.perFileOverrides).not.toHaveProperty(metadataFile.path);
   });
 
   it("accepts ignore NA and forwards the policy to validation and preview", async () => {

@@ -127,6 +127,12 @@ describe("coerceIntInput", () => {
 });
 
 describe("isGenerateDisabled", () => {
+  it("rejects names the native generator cannot accept", () => {
+    const base = { isGenerating: false, activeTab: "custom" as const, selectedPreset: null };
+    expect(isGenerateDisabled({ ...base, name: "my dataset" })).toBe(true);
+    expect(isGenerateDisabled({ ...base, name: "../escape" })).toBe(true);
+    expect(isGenerateDisabled({ ...base, name: "my_dataset-2" })).toBe(false);
+  });
   it("is disabled while generating regardless of tab", () => {
     expect(
       isGenerateDisabled({
@@ -169,6 +175,9 @@ describe("isGenerateDisabled", () => {
 });
 
 describe("getGenerationErrorMessage", () => {
+  it("preserves structured native errors", () => {
+    expect(getGenerationErrorMessage({ detail: "Name must be a safe identifier", status: 400 })).toBe("Name must be a safe identifier");
+  });
   it("returns the error message when present", () => {
     expect(getGenerationErrorMessage(new Error("boom"))).toBe("boom");
   });
