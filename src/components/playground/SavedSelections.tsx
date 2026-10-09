@@ -12,6 +12,7 @@
  */
 
 import { useState, useCallback, useRef, type ChangeEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelection, type SavedSelection } from '@/context/useSelection';
 import {
   exportSelectionsToJson,
@@ -74,6 +75,7 @@ export function SavedSelections({
   sampleIds,
   onSelectionLoaded,
 }: SavedSelectionsProps) {
+  const { t } = useTranslation();
   const {
     savedSelections,
     selectedSamples,
@@ -92,11 +94,11 @@ export function SavedSelections({
   const handleSave = useCallback(
     (name: string, color: string) => {
       saveSelection(name, color);
-      toast.success('Selection saved', {
+      toast.success(t('playground.savedSelections.toast.saved'), {
         description: buildSelectionSavedToastDescription(name, selectedCount),
       });
     },
-    [saveSelection, selectedCount]
+    [saveSelection, selectedCount, t]
   );
 
   // Handle load
@@ -104,49 +106,49 @@ export function SavedSelections({
     (selection: SavedSelection) => {
       loadSelection(selection.id);
       onSelectionLoaded?.(selection);
-      toast.success('Selection loaded', {
+      toast.success(t('playground.savedSelections.toast.loaded'), {
         description: buildSelectionLoadedToastDescription(selection),
       });
       setIsOpen(false);
     },
-    [loadSelection, onSelectionLoaded]
+    [loadSelection, onSelectionLoaded, t]
   );
 
   // Handle delete
   const handleDelete = useCallback(
     (selection: SavedSelection) => {
       deleteSavedSelection(selection.id);
-      toast.success('Selection deleted', {
+      toast.success(t('playground.savedSelections.toast.deleted'), {
         description: buildSelectionDeletedToastDescription(selection),
       });
     },
-    [deleteSavedSelection]
+    [deleteSavedSelection, t]
   );
 
   // Handle export all selections to JSON
   const handleExportJson = useCallback(() => {
     if (savedSelections.length === 0) {
-      toast.warning('No selections to export');
+      toast.warning(t('playground.savedSelections.toast.noSelectionsToExport'));
       return;
     }
 
     const result = exportSelectionsToJson(savedSelections, { sampleIds });
     if (result.success) {
       const filename = result.filename ?? 'selections.json';
-      toast.success('Selections exported', {
+      toast.success(t('playground.savedSelections.toast.selectionsExported'), {
         description: buildSelectionsExportedToastDescription(savedSelections.length, filename),
       });
     } else {
-      toast.error('Export failed', {
+      toast.error(t('playground.savedSelections.toast.exportFailed'), {
         description: result.error,
       });
     }
-  }, [savedSelections, sampleIds]);
+  }, [savedSelections, sampleIds, t]);
 
   // Handle export current selection to CSV
   const handleExportCurrentCsv = useCallback(() => {
     if (selectedCount === 0) {
-      toast.warning('No samples selected');
+      toast.warning(t('playground.savedSelections.toast.noSamplesSelected'));
       return;
     }
 
@@ -157,15 +159,15 @@ export function SavedSelections({
     });
     if (result.success) {
       const filename = result.filename ?? 'current-selection.csv';
-      toast.success('Selection exported', {
+      toast.success(t('playground.savedSelections.toast.selectionExported'), {
         description: buildCurrentSelectionExportedToastDescription(selectedCount, filename),
       });
     } else {
-      toast.error('Export failed', {
+      toast.error(t('playground.savedSelections.toast.exportFailed'), {
         description: result.error,
       });
     }
-  }, [selectedSamples, selectedCount, sampleIds]);
+  }, [selectedSamples, selectedCount, sampleIds, t]);
 
   // Handle import
   const handleImport = useCallback(() => {
@@ -216,15 +218,15 @@ export function SavedSelections({
           showSavedSelectionNotification(buildInvalidImportFileNotification());
         }
       } catch (error) {
-        toast.error('Import failed', {
-          description: error instanceof Error ? error.message : 'Invalid file format',
+        toast.error(t('playground.savedSelections.toast.importFailed'), {
+          description: error instanceof Error ? error.message : t('playground.savedSelections.toast.invalidFileFormat'),
         });
       }
 
       // Reset input
       e.target.value = '';
     },
-    [saveSelection, select, sampleIds]
+    [saveSelection, select, sampleIds, t]
   );
 
   const handleOpenSaveDialog = useCallback(() => {
@@ -232,11 +234,11 @@ export function SavedSelections({
   }, []);
 
   const handleDeleteAll = useCallback(() => {
-    if (confirm('Delete all saved selections?')) {
+    if (confirm(t('playground.savedSelections.confirmDeleteAll'))) {
       savedSelections.forEach((s) => deleteSavedSelection(s.id));
-      toast.success('All selections deleted');
+      toast.success(t('playground.savedSelections.toast.allDeleted'));
     }
-  }, [deleteSavedSelection, savedSelections]);
+  }, [deleteSavedSelection, savedSelections, t]);
 
   // Check if current selection matches any saved
   const activeSelectionId = getActiveSavedSelectionId(savedSelections, selectedSamples, selectedCount);

@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Search,
   ChevronDown,
@@ -20,7 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   stepColors,
-  stepTypeLabels,
+  getStepTypeLabels,
 } from "./stepPresentation";
 import {
   filterPaletteOptions,
@@ -29,12 +30,12 @@ import {
   getPaletteAvailabilityDisplay,
   getPaletteGroupDisplayLabel,
   getPaletteOptionAvailability,
+  getTierLabel,
+  getTierTooltip,
   groupPaletteOptionsByCategory,
   resolveStepType,
   shouldShowPaletteSubcategories,
   stepTypeOrder,
-  TIER_LABELS,
-  TIER_TOOLTIPS,
   type PaletteGroupKey,
 } from "./StepPaletteData";
 import type {
@@ -53,6 +54,7 @@ interface StepPaletteProps {
 }
 
 export function StepPalette({ onAddStep }: StepPaletteProps) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [openSections, setOpenSections] = useState<Set<PaletteGroupKey>>(new Set());
   const prefs = usePipelineEditorPreferencesOptional();
@@ -193,7 +195,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
       {/* Header */}
       <div className="p-3 border-b border-border space-y-2">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-sm text-foreground">Components</h2>
+          <h2 className="font-semibold text-sm text-foreground">{t("pipelineEditor.palette.title")}</h2>
           <div className="flex items-center gap-1.5">
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
               {totalSteps}
@@ -211,11 +213,11 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                           : "bg-muted/30 text-muted-foreground hover:bg-muted/60"
                       }`}
                     >
-                      {TIER_LABELS[tier]}
+                      {getTierLabel(tier)}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="text-xs max-w-[200px]">
-                    {TIER_TOOLTIPS[tier]}
+                    {getTierTooltip(tier)}
                   </TooltipContent>
                 </Tooltip>
               ))}
@@ -224,13 +226,13 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
         </div>
 
         {tierLevel === "all" && registryContext?.isLoading && (
-          <div className="text-[10px] text-muted-foreground/70">Loading extended...</div>
+          <div className="text-[10px] text-muted-foreground/70">{t("pipelineEditor.palette.loadingExtended")}</div>
         )}
         {registryContext?.error && (
           <div className="text-[10px] text-destructive">{registryContext.error.message}</div>
         )}
         {registryContext?.extendedError && (
-          <div className="text-[10px] text-amber-600 dark:text-amber-400">Extended operators unavailable</div>
+          <div className="text-[10px] text-amber-600 dark:text-amber-400">{t("pipelineEditor.palette.extendedUnavailable")}</div>
         )}
         {availability?.operatorsError && (
           <div className="text-[10px] text-amber-600 dark:text-amber-400">{availability.operatorsError}</div>
@@ -239,7 +241,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Search..."
+            placeholder={t("pipelineEditor.palette.searchPlaceholder")}
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-8 h-8 text-sm"
@@ -253,10 +255,10 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
               checked={showUnavailableOperators}
               onCheckedChange={setShowUnavailableOperators}
             />
-            <span>Show unavailable operators</span>
+            <span>{t("pipelineEditor.palette.showUnavailable")}</span>
           </label>
           {availability?.isLoadingOperators && (
-            <span>Checking dependencies...</span>
+            <span>{t("pipelineEditor.palette.checkingDependencies")}</span>
           )}
         </div>
       </div>
@@ -271,7 +273,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
             const options = filteredOptions(key);
             if (options.length === 0 && search) return null;
 
-            const displayLabel = getPaletteGroupDisplayLabel(key, stepTypeLabels);
+            const displayLabel = getPaletteGroupDisplayLabel(key, getStepTypeLabels());
 
             // Group by category
             const groupedMap = groupPaletteOptionsByCategory(options);

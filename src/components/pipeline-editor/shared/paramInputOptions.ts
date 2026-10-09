@@ -1,55 +1,60 @@
-// Parameter info/tooltips for common parameters
-export const parameterInfo: Record<string, string> = {
-  n_components: "Number of components/latent variables to use",
-  n_estimators: "Number of trees in the ensemble",
-  max_depth: "Maximum depth of trees",
-  learning_rate: "Step size for gradient descent optimization",
-  test_size: "Proportion of data to use for testing (0.0-1.0)",
-  n_splits: "Number of folds for cross-validation",
-  random_state: "Random seed for reproducibility",
-  window_length: "Size of the moving window (must be odd)",
-  window: "Size of the moving window (must be odd)",
-  window_size: "Size of the moving window",
-  polyorder: "Polynomial order for fitting",
-  deriv: "Derivative order (0=smoothing, 1=first, 2=second)",
-  sigma: "Standard deviation for Gaussian kernel",
-  order: "Polynomial order for baseline/detrending",
-  lam: "Smoothing parameter (lambda) - higher = smoother baseline",
-  p: "Asymmetry parameter (0 to 1) - lower emphasizes troughs",
-  C: "Regularization parameter (higher = less regularization)",
-  epsilon: "Epsilon in epsilon-SVR model",
-  kernel: "Kernel type for SVM (rbf, linear, poly)",
-  gamma: "Kernel coefficient for rbf/poly/sigmoid",
-  alpha: "Regularization strength",
-  l1_ratio: "L1 ratio for Elastic Net (0=L2, 1=L1)",
-  shuffle: "Whether to shuffle data before splitting",
-  n_repeats: "Number of times to repeat cross-validation",
-};
+import i18n from "i18next";
+
+/** Parameter keys that have a localized help text (`pipelineEditor.shared.paramInfo.<key>`). */
+const PARAMETER_INFO_KEYS = [
+  "n_components",
+  "n_estimators",
+  "max_depth",
+  "learning_rate",
+  "test_size",
+  "n_splits",
+  "random_state",
+  "window_length",
+  "window",
+  "window_size",
+  "polyorder",
+  "deriv",
+  "sigma",
+  "order",
+  "lam",
+  "p",
+  "C",
+  "epsilon",
+  "kernel",
+  "gamma",
+  "alpha",
+  "l1_ratio",
+  "shuffle",
+  "n_repeats",
+] as const;
+
+// Parameter info/tooltips for common parameters (resolved in the active language when read)
+export const parameterInfo: Record<string, string> = {};
+for (const key of PARAMETER_INFO_KEYS) {
+  Object.defineProperty(parameterInfo, key, {
+    enumerable: true,
+    get: () => i18n.t(`pipelineEditor.shared.paramInfo.${key}`),
+  });
+}
+
+type SelectOption = { value: string; label: string };
+
+/** Build options whose label is resolved in the active language when read. */
+function localizedOptions(group: string, values: string[]): SelectOption[] {
+  return values.map((value) => ({
+    value,
+    get label() {
+      return i18n.t(`pipelineEditor.shared.selectOptions.${group}.${value}`);
+    },
+  }));
+}
 
 // Select options for known parameter types
-export const selectOptions: Record<string, Array<{ value: string; label: string }>> = {
-  kernel: [
-    { value: "rbf", label: "RBF (Radial Basis Function)" },
-    { value: "linear", label: "Linear" },
-    { value: "poly", label: "Polynomial" },
-    { value: "sigmoid", label: "Sigmoid" },
-  ],
-  norm: [
-    { value: "l1", label: "L1 (Manhattan)" },
-    { value: "l2", label: "L2 (Euclidean)" },
-    { value: "max", label: "Max" },
-  ],
-  activation: [
-    { value: "relu", label: "ReLU" },
-    { value: "tanh", label: "Tanh" },
-    { value: "sigmoid", label: "Sigmoid" },
-    { value: "leaky_relu", label: "Leaky ReLU" },
-  ],
-  reference: [
-    { value: "mean", label: "Mean Spectrum" },
-    { value: "first", label: "First Spectrum" },
-    { value: "median", label: "Median Spectrum" },
-  ],
+export const selectOptions: Record<string, SelectOption[]> = {
+  kernel: localizedOptions("kernel", ["rbf", "linear", "poly", "sigmoid"]),
+  norm: localizedOptions("norm", ["l1", "l2", "max"]),
+  activation: localizedOptions("activation", ["relu", "tanh", "sigmoid", "leaky_relu"]),
+  reference: localizedOptions("reference", ["mean", "first", "median"]),
 };
 
 // Keys that should render as select inputs

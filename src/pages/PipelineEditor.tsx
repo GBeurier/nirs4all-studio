@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { toast } from "sonner";
@@ -20,6 +21,7 @@ import { usePipelineEditorSamples } from "@/hooks/usePipelineEditorSamples";
 import type { DragData, DropIndicator } from "@/components/pipeline-editor/types";
 
 export default function PipelineEditor() {
+  const { t } = useTranslation();
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -73,7 +75,7 @@ export default function PipelineEditor() {
     exportPipeline,
   } = usePipelineEditor({
     initialSteps: [],
-    initialName: isNew ? "New Pipeline" : "Loading Pipeline...",
+    initialName: isNew ? t("pipelines.editor.newPipeline") : t("pipelineEditor.page.loadingPipeline"),
     pipelineId: pipelineId,
     persistState: true,
     allowPersistedState: isNew || hasPersistedDraft,
@@ -149,9 +151,9 @@ export default function PipelineEditor() {
   const onDrop = useCallback((data: DragData, indicator: DropIndicator) => {
     handleDrop(data, indicator);
     if (data.type === "palette-item" && data.option) {
-      toast.success(`${data.option.name} added to pipeline`);
+      toast.success(t("pipelineEditor.page.stepAdded", { name: data.option.name }));
     }
-  }, [handleDrop]);
+  }, [handleDrop, t]);
 
   // Handle reorder from DnD context
   const onReorder = useCallback((activeId: string, overId: string, data: DragData) => {

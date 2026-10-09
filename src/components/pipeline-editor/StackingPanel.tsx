@@ -15,6 +15,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Boxes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -187,6 +188,7 @@ export function StackingBadge({
   onClick,
   className,
 }: StackingBadgeProps) {
+  const { t } = useTranslation();
   if (!config.enabled) return null;
 
   return (
@@ -205,9 +207,9 @@ export function StackingBadge({
       </TooltipTrigger>
       <TooltipContent side="top">
         <div className="text-xs">
-          <div className="font-semibold">Stacking Ensemble</div>
+          <div className="font-semibold">{t("pipelineEditor.stacking.title")}</div>
           <p className="text-muted-foreground">
-            Meta-model: {config.metaModel}
+            {t("pipelineEditor.stacking.metaModelTooltip", { name: config.metaModel })}
           </p>
         </div>
       </TooltipContent>
@@ -229,6 +231,7 @@ export function MergeStackingSetup({
   onChange,
   availableModels = [],
 }: MergeStackingSetupProps) {
+  const { t } = useTranslation();
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -241,7 +244,7 @@ export function MergeStackingSetup({
           )}
         >
           <Boxes className="h-3.5 w-3.5" />
-          <span>Configure Stacking</span>
+          <span>{t("pipelineEditor.stacking.configure")}</span>
           {config.enabled && (
             <Badge variant="secondary" className="ml-1 text-[10px] px-1 h-4">
               {config.metaModel}

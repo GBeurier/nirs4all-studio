@@ -5,6 +5,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import i18n from "i18next";
 import { api } from "@/api/transport";
 import type {
   Pipeline,
@@ -63,7 +64,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       }));
       setPipelines(formattedPipelines);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch pipelines");
+      setError(err instanceof Error ? err.message : i18n.t("pipelines.library.errors.fetch"));
     } finally {
       setLoading(false);
     }
@@ -109,7 +110,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       }
       return null;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create pipeline");
+      setError(err instanceof Error ? err.message : i18n.t("pipelines.library.errors.create"));
       return null;
     }
   }, [fetchPipelines]);
@@ -132,7 +133,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       }
       return null;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create pipeline from preset");
+      setError(err instanceof Error ? err.message : i18n.t("pipelines.library.errors.createFromPreset"));
       return null;
     }
   }, [fetchPipelines]);
@@ -157,7 +158,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       }
       return false;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update pipeline");
+      setError(err instanceof Error ? err.message : i18n.t("pipelines.library.errors.update"));
       return false;
     }
   }, [fetchPipelines]);
@@ -177,7 +178,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       }
       return false;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete pipeline");
+      setError(err instanceof Error ? err.message : i18n.t("pipelines.library.errors.delete"));
       return false;
     }
   }, [queryClient]);
@@ -199,7 +200,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       }
       return null;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to clone pipeline");
+      setError(err instanceof Error ? err.message : i18n.t("pipelines.library.errors.clone"));
       return null;
     }
   }, [fetchPipelines]);
@@ -233,7 +234,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       setPipelines(prev =>
         prev.map(p => p.id === id ? { ...p, isFavorite: pipeline.isFavorite } : p)
       );
-      setError(err instanceof Error ? err.message : "Failed to toggle favorite");
+      setError(err instanceof Error ? err.message : i18n.t("pipelines.library.errors.toggleFavorite"));
       return false;
     }
   }, [pipelines, fetchPipelines]);
@@ -253,14 +254,16 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
 
       // Create new pipeline from imported data
       return await createPipeline({
-        name: data.name ? `${data.name} (Imported)` : "Imported Pipeline",
+        name: data.name
+          ? `${data.name} (${i18n.t("pipelines.library.importedSuffix")})`
+          : i18n.t("pipelines.library.importedName"),
         description: data.description,
         steps: data.steps || [],
         category: "user",
         taskType: data.taskType,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to import pipeline");
+      setError(err instanceof Error ? err.message : i18n.t("pipelines.library.errors.import"));
       return null;
     }
   }, [createPipeline]);

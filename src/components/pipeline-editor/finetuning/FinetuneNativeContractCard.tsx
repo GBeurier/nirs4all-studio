@@ -1,4 +1,6 @@
 import { Info, Workflow } from "lucide-react";
+import i18n from "i18next";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import {
   createKeywordRegistryOptimizerPersistenceFields,
@@ -47,80 +49,39 @@ const NATIVE_TUNING_KEYWORD_IDS = [
   "run.tuning.calibration",
 ] as const;
 
-const FALLBACK_NATIVE_TUNING_KEYWORDS: NativeTuningKeywordRow[] = [
-  {
-    engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
-    invalidatesCalibration: "if_predictor_changes",
-    label: "Native tuning block",
-    path: "run.tuning",
-    source: "fallback",
-    status: "partial",
-    summary: "Top-level run(tuning=...) payload consumed by the native tuning flow.",
-  },
-  {
-    engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
-    invalidatesCalibration: "if_predictor_changes",
-    label: "Search space",
-    path: "run.tuning.space",
-    source: "fallback",
-    status: "partial",
-    summary: "Derived from selected tunable parameters; changing it can select a different predictor.",
-  },
-  {
-    engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
-    invalidatesCalibration: "if_predictor_changes",
-    label: "Forced first trial",
-    path: "run.tuning.force_params",
-    source: "fallback",
-    status: "partial",
-    summary: "Optional public decoded warm-start parameters; keys must exist in run.tuning.space and can change the selected predictor.",
-  },
-  {
-    engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
-    invalidatesCalibration: "if_predictor_changes",
-    label: "Trial budget",
-    path: "run.tuning.n_trials",
-    source: "fallback",
-    status: "partial",
-    summary: "Controls optimizer effort; Studio records configuration but does not execute trials locally.",
-  },
-  {
-    engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
-    invalidatesCalibration: "not_applicable",
-    label: "Score cohort",
-    path: "run.tuning.score_data",
-    source: "fallback",
-    status: "partial",
-    summary: "Explicit scoring cohort required at run time; Studio must not infer it from displayed metrics.",
-  },
-  {
-    engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
-    invalidatesCalibration: "replaces_existing",
-    label: "Final calibration",
-    path: "run.tuning.calibration",
-    source: "fallback",
-    status: "partial",
-    summary: "Optional final calibration after winner projection; tuning always happens before calibration.",
-  },
-  {
-    engineSupport: { "dag-ml": "partial", n4m: "unsupported", optuna: "supported" },
-    invalidatesCalibration: "not_applicable",
-    label: "Optuna storage URI",
-    path: "run.tuning.storage",
-    source: "fallback",
-    status: "partial",
-    summary: "Optional optimizer-state storage URI such as sqlite:///study.db; Studio exposes the field but nirs4all owns validation and execution.",
-  },
-  {
-    engineSupport: { "dag-ml": "partial", n4m: "unsupported", optuna: "supported" },
-    invalidatesCalibration: "not_applicable",
-    label: "Optuna study name",
-    path: "run.tuning.study_name",
-    source: "fallback",
-    status: "partial",
-    summary: "Optional storage-backed Optuna study name; Studio transports metadata only and does not resume interrupted optimizers locally.",
-  },
+interface FallbackKeywordSpec {
+  engineSupport: Record<string, string>;
+  i18nKey: string;
+  invalidatesCalibration: KeywordRegistryInvalidation;
+  path: string;
+}
+
+const DAG_PARTIAL = { "dag-ml": "partial", legacy: "unsupported" };
+const OPTUNA_SUPPORTED = { "dag-ml": "partial", n4m: "unsupported", optuna: "supported" };
+
+const FALLBACK_NATIVE_TUNING_KEYWORD_SPECS: FallbackKeywordSpec[] = [
+  { engineSupport: DAG_PARTIAL, i18nKey: "tuning", invalidatesCalibration: "if_predictor_changes", path: "run.tuning" },
+  { engineSupport: DAG_PARTIAL, i18nKey: "space", invalidatesCalibration: "if_predictor_changes", path: "run.tuning.space" },
+  { engineSupport: DAG_PARTIAL, i18nKey: "forceParams", invalidatesCalibration: "if_predictor_changes", path: "run.tuning.force_params" },
+  { engineSupport: DAG_PARTIAL, i18nKey: "nTrials", invalidatesCalibration: "if_predictor_changes", path: "run.tuning.n_trials" },
+  { engineSupport: DAG_PARTIAL, i18nKey: "scoreData", invalidatesCalibration: "not_applicable", path: "run.tuning.score_data" },
+  { engineSupport: DAG_PARTIAL, i18nKey: "calibration", invalidatesCalibration: "replaces_existing", path: "run.tuning.calibration" },
+  { engineSupport: OPTUNA_SUPPORTED, i18nKey: "storage", invalidatesCalibration: "not_applicable", path: "run.tuning.storage" },
+  { engineSupport: OPTUNA_SUPPORTED, i18nKey: "studyName", invalidatesCalibration: "not_applicable", path: "run.tuning.study_name" },
 ];
+
+/** Built at call time so labels follow the active UI language. */
+function buildFallbackNativeTuningKeywords(): NativeTuningKeywordRow[] {
+  return FALLBACK_NATIVE_TUNING_KEYWORD_SPECS.map((spec) => ({
+    engineSupport: spec.engineSupport,
+    invalidatesCalibration: spec.invalidatesCalibration,
+    label: i18n.t(`pipelineEditor.finetune.fallbackRows.${spec.i18nKey}.label`),
+    path: spec.path,
+    source: "fallback" as const,
+    status: "partial" as const,
+    summary: i18n.t(`pipelineEditor.finetune.fallbackRows.${spec.i18nKey}.summary`),
+  }));
+}
 
 function formatEngineSupport(engineSupport: Record<string, string>): string {
   return Object.entries(engineSupport)
@@ -143,7 +104,7 @@ function keywordFieldToRow(field: KeywordRegistryFieldView): NativeTuningKeyword
 export function buildNativeTuningKeywordRows(
   registry?: KeywordRegistryDocument | null,
 ): NativeTuningKeywordRow[] {
-  if (!registry) return FALLBACK_NATIVE_TUNING_KEYWORDS;
+  if (!registry) return buildFallbackNativeTuningKeywords();
 
   const baseRows = NATIVE_TUNING_KEYWORD_IDS
     .map((id) => resolveKeywordRegistryEntry(registry, { id }))
@@ -161,7 +122,7 @@ export function buildNativeTuningKeywordRows(
     .map(keywordFieldToRow);
   const rows = [...baseRows, ...optimizerPersistenceRows];
 
-  return rows.length > 0 ? rows : FALLBACK_NATIVE_TUNING_KEYWORDS;
+  return rows.length > 0 ? rows : buildFallbackNativeTuningKeywords();
 }
 
 export function buildNativeTuningEditorSummary(
@@ -172,14 +133,18 @@ export function buildNativeTuningEditorSummary(
   return {
     enabled: config.enabled,
     modelName,
-    nativePayloadLabel: config.enabled ? "run(tuning=...) candidate" : "No native tuning payload emitted",
+    nativePayloadLabel: config.enabled
+      ? i18n.t("pipelineEditor.finetune.card.payloadCandidate")
+      : i18n.t("pipelineEditor.finetune.card.payloadNone"),
     parameterCount,
     readinessLabel: config.enabled
       ? parameterCount > 0
-        ? "Ready for native tuning projection"
-        : "Needs at least one tunable parameter"
-      : "Enable finetuning to prepare a native tuning payload",
-    trialCountLabel: config.enabled ? `${config.n_trials} trials` : "disabled",
+        ? i18n.t("pipelineEditor.finetune.card.ready")
+        : i18n.t("pipelineEditor.finetune.card.needsParam")
+      : i18n.t("pipelineEditor.finetune.card.enableToPrepare"),
+    trialCountLabel: config.enabled
+      ? i18n.t("pipelineEditor.finetune.trialCount", { count: config.n_trials })
+      : i18n.t("pipelineEditor.finetune.card.disabled"),
   };
 }
 
@@ -189,6 +154,7 @@ export function FinetuneNativeContractCard({
   modelName,
   registry,
 }: FinetuneNativeContractCardProps) {
+  const { t } = useTranslation();
   const summary = buildNativeTuningEditorSummary(config, modelName);
   const keywordRows = buildNativeTuningKeywordRows(registry);
   const tuningSpace = buildStudioTuningSpacePreview(config);
@@ -203,10 +169,10 @@ export function FinetuneNativeContractCard({
         <div>
           <h4 className="flex items-center gap-2 text-sm font-medium">
             <Workflow className="h-4 w-4 text-purple-500" />
-            Model Optimization Settings
+            {t("pipelineEditor.finetune.card.title")}
           </h4>
           <p className="mt-1 text-xs text-muted-foreground">
-            {summary.nativePayloadLabel} for {summary.modelName}; {summary.trialCountLabel}.
+            {t("pipelineEditor.finetune.card.payloadFor", { payload: summary.nativePayloadLabel, model: summary.modelName, trials: summary.trialCountLabel })}
           </p>
         </div>
         <Badge variant={summary.enabled ? "default" : "outline"} className="shrink-0 text-[10px]">
@@ -215,29 +181,29 @@ export function FinetuneNativeContractCard({
       </div>
 
       <div className="mb-3 grid grid-cols-3 gap-2 text-[11px]">
-        <Metric label="Selected params" value={String(summary.parameterCount)} />
-        <Metric label="Numeric params" value={String(availableParamCount)} />
-        <Metric label="Registry" value={keywordRows.some((row) => row.source === "registry") ? "attached" : "fallback"} />
+        <Metric label={t("pipelineEditor.finetune.card.selectedParams")} value={String(summary.parameterCount)} />
+        <Metric label={t("pipelineEditor.finetune.card.numericParams")} value={String(availableParamCount)} />
+        <Metric label={t("pipelineEditor.finetune.card.registry")} value={keywordRows.some((row) => row.source === "registry") ? t("pipelineEditor.finetune.card.registryAttached") : t("pipelineEditor.finetune.card.registryFallback")} />
       </div>
 
       <div className="mb-3 rounded border border-border/50 bg-background/60 p-2 text-[11px]">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h5 className="font-medium text-foreground">Ordered search-space preview</h5>
+            <h5 className="font-medium text-foreground">{t("pipelineEditor.finetune.card.previewTitle")}</h5>
             <p className="text-muted-foreground">
-              `nirs4all.tuning.ordered_search_space` for pre-launch inspection.
+              {t("pipelineEditor.finetune.card.previewDescription")}
             </p>
           </div>
           <Badge variant={tuningSpace.preview ? "secondary" : "outline"} className="text-[10px]">
-            {tuningSpace.preview ? tuningSpace.fingerprintKind : "unavailable"}
+            {tuningSpace.preview ? tuningSpace.fingerprintKind : t("pipelineEditor.finetune.card.previewUnavailable")}
           </Badge>
         </div>
 
         {tuningSpace.preview ? (
           <div className="space-y-2">
             <div className="grid grid-cols-2 gap-2">
-              <Metric label="Schema" value={`v${tuningSpace.preview.schemaVersion}`} />
-              <Metric label="Ordered paths" value={String(tuningSpace.preview.parameterCount)} />
+              <Metric label={t("pipelineEditor.finetune.card.schema")} value={`v${tuningSpace.preview.schemaVersion}`} />
+              <Metric label={t("pipelineEditor.finetune.card.orderedPaths")} value={String(tuningSpace.preview.parameterCount)} />
             </div>
             <div className="space-y-1">
               {visibleTuningSpaceRows.map((row) => (
@@ -255,12 +221,11 @@ export function FinetuneNativeContractCard({
                 </div>
               ))}
               {hiddenTuningSpaceRowCount > 0 && (
-                <p className="text-muted-foreground">+{hiddenTuningSpaceRowCount} more ordered paths.</p>
+                <p className="text-muted-foreground">{t("pipelineEditor.finetune.card.morePaths", { count: hiddenTuningSpaceRowCount })}</p>
               )}
             </div>
             <p className="text-muted-foreground">
-              Studio preview fingerprints are display-only; full Python nirs4all owns final TCV1 fingerprints and
-              optimizer execution.
+              {t("pipelineEditor.finetune.card.fingerprintNote")}
             </p>
           </div>
         ) : (
@@ -270,7 +235,7 @@ export function FinetuneNativeContractCard({
                 <p key={`${issue.code}:${issue.path ?? issue.message}`}>{issue.message}</p>
               ))
             ) : (
-              <p>Enable finetuning and select at least one model or training parameter to preview ordered paths.</p>
+              <p>{t("pipelineEditor.finetune.card.enableToPreview")}</p>
             )}
           </div>
         )}
@@ -292,8 +257,7 @@ export function FinetuneNativeContractCard({
       <div className="mt-3 flex items-start gap-2 text-[11px] text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <p>
-          Studio prepares the configuration only. The optimizer runs in nirs4all, and final conformal calibration is
-          attached after the winner is selected.
+          {t("pipelineEditor.finetune.card.footer")}
         </p>
       </div>
     </div>

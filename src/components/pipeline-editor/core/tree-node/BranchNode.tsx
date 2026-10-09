@@ -5,6 +5,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useDroppable } from "@dnd-kit/core";
 import { ChevronRight, ChevronDown, Sparkles, GitBranch, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,8 +38,10 @@ export function BranchNode({
   onAddChild,
   onRemoveChild,
   isGenerator = false,
-  branchLabel = "Branch",
+  branchLabel,
 }: BranchNodeProps) {
+  const { t } = useTranslation();
+  const resolvedBranchLabel = branchLabel ?? t("pipelineEditor.tree.branchKinds.branch");
   const branchPath = [...parentPath, "branch", String(branchIndex)];
   const { dropIndicator } = usePipelineDnd();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -74,11 +77,11 @@ export function BranchNode({
           )}
           <BranchIcon className="h-3 w-3" />
           <span className="text-[10px] font-medium">
-            {branchName || `${branchLabel} ${branchIndex + 1}`}
+            {branchName || t("pipelineEditor.tree.branchTitle", { label: resolvedBranchLabel, n: branchIndex + 1 })}
           </span>
           {!isExpanded && branch.length > 0 && (
             <span className="text-[9px] text-muted-foreground/70">
-              ({branch.length} steps)
+              {t("pipelineEditor.tree.branchStepsCount", { count: branch.length })}
             </span>
           )}
         </button>
@@ -87,6 +90,7 @@ export function BranchNode({
             variant="ghost"
             size="icon"
             className="h-4 w-4 ml-1 opacity-0 group-hover/branch:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+            aria-label={t("pipelineEditor.tree.removeBranchNamed", { label: resolvedBranchLabel, n: branchIndex + 1 })}
             onClick={() => onRemoveBranch(branchIndex)}
           >
             <Trash2 className="h-2.5 w-2.5" />
@@ -112,7 +116,7 @@ export function BranchNode({
                 ${isOver ? "border-primary bg-primary/10 text-primary" : isGenerator ? "border-orange-400/30" : "border-muted-foreground/30"}
               `}
             >
-              {isOver ? "Drop here" : `Empty ${branchLabel.toLowerCase()} - drop steps here`}
+              {isOver ? t("pipelineEditor.dnd.dropHere") : t("pipelineEditor.tree.emptyBranch", { label: resolvedBranchLabel })}
             </div>
           ) : (
             branch.map((branchStep, idx) => (

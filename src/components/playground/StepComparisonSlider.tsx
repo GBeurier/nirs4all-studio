@@ -11,6 +11,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,7 @@ export function StepComparisonSlider({
   isLoading = false,
   compact = false,
 }: StepComparisonSliderProps) {
+  const { t } = useTranslation();
   // Filter to only enabled operators
   const enabledOperators = useMemo(
     () => operators.filter(op => op.enabled),
@@ -64,10 +66,10 @@ export function StepComparisonSlider({
 
   // Get label for current step
   const stepLabel = useMemo(() => {
-    if (currentStep === 0) return 'Original';
-    if (currentStep > enabledOperators.length) return 'Final';
-    return enabledOperators[currentStep - 1]?.name ?? `Step ${currentStep}`;
-  }, [currentStep, enabledOperators]);
+    if (currentStep === 0) return t('playground.stepComparison.original');
+    if (currentStep > enabledOperators.length) return t('playground.stepComparison.final');
+    return enabledOperators[currentStep - 1]?.name ?? t('playground.stepComparison.stepN', { n: currentStep });
+  }, [currentStep, enabledOperators, t]);
 
   const handleEnabledChange = useCallback((value: boolean) => {
     onInteractionStart?.();
@@ -131,12 +133,12 @@ export function StepComparisonSlider({
                   className="scale-75"
                 />
                 <Label htmlFor="step-mode" className="text-[10px] cursor-pointer">
-                  Step
+                  {t('playground.stepComparison.step')}
                 </Label>
               </div>
             </TooltipTrigger>
             <TooltipContent>
-              Step through pipeline one operator at a time
+              {t('playground.stepComparison.stepThrough')}
             </TooltipContent>
           </Tooltip>
 
@@ -149,6 +151,7 @@ export function StepComparisonSlider({
                 onClick={goToPrev}
                 onMouseDown={onInteractionStart}
                 disabled={currentStep === 0 || isLoading}
+                aria-label={t('playground.stepComparison.previous')}
               >
                 <ChevronLeft className="w-3 h-3" />
               </Button>
@@ -162,6 +165,7 @@ export function StepComparisonSlider({
                 onClick={goToNext}
                 onMouseDown={onInteractionStart}
                 disabled={currentStep >= maxStep || isLoading}
+                aria-label={t('playground.stepComparison.next')}
               >
                 <ChevronRight className="w-3 h-3" />
               </Button>
@@ -181,7 +185,7 @@ export function StepComparisonSlider({
       onKeyDown={handleKeyDown}
       tabIndex={0}
       role="slider"
-      aria-label="Pipeline step selector"
+      aria-label={t('playground.stepComparison.sliderLabel')}
       aria-valuemin={0}
       aria-valuemax={maxStep}
       aria-valuenow={currentStep}
@@ -200,7 +204,7 @@ export function StepComparisonSlider({
             htmlFor="step-comparison"
             className="text-xs font-medium cursor-pointer"
           >
-            Step-by-step comparison
+            {t('playground.stepComparison.title')}
           </Label>
         </div>
         <span className="text-[10px] text-muted-foreground">
@@ -227,7 +231,7 @@ export function StepComparisonSlider({
           {/* Current step label */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              {currentStep === 0 ? 'Original data' : `After: ${stepLabel}`}
+              {currentStep === 0 ? t('playground.stepComparison.originalData') : t('playground.stepComparison.after', { label: stepLabel })}
             </span>
           </div>
 
@@ -240,7 +244,8 @@ export function StepComparisonSlider({
               onClick={goToStart}
               onMouseDown={onInteractionStart}
               disabled={currentStep === 0 || isLoading}
-              title="Go to original (Home)"
+              title={t('playground.stepComparison.goToOriginal')}
+              aria-label={t('playground.stepComparison.goToOriginal')}
             >
               <SkipBack className="w-3.5 h-3.5" />
             </Button>
@@ -251,7 +256,8 @@ export function StepComparisonSlider({
               onClick={goToPrev}
               onMouseDown={onInteractionStart}
               disabled={currentStep === 0 || isLoading}
-              title="Previous step (←)"
+              title={t('playground.stepComparison.previous')}
+              aria-label={t('playground.stepComparison.previous')}
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
@@ -262,7 +268,8 @@ export function StepComparisonSlider({
               onClick={goToNext}
               onMouseDown={onInteractionStart}
               disabled={currentStep >= maxStep || isLoading}
-              title="Next step (→)"
+              title={t('playground.stepComparison.next')}
+              aria-label={t('playground.stepComparison.next')}
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
@@ -273,7 +280,8 @@ export function StepComparisonSlider({
               onClick={goToEnd}
               onMouseDown={onInteractionStart}
               disabled={currentStep >= maxStep || isLoading}
-              title="Go to final (End)"
+              title={t('playground.stepComparison.goToFinal')}
+              aria-label={t('playground.stepComparison.goToFinal')}
             >
               <SkipForward className="w-3.5 h-3.5" />
             </Button>
@@ -281,7 +289,7 @@ export function StepComparisonSlider({
 
           {/* Step labels */}
           <div className="flex justify-between mt-2 px-1">
-            {['Orig', ...enabledOperators.slice(0, 5).map(op => op.name.slice(0, 4))].map((label, i) => (
+            {[t('playground.stepComparison.origShort'), ...enabledOperators.slice(0, 5).map(op => op.name.slice(0, 4))].map((label, i) => (
               <button
                 key={i}
                 onClick={() => onStepChange(i)}

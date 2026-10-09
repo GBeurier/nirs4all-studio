@@ -18,6 +18,7 @@ import {
   ANIMATION_CONFIG,
   formatYValue,
 } from './chartConfig';
+import { useTranslation } from 'react-i18next';
 import type { FoldDistributionYStatsData } from '@/lib/playground/foldDistributionData';
 
 interface FoldDistributionYDistributionChartProps {
@@ -41,10 +42,12 @@ export function FoldDistributionYDistributionChart({
   validationLabel,
   validationColor,
 }: FoldDistributionYDistributionChartProps) {
+  const { t } = useTranslation();
+
   if (yData.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-        No Y statistics available
+        {t('playground.charts.fold.yDist.noStats')}
       </div>
     );
   }
@@ -67,7 +70,7 @@ export function FoldDistributionYDistributionChart({
           fontSize={CHART_THEME.axisFontSize}
           width={45}
           label={{
-            value: 'Y Value',
+            value: t('playground.charts.fold.yDist.axisYValue'),
             angle: -90,
             position: 'insideLeft',
             fontSize: CHART_THEME.axisLabelFontSize,
@@ -106,16 +109,16 @@ export function FoldDistributionYDistributionChart({
                 <p className="font-medium mb-1">{label}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="font-medium" style={{ color: trainColor }}>Train</p>
-                    <p>Mean: {formatYValue(entry.trainMean)}</p>
-                    <p>Std: {formatYValue(entry.trainStd)}</p>
-                    <p>Range: [{formatYValue(entry.trainMin)}, {formatYValue(entry.trainMax)}]</p>
+                    <p className="font-medium" style={{ color: trainColor }}>{t('playground.charts.fold.yDist.train')}</p>
+                    <p>{t('playground.charts.fold.yDist.mean', { value: formatYValue(entry.trainMean) })}</p>
+                    <p>{t('playground.charts.fold.yDist.std', { value: formatYValue(entry.trainStd) })}</p>
+                    <p>{t('playground.charts.fold.yDist.range', { min: formatYValue(entry.trainMin), max: formatYValue(entry.trainMax) })}</p>
                   </div>
                   <div>
                     <p className="font-medium" style={{ color: validationColor }}>{validationLabel}</p>
-                    <p>Mean: {formatYValue(entry.testMean)}</p>
-                    <p>Std: {formatYValue(entry.testStd)}</p>
-                    <p>Range: [{formatYValue(entry.testMin)}, {formatYValue(entry.testMax)}]</p>
+                    <p>{t('playground.charts.fold.yDist.mean', { value: formatYValue(entry.testMean) })}</p>
+                    <p>{t('playground.charts.fold.yDist.std', { value: formatYValue(entry.testStd) })}</p>
+                    <p>{t('playground.charts.fold.yDist.range', { min: formatYValue(entry.testMin), max: formatYValue(entry.testMax) })}</p>
                   </div>
                 </div>
               </div>
@@ -129,7 +132,7 @@ export function FoldDistributionYDistributionChart({
             height={24}
             iconSize={10}
             formatter={(value) => (
-              <span className="text-xs">{String(value).includes('train') ? 'Train' : validationLabel}</span>
+              <span className="text-xs">{String(value).includes('train') ? t('playground.charts.fold.yDist.train') : validationLabel}</span>
             )}
           />
         )}

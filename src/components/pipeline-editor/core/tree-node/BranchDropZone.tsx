@@ -6,6 +6,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { Plus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { usePipelineDnd } from "../../usePipelineDnd";
 import type { BranchDropZoneProps } from "./types";
 
@@ -13,6 +14,7 @@ import type { BranchDropZoneProps } from "./types";
  * Drop zone component for branch insertion points
  */
 export function BranchDropZone({ id, path, index }: BranchDropZoneProps) {
+  const { t } = useTranslation();
   const { dropIndicator } = usePipelineDnd();
 
   const { setNodeRef, isOver } = useDroppable({
@@ -41,7 +43,7 @@ export function BranchDropZone({ id, path, index }: BranchDropZoneProps) {
       {showIndicator && (
         <div className="h-8 rounded-lg border-2 border-dashed border-primary bg-primary/5 flex items-center justify-center gap-1">
           <Plus className="h-3 w-3 text-primary" />
-          <span className="text-[10px] font-medium text-primary">Drop here</span>
+          <span className="text-[10px] font-medium text-primary">{t("pipelineEditor.dnd.dropHere")}</span>
         </div>
       )}
     </div>

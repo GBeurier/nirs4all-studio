@@ -20,6 +20,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import i18n from "i18next";
+import { useTranslation } from "react-i18next";
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
 import {
   renderCanonicalPipeline,
@@ -200,6 +202,7 @@ export function PipelineYAMLView({
   randomState: _randomState,
   className,
 }: PipelineYAMLViewProps) {
+  const { t } = useTranslation();
   const [format, setFormat] = useState<"yaml" | "json">("yaml");
   const [copied, setCopied] = useState(false);
   const [preview, setPreview] = useState<CanonicalPipelineRenderResponse | null>(null);
@@ -238,7 +241,7 @@ export function PipelineYAMLView({
         }
         setPreview(null);
         setPreviewError(
-          error instanceof Error ? error.message : "Unknown error"
+          error instanceof Error ? error.message : i18n.t("pipelineEditor.yaml.unknownError")
         );
       })
       .finally(() => {
@@ -305,24 +308,24 @@ export function PipelineYAMLView({
   // Copy to clipboard
   const handleCopy = useCallback(async () => {
     if (!content) {
-      toast.error("Nothing to copy yet");
+      toast.error(t("pipelineEditor.yaml.nothingToCopy"));
       return;
     }
 
     try {
       await navigator.clipboard.writeText(content);
       setCopied(true);
-      toast.success(`Pipeline copied as ${format.toUpperCase()}`);
+      toast.success(t("pipelineEditor.yaml.copiedAs", { format: format.toUpperCase() }));
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error("Failed to copy to clipboard");
+      toast.error(t("pipelineEditor.yaml.copyFailed"));
     }
-  }, [content, format]);
+  }, [content, format, t]);
 
   // Download as file
   const handleDownload = useCallback(() => {
     if (!content) {
-      toast.error("Nothing to download yet");
+      toast.error(t("pipelineEditor.yaml.nothingToDownload"));
       return;
     }
 
@@ -335,13 +338,13 @@ export function PipelineYAMLView({
     a.download = `${(pipelineName || "pipeline").replace(/\s+/g, "_")}.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(`Pipeline downloaded as ${ext.toUpperCase()}`);
-  }, [content, format, pipelineName]);
+    toast.success(t("pipelineEditor.yaml.downloadedAs", { format: ext.toUpperCase() }));
+  }, [content, format, pipelineName, t]);
 
   if (steps.length === 0) {
     return (
       <div className={`flex items-center justify-center h-full text-muted-foreground text-sm ${className || ""}`}>
-        Add steps to the pipeline to see the file preview.
+        {t("pipelineEditor.yaml.emptyPreview")}
       </div>
     );
   }
@@ -352,13 +355,13 @@ export function PipelineYAMLView({
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">
-            nirs4all File Format
+            {t("pipelineEditor.yaml.fileFormat")}
           </span>
           <span className="text-xs text-muted-foreground">
-            ({canonicalStepCount} step{canonicalStepCount !== 1 ? "s" : ""})
+            {t("pipelineEditor.yaml.stepCount", { count: canonicalStepCount })}
           </span>
           {isLoading ? (
-            <span className="text-xs text-muted-foreground">Updating...</span>
+            <span className="text-xs text-muted-foreground">{t("pipelineEditor.yaml.updating")}</span>
           ) : null}
         </div>
 
@@ -392,17 +395,17 @@ export function PipelineYAMLView({
           {/* Download */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDownload}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDownload} aria-label={t("pipelineEditor.yaml.downloadAs", { format: format.toUpperCase() })}>
                 <Download className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Download as {format.toUpperCase()}</TooltipContent>
+            <TooltipContent>{t("pipelineEditor.yaml.downloadAs", { format: format.toUpperCase() })}</TooltipContent>
           </Tooltip>
 
           {/* Copy */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCopy}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCopy} aria-label={copied ? t("common.copied") : t("pipelineEditor.yaml.copyFormat", { format: format.toUpperCase() })}>
                 {copied ? (
                   <Check className="h-3.5 w-3.5 text-emerald-500" />
                 ) : (
@@ -411,7 +414,7 @@ export function PipelineYAMLView({
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {copied ? "Copied!" : `Copy ${format.toUpperCase()}`}
+              {copied ? t("common.copied") : t("pipelineEditor.yaml.copyFormat", { format: format.toUpperCase() })}
             </TooltipContent>
           </Tooltip>
         </div>

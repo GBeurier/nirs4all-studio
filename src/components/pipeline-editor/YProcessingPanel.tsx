@@ -19,6 +19,7 @@
  */
 
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -158,6 +159,7 @@ export function YProcessingBadge({
   onClick,
   className,
 }: YProcessingBadgeProps) {
+  const { t } = useTranslation();
   if (!config.enabled) return null;
 
   const option = findYProcessingOption(config.scaler);
@@ -178,9 +180,9 @@ export function YProcessingBadge({
       </TooltipTrigger>
       <TooltipContent side="top">
         <div className="text-xs">
-          <div className="font-semibold">Target Processing</div>
+          <div className="font-semibold">{t("pipelineEditor.yProcessing.title")}</div>
           <p className="text-muted-foreground">
-            {option?.description || config.scaler}
+            {option ? t(option.descriptionKey) : config.scaler}
           </p>
         </div>
       </TooltipContent>
@@ -202,6 +204,7 @@ export function YProcessingQuickSetup({
   onChange,
   modelType,
 }: YProcessingQuickSetupProps) {
+  const { t } = useTranslation();
   const handleQuickSetup = () => {
     onChange(buildYProcessingQuickSetup(getRecommendedScaler(modelType)));
   };
@@ -216,7 +219,7 @@ export function YProcessingQuickSetup({
       onClick={handleQuickSetup}
     >
       <BarChart3 className="h-3 w-3 mr-1.5" />
-      Enable y_processing
+      {t("pipelineEditor.yProcessing.enableQuickSetup")}
     </Button>
   );
 }

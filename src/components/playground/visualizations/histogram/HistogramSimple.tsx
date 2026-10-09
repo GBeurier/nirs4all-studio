@@ -26,6 +26,7 @@ import {
 } from '../chartConfig';
 import type { HistogramChartProps, BinData, RechartsMouseEvent } from './types';
 import { RANGE_SELECTION_INITIAL } from './types';
+import { useTranslation } from 'react-i18next';
 
 export default function HistogramSimple({
   histogramData,
@@ -47,6 +48,7 @@ export default function HistogramSimple({
   lastMouseEventRef,
   getBarColor,
 }: HistogramChartProps & { getBarColor: (entry: BinData, index: number) => string }) {
+  const { t } = useTranslation();
   const chartData = useMemo(() =>
     histogramData.map(bin => ({
       ...bin,
@@ -157,7 +159,7 @@ export default function HistogramSimple({
               <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs">
                 <p className="font-medium">{data.label}</p>
                 <p className="text-muted-foreground">
-                  {yAxisLabel}: {data.displayCount.toFixed(config.yAxisType === 'count' ? 0 : 2)}
+                  {t('playground.charts.histogram.tooltip.yAxisValue', { label: yAxisLabel, value: data.displayCount.toFixed(config.yAxisType === 'count' ? 0 : 2) })}
                   {config.yAxisType === 'count' && ` (${((data.count / stats.n) * 100).toFixed(1)}%)`}
                 </p>
               </div>
@@ -220,7 +222,7 @@ export default function HistogramSimple({
             strokeWidth={2}
             strokeDasharray="5 5"
             label={{
-              value: 'Med',
+              value: t('playground.charts.histogram.medianLabel'),
               position: 'top',
               fontSize: 10,
               fill: 'hsl(142, 70%, 45%)',

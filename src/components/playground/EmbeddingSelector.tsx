@@ -12,6 +12,7 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ScatterChart,
   Scatter,
@@ -127,6 +128,7 @@ export function EmbeddingSelector({
   partitionColors,
   visible = true,
 }: EmbeddingSelectorProps) {
+  const { t } = useTranslation();
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('box');
   const [colorBy, setColorBy] = useState<ColorBy>('partition');
   const [isSelecting, setIsSelecting] = useState(false);
@@ -336,13 +338,14 @@ export function EmbeddingSelector({
                 variant={selectionMode === 'box' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setSelectionMode(selectionMode === 'box' ? 'none' : 'box')}
+                aria-label={t('playground.embedding.boxSelection')}
                 className="h-5 w-5 p-0"
               >
                 <Box className="w-3 h-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              Box selection
+              {t('playground.embedding.boxSelection')}
             </TooltipContent>
           </UITooltip>
 
@@ -352,13 +355,14 @@ export function EmbeddingSelector({
                 variant={selectionMode === 'lasso' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setSelectionMode(selectionMode === 'lasso' ? 'none' : 'lasso')}
+                aria-label={t('playground.embedding.lassoSelection')}
                 className="h-5 w-5 p-0"
               >
                 <Lasso className="w-3 h-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              Lasso selection
+              {t('playground.embedding.lassoSelection')}
             </TooltipContent>
           </UITooltip>
 
@@ -370,12 +374,13 @@ export function EmbeddingSelector({
                   size="sm"
                   className="h-5 w-5 p-0"
                   onClick={clear}
+                  aria-label={t('playground.embedding.clearSelection')}
                 >
                   <RotateCcw className="w-3 h-3" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
-                Clear selection
+                {t('playground.embedding.clearSelection')}
               </TooltipContent>
             </UITooltip>
           )}
@@ -388,12 +393,13 @@ export function EmbeddingSelector({
                   size="sm"
                   className="h-5 w-5 p-0"
                   onClick={onToggleExpanded}
+                  aria-label={expanded ? t('playground.embedding.minimize') : t('playground.embedding.expand')}
                 >
                   {expanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
-                {expanded ? 'Minimize' : 'Expand'}
+                {expanded ? t('playground.embedding.minimize') : t('playground.embedding.expand')}
               </TooltipContent>
             </UITooltip>
           )}
@@ -408,10 +414,10 @@ export function EmbeddingSelector({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="partition" className="text-xs">Partition</SelectItem>
-              <SelectItem value="target" className="text-xs">Target</SelectItem>
-              <SelectItem value="selection" className="text-xs">Selection</SelectItem>
-              <SelectItem value="none" className="text-xs">None</SelectItem>
+              <SelectItem value="partition" className="text-xs">{t('playground.embedding.color.partition')}</SelectItem>
+              <SelectItem value="target" className="text-xs">{t('playground.embedding.color.target')}</SelectItem>
+              <SelectItem value="selection" className="text-xs">{t('playground.embedding.color.selection')}</SelectItem>
+              <SelectItem value="none" className="text-xs">{t('playground.embedding.color.none')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -420,7 +426,7 @@ export function EmbeddingSelector({
       {/* Selection count */}
       {selectedCount > 0 && (
         <div className="absolute bottom-1 left-1 z-10 text-[9px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded">
-          {selectedCount} selected
+          {t('playground.embedding.selectedCount', { count: selectedCount })}
         </div>
       )}
 
@@ -485,9 +491,9 @@ export function EmbeddingSelector({
                 const d = payload[0].payload;
                 return (
                   <div className="bg-popover border rounded px-2 py-1 text-xs shadow-lg">
-                    <div className="font-medium">{d.sampleId ?? `Sample ${d.idx}`}</div>
-                    {d.partition && <div className="text-muted-foreground">Partition: {d.partition}</div>}
-                    {d.target !== undefined && <div className="text-muted-foreground">Target: {d.target.toFixed(3)}</div>}
+                    <div className="font-medium">{d.sampleId ?? t('playground.embedding.sampleFallback', { idx: d.idx })}</div>
+                    {d.partition && <div className="text-muted-foreground">{t('playground.embedding.tooltipPartition', { value: d.partition })}</div>}
+                    {d.target !== undefined && <div className="text-muted-foreground">{t('playground.embedding.tooltipTarget', { value: d.target.toFixed(3) })}</div>}
                   </div>
                 );
               }}

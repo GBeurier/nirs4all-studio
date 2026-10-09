@@ -13,6 +13,7 @@
  * - Integration with step palette for adding transforms
  */
 
+import { useTranslation } from "react-i18next";
 import { Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -222,6 +223,7 @@ export function FeatureAugmentationBadge({
   onClick,
   className,
 }: FeatureAugmentationBadgeProps) {
+  const { t } = useTranslation();
   if (!config.enabled) return null;
 
   const activeCount = getActiveFeatureAugmentationTransforms(config).length;
@@ -237,14 +239,17 @@ export function FeatureAugmentationBadge({
           onClick={onClick}
         >
           <Layers className="h-3 w-3" />
-          {activeCount} aug
+          {t("pipelineEditor.augmentation.badge", { count: activeCount })}
         </Badge>
       </TooltipTrigger>
       <TooltipContent side="top">
         <div className="text-xs">
-          <div className="font-semibold">Feature Augmentation</div>
+          <div className="font-semibold">{t("pipelineEditor.augmentation.title")}</div>
           <p className="text-muted-foreground">
-            {`${activeCount} transforms (${FEATURE_AUGMENTATION_ACTION_DETAILS[config.action].label} mode)`}
+            {t("pipelineEditor.augmentation.badgeTooltip", {
+              count: activeCount,
+              mode: t(FEATURE_AUGMENTATION_ACTION_DETAILS[config.action].labelKey),
+            })}
           </p>
         </div>
       </TooltipContent>

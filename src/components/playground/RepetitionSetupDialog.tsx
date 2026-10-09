@@ -10,6 +10,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -72,6 +73,7 @@ export function RepetitionSetupDialog({
   metadataColumns = [],
   onConfirm,
 }: RepetitionSetupDialogProps) {
+  const { t } = useTranslation();
   // Local state for editing
   const [method, setMethod] = useState<RepetitionDetectionMethod>(config.method);
   const [metadataColumn, setMetadataColumn] = useState<string>(config.metadataColumn || '');
@@ -139,10 +141,10 @@ export function RepetitionSetupDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Repeat className="w-5 h-5 text-primary" />
-            Configure Repetition Detection
+            {t('playground.repetitionSetup.title')}
           </DialogTitle>
           <DialogDescription>
-            Configure how biological sample repetitions are identified in your dataset.
+            {t('playground.repetitionSetup.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -179,7 +181,7 @@ export function RepetitionSetupDialog({
 
         <DialogFooter className="border-t pt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             onClick={handleConfirm}
@@ -188,7 +190,7 @@ export function RepetitionSetupDialog({
               (method === 'pattern' && !!patternError)
             }
           >
-            Apply Configuration
+            {t('playground.repetitionSetup.apply')}
           </Button>
         </DialogFooter>
       </DialogContent>

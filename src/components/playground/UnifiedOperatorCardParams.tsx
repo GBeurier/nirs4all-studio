@@ -27,6 +27,7 @@ import {
   getVisibleParamEntries,
   normalizeNumericParamValue,
 } from './UnifiedOperatorCardParamsData';
+import { useTranslation } from 'react-i18next';
 
 interface DynamicParamRendererProps {
   params: Record<string, unknown>;
@@ -45,11 +46,12 @@ export function DynamicParamRenderer({
   localMetadataColumns = [],
   onUpdate,
 }: DynamicParamRendererProps) {
+  const { t } = useTranslation();
   const visibleParams = getVisibleParamEntries(paramDefs);
   const showsGroupBy = supportsRuntimeGroupBy(splitMetadata);
 
   if (visibleParams.length === 0 && !showsGroupBy) {
-    return <p className="text-xs text-muted-foreground">No parameters</p>;
+    return <p className="text-xs text-muted-foreground">{t('playground.operators.params.none')}</p>;
   }
 
   return (
@@ -202,6 +204,7 @@ function GroupByParamInput({
   groupRequired: boolean;
   onUpdate: (key: string, value: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['metadata-columns', datasetId],
     queryFn: ({ signal }) => fetchMetadataColumns(datasetId!, signal),
@@ -240,7 +243,7 @@ function GroupByParamInput({
     <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2.5">
       <div className="flex items-center gap-2">
         <Label className="text-xs text-muted-foreground">
-          Group By
+          {t('playground.operators.params.groupBy')}
           {isRequired && <span className="ml-1 text-destructive">*</span>}
         </Label>
         {groupRequired && (
@@ -251,7 +254,7 @@ function GroupByParamInput({
               isRequired ? 'border-destructive/40 text-destructive' : 'border-amber-500/40 text-amber-700 dark:text-amber-400'
             )}
           >
-            {isRequired ? 'Required' : 'Optional with repetition'}
+            {isRequired ? t('playground.operators.params.required') : t('playground.operators.params.optionalWithRepetition')}
           </Badge>
         )}
       </div>
@@ -261,21 +264,21 @@ function GroupByParamInput({
         onValueChange={(selected) => onUpdate('group_by', selected === '__none__' ? null : selected)}
       >
         <SelectTrigger className="h-8 text-xs">
-          <SelectValue placeholder={isLoading ? 'Loading metadata columns...' : 'Select metadata column'} />
+          <SelectValue placeholder={isLoading ? t('playground.operators.params.loadingColumns') : t('playground.operators.params.selectMetadataColumn')} />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__none__" className="text-xs">
-            No additional group
+            {t('playground.operators.params.noAdditionalGroup')}
           </SelectItem>
           {availableColumns.length === 0 && !isLoading && (
             <SelectItem value="__empty__" disabled className="text-xs text-muted-foreground">
-              No metadata columns available
+              {t('playground.operators.params.noMetadataColumns')}
             </SelectItem>
           )}
           {availableColumns.map((column) => (
             <SelectItem key={column.name} value={column.name} className="text-xs">
               {column.name}
-              {column.n_unique > 0 ? ` (${column.n_unique} values)` : ''}
+              {column.n_unique > 0 ? t('playground.operators.params.valuesCount', { count: column.n_unique }) : ''}
             </SelectItem>
           ))}
         </SelectContent>
@@ -288,7 +291,7 @@ function GroupByParamInput({
       {repetitionColumn && (
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
           <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
-            Dataset repetition
+            {t('playground.operators.params.datasetRepetition')}
           </Badge>
           <span className="font-mono">{repetitionColumn}</span>
         </div>
@@ -306,13 +309,13 @@ function GroupByParamInput({
 
       {groupRequired && !hasValue && repetitionColumn && (
         <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
-          No additional group_by selected. This split will use only the configured dataset repetition.
+          {t('playground.operators.params.onlyRepetition')}
         </p>
       )}
 
       {groupRequired && !hasValue && !repetitionColumn && (
         <p className="text-[11px] leading-relaxed text-destructive">
-          This splitter requires an effective group. Select a metadata column.
+          {t('playground.operators.params.groupRequired')}
         </p>
       )}
     </div>
@@ -327,6 +330,7 @@ interface TextParamInputProps {
 }
 
 function TextParamInput({ paramKey, displayName, value, onUpdate }: TextParamInputProps) {
+  const { t } = useTranslation();
   const commitHandler = useCallback((committedValue: string) => {
     onUpdate(paramKey, committedValue);
   }, [paramKey, onUpdate]);
@@ -354,7 +358,7 @@ function TextParamInput({ paramKey, displayName, value, onUpdate }: TextParamInp
           'h-8 text-xs mt-1',
           isDirty && 'border-primary/50 ring-1 ring-primary/20'
         )}
-        placeholder="Press Enter to apply"
+        placeholder={t('playground.operators.params.pressEnter')}
       />
     </div>
   );
@@ -430,6 +434,7 @@ function MetadataColumnSelect({
   localColumns?: MetadataColumnInfo[];
   onUpdate: (key: string, value: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['metadata-columns', datasetId],
     queryFn: ({ signal }) => fetchMetadataColumns(datasetId!, signal),
@@ -443,7 +448,7 @@ function MetadataColumnSelect({
     return (
       <div>
         <Label className="text-xs text-muted-foreground">{displayName}</Label>
-        <p className="text-xs text-muted-foreground mt-1">Load a dataset to see available columns</p>
+        <p className="text-xs text-muted-foreground mt-1">{t('playground.operators.params.loadDatasetFirst')}</p>
       </div>
     );
   }
@@ -456,17 +461,17 @@ function MetadataColumnSelect({
         onValueChange={(selectedValue) => onUpdate(paramKey, selectedValue)}
       >
         <SelectTrigger className="h-8 text-xs mt-1">
-          <SelectValue placeholder={isLoading ? 'Loading...' : 'Select column'} />
+          <SelectValue placeholder={isLoading ? t('playground.operators.params.loading') : t('playground.operators.params.selectColumn')} />
         </SelectTrigger>
         <SelectContent>
           {columns.length === 0 && !isLoading && (
             <SelectItem value="__none__" disabled className="text-xs text-muted-foreground">
-              No metadata columns available
+              {t('playground.operators.params.noMetadataColumns')}
             </SelectItem>
           )}
           {columns.map((column) => (
             <SelectItem key={column.name} value={column.name} className="text-xs">
-              {column.name} ({column.n_unique} values)
+              {column.name}{t('playground.operators.params.valuesCount', { count: column.n_unique })}
             </SelectItem>
           ))}
         </SelectContent>
@@ -492,6 +497,7 @@ function MetadataValueSelect({
   column: string;
   onUpdate: (key: string, value: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const { data } = useQuery({
     queryKey: ['metadata-columns', datasetId],
     queryFn: ({ signal }) => fetchMetadataColumns(datasetId!, signal),
@@ -514,7 +520,7 @@ function MetadataValueSelect({
     return (
       <div>
         <Label className="text-xs text-muted-foreground">{displayName}</Label>
-        <p className="text-xs text-muted-foreground mt-1">Select a column first</p>
+        <p className="text-xs text-muted-foreground mt-1">{t('playground.operators.params.selectColumnFirst')}</p>
       </div>
     );
   }
@@ -523,7 +529,7 @@ function MetadataValueSelect({
     return (
       <div>
         <Label className="text-xs text-muted-foreground">{displayName}</Label>
-        <p className="text-xs text-muted-foreground mt-1">No values found</p>
+        <p className="text-xs text-muted-foreground mt-1">{t('playground.operators.params.noValues')}</p>
       </div>
     );
   }

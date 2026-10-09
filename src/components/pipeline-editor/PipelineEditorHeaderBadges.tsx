@@ -4,6 +4,7 @@ import {
   Loader2,
   Repeat,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import {
   Popover,
@@ -42,6 +43,7 @@ export function PipelineEditorHeaderBadges({
   isCountingVariants,
   isDirty,
 }: PipelineEditorHeaderBadgesProps) {
+  const { t } = useTranslation();
   const variantSeverity = getVariantCountSeverity(variantCount);
 
   return (
@@ -53,65 +55,65 @@ export function PipelineEditorHeaderBadges({
               variant="outline"
               className="text-xs cursor-pointer transition-colors hover:bg-accent border-muted-foreground/30 text-muted-foreground"
             >
-              {totalSteps} step{totalSteps !== 1 ? "s" : ""}
-              {stepCounts.model > 0 && <span className="text-primary ml-1">({stepCounts.model} model{stepCounts.model !== 1 ? "s" : ""})</span>}
+              {t("pipelineEditor.shell.badges.steps", { count: totalSteps })}
+              {stepCounts.model > 0 && <span className="text-primary ml-1">{t("pipelineEditor.shell.badges.models", { count: stepCounts.model })}</span>}
             </Badge>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-64 bg-popover">
             <div className="space-y-2">
-              <h4 className="text-sm font-medium">Step Breakdown</h4>
+              <h4 className="text-sm font-medium">{t("pipelineEditor.shell.badges.stepBreakdown")}</h4>
               <div className="space-y-1">
                 {stepCounts.preprocessing > 0 && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-blue-500">Preprocessing</span>
+                    <span className="text-blue-500">{t("pipelineEditor.shell.badges.preprocessing")}</span>
                     <span className="font-mono">{stepCounts.preprocessing}</span>
                   </div>
                 )}
                 {stepCounts.y_processing > 0 && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-amber-500">Y-Processing</span>
+                    <span className="text-amber-500">{t("pipelineEditor.shell.badges.yProcessing")}</span>
                     <span className="font-mono">{stepCounts.y_processing}</span>
                   </div>
                 )}
                 {stepCounts.filter > 0 && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-rose-500">Filters</span>
+                    <span className="text-rose-500">{t("pipelineEditor.shell.badges.filters")}</span>
                     <span className="font-mono">{stepCounts.filter}</span>
                   </div>
                 )}
                 {stepCounts.augmentation > 0 && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-indigo-500">Augmentation</span>
+                    <span className="text-indigo-500">{t("pipelineEditor.shell.badges.augmentation")}</span>
                     <span className="font-mono">{stepCounts.augmentation}</span>
                   </div>
                 )}
                 {stepCounts.splitting > 0 && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-purple-500">Splitting</span>
+                    <span className="text-purple-500">{t("pipelineEditor.shell.badges.splitting")}</span>
                     <span className="font-mono">{stepCounts.splitting}</span>
                   </div>
                 )}
                 {stepCounts.model > 0 && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-primary">Models</span>
+                    <span className="text-primary">{t("pipelineEditor.shell.badges.modelsLabel")}</span>
                     <span className="font-mono">{stepCounts.model}</span>
                   </div>
                 )}
                 {stepCounts.branch > 0 && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500">Branches</span>
+                    <span className="text-slate-500">{t("pipelineEditor.shell.badges.branches")}</span>
                     <span className="font-mono">{stepCounts.branch}</span>
                   </div>
                 )}
                 {stepCounts.merge > 0 && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500">Merges</span>
+                    <span className="text-slate-500">{t("pipelineEditor.shell.badges.merges")}</span>
                     <span className="font-mono">{stepCounts.merge}</span>
                   </div>
                 )}
                 {stepCounts.generator > 0 && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-orange-500">Generators</span>
+                    <span className="text-orange-500">{t("pipelineEditor.shell.badges.generators")}</span>
                     <span className="font-mono">{stepCounts.generator}</span>
                   </div>
                 )}
@@ -140,7 +142,7 @@ export function PipelineEditorHeaderBadges({
               ) : (
                 <Repeat className="h-3 w-3 mr-1" />
               )}
-              {formatVariantCount(variantCount)} variant{variantCount !== 1 ? "s" : ""}
+              {t("pipelineEditor.shell.badges.variants", { count: variantCount, formatted: formatVariantCount(variantCount) })}
             </Badge>
           </PopoverTrigger>
           <PopoverContent
@@ -150,7 +152,7 @@ export function PipelineEditorHeaderBadges({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-medium">
-                  Pipeline Variants
+                  {t("pipelineEditor.shell.badges.pipelineVariants")}
                 </h4>
                 <span
                   className={`text-lg font-bold ${getVariantCountColor(
@@ -169,7 +171,7 @@ export function PipelineEditorHeaderBadges({
               {Object.keys(variantBreakdown).length > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-xs text-muted-foreground">
-                    Breakdown by step:
+                    {t("pipelineEditor.shell.badges.breakdownByStep")}
                   </p>
                   {Object.entries(variantBreakdown).map(
                     ([stepId, info]) => (
@@ -192,8 +194,7 @@ export function PipelineEditorHeaderBadges({
                 <p className="text-xs text-muted-foreground flex items-start gap-1.5">
                   <Info className="h-3 w-3 flex-shrink-0 mt-0.5" />
                   <span>
-                    Total pipelines that will be trained when you
-                    run this configuration.
+                    {t("pipelineEditor.shell.badges.variantsHint")}
                   </span>
                 </p>
               </div>
@@ -209,7 +210,7 @@ export function PipelineEditorHeaderBadges({
       )}
       {isDirty && (
         <Badge variant="secondary" className="text-xs">
-          Unsaved
+          {t("pipelineEditor.shell.badges.unsaved")}
         </Badge>
       )}
     </div>

@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { motion } from "@/lib/motion";
 import { Boxes, Cpu, FileEdit, GitBranch, Sparkles, Trash2 } from "lucide-react";
@@ -11,13 +13,13 @@ interface DraftCardProps {
   onDiscard: (id: string) => void;
 }
 
-function formatRelative(ts: number): string {
-  if (!ts) return "just now";
+function formatRelative(ts: number, t: TFunction): string {
+  if (!ts) return t("pipelines.collection.relative.justNow");
   const diff = Date.now() - ts;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
+  if (diff < 60_000) return t("pipelines.collection.relative.justNow");
+  if (diff < 3_600_000) return t("pipelines.collection.relative.minutesAgo", { n: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return t("pipelines.collection.relative.hoursAgo", { n: Math.floor(diff / 3_600_000) });
+  return t("pipelines.collection.relative.daysAgo", { n: Math.floor(diff / 86_400_000) });
 }
 
 function resolveEditorPath(id: string): string {
@@ -43,6 +45,7 @@ function StatCell({ label, value, emphasize = false }: { label: string; value: s
 }
 
 export function DraftCard({ draft, onDiscard }: DraftCardProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const stats = computePipelineStats(draft.state.steps);
   const preview = buildPipelinePreview(draft.state.steps, 6);
@@ -57,13 +60,13 @@ export function DraftCard({ draft, onDiscard }: DraftCardProps) {
       <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-1.5 rounded bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
           <FileEdit className="h-3 w-3" />
-          Draft
+          {t("pipelines.drafts.badge")}
         </div>
         <button
           onClick={() => onDiscard(draft.id)}
           className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
-          aria-label="Discard draft"
-          title="Discard draft"
+          aria-label={t("pipelines.drafts.discard")}
+          title={t("pipelines.drafts.discard")}
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -75,26 +78,26 @@ export function DraftCard({ draft, onDiscard }: DraftCardProps) {
         className="text-left"
       >
         <h3 className="truncate text-base font-semibold text-foreground transition-colors group-hover:text-primary">
-          {draft.state.pipelineName || "Untitled pipeline"}
+          {draft.state.pipelineName || t("pipelines.drafts.untitled")}
         </h3>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Last edited {formatRelative(draft.state.lastModified)}
+          {t("pipelines.drafts.lastEdited", { when: formatRelative(draft.state.lastModified, t) })}
         </p>
       </button>
 
       <div className="mt-3 grid grid-cols-4 gap-2 rounded-md border border-border/40 bg-background/60 px-3 py-2">
-        <StatCell label="ops" value={stats.operators} />
-        <StatCell label="models" value={stats.models} />
-        <StatCell label="branches" value={stats.branches} />
+        <StatCell label={t("pipelines.collection.stats.ops")} value={stats.operators} />
+        <StatCell label={t("pipelines.collection.stats.models")} value={stats.models} />
+        <StatCell label={t("pipelines.collection.stats.branches")} value={stats.branches} />
         <StatCell
-          label="variants"
+          label={t("pipelines.collection.stats.variants")}
           value={stats.hasGenerators ? stats.variants : 1}
           emphasize={stats.hasGenerators}
         />
       </div>
 
       {isBlank ? (
-        <p className="mt-3 text-xs italic text-muted-foreground">Empty draft — no steps yet.</p>
+        <p className="mt-3 text-xs italic text-muted-foreground">{t("pipelines.drafts.empty")}</p>
       ) : preview.nodes.length > 0 ? (
         <ul className="mt-3 space-y-1 text-xs">
           {preview.nodes.map((node) => (
@@ -118,8 +121,7 @@ export function DraftCard({ draft, onDiscard }: DraftCardProps) {
           ))}
           {preview.truncated && (
             <li className="pl-0.5 text-[11px] italic text-muted-foreground/70">
-              + {preview.totalSteps - preview.nodes.length} more step
-              {preview.totalSteps - preview.nodes.length === 1 ? "" : "s"}
+              {t("pipelines.collection.moreSteps", { count: preview.totalSteps - preview.nodes.length })}
             </li>
           )}
         </ul>
@@ -131,7 +133,7 @@ export function DraftCard({ draft, onDiscard }: DraftCardProps) {
           onClick={() => navigate(resolveEditorPath(draft.id))}
           className="flex-1"
         >
-          Resume
+          {t("pipelines.drafts.resume")}
         </Button>
       </div>
     </motion.div>

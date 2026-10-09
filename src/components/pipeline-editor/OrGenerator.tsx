@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import {
   Sparkles,
@@ -102,6 +103,7 @@ export function OrGeneratorContainer({
   isEditing = true,
   className,
 }: OrGeneratorContainerProps) {
+  const { t } = useTranslation();
   const [expandedIndices, setExpandedIndices] = useState<Set<number>>(new Set());
   const [showAddPopover, setShowAddPopover] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -147,7 +149,7 @@ export function OrGeneratorContainer({
           </div>
           <div>
             <h4 className="font-medium text-sm text-orange-600">
-              Choose (_or_)
+              {t("pipelineEditor.generator.or.title")}
             </h4>
             <p className="text-xs text-muted-foreground">
               {generatorSummary}
@@ -163,14 +165,14 @@ export function OrGeneratorContainer({
               onSelectionChange({ ...selection, mode })
             }
           >
-            <SelectTrigger className="w-32 h-8 text-xs">
+            <SelectTrigger className="w-32 h-8 text-xs" aria-label={t("pipelineEditor.generator.or.selectionMode")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover">
-              {Object.entries(selectionModeLabels).map(([mode, { label }]) => (
+              {Object.entries(selectionModeLabels).map(([mode, { labelKey }]) => (
                 <SelectItem key={mode} value={mode}>
                   <div className="flex flex-col">
-                    <span>{label}</span>
+                    <span>{t(labelKey)}</span>
                   </div>
                 </SelectItem>
               ))}
@@ -206,7 +208,7 @@ export function OrGeneratorContainer({
                     }
                     className="w-12 h-7 text-xs font-mono"
                   />
-                  <span className="text-xs text-muted-foreground">to</span>
+                  <span className="text-xs text-muted-foreground">{t("pipelineEditor.generator.or.rangeTo")}</span>
                   <Input
                     type="number"
                     min={rangeValue[0]}
@@ -246,7 +248,7 @@ export function OrGeneratorContainer({
             />
           )}
           <Label className="text-xs text-muted-foreground">
-            of {options.length} {getOrSelectionKindLabel(selection.mode)}
+            {t("pipelineEditor.generator.or.ofOptions", { n: options.length, kind: getOrSelectionKindLabel(selection.mode) })}
           </Label>
           <Badge variant="secondary" className="ml-auto text-xs">
             {getOrVariantLabel(variantCount)}
@@ -285,7 +287,7 @@ export function OrGeneratorContainer({
               className="w-full border-dashed border-orange-500/30 text-orange-500 hover:bg-orange-500/10"
             >
               <Plus className="h-4 w-4 mr-2" />
-              Add Option
+              {t("pipelineEditor.generator.or.addOption")}
             </Button>
           </PopoverTrigger>
           <PopoverContent
@@ -293,7 +295,8 @@ export function OrGeneratorContainer({
             className="w-72 p-2 bg-popover"
           >
             <Input
-              placeholder="Search operators..."
+              placeholder={t("pipelineEditor.generator.or.searchOperators")}
+              aria-label={t("pipelineEditor.generator.or.searchOperators")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="mb-2 h-8 text-sm"
@@ -301,8 +304,8 @@ export function OrGeneratorContainer({
             <ScrollArea className="h-60">
               {filteredStepOptions.map(({ type, options: opts }) => (
                 <div key={type} className="mb-2">
-                  <div className="text-xs font-medium text-muted-foreground px-2 py-1 capitalize">
-                    {type}
+                  <div className="text-xs font-medium text-muted-foreground px-2 py-1">
+                    {t(`pipelineEditor.generator.or.stepTypes.${type}`)}
                   </div>
                   {opts.slice(0, 6).map((opt) => (
                     <Button
@@ -329,10 +332,7 @@ export function OrGeneratorContainer({
       {/* Info */}
       <div className="flex items-start gap-2 p-2 rounded-lg bg-background/50 text-xs text-muted-foreground">
         <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-        <span>
-          Each run will use one of these options. Perfect for comparing
-          preprocessing methods or model types.
-        </span>
+        <span>{t("pipelineEditor.generator.or.info")}</span>
       </div>
     </div>
   );
@@ -351,13 +351,14 @@ export function OrGeneratorDropZone({
   isActive = false,
   className,
 }: OrGeneratorDropZoneProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(...getOrDropZoneClassNames(isActive), className)}
     >
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Sparkles className="h-4 w-4" />
-        <span>Drop here to create OR generator</span>
+        <span>{t("pipelineEditor.generator.or.dropHere")}</span>
       </div>
     </div>
   );
@@ -383,6 +384,7 @@ export function WrapInOrGeneratorPopover({
   onOpenChange,
   trigger,
 }: WrapInOrGeneratorPopoverProps) {
+  const { t } = useTranslation();
   const [selection, setSelection] = useState<SelectionConfig>({ mode: "none" });
 
   const variantCount = calculateOrVariants(selectedSteps.length, selection);
@@ -395,12 +397,12 @@ export function WrapInOrGeneratorPopover({
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-orange-500" />
-            <h4 className="font-medium">Create OR Generator</h4>
+            <h4 className="font-medium">{t("pipelineEditor.generator.or.createTitle")}</h4>
           </div>
 
           <div className="space-y-2">
             <Label className="text-sm">
-              Wrap {selectedSteps.length} step{selectedSteps.length !== 1 ? "s" : ""} in OR generator
+              {t("pipelineEditor.generator.or.wrapSteps", { count: selectedSteps.length })}
             </Label>
             <div className="flex flex-wrap gap-1.5">
               {selectedSteps.map((step) => (
@@ -416,7 +418,7 @@ export function WrapInOrGeneratorPopover({
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Selection Mode</Label>
+            <Label className="text-xs text-muted-foreground">{t("pipelineEditor.generator.or.selectionMode")}</Label>
             <Select
               value={selection.mode}
               onValueChange={(mode: SelectionMode) =>
@@ -427,11 +429,11 @@ export function WrapInOrGeneratorPopover({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-popover">
-                {Object.entries(selectionModeLabels).map(([mode, { label, description }]) => (
+                {Object.entries(selectionModeLabels).map(([mode, { labelKey, descriptionKey }]) => (
                   <SelectItem key={mode} value={mode}>
                     <div className="flex flex-col">
-                      <span>{label}</span>
-                      <span className="text-xs text-muted-foreground">{description}</span>
+                      <span>{t(labelKey)}</span>
+                      <span className="text-xs text-muted-foreground">{t(descriptionKey)}</span>
                     </div>
                   </SelectItem>
                 ))}
@@ -445,14 +447,14 @@ export function WrapInOrGeneratorPopover({
             </Badge>
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" onClick={onCancel}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 size="sm"
                 className="bg-orange-500 hover:bg-orange-600"
                 onClick={() => onWrap(selection)}
               >
-                Create
+                {t("common.create")}
               </Button>
             </div>
           </div>

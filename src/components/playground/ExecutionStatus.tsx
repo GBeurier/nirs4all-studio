@@ -7,6 +7,7 @@
 import { Loader2, CheckCircle, AlertCircle, AlertTriangle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { StepTrace, StepError } from '@/types/playground';
+import { useTranslation } from 'react-i18next';
 
 interface ExecutionStatusProps {
   isProcessing: boolean;
@@ -29,6 +30,7 @@ export function ExecutionStatus({
   warnings = [],
   className,
 }: ExecutionStatusProps) {
+  const { t } = useTranslation();
   // Determine current state
   const isLoading = isProcessing || isFetching;
   const hasErrors = errors.length > 0;
@@ -38,7 +40,7 @@ export function ExecutionStatus({
     return (
       <StatusBadge
         icon={<Clock className="w-3 h-3" />}
-        text="Waiting..."
+        text={t('playground.status.waiting')}
         variant="muted"
         className={className}
       />
@@ -49,7 +51,7 @@ export function ExecutionStatus({
     return (
       <StatusBadge
         icon={<Loader2 className="w-3 h-3 animate-spin" />}
-        text="Processing..."
+        text={t('playground.status.processing')}
         variant="primary"
         className={className}
       />
@@ -60,7 +62,7 @@ export function ExecutionStatus({
     return (
       <StatusBadge
         icon={<AlertCircle className="w-3 h-3" />}
-        text={`${errors.length} error${errors.length > 1 ? 's' : ''}`}
+        text={t('playground.status.errors', { count: errors.length })}
         variant="destructive"
         className={className}
       />
@@ -71,7 +73,7 @@ export function ExecutionStatus({
     return (
       <StatusBadge
         icon={<AlertTriangle className="w-3 h-3" />}
-        text={`${warnings.length} warning${warnings.length > 1 ? 's' : ''}`}
+        text={t('playground.status.warnings', { count: warnings.length })}
         variant="warning"
         className={className}
       />
@@ -131,11 +133,12 @@ interface ExecutionTraceProps {
 }
 
 export function ExecutionTrace({ trace, className }: ExecutionTraceProps) {
+  const { t } = useTranslation();
   if (trace.length === 0) return null;
 
   return (
     <div className={cn('space-y-1', className)}>
-      <h4 className="text-xs font-medium text-muted-foreground">Execution Trace</h4>
+      <h4 className="text-xs font-medium text-muted-foreground">{t('playground.status.executionTrace')}</h4>
       <div className="space-y-0.5">
         {trace.map((step, i) => (
           <div
@@ -172,13 +175,14 @@ interface ErrorDisplayProps {
 }
 
 export function ErrorDisplay({ errors, className }: ErrorDisplayProps) {
+  const { t } = useTranslation();
   if (errors.length === 0) return null;
 
   return (
     <div className={cn('space-y-1', className)}>
       <h4 className="text-xs font-medium text-destructive flex items-center gap-1">
         <AlertCircle className="w-3 h-3" />
-        Errors
+        {t('playground.status.errorsTitle')}
       </h4>
       <div className="space-y-1">
         {errors.map((err, i) => (

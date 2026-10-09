@@ -7,6 +7,7 @@
  * synchronously testable; the components stay thin presentation/orchestration.
  */
 
+import i18n from "i18next";
 import { calculateCartesianStageVariants } from "./variantCounting";
 import type { PipelineStep, StepOption, StepType } from "./types";
 
@@ -39,28 +40,40 @@ export const MAX_PREVIEW_BASE_COMBINATIONS = 20;
 /** Max number of example rows shown in the combination preview. */
 export const MAX_PREVIEW_EXAMPLES = 10;
 
+/** Nouns that can be counted by {@link pluralize} / {@link pluralizeLocale}. */
+export type CartesianCountUnit =
+  | "option"
+  | "stage"
+  | "baseCombination"
+  | "generatedVariant";
+
 /** Placeholder shown for an empty stage inside a combination example. */
-export const EMPTY_STAGE_PLACEHOLDER = "(empty)";
+function getEmptyStagePlaceholder(): string {
+  return i18n.t("pipelineEditor.generator.cartesian.emptyStage");
+}
 
 /**
- * Format a count with its (auto-pluralized) noun, e.g. `pluralize(2, "option")`
- * -> "2 options".
+ * Format a count with its localized, pluralized noun, e.g.
+ * `pluralize(2, "option")` -> "2 options".
  */
-export function pluralize(count: number, singular: string): string {
-  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+export function pluralize(count: number, unit: CartesianCountUnit): string {
+  return i18n.t(`pipelineEditor.generator.cartesian.units.${unit}`, { count });
 }
 
 /**
  * Like {@link pluralize} but with a locale-formatted count, used wherever the UI
  * shows potentially large totals, e.g. "1,024 base combinations".
  */
-export function pluralizeLocale(count: number, singular: string): string {
-  return `${count.toLocaleString()} ${singular}${count === 1 ? "" : "s"}`;
+export function pluralizeLocale(count: number, unit: CartesianCountUnit): string {
+  return i18n.t(`pipelineEditor.generator.cartesian.unitsFormatted.${unit}`, {
+    count,
+    formatted: count.toLocaleString(i18n.language),
+  });
 }
 
 /** Default label for a stage at the given 0-based index. */
 export function getCartesianStageDefaultLabel(index: number): string {
-  return `Stage ${index + 1}`;
+  return i18n.t("pipelineEditor.branch.defaultName.stage", { n: index + 1 });
 }
 
 /** Resolve a stage's display label, falling back to the default. */
@@ -98,10 +111,10 @@ export function getCartesianSummary(
 ): CartesianSummary {
   return {
     stages: pluralize(stageCount, "stage"),
-    baseCombinations: pluralizeLocale(baseCombinations, "base combination"),
+    baseCombinations: pluralizeLocale(baseCombinations, "baseCombination"),
     generatedVariants:
       totalVariants !== baseCombinations
-        ? pluralizeLocale(totalVariants, "generated variant")
+        ? pluralizeLocale(totalVariants, "generatedVariant")
         : undefined,
   };
 }
@@ -140,7 +153,7 @@ export function generateCombinationExamples(
 
     const stage = stages[stageIndex];
     if (stage.length === 0) {
-      walk(stageIndex + 1, [...current, EMPTY_STAGE_PLACEHOLDER]);
+      walk(stageIndex + 1, [...current, getEmptyStagePlaceholder()]);
     } else {
       for (const option of stage) {
         walk(stageIndex + 1, [...current, option.name]);

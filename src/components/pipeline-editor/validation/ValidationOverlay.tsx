@@ -27,6 +27,7 @@
  */
 
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
 import {
   Tooltip,
@@ -160,6 +161,7 @@ function ValidationOverlayInner({
   result,
   className,
 }: ValidationOverlayInnerProps): React.ReactElement | null {
+  const { t } = useTranslation();
   const { issues, hasError, hasWarning, errorCount, warningCount } =
     useStepValidation(stepId, result);
 
@@ -210,17 +212,17 @@ function ValidationOverlayInner({
       {hasError && (
         <div className="flex items-center gap-1 text-destructive">
           <AlertCircle className="h-3 w-3" />
-          <span>{errorCount} error{errorCount !== 1 && "s"}</span>
+          <span>{t("pipelineEditor.validation.ui.errorCount", { count: errorCount })}</span>
         </div>
       )}
       {hasWarning && (
         <div className="flex items-center gap-1 text-orange-500">
           <AlertTriangle className="h-3 w-3" />
-          <span>{warningCount} warning{warningCount !== 1 && "s"}</span>
+          <span>{t("pipelineEditor.validation.ui.warningCount", { count: warningCount })}</span>
         </div>
       )}
       <div className="text-muted-foreground pt-1 border-t">
-        Click to see details
+        {t("pipelineEditor.validation.ui.clickForDetails")}
       </div>
     </div>
   );
@@ -239,6 +241,7 @@ function ValidationOverlayInner({
             <button
               type="button"
               onClick={handleClick}
+              aria-label={hasError ? t("pipelineEditor.validation.ui.errorCount", { count: errorCount }) : t("pipelineEditor.validation.ui.warningCount", { count: warningCount })}
               className={cn(
                 "flex items-center justify-center rounded-full font-medium",
                 "transition-transform hover:scale-110",
@@ -275,6 +278,7 @@ export function ValidationBadge({
   onClick,
   className,
 }: ValidationBadgeProps): React.ReactElement | null {
+  const { t } = useTranslation();
   const validationContext = useOptionalValidationContext();
   // Call useStepValidation before the early return so hooks are always called in the same order.
   const { issues, hasError, hasWarning, errorCount, warningCount } =
@@ -302,6 +306,7 @@ export function ValidationBadge({
     <button
       type="button"
       onClick={handleClick}
+      aria-label={hasError ? t("pipelineEditor.validation.ui.errorCount", { count }) : t("pipelineEditor.validation.ui.warningCount", { count })}
       className={cn(
         "inline-flex items-center gap-1 rounded-full",
         bgClass,
@@ -313,7 +318,7 @@ export function ValidationBadge({
       <Icon className={cn(config.icon, colorClass)} />
       {showLabel && (
         <span className={colorClass}>
-          {count} {hasError ? "error" : "warning"}{count !== 1 && "s"}
+          {hasError ? t("pipelineEditor.validation.ui.errorCount", { count }) : t("pipelineEditor.validation.ui.warningCount", { count })}
         </span>
       )}
       {!showLabel && <span className={colorClass}>{count}</span>}

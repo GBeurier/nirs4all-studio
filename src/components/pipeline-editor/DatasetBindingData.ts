@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import type { DataShape } from "./DatasetBinding";
 import type { Dataset } from "@/types/datasets";
 
@@ -27,9 +28,10 @@ export function formatBoundDatasetShapeBadge(shape: DataShape): string {
 }
 
 export function formatDatasetListShape(dataset: Dataset): string {
-  return `${dataset.num_samples?.toLocaleString() || "?"} samples · ${
-    dataset.num_features?.toLocaleString() || "?"
-  } features`;
+  return i18n.t("pipelineEditor.binding.listShape", {
+    samples: dataset.num_samples?.toLocaleString() || "?",
+    features: dataset.num_features?.toLocaleString() || "?",
+  });
 }
 
 export function formatDataShapeTuple(shape: DataShape): string {
@@ -41,7 +43,7 @@ export function getDataShapeSourcesBadge(shape: DataShape): DataShapeSourcesBadg
     return null;
   }
 
-  return { label: `${shape.sources} sources` };
+  return { label: i18n.t("pipelineEditor.binding.sourcesBadge", { count: shape.sources }) };
 }
 
 export function buildDatasetShapeDisplayModel(shape: DataShape): DatasetShapeDisplayModel {

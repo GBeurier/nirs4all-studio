@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ArrowRight,
   ChevronDown,
@@ -77,6 +78,7 @@ export function FeatureAugmentationHeader({
   activeCount,
   onToggle,
 }: FeatureAugmentationHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -92,21 +94,22 @@ export function FeatureAugmentationHeader({
         </div>
         <div>
           <h3 className="font-semibold text-foreground flex items-center gap-2">
-            Feature Augmentation
+            {t("pipelineEditor.augmentation.title")}
             {enabled && activeCount > 0 && (
               <Badge className="text-[10px] px-1.5 h-4 bg-indigo-500">
-                {activeCount} transforms
+                {t("pipelineEditor.augmentation.transformsCount", { count: activeCount })}
               </Badge>
             )}
           </h3>
           <p className="text-xs text-muted-foreground">
-            Generate multiple preprocessing variants
+            {t("pipelineEditor.augmentation.subtitle")}
           </p>
         </div>
       </div>
       <Switch
         checked={enabled}
         onCheckedChange={onToggle}
+        aria-label={t("pipelineEditor.augmentation.toggle")}
         className="data-[state=checked]:bg-indigo-500"
       />
     </div>
@@ -122,9 +125,10 @@ export function FeatureAugmentationActionModeSection({
   action,
   onActionChange,
 }: FeatureAugmentationActionModeSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
-      <Label className="text-sm font-medium">Action Mode</Label>
+      <Label className="text-sm font-medium">{t("pipelineEditor.augmentation.actionMode")}</Label>
       <RadioGroup
         value={action}
         onValueChange={(value: string) =>
@@ -158,14 +162,14 @@ export function FeatureAugmentationActionModeSection({
                   isSelected ? "text-indigo-500" : "text-foreground",
                 )}
               >
-                {desc.label}
+                {t(desc.labelKey)}
               </span>
             </label>
           );
         })}
       </RadioGroup>
       <p className="text-xs text-muted-foreground">
-        {FEATURE_AUGMENTATION_ACTION_DETAILS[action].description}
+        {t(FEATURE_AUGMENTATION_ACTION_DETAILS[action].descriptionKey)}
       </p>
     </div>
   );
@@ -191,10 +195,11 @@ export function FeatureAugmentationTransformsSection({
   onToggleTransform,
   onUpdateTransformParams,
 }: FeatureAugmentationTransformsSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Transforms</Label>
+        <Label className="text-sm font-medium">{t("pipelineEditor.augmentation.transforms")}</Label>
         <div className="flex items-center gap-1">
           {transforms.length > 0 && (
             <Button
@@ -203,7 +208,7 @@ export function FeatureAugmentationTransformsSection({
               className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
               onClick={onClearAll}
             >
-              Clear all
+              {t("pipelineEditor.augmentation.clearAll")}
             </Button>
           )}
           <AddTransformDialog
@@ -215,7 +220,7 @@ export function FeatureAugmentationTransformsSection({
                 className="h-6 px-2 text-xs gap-1"
               >
                 <Plus className="h-3 w-3" />
-                Add
+                {t("common.add")}
               </Button>
             }
           />
@@ -226,14 +231,14 @@ export function FeatureAugmentationTransformsSection({
         <div className="text-center py-6 border border-dashed rounded-lg">
           <Package className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
           <p className="text-sm text-muted-foreground mb-2">
-            No transforms added yet
+            {t("pipelineEditor.augmentation.noTransforms")}
           </p>
           <AddTransformDialog
             onAdd={onAddTransform}
             trigger={
               <Button variant="outline" size="sm" className="gap-1">
                 <Plus className="h-3.5 w-3.5" />
-                Add Transform
+                {t("pipelineEditor.augmentation.addTransform")}
               </Button>
             }
           />
@@ -267,22 +272,23 @@ interface FeatureAugmentationQuickPresetsProps {
 export function FeatureAugmentationQuickPresets({
   onApplyPreset,
 }: FeatureAugmentationQuickPresetsProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
-      <Label className="text-xs text-muted-foreground">Quick Presets</Label>
+      <Label className="text-xs text-muted-foreground">{t("pipelineEditor.augmentation.quickPresets")}</Label>
       <div className="grid grid-cols-2 gap-2">
         {AUGMENTATION_PRESETS.map((preset) => (
           <Button
-            key={preset.name}
+            key={preset.id}
             variant="outline"
             size="sm"
             className="h-auto py-2 justify-start text-left"
             onClick={() => onApplyPreset(preset)}
           >
             <div className="flex flex-col">
-              <span className="text-xs font-medium">{preset.name}</span>
+              <span className="text-xs font-medium">{t(`pipelineEditor.augmentation.presets.${preset.id}.name`)}</span>
               <span className="text-[10px] text-muted-foreground">
-                {preset.description}
+                {t(`pipelineEditor.augmentation.presets.${preset.id}.description`)}
               </span>
             </div>
           </Button>
@@ -293,13 +299,12 @@ export function FeatureAugmentationQuickPresets({
 }
 
 export function FeatureAugmentationDisabledState() {
+  const { t } = useTranslation();
   return (
     <div className="text-center py-4 text-muted-foreground">
-      <p className="text-xs">
-        Enable to generate multiple preprocessing channels
-      </p>
+      <p className="text-xs">{t("pipelineEditor.augmentation.disabled.title")}</p>
       <p className="text-[10px] mt-1 text-muted-foreground/70">
-        Useful for ensemble methods or comparing preprocessing approaches
+        {t("pipelineEditor.augmentation.disabled.hint")}
       </p>
     </div>
   );
@@ -320,6 +325,7 @@ function TransformItem({
   onRemove,
   onUpdateParams,
 }: TransformItemProps) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const displayParams = formatFeatureAugmentationParamsPreview(
@@ -336,7 +342,10 @@ function TransformItem({
       )}
     >
       <div className="flex items-center gap-2 p-2">
-        <div className="p-1 cursor-grab text-muted-foreground hover:text-foreground">
+        <div
+          className="p-1 cursor-grab text-muted-foreground hover:text-foreground"
+          title={t("pipelineEditor.augmentation.dragToReorder")}
+        >
           <GripVertical className="h-3.5 w-3.5" />
         </div>
 
@@ -366,6 +375,8 @@ function TransformItem({
               size="icon"
               className="h-6 w-6"
               onClick={() => setIsExpanded(!isExpanded)}
+              aria-label={isExpanded ? t("pipelineEditor.augmentation.hideParameters") : t("pipelineEditor.augmentation.showParameters")}
+              aria-expanded={isExpanded}
             >
               {isExpanded ? (
                 <ChevronUp className="h-3 w-3" />
@@ -377,6 +388,7 @@ function TransformItem({
           <Switch
             checked={transform.enabled}
             onCheckedChange={onToggle}
+            aria-label={t("pipelineEditor.augmentation.toggleTransform", { name: transform.name })}
             className="scale-75 data-[state=checked]:bg-indigo-500"
           />
           <Button
@@ -384,6 +396,7 @@ function TransformItem({
             size="icon"
             className="h-6 w-6 text-muted-foreground hover:text-destructive"
             onClick={onRemove}
+            aria-label={t("pipelineEditor.augmentation.removeTransform", { name: transform.name })}
           >
             <X className="h-3 w-3" />
           </Button>
@@ -427,6 +440,7 @@ interface AddTransformDialogProps {
 }
 
 function AddTransformDialog({ onAdd, trigger }: AddTransformDialogProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [selectedTransform, setSelectedTransform] = useState<string>("");
 
@@ -450,21 +464,21 @@ function AddTransformDialog({ onAdd, trigger }: AddTransformDialogProps) {
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Add Transform</DialogTitle>
+          <DialogTitle>{t("pipelineEditor.augmentation.addTransform")}</DialogTitle>
           <DialogDescription>
-            Select a preprocessing transform to add to the augmentation chain.
+            {t("pipelineEditor.augmentation.addDialogDescription")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="py-4">
           <Select value={selectedTransform} onValueChange={setSelectedTransform}>
             <SelectTrigger>
-              <SelectValue placeholder="Select a transform..." />
+              <SelectValue placeholder={t("pipelineEditor.augmentation.selectTransform")} />
             </SelectTrigger>
             <SelectContent className="max-h-[300px]">
               {optionsByCategory.map(({ category, options }) => (
                 <SelectGroup key={category}>
-                  <SelectLabel>{category}</SelectLabel>
+                  <SelectLabel>{category === "Other" ? t("pipelineEditor.augmentation.otherCategory") : category}</SelectLabel>
                   {options.map((option) => (
                     <SelectItem key={option.name} value={option.name}>
                       <div className="flex flex-col">
@@ -483,14 +497,14 @@ function AddTransformDialog({ onAdd, trigger }: AddTransformDialogProps) {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={handleAdd}
             disabled={!selectedTransform}
             className="bg-indigo-500 hover:bg-indigo-600"
           >
-            Add Transform
+            {t("pipelineEditor.augmentation.addTransform")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -507,22 +521,23 @@ export function FeatureAugmentationPreview({
   transforms,
   action,
 }: FeatureAugmentationPreviewProps) {
+  const { t } = useTranslation();
   const output = getFeatureAugmentationOutputPreview(action, transforms);
 
   return (
     <div className="p-3 rounded-lg bg-indigo-500/5 border border-indigo-500/20 space-y-2">
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-indigo-500" />
-        <span className="text-sm font-medium">Output Preview</span>
+        <span className="text-sm font-medium">{t("pipelineEditor.augmentation.outputPreview")}</span>
       </div>
 
       <div className="flex items-center gap-2 text-xs">
         <Badge variant="outline" className="font-mono">
-          Input: (n, D)
+          {t("pipelineEditor.augmentation.inputShape")}
         </Badge>
         <ArrowRight className="h-3 w-3 text-muted-foreground" />
         <Badge className="font-mono bg-indigo-500">
-          Output: (n, {output.channels}, D)
+          {t("pipelineEditor.augmentation.outputShape", { channels: output.channels })}
         </Badge>
       </div>
 
@@ -531,7 +546,7 @@ export function FeatureAugmentationPreview({
       {transforms.length > 0 && action !== "replace" && (
         <div className="flex flex-wrap gap-1 mt-2">
           <Badge variant="secondary" className="text-[10px]">
-            Original
+            {t("pipelineEditor.augmentation.original")}
           </Badge>
           {transforms.map((transform, index) => (
             <Badge

@@ -37,6 +37,7 @@ import {
   uploadScatter3DPointBuffers,
   uploadScatter3DSelectionBuffers,
 } from './ScatterPureWebGL3D.webgl';
+import { useTranslation } from 'react-i18next';
 
 // ============= Shaders =============
 
@@ -214,6 +215,7 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
   isLoading,
   clearOnBackgroundClick = true,
 }, ref) => {
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { requestRender, setRender } = useRenderScheduler(canvasRef);
   const resourcesRef = useRef<Scatter3DWebGLResources | null>(null);
@@ -479,7 +481,8 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
         size="sm"
         className="absolute top-2 right-2 h-7 w-7 p-0"
         onClick={handleReset}
-        title="Reset camera"
+        title={t('playground.charts.scatter.resetCamera')}
+        aria-label={t('playground.charts.scatter.resetCamera')}
       >
         <RotateCcw className="h-4 w-4" />
       </Button>

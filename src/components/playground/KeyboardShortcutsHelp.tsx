@@ -27,9 +27,9 @@ import { cn } from '@/lib/utils';
 import {
   type KeyboardShortcut,
   type ShortcutCategory,
-  CATEGORY_LABELS,
   CATEGORY_ORDER,
 } from '@/hooks/usePlaygroundShortcuts';
+import { Trans, useTranslation } from 'react-i18next';
 
 // ============= Types =============
 
@@ -159,16 +159,17 @@ interface ShortcutCategoryProps {
 }
 
 function ShortcutCategorySection({ category, shortcuts, highlight }: ShortcutCategoryProps) {
+  const { t } = useTranslation();
   if (shortcuts.length === 0) return null;
 
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2 py-2 px-3">
         <Badge variant="outline" className="text-xs">
-          {CATEGORY_LABELS[category]}
+          {t(`playground.shortcuts.categories.${category}`)}
         </Badge>
         <span className="text-[10px] text-muted-foreground">
-          {shortcuts.length} shortcut{shortcuts.length !== 1 ? 's' : ''}
+          {t('playground.shortcuts.count', { count: shortcuts.length })}
         </span>
       </div>
       <div className="space-y-0.5">
@@ -187,11 +188,25 @@ export function KeyboardShortcutsHelp({
   onOpenChange,
   shortcutsByCategory,
 }: KeyboardShortcutsHelpProps) {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Localised copy of the shortcuts (labels/descriptions are keyed by shortcut id)
+  const localizedByCategory = useMemo(() => {
+    const result = {} as Record<ShortcutCategory, KeyboardShortcut[]>;
+    for (const [category, list] of Object.entries(shortcutsByCategory)) {
+      result[category as ShortcutCategory] = list.map((s) => ({
+        ...s,
+        label: t(`playground.shortcuts.items.${s.id}.label`),
+        description: t(`playground.shortcuts.items.${s.id}.description`),
+      }));
+    }
+    return result;
+  }, [shortcutsByCategory, t]);
 
   // Filter shortcuts based on search
   const filteredByCategory = useMemo(() => {
-    if (!searchQuery.trim()) return shortcutsByCategory;
+    if (!searchQuery.trim()) return localizedByCategory;
 
     const query = searchQuery.toLowerCase();
     const filtered: Record<ShortcutCategory, KeyboardShortcut[]> = {
@@ -203,7 +218,7 @@ export function KeyboardShortcutsHelp({
       general: [],
     };
 
-    Object.entries(shortcutsByCategory).forEach(([category, shortcuts]) => {
+    Object.entries(localizedByCategory).forEach(([category, shortcuts]) => {
       filtered[category as ShortcutCategory] = shortcuts.filter(
         (s) =>
           s.label.toLowerCase().includes(query) ||
@@ -213,7 +228,7 @@ export function KeyboardShortcutsHelp({
     });
 
     return filtered;
-  }, [shortcutsByCategory, searchQuery]);
+  }, [localizedByCategory, searchQuery]);
 
   // Count total visible shortcuts
   const totalVisible = useMemo(
@@ -236,10 +251,10 @@ export function KeyboardShortcutsHelp({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Keyboard className="w-5 h-5" />
-            Keyboard Shortcuts
+            {t('playground.shortcuts.title')}
           </DialogTitle>
           <DialogDescription>
-            Use these shortcuts to navigate and interact with the Playground faster.
+            {t('playground.shortcuts.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -247,7 +262,7 @@ export function KeyboardShortcutsHelp({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Search shortcuts..."
+            placeholder={t('playground.shortcuts.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 pr-8"
@@ -256,6 +271,7 @@ export function KeyboardShortcutsHelp({
             <button
               type="button"
               onClick={() => setSearchQuery('')}
+              aria-label={t('playground.shortcuts.clearSearch')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               <X className="w-4 h-4" />
@@ -266,7 +282,7 @@ export function KeyboardShortcutsHelp({
         {/* Results count when searching */}
         {searchQuery && (
           <div className="text-xs text-muted-foreground">
-            {totalVisible} shortcut{totalVisible !== 1 ? 's' : ''} found
+            {t('playground.shortcuts.found', { count: totalVisible })}
           </div>
         )}
 
@@ -277,7 +293,7 @@ export function KeyboardShortcutsHelp({
           {totalVisible === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Keyboard className="w-10 h-10 mx-auto mb-3 opacity-40" />
-              <p className="text-sm">No shortcuts match your search</p>
+              <p className="text-sm">{t('playground.shortcuts.noMatch')}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -295,8 +311,8 @@ export function KeyboardShortcutsHelp({
 
         {/* Footer tip */}
         <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
-          <span>Press <KeyBadge keyName="?" /> anytime to show this help</span>
-          <span>Press <KeyBadge keyName="Escape" /> to close</span>
+          <span><Trans i18nKey="playground.shortcuts.pressToShow" components={{ key: <KeyBadge keyName="?" /> }} /></span>
+          <span><Trans i18nKey="playground.shortcuts.pressToClose" components={{ key: <KeyBadge keyName="Escape" /> }} /></span>
         </div>
       </DialogContent>
     </Dialog>

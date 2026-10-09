@@ -4,6 +4,7 @@
  * Centralized type definitions and helper functions for finetuning components.
  */
 
+import i18n from "i18next";
 import type { FinetuneParamType, FinetuneParamConfig } from "../types";
 import { Hash, TrendingUp, Sparkles, List, type LucideIcon } from "lucide-react";
 
@@ -17,7 +18,8 @@ export interface ParamPreset {
   high?: number;
   step?: number;
   choices?: (string | number)[];
-  description: string;
+  /** i18n key of the preset description */
+  descriptionKey: string;
   forModels?: string[];
 }
 
@@ -28,7 +30,8 @@ export interface StaticParamPreset {
   name: string;
   default: number;
   type: "number";
-  description: string;
+  /** i18n key of the preset description */
+  descriptionKey: string;
 }
 
 /**
@@ -37,13 +40,25 @@ export interface StaticParamPreset {
 export function formatParamType(type: FinetuneParamType): string {
   switch (type) {
     case "int":
-      return "Integer";
     case "float":
-      return "Float";
     case "log_float":
-      return "Log Float";
     case "categorical":
-      return "Categorical";
+      return i18n.t(`pipelineEditor.finetune.type.${type}`);
+    default:
+      return type;
+  }
+}
+
+/**
+ * Format parameter type as a short label (for compact type selectors)
+ */
+export function formatParamTypeShort(type: FinetuneParamType): string {
+  switch (type) {
+    case "int":
+    case "float":
+    case "log_float":
+    case "categorical":
+      return i18n.t(`pipelineEditor.finetune.typeShort.${type}`);
     default:
       return type;
   }

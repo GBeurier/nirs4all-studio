@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import type { TierLevel } from "./contexts/usePipelineEditorPreferences";
 import type {
   StepOption,
@@ -67,25 +68,21 @@ export const stepTypeOrder: PaletteGroupKey[] = [
   "utility",
 ];
 
-/** Group-level display labels (overrides stepTypeLabels for virtual groups). */
-export const paletteGroupLabels: Partial<Record<PaletteGroupKey, string>> = {
-  model_regression: "Regression Models",
-  model_classification: "Classification Models",
+/** Locale keys of the group-level display labels (override the step type labels for virtual groups). */
+const PALETTE_GROUP_LABEL_KEYS: Partial<Record<PaletteGroupKey, string>> = {
+  model_regression: "pipelineEditor.palette.groups.regressionModels",
+  model_classification: "pipelineEditor.palette.groups.classificationModels",
 };
 
-/** Tier selector labels */
-export const TIER_LABELS: Record<TierLevel, string> = {
-  core: "Essential",
-  standard: "Standard",
-  all: "All",
-};
+/** Tier selector labels (resolved in the active language at call time) */
+export function getTierLabel(tier: TierLevel): string {
+  return i18n.t(`pipelineEditor.palette.tiers.${tier}`);
+}
 
-/** Tier selector tooltips */
-export const TIER_TOOLTIPS: Record<TierLevel, string> = {
-  core: "Essential NIRS operators only",
-  standard: "Standard operators (nirs4all + common sklearn)",
-  all: "All operators including advanced and deep learning",
-};
+/** Tier selector tooltips (resolved in the active language at call time) */
+export function getTierTooltip(tier: TierLevel): string {
+  return i18n.t(`pipelineEditor.palette.tierTooltips.${tier}`);
+}
 
 /** Keywords that mark a model option as classification-oriented. */
 const CLASSIFIER_NAME_PATTERNS = [
@@ -127,7 +124,8 @@ export function getPaletteGroupDisplayLabel(
   key: PaletteGroupKey,
   labels: Record<StepType, string>,
 ): string {
-  return paletteGroupLabels[key] ?? labels[resolveStepType(key)];
+  const labelKey = PALETTE_GROUP_LABEL_KEYS[key];
+  return labelKey ? i18n.t(labelKey) : labels[resolveStepType(key)];
 }
 
 export function getOptionsForPaletteGroup(

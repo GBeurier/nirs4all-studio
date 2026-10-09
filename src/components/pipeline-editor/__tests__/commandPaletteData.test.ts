@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import {
   buildCommandActions,
   filterCommandActions,
@@ -8,6 +8,11 @@ import {
   type CommandActionHandlers,
 } from "../commandPaletteData";
 import type { PipelineStep, StepOption, StepType } from "../types";
+import i18n from "i18next";
+import en from "@/locales/en";
+beforeAll(async () => {
+  await i18n.init({ lng: "en", resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
+});
 
 function makeStep(overrides: Partial<PipelineStep> = {}): PipelineStep {
   return {

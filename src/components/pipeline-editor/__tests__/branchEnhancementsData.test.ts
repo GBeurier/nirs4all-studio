@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from "vitest";
+import i18n from "@/lib/i18n";
 import type { PipelineStep } from "../types";
 import {
   calculateBranchSummaryStats,
@@ -18,6 +20,10 @@ function makeStep(overrides: Partial<PipelineStep> & { name: string }): Pipeline
     ...overrides,
   };
 }
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 describe("branch enhancement data helpers", () => {
   it("builds default names for branches and generator groups", () => {

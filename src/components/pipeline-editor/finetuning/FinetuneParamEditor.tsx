@@ -3,6 +3,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Trash2,
   Info,
@@ -21,7 +22,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { FinetuneParamConfig, FinetuneParamType } from "../types";
-import { formatParamType, getParamTypeIcon } from "./types";
+import { formatParamType, formatParamTypeShort, getParamTypeIcon } from "./types";
 
 interface FinetuneParamEditorProps {
   param: FinetuneParamConfig;
@@ -38,6 +39,7 @@ export function FinetuneParamEditor({
   existingParams,
   modelName,
 }: FinetuneParamEditorProps) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
   const TypeIcon = getParamTypeIcon(param.type);
 
@@ -45,21 +47,21 @@ export function FinetuneParamEditor({
   const validationError = useMemo(() => {
     if (param.type === "categorical") {
       if (!param.choices || param.choices.length < 2) {
-        return "At least 2 choices required";
+        return t("pipelineEditor.finetune.editor.errChoices");
       }
     } else {
       if (param.low === undefined || param.high === undefined) {
-        return "Low and high values required";
+        return t("pipelineEditor.finetune.editor.errBounds");
       }
       if (param.low >= param.high) {
-        return "Low must be less than high";
+        return t("pipelineEditor.finetune.editor.errLowHigh");
       }
       if (param.type === "log_float" && param.low <= 0) {
-        return "Log scale requires positive values";
+        return t("pipelineEditor.finetune.editor.errLog");
       }
     }
     return null;
-  }, [param]);
+  }, [param, t]);
 
   // Format search space for display
   const searchSpaceDisplay = useMemo(() => {
@@ -113,6 +115,7 @@ export function FinetuneParamEditor({
               e.stopPropagation();
               onRemove();
             }}
+            aria-label={t("pipelineEditor.finetune.removeParam", { name: param.name })}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -129,7 +132,7 @@ export function FinetuneParamEditor({
         <div className="px-3 pb-3 pt-1 border-t border-border/30 space-y-3">
           {/* Type selection - 2x2 grid for narrow panels */}
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Type</Label>
+            <Label className="text-xs text-muted-foreground">{t("pipelineEditor.finetune.editor.type")}</Label>
             <div className="grid grid-cols-2 gap-1.5">
               {(
                 ["int", "float", "log_float", "categorical"] as FinetuneParamType[]
@@ -166,7 +169,7 @@ export function FinetuneParamEditor({
                     }}
                   >
                     <Icon className="h-3.5 w-3.5 mr-1" />
-                    {formatParamType(type).split(" ")[0]}
+                    {formatParamTypeShort(type)}
                   </Button>
                 );
               })}
@@ -178,7 +181,7 @@ export function FinetuneParamEditor({
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Low</Label>
+                  <Label className="text-xs text-muted-foreground">{t("pipelineEditor.finetune.editor.low")}</Label>
                   <Input
                     type="number"
                     value={param.low ?? ""}
@@ -190,7 +193,7 @@ export function FinetuneParamEditor({
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">High</Label>
+                  <Label className="text-xs text-muted-foreground">{t("pipelineEditor.finetune.editor.high")}</Label>
                   <Input
                     type="number"
                     value={param.high ?? ""}
@@ -205,7 +208,7 @@ export function FinetuneParamEditor({
               {param.type === "int" && (
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">
-                    Step <span className="text-muted-foreground/50">(optional)</span>
+                    {t("pipelineEditor.finetune.editor.step")} <span className="text-muted-foreground/50">{t("pipelineEditor.finetune.editor.optional")}</span>
                   </Label>
                   <Input
                     type="number"
@@ -230,7 +233,7 @@ export function FinetuneParamEditor({
           {param.type === "categorical" && (
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">
-                Choices (comma-separated)
+                {t("pipelineEditor.finetune.editor.choices")}
               </Label>
               <Input
                 value={param.choices?.join(", ") ?? ""}
@@ -255,7 +258,7 @@ export function FinetuneParamEditor({
           {param.type === "log_float" && (
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Info className="h-3 w-3" />
-              Values will be sampled on a logarithmic scale (10^x)
+              {t("pipelineEditor.finetune.editor.logHint")}
             </p>
           )}
         </div>

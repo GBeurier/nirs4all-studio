@@ -13,6 +13,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import {
   Copy,
@@ -81,6 +82,7 @@ export function TreeNode({
   onRemoveChild,
   onUpdateStep,
 }: TreeNodeProps) {
+  const { t } = useTranslation();
   const { isDragging, activeId } = usePipelineDnd();
   const operatorAvailability = useOperatorAvailabilityOptional();
   const isBeingDragged = activeId === step.id;
@@ -131,6 +133,7 @@ export function TreeNode({
   const setIsExpanded = isBranchable ? setIsBranchesExpanded : setIsChildrenExpanded;
   const branchLabel = getBranchLabel(step);
   const foldLabel = getFoldLabel(step, childLabel);
+  const childNoun = (count: number) => t(`pipelineEditor.tree.childKind_${childLabel}`, { count });
 
   const nodeContent = (
     <div
@@ -166,7 +169,7 @@ export function TreeNode({
                 setIsExpanded(!isExpanded);
               }}
               className={`p-0.5 rounded hover:bg-muted transition-colors shrink-0 ${colors.text}`}
-              aria-label={isExpanded ? "Collapse" : "Expand"}
+              aria-label={isExpanded ? t("pipelineEditor.tree.collapse") : t("pipelineEditor.tree.expand")}
             >
               {isExpanded ? (
                 <ChevronDown className="h-3.5 w-3.5" />
@@ -177,7 +180,7 @@ export function TreeNode({
           </TooltipTrigger>
           <TooltipContent side="right">
             <span className="text-xs">
-              {isExpanded ? "Collapse" : "Expand"} {foldLabel}
+              {isExpanded ? t("pipelineEditor.tree.collapseFold", { label: foldLabel }) : t("pipelineEditor.tree.expandFold", { label: foldLabel })}
             </span>
           </TooltipContent>
         </Tooltip>
@@ -233,11 +236,11 @@ export function TreeNode({
         <ContextMenuContent className="w-48">
           <ContextMenuItem onClick={onSelect}>
             <Settings className="h-3.5 w-3.5 mr-2" />
-            Configure
+            {t("pipelineEditor.tree.configure")}
           </ContextMenuItem>
           <ContextMenuItem onClick={onDuplicate}>
             <Copy className="h-3.5 w-3.5 mr-2" />
-            Duplicate
+            {t("pipelineEditor.tree.duplicate")}
           </ContextMenuItem>
           {step.type === "model" && (
             <>
@@ -247,7 +250,7 @@ export function TreeNode({
                 className="text-purple-500 focus:text-purple-600"
               >
                 <Sparkles className="h-3.5 w-3.5 mr-2" />
-                {finetuneInfo.hasFinetuning ? "Edit Finetuning" : "Configure Finetuning"}
+                {finetuneInfo.hasFinetuning ? t("pipelineEditor.tree.editFinetuning") : t("pipelineEditor.tree.configureFinetuning")}
               </ContextMenuItem>
             </>
           )}
@@ -256,7 +259,7 @@ export function TreeNode({
               <ContextMenuSeparator />
               <ContextMenuItem onClick={onAddBranch}>
                 <Plus className="h-3.5 w-3.5 mr-2" />
-                Add {branchLabel}
+                {t("pipelineEditor.tree.addBranchKind", { label: branchLabel })}
               </ContextMenuItem>
             </>
           )}
@@ -268,7 +271,7 @@ export function TreeNode({
                 className={colors.text}
               >
                 <Plus className="h-3.5 w-3.5 mr-2" />
-                Add {childLabel}
+                {t("pipelineEditor.tree.addChildKind", { noun: childNoun(1) })}
               </ContextMenuItem>
             </>
           )}
@@ -278,7 +281,7 @@ export function TreeNode({
             className="text-destructive focus:text-destructive"
           >
             <Trash2 className="h-3.5 w-3.5 mr-2" />
-            Delete
+            {t("common.delete")}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -328,7 +331,7 @@ export function TreeNode({
               }`}
             >
               <Plus className="h-3 w-3" />
-              <span>Add {branchLabel.toLowerCase()}</span>
+              <span>{t("pipelineEditor.tree.addBranchKind", { label: branchLabel.toLowerCase() })}</span>
             </button>
           )}
         </div>

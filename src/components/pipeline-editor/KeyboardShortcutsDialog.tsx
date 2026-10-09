@@ -9,6 +9,7 @@
  * Part of Phase 5: UX Polish
  */
 
+import { Trans, useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -37,27 +38,31 @@ export interface KeyboardShortcutsDialogProps {
 
 // Category configuration with icons and labels
 const categoryConfig = {
-  navigation: {
-    label: "Navigation",
-    icon: Navigation,
-    description: "Move between steps and branches",
-  },
-  panels: {
-    label: "Panels",
-    icon: Layout,
-    description: "Switch between editor panels",
-  },
-  editing: {
-    label: "Editing",
-    icon: Edit,
-    description: "Modify pipeline steps",
-  },
-  actions: {
-    label: "Actions",
-    icon: Zap,
-    description: "General commands",
-  },
+  navigation: { icon: Navigation },
+  panels: { icon: Layout },
+  editing: { icon: Edit },
+  actions: { icon: Zap },
 } as const;
+
+// Shortcut descriptions are authored in English in `useKeyboardNavigation`; map them to locale keys.
+const SHORTCUT_DESCRIPTION_KEYS: Record<string, string> = {
+  "Select previous step": "pipelineEditor.shortcuts.descriptions.selectPrevious",
+  "Select next step": "pipelineEditor.shortcuts.descriptions.selectNext",
+  "Navigate into branch": "pipelineEditor.shortcuts.descriptions.navigateIntoBranch",
+  "Navigate out of branch": "pipelineEditor.shortcuts.descriptions.navigateOutOfBranch",
+  "Configure selected step": "pipelineEditor.shortcuts.descriptions.configureStep",
+  "Deselect / Close dialogs": "pipelineEditor.shortcuts.descriptions.deselect",
+  "Cycle to next panel": "pipelineEditor.shortcuts.descriptions.nextPanel",
+  "Cycle to previous panel": "pipelineEditor.shortcuts.descriptions.previousPanel",
+  "Open command palette": "pipelineEditor.shortcuts.descriptions.openCommandPalette",
+  "Show keyboard shortcuts": "pipelineEditor.shortcuts.descriptions.showShortcuts",
+  "Duplicate selected step": "pipelineEditor.shortcuts.descriptions.duplicateStep",
+  "Delete selected step": "pipelineEditor.shortcuts.descriptions.deleteStep",
+  "Add branch to selected step": "pipelineEditor.shortcuts.descriptions.addBranch",
+  Undo: "pipelineEditor.shortcuts.descriptions.undo",
+  Redo: "pipelineEditor.shortcuts.descriptions.redo",
+  "Save pipeline": "pipelineEditor.shortcuts.descriptions.savePipeline",
+};
 
 type CategoryKey = keyof typeof categoryConfig;
 
@@ -81,7 +86,7 @@ function groupShortcutsByCategory(shortcuts: KeyboardShortcut[]): Record<Categor
 }
 
 // Format key display
-function formatKey(key: string): string {
+function formatKey(key: string, spaceLabel: string): string {
   const keyMap: Record<string, string> = {
     "↑": "↑",
     "↓": "↓",
@@ -92,7 +97,7 @@ function formatKey(key: string): string {
     "Escape": "Esc",
     "Delete": "Del",
     "Backspace": "⌫",
-    " ": "Space",
+    " ": spaceLabel,
   };
 
   return keyMap[key] ?? key;
@@ -100,6 +105,7 @@ function formatKey(key: string): string {
 
 // Format shortcut display with modifiers
 function ShortcutDisplay({ shortcut }: { shortcut: KeyboardShortcut }) {
+  const { t } = useTranslation();
   const parts: React.ReactNode[] = [];
 
   if (shortcut.modifiers?.includes("ctrl")) {
@@ -131,7 +137,7 @@ function ShortcutDisplay({ shortcut }: { shortcut: KeyboardShortcut }) {
 
   parts.push(
     <kbd key="key" className="px-1.5 py-0.5 bg-muted border border-border rounded text-[11px] font-mono min-w-[24px] text-center">
-      {formatKey(shortcut.key)}
+      {formatKey(shortcut.key, t("pipelineEditor.shortcuts.space"))}
     </kbd>
   );
 
@@ -142,6 +148,7 @@ export function KeyboardShortcutsDialog({
   open,
   onOpenChange,
 }: KeyboardShortcutsDialogProps) {
+  const { t } = useTranslation();
   const groupedShortcuts = groupShortcutsByCategory(KEYBOARD_SHORTCUTS);
 
   return (
@@ -150,10 +157,10 @@ export function KeyboardShortcutsDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Keyboard className="h-5 w-5 text-primary" />
-            Keyboard Shortcuts
+            {t("pipelineEditor.shortcuts.title")}
           </DialogTitle>
           <DialogDescription>
-            Quick reference for all available keyboard shortcuts in the Pipeline Editor.
+            {t("pipelineEditor.shortcuts.subtitle")}
           </DialogDescription>
         </DialogHeader>
 
@@ -169,9 +176,9 @@ export function KeyboardShortcutsDialog({
               <div key={categoryKey}>
                 <div className="flex items-center gap-2 mb-3">
                   <Icon className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="text-sm font-semibold">{config.label}</h3>
+                  <h3 className="text-sm font-semibold">{t(`pipelineEditor.shortcuts.categories.${categoryKey}.label`)}</h3>
                   <span className="text-xs text-muted-foreground">
-                    — {config.description}
+                    — {t(`pipelineEditor.shortcuts.categories.${categoryKey}.description`)}
                   </span>
                 </div>
 
@@ -182,7 +189,7 @@ export function KeyboardShortcutsDialog({
                       className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors"
                     >
                       <span className="text-sm text-foreground">
-                        {shortcut.description}
+                        {SHORTCUT_DESCRIPTION_KEYS[shortcut.description] ? t(SHORTCUT_DESCRIPTION_KEYS[shortcut.description]) : shortcut.description}
                       </span>
                       <ShortcutDisplay shortcut={shortcut} />
                     </div>
@@ -197,18 +204,18 @@ export function KeyboardShortcutsDialog({
 
         {/* Tips Section */}
         <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/20">
-          <h4 className="text-sm font-medium text-primary mb-2">💡 Pro Tips</h4>
+          <h4 className="text-sm font-medium text-primary mb-2">💡 {t("pipelineEditor.shortcuts.tipsTitle")}</h4>
           <ul className="text-xs text-muted-foreground space-y-1">
-            <li>• Use <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px] font-mono">⌘K</kbd> to quickly access any command</li>
-            <li>• Arrow keys navigate steps when the tree panel is focused</li>
-            <li>• Press <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px] font-mono">→</kbd> to expand branches, <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px] font-mono">←</kbd> to collapse</li>
-            <li>• <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px] font-mono">Tab</kbd> cycles between Palette → Tree → Config panels</li>
+            <li>• <Trans i18nKey="pipelineEditor.shortcuts.tipCommand" components={{ kbd: <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px] font-mono" /> }} /></li>
+            <li>• {t("pipelineEditor.shortcuts.tipArrows")}</li>
+            <li>• <Trans i18nKey="pipelineEditor.shortcuts.tipExpand" components={{ kbd: <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px] font-mono" /> }} /></li>
+            <li>• <Trans i18nKey="pipelineEditor.shortcuts.tipTab" components={{ kbd: <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px] font-mono" /> }} /></li>
           </ul>
         </div>
 
         {/* Platform Note */}
         <p className="text-xs text-muted-foreground text-center mt-4">
-          On Windows/Linux, use <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px] font-mono">Ctrl</kbd> instead of <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px] font-mono">⌘</kbd>
+          <Trans i18nKey="pipelineEditor.shortcuts.platformNote" components={{ kbd: <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px] font-mono" /> }} />
         </p>
       </DialogContent>
     </Dialog>

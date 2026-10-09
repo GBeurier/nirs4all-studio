@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { motion } from "@/lib/motion";
 import {
@@ -36,9 +38,9 @@ interface PipelineCardProps {
 }
 
 const categoryConfig = {
-  user: { label: "Saved", color: "text-primary bg-primary/10" },
-  preset: { label: "Template", color: "text-accent bg-accent/10" },
-  shared: { label: "Shared", color: "text-success bg-success/10" },
+  user: { color: "text-primary bg-primary/10" },
+  preset: { color: "text-accent bg-accent/10" },
+  shared: { color: "text-success bg-success/10" },
 };
 
 const statusConfig = {
@@ -48,17 +50,17 @@ const statusConfig = {
   pending: { icon: Clock, color: "text-muted-foreground" },
 };
 
-function formatRelative(dateStr: string | undefined): string {
-  if (!dateStr) return "never";
+function formatRelative(dateStr: string | undefined, t: TFunction, locale: string): string {
+  if (!dateStr) return t("pipelines.collection.relative.never");
   const d = new Date(dateStr);
   const diff = Date.now() - d.getTime();
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 60_000) return t("pipelines.collection.relative.justNow");
+  if (diff < 3_600_000) return t("pipelines.collection.relative.minutesAgo", { n: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return t("pipelines.collection.relative.hoursAgo", { n: Math.floor(diff / 3_600_000) });
   const days = Math.floor(diff / 86_400_000);
-  if (days < 7) return `${days}d ago`;
-  if (days < 30) return `${Math.floor(days / 7)}w ago`;
-  return d.toLocaleDateString();
+  if (days < 7) return t("pipelines.collection.relative.daysAgo", { n: days });
+  if (days < 30) return t("pipelines.collection.relative.weeksAgo", { n: Math.floor(days / 7) });
+  return d.toLocaleDateString(locale);
 }
 
 function StatCell({
@@ -94,6 +96,7 @@ export function PipelineCard({
   onDelete,
   onExport,
 }: PipelineCardProps) {
+  const { t, i18n } = useTranslation();
   const stats = computePipelineStats(pipeline.steps);
   const preview = buildPipelinePreview(pipeline.steps, 6);
   const isPreset = pipeline.category === "preset";
@@ -109,13 +112,14 @@ export function PipelineCard({
             categoryConfig[pipeline.category].color
           )}
         >
-          {categoryConfig[pipeline.category].label}
+          {t(`pipelines.collection.category.${pipeline.category}`)}
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={onToggleFavorite}
             className="rounded p-1 transition-colors hover:bg-muted"
-            aria-label={pipeline.isFavorite ? "Unfavorite" : "Favorite"}
+            aria-label={pipeline.isFavorite ? t("pipelines.editor.removeFromFavorites") : t("pipelines.editor.addToFavorites")}
+            aria-pressed={pipeline.isFavorite}
           >
             {pipeline.isFavorite ? (
               <Star className="h-4 w-4 fill-warning text-warning" />
@@ -125,26 +129,26 @@ export function PipelineCard({
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="rounded p-1 transition-colors hover:bg-muted">
+              <button className="rounded p-1 transition-colors hover:bg-muted" aria-label={t("pipelines.card.moreActions")}>
                 <MoreVertical className="h-4 w-4 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem asChild>
                 <Link to={`/pipelines/${pipeline.id}`} className="flex items-center">
-                  <Play className="mr-2 h-4 w-4" /> Open & Edit
+                  <Play className="mr-2 h-4 w-4" /> {t("pipelines.card.openAndEdit")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onDuplicate}>
-                <Copy className="mr-2 h-4 w-4" /> Duplicate
+                <Copy className="mr-2 h-4 w-4" /> {t("pipelines.card.duplicate")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onExport}>
-                <Download className="mr-2 h-4 w-4" /> Export JSON
+                <Download className="mr-2 h-4 w-4" /> {t("pipelines.card.exportJson")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {pipeline.category === "user" && (
                 <DropdownMenuItem onClick={onDelete} className="text-destructive">
-                  <Trash2 className="mr-2 h-4 w-4" /> Delete
+                  <Trash2 className="mr-2 h-4 w-4" /> {t("common.delete")}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -158,17 +162,19 @@ export function PipelineCard({
         </h3>
         {pipeline.taskType && (
           <p className="mt-0.5 text-xs capitalize text-muted-foreground">
-            {pipeline.taskType}
+            {pipeline.taskType === "regression" || pipeline.taskType === "classification"
+              ? t(`pipelines.collection.taskType.${pipeline.taskType}`)
+              : pipeline.taskType}
           </p>
         )}
       </Link>
 
       <div className="mt-3 grid grid-cols-4 gap-2 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
-        <StatCell label="ops" value={stats.operators} />
-        <StatCell label="models" value={stats.models} />
-        <StatCell label="branches" value={stats.branches} />
+        <StatCell label={t("pipelines.collection.stats.ops")} value={stats.operators} />
+        <StatCell label={t("pipelines.collection.stats.models")} value={stats.models} />
+        <StatCell label={t("pipelines.collection.stats.branches")} value={stats.branches} />
         <StatCell
-          label="variants"
+          label={t("pipelines.collection.stats.variants")}
           value={stats.hasGenerators ? stats.variants : 1}
           emphasize={stats.hasGenerators}
         />
@@ -201,8 +207,7 @@ export function PipelineCard({
           ))}
           {preview.truncated && (
             <li className="pl-0.5 text-[11px] italic text-muted-foreground/70">
-              + {preview.totalSteps - preview.nodes.length} more step
-              {preview.totalSteps - preview.nodes.length === 1 ? "" : "s"}
+              {t("pipelines.collection.moreSteps", { count: preview.totalSteps - preview.nodes.length })}
             </li>
           )}
         </ul>
@@ -212,10 +217,12 @@ export function PipelineCard({
         <span className="flex items-center gap-1.5">
           {Status && <Status.icon className={cn("h-3.5 w-3.5", Status.color)} />}
           {pipeline.runCount && pipeline.runCount > 0
-            ? `${pipeline.runCount} run${pipeline.runCount === 1 ? "" : "s"} · ${formatRelative(
-                pipeline.lastRunDate || pipeline.updatedAt
+            ? `${t("pipelines.card.runsCount", { count: pipeline.runCount })} · ${formatRelative(
+                pipeline.lastRunDate || pipeline.updatedAt,
+                t,
+                i18n.language
               )}`
-            : `edited ${formatRelative(pipeline.updatedAt)}`}
+            : t("pipelines.card.edited", { when: formatRelative(pipeline.updatedAt, t, i18n.language) })}
         </span>
         {pipeline.tags.length > 0 && (
           <span className="flex items-center gap-1">

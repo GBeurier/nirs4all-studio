@@ -3,6 +3,7 @@
  */
 
 import { Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { FinetuneConfig } from "../types";
@@ -18,6 +19,7 @@ export function FinetuningBadge({
   onClick,
   className,
 }: FinetuningBadgeProps) {
+  const { t } = useTranslation();
   if (!config?.enabled) return null;
 
   return (
@@ -30,7 +32,7 @@ export function FinetuningBadge({
       )}
     >
       <Sparkles className="h-3 w-3" />
-      {config.n_trials} trials
+      {t("pipelineEditor.finetune.trialCount", { count: config.n_trials })}
     </Badge>
   );
 }

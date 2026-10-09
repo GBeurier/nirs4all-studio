@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from "vitest";
+import i18n from "@/lib/i18n";
 import type { PipelineStep } from "../types";
 import {
   calculateOrVariants,
@@ -34,6 +36,10 @@ const colors: StepColorScheme = {
   active: "active-test",
   gradient: "gradient-test",
 };
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 describe("OrGeneratorData", () => {
   it("builds stable branch labels and branch read models", () => {

@@ -7,6 +7,8 @@
  */
 
 import { memo, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -17,12 +19,10 @@ import {
   getContinuousPaletteGradient,
   getCategoricalColor,
   getPartitionRoleColor,
-  getPartitionRoleLabel,
   getPresentPartitionRoles,
   getHeldOutTestColor,
   hasHeldOutTestSamples,
   HIGHLIGHT_COLORS_CONCRETE,
-  getColorModeLabel,
   getEffectiveTargetType,
   getMetadataUniqueCategories,
 } from '@/lib/playground/colorConfig';
@@ -46,7 +46,8 @@ interface LegendItem {
  */
 function getCategoricalLegendItems(
   config: GlobalColorConfig,
-  context: ColorContext
+  context: ColorContext,
+  t: TFunction
 ): LegendItem[] {
   // Phase 5: Get effective target type considering override
   const effectiveTargetType = getEffectiveTargetType(context.targetType, config.targetTypeOverride);
@@ -67,22 +68,22 @@ function getCategoricalLegendItems(
     case 'partition':
       return getPresentPartitionRoles(context).map((role) => ({
         color: getPartitionRoleColor(role),
-        label: getPartitionRoleLabel(role),
+        label: role === 'test' ? t('playground.colorLegend.test') : t(`playground.colorLegend.partition.${role}`),
       }));
 
     case 'fold': {
       if (!context.foldLabels) {
         return hasHeldOutTestSamples(context)
-          ? [{ color: getHeldOutTestColor(), label: 'Test' }]
+          ? [{ color: getHeldOutTestColor(), label: t('playground.colorLegend.test') }]
           : [];
       }
       const uniqueFolds = [...new Set(context.foldLabels)].filter(f => f >= 0).sort((a, b) => a - b);
       const items = uniqueFolds.map(fold => ({
         color: getCategoricalColor(fold, config.categoricalPalette),
-        label: `Fold ${fold + 1}`,
+        label: t('playground.colorLegend.fold', { n: fold + 1 }),
       }));
       if (hasHeldOutTestSamples(context)) {
-        items.push({ color: getHeldOutTestColor(), label: 'Test' });
+        items.push({ color: getHeldOutTestColor(), label: t('playground.colorLegend.test') });
       }
       return items;
     }
@@ -101,14 +102,14 @@ function getCategoricalLegendItems(
     case 'selection':
       // Use concrete colors for legend swatches (CSS variables don't work in inline styles)
       return [
-        { color: HIGHLIGHT_COLORS_CONCRETE.selected, label: 'Selected' },
-        { color: HIGHLIGHT_COLORS_CONCRETE.unselected, label: 'Unselected' },
+        { color: HIGHLIGHT_COLORS_CONCRETE.selected, label: t('playground.colorLegend.selected') },
+        { color: HIGHLIGHT_COLORS_CONCRETE.unselected, label: t('playground.colorLegend.unselected') },
       ];
 
     case 'outlier':
       return [
-        { color: HIGHLIGHT_COLORS_CONCRETE.outlier, label: 'Outlier' },
-        { color: HIGHLIGHT_COLORS_CONCRETE.unselected, label: 'Normal' },
+        { color: HIGHLIGHT_COLORS_CONCRETE.outlier, label: t('playground.colorLegend.outlier') },
+        { color: HIGHLIGHT_COLORS_CONCRETE.unselected, label: t('playground.colorLegend.normal') },
       ];
 
     default:
@@ -222,6 +223,7 @@ export const ColorLegend = memo(function ColorLegend({
   onToggleCollapse,
   className,
 }: ColorLegendProps) {
+  const { t } = useTranslation();
   // Phase 5: Pass targetType and override to determine if target mode is continuous or categorical
   const isContinuous = useMemo(
     () => isContinuousMode(config.mode, config.metadataType, context.targetType, config.targetTypeOverride),
@@ -235,17 +237,17 @@ export const ColorLegend = memo(function ColorLegend({
   );
 
   const categoricalItems = useMemo(
-    () => (isContinuous ? [] : getCategoricalLegendItems(config, context)),
-    [isContinuous, config, context]
+    () => (isContinuous ? [] : getCategoricalLegendItems(config, context, t)),
+    [isContinuous, config, context, t]
   );
 
   // Phase 5: Show "Class" label for classification target mode
   const modeLabel = useMemo(() => {
     if (config.mode === 'target' && effectiveTargetType && isCategoricalTarget(effectiveTargetType)) {
-      return 'Class';
+      return t('playground.colorLegend.class');
     }
-    return getColorModeLabel(config.mode);
-  }, [config.mode, effectiveTargetType]);
+    return t(`playground.toolbar.color.modeLabels.${config.mode}`);
+  }, [config.mode, effectiveTargetType, t]);
 
   // Don't render if nothing to show
   if (!isContinuous && categoricalItems.length === 0) {
@@ -277,6 +279,7 @@ export const ColorLegend = memo(function ColorLegend({
             size="sm"
             className="h-4 w-4 p-0"
             onClick={onToggleCollapse}
+            aria-label={collapsed ? t('playground.colorLegend.expand') : t('playground.colorLegend.collapse')}
           >
             {collapsed ? (
               <ChevronUp className="w-3 h-3" />
@@ -316,14 +319,15 @@ export const InlineColorLegend = memo(function InlineColorLegend({
   context,
   className,
 }: InlineColorLegendProps) {
+  const { t } = useTranslation();
   const isContinuous = useMemo(
     () => isContinuousMode(config.mode, config.metadataType, context.targetType, config.targetTypeOverride),
     [config.mode, config.metadataType, context.targetType, config.targetTypeOverride]
   );
 
   const categoricalItems = useMemo(
-    () => (isContinuous ? [] : getCategoricalLegendItems(config, context)),
-    [isContinuous, config, context]
+    () => (isContinuous ? [] : getCategoricalLegendItems(config, context, t)),
+    [isContinuous, config, context, t]
   );
 
   // Don't render if nothing to show

@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from 'vitest';
+import i18n from 'i18next';
+import '@/lib/i18n';
 
 import type { SavedSelection } from '@/context/useSelection';
 
@@ -17,6 +20,10 @@ import {
   getActiveSavedSelectionId,
   savedSelectionMatchesCurrentSelection,
 } from '../SavedSelectionsData';
+
+beforeAll(async () => {
+  await i18n.changeLanguage('en');
+});
 
 function savedSelection(overrides: Partial<SavedSelection>): SavedSelection {
   return {

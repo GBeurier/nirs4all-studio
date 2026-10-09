@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import type { ParameterSweep, SweepType } from "./types";
 
 export type SweepChoice = string | number | boolean;
@@ -33,7 +34,9 @@ export const QUICK_SWEEP_PRESETS: SweepPreset[] = [
     forParams: ["n_components"],
   },
   {
-    label: "5\u219225 step 5",
+    get label() {
+      return i18n.t("pipelineEditor.misc.sweepPresets.step5");
+    },
     sweep: { type: "range", from: 5, to: 25, step: 5 },
     forParams: ["n_components", "n_estimators"],
   },
@@ -48,7 +51,9 @@ export const QUICK_SWEEP_PRESETS: SweepPreset[] = [
     forParams: ["learning_rate", "lr"],
   },
   {
-    label: "3\u219215 odd",
+    get label() {
+      return i18n.t("pipelineEditor.misc.sweepPresets.odd");
+    },
     sweep: { type: "range", from: 3, to: 15, step: 2 },
     forParams: ["window_length", "window"],
   },

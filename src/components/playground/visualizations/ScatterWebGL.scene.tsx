@@ -12,6 +12,7 @@ import { useThree } from '@react-three/fiber';
 import { OrthographicCamera, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import type { PointData } from './ScatterWebGL.types';
+import { useTranslation } from 'react-i18next';
 
 // ============= Point cloud =============
 
@@ -351,11 +352,13 @@ export function ScatterScene({
 // ============= Fallback =============
 
 export function WebGLNotSupported() {
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-center justify-center h-full text-center p-4">
       <div className="text-muted-foreground">
-        <div className="mb-2">WebGL is not supported</div>
-        <div className="text-xs">Please use Canvas mode or try a different browser</div>
+        <div className="mb-2">{t('playground.charts.scatter.webglUnsupported')}</div>
+        <div className="text-xs">{t('playground.charts.scatter.webglUnsupportedHint')}</div>
       </div>
     </div>
   );

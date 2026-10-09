@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
@@ -71,6 +72,7 @@ import {
   StatusBadge,
   type PipelineLaunchMode,
 } from "./PipelineExecutionDialogSections";
+import { localizeRuntimeGroupingCopy } from "./runtimeGroupingCopy";
 import { RuntimeBackendStatus } from "@/components/runtime/RuntimeBackendStatus";
 import { STRICT_NATIVE_RUNTIME_ENGINE } from "@/lib/runtimeBackendPreference";
 import { useKeywordRegistry } from "@/hooks/useKeywordRegistry";
@@ -111,6 +113,7 @@ export function PipelineExecutionDialog({
   variantCount,
   pipelineSteps,
 }: PipelineExecutionDialogProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedDataset, setSelectedDataset] = useState<string>("");
@@ -321,7 +324,7 @@ export function PipelineExecutionDialog({
       queryClient.invalidateQueries({ queryKey: ["run-stats"] });
 
       if (mode === "quick") {
-        toast.success("Run started! Redirecting to progress page...");
+        toast.success(t("pipelineEditor.execution.toast.runStarted"));
         onOpenChange(false);
         navigate(`/runs/${run.id}`);
         return;
@@ -329,19 +332,19 @@ export function PipelineExecutionDialog({
 
       toast.success(
         <div className="flex flex-col gap-1">
-          <span>Run started in background!</span>
+          <span>{t("pipelineEditor.execution.toast.startedBackground")}</span>
           <button
             onClick={() => navigate(`/runs/${run.id}`)}
             className="text-xs text-primary underline text-left"
           >
-            View Progress →
+            {t("pipelineEditor.execution.toast.viewProgress")}
           </button>
         </div>,
         { duration: 5000 }
       );
       onOpenChange(false);
     } catch {
-      toast.error("Failed to start run");
+      toast.error(t("pipelineEditor.execution.toast.startFailed"));
     } finally {
       setIsQuickRunning(false);
     }
@@ -356,19 +359,23 @@ export function PipelineExecutionDialog({
     selectedDataset,
     selectedExecutionSplitGroupBy,
     selectedRobustnessLaunchPayload,
+    t,
   ]);
 
   const handleLaunch = async (mode: PipelineLaunchMode) => {
     if (!selectedDataset) {
-      toast.error("Please select a dataset");
+      toast.error(t("pipelineEditor.execution.toast.selectDataset"));
       return;
     }
     if (groupingSelection.hasPersistedGroupConflict) {
-      toast.error(RUNTIME_GROUPING_COPY.conflictToast);
+      toast.error(localizeRuntimeGroupingCopy(t, RUNTIME_GROUPING_COPY.conflictToast));
       return;
     }
     if (selectedDatasetGroupingState?.hasBlockingError) {
-      toast.error(selectedDatasetGroupingState.blockingMessage || "Select sample groups for this dataset.");
+      toast.error(
+        localizeRuntimeGroupingCopy(t, selectedDatasetGroupingState.blockingMessage)
+          || t("pipelineEditor.execution.toast.selectGroups"),
+      );
       return;
     }
 
@@ -383,7 +390,7 @@ export function PipelineExecutionDialog({
         const preflightResolution = resolvePreflightIssues(preflight);
 
         if (preflightResolution.status === "blocking") {
-          toast.error("Cannot start run", { description: preflightResolution.message });
+          toast.error(t("pipelineEditor.execution.toast.cannotStart"), { description: preflightResolution.message });
           return;
         }
 
@@ -393,7 +400,7 @@ export function PipelineExecutionDialog({
             preflightResolution.missingIssues,
           );
           if (pruned.steps.length === 0) {
-            toast.error("The pipeline would be empty after removing unavailable nodes.");
+            toast.error(t("pipelineEditor.execution.toast.emptyAfterPrune"));
             return;
           }
 
@@ -407,11 +414,11 @@ export function PipelineExecutionDialog({
           return;
         }
 
-        toast.error("Cannot start run", { description: preflightResolution.message });
+        toast.error(t("pipelineEditor.execution.toast.cannotStart"), { description: preflightResolution.message });
         return;
       }
     } catch {
-      toast.warning("Required analysis tools could not be checked.");
+      toast.warning(t("pipelineEditor.execution.toast.toolsCheckFailed"));
     }
 
     await executeLaunchMode(mode, resolveInlinePipeline());
@@ -466,10 +473,10 @@ export function PipelineExecutionDialog({
             </div>
           </div>
           <DialogDescription>
-            Execute this pipeline against a dataset.
+            {t("pipelineEditor.execution.dialog.description")}
             {variantCount && variantCount > 1 && (
               <span className="ml-1 text-purple-500">
-                ({variantCount} variants to test)
+                {t("pipelineEditor.execution.dialog.variants", { count: variantCount })}
               </span>
             )}
           </DialogDescription>
@@ -477,8 +484,8 @@ export function PipelineExecutionDialog({
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "execute" | "export")}>
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="execute">Execute</TabsTrigger>
-            <TabsTrigger value="export">Export</TabsTrigger>
+            <TabsTrigger value="execute">{t("pipelineEditor.execution.dialog.tabExecute")}</TabsTrigger>
+            <TabsTrigger value="export">{t("common.export")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="execute" className="space-y-4 mt-4">

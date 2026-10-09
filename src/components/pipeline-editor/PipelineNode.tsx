@@ -1,6 +1,7 @@
 import type { ComponentPropsWithoutRef } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Copy, Settings, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import {
   ContextMenu,
@@ -43,6 +44,7 @@ export function PipelineNode({
   onRemoveBranch,
   depth = 0,
 }: PipelineNodeProps) {
+  const { t } = useTranslation();
   const { isDragging, activeId } = usePipelineDnd();
   const isBeingDragged = activeId === step.id;
   const presentation = getPipelineNodePresentation(step);
@@ -135,11 +137,11 @@ export function PipelineNode({
       <ContextMenuContent className="w-48">
         <ContextMenuItem onClick={onSelect}>
           <Settings className="h-4 w-4 mr-2" />
-          Configure
+          {t("pipelineEditor.tree.configure")}
         </ContextMenuItem>
         <ContextMenuItem onClick={onDuplicate}>
           <Copy className="h-4 w-4 mr-2" />
-          Duplicate
+          {t("pipelineEditor.tree.duplicate")}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
@@ -147,7 +149,7 @@ export function PipelineNode({
           className="text-destructive focus:text-destructive"
         >
           <Trash2 className="h-4 w-4 mr-2" />
-          Delete
+          {t("common.delete")}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import {
   Waves,
   Shuffle,
@@ -117,7 +118,7 @@ function buildSweepSummary(step: PipelineStep, sweepKeys: string[]) {
       sweepSummaryParts.push(`${paramName}: log_range(${start}, ${end}, ${count})`);
     } else if (generator.type === "_or_" && Array.isArray(generator.values)) {
       const choices = generator.values.slice(0, 3).map(String).join(", ");
-      const suffix = generator.values.length > 3 ? `, ... (${generator.values.length} total)` : "";
+      const suffix = generator.values.length > 3 ? i18n.t("pipelineEditor.tree.totalSuffix", { count: generator.values.length }) : "";
       sweepSummaryParts.push(`${paramName}: [${choices}${suffix}]`);
     }
   }
@@ -134,13 +135,13 @@ function buildSweepSummary(step: PipelineStep, sweepKeys: string[]) {
 
 function getGeneratorBranchLabel(step: PipelineStep) {
   if (step.generatorKind === "cartesian") {
-    return "Stage";
+    return i18n.t("pipelineEditor.tree.branchKinds.stage");
   }
   if (step.generatorKind === "grid" || step.generatorKind === "zip") {
-    return "Param";
+    return i18n.t("pipelineEditor.tree.branchKinds.param");
   }
   if (step.generatorKind === "chain") {
-    return "Config";
+    return i18n.t("pipelineEditor.tree.branchKinds.config");
   }
-  return "Option";
+  return i18n.t("pipelineEditor.tree.branchKinds.option");
 }

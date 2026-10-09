@@ -3,6 +3,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -39,6 +40,7 @@ export function FinetuneParamList({
   modelName,
   availableParams,
 }: FinetuneParamListProps) {
+  const { t } = useTranslation();
   const [showAddPopover, setShowAddPopover] = useState(false);
 
   // Get presets for this model
@@ -100,7 +102,7 @@ export function FinetuneParamList({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <Label className="text-sm font-medium flex-shrink-0">Parameters to Optimize</Label>
+        <Label className="text-sm font-medium flex-shrink-0">{t("pipelineEditor.finetune.list.title")}</Label>
         <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
           <PopoverTrigger asChild>
             <Button
@@ -109,14 +111,14 @@ export function FinetuneParamList({
               className="h-7 text-xs border-purple-500/50 text-purple-500 hover:bg-purple-500/10 flex-shrink-0"
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
-              Add
+              {t("common.add")}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 bg-popover p-0">
             <div className="p-3 border-b border-border">
-              <h4 className="font-medium text-sm">Add Tunable Parameter</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.finetune.list.addTunable")}</h4>
               <p className="text-xs text-muted-foreground mt-1">
-                Select from presets or add custom
+                {t("pipelineEditor.finetune.list.addHint")}
               </p>
             </div>
 
@@ -126,7 +128,7 @@ export function FinetuneParamList({
                 {unusedPresets.length > 0 && (
                   <div className="mb-2">
                     <p className="text-xs text-muted-foreground px-2 py-1 font-medium">
-                      Recommended for {modelName}
+                      {t("pipelineEditor.finetune.list.recommended", { model: modelName })}
                     </p>
                     {unusedPresets.map((preset) => (
                       <Button
@@ -146,7 +148,7 @@ export function FinetuneParamList({
                             </Badge>
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {preset.description}
+                            {t(preset.descriptionKey)}
                           </p>
                         </div>
                       </Button>
@@ -158,7 +160,7 @@ export function FinetuneParamList({
                 {unusedParams.length > 0 && (
                   <div>
                     <p className="text-xs text-muted-foreground px-2 py-1 font-medium">
-                      Other Parameters
+                      {t("pipelineEditor.finetune.list.otherParams")}
                     </p>
                     <div className="flex flex-wrap gap-1 px-2">
                       {unusedParams.map((param) => (
@@ -178,7 +180,7 @@ export function FinetuneParamList({
 
                 {unusedParams.length === 0 && unusedPresets.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">
-                    All available parameters have been added
+                    {t("pipelineEditor.finetune.list.allAdded")}
                   </p>
                 )}
               </div>
@@ -192,10 +194,10 @@ export function FinetuneParamList({
         <div className="text-center py-6 bg-muted/30 rounded-lg border border-dashed">
           <Settings2 className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">
-            No parameters configured
+            {t("pipelineEditor.finetune.list.none")}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Add parameters to define the search space
+            {t("pipelineEditor.finetune.list.noneHint")}
           </p>
         </div>
       ) : (

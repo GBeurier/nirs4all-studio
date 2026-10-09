@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from 'react-i18next';
 import { AlertTriangle, CheckCircle2, Info, Regex, Table2, Wand2 } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -34,9 +35,10 @@ export function DetectionMethodSelector({
   metadataColumnCount,
   onMethodChange,
 }: DetectionMethodSelectorProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
-      <Label className="text-sm font-medium">Detection Method</Label>
+      <Label className="text-sm font-medium">{t('playground.repetitionSetup.detectionMethod')}</Label>
       <RadioGroup
         value={method}
         onValueChange={(value) => onMethodChange(value as RepetitionDetectionMethod)}
@@ -52,7 +54,7 @@ export function DetectionMethodSelector({
         >
           <RadioGroupItem value="auto" className="sr-only" />
           <Wand2 className="w-5 h-5 text-primary" />
-          <span className="text-xs font-medium">Auto-detect</span>
+          <span className="text-xs font-medium">{t('playground.repetitionSetup.autoDetect')}</span>
         </Label>
 
         <Label
@@ -66,7 +68,7 @@ export function DetectionMethodSelector({
         >
           <RadioGroupItem value="metadata" className="sr-only" disabled={metadataColumnCount === 0} />
           <Table2 className="w-5 h-5 text-primary" />
-          <span className="text-xs font-medium">Metadata Column</span>
+          <span className="text-xs font-medium">{t('playground.repetitionSetup.metadataColumn')}</span>
         </Label>
 
         <Label
@@ -79,7 +81,7 @@ export function DetectionMethodSelector({
         >
           <RadioGroupItem value="pattern" className="sr-only" />
           <Regex className="w-5 h-5 text-primary" />
-          <span className="text-xs font-medium">Pattern</span>
+          <span className="text-xs font-medium">{t('playground.repetitionSetup.pattern')}</span>
         </Label>
       </RadioGroup>
     </div>
@@ -109,14 +111,14 @@ export function RepetitionMethodOptions({
   onPresetChange,
   onCustomPatternChange,
 }: RepetitionMethodOptionsProps) {
+  const { t } = useTranslation();
   if (method === 'auto') {
     return (
       <Alert>
         <Info className="w-4 h-4" />
-        <AlertTitle className="text-sm">Automatic Detection</AlertTitle>
+        <AlertTitle className="text-sm">{t('playground.repetitionSetup.autoTitle')}</AlertTitle>
         <AlertDescription className="text-xs">
-          The system will try common patterns like &quot;sample_rep1&quot;, &quot;sample_1&quot;,
-          and &quot;sample_A&quot; to identify repetitions in your sample IDs.
+          {t('playground.repetitionSetup.autoDescription')}
         </AlertDescription>
       </Alert>
     );
@@ -126,11 +128,11 @@ export function RepetitionMethodOptions({
     return (
       <div className="space-y-2">
         <Label htmlFor="metadata-column" className="text-sm">
-          Biological Sample Column
+          {t('playground.repetitionSetup.bioSampleColumn')}
         </Label>
         <Select value={metadataColumn} onValueChange={onMetadataColumnChange}>
           <SelectTrigger id="metadata-column">
-            <SelectValue placeholder="Select column..." />
+            <SelectValue placeholder={t('playground.repetitionSetup.selectColumn')} />
           </SelectTrigger>
           <SelectContent>
             {metadataColumns.map((column) => (
@@ -141,8 +143,7 @@ export function RepetitionMethodOptions({
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Select the metadata column that contains the biological sample ID
-          (samples with the same value are repetitions).
+          {t('playground.repetitionSetup.bioSampleColumnHelp')}
         </p>
       </div>
     );
@@ -154,7 +155,7 @@ export function RepetitionMethodOptions({
 
   return (
     <div className="space-y-3">
-      <Label className="text-sm">Pattern Template</Label>
+      <Label className="text-sm">{t('playground.repetitionSetup.patternTemplate')}</Label>
       <RadioGroup
         value={String(selectedPreset)}
         onValueChange={(value) => onPresetChange(Number(value))}
@@ -172,10 +173,12 @@ export function RepetitionMethodOptions({
           >
             <RadioGroupItem value={String(index)} />
             <div className="flex-1">
-              <span className="text-sm">{preset.label}</span>
+              <span className="text-sm">
+                {index === CUSTOM_REPETITION_PATTERN_INDEX ? t('playground.repetitionSetup.customPatternPreset') : preset.label}
+              </span>
               {preset.example && (
                 <span className="text-xs text-muted-foreground ml-2">
-                  e.g., {preset.example}
+                  {t('playground.repetitionSetup.example', { example: preset.example })}
                 </span>
               )}
             </div>
@@ -186,7 +189,7 @@ export function RepetitionMethodOptions({
       {selectedPreset === CUSTOM_REPETITION_PATTERN_INDEX && (
         <div className="space-y-2 mt-3">
           <Label htmlFor="custom-pattern" className="text-sm">
-            Custom Regex Pattern
+            {t('playground.repetitionSetup.customRegex')}
           </Label>
           <Input
             id="custom-pattern"
@@ -196,8 +199,7 @@ export function RepetitionMethodOptions({
             className={cn(patternError && 'border-red-500')}
           />
           <p className="text-xs text-muted-foreground">
-            The first capture group should match the biological sample ID.
-            Example: <code>^(.+?)[-_]rep\d+$</code>
+            <Trans i18nKey="playground.repetitionSetup.customRegexHelp" components={{ code: <code /> }} />
           </p>
           {patternError && (
             <p className="text-xs text-red-500">{patternError}</p>
@@ -217,9 +219,10 @@ export function RepetitionDistanceMetricSelect({
   distanceMetric,
   onDistanceMetricChange,
 }: RepetitionDistanceMetricSelectProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
-      <Label className="text-sm font-medium">Distance Metric</Label>
+      <Label className="text-sm font-medium">{t('playground.repetitionSetup.distanceMetric')}</Label>
       <Select
         value={distanceMetric}
         onValueChange={(value) => onDistanceMetricChange(value as RepetitionDistanceMetric)}
@@ -228,14 +231,14 @@ export function RepetitionDistanceMetricSelect({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="pca">PCA Distance (recommended)</SelectItem>
-          <SelectItem value="umap">UMAP Distance</SelectItem>
-          <SelectItem value="euclidean">Spectral Euclidean</SelectItem>
-          <SelectItem value="mahalanobis">Mahalanobis Distance</SelectItem>
+          <SelectItem value="pca">{t('playground.repetitionSetup.distance.pca')}</SelectItem>
+          <SelectItem value="umap">{t('playground.repetitionSetup.distance.umap')}</SelectItem>
+          <SelectItem value="euclidean">{t('playground.repetitionSetup.distance.euclidean')}</SelectItem>
+          <SelectItem value="mahalanobis">{t('playground.repetitionSetup.distance.mahalanobis')}</SelectItem>
         </SelectContent>
       </Select>
       <p className="text-xs text-muted-foreground">
-        Distance between repetitions will be computed in this space.
+        {t('playground.repetitionSetup.distanceHelp')}
       </p>
     </div>
   );
@@ -254,22 +257,23 @@ export function RepetitionPreviewPanel({
   sampleCount,
   previewLimit = 20,
 }: RepetitionPreviewPanelProps) {
+  const { t } = useTranslation();
   const previewGroups = detectedGroups.slice(0, previewLimit);
   const hiddenGroupCount = Math.max(0, summary.bioSamples - previewGroups.length);
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Preview</Label>
+        <Label className="text-sm font-medium">{t('playground.repetitionSetup.preview')}</Label>
         {summary.bioSamples > 0 ? (
           <Badge variant="secondary" className="text-xs">
             <CheckCircle2 className="w-3 h-3 mr-1 text-green-500" />
-            {summary.bioSamples} bio samples, {summary.totalReps} reps
+            {t('playground.repetitionSetup.summary', { bioSamples: summary.bioSamples, reps: summary.totalReps })}
           </Badge>
         ) : (
           <Badge variant="outline" className="text-xs">
             <AlertTriangle className="w-3 h-3 mr-1 text-amber-500" />
-            No repetitions detected
+            {t('playground.repetitionSetup.noneDetected')}
           </Badge>
         )}
       </div>
@@ -286,22 +290,22 @@ export function RepetitionPreviewPanel({
                   {group.bioSample}
                 </span>
                 <span className="text-muted-foreground">
-                  {group.count} reps: {group.sampleIds.slice(0, 3).join(', ')}
-                  {group.sampleIds.length > 3 && '...'}
+                  {t('playground.repetitionSetup.groupReps', { count: group.count, ids: group.sampleIds.slice(0, 3).join(', ') })}
+                  {group.sampleIds.length > 3 && '…'}
                 </span>
               </div>
             ))}
             {hiddenGroupCount > 0 && (
               <p className="text-xs text-muted-foreground text-center py-1">
-                ... and {hiddenGroupCount} more groups
+                {t('playground.repetitionSetup.moreGroups', { count: hiddenGroupCount })}
               </p>
             )}
           </div>
         ) : (
           <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
             {sampleCount === 0
-              ? 'Load a dataset to preview detection'
-              : 'No repetitions found with current settings'}
+              ? t('playground.repetitionSetup.loadDataset')
+              : t('playground.repetitionSetup.noneFound')}
           </div>
         )}
       </ScrollArea>

@@ -8,6 +8,7 @@
  * backend-aware palettes (dag-ml operators, compute options, WASM).
  */
 
+import i18n from "i18next";
 import {
   Waves,
   Shuffle,
@@ -87,22 +88,23 @@ export const stepTypeColors: Record<LegacyStepType, string> = {
   comment: "text-gray-500",
 };
 
-/** Human-readable headings per command category. */
-export const categoryLabels: Record<CommandCategory, string> = {
-  step: "Selected Step",
-  navigation: "Go to Step",
-  pipeline: "Pipeline",
-  action: "Actions",
-  "add-step": "Add Step",
+/** Locale keys for the human-readable headings per command category. */
+export const categoryLabelKeys: Record<CommandCategory, string> = {
+  step: "pipelineEditor.commands.categories.step",
+  navigation: "pipelineEditor.commands.categories.navigation",
+  pipeline: "pipelineEditor.commands.categories.pipeline",
+  action: "pipelineEditor.commands.categories.action",
+  "add-step": "pipelineEditor.commands.categories.addStep",
 };
 
 /** Label used for a generated/branch child when flattening for navigation. */
 function branchLabel(step: PipelineStep, index: number): string {
-  if (step.generatorKind === "cartesian") return `Stage ${index + 1}`;
-  if (step.generatorKind === "grid" || step.generatorKind === "zip") return `Param ${index + 1}`;
-  if (step.generatorKind === "chain") return `Config ${index + 1}`;
-  if (step.subType === "generator") return `Option ${index + 1}`;
-  return `Branch ${index + 1}`;
+  const n = index + 1;
+  if (step.generatorKind === "cartesian") return i18n.t("pipelineEditor.commands.branchLabels.stage", { n });
+  if (step.generatorKind === "grid" || step.generatorKind === "zip") return i18n.t("pipelineEditor.commands.branchLabels.param", { n });
+  if (step.generatorKind === "chain") return i18n.t("pipelineEditor.commands.branchLabels.config", { n });
+  if (step.subType === "generator") return i18n.t("pipelineEditor.commands.branchLabels.option", { n });
+  return i18n.t("pipelineEditor.commands.branchLabels.branch", { n });
 }
 
 /** Flatten the (possibly nested) step tree into navigation entries. */
@@ -240,14 +242,15 @@ export function buildCommandActions({
     onOpenChange,
   } = handlers;
 
+  const t = i18n.t.bind(i18n);
   const result: CommandAction[] = [];
 
   // === Selected Step Actions ===
   if (selectedStep && selectedStepId) {
     result.push({
       id: "configure-step",
-      label: `Configure ${selectedStep.name}`,
-      description: "Open configuration panel",
+      label: t("pipelineEditor.commands.configure", { name: selectedStep.name }),
+      description: t("pipelineEditor.commands.openConfigPanel"),
       category: "step",
       icon: Settings,
       iconColor: stepTypeColors[selectedStep.type],
@@ -261,7 +264,7 @@ export function buildCommandActions({
     if (onDuplicateStep) {
       result.push({
         id: "duplicate-step",
-        label: `Duplicate ${selectedStep.name}`,
+        label: t("pipelineEditor.commands.duplicate", { name: selectedStep.name }),
         category: "step",
         icon: Copy,
         iconColor: stepTypeColors[selectedStep.type],
@@ -278,7 +281,7 @@ export function buildCommandActions({
       if (stepIndex > 0) {
         result.push({
           id: "move-step-up",
-          label: `Move ${selectedStep.name} Up`,
+          label: t("pipelineEditor.commands.moveUp", { name: selectedStep.name }),
           category: "step",
           icon: ArrowUp,
           onSelect: () => {
@@ -290,7 +293,7 @@ export function buildCommandActions({
       if (stepIndex < steps.length - 1 && stepIndex >= 0) {
         result.push({
           id: "move-step-down",
-          label: `Move ${selectedStep.name} Down`,
+          label: t("pipelineEditor.commands.moveDown", { name: selectedStep.name }),
           category: "step",
           icon: ArrowDown,
           onSelect: () => {
@@ -306,8 +309,8 @@ export function buildCommandActions({
       const hasFinetuning = selectedStep.finetuneConfig?.enabled;
       result.push({
         id: "configure-finetuning",
-        label: hasFinetuning ? "Edit Finetuning" : "Enable Finetuning",
-        description: "Configure Optuna hyperparameter optimization",
+        label: hasFinetuning ? t("pipelineEditor.commands.editFinetuning") : t("pipelineEditor.commands.enableFinetuning"),
+        description: t("pipelineEditor.commands.finetuningDescription"),
         category: "step",
         icon: Sparkles,
         iconColor: "text-purple-500",
@@ -328,8 +331,8 @@ export function buildCommandActions({
         selectedStep.paramSweeps && Object.keys(selectedStep.paramSweeps).length > 0;
       result.push({
         id: "configure-sweep",
-        label: hasSweeps ? "Edit Parameter Sweeps" : "Add Parameter Sweep",
-        description: "Configure grid search for parameters",
+        label: hasSweeps ? t("pipelineEditor.commands.editSweeps") : t("pipelineEditor.commands.addSweep"),
+        description: t("pipelineEditor.commands.sweepDescription"),
         category: "step",
         icon: Repeat,
         iconColor: "text-orange-500",
@@ -344,7 +347,7 @@ export function buildCommandActions({
     if (onRemoveStep) {
       result.push({
         id: "delete-step",
-        label: `Delete ${selectedStep.name}`,
+        label: t("pipelineEditor.commands.delete", { name: selectedStep.name }),
         category: "step",
         icon: Trash2,
         iconColor: "text-destructive",
@@ -378,7 +381,7 @@ export function buildCommandActions({
   if (onSave) {
     result.push({
       id: "save-pipeline",
-      label: "Save Pipeline",
+      label: t("pipelineEditor.commands.savePipeline"),
       category: "pipeline",
       icon: Save,
       shortcut: "⌘S",
@@ -392,8 +395,8 @@ export function buildCommandActions({
   if (onRun && steps.length > 0) {
     result.push({
       id: "run-pipeline",
-      label: "Run Pipeline",
-      description: "Use in experiment",
+      label: t("pipelineEditor.commands.runPipeline"),
+      description: t("pipelineEditor.commands.useInExperiment"),
       category: "pipeline",
       icon: Play,
       iconColor: "text-emerald-500",
@@ -407,7 +410,7 @@ export function buildCommandActions({
   if (onExport) {
     result.push({
       id: "export-json",
-      label: "Export as JSON",
+      label: t("pipelineEditor.commands.exportJson"),
       category: "pipeline",
       icon: FileJson,
       onSelect: () => {
@@ -420,7 +423,7 @@ export function buildCommandActions({
   if (onToggleFavorite) {
     result.push({
       id: "toggle-favorite",
-      label: "Toggle Favorite",
+      label: t("pipelineEditor.commands.toggleFavorite"),
       category: "pipeline",
       icon: Star,
       onSelect: () => {
@@ -434,7 +437,7 @@ export function buildCommandActions({
   if (onUndo) {
     result.push({
       id: "undo",
-      label: "Undo",
+      label: t("pipelineEditor.commands.undo"),
       category: "action",
       icon: Undo2,
       shortcut: "⌘Z",
@@ -448,7 +451,7 @@ export function buildCommandActions({
   if (onRedo) {
     result.push({
       id: "redo",
-      label: "Redo",
+      label: t("pipelineEditor.commands.redo"),
       category: "action",
       icon: Redo2,
       shortcut: "⌘⇧Z",
@@ -462,8 +465,8 @@ export function buildCommandActions({
   if (onOpenShortcutsHelp) {
     result.push({
       id: "keyboard-shortcuts",
-      label: "Keyboard Shortcuts",
-      description: "Show all shortcuts",
+      label: t("pipelineEditor.commands.keyboardShortcuts"),
+      description: t("pipelineEditor.commands.showAllShortcuts"),
       category: "action",
       icon: Settings,
       shortcut: "⌘?",
@@ -482,7 +485,7 @@ export function buildCommandActions({
       const Icon = stepTypeIcons[type];
       result.push({
         id: `add-${type}-${option.name}`,
-        label: `Add ${option.name}`,
+        label: t("pipelineEditor.commands.addStep", { name: option.name }),
         description: option.description,
         category: "add-step",
         icon: Icon,

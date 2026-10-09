@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import { FileEdit, Sparkles, Star, Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,8 @@ interface DraftsSectionProps {
 }
 
 function DraftsSection({ onDiscardDraft, visibleDrafts }: DraftsSectionProps) {
+  const { t } = useTranslation();
+
   if (visibleDrafts.length === 0) return null;
 
   return (
@@ -45,13 +48,13 @@ function DraftsSection({ onDiscardDraft, visibleDrafts }: DraftsSectionProps) {
       <div className="flex items-center gap-2">
         <FileEdit className="h-4 w-4 text-amber-600 dark:text-amber-400" />
         <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground">
-          Drafts
+          {t("pipelines.drafts.title")}
         </h2>
         <Badge variant="secondary" className="text-xs">
           {visibleDrafts.length}
         </Badge>
         <span className="ml-2 text-xs text-muted-foreground">
-          Unsaved pipelines in this browser - save or discard to keep your workspace tidy.
+          {t("pipelines.drafts.hint")}
         </span>
       </div>
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -86,6 +89,7 @@ function MyPipelinesSection({
   viewMode,
   visibleDrafts,
 }: MyPipelinesSectionProps) {
+  const { t } = useTranslation();
   const hasDrafts = visibleDrafts.length > 0;
   const hasSaved = pipelines.length > 0;
 
@@ -94,8 +98,9 @@ function MyPipelinesSection({
       <SearchEmptyState query={searchQuery} onClear={onSearchClear} />
     ) : (
       <NoPipelinesState
-        title="No pipelines yet"
-        description="Pick a template above or create a blank pipeline to build your first workflow."
+        title={t("pipelines.library.emptyTitle")}
+        description={t("pipelines.library.emptyDescription")}
+        actionLabel={t("pipelines.create")}
       />
     );
   }
@@ -108,7 +113,7 @@ function MyPipelinesSection({
           <div className="flex items-center gap-2">
             <Workflow className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground">
-              Saved pipelines
+              {t("pipelines.library.savedPipelines")}
             </h2>
             <Badge variant="secondary" className="text-xs">
               {pipelines.length}
@@ -146,14 +151,16 @@ function TemplatesSection({
   searchQuery,
   templatePipelines,
 }: TemplatesSectionProps) {
+  const { t } = useTranslation();
+
   if (!presetsLoading && templatePipelines.length === 0) {
     return normalizedQuery ? (
       <SearchEmptyState query={searchQuery} onClear={onSearchClear} />
     ) : (
       <EmptyState
         icon={Sparkles}
-        title="No templates available"
-        description="Templates should appear here from the backend preset catalog."
+        title={t("pipelines.library.noTemplatesTitle")}
+        description={t("pipelines.library.noTemplatesDescription")}
       />
     );
   }
@@ -188,15 +195,17 @@ function FavoritesSection({
   searchQuery,
   viewMode,
 }: FavoritesSectionProps) {
+  const { t } = useTranslation();
+
   if (!favoritePipelines.length) {
     return normalizedQuery ? (
       <SearchEmptyState query={searchQuery} onClear={onSearchClear} />
     ) : (
       <EmptyState
         icon={Star}
-        title="No favorites yet"
-        description="Star the pipelines you revisit often and they will stay pinned here."
-        action={{ label: "Open My Pipelines", onClick: onOpenMyPipelines }}
+        title={t("pipelines.library.noFavoritesTitle")}
+        description={t("pipelines.library.noFavoritesDescription")}
+        action={{ label: t("pipelines.library.openMyPipelines"), onClick: onOpenMyPipelines }}
       />
     );
   }

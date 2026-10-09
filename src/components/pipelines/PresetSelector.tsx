@@ -2,6 +2,7 @@
  * PresetSelector component for pipeline presets
  */
 
+import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import {
   ArrowRight,
@@ -66,11 +67,6 @@ const categoryColors: Record<string, string> = {
   default: "bg-muted text-muted-foreground",
 };
 
-const variantLabels: Record<PipelinePresetVariantId, string> = {
-  regression: "Regression",
-  classification: "Classification",
-};
-
 const variantButtonToneStyles: Record<PipelinePresetVariantId, string> = {
   regression: cn(
     "border-emerald-500/25 bg-emerald-500/[0.10] text-emerald-700",
@@ -117,9 +113,11 @@ function PresetComplexityBadge({
   complexity: number;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const score = clampPresetComplexity(complexity);
   const meta = getPresetComplexityMeta(score);
   const Icon = complexityIcons[meta.key];
+  const label = t(`pipelines.presetSelector.complexity.${meta.key}.label`);
 
   return (
     <Tooltip>
@@ -133,13 +131,13 @@ function PresetComplexityBadge({
         >
           <Icon className={cn(compact ? "h-3 w-3" : "h-3.5 w-3.5", meta.iconClass)} />
           <span>{score}/10</span>
-          {!compact && <span className="text-current/80">{meta.label}</span>}
+          {!compact && <span className="text-current/80">{label}</span>}
         </div>
       </TooltipTrigger>
       <TooltipContent className="max-w-[240px]">
-        <div className="font-semibold">Complexity {score}/10 · {meta.label}</div>
+        <div className="font-semibold">{t("pipelines.presetSelector.complexityTitle", { score, label })}</div>
         <p className="mt-1 text-[11px] leading-relaxed text-primary-foreground/90">
-          {meta.description}
+          {t(`pipelines.presetSelector.complexity.${meta.key}.description`)}
         </p>
       </TooltipContent>
     </Tooltip>
@@ -179,6 +177,8 @@ export function PresetSelector({
   variant = "full",
   onSeeAll,
 }: PresetSelectorProps) {
+  const { t } = useTranslation();
+
   if (loading) {
     if (variant === "strip") {
       return (
@@ -209,7 +209,7 @@ export function PresetSelector({
     return (
       <Card className="p-6 text-center">
         <FlaskConical className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-        <p className="text-muted-foreground">No preset pipelines available</p>
+        <p className="text-muted-foreground">{t("pipelines.presetSelector.noPresets")}</p>
       </Card>
     );
   }
@@ -244,7 +244,7 @@ export function PresetSelector({
                         variantButtonToneStyles[variantId]
                       )}
                     >
-                      {variantLabels[variantId]}
+                      {t(`pipelines.presetSelector.variants.${variantId}`)}
                     </Button>
                   ))}
                 </div>
@@ -253,7 +253,7 @@ export function PresetSelector({
           })}
           {onSeeAll && (
             <Button size="sm" variant="ghost" onClick={onSeeAll} className="flex-shrink-0">
-              See all
+              {t("pipelines.presetSelector.seeAll")}
               <ArrowRight className="ml-1 h-3 w-3" />
             </Button>
           )}
@@ -282,7 +282,7 @@ export function PresetSelector({
                 <div className="mb-3 flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 rounded bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
                     <Icon className="h-3 w-3" />
-                    Template
+                    {t("pipelines.presetSelector.template")}
                   </div>
                   <PresetComplexityBadge complexity={complexity} />
                 </div>
@@ -298,18 +298,18 @@ export function PresetSelector({
 
                 <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   <ComplexityIcon className={cn("h-3.5 w-3.5", complexityMeta.iconClass)} />
-                  <span>{complexityMeta.hint}</span>
+                  <span>{t(`pipelines.presetSelector.complexity.${complexityMeta.key}.hint`)}</span>
                 </div>
 
                 <div className="mt-3 grid grid-cols-4 gap-2 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
                   <StatCell
-                    label="ops"
+                    label={t("pipelines.collection.stats.ops")}
                     value={card.operatorCount}
                   />
-                  <StatCell label="models" value={stats.models} />
-                  <StatCell label="branches" value={stats.branches} />
+                  <StatCell label={t("pipelines.collection.stats.models")} value={stats.models} />
+                  <StatCell label={t("pipelines.collection.stats.branches")} value={stats.branches} />
                   <StatCell
-                    label="variants"
+                    label={t("pipelines.collection.stats.variants")}
                     value={card.variantCount}
                     emphasize={stats.hasGenerators}
                   />
@@ -338,8 +338,7 @@ export function PresetSelector({
                     ))}
                     {preview.truncated && (
                       <li className="pl-0.5 text-[11px] italic text-muted-foreground/70">
-                        + {preview.totalSteps - preview.nodes.length} more step
-                        {preview.totalSteps - preview.nodes.length === 1 ? "" : "s"}
+                        {t("pipelines.collection.moreSteps", { count: preview.totalSteps - preview.nodes.length })}
                       </li>
                     )}
                   </ul>
@@ -364,7 +363,7 @@ export function PresetSelector({
                         variantButtonToneStyles[variantId]
                       )}
                     >
-                      {variantLabels[variantId]}
+                      {t(`pipelines.presetSelector.variants.${variantId}`)}
                     </Button>
                   ))}
                 </div>

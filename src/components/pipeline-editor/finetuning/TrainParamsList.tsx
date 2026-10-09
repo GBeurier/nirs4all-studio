@@ -6,6 +6,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,7 @@ export function TrainParamsList({
   onUpdate,
   modelName,
 }: TrainParamsListProps) {
+  const { t } = useTranslation();
   const [showAddPopover, setShowAddPopover] = useState(false);
 
   // Only show for models that have training parameters (neural networks, boosting)
@@ -84,10 +86,10 @@ export function TrainParamsList({
           <div className="min-w-0 flex-1">
             <Label className="text-sm font-medium flex items-center gap-2">
               <Zap className="h-4 w-4 text-amber-500" />
-              Training Params (Tunable Ranges)
+              {t("pipelineEditor.finetune.train.title")}
             </Label>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Optuna searches these ranges (e.g., batch: 16→256)
+              {t("pipelineEditor.finetune.train.hint")}
             </p>
           </div>
           <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
@@ -99,14 +101,14 @@ export function TrainParamsList({
                 disabled={unusedPresets.length === 0}
               >
                 <Plus className="h-3.5 w-3.5 mr-1" />
-                Add
+                {t("common.add")}
               </Button>
             </PopoverTrigger>
           <PopoverContent align="end" className="w-64 bg-popover p-0">
             <div className="p-3 border-b border-border">
-              <h4 className="font-medium text-sm">Training Parameters</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.finetune.train.popTitle")}</h4>
               <p className="text-xs text-muted-foreground mt-1">
-                Add training hyperparameters to tune
+                {t("pipelineEditor.finetune.train.popHint")}
               </p>
             </div>
             <ScrollArea className="max-h-64">
@@ -114,8 +116,9 @@ export function TrainParamsList({
                 {unusedPresets.map((preset) => (
                   <button
                     key={preset.name}
+                    type="button"
                     onClick={() => handleAddParam(preset)}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted transition-colors"
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-sm">{preset.name}</span>
@@ -124,13 +127,13 @@ export function TrainParamsList({
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {preset.description}
+                      {t(preset.descriptionKey)}
                     </p>
                   </button>
                 ))}
                 {unusedPresets.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">
-                    All training parameters added
+                    {t("pipelineEditor.finetune.train.allAdded")}
                   </p>
                 )}
               </div>
@@ -142,7 +145,7 @@ export function TrainParamsList({
       {params.length === 0 ? (
         <div className="text-center py-3 rounded-lg border border-dashed">
           <p className="text-xs text-muted-foreground">
-            No training parameters to tune
+            {t("pipelineEditor.finetune.train.none")}
           </p>
         </div>
       ) : (

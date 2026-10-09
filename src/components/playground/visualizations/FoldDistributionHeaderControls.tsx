@@ -18,6 +18,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { FoldDistributionSettingsMenu } from './FoldDistributionSettingsMenu';
+import { useTranslation } from 'react-i18next';
 
 export type FoldViewMode = 'counts' | 'distribution' | 'both';
 
@@ -58,11 +59,13 @@ export function FoldDistributionHeaderControls({
   onShowMeanLineChange,
   onExport,
 }: FoldDistributionHeaderControlsProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
       <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
         <LayoutGrid className="w-4 h-4 text-primary" />
-        {splitterName} ({foldCount} folds)
+        {t('playground.charts.fold.header.foldCount', { name: splitterName, count: foldCount })}
       </h3>
 
       <div className="flex items-center gap-1.5">
@@ -70,13 +73,13 @@ export function FoldDistributionHeaderControls({
           value={viewMode}
           onValueChange={(value) => onViewModeChange(value as FoldViewMode)}
         >
-          <SelectTrigger className="h-7 w-28 text-xs">
+          <SelectTrigger className="h-7 w-28 text-xs" aria-label={t('playground.charts.fold.header.viewModeLabel')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="counts">Sample Counts</SelectItem>
-            {hasYStats && <SelectItem value="distribution">Y Distribution</SelectItem>}
-            {hasYStats && <SelectItem value="both">Both</SelectItem>}
+            <SelectItem value="counts">{t('playground.charts.fold.header.viewMode.counts')}</SelectItem>
+            {hasYStats && <SelectItem value="distribution">{t('playground.charts.fold.header.viewMode.distribution')}</SelectItem>}
+            {hasYStats && <SelectItem value="both">{t('playground.charts.fold.header.viewMode.both')}</SelectItem>}
           </SelectContent>
         </Select>
 
@@ -90,7 +93,7 @@ export function FoldDistributionHeaderControls({
               onClearFoldSelection();
             }}
           >
-            Clear
+            {t('playground.charts.fold.header.clear')}
           </Button>
         )}
 
@@ -108,12 +111,12 @@ export function FoldDistributionHeaderControls({
         <TooltipProvider delayDuration={200}>
           <TooltipUI>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onExport}>
+              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onExport} aria-label={t('playground.charts.fold.header.exportData')}>
                 <Download className="w-3 h-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p className="text-xs">Export data</p>
+              <p className="text-xs">{t('playground.charts.fold.header.exportData')}</p>
             </TooltipContent>
           </TooltipUI>
         </TooltipProvider>

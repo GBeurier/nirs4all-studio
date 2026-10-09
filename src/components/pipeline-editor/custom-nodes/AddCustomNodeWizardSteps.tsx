@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   ArrowRight,
@@ -32,81 +33,51 @@ import { AddCustomNodeWizardReviewStep } from './AddCustomNodeWizardReviewStep';
 
 interface StepConfig {
   id: WizardStep;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   icon: ReactNode;
 }
 
 const WIZARD_STEPS: StepConfig[] = [
   {
     id: 'type',
-    title: 'Node Type',
-    description: 'Choose the category',
+    titleKey: 'pipelineEditor.customNodes.wizard.steps.type.title',
+    descriptionKey: 'pipelineEditor.customNodes.wizard.steps.type.description',
     icon: <Package className="h-4 w-4" />,
   },
   {
     id: 'info',
-    title: 'Basic Info',
-    description: 'Name and description',
+    titleKey: 'pipelineEditor.customNodes.wizard.steps.info.title',
+    descriptionKey: 'pipelineEditor.customNodes.wizard.steps.info.description',
     icon: <FileText className="h-4 w-4" />,
   },
   {
     id: 'classpath',
-    title: 'Class Path',
-    description: 'Python operator path',
+    titleKey: 'pipelineEditor.customNodes.wizard.steps.classpath.title',
+    descriptionKey: 'pipelineEditor.customNodes.wizard.steps.classpath.description',
     icon: <Settings className="h-4 w-4" />,
   },
   {
     id: 'parameters',
-    title: 'Parameters',
-    description: 'Configure inputs',
+    titleKey: 'pipelineEditor.customNodes.wizard.steps.parameters.title',
+    descriptionKey: 'pipelineEditor.customNodes.wizard.steps.parameters.description',
     icon: <ListChecks className="h-4 w-4" />,
   },
   {
     id: 'review',
-    title: 'Review',
-    description: 'Confirm and save',
+    titleKey: 'pipelineEditor.customNodes.wizard.steps.review.title',
+    descriptionKey: 'pipelineEditor.customNodes.wizard.steps.review.description',
     icon: <Check className="h-4 w-4" />,
   },
 ];
 
-const NODE_TYPE_OPTIONS: { value: NodeType; label: string; description: string; icon: string }[] = [
-  {
-    value: 'preprocessing',
-    label: 'Preprocessing',
-    description: 'Transform and prepare spectral data',
-    icon: '🔧',
-  },
-  {
-    value: 'splitting',
-    label: 'Splitting',
-    description: 'Cross-validation and train/test splitting',
-    icon: '✂️',
-  },
-  {
-    value: 'model',
-    label: 'Model',
-    description: 'Regression or classification models',
-    icon: '🎯',
-  },
-  {
-    value: 'y_processing',
-    label: 'Target Processing',
-    description: 'Transform the target variable',
-    icon: '📊',
-  },
-  {
-    value: 'filter',
-    label: 'Filter',
-    description: 'Sample filtering and outlier removal',
-    icon: '🔍',
-  },
-  {
-    value: 'augmentation',
-    label: 'Augmentation',
-    description: 'Data augmentation operators',
-    icon: '✨',
-  },
+const NODE_TYPE_OPTIONS: { value: NodeType; icon: string }[] = [
+  { value: 'preprocessing', icon: '🔧' },
+  { value: 'splitting', icon: '✂️' },
+  { value: 'model', icon: '🎯' },
+  { value: 'y_processing', icon: '📊' },
+  { value: 'filter', icon: '🔍' },
+  { value: 'augmentation', icon: '✨' },
 ];
 
 interface CustomNodeWizardHeaderProps {
@@ -122,15 +93,16 @@ export function CustomNodeWizardHeader({
   onCancel,
   onStepChange,
 }: CustomNodeWizardHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="px-4 py-3 border-b border-border">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Wand2 className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold">Add Custom Node</h2>
+          <h2 className="font-semibold">{t('pipelineEditor.customNodes.wizard.title')}</h2>
         </div>
         <Button variant="ghost" size="sm" onClick={onCancel}>
-          Cancel
+          {t('common.cancel')}
         </Button>
       </div>
 
@@ -140,8 +112,10 @@ export function CustomNodeWizardHeader({
             <button
               onClick={() => index <= currentStepIndex && onStepChange(step.id)}
               disabled={index > currentStepIndex}
+              aria-label={t(step.titleKey)}
+              aria-current={currentStep === step.id ? 'step' : undefined}
               className={cn(
-                "flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors",
+                "flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 currentStep === step.id
                   ? "bg-primary text-primary-foreground"
                   : index < currentStepIndex
@@ -150,7 +124,7 @@ export function CustomNodeWizardHeader({
               )}
             >
               {step.icon}
-              <span className="hidden sm:inline">{step.title}</span>
+              <span className="hidden sm:inline">{t(step.titleKey)}</span>
             </button>
             {index < WIZARD_STEPS.length - 1 && (
               <div className={cn(
@@ -171,12 +145,13 @@ interface TypeStepProps {
 }
 
 function TypeStep({ value, onChange }: TypeStepProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-medium">What type of operator is this?</h3>
+        <h3 className="text-lg font-medium">{t('pipelineEditor.customNodes.wizard.type.heading')}</h3>
         <p className="text-sm text-muted-foreground">
-          This determines where it appears in the pipeline palette.
+          {t('pipelineEditor.customNodes.wizard.type.hint')}
         </p>
       </div>
 
@@ -203,9 +178,9 @@ function TypeStep({ value, onChange }: TypeStepProps) {
             <div className="flex-1 space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-lg">{option.icon}</span>
-                <span className="font-medium">{option.label}</span>
+                <span className="font-medium">{t(`pipelineEditor.customNodes.types.${option.value}.label`)}</span>
               </div>
-              <p className="text-xs text-muted-foreground">{option.description}</p>
+              <p className="text-xs text-muted-foreground">{t(`pipelineEditor.customNodes.types.${option.value}.description`)}</p>
             </div>
           </Label>
         ))}
@@ -233,20 +208,21 @@ function InfoStep({
   onChangeCategory,
   nodeType,
 }: InfoStepProps) {
+  const { t } = useTranslation();
   const previewId = generateCustomNodeId(name);
 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium">Basic Information</h3>
+        <h3 className="text-lg font-medium">{t('pipelineEditor.customNodes.wizard.info.heading')}</h3>
         <p className="text-sm text-muted-foreground">
-          Give your operator a name and description.
+          {t('pipelineEditor.customNodes.wizard.info.hint')}
         </p>
       </div>
 
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="wizard-name">Operator Name *</Label>
+          <Label htmlFor="wizard-name">{t('pipelineEditor.customNodes.wizard.info.name')}</Label>
           <Input
             id="wizard-name"
             value={name}
@@ -255,23 +231,23 @@ function InfoStep({
             className="font-mono"
           />
           <p className="text-xs text-muted-foreground">
-            Node ID: <code className="bg-muted px-1 py-0.5 rounded">{previewId}</code>
+            {t('pipelineEditor.customNodes.wizard.info.nodeId')} <code className="bg-muted px-1 py-0.5 rounded">{previewId}</code>
           </p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="wizard-description">Description *</Label>
+          <Label htmlFor="wizard-description">{t('pipelineEditor.customNodes.wizard.info.description')}</Label>
           <Textarea
             id="wizard-description"
             value={description}
             onChange={(e) => onChangeDescription(e.target.value)}
-            placeholder="Describe what this operator does..."
+            placeholder={t('pipelineEditor.customNodes.wizard.info.descriptionPlaceholder')}
             rows={3}
           />
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="wizard-category">Category</Label>
+          <Label htmlFor="wizard-category">{t('pipelineEditor.customNodes.wizard.info.category')}</Label>
           <Input
             id="wizard-category"
             value={category}
@@ -279,7 +255,7 @@ function InfoStep({
             placeholder="Custom"
           />
           <p className="text-xs text-muted-foreground">
-            Subcategory within the {NODE_TYPE_OPTIONS.find(t => t.value === nodeType)?.label || nodeType} section.
+            {t('pipelineEditor.customNodes.wizard.info.categoryHint', { type: t(`pipelineEditor.customNodes.types.${nodeType}.label`) })}
           </p>
         </div>
       </div>
@@ -294,6 +270,7 @@ interface ClassPathStepProps {
 }
 
 function ClassPathStep({ classPath, onChange, allowedPackages }: ClassPathStepProps) {
+  const { t } = useTranslation();
   const isValid = useMemo(
     () => getClassPathAllowlistStatus(classPath, allowedPackages),
     [classPath, allowedPackages]
@@ -302,23 +279,23 @@ function ClassPathStep({ classPath, onChange, allowedPackages }: ClassPathStepPr
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium">Python Class Path</h3>
+        <h3 className="text-lg font-medium">{t('pipelineEditor.customNodes.wizard.classPath.heading')}</h3>
         <p className="text-sm text-muted-foreground">
-          The full import path to your Python operator class.
+          {t('pipelineEditor.customNodes.wizard.classPath.hint')}
         </p>
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="wizard-classpath">
-          Class Path
+          {t('pipelineEditor.customNodes.wizard.classPath.label')}
           {isValid === true && (
             <Badge variant="outline" className="ml-2 text-green-500 border-green-500">
-              ✓ Valid
+              {t('pipelineEditor.customNodes.wizard.classPath.valid')}
             </Badge>
           )}
           {isValid === false && (
             <Badge variant="outline" className="ml-2 text-destructive border-destructive">
-              Not in allowlist
+              {t('pipelineEditor.customNodes.wizard.classPath.notAllowed')}
             </Badge>
           )}
         </Label>
@@ -335,7 +312,7 @@ function ClassPathStep({ classPath, onChange, allowedPackages }: ClassPathStepPr
       </div>
 
       <div className="p-4 rounded-lg bg-muted/50 space-y-2">
-        <h4 className="text-sm font-medium">Allowed Packages</h4>
+        <h4 className="text-sm font-medium">{t('pipelineEditor.customNodes.wizard.classPath.allowedPackages')}</h4>
         <div className="flex flex-wrap gap-2">
           {allowedPackages.map(pkg => (
             <Badge key={pkg} variant="secondary" className="font-mono text-xs">
@@ -344,7 +321,7 @@ function ClassPathStep({ classPath, onChange, allowedPackages }: ClassPathStepPr
           ))}
         </div>
         <p className="text-xs text-muted-foreground">
-          For security, only operators from these packages can be used.
+          {t('pipelineEditor.customNodes.wizard.classPath.security')}
         </p>
       </div>
 
@@ -352,8 +329,7 @@ function ClassPathStep({ classPath, onChange, allowedPackages }: ClassPathStepPr
         <div className="flex items-start gap-2 text-sm text-muted-foreground">
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <p>
-            You can skip this step if you're just prototyping. However, the node
-            won't be executable until a valid class path is provided.
+            {t('pipelineEditor.customNodes.wizard.classPath.skip')}
           </p>
         </div>
       )}
@@ -447,6 +423,7 @@ export function CustomNodeWizardFooter({
   onNext,
   onComplete,
 }: CustomNodeWizardFooterProps) {
+  const { t } = useTranslation();
   return (
     <div className="px-4 py-3 border-t border-border flex items-center justify-between">
       <Button
@@ -455,21 +432,21 @@ export function CustomNodeWizardFooter({
         disabled={currentStepIndex === 0}
       >
         <ArrowLeft className="h-4 w-4 mr-1" />
-        Back
+        {t('common.back')}
       </Button>
 
       <div className="text-xs text-muted-foreground">
-        Step {currentStepIndex + 1} of {WIZARD_STEPS.length}
+        {t('pipelineEditor.customNodes.wizard.stepOf', { current: currentStepIndex + 1, total: WIZARD_STEPS.length })}
       </div>
 
       {currentStep === 'review' ? (
         <Button onClick={onComplete} disabled={!canGoNext}>
           <Sparkles className="h-4 w-4 mr-1" />
-          Create Node
+          {t('pipelineEditor.customNodes.wizard.create')}
         </Button>
       ) : (
         <Button onClick={onNext} disabled={!canGoNext}>
-          Next
+          {t('common.next')}
           <ArrowRight className="h-4 w-4 ml-1" />
         </Button>
       )}

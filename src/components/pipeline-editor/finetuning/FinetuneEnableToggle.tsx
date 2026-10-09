@@ -3,6 +3,7 @@
  */
 
 import { Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ export function FinetuneEnableToggle({
   onToggle,
   paramCount,
 }: FinetuneEnableToggleProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -41,11 +43,11 @@ export function FinetuneEnableToggle({
           />
         </div>
         <div>
-          <h4 className="font-medium">Optuna Finetuning</h4>
+          <h4 className="font-medium">{t("pipelineEditor.finetune.toggle.title")}</h4>
           <p className="text-sm text-muted-foreground">
             {enabled
-              ? `Optimizing ${paramCount} parameter${paramCount !== 1 ? "s" : ""}`
-              : "Enable intelligent hyperparameter search"}
+              ? t("pipelineEditor.finetune.toggle.optimizing", { count: paramCount })
+              : t("pipelineEditor.finetune.toggle.enableHint")}
           </p>
         </div>
       </div>
@@ -53,6 +55,7 @@ export function FinetuneEnableToggle({
       <Switch
         checked={enabled}
         onCheckedChange={onToggle}
+        aria-label={t("pipelineEditor.finetune.toggle.title")}
         className="data-[state=checked]:bg-purple-500"
       />
     </div>

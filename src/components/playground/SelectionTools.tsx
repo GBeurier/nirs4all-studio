@@ -11,6 +11,7 @@
  * Phase 1 Implementation - Foundation & Selection System
  */
 
+import { useTranslation } from 'react-i18next';
 import {
   useState,
   useCallback,
@@ -55,10 +56,11 @@ export function SelectionModeToggle({
   onChange,
   className,
 }: SelectionModeToggleProps) {
+  const { t } = useTranslation();
   const tools: { type: SelectionToolType; icon: typeof MousePointer2; label: string; shortcut: string }[] = [
-    { type: 'click', icon: MousePointer2, label: 'Click to select', shortcut: 'V' },
-    { type: 'box', icon: Square, label: 'Box selection', shortcut: 'B' },
-    { type: 'lasso', icon: Lasso, label: 'Lasso selection', shortcut: 'L' },
+    { type: 'click', icon: MousePointer2, label: t('playground.selection.tools.click'), shortcut: 'V' },
+    { type: 'box', icon: Square, label: t('playground.selection.tools.box'), shortcut: 'B' },
+    { type: 'lasso', icon: Lasso, label: t('playground.selection.tools.lasso'), shortcut: 'L' },
   ];
 
   // Keyboard shortcuts
@@ -103,6 +105,8 @@ export function SelectionModeToggle({
                   mode === type && 'bg-background shadow-sm'
                 )}
                 onClick={() => onChange(type)}
+                aria-label={`${label} (${shortcut})`}
+                aria-pressed={mode === type}
               >
                 <Icon className="w-3.5 h-3.5" />
               </Button>
@@ -451,6 +455,7 @@ export function SelectionActionsBar({
   visible = true,
   className,
 }: SelectionActionsBarProps) {
+  const { t } = useTranslation();
   if (!visible || selectedCount === 0) return null;
 
   return (
@@ -462,7 +467,7 @@ export function SelectionActionsBar({
         )}
       >
         <span className="font-medium text-primary">
-          {selectedCount} of {totalCount} selected
+          {t('playground.selection.tools.selectedOf', { count: selectedCount, total: totalCount })}
         </span>
         <div className="flex items-center gap-1">
           <Button
@@ -471,7 +476,7 @@ export function SelectionActionsBar({
             className="h-6 px-2 text-xs"
             onClick={onClear}
           >
-            Clear
+            {t('playground.selection.tools.clear')}
           </Button>
           <Button
             variant="ghost"
@@ -479,7 +484,7 @@ export function SelectionActionsBar({
             className="h-6 px-2 text-xs"
             onClick={onInvert}
           >
-            Invert
+            {t('playground.selection.tools.invert')}
           </Button>
           <Button
             variant="ghost"
@@ -487,7 +492,7 @@ export function SelectionActionsBar({
             className="h-6 px-2 text-xs"
             onClick={onSelectAll}
           >
-            All
+            {t('playground.selection.tools.all')}
           </Button>
           {onPin && (
             <Button
@@ -496,7 +501,7 @@ export function SelectionActionsBar({
               className="h-6 px-2 text-xs"
               onClick={onPin}
             >
-              Pin
+              {t('playground.selection.tools.pin')}
             </Button>
           )}
           {onFilterToSelection && (
@@ -509,12 +514,12 @@ export function SelectionActionsBar({
                   onClick={onFilterToSelection}
                   disabled={!filterToSelectionEnabled}
                 >
-                Filter to Selection
+                {t('playground.selection.tools.filterToSelection')}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-xs">
               <p className="text-xs">
-                Add a filter operator that keeps only the {selectedCount} selected sample{selectedCount !== 1 ? 's' : ''}
+                {t('playground.selection.tools.filterTooltip', { count: selectedCount })}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -526,7 +531,7 @@ export function SelectionActionsBar({
             className="h-6 px-2 text-xs"
             onClick={onSave}
           >
-            Save
+            {t('playground.selection.tools.save')}
           </Button>
         )}
         </div>

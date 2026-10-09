@@ -8,6 +8,7 @@
  */
 
 import React from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   AlertTriangle,
@@ -63,9 +64,10 @@ export function ValidationSummaryDialog({
   result,
   onExport,
   onNavigate,
-  exportLabel = "Export Pipeline",
-  title = "Validation Summary",
+  exportLabel,
+  title,
 }: ValidationSummaryDialogProps): React.ReactElement {
+  const { t } = useTranslation();
   const { errorCount, warningCount, infoCount } = result.summary;
   const hasErrors = errorCount > 0;
   const hasWarnings = warningCount > 0;
@@ -91,26 +93,26 @@ export function ValidationSummaryDialog({
             {hasErrors ? (
               <>
                 <AlertCircle className="h-5 w-5 text-destructive" />
-                <span>Cannot Export</span>
+                <span>{t("pipelineEditor.validation.summary.cannotExport")}</span>
               </>
             ) : hasWarnings ? (
               <>
                 <AlertTriangle className="h-5 w-5 text-orange-500" />
-                <span>{title}</span>
+                <span>{title ?? t("pipelineEditor.validation.summary.title")}</span>
               </>
             ) : (
               <>
                 <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                <span>Ready to Export</span>
+                <span>{t("pipelineEditor.validation.summary.readyToExport")}</span>
               </>
             )}
           </DialogTitle>
           <DialogDescription>
             {hasErrors
-              ? "Please fix the following errors before exporting."
+              ? t("pipelineEditor.validation.summary.fixErrors")
               : hasWarnings
-              ? "Your pipeline has warnings. Review them before proceeding."
-              : "Your pipeline is valid and ready to export."}
+              ? t("pipelineEditor.validation.summary.hasWarnings")
+              : t("pipelineEditor.validation.summary.isValid")}
           </DialogDescription>
         </DialogHeader>
 
@@ -119,7 +121,7 @@ export function ValidationSummaryDialog({
           {errorCount > 0 && (
             <Badge variant="destructive" className="gap-1">
               <AlertCircle className="h-3 w-3" />
-              {errorCount} Error{errorCount !== 1 && "s"}
+              {t("pipelineEditor.validation.ui.errorCount", { count: errorCount })}
             </Badge>
           )}
           {warningCount > 0 && (
@@ -128,7 +130,7 @@ export function ValidationSummaryDialog({
               className="gap-1 border-orange-500/50 text-orange-500"
             >
               <AlertTriangle className="h-3 w-3" />
-              {warningCount} Warning{warningCount !== 1 && "s"}
+              {t("pipelineEditor.validation.ui.warningCount", { count: warningCount })}
             </Badge>
           )}
           {infoCount > 0 && (
@@ -137,7 +139,7 @@ export function ValidationSummaryDialog({
               className="gap-1 border-blue-500/50 text-blue-500"
             >
               <Info className="h-3 w-3" />
-              {infoCount} Info
+              {t("pipelineEditor.validation.ui.infoCount", { count: infoCount })}
             </Badge>
           )}
         </div>
@@ -171,14 +173,14 @@ export function ValidationSummaryDialog({
           <div className="flex flex-col items-center gap-2 py-6">
             <CheckCircle2 className="h-12 w-12 text-emerald-500" />
             <p className="text-sm text-muted-foreground">
-              All validation checks passed
+              {t("pipelineEditor.validation.summary.allPassed")}
             </p>
           </div>
         )}
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={handleExport}
@@ -186,7 +188,7 @@ export function ValidationSummaryDialog({
             className="gap-2"
           >
             <Download className="h-4 w-4" />
-            {canExport ? exportLabel : "Fix Errors First"}
+            {canExport ? exportLabel ?? t("pipelineEditor.validation.summary.exportLabel") : t("pipelineEditor.validation.summary.fixErrorsFirst")}
           </Button>
         </DialogFooter>
       </DialogContent>

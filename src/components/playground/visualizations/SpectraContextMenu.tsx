@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useMemo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -72,6 +73,7 @@ export function SpectraContextMenu({
   onSelectSimilar,
   disabled = false,
 }: SpectraContextMenuProps) {
+  const { t } = useTranslation();
   const selectionCtx = useSelection();
 
   // Compute selection state
@@ -84,13 +86,13 @@ export function SpectraContextMenu({
   const hoveredInfo = useMemo(() => {
     if (hoveredSample === null) return null;
     return {
-      id: sampleIds?.[hoveredSample] ?? `Sample ${hoveredSample}`,
+      id: sampleIds?.[hoveredSample] ?? t('playground.charts.spectra.contextMenu.sampleFallback', { index: hoveredSample }),
       y: yValues?.[hoveredSample],
       fold: folds?.[hoveredSample],
       isSelected: selectedSamples.has(hoveredSample),
       isPinned: pinnedSamples.has(hoveredSample),
     };
-  }, [hoveredSample, sampleIds, yValues, folds, selectedSamples, pinnedSamples]);
+  }, [hoveredSample, sampleIds, yValues, folds, selectedSamples, pinnedSamples, t]);
 
   // Handle pin/unpin
   const handleTogglePin = useCallback(() => {
@@ -237,19 +239,19 @@ export function SpectraContextMenu({
             {!hoveredInfo.isSelected ? (
               <ContextMenuItem onClick={handleSelect}>
                 <Check className="w-3.5 h-3.5 mr-2" />
-                Select this sample
+                {t('playground.charts.spectra.contextMenu.selectThis')}
               </ContextMenuItem>
             ) : (
               <ContextMenuItem onClick={handleRemoveFromSelection}>
                 <X className="w-3.5 h-3.5 mr-2" />
-                Deselect this sample
+                {t('playground.charts.spectra.contextMenu.deselectThis')}
               </ContextMenuItem>
             )}
 
             {!hoveredInfo.isSelected && hasSelection && (
               <ContextMenuItem onClick={handleAddToSelection}>
                 <CheckCheck className="w-3.5 h-3.5 mr-2" />
-                Add to selection
+                {t('playground.charts.spectra.contextMenu.addToSelection')}
               </ContextMenuItem>
             )}
 
@@ -257,12 +259,12 @@ export function SpectraContextMenu({
               {hoveredInfo.isPinned ? (
                 <>
                   <PinOff className="w-3.5 h-3.5 mr-2" />
-                  Unpin this sample
+                  {t('playground.charts.spectra.contextMenu.unpinThis')}
                 </>
               ) : (
                 <>
                   <Pin className="w-3.5 h-3.5 mr-2" />
-                  Pin this sample
+                  {t('playground.charts.spectra.contextMenu.pinThis')}
                 </>
               )}
             </ContextMenuItem>
@@ -276,19 +278,19 @@ export function SpectraContextMenu({
             <ContextMenuSub>
               <ContextMenuSubTrigger>
                 <Filter className="w-3.5 h-3.5 mr-2" />
-                Select similar...
+                {t('playground.charts.spectra.contextMenu.selectSimilar')}
               </ContextMenuSubTrigger>
               <ContextMenuSubContent>
                 {hoveredInfo.fold && (
                   <ContextMenuItem onClick={handleSelectSimilarFold}>
                     <Target className="w-3.5 h-3.5 mr-2" />
-                    Same fold ({hoveredInfo.fold})
+                    {t('playground.charts.spectra.contextMenu.sameFold', { fold: hoveredInfo.fold })}
                   </ContextMenuItem>
                 )}
                 {hoveredInfo.y !== undefined && (
                   <ContextMenuItem onClick={handleSelectSimilarY}>
                     <Target className="w-3.5 h-3.5 mr-2" />
-                    Similar Y value (±10%)
+                    {t('playground.charts.spectra.contextMenu.similarY')}
                   </ContextMenuItem>
                 )}
               </ContextMenuSubContent>
@@ -301,32 +303,32 @@ export function SpectraContextMenu({
         {hasSelection && (
           <>
             <ContextMenuLabel className="text-[10px] text-muted-foreground">
-              {selectedSamples.size} sample{selectedSamples.size > 1 ? 's' : ''} selected
+              {t('playground.charts.spectra.contextMenu.selectedCount', { count: selectedSamples.size })}
             </ContextMenuLabel>
             <ContextMenuItem onClick={handlePinAll}>
               <Pin className="w-3.5 h-3.5 mr-2" />
-              Pin selected samples
+              {t('playground.charts.spectra.contextMenu.pinSelected')}
               <ContextMenuShortcut>P</ContextMenuShortcut>
             </ContextMenuItem>
             {onExportSamples && (
               <ContextMenuItem onClick={handleExport}>
                 <Download className="w-3.5 h-3.5 mr-2" />
-                Export selected spectra
+                {t('playground.charts.spectra.contextMenu.exportSelected')}
               </ContextMenuItem>
             )}
             <ContextMenuItem onClick={handleCopySelectedInfo}>
               <Copy className="w-3.5 h-3.5 mr-2" />
-              Copy selected info
+              {t('playground.charts.spectra.contextMenu.copySelectedInfo')}
             </ContextMenuItem>
             {onHideSamples && (
               <ContextMenuItem onClick={handleHideSelected} className="text-destructive">
                 <EyeOff className="w-3.5 h-3.5 mr-2" />
-                Hide selected samples
+                {t('playground.charts.spectra.contextMenu.hideSelected')}
               </ContextMenuItem>
             )}
             <ContextMenuItem onClick={handleClearSelection}>
               <X className="w-3.5 h-3.5 mr-2" />
-              Clear selection
+              {t('playground.charts.spectra.contextMenu.clearSelection')}
               <ContextMenuShortcut>Esc</ContextMenuShortcut>
             </ContextMenuItem>
             <ContextMenuSeparator />
@@ -337,11 +339,11 @@ export function SpectraContextMenu({
         {hasPinned && (
           <>
             <ContextMenuLabel className="text-[10px] text-muted-foreground">
-              {pinnedSamples.size} pinned sample{pinnedSamples.size > 1 ? 's' : ''}
+              {t('playground.charts.spectra.contextMenu.pinnedCount', { count: pinnedSamples.size })}
             </ContextMenuLabel>
             <ContextMenuItem onClick={handleUnpinAll}>
               <PinOff className="w-3.5 h-3.5 mr-2" />
-              Unpin all samples
+              {t('playground.charts.spectra.contextMenu.unpinAll')}
             </ContextMenuItem>
             <ContextMenuSeparator />
           </>
@@ -351,7 +353,7 @@ export function SpectraContextMenu({
         {hoveredInfo && (
           <ContextMenuItem onClick={handleCopySampleInfo}>
             <Copy className="w-3.5 h-3.5 mr-2" />
-            Copy sample info
+            {t('playground.charts.spectra.contextMenu.copySampleInfo')}
           </ContextMenuItem>
         )}
 
@@ -361,13 +363,13 @@ export function SpectraContextMenu({
             {onExportSamples && (
               <ContextMenuItem onClick={handleExportHovered}>
                 <Download className="w-3.5 h-3.5 mr-2" />
-                Export this spectrum
+                {t('playground.charts.spectra.contextMenu.exportThis')}
               </ContextMenuItem>
             )}
             {onHideSamples && (
               <ContextMenuItem onClick={handleHideHovered} className="text-destructive">
                 <EyeOff className="w-3.5 h-3.5 mr-2" />
-                Hide this sample
+                {t('playground.charts.spectra.contextMenu.hideThis')}
               </ContextMenuItem>
             )}
           </>
@@ -377,7 +379,7 @@ export function SpectraContextMenu({
         {!hoveredInfo && !hasSelection && !hasPinned && (
           <ContextMenuItem disabled>
             <Eye className="w-3.5 h-3.5 mr-2 opacity-50" />
-            Hover a spectrum line for options
+            {t('playground.charts.spectra.contextMenu.hoverHint')}
           </ContextMenuItem>
         )}
       </ContextMenuContent>

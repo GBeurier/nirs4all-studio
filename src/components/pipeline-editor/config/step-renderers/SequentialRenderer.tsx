@@ -8,6 +8,7 @@
  * @see docs/_internals/implementation_roadmap.md
  */
 
+import { Trans, useTranslation } from "react-i18next";
 import { Layers, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,7 @@ export function SequentialRenderer({
   onAddChild,
   onRemoveChild,
 }: StepRendererProps) {
+  const { t } = useTranslation();
   const children = step.children ?? [];
 
   return (
@@ -43,16 +45,16 @@ export function SequentialRenderer({
           <div className="flex items-center gap-3 p-3 rounded-lg bg-lime-500/10 border border-lime-500/30">
             <Layers className="h-5 w-5 text-lime-500" />
             <div className="flex-1">
-              <h4 className="font-medium text-sm">Sequential Group</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.config.sequential.title")}</h4>
               <p className="text-xs text-muted-foreground">
-                Steps execute in order, top to bottom
+                {t("pipelineEditor.config.sequential.subtitle")}
               </p>
             </div>
             <Badge
               variant="secondary"
               className="bg-lime-500/20 text-lime-600"
             >
-              {children.length} step{children.length !== 1 ? "s" : ""}
+              {t("pipelineEditor.config.sequential.stepCount", { count: children.length })}
             </Badge>
           </div>
 
@@ -61,12 +63,13 @@ export function SequentialRenderer({
           {/* Description */}
           <div className="text-sm text-muted-foreground">
             <p>
-              A sequential group packages multiple steps into a single unit.
-              This is equivalent to wrapping steps in <code className="text-xs bg-muted px-1 py-0.5 rounded">[...]</code> in nirs4all.
+              <Trans
+                i18nKey="pipelineEditor.config.sequential.description"
+                components={{ code: <code className="text-xs bg-muted px-1 py-0.5 rounded" /> }}
+              />
             </p>
             <p className="mt-2">
-              Use this to create reusable preprocessing pipelines or to nest
-              sequences inside augmentation containers.
+              {t("pipelineEditor.config.sequential.usage")}
             </p>
           </div>
 
@@ -76,7 +79,7 @@ export function SequentialRenderer({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">
-                Steps ({children.length})
+                {t("pipelineEditor.config.sequential.stepsHeading", { count: children.length })}
               </Label>
               {onAddChild && (
                 <Button
@@ -86,7 +89,7 @@ export function SequentialRenderer({
                   onClick={() => onAddChild(step.id)}
                 >
                   <Layers className="h-3 w-3 mr-1" />
-                  Add Step
+                  {t("pipelineEditor.config.sequential.addStep")}
                 </Button>
               )}
             </div>
@@ -114,7 +117,8 @@ export function SequentialRenderer({
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-destructive"
+                          aria-label={t("pipelineEditor.config.sequential.removeStep")}
                           onClick={(e) => {
                             e.stopPropagation();
                             onRemoveChild(step.id, child.id);
@@ -138,9 +142,9 @@ export function SequentialRenderer({
                 onClick={() => onAddChild?.(step.id)}
               >
                 <Layers className="h-8 w-8 text-lime-500/50 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No steps in sequence</p>
+                <p className="text-sm text-muted-foreground">{t("pipelineEditor.config.sequential.empty")}</p>
                 <p className="text-xs text-muted-foreground/70 mt-1">
-                  Click to add preprocessing or transform steps
+                  {t("pipelineEditor.config.sequential.emptyHint")}
                 </p>
               </div>
             )}
@@ -153,8 +157,7 @@ export function SequentialRenderer({
               <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
                 <ArrowDown className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <span>
-                  Steps execute sequentially. The output of each step becomes
-                  the input for the next.
+                  {t("pipelineEditor.config.sequential.flowHint")}
                 </span>
               </div>
             </>

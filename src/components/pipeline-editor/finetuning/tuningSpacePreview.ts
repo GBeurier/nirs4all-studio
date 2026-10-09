@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import {
   TUNING_ORDERED_SEARCH_SPACE_FORMAT,
   TUNING_ORDERED_SEARCH_SPACE_SCHEMA_VERSION,
@@ -160,7 +161,7 @@ function buildForceParams(
     if (!path) {
       issues.push({
         code: "invalid_force_param_path",
-        message: `Force param "${rawPath}" does not map to a native tuning path.`,
+        message: i18n.t("pipelineEditor.finetune.preview.forceNoPath", { path: rawPath }),
         path: rawPath,
       });
       continue;
@@ -168,7 +169,7 @@ function buildForceParams(
     if (!parameterPaths.has(path)) {
       issues.push({
         code: "invalid_force_param_path",
-        message: `Force param "${path}" is not part of the current search space.`,
+        message: i18n.t("pipelineEditor.finetune.preview.forceNotInSpace", { path }),
         path,
       });
       continue;
@@ -176,7 +177,7 @@ function buildForceParams(
     if (seenPaths.has(path)) {
       issues.push({
         code: "invalid_force_param_path",
-        message: `Force param "${path}" is declared more than once.`,
+        message: i18n.t("pipelineEditor.finetune.preview.forceDuplicate", { path }),
         path,
       });
       continue;
@@ -184,7 +185,7 @@ function buildForceParams(
     if (!isJsonNativeValue(value)) {
       issues.push({
         code: "invalid_force_param_value",
-        message: `Force param "${path}" is not a JSON-native value.`,
+        message: i18n.t("pipelineEditor.finetune.preview.forceNotJson", { path }),
         path,
       });
       continue;
@@ -229,7 +230,7 @@ function appendFinetuneParameters(
     if (!segments) {
       issues.push({
         code: "invalid_parameter_name",
-        message: "A finetuning parameter has an empty native path.",
+        message: i18n.t("pipelineEditor.finetune.preview.emptyPath"),
       });
       continue;
     }
@@ -238,7 +239,7 @@ function appendFinetuneParameters(
     if (seenPaths.has(path)) {
       issues.push({
         code: "duplicate_parameter_path",
-        message: `Parameter "${path}" is declared more than once.`,
+        message: i18n.t("pipelineEditor.finetune.preview.duplicateParam", { path }),
         path,
       });
       continue;
@@ -248,7 +249,7 @@ function appendFinetuneParameters(
     if (spec === null) {
       issues.push({
         code: "invalid_parameter_spec",
-        message: `Parameter "${path}" is not JSON-native and cannot be previewed.`,
+        message: i18n.t("pipelineEditor.finetune.preview.paramNotJson", { path }),
         path,
       });
       continue;
@@ -279,7 +280,7 @@ export function buildStudioTuningSpacePreview(
   if (!config.enabled) {
     issues.push({
       code: "finetune_disabled",
-      message: "Finetuning is disabled; no ordered search-space preview is available.",
+      message: i18n.t("pipelineEditor.finetune.preview.disabled"),
     });
     return { ...resultBase, artifact: null, preview: null };
   }
@@ -312,7 +313,7 @@ export function buildStudioTuningSpacePreview(
   if (parameters.length === 0) {
     issues.push({
       code: "empty_search_space",
-      message: "The finetuning model search space is empty.",
+      message: i18n.t("pipelineEditor.finetune.preview.emptySpace"),
     });
     return { ...resultBase, artifact: null, preview: null };
   }
@@ -351,7 +352,7 @@ export function buildStudioTuningSpacePreview(
   ) {
     issues.push({
       code: "invalid_preview_artifact",
-      message: "Studio could not build JSON-native tuning fingerprint inputs.",
+      message: i18n.t("pipelineEditor.finetune.preview.fingerprintInputs"),
     });
     return { ...resultBase, artifact: null, preview: null };
   }
@@ -379,7 +380,7 @@ export function buildStudioTuningSpacePreview(
       message:
         error instanceof Error
           ? error.message
-          : "Studio could not build a valid ordered search-space preview artifact.",
+          : i18n.t("pipelineEditor.finetune.preview.invalidArtifact"),
     });
     return { ...resultBase, artifact: null, preview: null };
   }

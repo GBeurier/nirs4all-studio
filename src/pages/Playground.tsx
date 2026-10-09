@@ -38,7 +38,6 @@ import {
   buildPlaygroundSessionStatePayload,
   chartVisibilityToExecuteOptions,
   formatPlaygroundPipelineEditorExportName,
-  formatPlaygroundPipelineJsonExportDescription,
   parsePipelineEditorImportData,
   parsePlaygroundRouteAction,
   parseStoredPlaygroundSessionState,
@@ -47,8 +46,10 @@ import {
 import type { OperatorDefinition } from '@/types/playground';
 import { PlaygroundProviders } from './PlaygroundProviders';
 import { PlaygroundContent } from './PlaygroundSections';
+import { useTranslation } from 'react-i18next';
 
 export default function Playground() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -210,7 +211,7 @@ export default function Playground() {
   // Export pipeline to Pipeline Editor (navigation)
   const handleExportToPipelineEditor = useCallback(() => {
     if (operators.length === 0) {
-      toast.warning('No operators to export');
+      toast.warning(t('playground.page.noOperatorsToExport'));
       return;
     }
 
@@ -220,13 +221,13 @@ export default function Playground() {
       formatPlaygroundPipelineEditorExportName()
     );
 
-    toast.success('Pipeline exported', {
-      description: `Opening Pipeline Editor with ${exportData.steps.length} operators`,
+    toast.success(t('playground.page.pipelineExported'), {
+      description: t('playground.page.openingEditor', { count: exportData.steps.length }),
     });
 
     // Navigate to Pipeline Editor with source parameter
     navigate('/pipelines/new?source=playground');
-  }, [operators, navigate]);
+  }, [operators, navigate, t]);
 
   // Export pipeline as JSON download
   const handleExportPipelineJson = useCallback(() => {
@@ -242,15 +243,15 @@ export default function Playground() {
     a.click();
     URL.revokeObjectURL(url);
 
-    toast.success('Pipeline exported', {
-      description: formatPlaygroundPipelineJsonExportDescription(operators.length),
+    toast.success(t('playground.page.pipelineExported'), {
+      description: t('playground.page.pipelineJsonSaved', { count: operators.length, filename: PLAYGROUND_PIPELINE_JSON_FILENAME }),
     });
-  }, [operators]);
+  }, [operators, t]);
 
   // Export processed data as CSV
   const handleExportDataCsv = useCallback(() => {
     if (!dataView.processedSpectraExport) {
-      toast.warning('No processed data to export');
+      toast.warning(t('playground.page.noProcessedData'));
       return;
     }
 
@@ -260,16 +261,16 @@ export default function Playground() {
     });
 
     if (!exportResult.success) {
-      toast.error('Data export failed', {
-        description: exportResult.error ?? 'Unable to export processed spectra',
+      toast.error(t('playground.page.dataExportFailed'), {
+        description: exportResult.error ?? t('playground.page.dataExportFailedDetail'),
       });
       return;
     }
 
-    toast.success('Data exported', {
-      description: `${dataView.processedSampleCount} samples × ${dataView.processedFeatureCount} wavelengths saved to CSV`,
+    toast.success(t('playground.page.dataExported'), {
+      description: t('playground.page.dataExportedDetail', { samples: dataView.processedSampleCount, wavelengths: dataView.processedFeatureCount }),
     });
-  }, [dataView]);
+  }, [dataView, t]);
 
   // ============= Import Handler =============
 
@@ -287,15 +288,15 @@ export default function Playground() {
     const editorData = readClientStorageString(clientStorageKeys.pipelineEditorExportToPlayground);
     const importResult = parsePipelineEditorImportData(editorData);
     if (importResult.status === 'missing') {
-      toast.info('Import from Pipeline Editor', {
-        description: 'Open a pipeline in the Pipeline Editor and use "Send to Playground" to import it here.',
+      toast.info(t('playground.page.importFromEditor'), {
+        description: t('playground.page.importFromEditorHint'),
       });
       return;
     }
 
     if (importResult.status === 'invalid') {
-      toast.error('Failed to import pipeline', {
-        description: importResult.error instanceof Error ? importResult.error.message : 'Invalid format',
+      toast.error(t('playground.page.importFailed'), {
+        description: importResult.error instanceof Error ? importResult.error.message : t('playground.page.invalidFormat'),
       });
       return;
     }
@@ -314,18 +315,18 @@ export default function Playground() {
 
     // Show warnings if any
     if (warnings.length > 0) {
-      toast.warning('Some steps were skipped', {
+      toast.warning(t('playground.page.stepsSkipped'), {
         description: warnings.slice(0, 2).join('. '),
       });
     } else {
-      toast.success('Pipeline imported', {
-        description: `${importedOps.length} operators added from Pipeline Editor`,
+      toast.success(t('playground.page.pipelineImported'), {
+        description: t('playground.page.operatorsAdded', { count: importedOps.length }),
       });
     }
 
     // Clear the import data
     removeClientStorageItem(clientStorageKeys.pipelineEditorExportToPlayground);
-  }, [clearPipeline, addOperatorByName]);
+  }, [clearPipeline, addOperatorByName, t]);
 
   // Check for import data or incoming dataset selection on mount
   useEffect(() => {
@@ -447,8 +448,8 @@ export default function Playground() {
    */
   const handleFilterToSelection = useCallback((selectedIndices: number[]) => {
     if (selectedIndices.length === 0) {
-      toast.warning('No samples selected', {
-        description: 'Select samples in a chart first, then click "Filter to Selection".',
+      toast.warning(t('playground.page.noSamplesSelected'), {
+        description: t('playground.page.noSamplesSelectedHint'),
       });
       return;
     }
@@ -459,10 +460,10 @@ export default function Playground() {
       mode: 'keep',  // Keep only these indices (vs 'remove')
     });
 
-    toast.success('Filter applied', {
-      description: `Keeping ${selectedIndices.length} selected sample${selectedIndices.length !== 1 ? 's' : ''}`,
+    toast.success(t('playground.page.filterApplied'), {
+      description: t('playground.page.keepingSelected', { count: selectedIndices.length }),
     });
-  }, [addOperatorByName]);
+  }, [addOperatorByName, t]);
 
   return (
     <MlLoadingOverlay>

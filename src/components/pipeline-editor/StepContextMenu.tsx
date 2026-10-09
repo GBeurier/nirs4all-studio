@@ -11,6 +11,7 @@
  */
 
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Copy,
   Trash2,
@@ -105,6 +106,7 @@ export function StepContextMenu({
   canMoveDown = true,
   className,
 }: StepContextMenuProps) {
+  const { t } = useTranslation();
   const isModel = step.type === "model";
   const isPreprocessing = step.type === "preprocessing";
   const isSplitting = step.type === "splitting";
@@ -139,8 +141,8 @@ export function StepContextMenu({
         {/* Header */}
         <ContextMenuLabel className="flex items-center gap-2">
           <span className={colors.text}>{step.name}</span>
-          <span className="text-xs text-muted-foreground capitalize">
-            ({step.type})
+          <span className="text-xs text-muted-foreground">
+            ({t(`pipelineEditor.config.panel.stepType.${step.type}`)})
           </span>
         </ContextMenuLabel>
 
@@ -150,14 +152,14 @@ export function StepContextMenu({
         {onEditParams && (
           <ContextMenuItem onClick={onEditParams}>
             <Edit3 className="h-4 w-4 mr-2" />
-            Edit Parameters
+            {t("pipelineEditor.stepMenu.editParams")}
           </ContextMenuItem>
         )}
 
         {onDuplicate && (
           <ContextMenuItem onClick={onDuplicate}>
             <Copy className="h-4 w-4 mr-2" />
-            Duplicate
+            {t("pipelineEditor.stepMenu.duplicate")}
             <ContextMenuShortcut>⌘D</ContextMenuShortcut>
           </ContextMenuItem>
         )}
@@ -165,7 +167,7 @@ export function StepContextMenu({
         {onDelete && (
           <ContextMenuItem onClick={onDelete} className="text-destructive">
             <Trash2 className="h-4 w-4 mr-2" />
-            Delete
+            {t("pipelineEditor.stepMenu.delete")}
             <ContextMenuShortcut>⌫</ContextMenuShortcut>
           </ContextMenuItem>
         )}
@@ -181,12 +183,12 @@ export function StepContextMenu({
             {isEnabled ? (
               <>
                 <Power className="h-4 w-4 mr-2" />
-                Enabled
+                {t("pipelineEditor.stepMenu.enabled")}
               </>
             ) : (
               <>
                 <PowerOff className="h-4 w-4 mr-2" />
-                Disabled
+                {t("pipelineEditor.stepMenu.disabled")}
               </>
             )}
           </ContextMenuCheckboxItem>
@@ -199,13 +201,13 @@ export function StepContextMenu({
             {onMoveUp && (
               <ContextMenuItem onClick={onMoveUp} disabled={!canMoveUp}>
                 <ArrowUp className="h-4 w-4 mr-2" />
-                Move Up
+                {t("pipelineEditor.stepMenu.moveUp")}
               </ContextMenuItem>
             )}
             {onMoveDown && (
               <ContextMenuItem onClick={onMoveDown} disabled={!canMoveDown}>
                 <ArrowDown className="h-4 w-4 mr-2" />
-                Move Down
+                {t("pipelineEditor.stepMenu.moveDown")}
               </ContextMenuItem>
             )}
           </>
@@ -217,14 +219,14 @@ export function StepContextMenu({
         {onAddToOrGenerator && (
           <ContextMenuItem onClick={onAddToOrGenerator}>
             <Sparkles className="h-4 w-4 mr-2 text-orange-500" />
-            Add to OR Generator...
+            {t("pipelineEditor.stepMenu.addToOrGenerator")}
           </ContextMenuItem>
         )}
 
         {onWrapInBranch && (
           <ContextMenuItem onClick={onWrapInBranch}>
             <GitBranch className="h-4 w-4 mr-2 text-cyan-500" />
-            Wrap in Branch
+            {t("pipelineEditor.stepMenu.wrapInBranch")}
           </ContextMenuItem>
         )}
 
@@ -235,7 +237,7 @@ export function StepContextMenu({
             <ContextMenuSub>
               <ContextMenuSubTrigger>
                 <Repeat className="h-4 w-4 mr-2 text-orange-500" />
-                Add Parameter Sweep
+                {t("pipelineEditor.stepMenu.addParamSweep")}
               </ContextMenuSubTrigger>
               <ContextMenuSubContent className="bg-popover">
                 {sweepableParams.map((param) => {
@@ -249,7 +251,7 @@ export function StepContextMenu({
                       <Repeat className="h-3.5 w-3.5 mr-2" />
                       {param.replace(/_/g, " ")}
                       {hasSweep && (
-                        <span className="ml-auto text-xs opacity-60">active</span>
+                        <span className="ml-auto text-xs opacity-60">{t("pipelineEditor.stepMenu.sweepActive")}</span>
                       )}
                     </ContextMenuItem>
                   );
@@ -265,7 +267,7 @@ export function StepContextMenu({
             <ContextMenuSeparator />
             <ContextMenuItem onClick={onConfigureFinetuning}>
               <Sliders className="h-4 w-4 mr-2 text-purple-500" />
-              Configure Finetuning...
+              {t("pipelineEditor.stepMenu.configureFinetuning")}
               <ContextMenuShortcut>⌘F</ContextMenuShortcut>
             </ContextMenuItem>
           </>
@@ -280,12 +282,12 @@ export function StepContextMenu({
               <ContextMenuSub>
                 <ContextMenuSubTrigger>
                   <Plus className="h-4 w-4 mr-2" />
-                  Insert Before
+                  {t("pipelineEditor.stepMenu.insertBefore")}
                   <ChevronRight className="h-4 w-4 ml-auto" />
                 </ContextMenuSubTrigger>
                 <ContextMenuSubContent className="bg-popover w-48">
                   <ContextMenuLabel className="text-xs">
-                    Preprocessing
+                    {t("pipelineEditor.stepMenu.groupPreprocessing")}
                   </ContextMenuLabel>
                   {quickInsertOptions.preprocessing.map((opt) => (
                     <ContextMenuItem
@@ -298,7 +300,7 @@ export function StepContextMenu({
                     </ContextMenuItem>
                   ))}
                   <ContextMenuSeparator />
-                  <ContextMenuLabel className="text-xs">Models</ContextMenuLabel>
+                  <ContextMenuLabel className="text-xs">{t("pipelineEditor.stepMenu.groupModels")}</ContextMenuLabel>
                   {quickInsertOptions.models.map((opt) => (
                     <ContextMenuItem
                       key={opt.name}
@@ -315,12 +317,12 @@ export function StepContextMenu({
               <ContextMenuSub>
                 <ContextMenuSubTrigger>
                   <Plus className="h-4 w-4 mr-2" />
-                  Insert After
+                  {t("pipelineEditor.stepMenu.insertAfter")}
                   <ChevronRight className="h-4 w-4 ml-auto" />
                 </ContextMenuSubTrigger>
                 <ContextMenuSubContent className="bg-popover w-48">
                   <ContextMenuLabel className="text-xs">
-                    Preprocessing
+                    {t("pipelineEditor.stepMenu.groupPreprocessing")}
                   </ContextMenuLabel>
                   {quickInsertOptions.preprocessing.map((opt) => (
                     <ContextMenuItem
@@ -333,7 +335,7 @@ export function StepContextMenu({
                     </ContextMenuItem>
                   ))}
                   <ContextMenuSeparator />
-                  <ContextMenuLabel className="text-xs">Models</ContextMenuLabel>
+                  <ContextMenuLabel className="text-xs">{t("pipelineEditor.stepMenu.groupModels")}</ContextMenuLabel>
                   {quickInsertOptions.models.map((opt) => (
                     <ContextMenuItem
                       key={opt.name}
@@ -376,6 +378,7 @@ export function GeneratorContextMenu({
   onDelete,
   className,
 }: GeneratorContextMenuProps) {
+  const { t } = useTranslation();
   const isOr = step.generatorKind === "or";
   const isCartesian = step.generatorKind === "cartesian";
 
@@ -387,7 +390,7 @@ export function GeneratorContextMenu({
 
       <ContextMenuContent className="w-48 bg-popover">
         <ContextMenuLabel>
-          {isOr ? "OR Generator" : isCartesian ? "Cartesian Generator" : "Generator"}
+          {isOr ? t("pipelineEditor.stepMenu.generator.or") : isCartesian ? t("pipelineEditor.stepMenu.generator.cartesian") : t("pipelineEditor.stepMenu.generator.generic")}
         </ContextMenuLabel>
 
         <ContextMenuSeparator />
@@ -395,14 +398,14 @@ export function GeneratorContextMenu({
         {isOr && onAddOption && (
           <ContextMenuItem onClick={onAddOption}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Option
+            {t("pipelineEditor.stepMenu.generator.addOption")}
           </ContextMenuItem>
         )}
 
         {isCartesian && onAddStage && (
           <ContextMenuItem onClick={onAddStage}>
             <Layers className="h-4 w-4 mr-2" />
-            Add Stage
+            {t("pipelineEditor.stepMenu.generator.addStage")}
           </ContextMenuItem>
         )}
 
@@ -412,13 +415,13 @@ export function GeneratorContextMenu({
             {!isOr && (
               <ContextMenuItem onClick={() => onConvertType("or")}>
                 <Sparkles className="h-4 w-4 mr-2" />
-                Convert to OR Generator
+                {t("pipelineEditor.stepMenu.convertToOr")}
               </ContextMenuItem>
             )}
             {!isCartesian && (
               <ContextMenuItem onClick={() => onConvertType("cartesian")}>
                 <LayoutGrid className="h-4 w-4 mr-2" />
-                Convert to Cartesian
+                {t("pipelineEditor.stepMenu.generator.convertToCartesian")}
               </ContextMenuItem>
             )}
           </>
@@ -429,7 +432,7 @@ export function GeneratorContextMenu({
             <ContextMenuSeparator />
             <ContextMenuItem onClick={onUnwrap}>
               <Scissors className="h-4 w-4 mr-2" />
-              Unwrap (Flatten)
+              {t("pipelineEditor.stepMenu.generator.unwrap")}
             </ContextMenuItem>
           </>
         )}
@@ -439,7 +442,7 @@ export function GeneratorContextMenu({
             <ContextMenuSeparator />
             <ContextMenuItem onClick={onDelete} className="text-destructive">
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete Generator
+              {t("pipelineEditor.stepMenu.generator.delete")}
             </ContextMenuItem>
           </>
         )}
@@ -476,6 +479,7 @@ export function BranchContextMenu({
   canRemoveBranch = true,
   className,
 }: BranchContextMenuProps) {
+  const { t } = useTranslation();
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild className={className}>
@@ -484,7 +488,7 @@ export function BranchContextMenu({
 
       <ContextMenuContent className="w-48 bg-popover">
         <ContextMenuLabel>
-          {branchIndex !== undefined ? `Branch ${branchIndex + 1}` : "Parallel Branch"}
+          {branchIndex !== undefined ? t("pipelineEditor.stepMenu.branch.title", { index: branchIndex + 1 }) : t("pipelineEditor.stepMenu.branch.parallel")}
         </ContextMenuLabel>
 
         <ContextMenuSeparator />
@@ -492,14 +496,14 @@ export function BranchContextMenu({
         {onAddBranch && (
           <ContextMenuItem onClick={onAddBranch}>
             <Plus className="h-4 w-4 mr-2" />
-            Add New Branch
+            {t("pipelineEditor.stepMenu.branch.add")}
           </ContextMenuItem>
         )}
 
         {branchIndex !== undefined && onDuplicateBranch && (
           <ContextMenuItem onClick={onDuplicateBranch}>
             <Copy className="h-4 w-4 mr-2" />
-            Duplicate This Branch
+            {t("pipelineEditor.stepMenu.branch.duplicate")}
           </ContextMenuItem>
         )}
 
@@ -510,7 +514,7 @@ export function BranchContextMenu({
             className={canRemoveBranch ? "text-destructive" : ""}
           >
             <Trash2 className="h-4 w-4 mr-2" />
-            Remove This Branch
+            {t("pipelineEditor.stepMenu.branch.remove")}
           </ContextMenuItem>
         )}
 
@@ -519,7 +523,7 @@ export function BranchContextMenu({
             <ContextMenuSeparator />
             <ContextMenuItem onClick={onConvertToGenerator}>
               <Sparkles className="h-4 w-4 mr-2 text-orange-500" />
-              Convert to OR Generator
+              {t("pipelineEditor.stepMenu.convertToOr")}
             </ContextMenuItem>
           </>
         )}
@@ -529,7 +533,7 @@ export function BranchContextMenu({
             <ContextMenuSeparator />
             <ContextMenuItem onClick={onDelete} className="text-destructive">
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete Branch Step
+              {t("pipelineEditor.stepMenu.branch.deleteStep")}
             </ContextMenuItem>
           </>
         )}

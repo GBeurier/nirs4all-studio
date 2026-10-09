@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   Select,
   SelectContent,
@@ -17,12 +18,14 @@ import {
   getRuntimeGroupingRequirementBadge,
   runtimeGroupingPresentationCopy,
 } from "@/lib/runtimeGroupingPresentation";
+import { localizeRuntimeGroupingCopy } from "./runtimeGroupingCopy";
 
 export function RuntimeGroupingConflictNotice({
   groupingSelection,
 }: {
   groupingSelection: SelectedPipelinesRuntimeGrouping;
 }) {
+  const { t } = useTranslation();
   if (!groupingSelection.hasPersistedGroupConflict) {
     return null;
   }
@@ -33,10 +36,10 @@ export function RuntimeGroupingConflictNotice({
         <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
         <div className="space-y-1">
           <p className="font-medium text-destructive">
-            {RUNTIME_GROUPING_COPY.conflictTitle}
+            {localizeRuntimeGroupingCopy(t, RUNTIME_GROUPING_COPY.conflictTitle)}
           </p>
           <p className="text-muted-foreground">
-            {RUNTIME_GROUPING_COPY.conflictDescription}
+            {localizeRuntimeGroupingCopy(t, RUNTIME_GROUPING_COPY.conflictDescription)}
           </p>
           {groupingSelection.conflictingPipelines.map((pipeline) => (
             <p key={pipeline.id} className="text-xs text-muted-foreground">
@@ -54,23 +57,26 @@ function RuntimeGroupingWarnings({
 }: {
   groupingState: DatasetRuntimeGroupingState;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {groupingState.hasBlockingError && (
         <p className="text-xs text-destructive">
-          {groupingState.blockingMessage}
+          {localizeRuntimeGroupingCopy(t, groupingState.blockingMessage)}
         </p>
       )}
 
       {groupingState.repetitionOnlyWarning && (
         <p className="text-xs text-amber-700 dark:text-amber-400">
-          {groupingState.repetitionOnlyWarning}
+          {groupingState.repetitionColumn
+            ? t("pipelineEditor.execution.grouping.repetitionOnly", { column: groupingState.repetitionColumn })
+            : groupingState.repetitionOnlyWarning}
         </p>
       )}
 
       {groupingState.optionalPropagationWarning && (
         <p className="text-xs text-amber-700 dark:text-amber-400">
-          {groupingState.optionalPropagationWarning}
+          {localizeRuntimeGroupingCopy(t, groupingState.optionalPropagationWarning)}
         </p>
       )}
 
@@ -78,7 +84,7 @@ function RuntimeGroupingWarnings({
         groupingState.metadataColumns.length === 0 &&
         !groupingState.repetitionColumn && (
           <p className="text-xs text-muted-foreground">
-            {runtimeGroupingPresentationCopy.noMetadataColumns}
+            {localizeRuntimeGroupingCopy(t, runtimeGroupingPresentationCopy.noMetadataColumns)}
           </p>
         )}
     </>
@@ -100,6 +106,7 @@ export function RuntimeGroupingSection({
   selectedGroupBy: string | null | undefined;
   onGroupByChange: (datasetId: string, groupBy: string | null) => void;
 }) {
+  const { t } = useTranslation();
   const requirementBadge = getRuntimeGroupingRequirementBadge(
     groupingState,
     groupingSelection.hasRequiredSplitters,
@@ -109,10 +116,10 @@ export function RuntimeGroupingSection({
     <div className="space-y-2 rounded-lg border bg-muted/20 p-4">
       <div className="flex items-center justify-between gap-3">
         <label className="text-sm font-medium">
-          {runtimeGroupingPresentationCopy.title}
+          {localizeRuntimeGroupingCopy(t, runtimeGroupingPresentationCopy.title)}
         </label>
         <Badge variant={requirementBadge.variant}>
-          {requirementBadge.label}
+          {localizeRuntimeGroupingCopy(t, requirementBadge.label)}
         </Badge>
       </div>
 
@@ -124,11 +131,11 @@ export function RuntimeGroupingSection({
         disabled={disabled}
       >
         <SelectTrigger>
-          <SelectValue placeholder={runtimeGroupingPresentationCopy.selectPlaceholder} />
+          <SelectValue placeholder={localizeRuntimeGroupingCopy(t, runtimeGroupingPresentationCopy.selectPlaceholder)} />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__none__">
-            {runtimeGroupingPresentationCopy.noAdditionalGroupLabel}
+            {localizeRuntimeGroupingCopy(t, runtimeGroupingPresentationCopy.noAdditionalGroupLabel)}
           </SelectItem>
           {groupingState.metadataColumns.map((column) => (
             <SelectItem key={column} value={column}>
@@ -139,20 +146,20 @@ export function RuntimeGroupingSection({
       </Select>
 
       <p className="text-xs leading-relaxed text-muted-foreground">
-        {RUNTIME_GROUPING_COPY.additiveDescription}
+        {localizeRuntimeGroupingCopy(t, RUNTIME_GROUPING_COPY.additiveDescription)}
       </p>
 
       {groupingState.repetitionColumn && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="secondary">
-            {runtimeGroupingPresentationCopy.datasetRepetitionBadge}
+            {localizeRuntimeGroupingCopy(t, runtimeGroupingPresentationCopy.datasetRepetitionBadge)}
           </Badge>
           <code>{groupingState.repetitionColumn}</code>
         </div>
       )}
 
       <p className="text-[11px] leading-relaxed text-muted-foreground">
-        {RUNTIME_GROUPING_COPY.legacyGroupDeprecation}
+        {localizeRuntimeGroupingCopy(t, RUNTIME_GROUPING_COPY.legacyGroupDeprecation)}
       </p>
 
       <RuntimeGroupingWarnings groupingState={groupingState} />
@@ -169,6 +176,7 @@ export function RuntimeGroupingStatusMessage({
   isLoadingPipeline: boolean;
   hasSplitters: boolean;
 }) {
+  const { t } = useTranslation();
   if (!hasSelectedDataset) {
     return null;
   }
@@ -176,7 +184,7 @@ export function RuntimeGroupingStatusMessage({
   if (isLoadingPipeline) {
     return (
       <p className="text-xs text-muted-foreground">
-        Loading pipeline split requirements...
+        {t("pipelineEditor.execution.grouping.loadingSplit")}
       </p>
     );
   }
@@ -184,7 +192,7 @@ export function RuntimeGroupingStatusMessage({
   if (!hasSplitters) {
     return (
       <p className="text-xs text-muted-foreground">
-        {RUNTIME_GROUPING_COPY.noSplitterPipeline}
+        {localizeRuntimeGroupingCopy(t, RUNTIME_GROUPING_COPY.noSplitterPipeline)}
       </p>
     );
   }
