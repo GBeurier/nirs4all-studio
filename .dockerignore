@@ -35,6 +35,7 @@ api/*
 !api/shared/
 api/shared/*
 !api/shared/json_safe.py
+!api/shared/system_info.py
 !api/shared/dataset_config.py
 !api/synthetic_datasets.json
 !api/presets/
