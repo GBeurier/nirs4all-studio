@@ -575,7 +575,12 @@ impl CpythonScientificJobExecutor {
         self.adapt_document_cancellable(operation, payload, &AtomicBool::new(false))
     }
 
-    pub(crate) fn adapt_document_cancellable(&self, operation: &str, payload: &Value, cancelled: &AtomicBool) -> Result<Value, String> {
+    pub(crate) fn adapt_document_cancellable(
+        &self,
+        operation: &str,
+        payload: &Value,
+        cancelled: &AtomicBool,
+    ) -> Result<Value, String> {
         let _timing = BoundaryTiming::start(match operation {
             "dataset.configure" => "document_configure",
             "dataset.preview" => "document_preview",
@@ -598,7 +603,11 @@ impl CpythonScientificJobExecutor {
         let bytes = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
         let dedicated = matches!(
             operation,
-            "workspace.upgrade" | "predictions.run" | "predictions.file" | "runs.delete" | "analysis.shap_compute"
+            "workspace.upgrade"
+                | "predictions.run"
+                | "predictions.file"
+                | "runs.delete"
+                | "analysis.shap_compute"
         );
         let response = if dedicated {
             // Heavy operations must not occupy either interactive worker.
@@ -608,7 +617,11 @@ impl CpythonScientificJobExecutor {
                 self.packaged_runtime.as_ref(),
                 &bytes,
                 cancelled,
-                if operation == "analysis.shap_compute" { SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT } else { SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT },
+                if operation == "analysis.shap_compute" {
+                    SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT
+                } else {
+                    SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT
+                },
             )
         } else {
             self.run_selected_interactive_request(
@@ -944,11 +957,17 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
             let activity_job_id = job_id.clone();
             let activity_worker = std::thread::spawn(move || {
                 let started = Instant::now();
-                while !activity_done.load(Ordering::Acquire) && !activity_cancelled.load(Ordering::Acquire) {
+                while !activity_done.load(Ordering::Acquire)
+                    && !activity_cancelled.load(Ordering::Acquire)
+                {
                     let elapsed = started.elapsed().as_secs();
                     let _ = activity_terminal.activity(&activity_job_id, &format!("Scientific computation running · {elapsed}s elapsed. Fit progress is unavailable."));
                     for _ in 0..50 {
-                        if activity_done.load(Ordering::Acquire) || activity_cancelled.load(Ordering::Acquire) { return; }
+                        if activity_done.load(Ordering::Acquire)
+                            || activity_cancelled.load(Ordering::Acquire)
+                        {
+                            return;
+                        }
                         std::thread::sleep(Duration::from_millis(100));
                     }
                 }
@@ -2167,11 +2186,22 @@ fn request_limits(request: &Value) -> (usize, usize) {
                         | "predictions.file"
                         | "operators.availability"
                         | "results.export"
-                        | "inspector.data" | "inspector.histogram" | "inspector.rankings" | "inspector.branch-topology"
-                        | "inspector.scatter" | "inspector.heatmap" | "inspector.candlestick" | "inspector.branch-comparison"
-                        | "inspector.fold-stability" | "inspector.confusion" | "inspector.preprocessing-impact"
-                        | "inspector.hyperparameter" | "inspector.bias-variance"
-                        | "analysis.shap_compute" | "analysis.shap_view" | "synthesis.preview"
+                        | "inspector.data"
+                        | "inspector.histogram"
+                        | "inspector.rankings"
+                        | "inspector.branch-topology"
+                        | "inspector.scatter"
+                        | "inspector.heatmap"
+                        | "inspector.candlestick"
+                        | "inspector.branch-comparison"
+                        | "inspector.fold-stability"
+                        | "inspector.confusion"
+                        | "inspector.preprocessing-impact"
+                        | "inspector.hyperparameter"
+                        | "inspector.bias-variance"
+                        | "analysis.shap_compute"
+                        | "analysis.shap_view"
+                        | "synthesis.preview"
                 )
             ) {
                 crate::document_cpython::MAX_INSPECTION_BYTES
@@ -2937,7 +2967,22 @@ fn validate_general_response(
         .collect::<Vec<_>>(),
     )
     .map_err(|_| invalid)?;
-    if provenance_result && !result["dataset_run_ids"].as_object().is_some_and(|mapping| mapping.len() <= 256 && mapping.iter().all(|(run, dataset)| valid_identifier(run) && dataset.as_str().is_some_and(valid_identifier) && result["run_ids"].as_array().is_some_and(|runs| runs.contains(&serde_json::json!(run))))) { return Err(invalid); }
+    if provenance_result
+        && !result["dataset_run_ids"]
+            .as_object()
+            .is_some_and(|mapping| {
+                mapping.len() <= 256
+                    && mapping.iter().all(|(run, dataset)| {
+                        valid_identifier(run)
+                            && dataset.as_str().is_some_and(valid_identifier)
+                            && result["run_ids"]
+                                .as_array()
+                                .is_some_and(|runs| runs.contains(&serde_json::json!(run)))
+                    })
+            })
+    {
+        return Err(invalid);
+    }
     if root["engine"] != "dag-ml"
         || !root["job_id"].as_str().is_some_and(valid_identifier)
         || !result["workspace_path"]
@@ -3077,7 +3122,9 @@ fn read_bounded_tail(mut reader: impl Read, limit: usize) -> std::io::Result<(Ve
     let mut exceeded = false;
     loop {
         let count = reader.read(&mut buffer)?;
-        if count == 0 { return Ok((retained, exceeded)); }
+        if count == 0 {
+            return Ok((retained, exceeded));
+        }
         exceeded |= retained.len().saturating_add(count) > limit;
         if count >= limit {
             retained.clear();
@@ -3119,7 +3166,10 @@ mod tests {
         let (small, exceeded) = read_bounded_tail(b"warning".as_slice(), 65_536).unwrap();
         assert_eq!(small, b"warning");
         assert!(!exceeded);
-        assert_eq!(read_bounded_tail(b"warning".as_slice(), 0).unwrap(), (vec![], true));
+        assert_eq!(
+            read_bounded_tail(b"warning".as_slice(), 0).unwrap(),
+            (vec![], true)
+        );
     }
     #[cfg(windows)]
     fn serial_windows_snapshot(

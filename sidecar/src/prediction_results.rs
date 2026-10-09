@@ -9,7 +9,8 @@ use std::{
 fn endpoint(path: &str) -> Option<(&str, &str)> {
     let suffix = path.strip_prefix("/api/workspaces/")?;
     let (id, tail) = suffix.split_once("/predictions/")?;
-    let scatter = tail.strip_suffix("/scatter")
+    let scatter = tail
+        .strip_suffix("/scatter")
         .is_some_and(|prediction| !prediction.is_empty() && !prediction.contains('/'));
     if id.is_empty() || id.contains('/') || (!matches!(tail, "data" | "summary") && !scatter) {
         return None;
@@ -395,12 +396,20 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let workspace = root.path().join("workspace");
         std::fs::create_dir(&workspace).unwrap();
-        std::fs::write(root.path().join("app_settings.json"),
-            json!({"linked_workspaces":[{"id":"selected","path":workspace,"is_active":false}]}).to_string()).unwrap();
+        std::fs::write(
+            root.path().join("app_settings.json"),
+            json!({"linked_workspaces":[{"id":"selected","path":workspace,"is_active":false}]})
+                .to_string(),
+        )
+        .unwrap();
         let settings = AppSettingsStore::new(root.path());
-        let mut request = HttpRequest { method:"GET".into(),
-            path:"/api/workspaces/selected/predictions/real-prediction/scatter".into(),
-            query:None, headers:std::collections::BTreeMap::default(), body:vec![] };
+        let mut request = HttpRequest {
+            method: "GET".into(),
+            path: "/api/workspaces/selected/predictions/real-prediction/scatter".into(),
+            query: None,
+            headers: std::collections::BTreeMap::default(),
+            body: vec![],
+        };
         let response = dispatch(&settings, &request, &|operation, payload| {
             assert_eq!(operation, "results.arrays");
             assert_eq!(payload["workspace_path"], json!(workspace));
@@ -408,12 +417,27 @@ mod tests {
             Ok(json!({"y_true":[1.0],"y_pred":[1.1]}))
         });
         assert_eq!(response.status, 200);
-        assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["y_pred"], json!([1.1]));
+        assert_eq!(
+            serde_json::from_str::<Value>(&response.body).unwrap()["y_pred"],
+            json!([1.1])
+        );
         request.query = Some("path=/unauthorized".into());
-        assert_eq!(dispatch(&settings, &request, &|_,_| panic!("invalid input reached the library")).status, 400);
+        assert_eq!(
+            dispatch(&settings, &request, &|_, _| panic!(
+                "invalid input reached the library"
+            ))
+            .status,
+            400
+        );
         request.query = None;
         request.path = "/api/workspaces/selected/predictions/a%2Fb/scatter".into();
-        assert_eq!(dispatch(&settings, &request, &|_,_| panic!("invalid identifier reached the library")).status, 400);
+        assert_eq!(
+            dispatch(&settings, &request, &|_, _| panic!(
+                "invalid identifier reached the library"
+            ))
+            .status,
+            400
+        );
     }
     #[test]
     fn workspace_prediction_routes_resolve_named_workspace_and_preserve_real_records() {

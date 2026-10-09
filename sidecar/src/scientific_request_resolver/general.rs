@@ -35,16 +35,32 @@ pub(super) fn resolve(
     let mut options = json!({"workspace_path": workspace, "verbose": 0,
         "save_artifacts": true, "save_charts": false});
     if datasets.iter().all(|config| config.get("schema").is_none()) {
-    let fingerprints = adapt(&datasets.iter().map(|config| json!({"operation":"dataset.fingerprint","payload":{"config":config}})).collect::<Vec<_>>())
+        let fingerprints = adapt(
+            &datasets
+                .iter()
+                .map(
+                    |config| json!({"operation":"dataset.fingerprint","payload":{"config":config}}),
+                )
+                .collect::<Vec<_>>(),
+        )
         .map_err(|_| ScientificResolveError::DatasetAssembly)?;
-    if fingerprints.len() != selection.datasets.len() { return Err(ScientificResolveError::DatasetInvalid); }
-    let mut provenance = serde_json::Map::new();
-    for (fingerprint, id) in fingerprints.iter().zip(&selection.datasets) {
-        let hash = fingerprint["content_hash"].as_str().filter(|hash| hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
-            .ok_or(ScientificResolveError::DatasetInvalid)?;
-        if provenance.insert(hash.into(), json!(id)).is_some() { return Err(ScientificResolveError::DatasetInvalid); }
-    }
-    options["studio_provenance"] = json!({"job_id":preflight.job_id,"dataset_ids_by_hash":provenance});
+        if fingerprints.len() != selection.datasets.len() {
+            return Err(ScientificResolveError::DatasetInvalid);
+        }
+        let mut provenance = serde_json::Map::new();
+        for (fingerprint, id) in fingerprints.iter().zip(&selection.datasets) {
+            let hash = fingerprint["content_hash"]
+                .as_str()
+                .filter(|hash| {
+                    hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
+                .ok_or(ScientificResolveError::DatasetInvalid)?;
+            if provenance.insert(hash.into(), json!(id)).is_some() {
+                return Err(ScientificResolveError::DatasetInvalid);
+            }
+        }
+        options["studio_provenance"] =
+            json!({"job_id":preflight.job_id,"dataset_ids_by_hash":provenance});
     }
     for key in ["name", "random_state"] {
         if let Some(value) = config.get(key) {
@@ -150,12 +166,17 @@ fn normalize_documents(
         bounded(&normalized, MAX_GENERAL_BYTES)?;
         let execution = &normalized["execution_validation"];
         if execution["valid"] == false {
-            let code = execution["code"].as_str().filter(|value| !value.is_empty() && value.len() <= 128)
+            let code = execution["code"]
+                .as_str()
+                .filter(|value| !value.is_empty() && value.len() <= 128)
                 .ok_or(ScientificResolveError::PipelineInvalid)?;
-            let message = execution["message"].as_str().filter(|value| !value.is_empty() && value.len() <= 4096)
+            let message = execution["message"]
+                .as_str()
+                .filter(|value| !value.is_empty() && value.len() <= 4096)
                 .ok_or(ScientificResolveError::PipelineInvalid)?;
             return Err(ScientificResolveError::ExecutionUnavailable {
-                code: code.into(), message: message.into(),
+                code: code.into(),
+                message: message.into(),
             });
         }
         if execution["valid"] != true {
@@ -615,7 +636,9 @@ mod tests {
                 "runtime_pipeline": value["steps"], "validation": {"valid": true},
                 "execution_validation": {"valid": true}
             })),
-            "dataset.fingerprint" => Ok(json!({"content_hash":if value["config"]["name"] == "Dataset B" { "b".repeat(64) } else { "a".repeat(64) }})),
+            "dataset.fingerprint" => Ok(
+                json!({"content_hash":if value["config"]["name"] == "Dataset B" { "b".repeat(64) } else { "a".repeat(64) }}),
+            ),
             _ => Err("unexpected operation".into()),
         }
     }
@@ -624,8 +647,9 @@ mod tests {
     fn missing_execution_dependency_is_rejected_before_job_admission() {
         let (root, config, workspace) = fixture("missing-execution-dependency");
         let message = "TabPFN is unavailable in the selected Python environment";
-        let result = ScientificRequestResolver::new(config)
-            .resolve_general(&submission(&workspace, "local-python"), |operation, payload| {
+        let result = ScientificRequestResolver::new(config).resolve_general(
+            &submission(&workspace, "local-python"),
+            |operation, payload| {
                 let mut normalized = adapter(operation, payload)?;
                 if operation == "pipeline.normalize" {
                     assert_eq!(payload["scientific_run"], true);
@@ -634,10 +658,15 @@ mod tests {
                     });
                 }
                 Ok(normalized)
-            });
-        assert_eq!(result, Err(ScientificResolveError::ExecutionUnavailable {
-            code: "dependency_missing".into(), message: message.into(),
-        }));
+            },
+        );
+        assert_eq!(
+            result,
+            Err(ScientificResolveError::ExecutionUnavailable {
+                code: "dependency_missing".into(),
+                message: message.into(),
+            })
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -297,25 +297,58 @@ fn apply_inspection(dataset: &mut Value, inspection: &Value) -> DocumentResult<(
         }
     }
     dataset["is_multi_source"] = json!(summary["n_sources"].as_u64().unwrap_or(0) > 1);
-    if summary.get("content_hash").and_then(Value::as_str).is_some_and(|hash| hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())) {
+    if summary
+        .get("content_hash")
+        .and_then(Value::as_str)
+        .is_some_and(|hash| hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
         dataset["content_hash"] = summary["content_hash"].clone();
     }
     if let Some(distributions) = inspection["target_distributions"].as_object() {
         let declared = dataset["config"]["targets"].as_array();
         let mut ordered = distributions.iter().collect::<Vec<_>>();
-        ordered.sort_by_key(|(name, _)| name.strip_prefix("target_").and_then(|index| index.parse::<usize>().ok()).unwrap_or(usize::MAX));
-        let targets = ordered.iter().enumerate().map(|(index, (name, distribution))| {
-            if let Some(target) = declared.filter(|targets| targets.len() == ordered.len()).and_then(|targets| targets.get(index)) {
-                return target.clone();
-            }
-            let classes = distribution["classes"].as_array();
-            let task = distribution["task_type"].as_str().filter(|task| matches!(*task, "regression" | "binary_classification" | "multiclass_classification")).unwrap_or_else(|| if distribution["type"] == "classification" {
-                if classes.is_some_and(|classes| classes.len() == 2) { "binary_classification" } else { "multiclass_classification" }
-            } else { "regression" });
-            json!({"column":name,"type":task,"is_default":index == 0})
-        }).collect::<Vec<_>>();
+        ordered.sort_by_key(|(name, _)| {
+            name.strip_prefix("target_")
+                .and_then(|index| index.parse::<usize>().ok())
+                .unwrap_or(usize::MAX)
+        });
+        let targets = ordered
+            .iter()
+            .enumerate()
+            .map(|(index, (name, distribution))| {
+                if let Some(target) = declared
+                    .filter(|targets| targets.len() == ordered.len())
+                    .and_then(|targets| targets.get(index))
+                {
+                    return target.clone();
+                }
+                let classes = distribution["classes"].as_array();
+                let task = distribution["task_type"]
+                    .as_str()
+                    .filter(|task| {
+                        matches!(
+                            *task,
+                            "regression" | "binary_classification" | "multiclass_classification"
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        if distribution["type"] == "classification" {
+                            if classes.is_some_and(|classes| classes.len() == 2) {
+                                "binary_classification"
+                            } else {
+                                "multiclass_classification"
+                            }
+                        } else {
+                            "regression"
+                        }
+                    });
+                json!({"column":name,"type":task,"is_default":index == 0})
+            })
+            .collect::<Vec<_>>();
         if dataset["default_target"].is_null() {
-            dataset["default_target"] = targets.first().map_or(Value::Null, |target| target["column"].clone());
+            dataset["default_target"] = targets
+                .first()
+                .map_or(Value::Null, |target| target["column"].clone());
         }
         dataset["targets"] = json!(targets);
     }
@@ -328,9 +361,15 @@ fn apply_inspection(dataset: &mut Value, inspection: &Value) -> DocumentResult<(
         if task == "classification" {
             dataset["num_classes"] = inspection["target_distribution"]["classes"]
                 .as_array()
-                .map_or_else(|| inspection["target_distribution"]["num_classes"].as_u64()
-                    .filter(|count| *count >= 2 && *count <= 100_000).map_or(Value::Null, |count| json!(count)),
-                    |classes| json!(classes.len()));
+                .map_or_else(
+                    || {
+                        inspection["target_distribution"]["num_classes"]
+                            .as_u64()
+                            .filter(|count| *count >= 2 && *count <= 100_000)
+                            .map_or(Value::Null, |count| json!(count))
+                    },
+                    |classes| json!(classes.len()),
+                );
         }
     }
     dataset["last_refreshed"] = json!(rfc3339_now());

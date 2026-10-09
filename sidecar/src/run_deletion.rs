@@ -297,8 +297,15 @@ mod tests {
             Instant::now(),
         )
         .unwrap();
-        let record = crate::execution_job_records::read_execution_job_record(&root.path().join("workspace"), &receipt.job_id).unwrap();
-        assert_eq!(record["driver"]["store_run_ids"], json!(["child-a", "child-b"]));
+        let record = crate::execution_job_records::read_execution_job_record(
+            &root.path().join("workspace"),
+            &receipt.job_id,
+        )
+        .unwrap();
+        assert_eq!(
+            record["driver"]["store_run_ids"],
+            json!(["child-a", "child-b"])
+        );
         assert_eq!(
             dispatch(
                 &settings,

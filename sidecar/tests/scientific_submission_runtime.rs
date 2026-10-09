@@ -37,14 +37,23 @@ struct CompletingScientificExecutor;
 struct DependencyBlockedExecutor;
 
 impl ScientificJobExecutor for DependencyBlockedExecutor {
-    fn is_selected(&self) -> bool { true }
-    fn preflight_submission(&self, _: &ScientificSubmissionPreflight) -> Result<ScientificExecutorSelection, JobExecutorError> {
+    fn is_selected(&self) -> bool {
+        true
+    }
+    fn preflight_submission(
+        &self,
+        _: &ScientificSubmissionPreflight,
+    ) -> Result<ScientificExecutorSelection, JobExecutorError> {
         Err(JobExecutorError::PreflightBlocked {
             code: "dependency_missing".into(),
             detail: "TabPFN is unavailable in the selected Python environment".into(),
         })
     }
-    fn submit_scientific(&self, _: &ScientificExecutionRequest, _: Arc<dyn ScientificJobTerminal>) -> Result<(), JobExecutorError> {
+    fn submit_scientific(
+        &self,
+        _: &ScientificExecutionRequest,
+        _: Arc<dyn ScientificJobTerminal>,
+    ) -> Result<(), JobExecutorError> {
         panic!("missing dependencies must block admission, not launch a worker")
     }
     fn request_cooperative_cancel(&self, _: &str) -> Result<(), JobExecutorError> {
@@ -58,14 +67,27 @@ fn missing_dependency_returns_actionable_validation_without_creating_a_job() {
     let config = root.join("config");
     let workspace = root.join("workspace");
     configure_active_workspace(&config, &workspace);
-    let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(DependencyBlockedExecutor)));
-    let mut state = SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
-    let response = route_request_with_body(&mut state, "POST", "/api/runs/run-groups", &serde_json::to_vec(&valid_payload()).unwrap());
+    let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(
+        DependencyBlockedExecutor,
+    )));
+    let mut state =
+        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
+    let response = route_request_with_body(
+        &mut state,
+        "POST",
+        "/api/runs/run-groups",
+        &serde_json::to_vec(&valid_payload()).unwrap(),
+    );
     assert_eq!(response.status, 400);
-    assert_eq!(body(&response), json!({"code":"dependency_missing", "detail":"TabPFN is unavailable in the selected Python environment"}));
+    assert_eq!(
+        body(&response),
+        json!({"code":"dependency_missing", "detail":"TabPFN is unavailable in the selected Python environment"})
+    );
     assert_eq!(runtime.published_event_count(), 0);
     assert_eq!(runtime.durable_write_count(), 0);
-    assert!(runtime.training_list_at(&workspace, Instant::now()).is_empty());
+    assert!(runtime
+        .training_list_at(&workspace, Instant::now())
+        .is_empty());
     assert_eq!(fs::read_dir(workspace.join("runs")).unwrap().count(), 0);
     fs::remove_dir_all(root).unwrap();
 }

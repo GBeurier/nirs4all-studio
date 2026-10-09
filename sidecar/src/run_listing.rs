@@ -638,7 +638,10 @@ mod tests {
         assert_eq!(result["runs"].as_array().unwrap().len(), 2);
         assert_eq!(result["runs"][0]["id"], "active");
         assert_eq!(result["runs"][0]["progress_unavailable"], true);
-        assert_eq!(result["runs"][0]["progress_message"], "Fit progress is unavailable.");
+        assert_eq!(
+            result["runs"][0]["progress_message"],
+            "Fit progress is unavailable."
+        );
         let selected = HashSet::from(["completed".to_owned()]);
         let filtered = compose(&stored, stats.clone(), jobs.clone(), Some(&selected), false);
         assert_eq!(filtered["total"], 600);
