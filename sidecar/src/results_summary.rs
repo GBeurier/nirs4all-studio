@@ -16,8 +16,8 @@ use serde_json::{json, Map, Value};
 use crate::{
     settings::DatasetLinkIdentity,
     workspace_store::{
-        read_results_summary_source, read_results_summary_source_from_connection,
-        WorkspaceStoreReadError, WorkspaceStoreResultsSummarySourceRow,
+        read_results_summary_source_from_connection, WorkspaceStoreReadError,
+        WorkspaceStoreResultsSummarySourceRow,
     },
 };
 
@@ -39,7 +39,13 @@ pub fn read_results_summary_from_connection(
     linked_datasets: &[DatasetLinkIdentity],
 ) -> Result<Value, WorkspaceStoreReadError> {
     let rows = read_results_summary_source_from_connection(connection)?;
-    Ok(build_results_summary(rows, workspace_id, linked_datasets))
+    let provenance = read_dataset_provenance(connection, &rows)?;
+    Ok(build_results_summary_with_provenance(
+        rows,
+        workspace_id,
+        linked_datasets,
+        &provenance,
+    ))
 }
 
 /// Build the exact bare `GET /results/summary` response from Store v5.
@@ -53,8 +59,8 @@ pub fn read_results_summary(
     workspace_id: &str,
     linked_datasets: &[DatasetLinkIdentity],
 ) -> Result<Value, WorkspaceStoreReadError> {
-    let rows = read_results_summary_source(workspace_path)?;
-    Ok(build_results_summary(rows, workspace_id, linked_datasets))
+    let connection = crate::workspace_store::open_read_snapshot(workspace_path)?;
+    read_results_summary_from_connection(&connection, workspace_id, linked_datasets)
 }
 
 pub fn build_results_summary(
@@ -62,7 +68,56 @@ pub fn build_results_summary(
     workspace_id: &str,
     linked_datasets: &[DatasetLinkIdentity],
 ) -> Value {
-    let mut grouped = BTreeMap::<String, Vec<SummaryRow>>::new();
+    build_results_summary_with_provenance(rows, workspace_id, linked_datasets, &BTreeMap::new())
+}
+
+fn read_dataset_provenance(
+    connection: &Connection,
+    rows: &[WorkspaceStoreResultsSummarySourceRow],
+) -> Result<BTreeMap<(String, String), String>, WorkspaceStoreReadError> {
+    let mut provenance = BTreeMap::<(String, String), Option<String>>::new();
+    let ids = rows
+        .iter()
+        .map(|row| row.run_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let ids = ids.into_iter().collect::<Vec<_>>();
+    for detail in crate::workspace_store::read_run_metadata_batch_from_connection(connection, &ids)?
+    {
+        let Some(id) = detail["run_id"].as_str() else {
+            continue;
+        };
+        for dataset in detail["datasets"].as_array().into_iter().flatten() {
+            if let (Some(name), Some(link)) = (
+                dataset["name"].as_str(),
+                dataset["linked_dataset_id"].as_str(),
+            ) {
+                if name.is_empty() || link.is_empty() {
+                    continue;
+                }
+                provenance
+                    .entry((id.into(), name.into()))
+                    .and_modify(|current| {
+                        if current.as_deref() != Some(link) {
+                            *current = None;
+                        }
+                    })
+                    .or_insert_with(|| Some(link.into()));
+            }
+        }
+    }
+    Ok(provenance
+        .into_iter()
+        .filter_map(|(key, id)| id.map(|id| (key, id)))
+        .collect())
+}
+
+fn build_results_summary_with_provenance(
+    rows: Vec<WorkspaceStoreResultsSummarySourceRow>,
+    workspace_id: &str,
+    linked_datasets: &[DatasetLinkIdentity],
+    provenance: &BTreeMap<(String, String), String>,
+) -> Value {
+    let mut grouped = BTreeMap::<(Option<String>, String), Vec<SummaryRow>>::new();
     for source in rows {
         if source.dataset_name.is_empty() {
             continue;
@@ -75,13 +130,18 @@ pub fn build_results_summary(
         row.is_refit_only = has_meaningful_final(&row) && !has_cv_payload(&row);
         apply_synthetic_refit(&mut row);
         grouped
-            .entry(row.source.dataset_name.clone())
+            .entry((
+                provenance
+                    .get(&(row.source.run_id.clone(), row.source.dataset_name.clone()))
+                    .cloned(),
+                row.source.dataset_name.clone(),
+            ))
             .or_default()
             .push(row);
     }
 
     let mut datasets = Vec::new();
-    for (dataset_name, rows) in grouped {
+    for ((linked_dataset_id, dataset_name), rows) in grouped {
         let metric = rows
             .iter()
             .find_map(|row| {
@@ -114,6 +174,9 @@ pub fn build_results_summary(
             "task_type": task_type,
             "top_chains": top_chains,
         }));
+        if let Some(id) = linked_dataset_id {
+            datasets.last_mut().unwrap()["linked_dataset_id"] = json!(id);
+        }
     }
 
     augment_dataset_links(&mut datasets, linked_datasets);
@@ -398,6 +461,11 @@ fn sanitize_recursive(value: &mut Value) {
 
 pub fn augment_dataset_links(datasets: &mut [Value], linked: &[DatasetLinkIdentity]) {
     if linked.is_empty() {
+        for dataset in datasets {
+            if let Some(object) = dataset.as_object_mut() {
+                object.remove("linked_dataset_id");
+            }
+        }
         return;
     }
     let linked_info = linked
@@ -437,8 +505,12 @@ pub fn augment_dataset_links(datasets: &mut [Value], linked: &[DatasetLinkIdenti
             .entry("dataset_name")
             .or_insert_with(|| Value::String(store_name.clone()));
 
-        if object.get("linked_dataset_id").and_then(Value::as_str)
-            .is_some_and(|id| linked.iter().any(|dataset| dataset.id == id)) {
+        if let Some(id) = object.get("linked_dataset_id").and_then(Value::as_str) {
+            if !linked.iter().any(|dataset| dataset.id == id) {
+                object.remove("linked_dataset_id");
+            }
+            // An explicit owner identity cannot be rebound to another import
+            // merely because its display name was reused after unlinking.
             continue;
         }
 
@@ -450,7 +522,8 @@ pub fn augment_dataset_links(datasets: &mut [Value], linked: &[DatasetLinkIdenti
                 ((store_lower == *name_lower || (!store_key.is_empty() && store_key == *name_key))
                     && !id.is_empty())
                 .then_some(*id)
-            }).collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
         if exact.len() > 1 {
             // A display name is not an identity (several imports can be "raw").
             object.remove("linked_dataset_id");
@@ -466,15 +539,22 @@ pub fn augment_dataset_links(datasets: &mut [Value], linked: &[DatasetLinkIdenti
             let mut best_len = 0;
             for (id, _, name_key, folder_key) in &linked_info {
                 let key = if use_folder { folder_key } else { name_key };
-                if id.is_empty() || key.is_empty() || !store_key.starts_with(key) { continue; }
+                if id.is_empty() || key.is_empty() || !store_key.starts_with(key) {
+                    continue;
+                }
                 if key.len() > best_len {
                     candidates.clear();
                     best_len = key.len();
                 }
-                if key.len() == best_len && !candidates.contains(id) { candidates.push(*id); }
+                if key.len() == best_len && !candidates.contains(id) {
+                    candidates.push(*id);
+                }
             }
             if candidates.len() == 1 {
-                object.insert("linked_dataset_id".into(), Value::String(candidates[0].into()));
+                object.insert(
+                    "linked_dataset_id".into(),
+                    Value::String(candidates[0].into()),
+                );
                 break;
             }
             if candidates.len() > 1 {
@@ -518,14 +598,116 @@ mod tests {
     #[test]
     fn duplicate_display_names_do_not_invent_dataset_identity() {
         let links = vec![
-            DatasetLinkIdentity { id:"alpine".into(), name:"raw".into(), path:"/alpine/raw".into() },
-            DatasetLinkIdentity { id:"beer".into(), name:"raw".into(), path:"/beer/raw".into() },
+            DatasetLinkIdentity {
+                id: "alpine".into(),
+                name: "raw".into(),
+                path: "/alpine/raw".into(),
+            },
+            DatasetLinkIdentity {
+                id: "beer".into(),
+                name: "raw".into(),
+                path: "/beer/raw".into(),
+            },
         ];
-        let mut datasets = vec![json!({"name":"raw"}), json!({"name":"raw","linked_dataset_id":"beer"}), json!({"name":"raw_variant"})];
+        let mut datasets = vec![
+            json!({"name":"raw"}),
+            json!({"name":"raw","linked_dataset_id":"beer"}),
+            json!({"name":"raw_variant"}),
+        ];
         super::augment_dataset_links(&mut datasets, &links);
         assert!(datasets[0].get("linked_dataset_id").is_none());
         assert_eq!(datasets[1]["linked_dataset_id"], "beer");
         assert!(datasets[2].get("linked_dataset_id").is_none());
+    }
+
+    #[test]
+    fn stale_explicit_identity_never_rebinds_to_a_new_import_with_the_same_name() {
+        let links = vec![DatasetLinkIdentity {
+            id: "new-beer".into(),
+            name: "raw".into(),
+            path: "/new/raw".into(),
+        }];
+        let mut datasets = vec![
+            json!({"dataset_name":"raw","linked_dataset_id":"old-beer"}),
+            json!({"dataset_name":"raw","linked_dataset_id":"new-beer"}),
+        ];
+        super::augment_dataset_links(&mut datasets, &links);
+        assert!(datasets[0].get("linked_dataset_id").is_none());
+        assert_eq!(datasets[1]["linked_dataset_id"], "new-beer");
+        super::augment_dataset_links(&mut datasets, &[]);
+        assert!(datasets[1].get("linked_dataset_id").is_none());
+    }
+
+    #[test]
+    fn owner_provenance_keeps_same_basename_datasets_separate_and_ambiguity_unlinked() {
+        let workspace = fixture_workspace();
+        let connection = rusqlite::Connection::open(workspace.join("store.sqlite")).unwrap();
+        connection.execute_batch("DELETE FROM predictions;DELETE FROM chains;DELETE FROM pipelines;DELETE FROM runs;").unwrap();
+        for (suffix, identity) in [
+            ("beer", Some("beer")),
+            ("alpine", Some("alpine")),
+            ("unknown", None),
+        ] {
+            let dataset = identity.map_or_else(
+                || json!({"name":"raw"}),
+                |id| json!({"name":"raw","linked_dataset_id":id}),
+            );
+            connection
+                .execute(
+                    "INSERT INTO runs(run_id,name,datasets,status) VALUES (?1,?1,?2,'completed')",
+                    rusqlite::params![format!("run-{suffix}"), json!([dataset]).to_string()],
+                )
+                .unwrap();
+            connection.execute("INSERT INTO pipelines(pipeline_id,run_id,name,dataset_name,metric,status) VALUES (?1,?2,?1,'raw','rmse','completed')",rusqlite::params![format!("pipeline-{suffix}"),format!("run-{suffix}")]).unwrap();
+            connection.execute("INSERT INTO chains(chain_id,pipeline_id,steps,model_step_idx,model_class,dataset_name,metric,cv_fold_count,cv_val_score,final_test_score) VALUES (?1,?2,'[]',0,'PLSRegression','raw','rmse',3,0.2,0.3)",rusqlite::params![format!("chain-{suffix}"),format!("pipeline-{suffix}")]).unwrap();
+            connection.execute("INSERT INTO predictions(prediction_id,pipeline_id,chain_id,dataset_name,model_name,model_class,fold_id,partition,metric,task_type) VALUES (?1,?2,?3,'raw','PLSRegression','PLSRegression','final','test','rmse','regression')",rusqlite::params![format!("prediction-{suffix}"),format!("pipeline-{suffix}"),format!("chain-{suffix}")]).unwrap();
+        }
+        let links = vec![
+            DatasetLinkIdentity {
+                id: "beer".into(),
+                name: "raw".into(),
+                path: "/beer/raw".into(),
+            },
+            DatasetLinkIdentity {
+                id: "alpine".into(),
+                name: "raw".into(),
+                path: "/alpine/raw".into(),
+            },
+        ];
+        let summary =
+            super::read_results_summary_from_connection(&connection, "workspace", &links).unwrap();
+        let datasets = summary["datasets"].as_array().unwrap();
+        assert_eq!(datasets.len(), 3);
+        for identity in ["beer", "alpine"] {
+            let dataset = datasets
+                .iter()
+                .find(|dataset| dataset["linked_dataset_id"] == identity)
+                .unwrap();
+            assert_eq!(dataset["top_chains"].as_array().unwrap().len(), 1);
+            assert_eq!(
+                dataset["top_chains"][0]["chain_id"],
+                format!("chain-{identity}")
+            );
+        }
+        let unknown = datasets
+            .iter()
+            .find(|dataset| dataset.get("linked_dataset_id").is_none())
+            .unwrap();
+        assert_eq!(unknown["top_chains"][0]["chain_id"], "chain-unknown");
+        connection.execute("UPDATE runs SET datasets=?1 WHERE run_id='run-beer'",[json!([{"name":"raw","linked_dataset_id":"beer"},{"name":"raw","linked_dataset_id":"alpine"}]).to_string()]).unwrap();
+        let source =
+            crate::workspace_store::read_results_summary_source_from_connection(&connection)
+                .unwrap();
+        let provenance = super::read_dataset_provenance(&connection, &source).unwrap();
+        assert!(!provenance.contains_key(&("run-beer".into(), "raw".into())));
+        assert_eq!(
+            provenance
+                .get(&("run-alpine".into(), "raw".into()))
+                .map(String::as_str),
+            Some("alpine")
+        );
+        drop(connection);
+        fs::remove_dir_all(workspace).unwrap();
     }
 
     #[test]

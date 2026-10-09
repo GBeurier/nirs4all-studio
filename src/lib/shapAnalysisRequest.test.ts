@@ -9,13 +9,13 @@ describe('shapAnalysisRequest', () => {
   it('builds a workspace-chain SHAP compute request', () => {
     expect(buildShapComputeRequest({
       modelRef: 'chain-123',
-      datasetName: 'corn',
+      datasetId: 'dataset-corn',
       partition: 'test',
       explainerType: 'auto',
     })).toEqual({
       chain_id: 'chain-123',
       bundle_path: undefined,
-      dataset_id: 'corn',
+      dataset_id: 'dataset-corn',
       partition: 'test',
       explainer_type: 'auto',
       n_samples: null,
@@ -29,13 +29,13 @@ describe('shapAnalysisRequest', () => {
   it('builds a bundle-backed SHAP compute request', () => {
     expect(buildShapComputeRequest({
       modelRef: '/exports/model.n4a',
-      datasetName: 'corn',
+      datasetId: 'dataset-corn',
       partition: 'train',
       explainerType: 'kernel',
     })).toMatchObject({
       chain_id: undefined,
       bundle_path: '/exports/model.n4a',
-      dataset_id: 'corn',
+      dataset_id: 'dataset-corn',
       partition: 'train',
       explainer_type: 'kernel',
     });
@@ -44,26 +44,26 @@ describe('shapAnalysisRequest', () => {
   it('respects explicit chain and bundle model refs before legacy string heuristics', () => {
     expect(buildShapComputeRequest({
       modelRef: { modelSource: 'chain', chainId: '/workspace/chains/model.n4a' },
-      datasetName: 'corn',
+      datasetId: 'dataset-corn',
       partition: 'all',
       explainerType: 'linear',
     })).toMatchObject({
       chain_id: '/workspace/chains/model.n4a',
       bundle_path: undefined,
-      dataset_id: 'corn',
+      dataset_id: 'dataset-corn',
       partition: 'all',
       explainer_type: 'linear',
     });
 
     expect(buildShapComputeRequest({
       modelRef: { modelSource: 'bundle', bundlePath: 'bundle-without-extension' },
-      datasetName: 'corn',
+      datasetId: 'dataset-corn',
       partition: 'test',
       explainerType: 'tree',
     })).toMatchObject({
       chain_id: undefined,
       bundle_path: 'bundle-without-extension',
-      dataset_id: 'corn',
+      dataset_id: 'dataset-corn',
       partition: 'test',
       explainer_type: 'tree',
     });

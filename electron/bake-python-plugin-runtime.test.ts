@@ -145,15 +145,15 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc",
+      source_commit: "48542f1a48ee005eea8d49da3756cd6b192d03df",
       wheel_sha256:
-        "0ed0b2cb1e3cda248ccfd52513d6874a763e7cc64fb4a28973058ada677ef8f6",
+        "162306982aa142e201f45095d4c5aee2bcb164a1bbc8b86dbcc9dfcf72587858",
       distribution_version: "1.4.7",
       installed_manifest_sha256:
-        "84acf9234ce7ec0b3f637be06524f6a3fa6d5e2c0ca208f3f47bd22bacd39e3e",
+        "f173fe63246b2295b6afe0f7e275e9d1c21a140603136879ac7503a56d08b508",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "f6b0346806925580500a7bd2d45271211df15847110f70e3a9cf836c609645be",
+        sha256: "f3a45806245ac1db1a7bdecd14b10cd4ac086cc11831efebfafb998f231b702b",
       },
       platform: "linux",
       arch: "x64",
@@ -183,7 +183,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "f6b0346806925580500a7bd2d45271211df15847110f70e3a9cf836c609645be",
+      "f3a45806245ac1db1a7bdecd14b10cd4ac086cc11831efebfafb998f231b702b",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",

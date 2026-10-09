@@ -666,6 +666,42 @@ pub(crate) fn read_run_detail_projection_from_connection(
     query_run_detail_projection(connection, run_id)
 }
 
+/// Read only owner-published run metadata using the existing projection.
+pub(crate) fn read_run_metadata_from_connection(
+    connection: &Connection,
+    run_id: &str,
+) -> Result<Option<Value>, WorkspaceStoreReadError> {
+    read_run_metadata_batch_from_connection(connection, &[run_id]).map(|mut rows| rows.pop())
+}
+
+/// Reuse the owner metadata query and source validation for result provenance.
+pub(crate) fn read_run_metadata_batch_from_connection(
+    connection: &Connection,
+    run_ids: &[&str],
+) -> Result<Vec<Value>, WorkspaceStoreReadError> {
+    validate_contract()?;
+    validate_run_detail_http_contract()?;
+    validate_database(connection)?;
+    validate_table_columns(connection, "runs", &RUN_DETAIL_RUN_COLUMNS)?;
+    let mut statement = connection
+        .prepare(RUN_DETAIL_QUERY)
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let mut result = Vec::with_capacity(run_ids.len());
+    for run_id in run_ids {
+        if run_id.is_empty() || run_id.trim() != *run_id || run_id.contains('\0') {
+            return Err(WorkspaceStoreReadError::InvalidRunId);
+        }
+        if let Some(row) = statement
+            .query_row([run_id], row_to_run_detail)
+            .optional()
+            .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?
+        {
+            result.push(row);
+        }
+    }
+    Ok(result)
+}
+
 /// Verify that a linked workspace can serve the exact Studio run-detail v1
 /// projection without reading a particular run.
 ///
@@ -2387,6 +2423,49 @@ mod tests {
 
     const PYTHON_WRITTEN_STORE: &[u8] =
         include_bytes!("../tests/fixtures/workspace_store_v5.sqlite");
+
+    #[test]
+    fn metadata_provenance_batch_uses_real_owner_documents_without_pipeline_log_reads() {
+        let workspace = fixture_workspace("workspace-metadata-batch");
+        let connection = Connection::open(workspace.join("store.sqlite")).unwrap();
+        let run_id: String = connection
+            .query_row("SELECT run_id FROM runs LIMIT 1", [], |row| row.get(0))
+            .unwrap();
+        let datasets = json!([{"name":"raw","linked_dataset_id":"beer","path":"/beer/raw"}]);
+        connection
+            .execute(
+                "UPDATE runs SET datasets=?1 WHERE run_id=?2",
+                params![datasets.to_string(), run_id],
+            )
+            .unwrap();
+        connection.execute_batch("DROP TABLE logs;").unwrap();
+        let before = fs::read(workspace.join("store.sqlite")).unwrap();
+        let projected =
+            super::read_run_metadata_batch_from_connection(&connection, &["missing", &run_id])
+                .unwrap();
+        assert_eq!(projected.len(), 1);
+        assert_eq!(projected[0]["run_id"], run_id);
+        assert_eq!(projected[0]["datasets"], datasets);
+        assert!(projected[0].get("pipelines").is_none());
+        assert!(projected[0].get("logs").is_none());
+        assert_eq!(
+            super::read_run_metadata_from_connection(&connection, "missing").unwrap(),
+            None
+        );
+        assert_eq!(
+            super::read_run_metadata_from_connection(&connection, &run_id).unwrap(),
+            Some(projected[0].clone())
+        );
+        for invalid in ["", " whitespace ", "bad\0id"] {
+            assert!(matches!(
+                super::read_run_metadata_batch_from_connection(&connection, &[invalid]),
+                Err(WorkspaceStoreReadError::InvalidRunId)
+            ));
+        }
+        assert_eq!(fs::read(workspace.join("store.sqlite")).unwrap(), before);
+        drop(connection);
+        fs::remove_dir_all(workspace).unwrap();
+    }
 
     #[test]
     fn parses_python_nonfinite_json_without_losing_finite_siblings_or_strings() {

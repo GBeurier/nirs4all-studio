@@ -54,6 +54,7 @@ export interface ShapComputeResponse {
 }
 
 export interface ShapResultsResponse {
+  axis_unit?: string | null;
   job_id: string;
   model_id: string;
   dataset_id: string;
@@ -71,6 +72,7 @@ export interface ShapResultsResponse {
 }
 
 export interface SpectralImportanceData {
+  axis_unit?: string | null;
   wavelengths: number[];
   mean_spectrum: number[];
   mean_abs_shap: number[];
@@ -78,6 +80,7 @@ export interface SpectralImportanceData {
 }
 
 export interface SpectralDetailData {
+  axis_unit?: string | null;
   wavelengths: number[];
   mean_spectrum: number[];
   mean_abs_shap: number[];
@@ -106,6 +109,7 @@ export interface BeeswarmBin {
 }
 
 export interface BeeswarmDataResponse {
+  axis_unit?: string | null;
   bins: BeeswarmBin[];
   base_value: number;
 }
@@ -119,6 +123,7 @@ export interface FeatureContribution {
 }
 
 export interface SampleExplanationResponse {
+  axis_unit?: string | null;
   sample_idx: number;
   predicted_value: number;
   base_value: number;
@@ -128,6 +133,8 @@ export interface SampleExplanationResponse {
 export interface AvailableChain {
   chain_id: string;
   dataset_name: string;
+  linked_dataset_id?: string | null;
+  dataset_link_status?: 'linked' | 'unresolved';
   model_class: string;
   model_name: string;
   preprocessings: string;
@@ -150,6 +157,8 @@ export interface AvailableBundle {
   bundle_path: string;
   display_name: string;
   dataset_name: string;
+  linked_dataset_id?: string | null;
+  dataset_link_status?: 'linked' | 'unresolved';
 }
 
 export interface AvailableModelsResponse {

@@ -325,7 +325,7 @@ fn verify_generated_response(
     }
     let summary = exact_object(
         &result["summary"],
-        &["samples", "features", "train", "test", "task", "classes"],
+        &["samples", "features", "train", "test", "task", "classes", "target_names"],
     )?;
     let generation = exact_object(
         &result["generation"],
@@ -383,7 +383,8 @@ fn verify_generated_response(
 }
 
 fn valid_summary(summary: &Map<String, Value>, generation: &Map<String, Value>) -> bool {
-    ["samples", "features", "train", "test"]
+    summary["target_names"].as_array().is_some_and(|names| !names.is_empty() && names.len() <= 100 && names.iter().all(|name| name.as_str().is_some_and(|name| !name.is_empty() && name.len() <= 256)))
+        && ["samples", "features", "train", "test"]
         .iter()
         .all(|key| summary[*key].is_u64())
         && matches!(
@@ -471,6 +472,9 @@ fn canonical_dataset_config(path: &Path) -> Value {
 
 fn trusted_inspection(summary: &Value) -> Value {
     let task = summary["task"].as_str().unwrap_or_default();
+    let distributions = summary["target_names"].as_array().into_iter().flatten().enumerate().map(|(index, _)| {
+        (format!("target_{index}"), json!({"type":if task == "regression" {"regression"} else {"classification"},"task_type":task}))
+    }).collect::<serde_json::Map<String, Value>>();
     json!({
         "summary":{
             "num_samples":summary["samples"],
@@ -482,12 +486,19 @@ fn trusted_inspection(summary: &Value) -> Value {
             "has_metadata":false,
             "metadata_columns":[],
         },
-        "target_distribution":{"type":if task == "regression" { "regression" } else { "classification" }},
+        "target_distribution":{"type":if task == "regression" { "regression" } else { "classification" },"num_classes":summary["classes"]},
+        "target_distributions":distributions,
     })
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn trusted_classification_generation_preserves_owner_class_count() {
+        let inspection = trusted_inspection(&json!({"samples":60,"features":751,"train":48,"test":12,"task":"multiclass_classification","classes":3,"target_names":["class"]}));
+        assert_eq!(inspection["target_distribution"]["num_classes"], 3);
+        assert_eq!(inspection["target_distributions"]["target_0"]["task_type"], "multiclass_classification");
+    }
     use super::*;
 
     fn request(body: &Value) -> HttpRequest {
@@ -558,7 +569,7 @@ mod tests {
                 Ok(
                     json!({"schema":RESPONSE_SCHEMA,"request_id":document["request_id"],"result":{
                         "name":"verified","relative_path":"verified","files":files,
-                        "summary":{"samples":50,"features":2,"train":40,"test":10,"task":"regression","classes":null},
+                        "summary":{"samples":50,"features":2,"train":40,"test":10,"task":"regression","classes":null,"target_names":["target_0"]},
                         "generation":{"random_state":document["payload"]["random_state"],"complexity":"simple","train_ratio":0.8,"wavelength_range":[1000.0,2500.0]}
                     }}),
                 )

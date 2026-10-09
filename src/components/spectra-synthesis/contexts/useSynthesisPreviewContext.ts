@@ -17,6 +17,7 @@ export interface PreviewStatistics {
 export interface PreviewData {
   spectra: number[][];
   wavelengths: number[];
+  axis_unit?: "nm" | "index";
   targets: number[];
   target_type: "regression" | "classification";
   statistics: PreviewStatistics | null;

@@ -19,6 +19,8 @@
  *   --runtime-only               Build only the embedded python runtime payload + build_info.json
  *   --build-mode <id>            build_info.json mode value (default: installer)
  *   --plugin-wheel <path>        Exact pinned wheel for studio-python-plugin-runtime
+ *   --build-plugin-wheel <path>  Build only the exact owner wheel from pinned Git source
+ *   --build-python <path>        Python 3.11 executable for --build-plugin-wheel
  *   --dag-wheel <path>           Exact local DAG-ML wheel for a plugin-runtime candidate
  *   --io-wheel <path>            Exact local nirs4all-io wheel for a plugin-runtime candidate
  *   --tools-wheel <path>         Exact pinned nirs4all-tools wheel for the stdio converter
@@ -33,6 +35,7 @@ const { spawn, execFile } = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const https = require("https");
 const http = require("http");
 const { pipeline } = require("node:stream/promises");
@@ -64,15 +67,19 @@ const PRUNED_LAUNCHER_RECORD_PREFIXES = Object.freeze([
   "../../../bin/",
   "../../../Scripts/",
 ]);
-const PLUGIN_SOURCE_COMMIT = "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc";
+const PRUNED_LAUNCHER_RECORD_FILES = Object.freeze(["../../Scripts/nirs4all.exe"]);
+const PLUGIN_SOURCE_COMMIT = "48542f1a48ee005eea8d49da3756cd6b192d03df";
+const PLUGIN_SOURCE_REPOSITORY = "https://github.com/GBeurier/nirs4all.git";
+const PLUGIN_SOURCE_EPOCH = "1791533216";
 const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.7-py3-none-any.whl";
-const PLUGIN_WHEEL_SHA256 = "0ed0b2cb1e3cda248ccfd52513d6874a763e7cc64fb4a28973058ada677ef8f6";
-const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/93/90/15d5ebcb3bc80c6cfdac494940378a942d20b00b20d336086f9bb295f971/nirs4all-1.4.7-py3-none-any.whl";
+const PLUGIN_WHEEL_SHA256 = "162306982aa142e201f45095d4c5aee2bcb164a1bbc8b86dbcc9dfcf72587858";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "f173fe63246b2295b6afe0f7e275e9d1c21a140603136879ac7503a56d08b508";
 const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
 const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";
 const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
 const TOOLS_WHEEL_URL = "https://files.pythonhosted.org/packages/10/19/68649801e059cf243393585e75a7ca125cddde202d12f555eed1baeb159a/nirs4all_tools-0.0.8-py3-none-any.whl";
 const WHEEL_BUILD_TOOLCHAIN = Object.freeze([
+  "pip==26.2.1",
   "setuptools==84.0.0",
   "wheel==0.48.0",
   "packaging==26.3",
@@ -109,6 +116,8 @@ let pluginWheel = "";
 let dagWheel = "";
 let ioWheel = "";
 let toolsWheel = "";
+let buildPluginWheelOutput = "";
+let buildPython = "python";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--flavor" && args[i + 1]) {
@@ -137,6 +146,10 @@ for (let i = 0; i < args.length; i++) {
     localDagMlDataPath = path.resolve(args[++i]);
   } else if (args[i] === "--plugin-wheel" && args[i + 1]) {
     pluginWheel = path.resolve(args[++i]);
+  } else if (args[i] === "--build-plugin-wheel" && args[i + 1]) {
+    buildPluginWheelOutput = path.resolve(args[++i]);
+  } else if (args[i] === "--build-python" && args[i + 1]) {
+    buildPython = args[++i];
   } else if (args[i] === "--dag-wheel" && args[i + 1]) {
     dagWheel = path.resolve(args[++i]);
   } else if (args[i] === "--io-wheel" && args[i + 1]) {
@@ -346,6 +359,47 @@ function buildPluginToolchainInstallArgs() {
     upgrade: true,
     extraPipArgs: PLUGIN_PIP_NETWORK_ARGS,
   });
+}
+
+async function buildPinnedPluginWheel(runtimePython, destination) {
+  if (path.basename(destination) !== PLUGIN_WHEEL_FILENAME) {
+    throw new Error("Pinned plugin build requires its exact distribution filename");
+  }
+  await runCommand(runtimePython, ["-I", "-c", "import sys; assert sys.version_info[:2] == (3,11), 'Plugin wheel build requires Python 3.11'"]);
+  const buildRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nirs4all-owner-wheel-"));
+  const source = path.join(buildRoot, "source");
+  const rawWheelDir = path.join(buildRoot, "wheels");
+  const venv = path.join(buildRoot, "build-python");
+  const buildExecutable = path.join(venv, isWindows ? "Scripts" : "bin", isWindows ? "python.exe" : "python");
+  const env = buildDeterministicWheelEnv(PLUGIN_SOURCE_EPOCH);
+  try {
+    await runCommand(runtimePython, ["-I", "-m", "venv", "--without-pip", venv]);
+    await runCommandWithRetries(runtimePython, ["-I", "-m", "pip", "--isolated", "--python", buildExecutable,
+      "install", ...PLUGIN_PIP_NETWORK_ARGS, ...WHEEL_BUILD_TOOLCHAIN], {}, { retries: 2, label: "install isolated exact wheel toolchain" });
+    await runCommand("git", ["init", source], { env });
+    await runCommandWithRetries("git", ["-C", source, "fetch", "--depth", "1", PLUGIN_SOURCE_REPOSITORY, PLUGIN_SOURCE_COMMIT],
+      { env }, { retries: 2, label: "fetch immutable plugin source" });
+    await runCommand("git", ["-C", source, "checkout", "--detach", PLUGIN_SOURCE_COMMIT], { env });
+    const identity = await new Promise((resolve, reject) => {
+      execFile("git", ["-C", source, "show", "-s", "--format=%H%n%ct", "HEAD"],
+        { env, windowsHide: isWindows, timeout: 60_000, maxBuffer: 8192 }, (error, stdout) => error ? reject(error) : resolve(stdout.trim()));
+    });
+    if (identity !== `${PLUGIN_SOURCE_COMMIT}\n${PLUGIN_SOURCE_EPOCH}`) {
+      throw new Error("Plugin source commit or epoch differs from the qualified recipe");
+    }
+    await runCommandWithRetries(buildExecutable, ["-I", "-m", "pip", "wheel", "--no-build-isolation", "--no-deps",
+      "--wheel-dir", rawWheelDir, source], { env }, { retries: 1, label: "build immutable plugin wheel" });
+    await runCommand(buildExecutable, ["-I", path.join(projectRoot, "scripts", "normalize-plugin-wheel.py"),
+      "--input", path.join(rawWheelDir, PLUGIN_WHEEL_FILENAME), "--output", destination,
+      "--epoch", PLUGIN_SOURCE_EPOCH, "--expected-manifest", PLUGIN_INSTALLED_MANIFEST_SHA256]);
+    const actual = sha256File(destination);
+    if (actual !== PLUGIN_WHEEL_SHA256) {
+      throw new Error(`Pinned plugin wheel identity mismatch: expected ${PLUGIN_WHEEL_SHA256}, got ${actual}`);
+    }
+    return destination;
+  } finally {
+    fs.rmSync(buildRoot, { recursive: true, force: true });
+  }
 }
 
 function getLocalNirs4allCandidates(explicitPath = localNirs4allPath, env = process.env) {
@@ -565,11 +619,12 @@ async function removePrunedLauncherRecordRows(runtimePython, runtimeRoot) {
   const script = String.raw`import csv,io,pathlib,sys
 root=pathlib.Path(sys.argv[1])
 prefixes=tuple(__import__("json").loads(sys.argv[2]))
+files=set(__import__("json").loads(sys.argv[3]))
 site_packages=list(root.glob("python/Lib/site-packages"))+list(root.glob("python/lib/python3.*/site-packages"))
 if len(site_packages) != 1: raise RuntimeError(f"expected one site-packages, found {len(site_packages)}")
 for record in sorted(site_packages[0].glob("*.dist-info/RECORD")):
     rows=list(csv.reader(io.StringIO(record.read_text(encoding="utf-8"))))
-    kept=[row for row in rows if not (row and row[0].replace("\\","/").startswith(prefixes))]
+    kept=[row for row in rows if not (row and (row[0].replace("\\","/").startswith(prefixes) or row[0].replace("\\","/") in files))]
     output=io.StringIO(newline="")
     csv.writer(output,lineterminator="\n").writerows(kept)
     record.write_text(output.getvalue(),encoding="utf-8",newline="")`;
@@ -581,6 +636,7 @@ for record in sorted(site_packages[0].glob("*.dist-info/RECORD")):
     script,
     runtimeRoot,
     JSON.stringify(PRUNED_LAUNCHER_RECORD_PREFIXES),
+    JSON.stringify(PRUNED_LAUNCHER_RECORD_FILES),
   ]);
 }
 
@@ -944,12 +1000,6 @@ async function main() {
   if (pluginOnly) {
     const wheelDir = path.join(cacheDir, "studio-python-plugin-wheel");
     fs.mkdirSync(wheelDir, { recursive: true });
-    if (!toolsWheel) {
-      await runCommandWithRetries(runtimePython, buildPluginToolchainInstallArgs(), {}, {
-        retries: 2,
-        label: "install exact wheel build toolchain",
-      });
-    }
     if (dagWheel && ioWheel) {
       await runCommandWithRetries(runtimePython, buildPluginRuntimeInstallArgs([dagWheel, ioWheel], {
         constraintsFile,
@@ -963,7 +1013,7 @@ async function main() {
         if (entry.endsWith(".whl")) fs.rmSync(path.join(wheelDir, entry), { force: true });
       }
       selectedPluginWheel = path.join(wheelDir, PLUGIN_WHEEL_FILENAME);
-      await downloadFile(PLUGIN_WHEEL_URL, selectedPluginWheel);
+      await buildPinnedPluginWheel(runtimePython, selectedPluginWheel);
     }
     const actualWheelSha256 = sha256File(selectedPluginWheel);
     if (actualWheelSha256 !== PLUGIN_WHEEL_SHA256) {
@@ -1217,7 +1267,8 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch((error) => {
+  const action = buildPluginWheelOutput ? buildPinnedPluginWheel(buildPython, buildPluginWheelOutput) : main();
+  action.catch((error) => {
     console.error("Setup failed:", error.message);
     process.exit(1);
   });
@@ -1230,6 +1281,7 @@ module.exports = {
   buildPipInstallArgs,
   buildPluginRuntimeInstallArgs,
   buildPluginToolchainInstallArgs,
+  buildPinnedPluginWheel,
   verifyInstalledDependencies,
   buildDeterministicWheelEnv,
   getLocalNirs4allCandidates,
@@ -1239,4 +1291,5 @@ module.exports = {
   pruneStandaloneRuntimeLaunchers,
   removePrunedLauncherRecordRows,
   PRUNED_LAUNCHER_RECORD_PREFIXES,
+  PRUNED_LAUNCHER_RECORD_FILES,
 };

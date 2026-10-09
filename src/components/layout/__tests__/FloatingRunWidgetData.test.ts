@@ -25,6 +25,13 @@ function run(overrides: Partial<RunProgressState> = {}): RunProgressState {
 }
 
 describe("FloatingRunWidgetData", () => {
+  it("labels unavailable fit progress without inventing a percentage", () => {
+    expect(buildRunItemReadModel(run({ progress: 0, progressUnavailable: true }), true))
+      .toMatchObject({ progressLabel: "Unavailable", progressUnavailable: true });
+    expect(buildRunItemReadModel(run({ progress: 0, progressUnavailable: false }), true))
+      .toMatchObject({ progressLabel: "0%", progressUnavailable: false });
+  });
+
   it("hides only when no active runs exist or a concrete run detail page is open", () => {
     expect(shouldShowFloatingRunWidget("/", true)).toBe(true);
     expect(shouldShowFloatingRunWidget("/runs/", true)).toBe(true);

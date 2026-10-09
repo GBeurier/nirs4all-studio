@@ -11,7 +11,8 @@ import {
 } from "@/components/predictions/viewer/export";
 import { usePredictionChartConfig } from "@/components/predictions/viewer/usePredictionChartConfig";
 
-import type { AvailableModel, PredictResponse } from "@/types/predict";
+import type { AvailableModel, PredictResponse, PredictionValue } from "@/types/predict";
+import { CategoricalPredictResults } from "./CategoricalPredictResults";
 
 import type { PanelKind } from "./PredictChartPanel";
 import {
@@ -48,13 +49,20 @@ import {
 export type { PredictionInput } from "./predictResultsData";
 
 interface PredictResultsProps {
-  result: PredictResponse;
+  result: PredictResponse<PredictionValue>;
   model?: AvailableModel | null;
   input?: PredictionInput | null;
   onReset: () => void;
 }
 
 export function PredictResults({ result, model, input, onReset }: PredictResultsProps) {
+  if ([...result.predictions, ...(result.actual_values ?? [])].some(value => typeof value === "string")) {
+    return <CategoricalPredictResults result={result} onReset={onReset} />;
+  }
+  return <NumericPredictResults result={result as PredictResponse} model={model} input={input} onReset={onReset} />;
+}
+
+function NumericPredictResults({ result, model, input, onReset }: Omit<PredictResultsProps, "result"> & { result: PredictResponse }) {
   const { data: datasetsData } = useDatasetsQuery();
 
   const resolvedInput = useMemo<PredictionInput | null>(() => {

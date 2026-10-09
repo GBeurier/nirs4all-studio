@@ -9,6 +9,7 @@ import {
   buildRunStorageArtifactMetadata,
   getExecutionJobRecordDetailRefetchInterval,
   summarizeRunsPageStats,
+  buildRunsPageStats,
 } from "../runs/pageData";
 import type { EnrichedDatasetRun, EnrichedRun, TopChainResult } from "@/types/enriched-runs";
 import type { ExecutionJobRecord } from "@/lib/runs/executionJobRecords";
@@ -760,6 +761,16 @@ describe("runs page data projections", () => {
       taskTypes: ["regression", "classification"],
       availableMetricKeys: ["r2", "rmse", "accuracy", "balanced_accuracy"],
     });
+  });
+
+  it("uses durable-inclusive workspace totals only without a project filter", () => {
+    const runs = [enrichedRun({ status: "completed", pipeline_runs_count: 2 })];
+    const aggregate = { running: 0, queued: 0, completed: 15, failed: 7, cancelled: 1, total_pipelines: 75 };
+    expect(buildRunsPageStats(runs, aggregate, null)).toEqual({
+      runningCount: 0, queuedCount: 0, completedCount: 15, failedCount: 7, cancelledCount: 1, totalPipelines: 75,
+    });
+    expect(buildRunsPageStats(runs, aggregate, "project-1")).toEqual(summarizeRunsPageStats(runs));
+    expect(buildRunsPageStats(runs, undefined, null)).toEqual(summarizeRunsPageStats(runs));
   });
 
   it("summarizes status counts and total pipeline count", () => {

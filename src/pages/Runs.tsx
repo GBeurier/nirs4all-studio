@@ -21,7 +21,7 @@ import {
   buildRunsMetricSelectionContext,
   buildRunsPageItems,
   getExecutionJobRecordDetailRefetchInterval,
-  summarizeRunsPageStats,
+  buildRunsPageStats,
 } from "@/lib/runs/pageData";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import { formatApiErrorDetail } from "@/api/transport";
@@ -30,6 +30,7 @@ import {
   getWorkspaceExecutionJobRecord,
   listRunExecutionJobRecords,
   listRuns,
+  getRunStats,
   retryRun,
 } from "@/api/runs";
 import { getEnrichedRuns } from "@/api/enrichedRuns";
@@ -83,6 +84,14 @@ export default function Runs() {
   const { data: activeRunsData } = useQuery({
     queryKey: ["runs"],
     queryFn: listRuns,
+    staleTime: 5000,
+    refetchInterval: 10000,
+  });
+
+  const { data: workspaceRunStats } = useQuery({
+    queryKey: ["runs", "stats", activeWorkspaceId],
+    queryFn: getRunStats,
+    enabled: !!activeWorkspaceId && selectedProjectId == null,
     staleTime: 5000,
     refetchInterval: 10000,
   });
@@ -183,7 +192,10 @@ export default function Runs() {
     getDefaultSelectionUpgradeCandidatesForTaskTypes(metricContext.taskTypes),
   );
 
-  const stats = useMemo(() => summarizeRunsPageStats(runs), [runs]);
+  const stats = useMemo(
+    () => buildRunsPageStats(runs, workspaceRunStats, selectedProjectId),
+    [runs, workspaceRunStats, selectedProjectId],
+  );
 
   const handleViewDetails = (enrichedRun: EnrichedRun) => {
     setDetailRun(enrichedRun);
@@ -200,7 +212,8 @@ export default function Runs() {
         onProjectChange={setSelectedProjectId}
       />
 
-      <RunsStatsGrid stats={stats} />
+      <RunsStatsGrid stats={stats} scope={selectedProjectId
+        ? "Filtered runs" : workspaceRunStats ? "Workspace totals" : "Visible runs"} />
 
       <RunsExecutionTasksPanel
         data={executionTaskPanelData}

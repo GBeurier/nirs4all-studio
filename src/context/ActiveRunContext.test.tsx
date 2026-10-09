@@ -30,7 +30,10 @@ afterEach(async () => {
   Socket.instances = [];
 });
 
-async function mount(runs: Array<{ id: string; name: string; status: string }>) {
+async function mount(runs: Array<{
+  id: string; name: string; status: string;
+  progress?: number; progress_message?: string; progress_unavailable?: boolean;
+}>) {
   vi.stubGlobal("WebSocket", Socket);
   let response = { runs, total: runs.length };
   mocks.getActiveRuns.mockImplementation(async () => structuredClone(response));
@@ -67,6 +70,24 @@ async function mount(runs: Array<{ id: string; name: string; status: string }>) 
 }
 
 describe("active run polling and render cost", () => {
+  it("restores unavailable fit progress and heartbeat messages from polls, then real completion", async () => {
+    const runs = [{ id: "run-1", name: "RF", status: "running", progress: 0,
+      progress_message: "Scientific computation running · 130s elapsed. Fit progress is unavailable.",
+      progress_unavailable: true }];
+    const app = await mount(runs);
+    expect(app.value().getRunProgress("run-1")).toMatchObject({
+      progressUnavailable: true, message: runs[0].progress_message,
+    });
+    const next = { ...runs[0], progress_message: "Scientific computation running · 140s elapsed. Fit progress is unavailable." };
+    await app.poll({ runs: [next], total: 1 });
+    expect(app.value().getRunProgress("run-1")?.message).toContain("140s");
+    expect(app.value().getRunProgress("run-1")?.progressUnavailable).toBe(true);
+    await app.message({ type: "job_progress", channel: "job:run-1", data: { progress: 35 } });
+    expect(app.value().getRunProgress("run-1")).toMatchObject({ progress: 35, progressUnavailable: false });
+    await app.message({ type: "job_completed", channel: "job:run-1", data: {} });
+    expect(app.value().getRunProgress("run-1")).toMatchObject({ progress: 100, progressUnavailable: false });
+  });
+
   it("connects directly to the qualified job channel without a subscription command", async () => {
     await mount([{ id: "run-1", name: "PLS", status: "running" }]);
     expect(Socket.instances[0].url).toBe("ws://localhost/ws/job/run-1");

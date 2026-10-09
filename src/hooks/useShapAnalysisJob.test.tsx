@@ -122,7 +122,7 @@ describe('useShapAnalysisJob', () => {
     await act(async () => {
       await mounted.result.current?.runAnalysis({
         chainId: 'chain-1',
-        datasetName: 'corn',
+        datasetId: 'dataset-corn',
         partition: 'test',
         explainerType: 'auto',
       });
@@ -131,7 +131,7 @@ describe('useShapAnalysisJob', () => {
     expect(apiMocks.computeShapExplanation).toHaveBeenCalledWith({
       chain_id: 'chain-1',
       bundle_path: undefined,
-      dataset_id: 'corn',
+      dataset_id: 'dataset-corn',
       partition: 'test',
       explainer_type: 'auto',
       n_samples: null,
@@ -162,7 +162,7 @@ describe('useShapAnalysisJob', () => {
       await mounted.result.current?.runAnalysis({
         chainId: 'bundle-without-path-shape',
         modelRef: { modelSource: 'bundle', bundlePath: 'bundle-without-path-shape' },
-        datasetName: 'corn',
+        datasetId: 'dataset-corn',
         partition: 'train',
         explainerType: 'kernel',
       });
@@ -171,7 +171,7 @@ describe('useShapAnalysisJob', () => {
     expect(apiMocks.computeShapExplanation).toHaveBeenCalledWith(expect.objectContaining({
       chain_id: undefined,
       bundle_path: 'bundle-without-path-shape',
-      dataset_id: 'corn',
+      dataset_id: 'dataset-corn',
       partition: 'train',
       explainer_type: 'kernel',
     }));
@@ -185,7 +185,7 @@ describe('useShapAnalysisJob', () => {
     await act(async () => {
       await mounted.result.current?.runAnalysis({
         chainId: null,
-        datasetName: 'corn',
+        datasetId: 'dataset-corn',
         partition: 'test',
         explainerType: 'auto',
       });
@@ -194,6 +194,17 @@ describe('useShapAnalysisJob', () => {
     expect(apiMocks.computeShapExplanation).not.toHaveBeenCalled();
     expect(mounted.result.current?.error).toBe('Please select a model to explain.');
 
+    await mounted.unmount();
+  });
+
+  it('refuses an unresolved dataset identity before submitting a science job', async () => {
+    const mounted = await renderHook(() => useShapAnalysisJob());
+    await act(async () => {
+      await mounted.result.current?.runAnalysis({ chainId: 'corn-pls', datasetId: null, partition: 'test', explainerType: 'auto' });
+    });
+    expect(apiMocks.computeShapExplanation).not.toHaveBeenCalled();
+    expect(mounted.result.current?.error).toContain('no authorized dataset link');
+    expect(mounted.result.current?.isSubmitting).toBe(false);
     await mounted.unmount();
   });
 

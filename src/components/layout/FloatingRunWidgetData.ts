@@ -8,6 +8,7 @@ export interface FloatingRunWidgetRunItemReadModel {
   message: string;
   progress: number;
   progressLabel: string;
+  progressUnavailable: boolean;
   containerClassName: string;
 }
 
@@ -49,7 +50,8 @@ export function buildRunItemReadModel(
     runName: run.runName,
     message: run.message,
     progress: run.progress,
-    progressLabel: `${run.progress}%`,
+    progressLabel: run.progressUnavailable ? "Unavailable" : `${run.progress}%`,
+    progressUnavailable: run.progressUnavailable === true,
     containerClassName: isSelected
       ? "bg-chart-2/10 border border-chart-2/30"
       : "hover:bg-muted/50",

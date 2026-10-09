@@ -8,7 +8,7 @@ import { formatApiErrorDetail } from "@/api/transport";
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { AvailableModel, PredictResponse } from "@/types/predict";
+import type { AvailableModel, PredictResponse, PredictionValue } from "@/types/predict";
 import { DataInput, type DataSourceConfig } from "./DataInput";
 import { PredictResults, type PredictionInput } from "./PredictResults";
 
@@ -43,7 +43,7 @@ export function GeneralPredictionPanel() {
       : null;
   const [outputIndex, setOutputIndex] = useState(0);
   const [fileHeader, setFileHeader] = useState("yes");
-  const [outcome, setOutcome] = useState<{ workspaceId: string; key: string; response: PredictResponse; input: PredictionInput } | null>(null);
+  const [outcome, setOutcome] = useState<{ workspaceId: string; key: string; response: PredictResponse<PredictionValue>; input: PredictionInput } | null>(null);
   const prediction = useMutation({
     mutationFn: async ({ selected, input, workspace, target }: { selected: AvailableModel; input: DataSourceConfig; workspace: string; target: number }) => {
       const options = { archive_fingerprint: selected.archive_fingerprint, output_index: target };

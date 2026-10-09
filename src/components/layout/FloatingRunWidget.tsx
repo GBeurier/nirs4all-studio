@@ -10,7 +10,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { Progress, IndeterminateProgress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ChevronDown,
@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { useActiveRuns } from "@/context/useActiveRuns";
 import {
   buildFloatingRunWidgetReadModel,
+  buildRunItemReadModel,
   type FloatingRunWidgetRunItemReadModel,
 } from "./FloatingRunWidgetData";
 
@@ -48,7 +49,9 @@ function RunItem({
           {item.progressLabel}
         </Badge>
       </div>
-      <Progress value={item.progress} className="h-1.5" />
+      {item.progressUnavailable
+        ? <IndeterminateProgress className="h-1.5" />
+        : <Progress value={item.progress} className="h-1.5" />}
       <p className="text-[10px] text-muted-foreground mt-1 truncate">
         {item.message}
       </p>
@@ -80,6 +83,7 @@ export function FloatingRunWidget() {
   }
 
   const { selectedRun } = widgetData;
+  const selectedItem = selectedRun ? buildRunItemReadModel(selectedRun, true) : undefined;
 
   // Minimized view - just a small indicator
   if (isMinimized) {
@@ -159,9 +163,11 @@ export function FloatingRunWidget() {
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Progress</span>
-                  <span className="font-medium">{selectedRun.progress}%</span>
+                  <span className="font-medium">{selectedItem?.progressLabel}</span>
                 </div>
-                <Progress value={selectedRun.progress} className="h-2" />
+                {selectedItem?.progressUnavailable
+                  ? <IndeterminateProgress className="h-2" />
+                  : <Progress value={selectedRun.progress} className="h-2" />}
               </div>
 
               {/* Recent logs (last 3) */}

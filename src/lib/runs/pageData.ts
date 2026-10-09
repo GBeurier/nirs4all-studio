@@ -5,7 +5,7 @@ import {
 } from "@/lib/scores";
 import { formatRunTokenLabel } from "@/lib/runs/format";
 import type { EnrichedRun } from "@/types/enriched-runs";
-import type { Run } from "@/types/runs";
+import type { Run, RunStatsResponse } from "@/types/runs";
 
 export {
   EXECUTION_JOB_RECORD_DETAIL_REFETCH_MS,
@@ -32,6 +32,7 @@ export interface RunsPageStats {
   queuedCount: number;
   completedCount: number;
   failedCount: number;
+  cancelledCount?: number;
   totalPipelines: number;
 }
 
@@ -379,6 +380,23 @@ export function buildRunsMetricSelectionContext(
     taskType: taskTypeList.length === 1 ? taskTypeList[0] : null,
     taskTypes: taskTypeList,
     availableMetricKeys: orderMetricKeys([...availableMetricKeys]),
+  };
+}
+
+/** Workspace aggregates include durable failures without a stored scientific run. */
+export function buildRunsPageStats(
+  runs: readonly EnrichedRun[],
+  workspaceStats: RunStatsResponse | undefined,
+  selectedProjectId: string | null,
+): RunsPageStats {
+  if (selectedProjectId || !workspaceStats) return summarizeRunsPageStats(runs);
+  return {
+    runningCount: workspaceStats.running,
+    queuedCount: workspaceStats.queued,
+    completedCount: workspaceStats.completed,
+    failedCount: workspaceStats.failed,
+    ...(workspaceStats.cancelled != null ? { cancelledCount: workspaceStats.cancelled } : {}),
+    totalPipelines: workspaceStats.total_pipelines,
   };
 }
 

@@ -42,6 +42,7 @@ const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
     removedPaths: number;
   };
   PRUNED_LAUNCHER_RECORD_PREFIXES: readonly string[];
+  PRUNED_LAUNCHER_RECORD_FILES: readonly string[];
 };
 
 const tempDirs: string[] = [];
@@ -88,13 +89,14 @@ describe("setup-python-env", () => {
       "60",
       "--retries",
       "3",
+      "pip==26.2.1",
       "setuptools==84.0.0",
       "wheel==0.48.0",
       "packaging==26.3",
     ]);
   });
 
-  it("downloads both published wheels and preserves deterministic source-build helpers", () => {
+  it("builds the exact source SDK while preserving the published Tools wheel", () => {
     expect(
       setupPythonEnvModule.buildDeterministicWheelEnv("1788621086", {
         EXISTING: "preserved",
@@ -118,10 +120,12 @@ describe("setup-python-env", () => {
       'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.7-py3-none-any.whl";',
     );
     expect(setupSource).toContain(
-      'const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/93/90/15d5ebcb3bc80c6cfdac494940378a942d20b00b20d336086f9bb295f971/nirs4all-1.4.7-py3-none-any.whl";',
+      'const PLUGIN_SOURCE_COMMIT = "48542f1a48ee005eea8d49da3756cd6b192d03df";',
     );
-    expect(setupSource).not.toContain("PLUGIN_SOURCE_EPOCH");
-    expect(setupSource).not.toContain("pip\",\n        \"wheel\",\n        \"--no-deps\",\n        \"--no-build-isolation\",\n        \"--wheel-dir\",\n        wheelDir");
+    expect(setupSource).toContain('const PLUGIN_SOURCE_EPOCH = "1791533216";');
+    expect(setupSource).toContain("await buildPinnedPluginWheel(runtimePython, selectedPluginWheel)");
+    expect(setupSource).toContain("normalize-plugin-wheel.py");
+    expect(setupSource).not.toContain("PLUGIN_WHEEL_URL");
     expect(setupSource).toContain(
       'const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";',
     );
@@ -240,6 +244,7 @@ describe("setup-python-env", () => {
       "../../../bin/",
       "../../../Scripts/",
     ]);
+    expect(setupPythonEnvModule.PRUNED_LAUNCHER_RECORD_FILES).toEqual(["../../Scripts/nirs4all.exe"]);
     const setupSource = fs.readFileSync(
       path.join(process.cwd(), "scripts", "setup-python-env.cjs"),
       "utf8",

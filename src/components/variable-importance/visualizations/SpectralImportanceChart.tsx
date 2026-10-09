@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { Loader2 } from 'lucide-react';
 import { getSpectralDetail } from '@/api/shap';
+import { getShapAxisDisplay } from '@/lib/shapAxisDisplay';
 import {
   buildShapSpectralBinnedBarData,
   buildShapSpectralChartData,
@@ -34,6 +35,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
   binnedData,
   selectedSamples,
 }: SpectralImportanceChartProps) {
+  const axis = getShapAxisDisplay(results.axis_unit);
   const [filteredShap, setFilteredShap] = useState<number[] | null>(null);
   const [filteredSpectrum, setFilteredSpectrum] = useState<number[] | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -113,7 +115,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
               type="number"
               domain={['dataMin', 'dataMax']}
               tickFormatter={(value: number) => value.toFixed(0)}
-              label={{ value: 'Wavelength (cm\u207B\u00B9)', position: 'bottom', offset: 15, className: 'fill-muted-foreground text-xs' }}
+              label={{ value: axis.label, position: 'bottom', offset: 15, className: 'fill-muted-foreground text-xs' }}
               className="text-xs"
             />
             <YAxis
@@ -151,7 +153,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
                 const d = payload[0].payload;
                 return (
                   <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
-                    <p className="font-medium">&lambda; {d.wavelength.toFixed(1)} cm&sup1;</p>
+                    <p className="font-medium">{axis.name}: {d.wavelength.toFixed(1)}{axis.suffix}</p>
                     <p className="text-muted-foreground">Importance: {d.importance.toFixed(4)}</p>
                     {hasSpectrum && <p className="text-muted-foreground">Absorbance: {d.absorbance.toFixed(4)}</p>}
                   </div>
@@ -199,7 +201,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
               type="number"
               domain={['dataMin', 'dataMax']}
               tickFormatter={(value: number) => value.toFixed(0)}
-              label={{ value: 'Wavelength (cm\u207B\u00B9)', position: 'bottom', offset: 18, className: 'fill-muted-foreground text-xs' }}
+              label={{ value: axis.label, position: 'bottom', offset: 18, className: 'fill-muted-foreground text-xs' }}
               className="text-xs"
             />
             <YAxis
@@ -225,7 +227,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
                 const d = payload[0].payload;
                 return (
                   <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
-                    <p className="font-medium">{d.label} cm&sup1;</p>
+                    <p className="font-medium">{d.label}{axis.suffix}</p>
                     <p className="text-muted-foreground">Importance: {d.importance.toFixed(4)}</p>
                   </div>
                 );

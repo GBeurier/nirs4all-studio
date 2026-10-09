@@ -203,3 +203,112 @@ Fin des manipulations: 2026-10-09 01:40:20 UTC
 Electron laissé ouvert sur History, workspace QA, zéro tâche active.
 11 défauts corrigés,5 partiellement corrigés,12 ouverts.
 Commit/push effectués après ce rapport; SHA disponible dans Git.
+
+Complément : correction des 17 points restants, 2026-10-09
+======================================================
+Ce complément remplace les statuts PARTIEL/OUVERT ci-dessus pour les 17
+points demandés. Les observations originales sont conservées comme historique.
+Tests dans Electron sur Windows, backend produit Rust et bibliothèque Python
+via stdio uniquement. Aucun fallback FastAPI activé.
+
+Repos modifiés
+-------------
+nirs4all-studio : routes/adapters, UI, contrôle des jobs, packaging et tests.
+nirs4all Python : commit 48542f1a48ee005eea8d49da3756cd6b192d03df,
+fusionné dans main par fast-forward et poussé ; aucun tag ni release.
+Le checkout Python original avec modifications locales est préservé.
+Aucun changement dans nirs4all-io, dag-ml ou nirs4all-tools.
+Studio utilise exactement ce commit Python : wheel SHA256
+162306982aa142e201f45095d4c5aee2bcb164a1bbc8b86dbcc9dfcf72587858.
+Build source reproductible contrôlé sous Windows et Linux ; pas de publication
+PyPI. LightGBM 4.6.0 ajouté au runtime CPU, 65 distributions qualifiées.
+
+Tableau des 17 corrections et contrôles
+-------------------------------------
+ID    | Statut  | Correction et preuve réelle
+QA-01 | CORRIGE | Cibles synthétiques conservées : 1500x751/5 cibles ;
+      |         | nouvel export classification60/1 cible/3 classes dès création.
+QA-02 | CORRIGE | Disponibilité des opérateurs via Rust : réponse200,
+      |         | 347 opérateurs vérifiés, dépendances absentes signalées.
+QA-04 | CORRIGE | Identité dataset par ID/contenu ; Beer/raw et Alpine/raw
+      |         | distincts ; anciens liens récupérés sans conjecture par nom.
+QA-05 | CORRIGE | Rapport robustesse200 et HTML4084 bytes ; RMSE observée
+      |         | Corn .1504229523, biais .1 reproduit ; export lisible.
+QA-07 | CORRIGE | Preview Lab100x751 puis export réel180x751 lié au workspace,
+      |         | train144/test36 ; chemins Windows confinés et normalisés.
+QA-08 | CORRIGE | SHAP calculé depuis UI : 20 samples/700 variables ;
+      |         | vues spectral/beeswarm/waterfall/ranking, résultats persistés.
+QA-10 | CORRIGE | Corn+Beer exécutés ensemble : 2 runs persistés et relus.
+QA-11 | CORRIGE | En-tête Coffee textuel reconnu sans override Y :
+      |         | 70 samples, 601 variables, train49/test21.
+QA-13 | CORRIGE | Sweep PLS : 3 prétraitements x8 composants x5 folds,
+      |         | sur chacun des deux datasets, sans IndexError.
+QA-14 | CORRIGE | Réconciliation des jobs historiques et compteurs durables :
+      |         | 15 terminés, 7 échecs conservés, 1 annulé, 0 en cours.
+QA-17 | CORRIGE | Export Parquet200, 13677 bytes, relu avec PyArrow :
+      |         | 24 enregistrements de tableaux de prédictions test Corn.
+QA-18 | CORRIGE | Snapshots restituent étapes et paramètres sélectionnés :
+      |         | ancien Corn5 étapes/PLS13 ; nouveau sweep3 étapes/PLS26 ;
+      |         | vrai rechargement éditeur puis relancement Corn terminé en5s.
+QA-20 | CORRIGE | Preset complet LightGBM+RF exécuté, 2 runs persistés ;
+      |         | replay LightGBM20 samples/RMSE .1215966925 sans entraînement.
+QA-21 | CORRIGE | Inspector charge les chaînes et leurs données :
+      |         | heatmap, histogramme, boxplot et impact prétraitements.
+QA-25 | CORRIGE | Stats/storage/discovery/rescan200 ; 15 runs,1481 prédictions,
+      |         | chemins exacts Beer/Corn ; compteur exports modèles clarifié.
+QA-27 | CORRIGE | RF100/1500x751/5 cibles termine en167s au-delà de l'ancien
+      |         | timeout ; calcul borné1h, annulation conservée ; progression
+      |         | sans mesure affichée Unavailable, pas de faux pourcentage.
+QA-28 | CORRIGE | Coffee prédit21 classes textuelles, balanced_accuracy
+      |         | .8571428571 ; UI distribution/confusion, sans réentraînement.
+
+Corrections supplémentaires découvertes pendant la contre-vérification
+---------------------------------------------------------------------
+Le preset LightGBM pouvait terminer tous ses calculs mais être déclaré en
+échec à cause de warnings stderr dépassant64KiB. Le host d'entraînement
+draine maintenant tous les diagnostics et conserve la fin bornée64KiB ;
+stdout, erreurs, annulation et autres opérations restent strictement bornés.
+L'export Lab échouait à relire les chemins Windows verbatim : confinement
+avant/après dataset.configure, sans écraser le dossier d'un essai précédent.
+SHAP envoyait le nom au lieu de l'ID dataset : provenance exacte projetée,
+liens non vérifiables visibles mais non sélectionnables.
+SHAP affichait cm^-1 pour des coordonnées en nm : unité réelle persistée,
+ancien résultat sans unité affiché Spectral coordinate ; CSV également corrigé.
+Le snapshot DAG était une liste au lieu de l'objet attendu par l'éditeur :
+enveloppe chain_id/name/pipeline/reload rétablie et testée sur la vraie chaîne.
+Le compteur de variantes de l'éditeur rejetait501 : route native fermée
+raccordée au compteur nirs4all, vrai test2x3=6 sans entraînement.
+Cache inspection invalidé par contenu pour les petits fichiers : tests de
+modifications rapides/mtime restauré ; fichiers volumineux non mis en cache.
+
+Validation de ce complément
+--------------------------
+* Rust release/lib : 384 réussis,0 échec,3 ignorés avec DLL N4M réelle.
+* nirs4all Python : 591 tests réussis puis61 ciblés (recouvrement).
+* Adapters Studio Python : 78 tests réussis,3 warnings documentés (config
+  pytest asyncio_mode et deux fixtures sans split, pas des scores de QA).
+* Electron/packaging :78 réussis,2 ignorés sur5 fichiers.
+* Frontend ciblé :70 réussis sur12 fichiers ; les autres vérifications
+  ciblées se recouvrent avec celles-ci et ne doivent pas être additionnées.
+* History final :33 tests réussis ; vrais compteurs UI identiques au backend
+  après redémarrage :15 terminés,7 échecs,1 annulé,75 pipelines,0 actifs.
+* TypeScript app/node/electron, ESLint fichiers modifiés, Ruff Python modifié.
+* Build Electron et sidecar release réussis ; attestation runtime stricte
+  et vraie exécution SHAP réussies sur les65 distributions installées.
+* Prédictions réouvertes : Coffee21/.8571428571 ; Beer20/RMSE .1873316810 ;
+  LightGBM20/RMSE .1215966925, training_performed=false pour les trois.
+
+Portée et limites
+----------------
+Les 17 défauts reproduits sont corrigés et contre-vérifiés. Ceci n'est pas
+une certification exhaustive de chaque opérateur/dataset/plateforme.
+Pas de GPU ni d'installateur signé multi-plateforme testé ici. La suite
+Vitest globale avait110 échecs identiques au baseline dans le premier rapport ;
+elle n'est pas annoncée entièrement verte par les tests ciblés de ce complément.
+Robustesse : replay spectral non proposé sans les preuves nécessaires ;
+rapports frozen/observed/bias/noise disponibles sur les résultats persistés.
+Les captures, données et logs fix17-* restent dans test-results/ ignoré Git.
+Les anciens jobs sans résultat/provenance vérifiable restent visibles comme
+orphelins ; aucun résultat ni lien dataset n'est inventé pour les masquer.
+Fin du complément :2026-10-09 09:33 UTC. Electron laissé ouvert sur History,
+zéro tâche active. Commit/push Studio sur main après ce rapport, sans tag/release.

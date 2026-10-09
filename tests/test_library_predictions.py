@@ -7,12 +7,34 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.model_selection import KFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from api.library_predictions import available_models, run_prediction
+
+
+def test_text_class_prediction_reopens_model_and_preserves_labels_and_metrics(tmp_path, monkeypatch):
+    import nirs4all
+
+    X = np.random.default_rng(71).normal(size=(30, 12))
+    labels = np.where(X[:, 0] > 0, "Tauro", "Renzo")
+    result = nirs4all.run([KFold(3), RandomForestClassifier(n_estimators=10, random_state=42)], (X, labels), workspace_path=tmp_path, save_charts=False, verbose=0)
+    chain_id = result.best["chain_id"]
+    result.close()
+    for name, data in {"train_x": X[:20], "test_x": X[20:], "train_y": labels[:20], "test_y": labels[20:]}.items():
+        np.savetxt(tmp_path / f"{name}.csv", data, delimiter=";", fmt="%s")
+    config = {name: str(tmp_path / f"{name}.csv") for name in ["train_x", "test_x", "train_y", "test_y"]}
+    config.update({f"{name}_params": {"has_header": False} for name in config.copy()})
+    monkeypatch.setattr(RandomForestClassifier, "fit", lambda *args, **kwargs: pytest.fail("prediction retrained"))
+    response = run_prediction({"workspace_path": str(tmp_path), "model_id": chain_id, "model_source": "chain", "data_source": "dataset", "config": config, "partition": "test"})
+    assert len(response["predictions"]) == 10
+    assert set(response["predictions"]) <= {"Tauro", "Renzo"}
+    assert response["actual_values"] == labels[20:].tolist()
+    assert 0 <= response["metrics"]["balanced_accuracy"] <= 1
+    json.dumps(response, allow_nan=False)
 
 
 def test_catalogue_marks_multimodal_archive_from_manifest_without_loading_model(tmp_path):

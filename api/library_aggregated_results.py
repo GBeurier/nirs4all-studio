@@ -92,17 +92,24 @@ def read_aggregated_results(operation: str, document: dict[str, Any]) -> dict[st
             chain = adapter._store.get_chain(document["chain_id"])
             if chain is None:
                 raise ValueError("not_found: Chain does not exist")
-            model_index = chain.get("model_step_idx")
-            others = {row.get("model_step_idx") for row in adapter._store.get_chains_for_pipeline(chain["pipeline_id"]).iter_rows(named=True)
-                      if row.get("model_step_idx") is not None and row.get("model_step_idx") != model_index}
-            steps = []
-            for step in chain.get("steps") or []:
-                reference = step.get("operator_class", "")
-                if step.get("step_idx") in others or "_FullTrainFoldSplitter" in reference or " object at 0x" in reference:
-                    continue
-                canonical = _chain_step_to_canonical(step, is_model=step.get("step_idx") == model_index)
-                if canonical is not None:
-                    steps.append(canonical)
+            if any(isinstance(step, dict) and isinstance(step.get("dagml_host_replay"), dict) for step in chain.get("steps") or []):
+                from nirs4all.api.workspace_chain_snapshot import workspace_chain_snapshot
+
+                steps = workspace_chain_snapshot(document["workspace_path"], document["chain_id"])
+                if steps is None:
+                    raise ValueError("not_found: Chain snapshot does not exist")
+            else:
+                model_index = chain.get("model_step_idx")
+                others = {row.get("model_step_idx") for row in adapter._store.get_chains_for_pipeline(chain["pipeline_id"]).iter_rows(named=True)
+                          if row.get("model_step_idx") is not None and row.get("model_step_idx") != model_index}
+                steps = []
+                for step in chain.get("steps") or []:
+                    reference = step.get("operator_class", "")
+                    if step.get("step_idx") in others or "_FullTrainFoldSplitter" in reference or " object at 0x" in reference:
+                        continue
+                    canonical = _chain_step_to_canonical(step, is_model=step.get("step_idx") == model_index)
+                    if canonical is not None:
+                        steps.append(canonical)
             name = chain.get("model_name") or chain.get("model_class", "").rsplit(".", 1)[-1]
             if chain.get("preprocessings"):
                 name = f"{chain['preprocessings']} → {name}"

@@ -307,6 +307,90 @@ fn filters(query: Option<&str>, page: bool) -> Result<Value, String> {
 mod tests {
     use super::*;
     #[test]
+    fn editor_reload_routes_keep_the_object_contract_on_the_http_wire() {
+        use std::{
+            io::Read,
+            net::{TcpListener, TcpStream},
+            thread,
+            time::Duration,
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        std::fs::write(
+            root.path().join("app_settings.json"),
+            json!({"linked_workspaces":[{"id":"selected","path":workspace,"is_active":true}]})
+                .to_string(),
+        )
+        .unwrap();
+        let settings = AppSettingsStore::new(root.path());
+        let steps = json!([
+            {"class":"sklearn.model_selection.KFold","params":{"n_splits":3}},
+            {"y_processing":"sklearn.preprocessing.StandardScaler"},
+            {"class":"nirs4all.operators.transforms.StandardNormalVariate"},
+            {"class":"sklearn.preprocessing.StandardScaler"},
+            {"model":{"class":"sklearn.cross_decomposition.PLSRegression","params":{"n_components":4}}}
+        ]);
+        for (kind, operation, id_key, reload) in [
+            (
+                "chain",
+                "results.chain_steps",
+                "chain_id",
+                json!({"source":"chain_snapshot","selection_scope":"preprocessing_chain_plus_selected_model","is_editable_template":false}),
+            ),
+            (
+                "pipeline",
+                "results.pipeline_steps",
+                "pipeline_id",
+                json!({"source":"authoring_template","is_editable_template":true,"is_legacy_fallback":false}),
+            ),
+        ] {
+            let request = HttpRequest {
+                method: "GET".into(),
+                path: format!("/api/aggregated-predictions/{kind}/stored-id/pipeline-steps"),
+                query: None,
+                headers: std::collections::BTreeMap::default(),
+                body: vec![],
+            };
+            let response = dispatch(&settings, &request, &|actual_operation, payload| {
+                assert_eq!(actual_operation, operation);
+                assert_eq!(payload[id_key], "stored-id");
+                assert_eq!(payload["workspace_path"], json!(workspace));
+                let mut result = json!({"name":"Corn PLS","pipeline":steps,"reload":reload});
+                result[id_key] = json!("stored-id");
+                Ok(result)
+            });
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                crate::write_response(&mut socket, &response).unwrap();
+            });
+            let mut client = TcpStream::connect(address).unwrap();
+            client
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut wire = Vec::new();
+            client.read_to_end(&mut wire).unwrap();
+            server.join().unwrap();
+            let boundary = wire
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .unwrap();
+            let headers = std::str::from_utf8(&wire[..boundary]).unwrap();
+            assert!(headers.starts_with("HTTP/1.1 200 OK\r\n"));
+            assert!(headers.contains("Content-Type: application/json"));
+            let result: Value = serde_json::from_slice(&wire[boundary + 4..]).unwrap();
+            assert!(result.is_object());
+            assert_eq!(result[id_key], "stored-id");
+            assert_eq!(result["name"], "Corn PLS");
+            assert_eq!(result["pipeline"], steps);
+            assert_eq!(result["reload"], reload);
+        }
+    }
+
+    #[test]
     fn scatter_uses_the_named_workspace_and_rejects_unbounded_fields() {
         let root = tempfile::tempdir().unwrap();
         let workspace = root.path().join("workspace");

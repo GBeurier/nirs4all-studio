@@ -46,7 +46,7 @@ export function SpectraChart({
   showStdBand = true,
   maxSpectraLines = 50,
   className,
-  unit = "nm",
+  unit = data.axis_unit ?? "nm",
 }: SpectraChartProps) {
   const { mergedData, lineColors } = useMemo(
     () => buildSynthesisChartData(data, maxSpectraLines),
@@ -70,7 +70,7 @@ export function SpectraChart({
         margin={{ top: 10, right: 20, left: 0, bottom: 30 }}
         unit={unit}
         gridOpacity={0.5}
-        xLabel={{ value: getWavelengthAxisLabel(unit), offset: -20, fontSize: 11 }}
+        xLabel={{ value: unit === "index" ? "Feature index" : getWavelengthAxisLabel(unit), offset: -20, fontSize: 11 }}
         yLabel={{ value: "Absorbance", fontSize: 11 }}
         xAxisProps={{ stroke: SPECTRA_CHART_THEME.axisText, fontSize: 11 }}
         yAxisProps={{ stroke: SPECTRA_CHART_THEME.axisText, fontSize: 11 }}

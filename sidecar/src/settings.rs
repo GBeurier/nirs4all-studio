@@ -574,6 +574,32 @@ impl AppSettingsStore {
         self.active_linked_workspace_record(true)
     }
 
+    /// Persist an explicit native scan without changing workspace identity or activation.
+    pub(crate) fn record_workspace_scan(
+        &self,
+        workspace_id: &str,
+        discovered: &Value,
+        scanned_at: &str,
+    ) -> Result<(), String> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut settings = self.load()?;
+        let workspace = settings
+            .get_mut("linked_workspaces")
+            .and_then(Value::as_array_mut)
+            .and_then(|items| {
+                items
+                    .iter_mut()
+                    .find(|item| item["id"].as_str() == Some(workspace_id))
+            })
+            .ok_or_else(|| "Workspace not found".to_owned())?;
+        workspace["discovered"] = discovered.clone();
+        workspace["last_scanned"] = json!(scanned_at);
+        self.save(&settings)
+    }
+
     /// Readiness reports catalogue initialization, not Store content validation.
     /// Authentication belongs to data access; polling must never read a Store.
     pub(crate) fn workspace_catalogue_ready(&self) -> bool {

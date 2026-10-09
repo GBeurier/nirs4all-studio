@@ -62,6 +62,7 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["POST /pipelines/import-preview", { name: "pipeline-library", capability: "pipeline_library_routes", requiresPythonHost: true }],
   ["POST /pipelines/import", { name: "pipeline-library", capability: "pipeline_library_routes", requiresPythonHost: true }],
   ["POST /pipelines/render-canonical", { name: "pipeline-library", capability: "pipeline_library_routes", requiresPythonHost: true }],
+  ["POST /pipelines/count-variants", { name: "pipeline-library", capability: "pipeline_library_routes", requiresPythonHost: true }],
   ["GET /datasets", { name: "dataset-catalogue", capability: "dataset_catalogue_routes" }],
   ["POST /datasets/link", { name: "dataset-catalogue", capability: "dataset_catalogue_routes" }],
   ["GET /config/setup-status", { name: "setup", capability: "app_settings_routes" }],
@@ -225,6 +226,8 @@ function classifyWorkspaceMetadata(method: string, path: string): NativeSurface 
 }
 
 function classifyHttp(method: string, path: string): NativeSurface | null {
+  const exploration = classifyExploration(method, path);
+  if (exploration) return exploration;
   const workspace = classifyWorkspaceMetadata(method, path);
   if (workspace) return workspace;
   const aggregated = classifyAggregatedPredictionResults(method, path);
@@ -247,7 +250,7 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
   const pipeline = identifierPath("/pipelines/").exec(path);
   if (["GET", "PUT", "DELETE"].includes(method) && pipeline &&
       isValidIdentifier(pipeline[1]) &&
-      !["presets", "samples", "import", "import-preview", "render-canonical", "propagate-shape"].includes(pipeline[1])) {
+      !["presets", "samples", "import", "import-preview", "render-canonical", "count-variants", "propagate-shape"].includes(pipeline[1])) {
     return { name: "pipeline-documents", capability: "pipeline_document_routes" };
   }
   if (method === "DELETE" && identifierPath("/app/favorites/").test(path)) {
@@ -306,6 +309,51 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
         : { name: "job-cancellation", capability: "native_job_cancellation_routes" };
     }
   }
+  return null;
+}
+
+function classifyExploration(method: string, path: string): NativeSurface | null {
+  const url = new URL(path, "http://studio.local");
+  const route = url.pathname;
+  const params = url.searchParams;
+  const accepts = (keys: string[], repeated: string[] = []) =>
+    [...params.keys()].every(key => keys.includes(key) && (repeated.includes(key) || params.getAll(key).length === 1)) &&
+    [...params.values()].every(value => value.length <= 4096);
+  const surface = (name: string, python = true): NativeSurface => ({ name, capability: name, requiresPythonHost: python });
+  if (method === "GET" && route === "/system/operator-availability" && !url.search) return surface("operator_availability_route");
+  if (["/workspace/stats", "/workspace/storage-status"].includes(route) && method === "GET" && !url.search) return surface("workspace_discovery_routes", false);
+  const workspace = new RegExp(`^/workspaces/(${IDENTIFIER})/(scan|datasets/discovered|predictions|exports|templates)$`).exec(route);
+  if (workspace && isValidIdentifier(workspace[1]) && !url.search && method === (workspace[2] === "scan" ? "POST" : "GET")) return surface("workspace_discovery_routes", false);
+  if (route === "/aggregated-predictions/export" && method === "POST" && !url.search) return surface("prediction_export_routes");
+  if (method === "GET" && /^\/aggregated-predictions\/export\/[^/]+\.parquet$/.test(route) && accepts(["partition", "model_name"])) return surface("prediction_export_routes");
+  const inspector = route.replace(/^\/inspector\//, "");
+  if (route.startsWith("/inspector/")) {
+    const posts = ["scatter", "heatmap", "candlestick", "branch-comparison", "fold-stability", "confusion", "preprocessing-impact", "hyperparameter", "bias-variance"];
+    if (method === "POST" && posts.includes(inspector) && !url.search) return surface("inspector_view_routes");
+    const repeated = ["run_id", "dataset_name", "model_class", "preprocessings"];
+    const fields: Record<string, string[]> = {
+      data: [...repeated, "task_type", "metric"], histogram: ["run_id", "dataset_name", "score_column", "n_bins"],
+      rankings: [...repeated, "task_type", "metric", "score_column", "sort_ascending", "limit", "offset"],
+      "branch-topology": ["pipeline_id", "score_column", "score_ref"],
+    };
+    if (method === "GET" && fields[inspector] && accepts(fields[inspector], repeated)) return surface("inspector_view_routes");
+  }
+  if (route.startsWith("/synthesis/") && !url.search && ((method === "GET" && ["status", "components"].includes(route.slice(11))) || (method === "POST" && ["preview", "generate", "validate"].includes(route.slice(11))))) return surface("library_analysis_routes");
+  if (route === "/analysis/shap/config" || route === "/analysis/shap/models") {
+    if (method === "GET" && !url.search) return surface("library_analysis_routes");
+  }
+  if (route === "/analysis/shap/compute" && method === "POST" && !url.search) return surface("library_analysis_routes");
+  const shap = new RegExp(`^/analysis/shap/(status|results)/(${IDENTIFIER})(?:/(spectral|spectral-detail|scatter|beeswarm|rebin|sample/[0-9]+))?$`).exec(route);
+  if (shap && isValidIdentifier(shap[2])) {
+    const view = shap[3];
+    if (view === "rebin") return method === "POST" && !url.search ? surface("library_analysis_routes") : null;
+    const keys = view === "spectral-detail" ? ["sample_indices"] : view === "scatter" || view === "beeswarm" ? ["max_samples"] : view?.startsWith("sample/") ? ["top_n"] : [];
+    if (method === "GET" && accepts(keys) && [...params.values()].every(value => /^[0-9,]+$/.test(value))) return surface("library_analysis_routes");
+  }
+  const evidence = new RegExp(`^/aggregated-predictions/(${IDENTIFIER})/(robustness-evidence|robustness-report)$`).exec(route);
+  if (evidence && isValidIdentifier(evidence[1]) && !url.search && method === (evidence[2] === "robustness-report" ? "POST" : "GET")) return surface("library_analysis_routes");
+  const report = new RegExp(`^/aggregated-predictions/robustness-reports/(${IDENTIFIER})/export$`).exec(route);
+  if (report && isValidIdentifier(report[1]) && method === "GET" && accepts(["format"]) && (!params.has("format") || ["json", "markdown", "html"].includes(params.get("format")!))) return surface("library_analysis_routes");
   return null;
 }
 

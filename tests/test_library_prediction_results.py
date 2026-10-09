@@ -110,3 +110,55 @@ def test_verbatim_windows_workspace_paths_reach_the_library_plain(monkeypatch):
     monkeypatch.setattr(aggregated, "read_aggregated_results", lambda operation, document: seen.update(document) or {})
     adapt_document("results.chains", {"workspace_path": "\\\\?\\D:\\a\\ws"})
     assert seen["workspace_path"] == "D:\\a\\ws"
+
+
+def test_dag_chain_and_authoring_pipeline_reload_keep_the_editor_response_contract(tmp_path: Path, monkeypatch):
+    import importlib
+
+    from api.library_documents import adapt_document
+
+    snapshot_module = importlib.import_module("nirs4all.api.workspace_chain_snapshot")
+    snapshot = [
+        {"class": "sklearn.model_selection.KFold", "params": {"n_splits": 3}},
+        {"y_processing": "sklearn.preprocessing.StandardScaler"},
+        {"class": "nirs4all.operators.transforms.StandardNormalVariate"},
+        {"class": "sklearn.preprocessing.StandardScaler"},
+        {"model": {"class": "sklearn.cross_decomposition.PLSRegression", "params": {"n_components": 4}}},
+    ]
+    calls = []
+
+    def owner_snapshot(workspace_path, chain_id):
+        calls.append((workspace_path, chain_id))
+        return snapshot
+
+    monkeypatch.setattr(snapshot_module, "workspace_chain_snapshot", owner_snapshot)
+    template = {"pipeline": [{"_or_": ["StandardScaler", "MinMaxScaler"]}, {"model": "PLSRegression"}]}
+    with WorkspaceStore(tmp_path) as writer:
+        run = writer.begin_run("stored editor reload", config={}, datasets=[{"name": "Corn"}])
+        pipeline = writer.begin_pipeline(
+            run, "Editable Corn template", expanded_config=snapshot, generator_choices=[],
+            dataset_name="Corn", dataset_hash="corn", original_template=template,
+        )
+        chain = writer.save_chain(
+            pipeline, steps=[{"dagml_host_replay": {"artifact": "models/verified.n4a"}}], model_step_idx=4,
+            model_class="sklearn.cross_decomposition.PLSRegression", preprocessings="SNV+StandardScaler",
+            fold_strategy="per_fold", fold_artifacts={}, shared_artifacts={},
+        )
+    before = (tmp_path / "store.sqlite").read_bytes()
+    document = {"workspace_path": str(tmp_path)}
+    # Exercise the JSON document exchanged by the Rust stdio host, not an HTTP fallback.
+    response = json.loads(json.dumps(adapt_document("results.chain_steps", {**document, "chain_id": chain})))
+    assert response == {
+        "chain_id": chain, "name": "SNV+StandardScaler → PLSRegression", "pipeline": snapshot,
+        "reload": {"source": "chain_snapshot", "selection_scope": "preprocessing_chain_plus_selected_model", "is_editable_template": False},
+    }
+    assert calls == [(str(tmp_path), chain)]
+    pipeline_response = adapt_document("results.pipeline_steps", {**document, "pipeline_id": pipeline})
+    assert pipeline_response == {
+        "pipeline_id": pipeline, "name": "Editable Corn template", "pipeline": template["pipeline"],
+        "reload": {"source": "authoring_template", "is_editable_template": True, "is_legacy_fallback": False},
+    }
+    assert (tmp_path / "store.sqlite").read_bytes() == before
+    monkeypatch.setattr(snapshot_module, "workspace_chain_snapshot", lambda *args: None)
+    with pytest.raises(ValueError, match="not_found: Chain snapshot"):
+        adapt_document("results.chain_steps", {**document, "chain_id": chain})

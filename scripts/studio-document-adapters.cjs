@@ -7,6 +7,11 @@ const PACKAGE = "studio_document_adapters";
 const SCHEMA = "nirs4all.studio-document-adapters.v1";
 const SOURCE_FILES = Object.freeze([
   "api/library_documents.py",
+  "api/library_operator_availability.py",
+  "api/library_inspector.py",
+  "api/library_prediction_export.py",
+  "api/library_analysis.py",
+  "api/robustness_contract.py",
   "api/library_playground_views.py",
   "api/shared/operator_catalogue.py",
   "api/shared/filter_catalogue.py",

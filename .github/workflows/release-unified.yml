@@ -46,15 +46,16 @@ env:
   PYTHON_VERSION: '3.11'
   # Release archives/images must be reproducible. Keep these refs pinned to the
   # selected immutable releases and update them with the ecosystem release board.
-  # Exact wheel bytes and URL verified against externally attested PyPI release JSON.
-  NIRS4ALL_PUBLICATION_STATUS: published
-  NIRS4ALL_LIBRARY_REF: 1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc
+  # SDK source and normalized wheel are exact; conversion-tools retains its PyPI proof.
+  NIRS4ALL_PUBLICATION_STATUS: source-built
+  NIRS4ALL_LIBRARY_REF: 48542f1a48ee005eea8d49da3756cd6b192d03df
+  NIRS4ALL_SOURCE_EPOCH: '1791533216'
   DAG_ML_REF: 6f4044b45028a90a92d3f29287e67779bb5fd0b9
   DAG_ML_DATA_REF: 78719b68c8e9ffd4c2035792574b8da33387d237
   NIRS4ALL_TOOLS_REF: ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc.tar.gz
-  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/93/90/15d5ebcb3bc80c6cfdac494940378a942d20b00b20d336086f9bb295f971/nirs4all-1.4.7-py3-none-any.whl
-  NIRS4ALL_WHEEL_SHA256: 0ed0b2cb1e3cda248ccfd52513d6874a763e7cc64fb4a28973058ada677ef8f6
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/48542f1a48ee005eea8d49da3756cd6b192d03df.tar.gz
+  NIRS4ALL_WHEEL_URL: ''
+  NIRS4ALL_WHEEL_SHA256: 162306982aa142e201f45095d4c5aee2bcb164a1bbc8b86dbcc9dfcf72587858
   DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/6f4044b45028a90a92d3f29287e67779bb5fd0b9.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/78719b68c8e9ffd4c2035792574b8da33387d237.tar.gz
   NIRS4ALL_TOOLS_SOURCE_URL: https://github.com/GBeurier/nirs4all-tools/archive/ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8.tar.gz
@@ -147,8 +148,8 @@ jobs:
         shell: bash
         run: |
           node scripts/verify-runtime-cohort.cjs
-          if [[ "$NIRS4ALL_PUBLICATION_STATUS" != "published" ]]; then
-            echo "::error::Pinned nirs4all candidate publication is pending"
+          if [[ "$NIRS4ALL_PUBLICATION_STATUS" != "source-built" ]]; then
+            echo "::error::Pinned nirs4all requires its qualified immutable source build"
             exit 1
           fi
           for value in "$NIRS4ALL_LIBRARY_REF" "$DAG_ML_REF" "$DAG_ML_DATA_REF" "$NIRS4ALL_TOOLS_REF"; do
@@ -163,8 +164,9 @@ jobs:
               exit 1
             fi
           done
-          if [[ ! "$NIRS4ALL_WHEEL_URL" =~ ^https://files\.pythonhosted\.org/.+/nirs4all-1\.4\.7-py3-none-any\.whl$ ]]; then
-            echo "::error::Pinned nirs4all wheel URL must be the immutable PyPI file URL"
+          if [[ "$NIRS4ALL_SOURCE_URL" != "https://github.com/GBeurier/nirs4all/archive/$NIRS4ALL_LIBRARY_REF.tar.gz" ||
+                "$NIRS4ALL_SOURCE_EPOCH" != "1791533216" || -n "$NIRS4ALL_WHEEL_URL" ]]; then
+            echo "::error::SDK source build must match the exact commit/epoch and cannot substitute a registry wheel"
             exit 1
           fi
           if [[ ! "$NIRS4ALL_WHEEL_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
@@ -223,9 +225,8 @@ jobs:
       dag_ml_ref: 6f4044b45028a90a92d3f29287e67779bb5fd0b9
       dag_ml_data_ref: 78719b68c8e9ffd4c2035792574b8da33387d237
 
-  # Acquire the pinned public SDK and conversion-tools wheels once on Linux.
-  # Every distributable consumes these exact
-  # attested payloads; no release job rebuilds nirs4all from source.
+  # Build the pinned SDK once and acquire the unchanged public conversion-tools.
+  # Every distributable consumes the same normalized, hash-verified payloads.
   pinned-plugin-wheels:
     name: Acquire pinned plugin wheels
     needs: prepare
@@ -243,17 +244,17 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Acquire and verify canonical public wheels
+      - name: Build SDK and verify canonical plugin wheels
         env:
           GIT_CONFIG_COUNT: '1'
           GIT_CONFIG_KEY_0: core.autocrlf
           GIT_CONFIG_VALUE_0: 'false'
         run: |
-          python -m pip install --upgrade setuptools==84.0.0 wheel==0.48.0 packaging==26.3
+          python -m pip install --upgrade pip==26.2.1
           mkdir -p dist/pinned-plugin-wheels
-          curl --fail --location --proto "=https" --tlsv1.2 \
-            --output dist/pinned-plugin-wheels/nirs4all-1.4.7-py3-none-any.whl \
-            "$NIRS4ALL_WHEEL_URL"
+          node scripts/setup-python-env.cjs \
+            --build-plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.7-py3-none-any.whl \
+            --build-python python
           curl --fail --location --proto "=https" --tlsv1.2 \
             --output dist/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl \
             "$NIRS4ALL_TOOLS_WHEEL_URL"
@@ -810,17 +811,6 @@ jobs:
             [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
           done
 
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-macos-x64-payload
-          path: |
-            release/*.dmg
-            release/*.sha256
-            release/*.yml
-          retention-days: 5
-
       - name: Smoke packaged UI and runtime contract
         timeout-minutes: 8
         env:
@@ -841,6 +831,17 @@ jobs:
           path: ${{ runner.temp }}/packaged-ui-smoke.json
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos-x64-payload
+          path: |
+            release/*.dmg
+            release/*.sha256
+            release/*.yml
+          retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Installer: macOS arm64 (Apple Silicon) — Phase 4: signed + notarized
@@ -1032,17 +1033,6 @@ jobs:
             [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
           done
 
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-macos-arm64-payload
-          path: |
-            release/*.dmg
-            release/*.sha256
-            release/*.yml
-          retention-days: 5
-
       - name: Smoke packaged UI and runtime contract
         timeout-minutes: 8
         env:
@@ -1063,6 +1053,17 @@ jobs:
           path: ${{ runner.temp }}/packaged-ui-smoke.json
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos-arm64-payload
+          path: |
+            release/*.dmg
+            release/*.sha256
+            release/*.yml
+          retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Docker: static frontend + loopback Rust sidecar

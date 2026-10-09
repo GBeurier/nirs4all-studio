@@ -7,6 +7,7 @@ export const SHAP_MODEL_SELECTOR_ALL_VALUE = '__all__';
 export interface ShapModelSelectionResolution {
   chainId: string | null;
   datasetName: string | null;
+  datasetId: string | null;
   modelRef: ShapExplicitModelRef | null;
 }
 
@@ -100,7 +101,7 @@ export function resolveShapModelSelection(
   bundles: AvailableBundle[] = [],
 ): ShapModelSelectionResolution {
   if (!value) {
-    return { chainId: null, datasetName: null, modelRef: null };
+    return { chainId: null, datasetName: null, datasetId: null, modelRef: null };
   }
 
   for (const dataset of datasets) {
@@ -109,6 +110,7 @@ export function resolveShapModelSelection(
       return {
         chainId: chain.chain_id,
         datasetName: chain.dataset_name,
+        datasetId: chain.dataset_link_status === 'linked' ? chain.linked_dataset_id ?? null : null,
         modelRef: { modelSource: 'chain', chainId: chain.chain_id },
       };
     }
@@ -119,11 +121,12 @@ export function resolveShapModelSelection(
     return {
       chainId: value,
       datasetName: bundle.dataset_name || null,
+      datasetId: bundle.dataset_link_status === 'linked' ? bundle.linked_dataset_id ?? null : null,
       modelRef: { modelSource: 'bundle', bundlePath: bundle.bundle_path },
     };
   }
 
-  return { chainId: value, datasetName: null, modelRef: { modelSource: 'chain', chainId: value } };
+  return { chainId: value, datasetName: null, datasetId: null, modelRef: { modelSource: 'chain', chainId: value } };
 }
 
 export function formatShapModelScore(score: number | null | undefined): string | null {

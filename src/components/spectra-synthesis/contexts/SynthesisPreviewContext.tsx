@@ -48,6 +48,7 @@ interface PreviewResponse {
   success: boolean;
   spectra: number[][];
   wavelengths: number[];
+  axis_unit?: "nm" | "index";
   targets: number[];
   target_type: "regression" | "classification";
   statistics: PreviewStatistics | null;
@@ -130,6 +131,7 @@ export function SynthesisPreviewProvider({
         data: {
           spectra: response.spectra,
           wavelengths: response.wavelengths,
+          axis_unit: response.axis_unit,
           targets: response.targets,
           target_type: response.target_type,
           statistics: response.statistics,

@@ -32,7 +32,7 @@ import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 
 interface VariableImportanceFormProps {
   chainId: string | null;
-  onChainSelect: (chainId: string | null, datasetName: string | null, modelRef?: ShapExplicitModelRef | null) => void;
+  onChainSelect: (chainId: string | null, datasetName: string | null, modelRef?: ShapExplicitModelRef | null, datasetId?: string | null) => void;
   partition: Partition;
   onPartitionChange: (partition: Partition) => void;
   explainerType: ExplainerType;

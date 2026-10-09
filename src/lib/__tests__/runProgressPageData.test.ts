@@ -226,6 +226,17 @@ describe("run progress page data", () => {
     })).toEqual(["[ERROR] ModuleNotFoundError: tabpfn"]);
   });
 
+  it("preserves unavailable fit progress but clears it when the run completes", () => {
+    const record = executionJobRecord({ status: "running", progress: 0, progress_unavailable: true });
+    expect(buildRunExecutionProgressDisplayData(run({}), record).progressUnavailable).toBe(true);
+    expect(buildRunExecutionProgressDisplayData(run({}), { ...record, status: "completed" }))
+      .toMatchObject({ progress: 100 });
+    expect(buildRunExecutionProgressDisplayData(run({}), { ...record, status: "completed" }).progressUnavailable)
+      .not.toBe(true);
+    expect(buildRunExecutionProgressDisplayData(run({ progress_unavailable: true })).progressUnavailable)
+      .toBe(true);
+  });
+
   it("uses an execution job record as the progress display source when present", () => {
     const data = buildRunExecutionProgressDisplayData(
       run({ status: "queued" }),

@@ -1,6 +1,6 @@
 //! Bounded session memoization of dataset documents and inspection projections.
-//! Keys include the complete request. File identities include the change marker,
-//! so same-size edits with restored mtime cannot reuse scientific metadata.
+//! Keys include the complete request. Windows dependency identities also bind
+//! bounded full file contents: rapid writes can preserve both timestamp markers.
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -16,6 +16,9 @@ const MAX_ENTRIES: usize = 128;
 const MAX_BYTES: usize = 32 * 1024 * 1024;
 const MAX_ENTRY_BYTES: usize = 8 * 1024 * 1024;
 const TTL: Duration = Duration::from_secs(5 * 60);
+// Avoid turning cache lookup into unbounded I/O for very large datasets. Inputs
+// beyond this aggregate budget are computed normally without memoization.
+const MAX_SNAPSHOT_HASH_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct FileStamp {
@@ -25,9 +28,10 @@ struct FileStamp {
     size: u64,
     modified: i128,
     changed: i128,
+    content_hash: Option<[u8; 32]>,
 }
 
-fn stamp(path: &Path) -> Option<FileStamp> {
+fn metadata_stamp(path: &Path) -> Option<FileStamp> {
     let path = path.canonicalize().ok()?;
     #[cfg(unix)]
     {
@@ -42,6 +46,7 @@ fn stamp(path: &Path) -> Option<FileStamp> {
                 + i128::from(metadata.mtime_nsec()),
             changed: i128::from(metadata.ctime()) * 1_000_000_000
                 + i128::from(metadata.ctime_nsec()),
+            content_hash: None,
         })
     }
     #[cfg(windows)]
@@ -55,6 +60,7 @@ fn stamp(path: &Path) -> Option<FileStamp> {
             size: value.size,
             modified: i128::from(value.modified),
             changed: i128::from(value.changed),
+            content_hash: None,
         })
     }
     #[cfg(not(any(unix, windows)))]
@@ -63,6 +69,46 @@ fn stamp(path: &Path) -> Option<FileStamp> {
         // No trustworthy change marker: skip caching rather than hash matrices
         // or pretend that size/mtime alone establish input identity.
         None
+    }
+}
+
+fn stamp(path: &Path, hash_budget: &mut u64) -> Option<FileStamp> {
+    let before = metadata_stamp(path)?;
+    #[cfg(windows)]
+    {
+        use std::io::Read;
+        if !fs::metadata(&before.path).ok()?.is_file() {
+            return Some(before);
+        }
+        if before.size > *hash_budget {
+            return None;
+        }
+        let mut file = fs::File::open(&before.path)
+            .ok()?
+            .take(before.size.checked_add(1)?);
+        let mut digest = Sha256::new();
+        let mut buffer = [0_u8; 65536];
+        let mut read = 0_u64;
+        loop {
+            let count = file.read(&mut buffer).ok()?;
+            if count == 0 {
+                break;
+            }
+            read = read.checked_add(count as u64)?;
+            digest.update(&buffer[..count]);
+        }
+        if read != before.size || metadata_stamp(&before.path)? != before {
+            return None;
+        }
+        *hash_budget -= read;
+        let mut after = before;
+        after.content_hash = Some(digest.finalize().into());
+        Some(after)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = hash_budget;
+        Some(before)
     }
 }
 
@@ -126,9 +172,10 @@ fn snapshot(payload: &Value) -> Option<Vec<FileStamp>> {
             }
         }
     }
+    let mut hash_budget = MAX_SNAPSHOT_HASH_BYTES;
     let mut stamps = paths
         .iter()
-        .map(|path| stamp(path))
+        .map(|path| stamp(path, &mut hash_budget))
         .collect::<Option<Vec<_>>>()?;
     stamps.sort();
     stamps.dedup();
@@ -483,6 +530,72 @@ mod tests {
         invalidate(root.path());
         assert_eq!(
             invoke(34, "dataset.preview", &payload, || Ok(json!(2))).unwrap(),
+            json!(2)
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rapid_same_size_edits_with_restored_times_never_reuse_cached_science() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("Y.csv");
+        fs::write(&path, "00\n").unwrap();
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        let payload = json!({"config":{"train_y":path}});
+        let calls = Cell::new(0);
+        let compute = || {
+            calls.set(calls.get() + 1);
+            Ok(json!(fs::read_to_string(&path).unwrap()))
+        };
+        invoke(35, "dataset.preview", &payload, compute).unwrap();
+        for value in 1..=80 {
+            let expected = format!("{value:02}\n");
+            fs::write(&path, &expected).unwrap();
+            fs::File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_modified(modified))
+                .unwrap();
+            assert_eq!(
+                invoke(35, "dataset.preview", &payload, compute).unwrap(),
+                json!(expected)
+            );
+        }
+        assert_eq!(calls.get(), 81);
+        assert_eq!(
+            invoke(35, "dataset.preview", &payload, compute).unwrap(),
+            json!("80\n")
+        );
+        assert_eq!(
+            calls.get(),
+            81,
+            "unchanged contents should still be memoized"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn unbounded_input_hashes_bypass_cache_instead_of_trusting_timestamps() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("large-X.csv");
+        fs::File::create(&path)
+            .unwrap()
+            .set_len(MAX_SNAPSHOT_HASH_BYTES + 1)
+            .unwrap();
+        let payload = json!({"config":{"train_x":path}});
+        assert!(snapshot(&payload).is_none());
+        let calls = Cell::new(0);
+        let compute = || {
+            calls.set(calls.get() + 1);
+            Ok(json!(calls.get()))
+        };
+        assert_eq!(
+            invoke(36, "dataset.preview", &payload, compute).unwrap(),
+            json!(1)
+        );
+        assert_eq!(
+            invoke(36, "dataset.preview", &payload, compute).unwrap(),
             json!(2)
         );
     }

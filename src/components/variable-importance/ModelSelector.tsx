@@ -31,7 +31,7 @@ import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 
 interface ModelSelectorProps {
   selectedChainId: string | null;
-  onChainSelect: (chainId: string | null, datasetName: string | null, modelRef?: ShapExplicitModelRef | null) => void;
+  onChainSelect: (chainId: string | null, datasetName: string | null, modelRef?: ShapExplicitModelRef | null, datasetId?: string | null) => void;
 }
 
 export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorProps) {
@@ -56,6 +56,13 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
     if (!data) return [];
     return data.datasets;
   }, [data]);
+
+  // Revalidate restored selections against the current workspace catalogue.
+  useEffect(() => {
+    if (!data || !selectedChainId) return;
+    const selection = resolveShapModelSelection(selectedChainId, data.datasets, data.bundles);
+    onChainSelect(selection.chainId, selection.datasetName, selection.modelRef, selection.datasetId);
+  }, [data, selectedChainId, onChainSelect]);
 
   // Filter options: datasets that exist + model classes available under the current dataset filter
   const datasetOptions = useMemo(() => getShapModelDatasetOptions(allChains), [allChains]);
@@ -102,7 +109,7 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
 
   const handleSelect = (value: string) => {
     const selection = resolveShapModelSelection(value, allChains, data?.bundles ?? []);
-    onChainSelect(selection.chainId, selection.datasetName, selection.modelRef);
+    onChainSelect(selection.chainId, selection.datasetName, selection.modelRef, selection.datasetId);
   };
 
   const hasVisible = hasVisibleShapModelOptions(filteredDatasets, filteredBundles);
@@ -161,9 +168,10 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
                 const visibleScore = getVisibleShapChainScore(chain);
 
                 return (
-                  <SelectItem key={chain.chain_id} value={chain.chain_id}>
+                  <SelectItem key={chain.chain_id} value={chain.chain_id} disabled={!chain.linked_dataset_id || chain.dataset_link_status !== 'linked'}>
                     <div className="flex items-center gap-2 min-w-0" title={chainTooltip}>
                       <span className="truncate max-w-[160px]">{chainLabel}</span>
+                      {chain.dataset_link_status !== 'linked' && <span className="text-xs">Dataset link unavailable</span>}
                       <Badge variant="default" className="text-[10px] px-1 py-0 shrink-0 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/30">
                         refit
                       </Badge>
@@ -185,9 +193,10 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
                 {t('shap.bundles', 'Exported Bundles')}
               </SelectLabel>
               {filteredBundles.map((bundle) => (
-                <SelectItem key={bundle.bundle_path} value={bundle.bundle_path}>
+                <SelectItem key={bundle.bundle_path} value={bundle.bundle_path} disabled={!bundle.linked_dataset_id || bundle.dataset_link_status !== 'linked'}>
                   <div className="flex items-center gap-2">
                     <span className="truncate max-w-[180px]">{bundle.display_name}</span>
+                    {bundle.dataset_link_status !== 'linked' && <span className="text-xs">Dataset link unavailable</span>}
                     <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">
                       .n4a
                     </Badge>
@@ -198,6 +207,9 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
           )}
         </SelectContent>
       </Select>
+      {selectedChainId && !resolveShapModelSelection(selectedChainId, allChains, data?.bundles ?? []).datasetId && (
+        <p className="text-xs text-muted-foreground">This model has no authorized dataset link. Select a model from a linked dataset.</p>
+      )}
     </div>
   );
 }

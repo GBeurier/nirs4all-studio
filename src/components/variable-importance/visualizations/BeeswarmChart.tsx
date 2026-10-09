@@ -12,6 +12,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { getBeeswarmData } from '@/api/shap';
+import { getShapAxisDisplay } from '@/lib/shapAxisDisplay';
 import {
   buildShapBeeswarmPoints,
   buildShapBeeswarmYTicks,
@@ -32,6 +33,7 @@ export const BeeswarmChart = memo(function BeeswarmChart({
 }: BeeswarmChartProps) {
   const selectedSet = useMemo(() => new Set(selectedSamples), [selectedSamples]);
   const [data, setData] = useState<BeeswarmDataResponse | null>(null);
+  const axis = getShapAxisDisplay(data?.axis_unit);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,7 +106,7 @@ export const BeeswarmChart = memo(function BeeswarmChart({
               const tick = yTickLabels.find((t) => t.value === value);
               return tick?.label || '';
             }}
-            label={{ value: 'Wavelength Region (cm\u207B\u00B9)', angle: -90, position: 'insideLeft', offset: -80, className: 'fill-muted-foreground text-xs' }}
+            label={{ value: `${axis.label} region`, angle: -90, position: 'insideLeft', offset: -80, className: 'fill-muted-foreground text-xs' }}
             className="text-xs"
             width={90}
           />
@@ -115,7 +117,7 @@ export const BeeswarmChart = memo(function BeeswarmChart({
               const point = payload[0].payload;
               return (
                 <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
-                  <p className="font-medium">{point.binLabel} cm⁻¹</p>
+                  <p className="font-medium">{point.binLabel}{axis.suffix}</p>
                   <p>SHAP: {point.x.toFixed(4)}</p>
                   <p className="text-muted-foreground">Feature value: {(point.color * 100).toFixed(0)}%</p>
                   <p className="text-xs text-muted-foreground">Sample #{point.sampleIdx}</p>

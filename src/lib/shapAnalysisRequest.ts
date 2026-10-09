@@ -13,7 +13,7 @@ export type ShapModelRequestRef = string | ResultArtifactRef | ShapExplicitModel
 
 export interface BuildShapComputeRequestInput {
   modelRef: ShapModelRequestRef;
-  datasetName: string;
+  datasetId: string;
   partition: Partition;
   explainerType: ExplainerType;
 }
@@ -63,17 +63,18 @@ export function resolveShapModelRef(modelRef: ShapModelRequestRef): ShapExplicit
 
 export function buildShapComputeRequest({
   modelRef,
-  datasetName,
+  datasetId,
   partition,
   explainerType,
 }: BuildShapComputeRequestInput): ShapComputeRequest {
+  if (!datasetId) throw new Error('The model has no authorized dataset link.');
   const resolvedModelRef = resolveShapModelRef(modelRef);
   const isBundle = resolvedModelRef.modelSource === 'bundle';
 
   return {
     chain_id: isBundle ? undefined : resolvedModelRef.chainId,
     bundle_path: isBundle ? resolvedModelRef.bundlePath : undefined,
-    dataset_id: datasetName,
+    dataset_id: datasetId,
     partition,
     explainer_type: explainerType,
     n_samples: null,

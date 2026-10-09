@@ -11,6 +11,13 @@ const childProcessMocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock("node:child_process", () => ({ spawn: childProcessMocks.spawn }));
 
 const tempDirs: string[] = [];
+const fixturePlatform = process.platform;
+const fixtureSidecarName = fixturePlatform === "win32"
+  ? "studio-sidecar.exe" : "studio-sidecar";
+const fixturePythonMember = fixturePlatform === "win32" ? "python.exe" : "bin/python3";
+const fixtureSitePackagesMember = fixturePlatform === "win32"
+  ? "Lib/site-packages" : "lib/python3.11/site-packages";
+const contractPath = (value: string) => value.split(path.sep).join("/");
 
 function makeExecutable(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-sidecar-manager-"));
@@ -42,9 +49,7 @@ function writePackagedContract(
     backendRoot,
     "python-runtime",
     "python",
-    "lib",
-    "python3.11",
-    "site-packages",
+    ...fixtureSitePackagesMember.split("/"),
   );
   const packagePath = path.join(sitePackagesPath, "nirs4all.py");
   fs.mkdirSync(sitePackagesPath, { recursive: true });
@@ -61,17 +66,17 @@ function writePackagedContract(
   const closure = {
     schema: "nirs4all.studio-python-plugin-closure.v1",
     root: "python-runtime/python",
-    site_packages: "python-runtime/python/lib/python3.11/site-packages",
-    directories: [
-      "",
-      "bin",
-      "lib",
-      "lib/python3.11",
-      "lib/python3.11/site-packages",
-    ],
+    site_packages: `python-runtime/python/${fixtureSitePackagesMember}`,
+    directories: fixturePlatform === "win32"
+      ? ["", "Lib", "Lib/site-packages"]
+      : ["", "bin", "lib", "lib/python3.11", "lib/python3.11/site-packages"],
     files: [pythonPath, packagePath]
-      .map((filePath) => describe(filePath, path.relative(runtimeRoot, filePath)))
-      .sort((left, right) => left.path.localeCompare(right.path)),
+      .map((filePath) => describe(
+        filePath, contractPath(path.relative(runtimeRoot, filePath)),
+      ))
+      .sort((left, right) => Buffer.compare(
+        Buffer.from(left.path, "utf8"), Buffer.from(right.path, "utf8"),
+      )),
   };
   const closurePath = path.join(
     backendRoot,
@@ -90,11 +95,11 @@ function writePackagedContract(
     product_backend: "rust-sidecar",
     transport: "bounded-cpython-stdio-v1",
     http_listener: "forbidden",
-    source_commit: "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc",
-    wheel_sha256: "0ed0b2cb1e3cda248ccfd52513d6874a763e7cc64fb4a28973058ada677ef8f6",
+    source_commit: "48542f1a48ee005eea8d49da3756cd6b192d03df",
+    wheel_sha256: "162306982aa142e201f45095d4c5aee2bcb164a1bbc8b86dbcc9dfcf72587858",
     distribution: "nirs4all",
     distribution_version: "1.4.7",
-    installed_manifest_sha256: "84acf9234ce7ec0b3f637be06524f6a3fa6d5e2c0ca208f3f47bd22bacd39e3e",
+    installed_manifest_sha256: "f173fe63246b2295b6afe0f7e275e9d1c21a140603136879ac7503a56d08b508",
     conversion_tools: {
       source_commit: "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
       wheel_sha256: "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310",
@@ -109,7 +114,7 @@ function writePackagedContract(
         pyarrow_parquet: "in-memory-round-trip",
       },
     },
-    platform: "linux",
+    platform: fixturePlatform,
     arch: process.arch,
     forbidden_distributions: [
       "fastapi", "httptools", "python-multipart", "sentry-sdk", "starlette",
@@ -125,23 +130,31 @@ function writePackagedContract(
     ),
     JSON.stringify({
       schema: "nirs4all.studio-packaged-runtime.v1",
-      platform: "linux",
+      platform: fixturePlatform,
       arch: process.arch,
       product_backend: "rust-sidecar",
       python_role: "library-plugin-host-only",
-      sidecar: describe(sidecarPath, "native/studio-sidecar"),
+      sidecar: describe(sidecarPath, `native/${fixtureSidecarName}`),
+      ...(fixturePlatform === "win32" ? {
+        native_runtime_linkage: {
+          profile: "studio-msvc-static-crt-v1",
+          methods_cmake_runtime: "MultiThreaded",
+          sidecar_rust_target_feature: "+crt-static",
+          forbidden_dynamic_import_prefixes: ["MSVCP", "VCRUNTIME"],
+        },
+      } : {}),
       python_plugin_host: {
         mode: "bundled-required",
         member: describe(
           pythonPath,
-          "python-runtime/python/bin/python3",
+          `python-runtime/python/${fixturePythonMember}`,
         ),
         closure: describe(
           closurePath,
           "python-runtime/PYTHON_PLUGIN_CLOSURE.json",
         ),
         runtime_root: "python-runtime/python",
-        site_packages: "python-runtime/python/lib/python3.11/site-packages",
+        site_packages: `python-runtime/python/${fixtureSitePackagesMember}`,
         marker: describe(
           markerPath,
           "python-runtime/PLUGIN_RUNTIME_READY.json",
@@ -233,7 +246,7 @@ describe("NativeSidecarManager", () => {
           NIRS4ALL_ENABLE_NATIVE_SIDECAR: "1",
         },
         resourcesPath: "/app/resources",
-        platform: "linux",
+        platform: fixturePlatform,
         allowPackagedResource: true,
       }),
     ).toBe(path.resolve("tools/studio-sidecar"));
@@ -244,7 +257,7 @@ describe("NativeSidecarManager", () => {
         platform: "win32",
         allowPackagedResource: true,
       }),
-    ).toBe("/app/resources/backend/native/studio-sidecar.exe");
+    ).toBe(path.join("/app/resources", "backend", "native", "studio-sidecar.exe"));
     expect(
       resolveNativeSidecarPath({
         environment: {},
@@ -273,7 +286,7 @@ describe("NativeSidecarManager", () => {
       resourcesPath,
       "backend",
       "native",
-      "studio-sidecar",
+      fixtureSidecarName,
     );
     fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
     fs.writeFileSync(sidecarPath, "unverified");
@@ -283,7 +296,7 @@ describe("NativeSidecarManager", () => {
       new NativeSidecarManager().start({
         allowPackagedResource: true,
         resourcesPath,
-        platform: "linux",
+        platform: fixturePlatform,
         arch: process.arch,
       }),
     ).resolves.toMatchObject({
@@ -298,14 +311,13 @@ describe("NativeSidecarManager", () => {
       path.join(os.tmpdir(), "n4a-packaged-sidecar-no-python-"),
     );
     tempDirs.push(resourcesPath);
-    const sidecarPath = path.join(resourcesPath, "backend", "native", "studio-sidecar");
+    const sidecarPath = path.join(resourcesPath, "backend", "native", fixtureSidecarName);
     const pythonPath = path.join(
       resourcesPath,
       "backend",
       "python-runtime",
       "python",
-      "bin",
-      "python3",
+      ...fixturePythonMember.split("/"),
     );
     fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
     fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
@@ -321,7 +333,7 @@ describe("NativeSidecarManager", () => {
     const startup = manager.start({
       allowPackagedResource: true,
       resourcesPath,
-      platform: "linux",
+      platform: fixturePlatform,
       arch: process.arch,
     });
     const spawnOptions = childProcessMocks.spawn.mock.calls[0]?.[2] as {
@@ -466,15 +478,14 @@ describe("NativeSidecarManager", () => {
       resourcesPath,
       "backend",
       "native",
-      "studio-sidecar",
+      fixtureSidecarName,
     );
     const pythonPath = path.join(
       resourcesPath,
       "backend",
       "python-runtime",
       "python",
-      "bin",
-      "python3",
+      ...fixturePythonMember.split("/"),
     );
     fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
     fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
@@ -496,7 +507,7 @@ describe("NativeSidecarManager", () => {
     const startup = new NativeSidecarManager().start({
       allowPackagedResource: true,
       resourcesPath,
-      platform: "linux",
+      platform: fixturePlatform,
       arch: process.arch,
       pythonPluginHost: "/managed/runtime/bin/python",
       runtimeKind,
@@ -523,9 +534,7 @@ describe("NativeSidecarManager", () => {
         "backend",
         "python-runtime",
         "python",
-        "lib",
-        "python3.11",
-        "site-packages",
+        ...fixtureSitePackagesMember.split("/"),
       ) : "/managed/runtime/site-packages",
     );
     expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED).toBe(runtimeKind === "bundled" ? "true" : undefined);
