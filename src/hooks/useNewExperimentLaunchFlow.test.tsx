@@ -184,7 +184,7 @@ describe("useNewExperimentLaunchFlow", () => {
     expect(mounted.result.current!.launchPayloadPlan).toMatchObject({
       currentSubmissionKind: "legacy_config",
       strictCampaignPayloadStatus: "legacy_only",
-      strictCampaignPayloadSummary: "Legacy local launches submit the current ExperimentConfig payload.",
+      strictCampaignPayloadSummary: "The experiment is prepared for local analysis.",
     });
 
     await act(async () => {
@@ -296,7 +296,7 @@ describe("useNewExperimentLaunchFlow", () => {
     expect(mounted.result.current!.launchPayloadPlan).toMatchObject({
       currentSubmissionKind: "native_payload",
       strictCampaignPayloadStatus: "ready",
-      strictCampaignPayloadSummary: "1 strict campaign spec ready for Cluster execution adapter.",
+      strictCampaignPayloadSummary: "1 analysis plan ready for Cluster execution adapter.",
       strictCampaignSpecs: singlePairSplitSpecResult,
       nativePayload: {
         strictCampaignSpecs: singlePairSplitSpecResult,
@@ -359,7 +359,7 @@ describe("useNewExperimentLaunchFlow", () => {
       strictCampaignPayloadActivation: {
         status: "blocked",
         canUseStrictPayload: false,
-        message: "Strict campaign payload is unavailable for this launch.",
+        message: "The experiment could not be prepared. Check the selected data and pipelines.",
       },
     });
 
@@ -371,7 +371,7 @@ describe("useNewExperimentLaunchFlow", () => {
     expect(apiMocks.createRun).not.toHaveBeenCalled();
     expect(submitClusterRun).not.toHaveBeenCalled();
     expect(toastMocks.error).toHaveBeenCalledWith("Cannot start experiment", {
-      description: "Strict campaign payload is unavailable for this launch.",
+      description: "The experiment could not be prepared. Check the selected data and pipelines.",
     });
 
     await mounted.unmount();
@@ -390,7 +390,7 @@ describe("useNewExperimentLaunchFlow", () => {
 
     expect(apiMocks.runPreflight).not.toHaveBeenCalled();
     expect(apiMocks.createRun).not.toHaveBeenCalled();
-    expect(toastMocks.error).toHaveBeenCalledWith("Resolve runtime grouping errors before launching this experiment.");
+    expect(toastMocks.error).toHaveBeenCalledWith("Check sample grouping before launching this experiment.");
     expect(onGroupingBlockingError).toHaveBeenCalledTimes(1);
 
     await mounted.unmount();
@@ -478,7 +478,7 @@ describe("useNewExperimentLaunchFlow", () => {
     expect(apiMocks.createRun).not.toHaveBeenCalled();
     expect(submitClusterRun).not.toHaveBeenCalled();
     expect(toastMocks.error).toHaveBeenCalledWith("Cannot start experiment", {
-      description: "1 run entry must be materialized before strict payload submission.",
+      description: "1 run entry must be prepared before the experiment can start.",
     });
 
     await mounted.unmount();
@@ -589,7 +589,7 @@ describe("useNewExperimentLaunchFlow", () => {
     });
     await flushMutation();
 
-    expect(toastMocks.warning).toHaveBeenCalledWith("Preflight check unavailable — dependency verification was skipped");
+    expect(toastMocks.warning).toHaveBeenCalledWith("Required analysis tools could not be checked.");
     expect(apiMocks.createRun).toHaveBeenCalledWith(expect.objectContaining({
       dataset_ids: ["d1"],
       pipeline_ids: ["p1"],

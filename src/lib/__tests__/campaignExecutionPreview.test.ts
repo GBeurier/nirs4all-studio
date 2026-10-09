@@ -22,24 +22,24 @@ describe("campaignExecutionPreview", () => {
   it("builds a native adapter preview for local Python campaigns", () => {
     expect(buildCampaignExecutionAdapterPreview({ executionBackend: "local-python" })).toEqual({
       id: "legacy-local",
-      label: "Legacy local run API",
+      label: "Local analysis",
       statusLabel: "Native adapter",
-      message: "Launches use the current local run API.",
+      message: "The experiment will run on this computer.",
     });
   });
 
   it("builds a legacy fallback adapter preview for future backends", () => {
     expect(buildCampaignExecutionAdapterPreview({ executionBackend: "cluster" })).toEqual({
       id: "legacy-local",
-      label: "Legacy local run API",
+      label: "Local analysis",
       statusLabel: "Legacy fallback",
-      message: "No native adapter is wired for this backend yet; launches still target the legacy local run API.",
+      message: "This calculation option is not available yet. The experiment will run on this computer.",
     });
     expect(buildCampaignExecutionAdapterPreview({ executionBackend: "wasm-local" })).toEqual({
       id: "legacy-local",
-      label: "Legacy local run API",
+      label: "Local analysis",
       statusLabel: "Legacy fallback",
-      message: "No native adapter is wired for this backend yet; launches still target the legacy local run API.",
+      message: "This calculation option is not available yet. The experiment will run on this computer.",
     });
   });
 
@@ -49,7 +49,7 @@ describe("campaignExecutionPreview", () => {
       { nativeBackendAvailability: DEFAULT_NEW_EXPERIMENT_EXECUTION_ENVIRONMENT.nativeBackendAvailability },
     )).toEqual({
       id: "legacy-local",
-      label: "Legacy local run API",
+      label: "Local analysis",
       statusLabel: "Legacy fallback",
       message: "Cluster execution is typed but no native submitter is configured.",
     });
@@ -58,7 +58,7 @@ describe("campaignExecutionPreview", () => {
       { nativeBackendAvailability: DEFAULT_NEW_EXPERIMENT_EXECUTION_ENVIRONMENT.nativeBackendAvailability },
     )).toEqual({
       id: "legacy-local",
-      label: "Legacy local run API",
+      label: "Local analysis",
       statusLabel: "Legacy fallback",
       message: "WASM local execution is typed but no native submitter is configured.",
     });
@@ -78,9 +78,9 @@ describe("campaignExecutionPreview", () => {
       },
     )).toEqual({
       id: "legacy-local",
-      label: "Legacy local run API",
+      label: "Local analysis",
       statusLabel: "Legacy fallback",
-      message: "No native adapter is wired for this backend yet; launches still target the legacy local run API.",
+      message: "This calculation option is not available yet. The experiment will run on this computer.",
     });
   });
 
@@ -96,9 +96,9 @@ describe("campaignExecutionPreview", () => {
       { availableExecutionAdapters },
     )).toEqual({
       id: "cluster",
-      label: "Cluster execution adapter",
+      label: "Compute server",
       statusLabel: "Native adapter",
-      message: "Cluster execution adapter is selected for this campaign backend.",
+      message: "The experiment will use Compute server.",
     });
   });
 });

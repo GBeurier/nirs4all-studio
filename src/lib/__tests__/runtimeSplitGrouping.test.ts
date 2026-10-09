@@ -128,7 +128,7 @@ describe("runtimeSplitGrouping", () => {
     expect(state.requiresExplicitGroup).toBe(false);
     expect(state.hasBlockingError).toBe(false);
     expect(state.repetitionColumn).toBe("sample_id");
-    expect(state.repetitionOnlyWarning).toContain("configured dataset repetition");
+    expect(state.repetitionOnlyWarning).toContain("Repeated measurements will be kept together using 'sample_id'");
   });
 
   it("warns when an explicit group will also propagate to optional splitters", () => {
@@ -149,7 +149,7 @@ describe("runtimeSplitGrouping", () => {
 
     expect(state.hasBlockingError).toBe(false);
     expect(state.selectedGroupBy).toBe("batch");
-    expect(state.optionalPropagationWarning).toContain("do not strictly require");
+    expect(state.optionalPropagationWarning).toContain("will apply to all selected pipelines");
   });
 
   it("builds explicit summaries for repetition plus runtime group_by", () => {
@@ -162,8 +162,8 @@ describe("runtimeSplitGrouping", () => {
   });
 
   it("describes runtime grouping as an additional split constraint", () => {
-    expect(RUNTIME_GROUPING_COPY.additiveDescription).toContain("extra split constraint");
-    expect(RUNTIME_GROUPING_COPY.additiveDescription).toContain("samples sharing the repetition value or the selected group_by value stay in the same fold");
+    expect(RUNTIME_GROUPING_COPY.additiveDescription).toContain("Keep related samples together during cross-validation");
+    expect(RUNTIME_GROUPING_COPY.additiveDescription).toContain("Samples sharing a repetition identifier or the selected group stay in the same fold");
   });
 
   it("normalizes metadata and repetition helpers from dataset payloads", () => {

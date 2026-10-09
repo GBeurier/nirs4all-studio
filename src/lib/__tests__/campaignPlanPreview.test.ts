@@ -22,11 +22,11 @@ describe("campaignPlanPreview", () => {
     const preview = buildCampaignPlanPreview(campaign, { runPreviewLimit: 1 });
 
     expect(preview).toMatchObject({
-      modeLabel: "Legacy cartesian",
+      modeLabel: "All combinations",
       pairingMode: {
         kind: "cartesian_matrix",
         label: "All dataset/pipeline pairs",
-        strictPairingLabel: "Implicit all-pairs",
+        strictPairingLabel: "All combinations",
         isStrictPairingReady: false,
       },
       executionBackendLabel: "Local Python",
@@ -52,10 +52,10 @@ describe("campaignPlanPreview", () => {
     ]);
     expect(preview.schemaConstraint).toMatchObject({
       kind: "cartesian_matrix",
-      label: "Cartesian matrix binding",
+      label: "All combinations",
       description: "Every selected pipeline is paired with every selected dataset.",
       strictPairingStatus: "needs_explicit_pairs",
-      strictPairingStatusLabel: "Implicit all-pairs",
+      strictPairingStatusLabel: "All combinations",
       strictModeRecommendation: "Convert the cartesian matrix to explicit dataset/pipeline pair previews before strict schema-bound execution.",
       notice: {
         id: "legacy-cartesian-matrix",
