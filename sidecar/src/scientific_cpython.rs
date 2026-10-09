@@ -4368,7 +4368,14 @@ done"#,
             .path()
             .join("python-runtime/PYTHON_PLUGIN_CLOSURE.json");
         fs::write(closure, "tampered closure").unwrap();
-        assert!(!scientific_host.library_facades_available());
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while scientific_host.library_facades_available() {
+            assert!(
+                Instant::now() < deadline,
+                "runtime notification did not invalidate scientific capabilities"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
         let polling = crate::route_request(
             &mut state,
             "GET",
