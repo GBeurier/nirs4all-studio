@@ -3,9 +3,22 @@ use crate::{HttpRequest, HttpResponse, SidecarState};
 use rusqlite::DatabaseName;
 use serde_json::{json, Value};
 use std::{
-    sync::{Arc, Mutex},
-    time::Instant,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, PoisonError},
+    time::{Duration, Instant, SystemTime},
 };
+
+/// Cap on job directories examined per request; the newest are kept.
+const MAX_RUN_DIRECTORIES: usize = 2000;
+/// A change this recent may share its timestamp with a later one, so results
+/// derived from it are not reused.
+const TIMESTAMP_SETTLE: Duration = Duration::from_millis(100);
+/// Verified Store snapshots kept for reuse across run-detail/log requests.
+const STORE_SNAPSHOT_SLOTS: usize = 2;
+
+static STORE_SNAPSHOTS: StoreSnapshots = StoreSnapshots::new();
+static RUN_JOB_INDEX: RunJobIndex = RunJobIndex::new();
 
 #[allow(clippy::needless_pass_by_value)]
 fn error(status: u16, detail: impl ToString) -> HttpResponse {
@@ -184,29 +197,13 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
         return Some(error(400, "Invalid run or pipeline identifier"));
     }
     let live = jobs.training_list_at(workspace.path(), Instant::now());
-    // Materialize a private snapshot from the authenticated connection, so the
-    // owner sees the same read transaction even with a live WAL.
-    let snapshot = match tempfile::Builder::new()
-        .prefix("studio-run-detail-")
-        .tempdir()
-    {
-        Ok(snapshot) => snapshot,
-        Err(detail) => return Some(error(500, detail)),
-    };
     let Some(store) = workspace.store() else {
         return Some(error(404, "Workspace store not found"));
     };
-    let bytes = match store.serialize(DatabaseName::Main) {
-        Ok(bytes) => bytes,
+    let snapshot = match STORE_SNAPSHOTS.snapshot(workspace.path(), &store) {
+        Ok(snapshot) => snapshot,
         Err(detail) => return Some(error(500, detail)),
     };
-    if let Err(detail) = std::fs::write(
-        snapshot.path().join("store.sqlite"),
-        bytes.as_ref() as &[u8],
-    ) {
-        return Some(error(500, detail));
-    }
-    drop(bytes);
     drop(store);
     if let Some(ids) = log_ids {
         return Some(
@@ -436,12 +433,16 @@ fn list_records(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Ht
         Err(detail) => return error(409, detail),
     };
     let live = jobs.training_list_at(workspace.path(), Instant::now());
-    let host = runtime.lock().unwrap_or_else(std::sync::PoisonError::into_inner).scientific_host.clone();
+    let host = runtime
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .scientific_host
+        .clone();
     if let Some(host) = host.as_deref() {
         reconcile_records(&settings, host, workspace.id(), workspace.path());
     }
-    let entries = match std::fs::read_dir(workspace.path().join("runs")) {
-        Ok(entries) => entries,
+    let ids = match newest_run_directories(&workspace.path().join("runs")) {
+        Ok(ids) => ids,
         Err(detail) if detail.kind() == std::io::ErrorKind::NotFound => {
             return HttpResponse::json(200, json!({"records":[],"total":0}).to_string())
         }
@@ -449,10 +450,7 @@ fn list_records(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Ht
     };
     let mut records = Vec::new();
     let mut skipped = 0;
-    for entry in entries.take(2000).flatten() {
-        let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
-            continue;
-        };
+    for id in ids {
         let Ok(record) =
             crate::execution_job_records::read_execution_job_record(workspace.path(), &id)
         else {
@@ -555,22 +553,72 @@ pub fn legacy_store_run_id(workspace: &std::path::Path, job_id: &str) -> Option<
         .map(str::to_owned)
 }
 
-fn reconcile_records(settings: &crate::settings::AppSettingsStore, host: &crate::scientific_cpython::CpythonScientificJobExecutor, workspace_id: &str, workspace: &std::path::Path) {
-    let Ok(entries) = std::fs::read_dir(workspace.join("runs")) else { return; };
-    let resolver = crate::scientific_request_resolver::ScientificRequestResolver::new(settings.config_dir());
-    for entry in entries.take(2000).flatten() {
-        let Some(id) = entry.file_name().to_str().map(str::to_owned) else { continue; };
-        let Ok(mut record) = crate::execution_job_records::read_execution_job_record(workspace, &id) else { continue; };
-        if record["status"] != "completed" || record["job_type"] != "training" || !native_store_run_ids(&record).is_empty() { continue; }
-        let preflight = crate::job_http::ScientificSubmissionPreflight { job_id: id.clone(), workspace_id: workspace_id.into(), workspace_path: workspace.into(), requested_backend: "local-python".into(), payload: record["request"].clone() };
-        let Ok(resolved) = resolver.resolve_general_batched(&preflight, |operation, payload| host.adapt_document(operation, payload)) else { continue; };
-        let configs = if resolved["dataset"].is_array() { resolved["dataset"].as_array().cloned().unwrap_or_default() } else { vec![resolved["dataset"].clone()] };
-        let ids = record["request"]["legacyConfig"]["dataset_ids"].as_array().cloned().unwrap_or_default();
-        if configs.len() != ids.len() || configs.iter().any(|config| config.get("schema").is_some()) { continue; }
-        let datasets = ids.into_iter().zip(configs).map(|(dataset_id, config)| json!({"dataset_id":dataset_id,"config":config})).collect::<Vec<_>>();
+fn reconcile_records(
+    settings: &crate::settings::AppSettingsStore,
+    host: &crate::scientific_cpython::CpythonScientificJobExecutor,
+    workspace_id: &str,
+    workspace: &std::path::Path,
+) {
+    let Ok(ids) = newest_run_directories(&workspace.join("runs")) else {
+        return;
+    };
+    let scientific_resolver =
+        crate::scientific_request_resolver::ScientificRequestResolver::new(settings.config_dir());
+    for id in ids {
+        let Ok(mut record) =
+            crate::execution_job_records::read_execution_job_record(workspace, &id)
+        else {
+            continue;
+        };
+        if record["status"] != "completed"
+            || record["job_type"] != "training"
+            || !native_store_run_ids(&record).is_empty()
+        {
+            continue;
+        }
+        let preflight = crate::job_http::ScientificSubmissionPreflight {
+            job_id: id.clone(),
+            workspace_id: workspace_id.into(),
+            workspace_path: workspace.into(),
+            requested_backend: "local-python".into(),
+            payload: record["request"].clone(),
+        };
+        let Ok(resolved) = scientific_resolver
+            .resolve_general_batched(&preflight, |operation, payload| {
+                host.adapt_document(operation, payload)
+            })
+        else {
+            continue;
+        };
+        let configs = if resolved["dataset"].is_array() {
+            resolved["dataset"].as_array().cloned().unwrap_or_default()
+        } else {
+            vec![resolved["dataset"].clone()]
+        };
+        let ids = record["request"]["legacyConfig"]["dataset_ids"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        if configs.len() != ids.len() || configs.iter().any(|config| config.get("schema").is_some())
+        {
+            continue;
+        }
+        let datasets = ids
+            .into_iter()
+            .zip(configs)
+            .map(|(dataset_id, config)| json!({"dataset_id":dataset_id,"config":config}))
+            .collect::<Vec<_>>();
         let payload = json!({"workspace_path":workspace,"job_id":id,"pipeline":resolved["pipeline"],"datasets":datasets,"run_name":record["request"]["legacyConfig"]["name"],"started_at":record["started_at"],"completed_at":record["completed_at"]});
-        let Ok(recovered) = host.adapt_document("runs.recover_lineage", &payload) else { continue; };
-        let Some(ids) = recovered["run_ids"].as_array().filter(|ids| !ids.is_empty() && ids.len() <= 256 && ids.iter().all(|id| id.as_str().is_some_and(valid_id))) else { continue; };
+        let Ok(recovered) = host.adapt_document("runs.recover_lineage", &payload) else {
+            continue;
+        };
+        let Some(ids) = recovered["run_ids"].as_array().filter(|ids| {
+            !ids.is_empty()
+                && ids.len() <= 256
+                && ids.iter().all(|id| id.as_str().is_some_and(valid_id))
+        }) else {
+            continue;
+        };
         record["driver"]["store_run_ids"] = json!(ids);
         record["driver"]["dataset_run_ids"] = recovered["dataset_run_ids"].clone();
         record["driver"]["lineage_source"] = json!("verified_owner_content_hash_and_recipe");
@@ -579,16 +627,187 @@ fn reconcile_records(settings: &crate::settings::AppSettingsStore, host: &crate:
 }
 
 pub fn job_id_for_store_run(workspace: &std::path::Path, run_id: &str) -> Option<String> {
-    std::fs::read_dir(workspace.join("runs"))
-        .ok()?
-        .take(2000)
+    RUN_JOB_INDEX.job_id_for_store_run(workspace, run_id)
+}
+
+/// Job directory names under `runs`. Beyond the cap the newest directories win,
+/// so a large history never hides the latest jobs behind `read_dir` order.
+fn settled(modified: SystemTime) -> bool {
+    modified.elapsed().is_ok_and(|age| age >= TIMESTAMP_SETTLE)
+}
+
+fn newest_run_directories(runs: &Path) -> std::io::Result<Vec<String>> {
+    let mut ids = std::fs::read_dir(runs)?
         .flatten()
         .filter_map(|entry| entry.file_name().to_str().map(str::to_owned))
-        .find(|id| {
-            store_run_ids(workspace, id)
+        .collect::<Vec<_>>();
+    if ids.len() > MAX_RUN_DIRECTORIES {
+        let mut stamped = ids
+            .into_iter()
+            .map(|id| {
+                let modified = std::fs::symlink_metadata(runs.join(&id))
+                    .and_then(|metadata| metadata.modified())
+                    .ok();
+                (modified, id)
+            })
+            .collect::<Vec<_>>();
+        stamped.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+        stamped.truncate(MAX_RUN_DIRECTORIES);
+        ids = stamped.into_iter().map(|(_, id)| id).collect();
+    }
+    Ok(ids)
+}
+
+/// Store run id to job id, rebuilt only when a job directory or one of its two
+/// documents changes. Run ids are resolved per request, and rebuilding reads
+/// every job directory.
+struct RunJobIndex {
+    slot: Mutex<Option<IndexedRuns>>,
+    #[cfg(test)]
+    builds: std::sync::atomic::AtomicUsize,
+}
+
+struct IndexedRuns {
+    workspace: PathBuf,
+    fingerprint: Vec<(String, [Option<SystemTime>; 3])>,
+    jobs: HashMap<String, String>,
+}
+
+impl RunJobIndex {
+    const fn new() -> Self {
+        Self {
+            slot: Mutex::new(None),
+            #[cfg(test)]
+            builds: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    fn job_id_for_store_run(&self, workspace: &Path, run_id: &str) -> Option<String> {
+        let mut ids = newest_run_directories(&workspace.join("runs")).ok()?;
+        ids.sort();
+        let fingerprint = ids
+            .iter()
+            .map(|id| {
+                let directory = workspace.join("runs").join(id);
+                let modified = |path: PathBuf| {
+                    std::fs::symlink_metadata(path)
+                        .and_then(|metadata| metadata.modified())
+                        .ok()
+                };
+                (
+                    id.clone(),
+                    [
+                        modified(directory.clone()),
+                        modified(directory.join("manifest.json")),
+                        modified(directory.join("execution_job_record.json")),
+                    ],
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut slot = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
+        if !slot.as_ref().is_some_and(|indexed| {
+            indexed.workspace == workspace && indexed.fingerprint == fingerprint
+        }) {
+            #[cfg(test)]
+            self.builds
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let mut jobs = HashMap::new();
+            for id in &ids {
+                for stored in store_run_ids(workspace, id) {
+                    jobs.entry(stored).or_insert_with(|| id.clone());
+                }
+            }
+            if !fingerprint
                 .iter()
-                .any(|stored| stored == run_id)
-        })
+                .flat_map(|(_, times)| times)
+                .all(|time| time.is_none_or(settled))
+            {
+                return jobs.get(run_id).cloned();
+            }
+            *slot = Some(IndexedRuns {
+                workspace: workspace.to_path_buf(),
+                fingerprint,
+                jobs,
+            });
+        }
+        slot.as_ref()?.jobs.get(run_id).cloned()
+    }
+}
+
+/// Run detail and logs read a private copy of the Store taken from the
+/// authenticated read transaction, so the owner sees one consistent state even
+/// with a live writer. The transaction pins the file while it is open, so the
+/// file's stamp identifies the copied bytes and equal stamps share one copy.
+struct StoreSnapshots {
+    entries: Mutex<Vec<StoredSnapshot>>,
+}
+
+struct StoredSnapshot {
+    store: PathBuf,
+    stamp: crate::settings::StoreStamp,
+    directory: Arc<tempfile::TempDir>,
+}
+
+impl StoreSnapshots {
+    const fn new() -> Self {
+        Self {
+            entries: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// A snapshot directory stays on disk while any request holds it and is
+    /// deleted once evicted and released.
+    fn snapshot(
+        &self,
+        workspace: &Path,
+        connection: &rusqlite::Connection,
+    ) -> Result<Arc<tempfile::TempDir>, String> {
+        let key = crate::workspace_store::workspace_store_path(workspace).and_then(|store| {
+            let unchanging = std::fs::metadata(&store)
+                .and_then(|metadata| metadata.modified())
+                .is_ok_and(settled);
+            match crate::settings::store_stamp(&store) {
+                Ok(Some(stamp)) if unchanging => Some((store, stamp)),
+                _ => None,
+            }
+        });
+        let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((store, stamp)) = &key {
+            if let Some(entry) = entries
+                .iter()
+                .find(|entry| entry.store == *store && entry.stamp == *stamp)
+            {
+                return Ok(Arc::clone(&entry.directory));
+            }
+        }
+        let directory = tempfile::Builder::new()
+            .prefix("studio-run-detail-")
+            .tempdir()
+            .map_err(|detail| detail.to_string())?;
+        let bytes = connection
+            .serialize(DatabaseName::Main)
+            .map_err(|detail| detail.to_string())?;
+        std::fs::write(
+            directory.path().join("store.sqlite"),
+            bytes.as_ref() as &[u8],
+        )
+        .map_err(|detail| detail.to_string())?;
+        drop(bytes);
+        let directory = Arc::new(directory);
+        if let Some((store, stamp)) = key {
+            entries.insert(
+                0,
+                StoredSnapshot {
+                    store,
+                    stamp,
+                    directory: Arc::clone(&directory),
+                },
+            );
+            entries.truncate(STORE_SNAPSHOT_SLOTS);
+        }
+        drop(entries);
+        Ok(directory)
+    }
 }
 
 pub fn store_run_ids(workspace: &std::path::Path, job_id: &str) -> Vec<String> {
@@ -642,6 +861,7 @@ pub fn record_run_projection(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     #[test]
     fn execution_backend_discovery_does_not_claim_an_unconfigured_runtime_is_ready() {
         let state = Arc::new(Mutex::new(SidecarState::default()));
@@ -649,7 +869,7 @@ mod tests {
             method: "GET".into(),
             path: "/api/runs/execution-backends".into(),
             query: None,
-            headers: Default::default(),
+            headers: BTreeMap::default(),
             body: vec![],
         };
         let response = route(&state, &request).unwrap();
@@ -667,12 +887,14 @@ mod tests {
     #[test]
     fn execution_record_listing_is_wired_and_rejects_unknown_filters() {
         let settings = tempfile::tempdir().unwrap();
-        let state = Arc::new(Mutex::new(SidecarState::with_app_settings_dir(settings.path())));
+        let state = Arc::new(Mutex::new(SidecarState::with_app_settings_dir(
+            settings.path(),
+        )));
         let mut request = HttpRequest {
             method: "GET".into(),
             path: "/api/runs/execution-job-records".into(),
             query: None,
-            headers: Default::default(),
+            headers: BTreeMap::default(),
             body: vec![],
         };
         let response =
@@ -705,7 +927,7 @@ mod tests {
             method: "GET".into(),
             path: "/sidecar/v1/workspaces/test/run-detail-preselection".into(),
             query: None,
-            headers: Default::default(),
+            headers: BTreeMap::default(),
             body: vec![],
         };
         let response = route(&state, &request).expect("invalid configured host must be handled");
@@ -757,7 +979,7 @@ mod tests {
             method: "GET".into(),
             path: "/api/workspaces/test/runs/enriched".into(),
             query: Some("limit=100".into()),
-            headers: Default::default(),
+            headers: BTreeMap::default(),
             body: vec![],
         };
         assert!(route(&state, &request).is_none());
@@ -797,5 +1019,224 @@ mod tests {
         let mut history = json!({"runs":[{"status":"running"}]});
         normalize_interrupted(&mut history, &[json!({"job":{"status":"running"}})]);
         assert_eq!(history["runs"][0]["status"], "running");
+    }
+
+    fn store_fixture(workspace: &Path) -> PathBuf {
+        let path = workspace.join("store.sqlite");
+        std::fs::write(
+            &path,
+            include_bytes!("../tests/fixtures/workspace_store_v5_summary.sqlite"),
+        )
+        .unwrap();
+        path
+    }
+
+    fn settle() {
+        std::thread::sleep(TIMESTAMP_SETTLE * 2);
+    }
+
+    fn snapshot_of(snapshots: &StoreSnapshots, workspace: &Path) -> Arc<tempfile::TempDir> {
+        let connection = crate::workspace_store::open_read_snapshot(workspace).unwrap();
+        connection
+            .query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap();
+        snapshots.snapshot(workspace, &connection).unwrap()
+    }
+
+    #[test]
+    fn store_snapshots_are_reused_until_the_store_changes() {
+        let workspace = tempfile::tempdir().unwrap();
+        let store = store_fixture(workspace.path());
+        settle();
+        let snapshots = StoreSnapshots::new();
+        let first = snapshot_of(&snapshots, workspace.path());
+        let again = snapshot_of(&snapshots, workspace.path());
+        assert!(Arc::ptr_eq(&first, &again));
+        assert_eq!(
+            std::fs::read(first.path().join("store.sqlite")).unwrap(),
+            std::fs::read(&store).unwrap()
+        );
+
+        rusqlite::Connection::open(&store)
+            .unwrap()
+            .execute_batch("CREATE TABLE snapshot_probe (x)")
+            .unwrap();
+        settle();
+        let changed = snapshot_of(&snapshots, workspace.path());
+        assert!(!Arc::ptr_eq(&first, &changed));
+        assert_eq!(
+            std::fs::read(changed.path().join("store.sqlite")).unwrap(),
+            std::fs::read(&store).unwrap()
+        );
+        assert!(Arc::ptr_eq(
+            &changed,
+            &snapshot_of(&snapshots, workspace.path())
+        ));
+    }
+
+    #[test]
+    fn evicted_store_snapshots_are_deleted_once_released() {
+        let workspace = tempfile::tempdir().unwrap();
+        let store = store_fixture(workspace.path());
+        let snapshots = StoreSnapshots::new();
+        let mut directories = Vec::new();
+        for table in 0..=STORE_SNAPSHOT_SLOTS {
+            rusqlite::Connection::open(&store)
+                .unwrap()
+                .execute_batch(&format!("CREATE TABLE snapshot_probe_{table} (x)"))
+                .unwrap();
+            settle();
+            directories.push(snapshot_of(&snapshots, workspace.path()));
+        }
+        let oldest = directories.remove(0);
+        let path = oldest.path().to_path_buf();
+        assert!(path.exists(), "an in-flight request keeps its snapshot");
+        drop(oldest);
+        assert!(!path.exists(), "an evicted snapshot is removed on release");
+        assert!(directories.iter().all(|kept| kept.path().exists()));
+        assert_eq!(
+            snapshots.entries.lock().unwrap().len(),
+            STORE_SNAPSHOT_SLOTS
+        );
+    }
+
+    #[test]
+    fn a_just_modified_store_is_never_shared() {
+        let workspace = tempfile::tempdir().unwrap();
+        store_fixture(workspace.path());
+        let snapshots = StoreSnapshots::new();
+        let first = snapshot_of(&snapshots, workspace.path());
+        let second = snapshot_of(&snapshots, workspace.path());
+        assert!(!Arc::ptr_eq(&first, &second));
+        assert_eq!(snapshots.entries.lock().unwrap().len(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn oversized_run_histories_keep_the_newest_directories() {
+        let workspace = tempfile::tempdir().unwrap();
+        let runs = workspace.path().join("runs");
+        let total = MAX_RUN_DIRECTORIES + 5;
+        for index in 0..total {
+            let directory = runs.join(format!("job-{index:05}"));
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::File::open(&directory)
+                .unwrap()
+                .set_modified(
+                    SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000 + index as u64),
+                )
+                .unwrap();
+        }
+        let kept = newest_run_directories(&runs).unwrap();
+        assert_eq!(kept.len(), MAX_RUN_DIRECTORIES);
+        assert_eq!(kept[0], format!("job-{:05}", total - 1));
+        assert!(kept.contains(&format!("job-{:05}", total - 1)));
+        assert!(!kept.contains(&"job-00000".to_owned()));
+        assert!(!kept.contains(&"job-00004".to_owned()));
+        assert!(kept.contains(&"job-00005".to_owned()));
+    }
+
+    #[test]
+    fn small_run_histories_are_listed_without_reordering_or_loss() {
+        let workspace = tempfile::tempdir().unwrap();
+        for id in ["a", "b", "c"] {
+            std::fs::create_dir_all(workspace.path().join("runs").join(id)).unwrap();
+        }
+        let mut ids = newest_run_directories(&workspace.path().join("runs")).unwrap();
+        ids.sort();
+        assert_eq!(ids, ["a", "b", "c"]);
+        assert!(newest_run_directories(&workspace.path().join("missing")).is_err());
+    }
+
+    fn job_record(job_id: &str, store_run_ids: &[&str]) -> Value {
+        json!({"job_id":job_id,"job_type":"training","requested_backend":"local-python",
+            "execution_backend":"dag-ml-core","execution_mode":"bounded-cpython-stdio","status":"completed",
+            "progress":100,"progress_message":"","progress_unavailable":false,"created_at":"2026-10-08T10:00:00Z",
+            "started_at":null,"completed_at":null,"request":{},"driver":{"store_run_ids":store_run_ids},"metrics":{},"error":null})
+    }
+
+    #[test]
+    fn run_to_job_lookups_reuse_one_index_until_a_job_changes() {
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::create_dir(workspace.path().join("runs")).unwrap();
+        let write = |job: &str, runs: &[&str]| {
+            crate::execution_job_records::write_execution_job_record(
+                workspace.path(),
+                job,
+                &job_record(job, runs),
+            )
+            .unwrap();
+        };
+        write("job-a", &["run-a1", "run-a2"]);
+        settle();
+        let index = RunJobIndex::new();
+        let builds = || index.builds.load(std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(
+            index
+                .job_id_for_store_run(workspace.path(), "run-a2")
+                .as_deref(),
+            Some("job-a")
+        );
+        assert!(index
+            .job_id_for_store_run(workspace.path(), "run-b1")
+            .is_none());
+        assert_eq!(builds(), 1, "misses are answered from the index too");
+
+        write("job-b", &["run-b1"]);
+        settle();
+        assert_eq!(
+            index
+                .job_id_for_store_run(workspace.path(), "run-b1")
+                .as_deref(),
+            Some("job-b")
+        );
+        assert_eq!(builds(), 2, "a new job directory rebuilds the index");
+
+        write("job-b", &["run-b1", "run-b2"]);
+        settle();
+        assert_eq!(
+            index
+                .job_id_for_store_run(workspace.path(), "run-b2")
+                .as_deref(),
+            Some("job-b")
+        );
+        assert_eq!(builds(), 3, "a rewritten record rebuilds the index");
+        assert_eq!(
+            index
+                .job_id_for_store_run(workspace.path(), "run-a1")
+                .as_deref(),
+            Some("job-a")
+        );
+        assert_eq!(builds(), 3);
+
+        std::fs::remove_dir_all(workspace.path().join("runs/job-a")).unwrap();
+        assert!(index
+            .job_id_for_store_run(workspace.path(), "run-a1")
+            .is_none());
+        assert_eq!(builds(), 4, "a deleted job directory rebuilds the index");
+    }
+
+    #[test]
+    fn freshly_written_jobs_are_resolved_but_not_cached() {
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::create_dir(workspace.path().join("runs")).unwrap();
+        crate::execution_job_records::write_execution_job_record(
+            workspace.path(),
+            "job-new",
+            &job_record("job-new", &["run-new"]),
+        )
+        .unwrap();
+        let index = RunJobIndex::new();
+        for _ in 0..2 {
+            assert_eq!(
+                index
+                    .job_id_for_store_run(workspace.path(), "run-new")
+                    .as_deref(),
+                Some("job-new")
+            );
+        }
+        assert_eq!(index.builds.load(std::sync::atomic::Ordering::Relaxed), 2);
     }
 }

@@ -24,6 +24,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use percent_encoding::percent_decode_str;
 use serde_json::{json, Value};
 
+use python_probe_cache::{ProbeKind, PythonProbeCache};
+
 mod archive_v2_prediction;
 pub mod conformal_store;
 mod dataset_import;
@@ -52,6 +54,7 @@ mod playground;
 mod playground_views;
 mod prediction_results;
 mod prediction_upload;
+mod python_probe_cache;
 mod recommended_config;
 mod recommended_config_http;
 mod results_summary;
@@ -442,6 +445,7 @@ pub struct SidecarState {
     archive_v2_prediction: ArchiveV2PredictionRuntime,
     legacy_conversion: LegacyConversionRuntime,
     native_updater: native_updates::NativeUpdater,
+    python_probes: PythonProbeCache,
 }
 
 /// Clone owners while holding the route lock, then validate the same runtime
@@ -615,6 +619,7 @@ impl Default for SidecarState {
             archive_v2_prediction: ArchiveV2PredictionRuntime::default(),
             legacy_conversion: LegacyConversionRuntime::default(),
             native_updater: native_updates::NativeUpdater::default(),
+            python_probes: PythonProbeCache::default(),
         }
     }
 }
@@ -3193,10 +3198,13 @@ fn update_setting_string(
 }
 
 fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
-    python_capabilities_response_for_host(state.python_plugin_host.as_deref())
+    python_capabilities_response_for_host(state.python_plugin_host.as_deref(), &state.python_probes)
 }
 
-fn python_capabilities_response_for_host(host: Option<&Path>) -> HttpResponse {
+fn python_capabilities_response_for_host(
+    host: Option<&Path>,
+    probes: &PythonProbeCache,
+) -> HttpResponse {
     let Some(python_plugin_host) = host else {
         return error_response(
             503,
@@ -3205,8 +3213,10 @@ fn python_capabilities_response_for_host(host: Option<&Path>) -> HttpResponse {
             BTreeMap::from([("reason".into(), "not_configured".into())]),
         );
     };
-    match read_python_capabilities(python_plugin_host) {
-        Ok(body) => HttpResponse::json(200, body),
+    match probes.get_or_probe(ProbeKind::Capabilities, python_plugin_host, || {
+        read_python_capabilities(python_plugin_host)
+    }) {
+        Ok(body) => HttpResponse::json(200, body.to_string()),
         Err(reason) => error_response(
             503,
             ErrorCode::PythonPluginPreflightFailed,
@@ -3217,10 +3227,13 @@ fn python_capabilities_response_for_host(host: Option<&Path>) -> HttpResponse {
 }
 
 fn python_system_info_response(state: &SidecarState) -> HttpResponse {
-    python_system_info_response_for_host(state.python_plugin_host.as_deref())
+    python_system_info_response_for_host(state.python_plugin_host.as_deref(), &state.python_probes)
 }
 
-fn python_system_info_response_for_host(host: Option<&Path>) -> HttpResponse {
+fn python_system_info_response_for_host(
+    host: Option<&Path>,
+    probes: &PythonProbeCache,
+) -> HttpResponse {
     let Some(python_plugin_host) = host else {
         return error_response(
             503,
@@ -3229,8 +3242,10 @@ fn python_system_info_response_for_host(host: Option<&Path>) -> HttpResponse {
             BTreeMap::from([("reason".into(), "not_configured".into())]),
         );
     };
-    match read_python_system_info(python_plugin_host) {
-        Ok(body) => HttpResponse::json(200, body),
+    match probes.get_or_probe(ProbeKind::SystemInfo, python_plugin_host, || {
+        read_python_system_info(python_plugin_host)
+    }) {
+        Ok(body) => HttpResponse::json(200, body.to_string()),
         Err(reason) => error_response(
             503,
             ErrorCode::PythonPluginPreflightFailed,
@@ -3244,10 +3259,16 @@ fn python_system_info_response_for_host(host: Option<&Path>) -> HttpResponse {
 /// bounded Python-library inspection. The interpreter is never an HTTP
 /// backend: it only supplies the installed nirs4all distribution version.
 fn python_updates_version_response(state: &SidecarState) -> HttpResponse {
-    python_updates_version_response_for_host(state.python_plugin_host.as_deref())
+    python_updates_version_response_for_host(
+        state.python_plugin_host.as_deref(),
+        &state.python_probes,
+    )
 }
 
-fn python_updates_version_response_for_host(host: Option<&Path>) -> HttpResponse {
+fn python_updates_version_response_for_host(
+    host: Option<&Path>,
+    probes: &PythonProbeCache,
+) -> HttpResponse {
     let Some(python_plugin_host) = host else {
         return error_response(
             503,
@@ -3256,7 +3277,10 @@ fn python_updates_version_response_for_host(host: Option<&Path>) -> HttpResponse
             BTreeMap::from([("reason".into(), "not_configured".into())]),
         );
     };
-    match read_python_updates_version(python_plugin_host)
+    match probes
+        .get_or_probe(ProbeKind::UpdatesVersion, python_plugin_host, || {
+            read_python_updates_version(python_plugin_host)
+        })
         .and_then(|probe| native_updates_version_json(&native_app_version(), &probe))
     {
         Ok(body) => HttpResponse::json(200, body),
@@ -3312,10 +3336,16 @@ fn native_updates_version_json(
 /// size calculation; the Python host only reports its interpreter facts and
 /// installed distributions.
 fn python_updates_runtime_status_response(state: &SidecarState) -> HttpResponse {
-    python_updates_runtime_status_response_for_host(state.python_plugin_host.as_deref())
+    python_updates_runtime_status_response_for_host(
+        state.python_plugin_host.as_deref(),
+        &state.python_probes,
+    )
 }
 
-fn python_updates_runtime_status_response_for_host(host: Option<&Path>) -> HttpResponse {
+fn python_updates_runtime_status_response_for_host(
+    host: Option<&Path>,
+    probes: &PythonProbeCache,
+) -> HttpResponse {
     let Some(python_plugin_host) = host else {
         return error_response(
             503,
@@ -3324,7 +3354,10 @@ fn python_updates_runtime_status_response_for_host(host: Option<&Path>) -> HttpR
             BTreeMap::from([("reason".into(), "not_configured".into())]),
         );
     };
-    match read_python_updates_runtime_status(python_plugin_host)
+    match probes
+        .get_or_probe(ProbeKind::RuntimeStatus, python_plugin_host, || {
+            read_python_updates_runtime_status(python_plugin_host)
+        })
         .and_then(|probe| native_updates_runtime_status_json(&probe))
     {
         Ok(body) => HttpResponse::json(200, body),
@@ -3479,6 +3512,7 @@ struct RuntimeDiagnosticsSnapshot {
     runtime_kind: String,
     python_plugin_host_bundled: bool,
     build_info: Value,
+    probes: PythonProbeCache,
 }
 
 impl RuntimeDiagnosticsSnapshot {
@@ -3490,6 +3524,7 @@ impl RuntimeDiagnosticsSnapshot {
             runtime_kind: state.runtime_kind.clone(),
             python_plugin_host_bundled: state.python_plugin_host_bundled,
             build_info: native_build_info(state),
+            probes: state.python_probes.clone(),
         }
     }
 }
@@ -3512,7 +3547,7 @@ fn python_system_build_response_from_snapshot(state: &RuntimeDiagnosticsSnapshot
             BTreeMap::from([("reason".into(), "not_configured".into())]),
         );
     };
-    match read_python_system_build(python_plugin_host) {
+    match cached_python_system_build(&state.probes, python_plugin_host) {
         Ok(probe) => HttpResponse::json(200, native_system_build_json(state, &probe)),
         Err(reason) => error_response(
             503,
@@ -3521,6 +3556,15 @@ fn python_system_build_response_from_snapshot(state: &RuntimeDiagnosticsSnapshot
             BTreeMap::from([("reason".into(), reason.as_str().into())]),
         ),
     }
+}
+
+fn cached_python_system_build(
+    probes: &PythonProbeCache,
+    python_plugin_host: &Path,
+) -> Result<Value, PythonPluginBridgeFailure> {
+    probes.get_or_probe(ProbeKind::SystemBuild, python_plugin_host, || {
+        read_python_system_build(python_plugin_host)
+    })
 }
 
 fn native_system_build_json(state: &RuntimeDiagnosticsSnapshot, probe: &Value) -> String {
@@ -3724,13 +3768,13 @@ impl PythonPluginBridgeFailure {
     }
 }
 
-fn read_python_capabilities(
-    python_plugin_host: &Path,
-) -> Result<String, PythonPluginBridgeFailure> {
+fn read_python_capabilities(python_plugin_host: &Path) -> Result<Value, PythonPluginBridgeFailure> {
     let module_names = serde_json::to_string(PYTHON_CAPABILITY_MODULES)
         .map_err(|_| PythonPluginBridgeFailure::ScriptFailed)?;
+    // Each capability means "imports cleanly": an installed but broken package
+    // is unavailable. Only the spec lookup shortcuts absent packages.
     let script = format!(
-        "import importlib,json; names={module_names}; capabilities={{}}\nfor name in names:\n try: importlib.import_module(name); capabilities[name]=True\n except Exception: capabilities[name]=False\nprint(json.dumps({{'capabilities':capabilities}}, separators=(',',':'), sort_keys=True))"
+        "import importlib,importlib.util,json; names={module_names}; capabilities={{}}\nfor name in names:\n try:\n  if importlib.util.find_spec(name) is None: capabilities[name]=False; continue\n except Exception: pass\n try: importlib.import_module(name); capabilities[name]=True\n except Exception: capabilities[name]=False\nprint(json.dumps({{'capabilities':capabilities}}, separators=(',',':'), sort_keys=True))"
     );
     let output = run_python_plugin_json(
         python_plugin_host,
@@ -3748,14 +3792,16 @@ fn read_python_capabilities(
     {
         return Err(PythonPluginBridgeFailure::MalformedResponse);
     }
-    Ok(serde_json::json!({ "capabilities": capabilities }).to_string())
+    Ok(serde_json::json!({ "capabilities": capabilities }))
 }
 
-fn read_python_system_info(python_plugin_host: &Path) -> Result<String, PythonPluginBridgeFailure> {
+fn read_python_system_info(python_plugin_host: &Path) -> Result<Value, PythonPluginBridgeFailure> {
     let package_names = serde_json::to_string(PYTHON_INFO_PACKAGES)
         .map_err(|_| PythonPluginBridgeFailure::ScriptFailed)?;
+    // Versions come from distribution metadata so reporting what is installed
+    // never imports torch or tensorflow.
     let script = format!(
-        "{}\nimport json,platform,sys\npackages={{}}\nfor name in {package_names}:\n try:\n  module=__import__(name); packages[name]=str(getattr(module,'__version__','unknown'))\n except ImportError: pass\ntry:\n import nirs4all; nirs4all_version=str(getattr(nirs4all,'__version__','unknown'))\nexcept ImportError: nirs4all_version='not installed'\nprint(json.dumps({{'python':{{'version':sys.version,'platform':sys.platform,'executable':sys.executable}},'system':system_information(),'nirs4all_version':nirs4all_version,'packages':packages}}, separators=(',',':'), sort_keys=True))",
+        "{}\nimport json,platform,sys\nfrom importlib import metadata,util\nowners=metadata.packages_distributions()\ndef installed_version(name):\n try:\n  if util.find_spec(name) is None: return None\n except Exception: return None\n for owner in owners.get(name) or [name]:\n  try: return str(metadata.version(owner))\n  except Exception: pass\n return 'unknown'\npackages={{}}\nfor name in {package_names}:\n version=installed_version(name)\n if version is not None: packages[name]=version\nnirs4all_version=installed_version('nirs4all') or 'not installed'\nprint(json.dumps({{'python':{{'version':sys.version,'platform':sys.platform,'executable':sys.executable}},'system':system_information(),'nirs4all_version':nirs4all_version,'packages':packages}}, separators=(',',':'), sort_keys=True))",
         include_str!("../../api/shared/system_info.py")
     );
     let output = run_python_plugin_json(
@@ -3786,7 +3832,7 @@ fn read_python_system_info(python_plugin_host: &Path) -> Result<String, PythonPl
     {
         return Err(PythonPluginBridgeFailure::MalformedResponse);
     }
-    Ok(output.to_string())
+    Ok(output)
 }
 
 fn read_python_updates_version(
@@ -3879,8 +3925,11 @@ fn read_python_env_coherence(
     state: &RuntimeDiagnosticsSnapshot,
 ) -> Result<String, PythonPluginBridgeFailure> {
     let script = "import json,sys\ntry:\n import nirs4all; nirs4all_import=True\nexcept Exception:\n nirs4all_import=False\nprint(json.dumps({'python':sys.executable,'prefix':sys.prefix,'version':f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}','nirs4all_import':nirs4all_import}, separators=(',',':'), sort_keys=True))";
-    let output =
-        run_python_plugin_json(python_plugin_host, script, PYTHON_PLUGIN_PREFLIGHT_TIMEOUT)?;
+    let output = state
+        .probes
+        .get_or_probe(ProbeKind::EnvCoherence, python_plugin_host, || {
+            run_python_plugin_json(python_plugin_host, script, PYTHON_PLUGIN_PREFLIGHT_TIMEOUT)
+        })?;
     let runtime_python = output
         .get("python")
         .and_then(Value::as_str)
@@ -4763,18 +4812,26 @@ fn handle_connection_with_access(
                 // A cold packaged import can take tens of seconds on the Intel
                 // macOS runner. Snapshot the immutable host path so health and
                 // readiness requests never queue behind that subprocess.
-                let python_plugin_host = state
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .python_plugin_host
-                    .clone();
+                let (python_plugin_host, probes) = {
+                    let state = state
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    (
+                        state.python_plugin_host.clone(),
+                        state.python_probes.clone(),
+                    )
+                };
                 let host = python_plugin_host.as_deref();
                 let response = match request.path.as_str() {
-                    "/api/system/capabilities" => python_capabilities_response_for_host(host),
-                    "/api/system/info" => python_system_info_response_for_host(host),
-                    "/api/updates/version" => python_updates_version_response_for_host(host),
+                    "/api/system/capabilities" => {
+                        python_capabilities_response_for_host(host, &probes)
+                    }
+                    "/api/system/info" => python_system_info_response_for_host(host, &probes),
+                    "/api/updates/version" => {
+                        python_updates_version_response_for_host(host, &probes)
+                    }
                     "/api/updates/runtime/status" => {
-                        python_updates_runtime_status_response_for_host(host)
+                        python_updates_runtime_status_response_for_host(host, &probes)
                     }
                     _ => python_plugin_preflight_response_for_host(host),
                 };
@@ -6549,6 +6606,55 @@ mod tests {
         }
 
         fs::remove_dir_all(runtime).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn capabilities_probe_spawns_once_until_the_environment_changes() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let prefix = directory.path().join("venv");
+        let site_packages = prefix.join("lib/python3.11/site-packages");
+        fs::create_dir_all(prefix.join("bin")).unwrap();
+        fs::create_dir_all(&site_packages).unwrap();
+        let spawns = directory.path().join("spawns");
+        let host = prefix.join("bin/python");
+        fs::write(
+            &host,
+            format!(
+                "#!/bin/sh\necho spawn >> '{}'\nprintf '%s' '{{\"capabilities\":{{\"nirs4all\":true,\"tensorflow\":false,\"torch\":false,\"jax\":false,\"shap\":false,\"umap\":false,\"autogluon\":false}}}}'\n",
+                spawns.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&host, fs::Permissions::from_mode(0o700)).unwrap();
+        let spawn_count = || fs::read_to_string(&spawns).map_or(0, |log| log.lines().count());
+
+        let mut state = SidecarState::with_python_plugin_host(&host);
+        // Selecting the host already runs it once for legacy conversion.
+        let baseline = spawn_count();
+        let first = route_request(&mut state, "GET", "/api/system/capabilities");
+        assert_eq!(first.status, 200);
+        let second = route_request(&mut state, "GET", "/api/system/capabilities");
+        assert_eq!(second.body, first.body);
+        assert_eq!(spawn_count(), baseline + 1);
+
+        fs::create_dir(site_packages.join("torch-2.0.0.dist-info")).unwrap();
+        assert_eq!(
+            route_request(&mut state, "GET", "/api/system/capabilities").status,
+            200
+        );
+        assert_eq!(spawn_count(), baseline + 2);
+
+        let mut other = SidecarState::with_python_plugin_host(&host);
+        let before = spawn_count();
+        let _ = route_request(&mut other, "GET", "/api/system/capabilities");
+        assert_eq!(
+            spawn_count(),
+            before + 1,
+            "each sidecar state owns its probe cache"
+        );
     }
 
     #[test]
