@@ -9,6 +9,7 @@
  * - Right panel (40%): Unified configuration (core + steps + inline config)
  */
 
+import { useTranslation } from "react-i18next";
 import { useCallback } from "react";
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { motion } from "@/lib/motion";
@@ -81,6 +82,7 @@ export default function SpectraSynthesis() {
 }
 
 function SpectraSynthesisContent() {
+  const { t } = useTranslation();
   const {
     state,
     undo,
@@ -176,7 +178,7 @@ function SpectraSynthesisContent() {
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="icon" aria-label={t("common.a11y.undo")}
                     className="h-7 w-7"
                     onClick={undo}
                     disabled={!canUndo}
@@ -190,7 +192,7 @@ function SpectraSynthesisContent() {
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="icon" aria-label={t("common.a11y.redo")}
                     className="h-7 w-7"
                     onClick={redo}
                     disabled={!canRedo}
@@ -208,7 +210,7 @@ function SpectraSynthesisContent() {
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="icon" aria-label={t("common.a11y.importConfig")}
                     className="h-7 w-7"
                     onClick={handleImportConfig}
                   >
@@ -221,7 +223,7 @@ function SpectraSynthesisContent() {
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="icon" aria-label={t("common.a11y.exportConfig")}
                     className="h-7 w-7"
                     onClick={handleExportConfig}
                   >
@@ -237,7 +239,7 @@ function SpectraSynthesisContent() {
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon" aria-label={t("common.a11y.resetConfig")}
                   className="h-7 w-7"
                   onClick={() => setShowResetDialog(true)}
                 >

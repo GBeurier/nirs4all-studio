@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -183,6 +185,8 @@ export function RunItem({
   executionJob,
 }: RunItemProps) {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const notifyApiError = useApiErrorToast();
   const [expanded, setExpanded] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -232,7 +236,7 @@ export function RunItem({
       setDeleteOpen(false);
       toast.success(`Run ${run.name || run.run_id} deleted`);
     } catch (error) {
-      toast.error(getApiErrorMessage(error) ?? "Run deletion failed");
+      notifyApiError(error, t("errors.action.deleteRun"));
     } finally {
       setDeleteBusy(false);
     }

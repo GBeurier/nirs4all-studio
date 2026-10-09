@@ -13,6 +13,7 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { LucideIcon, AlertCircle, FolderOpen, RefreshCw, Database, WifiOff, Play, GitBranch, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -169,14 +170,15 @@ export function NoWorkspaceState({
   description = "Link a nirs4all workspace to see your data. Go to Settings to link a workspace directory.",
   className,
 }: NoWorkspaceStateProps) {
+  const { t } = useTranslation();
   return (
     <EmptyState
       icon={FolderOpen}
       title={title}
       description={description}
       action={{
-        label: "Link Workspace",
-        href: "/settings",
+        label: t("common.linkWorkspace"),
+        href: "/settings?tab=workspaces",
       }}
       className={className}
     />

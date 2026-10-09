@@ -80,7 +80,7 @@ export function useStartupUpdateCheck() {
       duration: 8000,
       action: {
         label: "View",
-        onClick: () => navigate("/settings?tab=advanced"),
+        onClick: () => navigate("/settings?tab=updates"),
       },
     });
   }, [online, networkLoading, status, settings, navigate]);

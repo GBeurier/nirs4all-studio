@@ -315,6 +315,19 @@ describe("formatApiErrorDetail", () => {
 });
 
 describe("API client request handling", () => {
+  it("keeps the code and message of a sidecar error envelope instead of serializing it", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      error: { code: "python_plugin_unavailable", message: "Python plugin is not configured", retryable: false, details: {} },
+    }, 503)));
+    delete window.electronApi;
+
+    await expect(api.get("/system/anything")).rejects.toEqual({
+      detail: "Python plugin is not configured",
+      status: 503,
+      code: "python_plugin_unavailable",
+    });
+  });
+
   it("keeps overlapping prediction reads active through body parsing and releases refusals", async () => {
     let releaseFirst!: (value: unknown) => void;
     let releaseSecond!: (value: unknown) => void;
@@ -705,6 +718,7 @@ describe("API client request handling", () => {
       detail: expect.stringContaining("route_not_native_qualified_rust_only"),
       status: 501,
       code: "STUDIO_NATIVE_ROUTE_UNAVAILABLE",
+      reason: "route_not_native_qualified_rust_only",
     });
     expect(inspectSidecar).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();

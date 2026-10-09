@@ -1,5 +1,7 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 import { getChainPartitionDetail } from "@/api/aggregatedPredictions";
 import {
   buildModelActionCsv,
@@ -26,6 +28,8 @@ export function useModelActionCsvExport({
   chainId,
   modelName,
 }: UseModelActionCsvExportInput) {
+  const { t } = useTranslation();
+  const notifyApiError = useApiErrorToast();
   const [csvBusy, setCsvBusy] = useState(false);
 
   const handleCsvExport = useCallback(async () => {
@@ -46,11 +50,11 @@ export function useModelActionCsvExport({
       downloadBlob(blob, buildModelActionCsvFilename(modelName, chainId));
       toast.success("CSV exported");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "CSV export failed");
+      notifyApiError(err, t("errors.action.exportCsv"));
     } finally {
       setCsvBusy(false);
     }
-  }, [chainId, modelName]);
+  }, [chainId, modelName, t, notifyApiError]);
 
   return {
     csvBusy,

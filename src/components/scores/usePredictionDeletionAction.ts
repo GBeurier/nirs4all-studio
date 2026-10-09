@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 
 import {
   formatPredictionDeletionSummary,
@@ -24,6 +25,7 @@ export function usePredictionDeletionAction({
   failureMessage = 'Deletion failed',
 }: UsePredictionDeletionActionInput) {
   const queryClient = useQueryClient();
+  const notifyApiError = useApiErrorToast();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
@@ -47,11 +49,11 @@ export function usePredictionDeletionAction({
       setDeleteOpen(false);
       toast.success(formatPredictionDeletionSummary(result));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : failureMessage);
+      notifyApiError(error, failureMessage);
     } finally {
       setDeleteBusy(false);
     }
-  }, [deleteRequest, failureMessage, nothingDeletedMessage, onDeleted, queryClient, validate]);
+  }, [deleteRequest, failureMessage, nothingDeletedMessage, notifyApiError, onDeleted, queryClient, validate]);
 
   return {
     deleteOpen,

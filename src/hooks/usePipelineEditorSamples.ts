@@ -1,5 +1,7 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 import { getPipelineSample, listPipelineSamples } from "@/api/pipelines";
 import type { PipelineSampleInfo } from "@/api/pipelines";
 import {
@@ -16,6 +18,8 @@ interface UsePipelineEditorSamplesOptions {
 export function usePipelineEditorSamples({
   importIntoEditor,
 }: UsePipelineEditorSamplesOptions) {
+  const { t } = useTranslation();
+  const notifyApiError = useApiErrorToast();
   const [samples, setSamples] = useState<PipelineSampleInfo[]>([]);
   const [samplesLoading, setSamplesLoading] = useState(false);
 
@@ -27,11 +31,11 @@ export function usePipelineEditorSamples({
       setSamples(result.samples);
     } catch (err) {
       console.error("Failed to load samples:", err);
-      toast.error("Failed to load pipeline samples");
+      notifyApiError(err, t("errors.action.loadSamples"));
     } finally {
       setSamplesLoading(false);
     }
-  }, [samples.length]);
+  }, [samples.length, t, notifyApiError]);
 
   const loadSample = useCallback(async (sampleId: string, sampleName: string) => {
     try {
@@ -46,9 +50,9 @@ export function usePipelineEditorSamples({
       toast.success(`Loaded sample: ${imported.name}`);
     } catch (err) {
       console.error("Failed to load sample:", err);
-      toast.error(`Failed to load sample: ${err instanceof Error ? err.message : "Unknown error"}`);
+      notifyApiError(err, t("errors.action.loadSample"));
     }
-  }, [importIntoEditor]);
+  }, [importIntoEditor, t, notifyApiError]);
 
   return {
     samples,

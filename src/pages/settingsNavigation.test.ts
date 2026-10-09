@@ -14,6 +14,7 @@ describe("settingsNavigation", () => {
       "general",
       "workspaces",
       "data",
+      "updates",
       "advanced",
     ]);
   });

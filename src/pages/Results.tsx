@@ -1,10 +1,11 @@
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  RefreshCw, Search, Download,
+  Layers, RefreshCw, Search, Download,
 } from "lucide-react";
 import { NoWorkspaceState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
 import { MetricSelector } from "@/components/scores/MetricSelector";
@@ -82,6 +83,9 @@ export default function Results() {
 	          <Button variant="outline" size="sm" onClick={() => { void state.refetch(); }}>
 	            <RefreshCw className="h-4 w-4 mr-1" /> Refresh
 	          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/results/aggregated"><Layers className="h-4 w-4 mr-1" /> {t("aggregatedResults.title")}</Link>
+          </Button>
           <Button variant="outline" size="sm" disabled>
             <Download className="h-4 w-4 mr-1" /> Export
           </Button>

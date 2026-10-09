@@ -155,7 +155,7 @@ describe("useModelActionCsvExport", () => {
       await mounted.result.current!.handleCsvExport();
     });
 
-    expect(toastMocks.error).toHaveBeenCalledWith("offline");
+    expect(toastMocks.error).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ description: "offline" }));
     expect(mounted.result.current!.csvBusy).toBe(false);
 
     await mounted.unmount();
