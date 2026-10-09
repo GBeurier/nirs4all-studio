@@ -1505,7 +1505,7 @@ fn collect_runtime_inventory(
 ) -> Result<(Vec<String>, Vec<RuntimeClosureFile>), ScientificCpythonUnavailable> {
     let mut pending = vec![runtime_root.to_path_buf()];
     let mut directories = Vec::new();
-    let mut files = Vec::new();
+    let mut discovered = Vec::new();
     while let Some(directory) = pending.pop() {
         let relative = directory
             .strip_prefix(runtime_root)
@@ -1527,23 +1527,37 @@ fn collect_runtime_inventory(
                 }
                 pending.push(path);
             } else if metadata.is_file() {
-                if files.len() >= 100_000 {
+                if discovered.len() >= 100_000 {
                     return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
                 }
                 let relative = path
                     .strip_prefix(runtime_root)
                     .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-                files.push(RuntimeClosureFile {
-                    relative_path: manifest_relative_path(relative)?,
-                    size: metadata.len(),
-                    sha256: hash_file(&path)
-                        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?,
-                });
+                let relative_path = manifest_relative_path(relative)?;
+                discovered.push((path, relative_path, metadata.len()));
             } else {
                 return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
             }
         }
     }
+    // Hashing dominates the scan. Workers pull the next file from one shared
+    // cursor because sizes are very uneven (native libraries versus stubs); the
+    // sorted result is independent of scheduling.
+    let next = AtomicUsize::new(0);
+    let mut files = collect_snapshot_worker_results(discovered.len().clamp(1, 8), |_| {
+        let mut hashed = Vec::new();
+        while let Some((path, relative_path, size)) =
+            discovered.get(next.fetch_add(1, Ordering::Relaxed))
+        {
+            hashed.push(RuntimeClosureFile {
+                relative_path: relative_path.clone(),
+                size: *size,
+                sha256: hash_file(path)
+                    .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?,
+            });
+        }
+        Ok(hashed)
+    })?;
     directories.sort();
     files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok((directories, files))
@@ -1719,7 +1733,6 @@ fn collect_runtime_snapshot(
 
 // Join every started worker explicitly even when an earlier worker failed.
 // Neither an OS spawn refusal nor a worker panic may unwind the validator mutex.
-#[cfg(any(windows, test))]
 fn collect_snapshot_worker_results<T: Send>(
     worker_count: usize,
     operation: impl Fn(usize) -> Result<Vec<T>, ScientificCpythonUnavailable> + Sync,
@@ -3249,6 +3262,33 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn runtime_inventory_hashes_in_parallel_and_stays_sorted() {
+        let root = tempfile::tempdir().unwrap();
+        for directory in ["b", "a/nested", "c"] {
+            fs::create_dir_all(root.path().join(directory)).unwrap();
+        }
+        // More files than workers, with sizes that make completion order differ.
+        let mut expected = Vec::new();
+        for index in 0..40_usize {
+            let relative = format!("{}/file-{index:02}.bin", ["a/nested", "b", "c"][index % 3]);
+            let contents =
+                vec![u8::try_from(index).unwrap(); if index % 7 == 0 { 600_000 } else { index }];
+            fs::write(root.path().join(&relative), &contents).unwrap();
+            expected.push(RuntimeClosureFile {
+                relative_path: relative,
+                size: contents.len() as u64,
+                sha256: Sha256::digest(&contents).into(),
+            });
+        }
+        expected.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+        let (directories, files) = collect_runtime_inventory(root.path()).unwrap();
+        assert_eq!(files, expected);
+        assert_eq!(directories, ["", "a", "a/nested", "b", "c"]);
+        let (_, again) = collect_runtime_inventory(root.path()).unwrap();
+        assert_eq!(again, expected);
+    }
 
     #[test]
     fn snapshot_worker_failure_joins_later_panics_without_poisoning_validator() {
