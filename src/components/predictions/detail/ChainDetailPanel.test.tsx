@@ -431,7 +431,7 @@ describe("ChainDetailPanel", () => {
       expect(container.textContent).toContain("Metadata-only view from summary rows; Studio does not recompute robustness metrics.");
       expect(container.textContent).toContain("Invalidated conformal guarantee");
       expect(container.textContent).toContain("Invalidated: prediction fingerprint changed");
-      expect(container.textContent).toContain("Native robustness report");
+      expect(container.textContent).toContain("Robustness Report");
     });
   });
 
@@ -465,7 +465,7 @@ describe("ChainDetailPanel", () => {
     const { container } = await render(<ChainDetailPanel chainId="chain" metric="rmse" />);
 
     await waitFor(() => {
-      expect(container.textContent).toContain("Native robustness report");
+      expect(container.textContent).toContain("Robustness Report");
       expect(container.textContent).toContain("Compute report");
       expect(container.textContent).toContain("Unavailable from stored predictions (5)");
       expect(container.textContent).toContain("spectral noise");
