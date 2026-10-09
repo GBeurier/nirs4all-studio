@@ -297,6 +297,25 @@ fn apply_inspection(dataset: &mut Value, inspection: &Value) -> DocumentResult<(
         }
     }
     dataset["is_multi_source"] = json!(summary["n_sources"].as_u64().unwrap_or(0) > 1);
+    if let Some(distributions) = inspection["target_distributions"].as_object() {
+        let declared = dataset["config"]["targets"].as_array();
+        let mut ordered = distributions.iter().collect::<Vec<_>>();
+        ordered.sort_by_key(|(name, _)| name.strip_prefix("target_").and_then(|index| index.parse::<usize>().ok()).unwrap_or(usize::MAX));
+        let targets = ordered.iter().enumerate().map(|(index, (name, distribution))| {
+            if let Some(target) = declared.filter(|targets| targets.len() == ordered.len()).and_then(|targets| targets.get(index)) {
+                return target.clone();
+            }
+            let classes = distribution["classes"].as_array();
+            let task = if distribution["type"] == "classification" {
+                if classes.is_some_and(|classes| classes.len() == 2) { "binary_classification" } else { "multiclass_classification" }
+            } else { "regression" };
+            json!({"column":name,"type":task,"is_default":index == 0})
+        }).collect::<Vec<_>>();
+        if dataset["default_target"].is_null() {
+            dataset["default_target"] = targets.first().map_or(Value::Null, |target| target["column"].clone());
+        }
+        dataset["targets"] = json!(targets);
+    }
     dataset["task_type"] = Value::Null;
     dataset["num_classes"] = Value::Null;
     if let Some(task) = inspection["target_distribution"]["type"].as_str() {
@@ -792,6 +811,23 @@ pub fn owns_path(path: &str) -> bool {
 mod tests {
     use super::*;
     use crate::{route_request_with_body, SidecarState};
+
+    #[test]
+    fn inspection_projects_real_target_count_and_preserves_declared_names() {
+        let inspection = json!({"summary":{"num_samples":10,"num_features":3,"train_samples":8,"test_samples":2,"n_sources":1,"has_targets":true},
+            "target_distributions":{"target_0":{"type":"regression"},"target_1":{"type":"classification","classes":["a","b"]}}});
+        let mut dataset = json!({"config":{},"targets":[],"default_target":null});
+        apply_inspection(&mut dataset, &inspection).unwrap();
+        assert_eq!(dataset["targets"].as_array().unwrap().len(), 2);
+        assert_eq!(dataset["targets"][1]["type"], "binary_classification");
+        assert_eq!(dataset["default_target"], "target_0");
+        let declared = json!([{"column":"protein","type":"regression"},{"column":"grade","type":"binary_classification"}]);
+        dataset["config"]["targets"] = declared.clone();
+        dataset["default_target"] = json!("grade");
+        apply_inspection(&mut dataset, &inspection).unwrap();
+        assert_eq!(dataset["targets"], declared);
+        assert_eq!(dataset["default_target"], "grade");
+    }
 
     #[test]
     fn saved_descriptor_replaces_flat_config_through_dataset_update() {

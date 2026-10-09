@@ -163,6 +163,7 @@ export function SyntheticCustomConfigTab({
           <Label className="text-sm">Dataset Name (optional)</Label>
           <Input
             placeholder="Auto-generated if empty"
+            maxLength={128}
             value={config.name ?? ""}
             onChange={(event) =>
               setConfig((previous) => ({
@@ -171,6 +172,7 @@ export function SyntheticCustomConfigTab({
               }))
             }
           />
+          <p className="text-xs text-muted-foreground">Start with a letter or number. Use letters, numbers, dots, underscores or hyphens.</p>
         </div>
         <div className="flex items-end">
           <div className="flex items-center gap-2">

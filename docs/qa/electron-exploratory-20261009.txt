@@ -1,0 +1,205 @@
+QA exploratoire Electron - 9 octobre 2026
+
+Contexte et limites
+------------------
+Pull fast-forward de 56249506 vers df40fbc1 sur main. Node 24.10, npm 11.6,
+Studio 0.15.2, nirs4all scientifique 1.4.7. Renderer dist construit et lancé
+avec Electron réel et le sidecar Rust release. Pilotage Playwright Electron,
+le contrôle natif CUA étant indisponible. Aucun serveur FastAPI diagnostic
+activé, aucun fallback ajouté. Calculs et métriques scientifiques délégués
+à nirs4all. Données, captures, stores et artefacts exclus du commit.
+
+Début des manipulations: 00:08:25 UTC. Dernier contrôle: voir fin du rapport.
+Workspace QA isolé: D:/tmp_wk/qa-electron-20261009. Un workspace existant a
+été activé en lecture puis quitté pour vérifier la séparation des résultats.
+Datasets: Beer 60x576, Corn 80x700, Coffee 70x601 (7 classes), Alpine,
+Amylose, Fusarium; deux datasets synthétiques, dont 1500x751 et 5 cibles.
+Ce rapport décrit les parcours réellement exercés; il ne certifie pas toutes
+les fonctions, plateformes, modèles, archives ou dépendances optionnelles.
+
+Parcours et résultats
+---------------------
+* Imports dossier, mapping, parsing, cibles, preview, suppression des fichiers
+  metadata vides Coffee, correction manuelle des overrides d'en-têtes.
+* Beer: SNV -> SavitzkyGolay(window=13, poly=2, deriv=1) -> PLS10, KFold5.
+  Export Playground vers éditeur, sauvegarde, lancement et consultation.
+  Refit test20: RMSEP 0.1873, R2 0.9863, MAE 0.1489.
+  Prédiction dataset, paste CSV et upload du CSV Windows (20 lignes) testés.
+  Trois valeurs paste et dataset identiques: 9.003106139752653,
+  10.425915253547023, 10.342546284284479.
+* Corn: template complexe réduit à quatre combinaisons Cartesian
+  (NoOp/SNV x NoOp/SG), KFold3, StandardScaler, PLS12,
+  PLS et Ridge avec trois essais chacun, AOMPLS. Quatre runs persistés.
+  RMSEP: PLS12 0.15042295230561667; PLS tuned 0.152317;
+  Ridge 0.349935; AOMPLS 0.169229. Prédiction des quatre modèles après
+  redémarrage, sans entraînement, avec 20 lignes. Calcul indépendant du
+  RMSE de PLS12 conforme aux valeurs affichées.
+* Classification synthétique: RF, Or(SNV, MSC, SG), StratifiedKFold5,
+  3 variantes et 15 fits. Test30 accuracy 0.3, balanced_accuracy
+  0.3158730158730159. Matrice indépendante [[4,3,3],[3,2,1],[8,3,3]].
+* Coffee: même RF, 3 variantes/15 fits, terminé en 8.2 secondes.
+  Refit test21 balanced_accuracy 0.8571; CV 0.8429. Résultat et tâche
+  correctement reliés dans History, store_run_ids durable non vide.
+  La prédiction du modèle avec classes textuelles échoue (QA-28).
+* Génération synthétique, preset complexe 1500, opérations SNV dans
+  Playground, courbes WebGL, histogramme Y et PCA. Après correction:
+  1500 échantillons, 256 points affichés. PCA brute 53.0%/13.6%,
+  après SNV 30.4%/23.6%. Les calculs utilisent le dataset complet.
+* Annulation d'un RF2000 lourd: état Cancelled, zéro tâche active;
+  navigation Playground toujours possible pendant l'exécution.
+  RF100 sur 1500 spectres/5 cibles échoue par timeout (QA-27).
+* History, réouverture de runs persistés, Leaderboard, liens datasets,
+  Database regression/classification, filtres train/test, confusion,
+  résidus, distributions et exports graphiques PNG/CSV exercés.
+  Le viewer distingue bien métriques train+test et test seul.
+* Validation négative: mauvais nombre de features Beer576 vers Corn700
+  rejeté, puis succès avec Corn; JSON ragged rejeté. Les essais malformed,
+  NaN et Infinity n'ont pas tous une preuve indépendante suffisante.
+* Lab synthèse, simulations robustesse, SHAP, Inspector, export Parquet,
+  rescan/statistiques workspace testés: limitations ci-dessous.
+
+Registre des défauts (28 observations)
+-------------------------------------
+CORRIGE = code modifié, avec le niveau de vérification indiqué.
+PARTIEL = une cause corrigée, mais le parcours reste limité.
+OUVERT = reproduit, non corrigé dans cette session.
+
+QA-01 PARTIEL / medium: import ou génération affiche Targets0 alors que Y
+  est présent. Projection Rust de target_distributions vers targets/default
+  ajoutée pour les inspections link/update/refresh et testée unitairement.
+  Les anciennes métadonnées ne sont pas migrées; génération initiale et
+  rafraîchissement réel d'un dataset synthétique restent à revalider.
+QA-02 PARTIEL / high: extended.json se chargeait depuis file:///D:/.
+  BASE_URL utilisé; opérateurs étendus visibles après rebuild. La requête
+  disponibilité des opérateurs reste rejetée 501 et son avertissement demeure.
+QA-03 CORRIGE / high: SG exporté apparaissait MovingAverage dans l'éditeur.
+  Résolution des collisions par nom réel de classe; tests de restauration.
+  Les anciens drafts gardent leur ancien libellé; calcul scientifique SG
+  était déjà correct. Le dernier cycle réel a identifié aussi la résolution
+  Python import-preview: préférence au vrai nom pour une même classPath,
+  sans changer les alias de classes différentes. 44 tests canonical réussis;
+  vrai transfert Playground final affiche SavitzkyGolay (capture152).
+QA-04 PARTIEL / high: noms raw dupliqués associaient Beer à Alpine.
+  Refus des correspondances ambiguës exactes/prefixes et conservation des
+  IDs valides. Ancien score Alpine erroné supprimé; lien Leaderboard Corn
+  par ID vérifié. Provenance Beer manquante non reconstruite par heuristique.
+QA-05 OUVERT / high: simulations robustesse Observed et Prediction noise
+  sur un refit échouent, route native non qualifiée (501).
+QA-06 CORRIGE / medium: fermeture Sheet couverte par header sticky.
+  z-index du bouton Close relevé. Fermetures du dialog History et du Sheet
+  résultat original vérifiées, y compris depuis le graphique sous header sticky.
+QA-07 OUVERT / high: Lab Synthesis Preview échoue même avec Features seul;
+  route non migrée/501, erreur peu explicite.
+QA-08 OUVERT / high: liste de modèles SHAP indisponible/501 après training,
+  Compute Explanations désactivé. Aucun calcul SHAP abouti.
+QA-09 CORRIGE / high: upload prédiction Windows avec préfixe verbatim
+  contenant ? interprété comme glob. Conversion de chemin équivalent avec
+  identité canonique vérifiée; test Rust et vrai upload Beer20 réussis.
+QA-10 OUVERT / high: campagne Beer+Corn transmet une liste au moteur
+  dag-ml qui n'accepte qu'un dataset, run/unsupported_shape.
+QA-11 OUVERT / high: détection en-tête Coffee Ytrain/Ytest fausse,
+  nombres50/22 contre X49/21. Désactiver les overrides Y et garder le header
+  global permet l'import. Détection propriétaire non modifiée.
+QA-12 CORRIGE / high: enum multiclass_classification/binary_classification
+  Studio refusé par IO. Normalisation de l'adaptateur vers multiclass/binary
+  à l'import et au rechargement; import Coffee7 classes200 vérifié.
+QA-13 OUVERT / high: Simple PLS Or3 x sweep8 n_components, KFold5,
+  IndexError nirs4all/pipeline/dagml/result.py:752 variant_config_names[index].
+QA-14 PARTIEL / medium: toutes les tâches orphaned et résultats non rafraîchis.
+  Persistance des store_run_ids retournés par le propriétaire, WebSocket
+  /ws/job/{id} natif, invalidation après terminaison et récupération polling.
+  Nouveau Coffee relié, nouveau modèle visible. Anciennes tâches sans IDs
+  restent orphaned; compteurs de campagnes échouées sans store restent séparés.
+QA-15 CORRIGE / high: Open Run Page UUID renvoyait Run Not Found.
+  Lecture workspace owner v5 au lieu du registre de jobs, projection du score,
+  arrêt WS pour runs terminés, pas de demande logs quand log_count=0.
+  Réouverture Corn après restart vérifiée, score propriétaire présent.
+QA-16 CORRIGE / medium: légende TRAIN teal contre points rouges.
+  Légende reprend palette et couleurs personnalisées du viewer. Test SSR;
+  vrai graphique Corn final: TRAIN rouge/points rouges, TEST vert (capture155).
+  Pas de comparaison visuelle exhaustive de toutes les palettes.
+QA-17 OUVERT / high: export Database Parquet rejeté501, aucun fichier.
+  Exports des graphiques PNG/CSV fonctionnent.
+QA-18 OUVERT / high: Open chain snapshot tuned Corn recharge un seul
+  noeud Pipeline sans steps/paramètres; relaunch Pipeline.__init__ missing steps.
+QA-19 CORRIGE / medium: noms synthétiques avec espaces acceptés puis400
+  et Unknown error. Validation conforme au safe identifier Rust, aide et
+  erreur transport formatée; vrai formulaire invalid/valid vérifié.
+QA-20 OUVERT / high: LightGBM du template Trees/Boosting produit un dict
+  de paramètres au lieu d'estimator, avec et sans tuning. RF seul réussit.
+QA-21 PARTIEL / high: Inspector/inspector/data rejette501, zéro chaîne.
+  Message transport formaté au lieu de [object Object]; migration non faite.
+QA-22 CORRIGE / medium: BalAcc croissant classait les moins bons premiers.
+  Ordre naturel selon métrique et préférence manuelle par contexte de tâche.
+  Défaut découvert en complément: scores absents avant les scores réels en
+  descendant; comparateur corrigé pour null/nonfinite toujours derniers.
+  Tests et contrôle Electron final avec Coffee.
+QA-23 CORRIGE / high: eye Database affiche No data, particulièrement
+  classification. Route scatter workspace qualifiée vers results.arrays
+  existant, autorisation workspace et IDs bornés, tests transport/Rust.
+  Refit regression20 et classification30 vérifiés avec graphiques réels.
+QA-24 CORRIGE / medium: Predict new data arrivait sans modèle sélectionné.
+  Lecture model_id/source et sélection liée au catalogue/workspace, préservant
+  les choix manuels. Vrai lien CornPLS12 vérifié, tests UI.
+QA-25 OUVERT / medium: Settings workspace counters0 et rescan sans effet;
+  stats/storage/discovery non migrés501 malgré store rempli.
+QA-26 CORRIGE / high: preset complexe1500 dépasse réponse32MiB Playground.
+  Sur ce seul rejet, requête limitée à256 longueurs d'onde retournées;
+  limite conservée lors des transformations. Calculs complets via nirs4all,
+  sans découpage des inputs. Première requête413 reste visible dans les logs.
+  Vrai écran final: courbes, histogramme, PCA et SNV réussis.
+QA-27 OUVERT / high: RF100, 1500x751, 5 cibles dépasse timeout host.
+  python_host_timed_out, progression0, aucun run résultat; annulation RF2000
+  distincte avait abouti. Ne pas simplement supprimer les bornes du host.
+QA-28 OUVERT / high: Coffee classes textuelles (Tauro/Renzo/...) prédiction
+  refit400: np.isfinite sur strings dans api/library_predictions.py.
+  PredictResponse frontend est aussi number[]; support catégoriel nécessite
+  contrat et présentation cohérents, sans encodage arbitraire des classes.
+
+Autres corrections couvertes par les tests
+-----------------------------------------
+Canonicalisation Windows pour invalidation du cache dataset et recherche
+training actif (évite de manquer un job lors de suppression). Suppression
+fichier wizard supprime aussi son override de parsing. Contrat d'attestation
+Python mis à jour et runtime plugin requalifié avec64 distributions.
+
+Validation automatisée
+----------------------
+* npm run build:electron: réussi; graphe packaged plugin-host-only validé.
+* cargo build --locked --release --bin studio-sidecar: réussi.
+* cargo test --locked --release --lib, N4M_LIBRARY_PATH explicite:
+  353 réussis, 0 échec, 3 ignorés. Deux tests auparavant sans DLL reconfigurés;
+  deux vrais défauts Windows corrigés. La dernière réexécution a révélé
+  un test lisant les réglages utilisateur: isolation en tempdir, puis353/0/3
+  à nouveau. Logs rust-tests-final.log et rust-tests-delivery2.log.
+* TypeScript app/node/electron: réussi. ESLint fichiers modifiés: réussi.
+* Ruff Python modifié: réussi. pytest test_dataset_config.py:53 réussis,
+  warnings de configuration plugins pytest de l'environnement local.
+  Pipeline canonical + références:44 réussis,2 ignorés; correction affinée
+  pour préserver la résolution KennardStone et les variantes natives.
+* Vitest ciblé:12 fichiers/91 tests réussis, puis comparateur/invalidation:
+  3 fichiers/21 réussis (recouvrement, ne pas additionner).
+* Vitest complet avant les deux derniers petits changements de comparateur
+  et cache modèles:620 fichiers,574 réussis/46 échoués;4281 tests réussis,
+  110 échoués,8 ignorés. Baseline df40fbc1 dans worktree séparé:
+  618 fichiers,572 réussis/46 échoués;4268 tests réussis,110 échoués,8 ignorés.
+  Les110 identifiants d'échecs sont strictement identiques. Suite non verte;
+  échecs existants notamment contrats, locale et helpers packaging Windows.
+  Les derniers changements sont couverts par les tests ciblés et typecheck.
+* git diff --check vérifié avant commit. Pas de full pytest, GPU, tests
+  multi-plateforme ou release installable complète dans cette session.
+
+Preuves locales (ignorées par Git)
+---------------------------------
+D:/workspace/nirs4all/nirs4all-studio/test-results/exploratory-20261009/
+contient events.jsonl, captures PNG, états texte, logs, CSV exports et
+réponse de prédiction Coffee en erreur. Captures135/136 gros Playground,149 tri final,
+139 run persisté,147 classement et148 Coffee History. Les preuves originales
+QA-01..26 sont nommées dans les événements. Les difficultés de pilotage
+(sélecteur natif, locators erronés, chunks supprimés par rebuild en cours)
+ne sont pas comptées comme bugs du produit.
+
+Fin des manipulations: 2026-10-09 01:40:20 UTC
+Electron laissé ouvert sur History, workspace QA, zéro tâche active.
+11 défauts corrigés,5 partiellement corrigés,12 ouverts.
+Commit/push effectués après ce rapport; SHA disponible dans Git.

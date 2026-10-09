@@ -11,6 +11,11 @@ import {
 } from "../pipelineClassPathResolver";
 
 describe("pipelineClassPathResolver", () => {
+  it("restores the scientific class instead of a recipe using the same constructor", () => {
+    expect(resolveClassPath("nirs4all.operators.transforms.SavitzkyGolay").name).toBe("SavitzkyGolay");
+    expect(resolveClassPath("nirs4all.operators.transforms.nirs.SavitzkyGolay").name).toBe("SavitzkyGolay");
+    expect(resolveClassPath("nirs4all.operators.transforms.MovingAverage").name).toBe("MovingAverage");
+  });
   it("resolves registry and legacy class paths to editor-facing names", () => {
     expect(resolveClassPath("sklearn.preprocessing._data.MinMaxScaler")).toMatchObject({
       name: "MinMaxScaler",

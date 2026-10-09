@@ -8,6 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import type {
   ChartKind,
+  ChartConfig,
   ViewerPartitionTarget,
 } from "@/components/predictions/viewer/types";
 import { ChartTile } from "./ChartTile";
@@ -18,6 +19,7 @@ interface ChainDetailChartPreviewProps {
   onPreviewKindChange: (kind: ChartKind) => void;
   taskKind: "regression" | "classification";
   partitions: ViewerPartitionTarget[];
+  config?: Pick<ChartConfig, "palette" | "partitionColors">;
   selectedFoldLabel: string | null;
   selectedPartitionCount: number;
   canCustomize: boolean;
@@ -31,6 +33,7 @@ export function ChainDetailChartPreview({
   onPreviewKindChange,
   taskKind,
   partitions,
+  config,
   selectedFoldLabel,
   selectedPartitionCount,
   canCustomize,
@@ -52,7 +55,7 @@ export function ChainDetailChartPreview({
         </div>
       </div>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <PartitionLegend partitions={partitions} />
+        <PartitionLegend partitions={partitions} config={config} />
         <div className="inline-flex w-full rounded-xl border border-border/70 bg-card/50 p-1 lg:w-auto">
           {getChartPreviewOptions(taskKind).map((option) => (
             <button

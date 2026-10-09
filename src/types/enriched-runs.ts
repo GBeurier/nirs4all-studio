@@ -55,6 +55,7 @@ export interface EnrichedRun {
 
 export interface EnrichedDatasetRun {
   dataset_name: string;
+  linked_dataset_id?: string | null;
   best_avg_val_score: number | null;
   best_avg_test_score: number | null;
   best_final_score: number | null;

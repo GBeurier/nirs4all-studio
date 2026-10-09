@@ -82,7 +82,7 @@ export function usePredictionRows(
   const [filterModel, setFilterModel] = useState("all");
   const [filterTaskType, setFilterTaskType] = useState("all");
   const [sortField, setSortField] = useState<SortField>("test_score");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  const [sortPreference, setSortPreference] = useState<{ task: MetricTaskFilter; order: SortOrder } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [visibleFoldTypes, setVisibleFoldTypes] = useState<FoldVisibility[]>([...ALL_FOLD_TYPES]);
@@ -94,6 +94,12 @@ export function usePredictionRows(
     () => allRows.filter(row => rowMatchesMetricContext(row, metricTaskFilter)),
     [allRows, metricTaskFilter],
   );
+
+  const referenceMetric = contextRows.find(row => row.metric)?.metric
+    ?? (metricTaskFilter === "classification" ? "balanced_accuracy" : "rmse");
+  const sortOrder: SortOrder = sortPreference?.task === metricTaskFilter
+    ? sortPreference.order
+    : isLowerBetter(referenceMetric) ? "asc" : "desc";
 
   const contextDatasets = useMemo(
     () => collectSortedUniqueStrings(contextRows.map(row => row.datasetName)),
@@ -265,7 +271,7 @@ export function usePredictionRows(
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortOrder(prev => (prev === "asc" ? "desc" : "asc"));
+      setSortPreference({ task: metricTaskFilter, order: sortOrder === "asc" ? "desc" : "asc" });
       return;
     }
 
@@ -277,7 +283,7 @@ export function usePredictionRows(
     const naturalScoreOrder: SortOrder = isLowerBetter(scoreMetric || referenceMetric) ? "asc" : "desc";
 
     setSortField(field);
-    setSortOrder(isScoreSort ? naturalScoreOrder : "asc");
+    setSortPreference({ task: metricTaskFilter, order: isScoreSort ? naturalScoreOrder : "asc" });
   };
 
   const clearFilters = () => {

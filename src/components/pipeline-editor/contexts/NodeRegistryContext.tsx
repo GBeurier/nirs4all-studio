@@ -156,7 +156,7 @@ export function NodeRegistryProvider({ children }: NodeRegistryProviderProps) {
       setIsLoadingExtended(true);
       setExtendedError(null);
       try {
-        const res = await fetch("/node-registry/extended.json", {
+        const res = await fetch(`${import.meta.env.BASE_URL}node-registry/extended.json`, {
           signal: abort.signal,
           headers: {
             Accept: "application/json",

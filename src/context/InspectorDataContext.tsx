@@ -15,6 +15,7 @@ import {
 } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getInspectorData } from '@/api/inspector';
+import { getApiErrorMessage } from '@/api/transport';
 import { useInspectorSessionOptional } from './useInspectorSession';
 import type {
   InspectorChainSummary,
@@ -111,7 +112,7 @@ export function InspectorDataProvider({ children }: { children: ReactNode }) {
   });
 
   const chains = data?.chains ?? EMPTY_CHAINS;
-  const error = queryError ? (queryError instanceof Error ? queryError.message : String(queryError)) : null;
+  const error = getApiErrorMessage(queryError);
 
   const analysisStore = useMemo(
     () => buildResultAnalysisStore({ chains }),

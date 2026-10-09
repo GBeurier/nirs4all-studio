@@ -97,13 +97,18 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
         preview: null,
       };
 
-    case "REMOVE_FILE":
+    case "REMOVE_FILE": {
+      const removedPath = state.files[action.payload]?.path;
+      const perFileOverrides = { ...state.perFileOverrides };
+      if (removedPath) delete perFileOverrides[removedPath];
       // Clear preview when file is removed
       return {
         ...state,
         files: state.files.filter((_, i) => i !== action.payload),
+        perFileOverrides,
         preview: null,
       };
+    }
 
     case "ADD_FILES":
       // Clear preview when files are added

@@ -5,7 +5,7 @@
  * Uses fetch with AbortController for request cancellation.
  */
 
-import { api } from './transport';
+import { api, formatApiErrorDetail } from './transport';
 import type {
   ExecuteRequest,
   ExecuteResponse,
@@ -18,9 +18,15 @@ import type { SpectralData, SampleMetadata } from '@/types/spectral';
 import { getSampleIdsFromMetadata } from '@/lib/playground/repetition';
 
 let loadedDatasetResults = new WeakMap<SpectralData, ExecuteResponse>();
+let loadedDatasetDisplayLimits = new WeakMap<SpectralData, number>();
 
 export function invalidateLoadedWorkspaceDatasetResults(): void {
   loadedDatasetResults = new WeakMap();
+  loadedDatasetDisplayLimits = new WeakMap();
+}
+
+export function getLoadedWorkspaceDatasetDisplayLimit(data: SpectralData): number | undefined {
+  return loadedDatasetDisplayLimits.get(data);
 }
 
 /** Reuse the initial raw-data execution when the playground mounts its query. */
@@ -392,7 +398,7 @@ export async function loadWorkspaceDataset(
     signal?: AbortSignal;
   } = {},
 ): Promise<SpectralData> {
-  const response = await executeDatasetPlayground({
+  const request = {
     dataset_id: datasetId,
     partition,
     source_index: options.sourceIndex ?? undefined,
@@ -405,7 +411,22 @@ export async function loadWorkspaceDataset(
       compute_repetitions: false,
       use_cache: true,
     },
-  }, options.signal);
+  };
+  let displayLimit: number | undefined;
+  let response: ExecuteResponse;
+  try {
+    response = await executeDatasetPlayground(request, options.signal);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message
+      : formatApiErrorDetail((error as { detail?: unknown })?.detail);
+    if (options.signal?.aborted || !/response exceeds 32\s*MiB/.test(detail)) throw error;
+    // Ask the library to decimate only the returned curves. PCA, statistics and
+    // transformations still run on the complete authorized dataset.
+    displayLimit = 256;
+    response = await executeDatasetPlayground({ ...request,
+      options: { ...request.options, max_wavelengths_returned: displayLimit },
+    }, options.signal);
+  }
   const original = response.original;
 
   const wavelengths = original.wavelengths.length > 0
@@ -458,6 +479,7 @@ export async function loadWorkspaceDataset(
         : undefined,
   };
   loadedDatasetResults.set(data, response);
+  if (displayLimit !== undefined) loadedDatasetDisplayLimits.set(data, displayLimit);
   return data;
 }
 

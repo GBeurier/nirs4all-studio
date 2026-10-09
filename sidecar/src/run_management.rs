@@ -639,7 +639,8 @@ mod tests {
     }
     #[test]
     fn execution_record_listing_is_wired_and_rejects_unknown_filters() {
-        let state = Arc::new(Mutex::new(SidecarState::default()));
+        let settings = tempfile::tempdir().unwrap();
+        let state = Arc::new(Mutex::new(SidecarState::with_app_settings_dir(settings.path())));
         let mut request = HttpRequest {
             method: "GET".into(),
             path: "/api/runs/execution-job-records".into(),

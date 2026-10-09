@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { getLinkedWorkspaces } from "@/api/linkedWorkspaces";
@@ -29,11 +30,17 @@ function inputDescription(input: DataSourceConfig): PredictionInput {
 
 /** General fitted host models remain visibly distinct from portable archives. */
 export function GeneralPredictionPanel() {
+  const [searchParams] = useSearchParams();
   const workspaces = useQuery({ queryKey: ["linked-workspaces", "general-prediction"], queryFn: getLinkedWorkspaces });
   const workspaceId = workspaces.data?.active_workspace_id ?? null;
   const catalogue = useQuery({ queryKey: ["general-prediction-models", workspaceId], queryFn: getAvailableModels, enabled: workspaceId !== null });
   const [selection, setSelection] = useState<{ workspaceId: string; key: string } | null>(null);
-  const model = selection?.workspaceId === workspaceId ? catalogue.data?.models.find((item) => modelKey(item) === selection.key) ?? null : null;
+  const model = selection?.workspaceId === workspaceId
+    ? catalogue.data?.models.find((item) => modelKey(item) === selection.key) ?? null
+    : selection === null
+      ? catalogue.data?.models.find((item) => item.id === searchParams.get("model_id")
+        && item.source === searchParams.get("source")) ?? null
+      : null;
   const [outputIndex, setOutputIndex] = useState(0);
   const [fileHeader, setFileHeader] = useState("yes");
   const [outcome, setOutcome] = useState<{ workspaceId: string; key: string; response: PredictResponse; input: PredictionInput } | null>(null);

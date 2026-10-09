@@ -140,6 +140,11 @@ function isUpdateChangelogPath(path: string): boolean {
 function classifyPredictionResults(method: string, path: string): NativeSurface | null {
   if (method !== "GET" || path.split("?").length > 2) return null;
   const [pathname, query] = path.split("?", 2);
+  const scatter = /^\/workspaces\/([^/]+)\/predictions\/([^/]+)\/scatter$/.exec(pathname);
+  if (scatter) {
+    if (query !== undefined || !isValidIdentifier(scatter[1]) || !isValidIdentifier(scatter[2])) return null;
+    return { name: "workspace-prediction-results", capability: "workspace_prediction_result_routes", requiresPythonHost: true };
+  }
   const page = identifierPath("/workspaces/", "/predictions/data").exec(pathname);
   const summary = identifierPath("/workspaces/", "/predictions/summary").exec(pathname);
   const matched = page ?? summary;

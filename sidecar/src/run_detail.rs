@@ -1048,39 +1048,39 @@ fn resolve_dataset_mapping(datasets: &mut [Map<String, Value>], linked: &[Datase
         let store_key = dataset_match_key(&store_name);
         let exact = linked_info
             .iter()
-            .find_map(|(id, name_lower, name_key, _)| {
+            .filter_map(|(id, name_lower, name_key, _)| {
                 (store_lower == *name_lower || (!store_key.is_empty() && store_key == *name_key))
                     .then_some(*id)
-            });
-        if let Some(id) = exact.filter(|id| !id.is_empty()) {
-            dataset.insert("linked_dataset_id".into(), Value::String(id.into()));
+            }).filter(|id| !id.is_empty()).collect::<Vec<_>>();
+        if exact.len() > 1 {
+            dataset.remove("linked_dataset_id");
+            continue;
+        }
+        if let Some(id) = exact.first() {
+            dataset.insert("linked_dataset_id".into(), Value::String((*id).into()));
             continue;
         }
 
-        let mut best_id = None;
-        let mut best_len = 0;
-        for (id, _, _, folder_key) in &linked_info {
-            if !folder_key.is_empty()
-                && store_key.starts_with(folder_key)
-                && folder_key.len() > best_len
-            {
-                best_id = Some(*id);
-                best_len = folder_key.len();
+        for use_folder in [true, false] {
+            let mut candidates = Vec::new();
+            let mut best_len = 0;
+            for (id, _, name_key, folder_key) in &linked_info {
+                let key = if use_folder { folder_key } else { name_key };
+                if id.is_empty() || key.is_empty() || !store_key.starts_with(key) { continue; }
+                if key.len() > best_len {
+                    candidates.clear();
+                    best_len = key.len();
+                }
+                if key.len() == best_len && !candidates.contains(id) { candidates.push(*id); }
             }
-        }
-        if let Some(id) = best_id.filter(|id| !id.is_empty()) {
-            dataset.insert("linked_dataset_id".into(), Value::String(id.into()));
-            continue;
-        }
-        for (id, _, name_key, _) in &linked_info {
-            if !name_key.is_empty() && store_key.starts_with(name_key) && name_key.len() > best_len
-            {
-                best_id = Some(*id);
-                best_len = name_key.len();
+            if candidates.len() == 1 {
+                dataset.insert("linked_dataset_id".into(), Value::String(candidates[0].into()));
+                break;
             }
-        }
-        if let Some(id) = best_id.filter(|id| !id.is_empty()) {
-            dataset.insert("linked_dataset_id".into(), Value::String(id.into()));
+            if candidates.len() > 1 {
+                dataset.remove("linked_dataset_id");
+                break;
+            }
         }
     }
 }
@@ -1138,6 +1138,20 @@ mod tests {
             name: "Corn".into(),
             path: "/datasets/corn".into(),
         }]
+    }
+
+    #[test]
+    fn duplicate_dataset_names_leave_rerun_unresolved() {
+        let mut owner: Value = serde_json::from_str(OWNER_INPUT).unwrap();
+        owner["run_detail"]["datasets"] = json!([{"name":"raw"}]);
+        let links = vec![
+            DatasetLinkIdentity { id:"alpine".into(), name:"raw".into(), path:"/alpine/raw".into() },
+            DatasetLinkIdentity { id:"beer".into(), name:"raw".into(), path:"/beer/raw".into() },
+        ];
+        let actual = compose_store_run_detail(&owner, &links).unwrap();
+        assert!(actual["datasets"][0].get("linked_dataset_id").is_none());
+        assert_eq!(actual["rerun_ready"], false);
+        assert_eq!(actual["unresolved_dataset_names"], json!(["raw"]));
     }
 
     #[test]

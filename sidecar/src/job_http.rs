@@ -582,6 +582,9 @@ impl NativeJobRuntime {
     /// Registry ordering, capacity and terminal retention remain authoritative.
     #[must_use]
     pub fn training_list_at(&self, workspace: &Path, now: Instant) -> Vec<Value> {
+        // Submission stores a canonical path; linked-workspace settings may use
+        // the ordinary Windows drive spelling of the same directory.
+        let canonical_workspace = workspace.canonicalize().unwrap_or_else(|_| workspace.to_path_buf());
         let jobs = self
             .registry
             .lock()
@@ -593,7 +596,7 @@ impl NativeJobRuntime {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         jobs.into_iter().filter_map(|job| {
             let context = durable.get(&job.id)?;
-            if job.job_type != JobType::Training || context.workspace_path != workspace { return None; }
+            if job.job_type != JobType::Training || context.workspace_path != canonical_workspace { return None; }
             Some(json!({"job":job.public_json(), "legacyConfig":context.request["legacyConfig"]}))
         }).collect()
     }
@@ -896,7 +899,7 @@ fn validate_executor_selection(
 }
 
 fn durable_record(snapshot: &JobSnapshot, context: &DurableScientificJob) -> Value {
-    json!({
+    let mut record = json!({
         "job_id": snapshot.id,
         "job_type": snapshot.job_type.as_str(),
         "requested_backend": context.requested_backend,
@@ -917,7 +920,13 @@ fn durable_record(snapshot: &JobSnapshot, context: &DurableScientificJob) -> Val
         },
         "metrics": snapshot.metrics,
         "error": snapshot.error,
-    })
+    });
+    if let Some(ids) = snapshot.result.as_ref().and_then(|result| result.pointer("/result/run_ids").or_else(|| result.get("run_ids"))).and_then(Value::as_array) {
+        record["driver"]["store_run_ids"] = json!(ids.iter().take(256).filter_map(Value::as_str)
+            .filter(|id| !id.is_empty() && id.len() <= 256 && !id.contains(['/', '\\', '\0']) && !matches!(*id, "." | ".."))
+            .collect::<Vec<_>>());
+    }
+    record
 }
 
 fn ensure_event_data_bounded(data: &Value) -> Result<(), NativeJobRuntimeError> {

@@ -165,6 +165,15 @@ describe("rowFoldVisibility / rowDataVisibility", () => {
 });
 
 describe("createRowComparator", () => {
+  it.each(["test_score", "val_score", "metric:r2"] as const)("keeps missing %s last when descending", (field) => {
+    const rows = [
+      makeRow({ id: "none", primaryTestScore: null, primaryValScore: null, testScores: {} }),
+      makeRow({ id: "lo", primaryTestScore: 0.1, primaryValScore: 0.1, testScores: { r2: 0.1 } }),
+      makeRow({ id: "hi", primaryTestScore: 0.9, primaryValScore: 0.9, testScores: { r2: 0.9 } }),
+    ];
+    expect(rows.sort(createRowComparator(field, "desc")).map(row => row.id)).toEqual(["hi", "lo", "none"]);
+  });
+
   it("sorts ascending by primary test score, undefined-as-infinity last", () => {
     const rows = [
       makeRow({ id: "hi", primaryTestScore: 0.9 }),

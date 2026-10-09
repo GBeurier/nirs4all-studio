@@ -412,7 +412,7 @@ fn single_or_batch(mut values: Vec<Value>) -> Value {
 // Windows canonicalization adds a verbatim prefix containing `?`, which the
 // library's dataset source resolver treats as a glob. Keep canonical paths for
 // authorization, but send equivalent ordinary drive/UNC paths to that owner.
-fn library_dataset_path(path: &Path) -> Result<String, ScientificResolveError> {
+pub(crate) fn library_dataset_path(path: &Path) -> Result<String, ScientificResolveError> {
     let original = path
         .to_str()
         .ok_or(ScientificResolveError::DatasetInvalid)?;

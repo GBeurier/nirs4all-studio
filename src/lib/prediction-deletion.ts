@@ -18,6 +18,7 @@ export async function invalidatePredictionRelatedQueries(queryClient: QueryClien
         head === "chain-fold-scores" ||
         head === "score-distribution" ||
         head === "available-models" ||
+        head === "general-prediction-models" ||
         head === "aggregated-predictions" ||
         head === "aggregated-predictions-leaderboard"
       );

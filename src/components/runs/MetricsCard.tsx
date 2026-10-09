@@ -41,6 +41,12 @@ export function MetricsCard({
       <CardContent>
         {metrics ? (
           <div className="grid grid-cols-2 gap-4">
+            {metrics.score != null && metrics.r2 == null && metrics.rmse == null && metrics.mae == null && metrics.rpd == null && (
+              <div>
+                <div className="text-2xl font-bold text-chart-2">{metrics.score.toFixed(4)}</div>
+                <div className="text-xs text-muted-foreground">{metrics.score_metric?.replace(/_/g, " ").toUpperCase() || "Score"}</div>
+              </div>
+            )}
             {metrics.r2 != null && (
               <div>
                 <div className="text-2xl font-bold text-chart-1">

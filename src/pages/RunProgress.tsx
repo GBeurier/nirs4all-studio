@@ -18,12 +18,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { getRun, getRunExecutionJobRecord, getWorkspaceExecutionJobRecord, stopRun, getPipelineLogs } from "@/api/runs";
+import { getRunExecutionJobRecord, getWorkspaceExecutionJobRecord, stopRun } from "@/api/runs";
+import { getN4AWorkspaceRunDetail, getWorkspaceRunPipelineLogs } from "@/api/linkedWorkspaces";
+import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 import { ReconnectingIndicator, ErrorState, LoadingState } from "@/components/ui/state-display";
 import type { Run } from "@/types/runs";
 import {
   buildRunLogLines,
   buildRunFromExecutionJobRecord,
+  buildRunFromWorkspaceDetail,
   buildRunExecutionProgressDisplayData,
   buildRunProgressDisplayData,
 } from "@/lib/run-progress/pageData";
@@ -59,6 +62,9 @@ function isNotFoundApiError(error: unknown): boolean {
 export default function RunProgress() {
   const { id: runId } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const { data: workspacesData } = useLinkedWorkspacesQuery();
+  const workspaceId = workspacesData?.active_workspace_id;
+  const executionJobId = runId?.startsWith("run_native_") ?? false;
   const [isStopping, setIsStopping] = useState(false);
   const [streamingLogs, setStreamingLogs] = useState<string[]>([]);
   const [persistedLogs, setPersistedLogs] = useState<string[]>([]);
@@ -71,9 +77,9 @@ export default function RunProgress() {
 
   // Fetch run data with polling for active runs
   const { data: runDetail, isLoading, error, refetch } = useQuery({
-    queryKey: ["run", runId],
-    queryFn: () => getRun(runId!),
-    enabled: !!runId,
+    queryKey: ["run", runId, workspaceId],
+    queryFn: async () => buildRunFromWorkspaceDetail(await getN4AWorkspaceRunDetail(workspaceId!, runId!)),
+    enabled: !!runId && !!workspaceId && !executionJobId,
     refetchInterval: (query) => {
       const data = query.state.data as Run | undefined;
       // Poll every 1 second for active runs (faster updates)
@@ -101,7 +107,7 @@ export default function RunProgress() {
         throw err;
       }
     },
-    enabled: !!runId,
+    enabled: !!runId && executionJobId,
     retry: false,
     refetchInterval: (query) => {
       const record = query.state.data;
@@ -161,7 +167,7 @@ export default function RunProgress() {
     setWsReconnecting(null);
   }, []);
 
-  useRunWebSocket(runId || "", handleWsUpdate, handleStreamingLog, handleProgress, handleReconnecting, handleConnected);
+  useRunWebSocket(run?.status === "running" || run?.status === "queued" ? runId || "" : "", handleWsUpdate, handleStreamingLog, handleProgress, handleReconnecting, handleConnected);
 
   // Reset streaming logs and progress when run changes
   useEffect(() => {
@@ -173,7 +179,7 @@ export default function RunProgress() {
   }, [runId]);
 
   const loadPersistedLogs = useCallback(async () => {
-    if (!runId || !run) return;
+    if (!runId || !run || !workspaceId) return;
     setIsLoadingLogs(true);
     setLogsError(null);
 
@@ -188,10 +194,12 @@ export default function RunProgress() {
 
       const logChunks = await Promise.all(
         pipelineEntries.map(async (entry) => {
-          const response = await getPipelineLogs(runId, entry.pipelineId);
+          if (!executionJobId && runDetail?.datasets.flatMap(dataset => dataset.pipelines)
+            .find(pipeline => pipeline.id === entry.pipelineId)?.logs?.length === 0) return [];
+          const response = await getWorkspaceRunPipelineLogs(workspaceId, runId, entry.pipelineId);
           const logs = response.logs || [];
           return logs.map(
-            (log) => `[${entry.datasetName}] [${entry.pipelineName}] ${log}`
+            (log) => `[${entry.datasetName}] [${entry.pipelineName}] ${log.message ?? log.event ?? ""}`
           );
         })
       );
@@ -203,7 +211,7 @@ export default function RunProgress() {
     } finally {
       setIsLoadingLogs(false);
     }
-  }, [runId, run]);
+    }, [runId, run, workspaceId, executionJobId, runDetail]);
 
   // Keep a ref to the latest loader so the polling interval always reads fresh
   // run data without re-subscribing (and recreating the interval) every poll.

@@ -76,8 +76,8 @@
     },
     {
       "path": "api/pipeline_canonical.py",
-      "size": 67902,
-      "sha256": "d9f14a9f4ec42957d3fe38b9d19af269549feaed94adc4a16c808eb86f89eef5"
+      "size": 68389,
+      "sha256": "fa7446c075bedfc79cbdaad781e2f1123e787534205612f2d1f2512dd3cebe0f"
     },
     {
       "path": "api/shared/__init__.py",
@@ -86,8 +86,8 @@
     },
     {
       "path": "api/shared/dataset_config.py",
-      "size": 15140,
-      "sha256": "deda7cb635053339cc1ace974408aaae2e07fb17d31a710aaebd3a04e9153a5b"
+      "size": 15509,
+      "sha256": "700c765ecb6c27a9672bd0df1fdef664d1f0692aab7b7c01b3fb917e644b058a"
     },
     {
       "path": "api/shared/decimation.py",

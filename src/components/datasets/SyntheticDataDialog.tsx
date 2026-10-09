@@ -156,6 +156,7 @@ export function SyntheticDataDialog({
           onCancel={() => setIsOpen(false)}
           onGenerate={handleGenerate}
           selectedPreset={selectedPreset}
+          name={config.name}
         />
       </DialogContent>
     </Dialog>

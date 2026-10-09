@@ -22,6 +22,7 @@ import { InlineScoreDisplay } from "./ScoreColumns";
 
 interface DatasetResultCardHeaderProps extends ComponentPropsWithoutRef<typeof CardHeader> {
   datasetName: string;
+  datasetId?: string | null;
   taskType?: string | null;
   expanded: boolean;
   selectedMetrics: string[];
@@ -35,6 +36,7 @@ interface DatasetResultCardHeaderProps extends ComponentPropsWithoutRef<typeof C
 
 export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultCardHeaderProps>(function DatasetResultCardHeader({
   datasetName,
+  datasetId,
   taskType,
   expanded,
   selectedMetrics,
@@ -136,11 +138,11 @@ export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultC
               <Eye className="h-3 w-3" /> details
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="text-xs h-6" asChild onClick={(event) => event.stopPropagation()}>
-            <Link to={`/datasets/${encodeURIComponent(datasetName)}`}>
+          {datasetId && <Button variant="ghost" size="sm" className="text-xs h-6" asChild onClick={(event) => event.stopPropagation()}>
+            <Link to={`/datasets/${encodeURIComponent(datasetId)}`} aria-label={`Open dataset ${datasetName}`}>
               <ExternalLink className="h-3 w-3" />
             </Link>
-          </Button>
+          </Button>}
         </div>
       </div>
     </CardHeader>

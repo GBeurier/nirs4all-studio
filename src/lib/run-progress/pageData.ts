@@ -1,5 +1,6 @@
 import type { ExecutionJobRecord } from "@/lib/runs/executionJobRecords";
 import type { PipelineRun, Run, RunMetrics, RunStatus } from "@/types/runs";
+import type { WorkspaceRunDetail } from "@/types/enriched-runs";
 import {
   buildPipelineCompactSummary,
   buildPipelinePrimarySummary,
@@ -60,6 +61,35 @@ export function buildRunFromExecutionJobRecord(record: ExecutionJobRecord): Run 
     error: record.error,
     datasets: ids.filter((id): id is string => typeof id === "string")
       .map((id) => ({ dataset_id: id, dataset_name: id, pipelines: [] })),
+  };
+}
+
+/** Present a stored owner's detail through the progress page's existing view. */
+export function buildRunFromWorkspaceDetail(detail: WorkspaceRunDetail): Run {
+  const status = (value: string | null): RunStatus =>
+    value === "completed" || value === "running" || value === "queued" || value === "partial"
+      ? value : "failed";
+  return {
+    id: detail.run_id, name: detail.name, status: status(detail.status),
+    created_at: detail.created_at, completed_at: detail.completed_at ?? undefined,
+    error: detail.error, engine: detail.engine, engine_requested: detail.engine_requested,
+    engine_diagnostics: detail.engine_diagnostics, allow_fallback: detail.allow_fallback,
+    fallback_policy: detail.fallback_policy,
+    total_pipelines: detail.pipelines.length,
+    datasets: detail.datasets.map(dataset => ({
+      dataset_id: dataset.linked_dataset_id ?? "", dataset_name: dataset.name,
+      pipelines: detail.pipelines.filter(pipeline => pipeline.dataset_name === dataset.name).map(pipeline => ({
+        id: pipeline.pipeline_id, pipeline_id: pipeline.pipeline_id, pipeline_name: pipeline.name,
+        model: pipeline.name, preprocessing: "", split_strategy: pipeline.splitter_class ?? "",
+        status: status(pipeline.status), progress: pipeline.status === "completed" ? 100 : 0,
+        val_score: pipeline.best_val, test_score: pipeline.best_test, score_metric: pipeline.metric,
+        metrics: { score: pipeline.best_test, score_metric: pipeline.metric },
+        completed_at: pipeline.completed_at ?? undefined, error_message: pipeline.error ?? undefined,
+        logs: pipeline.log_count === 0 ? [] : undefined,
+        engine: pipeline.engine, engine_requested: pipeline.engine_requested,
+        allow_fallback: pipeline.allow_fallback, fallback_policy: pipeline.fallback_policy,
+      })),
+    })),
   };
 }
 

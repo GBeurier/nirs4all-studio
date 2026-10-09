@@ -97,6 +97,7 @@ export function DatasetResultCard({
           <CollapsibleTrigger asChild>
             <DatasetResultCardHeader
               datasetName={dataset.dataset_name}
+              datasetId={dataset.linked_dataset_id}
               taskType={dataset.task_type}
               expanded={expanded}
               selectedMetrics={selectedMetrics}

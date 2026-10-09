@@ -9,7 +9,9 @@ use std::{
 fn endpoint(path: &str) -> Option<(&str, &str)> {
     let suffix = path.strip_prefix("/api/workspaces/")?;
     let (id, tail) = suffix.split_once("/predictions/")?;
-    if id.is_empty() || id.contains('/') || !matches!(tail, "data" | "summary") {
+    let scatter = tail.strip_suffix("/scatter")
+        .is_some_and(|prediction| !prediction.is_empty() && !prediction.contains('/'));
+    if id.is_empty() || id.contains('/') || (!matches!(tail, "data" | "summary") && !scatter) {
         return None;
     }
     Some((id, tail))
@@ -31,7 +33,9 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
     let operation = aggregated_endpoint(&request.path).map_or_else(
         || {
             endpoint(&request.path).map(|(_, kind)| {
-                if kind == "data" {
+                if kind.ends_with("/scatter") {
+                    "results.arrays"
+                } else if kind == "data" {
                     "results.page"
                 } else {
                     "results.summary"
@@ -86,7 +90,11 @@ fn dispatch(
     if id.len() > 256 || id.contains(['/', '\\', '\0']) || matches!(id.as_ref(), "." | "..") {
         return error(400, "Invalid workspace id".into());
     }
-    let mut payload = match filters(request.query.as_deref(), kind == "data") {
+    let scatter_id = kind.strip_suffix("/scatter");
+    let mut payload = match scatter_id.map_or_else(
+        || filters(request.query.as_deref(), kind == "data"),
+        |prediction| aggregated_filters(request, "results.arrays", Some(prediction)),
+    ) {
         Ok(payload) => payload,
         Err(detail) => return error(400, detail),
     };
@@ -96,13 +104,16 @@ fn dispatch(
         Err(detail) => return error(409, detail),
     };
     payload["workspace_path"] = json!(access.path());
-    let operation = if kind == "data" {
+    let operation = if scatter_id.is_some() {
+        "results.arrays"
+    } else if kind == "data" {
         "results.page"
     } else {
         "results.summary"
     };
     match invoke(operation, &payload) {
         Ok(value) => HttpResponse::json(200, value.to_string()),
+        Err(detail) if detail.starts_with("not_found:") => error(404, detail),
         Err(detail) => error(503, detail),
     }
 }
@@ -295,6 +306,31 @@ fn filters(query: Option<&str>, page: bool) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scatter_uses_the_named_workspace_and_rejects_unbounded_fields() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        std::fs::write(root.path().join("app_settings.json"),
+            json!({"linked_workspaces":[{"id":"selected","path":workspace,"is_active":false}]}).to_string()).unwrap();
+        let settings = AppSettingsStore::new(root.path());
+        let mut request = HttpRequest { method:"GET".into(),
+            path:"/api/workspaces/selected/predictions/real-prediction/scatter".into(),
+            query:None, headers:std::collections::BTreeMap::default(), body:vec![] };
+        let response = dispatch(&settings, &request, &|operation, payload| {
+            assert_eq!(operation, "results.arrays");
+            assert_eq!(payload["workspace_path"], json!(workspace));
+            assert_eq!(payload["prediction_id"], "real-prediction");
+            Ok(json!({"y_true":[1.0],"y_pred":[1.1]}))
+        });
+        assert_eq!(response.status, 200);
+        assert_eq!(serde_json::from_str::<Value>(&response.body).unwrap()["y_pred"], json!([1.1]));
+        request.query = Some("path=/unauthorized".into());
+        assert_eq!(dispatch(&settings, &request, &|_,_| panic!("invalid input reached the library")).status, 400);
+        request.query = None;
+        request.path = "/api/workspaces/selected/predictions/a%2Fb/scatter".into();
+        assert_eq!(dispatch(&settings, &request, &|_,_| panic!("invalid identifier reached the library")).status, 400);
+    }
     #[test]
     fn workspace_prediction_routes_resolve_named_workspace_and_preserve_real_records() {
         let root = tempfile::tempdir().unwrap();

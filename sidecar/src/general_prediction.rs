@@ -357,7 +357,10 @@ pub fn file_payload(
         }
         params["has_header"] = header.clone();
     }
-    payload["file_path"] = json!(path);
+    // Canonical Windows paths contain `?`; IO interprets that as a glob.
+    // Reuse the dataset bridge's identity-checked ordinary path conversion.
+    payload["file_path"] = json!(crate::scientific_request_resolver::library_dataset_path(&path)
+        .map_err(|error| format!("Invalid uploaded prediction path: {error:?}"))?);
     payload["params"] = params;
     payload["partition"] = json!("all");
     Ok(payload)
@@ -541,7 +544,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(payload["data_source"], "file");
-        assert_eq!(payload["file_path"], json!(canonical_path));
+        let transmitted = payload["file_path"].as_str().unwrap();
+        assert_eq!(std::path::Path::new(transmitted).canonicalize().unwrap(), canonical_path);
+        #[cfg(windows)]
+        assert!(!transmitted.starts_with(r"\\?\"));
         assert_eq!(payload["params"]["delimiter"], ";");
         assert_eq!(payload["params"]["has_header"], true);
         assert!(payload.get("spectra").is_none());

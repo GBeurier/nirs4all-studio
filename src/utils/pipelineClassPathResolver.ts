@@ -55,7 +55,9 @@ function buildClassPathMappings(): Record<string, { name: string; type: StepType
     const value = { name: node.name, type: node.type as StepType };
     const paths = [node.classPath, ...(node.legacyClassPaths || [])];
     for (const path of paths) {
-      if (path && !(path in mappings)) {
+      // A recipe alias (e.g. MovingAverage) can use another operator's class.
+      // Prefer the actual class name when restoring a serialized reference.
+      if (path && (!(path in mappings) || (getClassNameFromPath(path) === node.name && mappings[path].name !== node.name))) {
         mappings[path] = value;
       }
     }
@@ -125,7 +127,7 @@ function buildClassReferenceLookup(): Map<string, ResolvedClassInfo> {
     if (!key) return;
     const normalized = key.trim().toLowerCase();
     if (!normalized) return;
-    if (!overwrite && lookup.has(normalized)) return;
+    if (lookup.has(normalized) && (!overwrite || lookup.get(normalized)?.name === value.name)) return;
     lookup.set(normalized, value);
   };
 
@@ -158,8 +160,8 @@ function buildClassReferenceLookup(): Map<string, ResolvedClassInfo> {
     };
 
     register(node.name, resolved);
-    register(node.classPath, resolved);
-    register(getClassNameFromPath(node.classPath || ""), resolved);
+    register(node.classPath, resolved, getClassNameFromPath(node.classPath || "") === node.name);
+    register(getClassNameFromPath(node.classPath || ""), resolved, getClassNameFromPath(node.classPath || "") === node.name);
 
     for (const alias of node.aliases || []) {
       register(alias, resolved);

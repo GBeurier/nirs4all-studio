@@ -20,7 +20,7 @@ class Socket {
   onerror?: () => void;
   close = vi.fn(() => this.onclose?.());
   send = vi.fn();
-  constructor() { Socket.instances.push(this); }
+  constructor(public url: string) { Socket.instances.push(this); }
 }
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -67,6 +67,12 @@ async function mount(runs: Array<{ id: string; name: string; status: string }>) 
 }
 
 describe("active run polling and render cost", () => {
+  it("connects directly to the qualified job channel without a subscription command", async () => {
+    await mount([{ id: "run-1", name: "PLS", status: "running" }]);
+    expect(Socket.instances[0].url).toBe("ws://localhost/ws/job/run-1");
+    Socket.instances[0].onopen?.();
+    expect(Socket.instances[0].send).not.toHaveBeenCalled();
+  });
   it("shows a persistent error dialog on a WebSocket failure and deduplicates it", async () => {
     const app = await mount([{ id: "run-1", name: "PLS", status: "running" }]);
     const message = { type: "job_failed", channel: "job:run-1", data: { error: "ValueError: invalid pipeline" } };

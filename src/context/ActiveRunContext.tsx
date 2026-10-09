@@ -18,7 +18,7 @@ import {
   useMemo,
   ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getActiveRuns, getWorkspaceExecutionJobRecord } from "@/api/runs";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import {
   type RunProgressState,
 } from "@/context/useActiveRuns";
 import { getWebSocketBaseUrl } from "@/lib/websocket";
+import { invalidatePredictionRelatedQueries } from "@/lib/prediction-deletion";
 
 // WebSocket message types
 interface WsMessage {
@@ -49,6 +50,7 @@ interface WsMessage {
 }
 
 export function ActiveRunProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [runProgressMap, setRunProgressMap] = useState<Map<string, RunProgressState>>(new Map());
   const [isMinimized, setIsMinimized] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -83,27 +85,25 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
     // Mark as pending to prevent duplicate async connections
     wsConnectionsRef.current.set(runId, null);
 
-    getWebSocketBaseUrl().then((baseUrl) => {
+    const path = `/ws/job/${encodeURIComponent(runId)}`;
+    getWebSocketBaseUrl(path).then((baseUrl) => {
       // Check if disconnected while resolving URL
       if (!wsConnectionsRef.current.has(runId)) return;
 
-      const wsUrl = `${baseUrl}/ws`;
+      const wsUrl = `${baseUrl}${path}`;
 
       try {
         const ws = new WebSocket(wsUrl);
 
-        ws.onopen = () => {
-          ws.send(JSON.stringify({
-            type: "subscribe",
-            channel: `job:${runId}`,
-            data: {},
-          }));
-        };
+        // The job endpoint subscribes automatically to its exact channel.
 
         ws.onmessage = (event) => {
           try {
             const message: WsMessage = JSON.parse(event.data);
             if (message.channel === `job:${runId}`) {
+              if (["job_completed", "job_failed"].includes(message.type)) {
+                void invalidatePredictionRelatedQueries(queryClient);
+              }
               if (message.type === "job_failed") {
                 reportFailure(runId, _runName, message.data?.error);
               }
@@ -169,7 +169,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       wsConnectionsRef.current.delete(runId);
     });
-  }, [reportFailure]);
+  }, [reportFailure, queryClient]);
 
   // Cleanup WebSocket for completed/failed runs
   const disconnectFromRun = useCallback((runId: string) => {
@@ -254,6 +254,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       resolvingRuns.current.add(runId);
       void getWorkspaceExecutionJobRecord(runId).then((record) => {
         if (!["completed", "failed", "cancelled"].includes(record.status)) return;
+        void invalidatePredictionRelatedQueries(queryClient);
         const status = record.status === "completed" ? "completed" : "failed";
         if (record.status === "failed") {
           reportFailure(runId, state.runName || record.run_name, record.error);
@@ -273,7 +274,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
         // Retry on the next active-run poll; a read failure is not success.
       }).finally(() => resolvingRuns.current.delete(runId));
     }
-  }, [activeRunsData, activeRunsUpdatedAt, runProgressMap, reportFailure]);
+  }, [activeRunsData, activeRunsUpdatedAt, runProgressMap, reportFailure, queryClient]);
 
   // Cleanup on unmount
   useEffect(() => {

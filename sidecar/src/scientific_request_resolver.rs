@@ -19,6 +19,7 @@ use serde_json::{json, Map, Value};
 use crate::job_http::ScientificSubmissionPreflight;
 
 mod general;
+pub(crate) use general::library_dataset_path;
 
 const DATASET_LINKS_FILE: &str = "dataset_links.json";
 const MAX_DATASET_LINKS_BYTES: u64 = 2 * 1024 * 1024;
