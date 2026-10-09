@@ -24,6 +24,7 @@ const PYTHON_SETTINGS_HREF = "/settings?tab=advanced";
 
 /** Refusal identifiers (renderer preselection reasons and sidecar error codes) that mean "no analysis engine". */
 const ENGINE_UNAVAILABLE = new Set([
+  "executor_not_selected",
   "native_python_host_unavailable",
   "python_plugin_unavailable",
   "python_plugin_preflight_failed",

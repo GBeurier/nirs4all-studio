@@ -13,6 +13,7 @@ import {
   type StartupTranslationText,
 } from "./BackendStartupBannerData";
 import { NirsSplashLoader } from "./NirsSplashLoader";
+import { describeApiError } from "@/lib/userFacingError";
 
 // Minimum time the banner stays visible after mount. Without this, a fast
 // Electron start (ML already warm, workspace tiny) flips readiness in the
@@ -144,7 +145,14 @@ export function BackendStartupBanner() {
     fetchingWorkspaces,
   });
   const title = translateText(t, model.title);
-  const description = model.description.error ?? translateText(t, model.description);
+  // A readiness error is a machine reason (e.g. "executor_not_selected"); show users a plain explanation.
+  const description = model.description.error
+    ? describeApiError(
+      { reason: model.description.error, detail: model.description.error },
+      t,
+      translateText(t, model.description),
+    ).message
+    : translateText(t, model.description);
   const badgeLabel = translateText(t, model.badge.label);
   const steps = model.steps.map((step: StartupStepReadModel) => ({
     label: translateText(t, step.label),
