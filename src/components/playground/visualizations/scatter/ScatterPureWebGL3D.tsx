@@ -12,11 +12,12 @@
 
 import { useRef, useEffect, useCallback, useMemo, useState, forwardRef, useImperativeHandle } from 'react';
 import { cn } from '@/lib/utils';
-import { useSelection } from '@/context/useSelection';
+import { useHoveredSample, useSelection, useSetHoveredSample } from '@/context/useSelection';
 import { RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ScatterRendererProps } from './types';
 import { OrbitControls } from './utils/orbitControls';
+import { useRenderScheduler } from './utils/useRenderScheduler';
 import {
   buildPointBufferData3D,
   buildSelectionStateData3D,
@@ -214,15 +215,16 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
   clearOnBackgroundClick = true,
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { requestRender, setRender } = useRenderScheduler(canvasRef);
   const resourcesRef = useRef<Scatter3DWebGLResources | null>(null);
   const orbitControlsRef = useRef<OrbitControls | null>(null);
-  const animationFrameRef = useRef<number>(0);
 
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [, forceUpdate] = useState({});
 
   // Selection context
   const selectionCtx = useSelection();
+  const setHovered = useSetHoveredSample();
+  const hoveredFromContext = useHoveredSample();
   const manualSelectedSamples = useMemo(
     () => new Set(manualSelectedIndices ?? []),
     [manualSelectedIndices]
@@ -237,7 +239,7 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
   const pinnedSamples = useSelectionContext
     ? selectionCtx.pinnedSamples
     : manualPinnedSamples;
-  const contextHovered = useSelectionContext ? selectionCtx.hoveredSample : null;
+  const contextHovered = useSelectionContext ? hoveredFromContext : null;
   const effectiveHovered = useSelectionContext ? contextHovered : hoveredIndex;
 
   // Expose method for getting points within a screen rectangle (for box/lasso selection)
@@ -301,12 +303,11 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
       initialDistance: 5,
       initialTheta: Math.PI / 4,
       initialPhi: Math.PI / 3,
-      onChange: () => forceUpdate({}),
+      onChange: requestRender,
     });
 
     // Cleanup
     return () => {
-      cancelAnimationFrame(animationFrameRef.current);
       orbitControlsRef.current?.dispose();
       orbitControlsRef.current = null;
 
@@ -315,7 +316,7 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
         resourcesRef.current = null;
       }
     };
-  }, []);
+  }, [requestRender]);
 
   // Update buffer data when points/colors change
   useEffect(() => {
@@ -324,7 +325,8 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
 
     const bufferData = buildPointBufferData3D(points3D, bounds, pointColors, pointSize, indexMap);
     uploadScatter3DPointBuffers(resources, bufferData);
-  }, [points3D, pointColors, pointSize, indexMap, bounds]);
+    requestRender();
+  }, [points3D, pointColors, pointSize, indexMap, bounds, requestRender]);
 
   // Update selection/hover state
   useEffect(() => {
@@ -340,7 +342,8 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
     );
 
     uploadScatter3DSelectionBuffers(resources, selectionData);
-  }, [points3D, indexMap, selectedSamples, pinnedSamples, effectiveHovered]);
+    requestRender();
+  }, [points3D, indexMap, selectedSamples, pinnedSamples, effectiveHovered, requestRender]);
 
   // Render function
   const render = useCallback(() => {
@@ -369,23 +372,8 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
     });
   }, [points3D, showGrid, showAxes, selectedSamples]);
 
-  // Animation loop
-  useEffect(() => {
-    let running = true;
-
-    const loop = () => {
-      if (!running) return;
-      render();
-      animationFrameRef.current = requestAnimationFrame(loop);
-    };
-
-    loop();
-
-    return () => {
-      running = false;
-      cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, [render]);
+  // Draw on demand: once per change of the draw inputs (data, selection, hover, view options).
+  useEffect(() => setRender(render), [render, setRender]);
 
   // Mouse move handler for hover
   const handleMouseMove = useCallback(
@@ -407,25 +395,25 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
 
       if (index !== effectiveHovered) {
         if (useSelectionContext) {
-          selectionCtx.setHovered(index);
+          setHovered(index);
         } else {
           setHoveredIndex(index);
         }
         onHover?.(index);
       }
     },
-    [effectiveHovered, useSelectionContext, selectionCtx, onHover]
+    [effectiveHovered, useSelectionContext, setHovered, onHover]
   );
 
   // Mouse leave handler
   const handleMouseLeave = useCallback(() => {
     if (useSelectionContext) {
-      selectionCtx.setHovered(null);
+      setHovered(null);
     } else {
       setHoveredIndex(null);
     }
     onHover?.(null);
-  }, [useSelectionContext, selectionCtx, onHover]);
+  }, [useSelectionContext, setHovered, onHover]);
 
   // Click handler
   const handleClick = useCallback(

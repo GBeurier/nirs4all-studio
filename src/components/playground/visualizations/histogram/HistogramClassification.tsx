@@ -35,6 +35,7 @@ import {
   normalizeValue,
 } from '@/lib/playground/colorConfig';
 import { extractModifiers } from '@/lib/playground/selectionUtils';
+import { useSetHoveredSample } from '@/context/useSelection';
 import {
   computeStackedBarAction,
   executeSelectionAction,
@@ -92,6 +93,7 @@ export default function HistogramClassification({
   metadata,
   metadataCategories,
 }: HistogramChartProps) {
+  const setHovered = useSetHoveredSample();
   const totalCount = useMemo(
     () => classBarData.reduce((sum, bar) => sum + bar.count, 0),
     [classBarData],
@@ -472,7 +474,7 @@ export default function HistogramClassification({
                 if (!selectionCtx) return;
                 const segmentSamples = (data.payload?.[`${segment.key}Samples`] as number[] | undefined) ?? [];
                 if (segmentSamples.length > 0) {
-                  selectionCtx.setHovered(segmentSamples[0]);
+                  setHovered(segmentSamples[0]);
                 }
               }}
               {...ANIMATION_CONFIG}
@@ -501,7 +503,7 @@ export default function HistogramClassification({
             cursor="pointer"
             onMouseEnter={(data: { payload?: ClassBarData }) => {
               if (selectionCtx && data.payload?.samples?.length) {
-                selectionCtx.setHovered(data.payload.samples[0]);
+                setHovered(data.payload.samples[0]);
               }
             }}
             {...ANIMATION_CONFIG}

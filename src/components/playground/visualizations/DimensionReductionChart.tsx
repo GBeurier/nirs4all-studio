@@ -37,7 +37,7 @@ import {
   getDimensionReductionExportName,
   getDimensionReductionPointColor,
 } from '@/lib/playground/dimensionReductionPresentation';
-import { useSelection } from '@/context/useSelection';
+import { useHoveredSample, useSelection, useSetHoveredSample } from '@/context/useSelection';
 import type { SelectionResult } from '../selectionGeometry';
 
 // Import optimized WebGL/Regl scatter renderers
@@ -185,6 +185,8 @@ export function DimensionReductionChart({
   // SelectionContext integration - always call hook, conditionally use result
   const selectionHook = useSelection();
   const selectionCtx = useSelectionContext ? selectionHook : null;
+  const contextHoveredSample = useHoveredSample();
+  const setHovered = useSetHoveredSample();
 
   // Use global selection tool mode from SelectionContext
   const selectionTool = selectionCtx?.selectionToolMode ?? 'click';
@@ -201,7 +203,7 @@ export function DimensionReductionChart({
     ? selectionCtx.selectedSamples
     : externalSelectedSamples;
 
-  const hoveredSample = selectionCtx?.hoveredSample ?? null;
+  const hoveredSample = selectionCtx ? contextHoveredSample : null;
   const emptyPinnedSamples = useMemo(() => new Set<number>(), []);
   const pinnedSamples = selectionCtx?.pinnedSamples ?? emptyPinnedSamples;
 
@@ -286,15 +288,15 @@ export function DimensionReductionChart({
     if (!config.enableHover) return;
     const idx = getDimensionReductionPointIndex(data);
     if (idx !== undefined && selectionCtx) {
-      selectionCtx.setHovered(idx);
+      setHovered(idx);
     }
-  }, [selectionCtx, config.enableHover]);
+  }, [selectionCtx, setHovered, config.enableHover]);
 
   const handleMouseLeave = useCallback(() => {
     if (selectionCtx) {
-      selectionCtx.setHovered(null);
+      setHovered(null);
     }
-  }, [selectionCtx]);
+  }, [selectionCtx, setHovered]);
 
   // Pre-computed WebGL arrays for 2D renderers (ScatterPureWebGL2D, ScatterRegl2D)
   // Avoids creating new arrays on each render via inline .map() calls
@@ -449,8 +451,8 @@ export function DimensionReductionChart({
   }, [handleClick]);
 
   const handle3DHover = useCallback((index: number | null) => {
-    selectionCtx?.setHovered(index);
-  }, [selectionCtx]);
+    if (selectionCtx) setHovered(index);
+  }, [selectionCtx, setHovered]);
 
   // Error state
   if (activeResult?.error) {

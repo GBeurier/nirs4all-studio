@@ -12,7 +12,7 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import createRegl from 'regl';
 import { cn } from '@/lib/utils';
-import { useSelection } from '@/context/useSelection';
+import { useHoveredSample, useSelection, useSetHoveredSample } from '@/context/useSelection';
 import type { ScatterRendererProps, DataBounds } from './types';
 import {
   pickColorToIndex,
@@ -28,6 +28,7 @@ import {
   createRegl2DTransform,
   generateRegl2DGridGeometry,
 } from './utils/scatterRegl2DData';
+import { useRenderScheduler } from './utils/useRenderScheduler';
 
 // ============= Types =============
 
@@ -86,19 +87,21 @@ export function ScatterRegl2D({
   customBounds,
 }: ScatterRendererProps & { clearOnBackgroundClick?: boolean; customBounds?: DataBounds }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { setRender } = useRenderScheduler(canvasRef);
   const reglRef = useRef<createRegl.Regl | null>(null);
   const drawPointsRef = useRef<createRegl.DrawCommand | null>(null);
   const drawPickingRef = useRef<createRegl.DrawCommand | null>(null);
   const drawLinesRef = useRef<createRegl.DrawCommand | null>(null);
   const pickFboRef = useRef<createRegl.Framebuffer2D | null>(null);
   const pickFboSizeRef = useRef<{ width: number; height: number }>({ width: 1, height: 1 });
-  const animationFrameRef = useRef<number>(0);
   const gridDataRef = useRef<{ positions: Float32Array; colors: Float32Array; count: number } | null>(null);
 
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   // Selection context
   const selectionCtx = useSelection();
+  const setHovered = useSetHoveredSample();
+  const hoveredFromContext = useHoveredSample();
   const manualSelectedSamples = useMemo(
     () => new Set(manualSelectedIndices ?? []),
     [manualSelectedIndices]
@@ -113,7 +116,7 @@ export function ScatterRegl2D({
   const pinnedSamples = useSelectionContext
     ? selectionCtx.pinnedSamples
     : manualPinnedSamples;
-  const contextHovered = useSelectionContext ? selectionCtx.hoveredSample : null;
+  const contextHovered = useSelectionContext ? hoveredFromContext : null;
   const effectiveHovered = useSelectionContext ? contextHovered : hoveredIndex;
 
   // Index mapping
@@ -331,7 +334,6 @@ export function ScatterRegl2D({
 
     // Cleanup
     return () => {
-      cancelAnimationFrame(animationFrameRef.current);
       regl.destroy();
     };
   }, []);
@@ -426,23 +428,8 @@ export function ScatterRegl2D({
     });
   }, [bufferData, selectionData, bounds, gridData, preserveAspectRatio, selectedSamples]);
 
-  // Animation loop
-  useEffect(() => {
-    let running = true;
-
-    const loop = () => {
-      if (!running) return;
-      render();
-      animationFrameRef.current = requestAnimationFrame(loop);
-    };
-
-    loop();
-
-    return () => {
-      running = false;
-      cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, [render]);
+  // Draw on demand: once per change of the draw inputs (data, selection, hover, view options).
+  useEffect(() => setRender(render), [render, setRender]);
 
   // Read picked index
   const readPickedIndex = useCallback((x: number, y: number): number | null => {
@@ -480,25 +467,25 @@ export function ScatterRegl2D({
 
       if (index !== effectiveHovered) {
         if (useSelectionContext) {
-          selectionCtx.setHovered(index);
+          setHovered(index);
         } else {
           setHoveredIndex(index);
         }
         onHover?.(index);
       }
     },
-    [effectiveHovered, useSelectionContext, selectionCtx, onHover, readPickedIndex]
+    [effectiveHovered, useSelectionContext, setHovered, onHover, readPickedIndex]
   );
 
   // Mouse leave handler
   const handleMouseLeave = useCallback(() => {
     if (useSelectionContext) {
-      selectionCtx.setHovered(null);
+      setHovered(null);
     } else {
       setHoveredIndex(null);
     }
     onHover?.(null);
-  }, [useSelectionContext, selectionCtx, onHover]);
+  }, [useSelectionContext, setHovered, onHover]);
 
   // Click handler
   const handleClick = useCallback(

@@ -9,7 +9,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  listRuns: vi.fn(),
+  getActiveRuns: vi.fn(),
   getEnrichedRuns: vi.fn(),
   useLinkedWorkspacesQuery: vi.fn(),
   listRunExecutionJobRecords: vi.fn().mockResolvedValue({ records: [] }),
@@ -25,7 +25,7 @@ vi.mock("@/api/runs", async () => {
   const actual = await vi.importActual<typeof import("@/api/runs")>("@/api/runs");
   return {
     ...actual,
-    listRuns: mocks.listRuns,
+    getActiveRuns: mocks.getActiveRuns,
     listRunExecutionJobRecords: mocks.listRunExecutionJobRecords,
   };
 });
@@ -212,7 +212,7 @@ afterEach(() => {
 describe("Runs page", () => {
   it("dismisses failed launch bars and keeps them dismissed when the page is reopened", async () => {
     mocks.useLinkedWorkspacesQuery.mockReturnValue({ data: { active_workspace_id: "ws-1" } });
-    mocks.listRuns.mockResolvedValue({ runs: [] });
+    mocks.getActiveRuns.mockResolvedValue({ runs: [] });
     mocks.getEnrichedRuns.mockResolvedValue({ runs: [], total: 0 });
     mocks.listRunExecutionJobRecords.mockResolvedValue({
       records: [executionJobRecord({ status: "failed", run_status: "failed", is_orphaned: true })],
@@ -267,7 +267,7 @@ describe("Runs page", () => {
     mocks.useLinkedWorkspacesQuery.mockReturnValue({
       data: { active_workspace_id: "ws-1" },
     });
-    mocks.listRuns.mockResolvedValue({ runs: [] });
+    mocks.getActiveRuns.mockResolvedValue({ runs: [] });
     mocks.getEnrichedRuns.mockResolvedValue({
       runs: [
         {
@@ -318,7 +318,7 @@ describe("Runs page", () => {
     mocks.useLinkedWorkspacesQuery.mockReturnValue({
       data: { active_workspace_id: "ws-1" },
     });
-    mocks.listRuns.mockResolvedValue({ runs: [] });
+    mocks.getActiveRuns.mockResolvedValue({ runs: [] });
     mocks.getEnrichedRuns.mockRejectedValue({
       detail: "name '_class_name_from_path' is not defined",
       status: 500,

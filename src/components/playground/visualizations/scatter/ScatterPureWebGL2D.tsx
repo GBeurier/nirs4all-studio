@@ -10,7 +10,7 @@
  */
 
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
-import { useSelection } from '@/context/useSelection';
+import { useHoveredSample, useSelection, useSetHoveredSample } from '@/context/useSelection';
 import type { ScatterRendererProps, DataBounds } from './types';
 import { ScatterPureWebGL2DShell } from './ScatterPureWebGL2DShell';
 import {
@@ -69,6 +69,8 @@ export function ScatterPureWebGL2D({
 
   // Selection context
   const selectionCtx = useSelection();
+  const setHovered = useSetHoveredSample();
+  const hoveredFromContext = useHoveredSample();
   const manualSelectedSamples = useMemo(
     () => new Set(manualSelectedIndices ?? []),
     [manualSelectedIndices]
@@ -83,7 +85,7 @@ export function ScatterPureWebGL2D({
   const pinnedSamples = useSelectionContext
     ? selectionCtx.pinnedSamples
     : manualPinnedSamples;
-  const contextHovered = useSelectionContext ? selectionCtx.hoveredSample : null;
+  const contextHovered = useSelectionContext ? hoveredFromContext : null;
 
   // Use context hovered if available, otherwise local state
   const effectiveHovered = useSelectionContext ? contextHovered : hoveredIndex;
@@ -219,25 +221,25 @@ export function ScatterPureWebGL2D({
 
       if (index !== effectiveHovered) {
         if (useSelectionContext) {
-          selectionCtx.setHovered(index);
+          setHovered(index);
         } else {
           setHoveredIndex(index);
         }
         onHover?.(index);
       }
     },
-    [effectiveHovered, useSelectionContext, selectionCtx, onHover]
+    [effectiveHovered, useSelectionContext, setHovered, onHover]
   );
 
   // Mouse leave handler
   const handleMouseLeave = useCallback(() => {
     if (useSelectionContext) {
-      selectionCtx.setHovered(null);
+      setHovered(null);
     } else {
       setHoveredIndex(null);
     }
     onHover?.(null);
-  }, [useSelectionContext, selectionCtx, onHover]);
+  }, [useSelectionContext, setHovered, onHover]);
 
   // Click handler
   const handleClick = useCallback(
