@@ -5,7 +5,8 @@
 import type { ReactNode } from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import i18n from '@/lib/i18n';
 import { OperatorPaletteCategorySection } from '../OperatorPaletteCategorySection';
 import { OperatorPaletteSearch } from '../OperatorPaletteSearch';
 import type { OperatorsByTab } from '@/lib/playground/operatorPaletteData';
@@ -65,6 +66,10 @@ function makeOperator(overrides: Partial<OperatorDefinition> = {}): OperatorDefi
     ...overrides,
   };
 }
+
+beforeAll(async () => {
+  await i18n.changeLanguage('en');
+});
 
 describe('OperatorPalette presentation components', () => {
   it('renders search groups with the splitter replacement marker', async () => {

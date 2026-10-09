@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from 'react-i18next';
 import { Beaker, ChevronDown, RotateCcw } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,7 @@ interface MetricsUnavailableTriggerProps {
 }
 
 export function MetricsUnavailableTrigger({ compact, isLoading }: MetricsUnavailableTriggerProps) {
+  const { t } = useTranslation();
   return (
     <TooltipProvider>
       <Tooltip>
@@ -32,12 +34,12 @@ export function MetricsUnavailableTrigger({ compact, isLoading }: MetricsUnavail
             disabled
           >
             <Beaker className="w-3 h-3" />
-            Metrics
+            {t('playground.metricsFilter.metrics')}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
           <p className="text-xs">
-            {isLoading ? 'Loading metrics...' : 'No metrics available. Execute pipeline first.'}
+            {isLoading ? t('playground.metricsFilter.loading') : t('playground.metricsFilter.unavailable')}
           </p>
         </TooltipContent>
       </Tooltip>
@@ -51,6 +53,7 @@ interface MetricsFilterTriggerProps {
 }
 
 export function MetricsFilterTrigger({ activeFilterCount, compact }: MetricsFilterTriggerProps) {
+  const { t } = useTranslation();
   const hasActiveFilters = activeFilterCount > 0;
 
   return (
@@ -64,7 +67,7 @@ export function MetricsFilterTrigger({ activeFilterCount, compact }: MetricsFilt
       )}
     >
       <Beaker className="w-3 h-3" />
-      Metrics
+      {t('playground.metricsFilter.metrics')}
       {hasActiveFilters && (
         <Badge variant="secondary" className="h-4 px-1 text-[9px]">
           {activeFilterCount}
@@ -88,11 +91,12 @@ export function MetricsFilterHeader({
   onClearAll,
   totalSamples,
 }: MetricsFilterHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
       <h4 className="text-sm font-semibold flex items-center gap-2">
         <Beaker className="w-4 h-4 text-primary" />
-        Metric Filters
+        {t('playground.metricsFilter.title')}
         {hasActiveFilters && (
           <Badge variant="outline" className="text-[10px]">
             {filteredSampleCount}/{totalSamples}
@@ -107,7 +111,7 @@ export function MetricsFilterHeader({
           onClick={onClearAll}
         >
           <RotateCcw className="w-3 h-3 mr-1" />
-          Clear
+          {t('playground.metricsFilter.clear')}
         </Button>
       )}
     </div>
@@ -119,9 +123,10 @@ interface MetricsPresetListProps {
 }
 
 export function MetricsPresetList({ onApplyPreset }: MetricsPresetListProps) {
+  const { t } = useTranslation();
   return (
     <div className="px-3 py-2 border-b shrink-0">
-      <Label className="text-[10px] text-muted-foreground mb-1.5 block">Quick Presets</Label>
+      <Label className="text-[10px] text-muted-foreground mb-1.5 block">{t('playground.metricsFilter.quickPresets')}</Label>
       <div className="flex flex-wrap gap-1">
         {METRIC_FILTER_PRESETS.map(preset => (
           <TooltipProvider key={preset.id} delayDuration={200}>
@@ -133,11 +138,11 @@ export function MetricsPresetList({ onApplyPreset }: MetricsPresetListProps) {
                   className="h-6 text-[10px] px-2"
                   onClick={() => onApplyPreset(preset.id)}
                 >
-                  {preset.name}
+                  {t(`playground.metricsFilter.presets.${preset.id}.name`, { defaultValue: preset.name })}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">{preset.description}</p>
+                <p className="text-xs">{t(`playground.metricsFilter.presets.${preset.id}.description`, { defaultValue: preset.description })}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -153,11 +158,16 @@ interface MetricsFilterFooterProps {
 }
 
 export function MetricsFilterFooter({ filteredSampleCount, totalSamples }: MetricsFilterFooterProps) {
+  const { t } = useTranslation();
   return (
     <div className="px-3 py-2 border-t bg-muted/30 text-xs text-muted-foreground shrink-0">
       <div className="flex items-center justify-between">
         <span>
-          Showing <strong className="text-foreground">{filteredSampleCount}</strong> of {totalSamples} samples
+          <Trans
+            i18nKey="playground.metricsFilter.showing"
+            values={{ count: filteredSampleCount, total: totalSamples }}
+            components={{ b: <strong className="text-foreground" /> }}
+          />
         </span>
         <span className="text-[10px]">
           ({Math.round((filteredSampleCount / totalSamples) * 100)}%)

@@ -1,3 +1,4 @@
+import i18n from '@/lib/i18n';
 import {
   getCategoricalColor,
   type GlobalColorConfig,
@@ -53,10 +54,10 @@ export function buildSpectraChartLegendItems({
 
   const items: SpectraChartLegendItem[] = [];
   if (showProcessed) {
-    items.push({ label: viewMode === 'difference' ? 'Difference' : 'Processed', color: 'hsl(var(--primary))' });
+    items.push({ label: viewMode === 'difference' ? i18n.t('playground.charts.common.legendDifference') : i18n.t('playground.charts.common.legendProcessed'), color: 'hsl(var(--primary))' });
   }
   if (showOriginal && viewMode === 'both') {
-    items.push({ label: 'Original', color: 'hsl(var(--primary))', dashed: true });
+    items.push({ label: i18n.t('playground.charts.common.legendOriginal'), color: 'hsl(var(--primary))', dashed: true });
   }
   if (hasReferenceDataset) {
     items.push({ label: referenceLabel, color: CHART_THEME.referenceLineColor, dashed: true });

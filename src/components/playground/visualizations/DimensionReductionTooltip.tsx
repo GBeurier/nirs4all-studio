@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 
-import { formatFoldLabel, formatYValue } from './chartConfig';
+import { formatYValue } from './chartConfig';
+import { useTranslation } from 'react-i18next';
 
 export interface DimensionReductionTooltipPoint {
   x: number;
@@ -53,6 +54,7 @@ export function DimensionReductionTooltipCard({
   className,
   style,
 }: DimensionReductionTooltipCardProps) {
+  const { t } = useTranslation();
   const metadataEntries = point.metadata
     ? Object.entries(point.metadata).slice(0, 5)
     : [];
@@ -76,7 +78,7 @@ export function DimensionReductionTooltipCard({
           <p>Y: {formatYValue(point.yValue, 2)}</p>
         )}
         {point.foldLabel !== undefined && point.foldLabel >= 0 && (
-          <p>{formatFoldLabel(point.foldLabel)}</p>
+          <p>{t('playground.charts.dimReduction.tooltip.foldN', { n: point.foldLabel + 1 })}</p>
         )}
         {metadataEntries.length > 0 && (
           <div className="mt-1 pt-1 border-t border-border">

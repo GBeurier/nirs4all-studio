@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import type { NavigateFunction } from "react-router-dom";
+import i18n from "i18next";
 import { toast } from "sonner";
 import { getPipeline, previewPipelineImport } from "@/api/pipelines";
 import {
@@ -43,7 +44,7 @@ export function usePipelineEditorRouteImports({
   const importIntoEditor = useCallback(
     async ({ request, fallbackName }: PipelineEditorImportDraft) => {
       const result = await previewPipelineImport(request);
-      const importedName = result.name || fallbackName || "Imported Pipeline";
+      const importedName = result.name || fallbackName || i18n.t("pipelineEditor.hooks.importedName");
       loadPipeline(result.steps as PipelineStep[], importedName);
       return {
         ...result,
@@ -69,7 +70,9 @@ export function usePipelineEditorRouteImports({
         if (cancelled) return;
         console.error("Failed to load pipeline:", error);
         toast.error(
-          `Failed to load pipeline: ${error instanceof Error ? error.message : "Unknown error"}`,
+          i18n.t("pipelineEditor.hooks.loadFailed", {
+            message: error instanceof Error ? error.message : i18n.t("pipelineEditor.hooks.unknownError"),
+          }),
         );
       }
     })();
@@ -90,15 +93,15 @@ export function usePipelineEditorRouteImports({
         if (draft) {
           const imported = await importIntoEditor(draft);
 
-          toast.success("Pipeline imported from Playground", {
-            description: `${imported.steps.length} steps loaded`,
+          toast.success(i18n.t("pipelines.editor.import.success"), {
+            description: i18n.t("pipelineEditor.hooks.stepsLoaded", { count: imported.steps.length }),
           });
 
           removeClientStorageItem(clientStorageKeys.playgroundPipelineExport);
         }
       } catch (e) {
         console.error("Failed to import from Playground:", e);
-        toast.error("Failed to import pipeline from Playground");
+        toast.error(i18n.t("pipelines.editor.import.failure"));
       }
 
       navigate(`/pipelines/${pipelineId}`, { replace: true });
@@ -115,7 +118,7 @@ export function usePipelineEditorRouteImports({
         const draft = buildPipelinePayloadImportDraft({
           name: result.name,
           pipeline: result.pipeline,
-          fallbackName: result.name || "Chain Snapshot",
+          fallbackName: result.name || i18n.t("pipelineEditor.hooks.chainSnapshotName"),
         });
         if (draft) {
           const imported = await importIntoEditor(draft);
@@ -127,7 +130,7 @@ export function usePipelineEditorRouteImports({
         }
       } catch (e) {
         console.error("Failed to load chain snapshot:", e);
-        toast.error("Failed to load chain snapshot");
+        toast.error(i18n.t("pipelineEditor.hooks.chainSnapshotFailed"));
       }
 
       navigate(`/pipelines/${pipelineId}`, { replace: true });
@@ -144,7 +147,7 @@ export function usePipelineEditorRouteImports({
         const draft = buildPipelinePayloadImportDraft({
           name: result.name,
           pipeline: result.pipeline,
-          fallbackName: result.name || "Run Pipeline",
+          fallbackName: result.name || i18n.t("pipelineEditor.hooks.runPipelineName"),
         });
         if (draft) {
           const imported = await importIntoEditor(draft);
@@ -156,7 +159,7 @@ export function usePipelineEditorRouteImports({
         }
       } catch (e) {
         console.error("Failed to load run pipeline:", e);
-        toast.error("Failed to load pipeline from run");
+        toast.error(i18n.t("pipelineEditor.hooks.runPipelineFailed"));
       }
 
       navigate(`/pipelines/${pipelineId}`, { replace: true });

@@ -12,6 +12,7 @@
  */
 
 import type { RefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { SpectraChartToolbar, type SpectraChartToolbarProps } from './SpectraChartToolbar';
 import { ChartLoadingOverlay } from './ChartLoadingOverlay';
@@ -41,6 +42,7 @@ export function SpectraChartView({
   surface,
   footer,
 }: SpectraChartViewProps) {
+  const { t } = useTranslation();
   return (
     <div className="h-full flex flex-col relative" ref={chartRef}>
       {/* Enhanced Toolbar with integrated settings */}
@@ -48,7 +50,7 @@ export function SpectraChartView({
 
       {/* Loading overlay */}
       {isLoading && (
-        <ChartLoadingOverlay label="Updating spectra" />
+        <ChartLoadingOverlay label={t('playground.charts.common.updatingSpectra')} />
       )}
 
       <SpectraRendererSurface {...surface} />

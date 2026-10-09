@@ -8,6 +8,7 @@ import {
 } from './FoldDistributionFooter';
 import { FoldDistributionHeaderControls } from './FoldDistributionHeaderControls';
 import type { FoldViewMode } from './FoldDistributionHeaderControls';
+import { useTranslation } from 'react-i18next';
 
 type FoldDistributionHeaderControlsProps = ComponentProps<typeof FoldDistributionHeaderControls>;
 
@@ -31,12 +32,14 @@ interface FoldDistributionChartViewProps {
 }
 
 export function FoldDistributionEmptyState() {
+  const { t } = useTranslation();
+
   return (
     <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
       <div className="text-center">
         <LayoutGrid className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
-        <p>No splitter in pipeline</p>
-        <p className="text-xs mt-1">Add a splitter to see fold distribution</p>
+        <p>{t('playground.charts.fold.empty.title')}</p>
+        <p className="text-xs mt-1">{t('playground.charts.fold.empty.hint')}</p>
       </div>
     </div>
   );

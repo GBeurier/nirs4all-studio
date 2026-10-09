@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Settings2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -91,6 +92,7 @@ export function SpectraSettingsPopup({
   yRange,
   filteredSamples,
 }: SpectraSettingsPopupProps) {
+  const { t } = useTranslation();
   const [internalOpen, setInternalOpen] = useState(false);
 
   const isOpen = externalOpen !== undefined ? externalOpen : internalOpen;
@@ -105,8 +107,9 @@ export function SpectraSettingsPopup({
       wavelengthUnitSuffix,
       yRange,
       metadataColumns,
+      t,
     }),
-    [config, metadataColumns, wavelengthRange, wavelengthUnitSuffix, yRange],
+    [config, metadataColumns, t, wavelengthRange, wavelengthUnitSuffix, yRange],
   );
 
   const handleWavelengthRangeChange = useCallback((range: [number, number]) => {
@@ -241,6 +244,7 @@ export function SpectraSettingsPopup({
                 variant={settingsReadModel.modifiedCount > 0 ? 'secondary' : 'ghost'}
                 size="sm"
                 className="h-7 px-2 gap-1"
+                aria-label={t('playground.charts.spectra.settings.tooltip')}
               >
                 <Settings2 className="w-3.5 h-3.5" />
                 {settingsReadModel.modifiedCount > 0 && (
@@ -251,7 +255,7 @@ export function SpectraSettingsPopup({
               </Button>
             </PopoverTrigger>
           </TooltipTrigger>
-          <TooltipContent>Focus & Filter settings</TooltipContent>
+          <TooltipContent>{t('playground.charts.spectra.settings.tooltip')}</TooltipContent>
         </Tooltip>
 
         <PopoverContent side="bottom" align="start" className="w-[340px] p-0" sideOffset={4}>

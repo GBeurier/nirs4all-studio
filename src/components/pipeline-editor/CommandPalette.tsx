@@ -18,6 +18,7 @@
  */
 
 import { useState, useMemo, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Command,
   CommandDialog,
@@ -36,7 +37,7 @@ import { useStepMetadataCatalog } from "./shared/stepMetadata";
 import { CommandPaletteItem } from "./CommandPaletteItem";
 import {
   buildCommandActions,
-  categoryLabels,
+  categoryLabelKeys,
   filterCommandActions,
   findSelectedStep,
   flattenSteps,
@@ -93,6 +94,7 @@ export function CommandPalette({
   onOpenShortcutsHelp,
   onFocusPanel,
 }: CommandPaletteProps) {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState("");
   const { getStepOptions } = useStepMetadataCatalog();
 
@@ -177,16 +179,16 @@ export function CommandPalette({
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <Command className="rounded-lg border shadow-md">
         <CommandInput
-          placeholder="Type a command or search..."
+          placeholder={t("pipelineEditor.commands.placeholder")}
           value={searchQuery}
           onValueChange={setSearchQuery}
         />
         <CommandList className="max-h-[400px]">
-          <CommandEmpty>No results found.</CommandEmpty>
+          <CommandEmpty>{t("pipelineEditor.commands.empty")}</CommandEmpty>
 
           {/* Selected Step Actions */}
           {groupedActions.step.length > 0 && (
-            <CommandGroup heading={categoryLabels.step}>
+            <CommandGroup heading={t(categoryLabelKeys.step)}>
               {groupedActions.step.map((action) => (
                 <CommandPaletteItem key={action.id} action={action} />
               ))}
@@ -197,7 +199,7 @@ export function CommandPalette({
           {groupedActions.pipeline.length > 0 && (
             <>
               {groupedActions.step.length > 0 && <CommandSeparator />}
-              <CommandGroup heading={categoryLabels.pipeline}>
+              <CommandGroup heading={t(categoryLabelKeys.pipeline)}>
                 {groupedActions.pipeline.map((action) => (
                   <CommandPaletteItem key={action.id} action={action} />
                 ))}
@@ -209,7 +211,7 @@ export function CommandPalette({
           {groupedActions.action.length > 0 && (
             <>
               <CommandSeparator />
-              <CommandGroup heading={categoryLabels.action}>
+              <CommandGroup heading={t(categoryLabelKeys.action)}>
                 {groupedActions.action.map((action) => (
                   <CommandPaletteItem key={action.id} action={action} />
                 ))}
@@ -221,13 +223,13 @@ export function CommandPalette({
           {groupedActions.navigation.length > 0 && (
             <>
               <CommandSeparator />
-              <CommandGroup heading={categoryLabels.navigation}>
+              <CommandGroup heading={t(categoryLabelKeys.navigation)}>
                 {groupedActions.navigation.slice(0, MAX_NAVIGATION_ITEMS).map((action) => (
                   <CommandPaletteItem key={action.id} action={action} />
                 ))}
                 {groupedActions.navigation.length > MAX_NAVIGATION_ITEMS && (
                   <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">
-                    + {groupedActions.navigation.length - MAX_NAVIGATION_ITEMS} more steps...
+                    {t("pipelineEditor.commands.moreSteps", { count: groupedActions.navigation.length - MAX_NAVIGATION_ITEMS })}
                   </div>
                 )}
               </CommandGroup>
@@ -238,7 +240,7 @@ export function CommandPalette({
           {groupedActions["add-step"].length > 0 && (
             <>
               <CommandSeparator />
-              <CommandGroup heading={categoryLabels["add-step"]}>
+              <CommandGroup heading={t(categoryLabelKeys["add-step"])}>
                 {groupedActions["add-step"].map((action) => (
                   <CommandPaletteItem key={action.id} action={action} />
                 ))}

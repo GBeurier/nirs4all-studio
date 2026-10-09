@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import type { StepColorScheme } from "./stepPresentation";
 import type { PipelineStep, StepOption, StepType } from "./types";
 
@@ -11,8 +12,10 @@ export interface SelectionConfig {
 }
 
 export interface SelectionModeLabel {
-  label: string;
-  description: string;
+  /** i18n key of the mode label. */
+  labelKey: string;
+  /** i18n key of the mode description. */
+  descriptionKey: string;
 }
 
 export interface StepOptionGroup {
@@ -51,16 +54,16 @@ export const OR_ADD_OPTION_TYPES = [
 
 export const selectionModeLabels: Record<SelectionMode, SelectionModeLabel> = {
   none: {
-    label: "Try Each",
-    description: "Test each option individually",
+    labelKey: "pipelineEditor.generator.or.modes.none.label",
+    descriptionKey: "pipelineEditor.generator.or.modes.none.description",
   },
   pick: {
-    label: "Pick",
-    description: "Choose options (combinations, order doesn't matter)",
+    labelKey: "pipelineEditor.generator.or.modes.pick.label",
+    descriptionKey: "pipelineEditor.generator.or.modes.pick.description",
   },
   arrange: {
-    label: "Arrange",
-    description: "Choose options (permutations, order matters)",
+    labelKey: "pipelineEditor.generator.or.modes.arrange.label",
+    descriptionKey: "pipelineEditor.generator.or.modes.arrange.description",
   },
 };
 
@@ -75,23 +78,23 @@ export function getOrBranchIndexLabel(index: number): string {
 }
 
 export function getOrBranchLabel(index: number): string {
-  return `Option ${index + 1}`;
+  return i18n.t("pipelineEditor.branch.defaultName.option", { n: index + 1 });
 }
 
 export function getOrBranchSummary(
   branch: readonly PipelineStep[] | undefined,
 ): string {
   if (!branch || branch.length === 0) {
-    return "Empty option";
+    return i18n.t("pipelineEditor.generator.or.emptyOption");
   }
 
   const [firstStep] = branch;
-  const firstName = firstStep?.name || "Unnamed step";
+  const firstName = firstStep?.name || i18n.t("pipelineEditor.generator.or.unnamedStep");
   if (branch.length === 1) {
     return firstName;
   }
 
-  return `${firstName} + ${branch.length - 1} more`;
+  return i18n.t("pipelineEditor.generator.or.moreSteps", { name: firstName, count: branch.length - 1 });
 }
 
 export function canRemoveOrBranch(branchCount: number): boolean {
@@ -112,8 +115,8 @@ export function getOrBranchReadModels(
   }));
 }
 
-export function getOrCountLabel(count: number, singular: string): string {
-  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+export function getOrCountLabel(count: number, unit: "variant" | "option" | "param"): string {
+  return i18n.t(`pipelineEditor.generator.or.count.${unit}`, { count });
 }
 
 export function getOrVariantLabel(variantCount: number): string {
@@ -132,11 +135,15 @@ export function getOrGeneratorSummary(
 }
 
 export function getOrSelectionActionLabel(mode: SelectionMode): string {
-  return mode === "pick" ? "Pick" : "Arrange";
+  return mode === "pick"
+    ? i18n.t("pipelineEditor.generator.or.modes.pick.label")
+    : i18n.t("pipelineEditor.generator.or.modes.arrange.label");
 }
 
 export function getOrSelectionKindLabel(mode: SelectionMode): string {
-  return mode === "pick" ? "(combinations)" : "(permutations)";
+  return mode === "pick"
+    ? i18n.t("pipelineEditor.generator.or.kind.combinations")
+    : i18n.t("pipelineEditor.generator.or.kind.permutations");
 }
 
 export function getOrOptionParameterCount(option: PipelineStep): number {
@@ -147,7 +154,9 @@ export function getOrOptionParameterSummary(
   option: PipelineStep,
 ): string | undefined {
   const parameterCount = getOrOptionParameterCount(option);
-  return parameterCount > 0 ? `(${parameterCount} params)` : undefined;
+  return parameterCount > 0
+    ? i18n.t("pipelineEditor.generator.or.paramsInline", { count: parameterCount })
+    : undefined;
 }
 
 export function isOrOptionDisabled(option: PipelineStep): boolean {
@@ -174,10 +183,12 @@ export function getOrOptionState(
     branchLabel: getOrBranchLabel(index),
     summary: getOrOptionSummary(option),
     parameterCount,
-    parameterSummary: parameterCount > 0 ? `(${parameterCount} params)` : undefined,
+    parameterSummary: getOrOptionParameterSummary(option),
     hasParameters: parameterCount > 0,
     shouldShowParameters: isExpanded && parameterCount > 0,
-    expandToggleLabel: isExpanded ? "Collapse" : "Expand",
+    expandToggleLabel: isExpanded
+      ? i18n.t("pipelineEditor.generator.or.collapse")
+      : i18n.t("pipelineEditor.generator.or.expand"),
     isDisabled: isOrOptionDisabled(option),
   };
 }

@@ -6,6 +6,7 @@
  */
 
 import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useHoveredSample, useSelection } from '@/context/useSelection';
 import {
   getCategoricalColor,
@@ -44,6 +45,7 @@ import {
 } from './types';
 
 export function useHistogramData(props: YHistogramProps) {
+  const { t: translate } = useTranslation();
   const {
     y,
     processedY,
@@ -255,7 +257,11 @@ export function useHistogramData(props: YHistogramProps) {
     }
   }, [config.yAxisType, stats, histogramData]);
 
-  const yAxisLabel = config.yAxisType === 'frequency' ? '%' : config.yAxisType === 'density' ? 'Density' : 'Count';
+  const yAxisLabel = config.yAxisType === 'frequency'
+    ? '%'
+    : config.yAxisType === 'density'
+      ? translate('playground.charts.histogram.yAxis.density')
+      : translate('playground.charts.histogram.yAxis.count');
 
   const {
     lastMouseEventRef,

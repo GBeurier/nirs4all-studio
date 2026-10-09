@@ -1,5 +1,6 @@
 import type { ComponentPropsWithoutRef } from "react";
 import { useDroppable } from "@dnd-kit/core";
+import { useTranslation } from "react-i18next";
 import {
   GripVertical,
   Copy,
@@ -22,7 +23,7 @@ import {
   getPipelineNodeIcon,
   type PipelineNodePresentation,
 } from "./PipelineNodePresentation";
-import { getStepColor } from "./stepPresentation";
+import { getStepColor, getStepTypeLabels } from "./stepPresentation";
 import { type PipelineStep } from "./types";
 
 interface PipelineNodeContentProps {
@@ -52,6 +53,7 @@ export function PipelineNodeContent({
   onAddBranch,
   onRemoveBranch,
 }: PipelineNodeContentProps) {
+  const { t } = useTranslation();
   const {
     Icon,
     colors,
@@ -74,7 +76,7 @@ export function PipelineNodeContent({
         <button
           {...dragHandleProps}
           className="cursor-grab active:cursor-grabbing p-1 -m-0.5 rounded hover:bg-muted/80 transition-colors touch-none focus:outline-none focus:ring-2 focus:ring-primary/50 shrink-0"
-          aria-label="Drag to reorder"
+          aria-label={t("pipelineEditor.tree.dragToReorder")}
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </button>
@@ -87,7 +89,7 @@ export function PipelineNodeContent({
           <div className="flex items-center gap-1.5">
             <span className="font-semibold text-sm text-foreground truncate">{step.name}</span>
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 capitalize shrink-0">
-              {step.type}
+              {getStepTypeLabels()[step.type] ?? step.type}
             </Badge>
             {hasSweeps && (
               <Tooltip>
@@ -99,9 +101,9 @@ export function PipelineNodeContent({
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-[250px]">
                   <div className="text-xs">
-                    <div className="font-semibold mb-1">Parameter Sweeps ({sweepCount})</div>
+                    <div className="font-semibold mb-1">{t("pipelineEditor.tree.parameterSweeps", { count: sweepCount })}</div>
                     <pre className="text-muted-foreground whitespace-pre-wrap">{sweepSummary}</pre>
-                    <div className="mt-1 text-orange-400">{totalVariants} total variants</div>
+                    <div className="mt-1 text-orange-400">{t("pipelineEditor.tree.totalVariants", { count: totalVariants })}</div>
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -111,16 +113,16 @@ export function PipelineNodeContent({
                 <TooltipTrigger asChild>
                   <Badge className="text-[10px] px-1.5 py-0 bg-purple-500 hover:bg-purple-500 shrink-0 cursor-help">
                     <Sliders className="h-2.5 w-2.5 mr-0.5" />
-                    Tune
+                    {t("pipelineEditor.tree.tune")}
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-[280px]">
                   <div className="text-xs">
-                    <div className="font-semibold mb-1">Finetuning Enabled</div>
+                    <div className="font-semibold mb-1">{t("pipelineEditor.tree.finetuningEnabled")}</div>
                     <div className="text-muted-foreground space-y-0.5">
-                      <div>Trials: {step.finetuneConfig.n_trials}</div>
-                      <div>Approach: {step.finetuneConfig.approach}</div>
-                      <div>Params: {step.finetuneConfig.model_params.map((param) => param.name).join(", ") || "none"}</div>
+                      <div>{t("pipelineEditor.tree.trials", { count: step.finetuneConfig.n_trials })}</div>
+                      <div>{t("pipelineEditor.tree.approach", { value: step.finetuneConfig.approach })}</div>
+                      <div>{t("pipelineEditor.tree.paramsList", { value: step.finetuneConfig.model_params.map((param) => param.name).join(", ") || t("pipelineEditor.tree.none") })}</div>
                     </div>
                   </div>
                 </TooltipContent>
@@ -129,7 +131,7 @@ export function PipelineNodeContent({
             {step.type === "augmentation" && step.branches?.[0] && (
               <Badge className="text-[10px] px-1.5 py-0 bg-indigo-500 hover:bg-indigo-500 shrink-0">
                 <Layers className="h-2.5 w-2.5 mr-0.5" />
-                {step.branches[0].length} transforms
+                {t("pipelineEditor.tree.transformsBadge", { count: step.branches[0].length })}
               </Badge>
             )}
             {step.generatorOptions && (step.generatorOptions.pick || step.generatorOptions.count) && (
@@ -142,8 +144,8 @@ export function PipelineNodeContent({
                 </TooltipTrigger>
                 <TooltipContent side="top">
                   <div className="text-xs">
-                    Generator: pick {JSON.stringify(step.generatorOptions.pick)} options
-                    {step.generatorOptions.count && `, generate ${step.generatorOptions.count} variants`}
+                    {t("pipelineEditor.tree.generatorPick", { pick: JSON.stringify(step.generatorOptions.pick) })}
+                    {step.generatorOptions.count && t("pipelineEditor.tree.generatorCount", { count: step.generatorOptions.count })}
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -153,7 +155,7 @@ export function PipelineNodeContent({
             <p className="text-xs text-muted-foreground font-mono overflow-hidden text-ellipsis whitespace-nowrap">
               {displayParams && <span>{displayParams}</span>}
               {displayParams && sweepCount > 0 && <span className="mx-1">•</span>}
-              <span className="text-orange-500">{sweepCount} sweep{sweepCount !== 1 ? "s" : ""}</span>
+              <span className="text-orange-500">{t("pipelineEditor.tree.sweepsInline", { count: sweepCount })}</span>
             </p>
           ) : (
             displayParams && (
@@ -164,7 +166,7 @@ export function PipelineNodeContent({
           )}
           {step.customName && (
             <p className="text-xs text-emerald-500 font-medium">
-              as "{step.customName}"
+              {t("pipelineEditor.tree.customNameAs", { name: step.customName })}
             </p>
           )}
         </div>
@@ -175,6 +177,7 @@ export function PipelineNodeContent({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
+              aria-label={t("pipelineEditor.tree.duplicate")}
               onClick={(event) => {
                 event.stopPropagation();
                 onDuplicate();
@@ -186,6 +189,7 @@ export function PipelineNodeContent({
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+              aria-label={t("common.delete")}
               onClick={(event) => {
                 event.stopPropagation();
                 onRemove();
@@ -204,7 +208,7 @@ export function PipelineNodeContent({
           depth={depth}
           onAddBranch={onAddBranch}
           onRemoveBranch={onRemoveBranch}
-          branchLabel="Branch"
+          branchLabel={t("pipelineEditor.tree.branchKinds.branch")}
         />
       )}
 
@@ -223,7 +227,7 @@ export function PipelineNodeContent({
       {step.type === "augmentation" && step.branches?.[0] && step.branches[0].length > 0 && (
         <NestedStepsDisplay
           steps={step.branches[0]}
-          label="Transformers"
+          label={t("pipelineEditor.tree.transformers")}
           colorClass="text-indigo-500"
           borderClass="border-indigo-500/30"
         />
@@ -232,7 +236,7 @@ export function PipelineNodeContent({
       {step.type === "filter" && step.branches?.[0] && step.branches[0].length > 0 && (
         <NestedStepsDisplay
           steps={step.branches[0]}
-          label="Filters"
+          label={t("pipelineEditor.tree.filtersLabel")}
           colorClass="text-rose-500"
           borderClass="border-rose-500/30"
         />
@@ -261,9 +265,11 @@ function BranchesContainer({
   depth,
   onAddBranch,
   onRemoveBranch,
-  branchLabel = "Branch",
+  branchLabel,
   isGenerator = false,
 }: BranchesContainerProps) {
+  const { t } = useTranslation();
+  const resolvedBranchLabel = branchLabel ?? t("pipelineEditor.tree.branchKinds.branch");
   if (!step.branches) return null;
 
   const borderColor = isGenerator ? "border-orange-500/30" : "border-muted-foreground/30";
@@ -280,7 +286,7 @@ function BranchesContainer({
             depth={depth + 1}
             onRemoveBranch={onRemoveBranch}
             canRemove={step.branches!.length > 2}
-            branchLabel={branchLabel}
+            branchLabel={resolvedBranchLabel}
             isGenerator={isGenerator}
           />
         ))}
@@ -291,7 +297,7 @@ function BranchesContainer({
             className={`w-full h-8 rounded-lg border-2 border-dashed hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center justify-center gap-2 text-muted-foreground hover:text-primary text-xs ${isGenerator ? "border-orange-500/30" : "border-muted-foreground/30"}`}
           >
             <Plus className="h-3.5 w-3.5" />
-            <span className="font-medium">Add {branchLabel}</span>
+            <span className="font-medium">{t("pipelineEditor.tree.addBranchKind", { label: resolvedBranchLabel })}</span>
           </button>
         )}
       </div>
@@ -317,9 +323,11 @@ function BranchDropZone({
   depth,
   onRemoveBranch,
   canRemove,
-  branchLabel = "Branch",
+  branchLabel,
   isGenerator = false,
 }: BranchDropZoneProps) {
+  const { t } = useTranslation();
+  const resolvedBranchLabel = branchLabel ?? t("pipelineEditor.tree.branchKinds.branch");
   const branchPath = [...parentPath, "branch", String(branchIndex)];
 
   const { setNodeRef, isOver } = useDroppable({
@@ -351,13 +359,14 @@ function BranchDropZone({
       <div className="flex items-center justify-between mb-1.5">
         <span className={`text-xs font-medium flex items-center gap-1 ${isGenerator ? "text-orange-500" : "text-muted-foreground"}`}>
           <IconComponent className="h-3 w-3" />
-          {branchLabel} {branchIndex + 1}
+          {t("pipelineEditor.tree.branchTitle", { label: resolvedBranchLabel, n: branchIndex + 1 })}
         </span>
         {canRemove && onRemoveBranch && (
           <Button
             variant="ghost"
             size="icon"
             className="h-5 w-5 text-muted-foreground hover:text-destructive"
+            aria-label={t("pipelineEditor.tree.removeBranchNamed", { label: resolvedBranchLabel, n: branchIndex + 1 })}
             onClick={() => onRemoveBranch(branchIndex)}
           >
             <Trash2 className="h-3 w-3" />
@@ -367,7 +376,7 @@ function BranchDropZone({
 
       {branch.length === 0 ? (
         <div className="h-8 flex items-center justify-center text-xs text-muted-foreground">
-          Drop steps here
+          {t("pipelineEditor.tree.dropStepsHereShort")}
         </div>
       ) : (
         <div className="space-y-1">

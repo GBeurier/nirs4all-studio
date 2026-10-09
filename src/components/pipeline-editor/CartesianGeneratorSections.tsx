@@ -7,6 +7,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ArrowRight,
   ChevronDown,
@@ -53,6 +54,7 @@ export function StageOptionChip({
   canRemove: boolean;
   onRemove?: () => void;
 }) {
+  const { t } = useTranslation();
   const colors = getStepColor(option);
   return (
     <div
@@ -69,6 +71,7 @@ export function StageOptionChip({
           size="sm"
           className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={onRemove}
+          aria-label={t("pipelineEditor.generator.cartesian.removeOption", { name: option.name })}
         >
           <X className="h-3 w-3" />
         </Button>
@@ -83,6 +86,7 @@ export function StageOptionPicker({
 }: {
   onAddOption: (type: StepType, option: StepOption) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { getStepOptions } = useStepMetadataCatalog();
@@ -101,12 +105,13 @@ export function StageOptionPicker({
           className="h-7 px-2 border-dashed border-cyan-500/50 text-cyan-500 hover:bg-cyan-500/10"
         >
           <Plus className="h-3.5 w-3.5 mr-1" />
-          Add
+          {t("common.add")}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-2 bg-popover">
         <Input
-          placeholder="Search..."
+          placeholder={t("pipelineEditor.generator.cartesian.search")}
+          aria-label={t("pipelineEditor.generator.cartesian.search")}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="mb-2 h-7 text-xs"
@@ -114,8 +119,8 @@ export function StageOptionPicker({
         <ScrollArea className="h-48">
           {groups.map(({ type, options }) => (
             <div key={type} className="mb-2">
-              <div className="text-xs font-medium text-muted-foreground px-2 py-1 capitalize">
-                {type}
+              <div className="text-xs font-medium text-muted-foreground px-2 py-1">
+                {t(`pipelineEditor.generator.cartesian.stepTypes.${type}`)}
               </div>
               {options.slice(0, CARTESIAN_PICKER_OPTIONS_PER_TYPE).map((opt) => (
                 <Button
@@ -159,6 +164,7 @@ export function CartesianContainerHeader({
   baseCombinations: number;
   totalVariants: number;
 }) {
+  const { t } = useTranslation();
   const summary = getCartesianSummary(stageCount, baseCombinations, totalVariants);
 
   return (
@@ -169,7 +175,7 @@ export function CartesianContainerHeader({
         </div>
         <div>
           <h4 className="font-medium text-sm text-cyan-600">
-            Cartesian (_cartesian_)
+            {t("pipelineEditor.generator.cartesian.title")}
           </h4>
           <p className="text-xs text-muted-foreground">
             {summary.stages} - {summary.baseCombinations}
@@ -185,7 +191,10 @@ export function CartesianContainerHeader({
           getCartesianVariantBadgeClassName(totalVariants),
         )}
       >
-        {totalVariants.toLocaleString()} pipelines
+        {t("pipelineEditor.generator.cartesian.pipelinesBadge", {
+          count: totalVariants,
+          formatted: totalVariants.toLocaleString(),
+        })}
       </Badge>
     </div>
   );
@@ -199,12 +208,13 @@ export function CartesianCombinationPreview({
   examples: string[][];
   baseCombinations: number;
 }) {
+  const { t } = useTranslation();
   return (
     <Collapsible>
       <CollapsibleTrigger asChild>
         <Button variant="ghost" size="sm" className="w-full text-xs">
           <Grid className="h-3.5 w-3.5 mr-1" />
-          Preview Combinations
+          {t("pipelineEditor.generator.cartesian.previewCombinations")}
           <ChevronDown className="h-3.5 w-3.5 ml-1" />
         </Button>
       </CollapsibleTrigger>
@@ -230,8 +240,9 @@ export function CartesianCombinationPreview({
           ))}
           {hasMoreCombinations(baseCombinations) && (
             <p className="text-xs text-muted-foreground pt-1">
-              ...and {getRemainingCombinationsCount(baseCombinations)} more
-              combinations
+              {t("pipelineEditor.generator.cartesian.moreCombinations", {
+                count: getRemainingCombinationsCount(baseCombinations),
+              })}
             </p>
           )}
         </div>
@@ -242,13 +253,11 @@ export function CartesianCombinationPreview({
 
 /** Static explanatory note at the bottom of the generator container. */
 export function CartesianInfoNote() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-2 p-2 rounded-lg bg-background/50 text-xs text-muted-foreground">
       <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-      <span>
-        Generates all combinations across stages. Each stage can have multiple
-        options; one from each stage is selected per pipeline variant.
-      </span>
+      <span>{t("pipelineEditor.generator.cartesian.info")}</span>
     </div>
   );
 }

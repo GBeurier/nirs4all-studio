@@ -12,6 +12,7 @@
  */
 
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Repeat,
   Sparkles,
@@ -74,6 +75,7 @@ export function ExecutionPreviewPanel({
   isLoading,
   className = "",
 }: ExecutionPreviewPanelProps) {
+  const { t } = useTranslation();
   const breakdown = useMemo(
     () => analyzeExecution(steps, variantCount),
     [steps, variantCount]
@@ -99,13 +101,13 @@ export function ExecutionPreviewPanel({
         <div className="p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
           <div className="flex items-center gap-2 mb-1">
             <Repeat className="h-4 w-4 text-orange-500" />
-            <span className="text-xs font-medium text-orange-500">Sweeps</span>
+            <span className="text-xs font-medium text-orange-500">{t("pipelineEditor.preview.sweeps")}</span>
           </div>
           <div className="text-xl font-bold text-foreground">
             {formatVariantCount(breakdown.sweepVariants)}
           </div>
           <p className="text-[10px] text-muted-foreground">
-            pipeline variants
+            {t("pipelineEditor.preview.pipelineVariants")}
           </p>
         </div>
 
@@ -113,13 +115,13 @@ export function ExecutionPreviewPanel({
         <div className="p-3 rounded-lg bg-purple-500/5 border border-purple-500/20">
           <div className="flex items-center gap-2 mb-1">
             <Sparkles className="h-4 w-4 text-purple-500" />
-            <span className="text-xs font-medium text-purple-500">Finetuning</span>
+            <span className="text-xs font-medium text-purple-500">{t("pipelineEditor.preview.finetuning")}</span>
           </div>
           <div className="text-xl font-bold text-foreground">
             {breakdown.finetuningTrials || "—"}
           </div>
           <p className="text-[10px] text-muted-foreground">
-            {breakdown.modelsWithFinetuning > 0 ? `${breakdown.modelsWithFinetuning} model${breakdown.modelsWithFinetuning > 1 ? "s" : ""}` : "disabled"}
+            {breakdown.modelsWithFinetuning > 0 ? t("pipelineEditor.preview.modelsCount", { count: breakdown.modelsWithFinetuning }) : t("pipelineEditor.preview.disabled")}
           </p>
         </div>
 
@@ -132,7 +134,7 @@ export function ExecutionPreviewPanel({
         }`}>
           <div className="flex items-center gap-2 mb-1">
             <Calculator className={`h-4 w-4 ${severityColor}`} />
-            <span className={`text-xs font-medium ${severityColor}`}>Total Fits</span>
+            <span className={`text-xs font-medium ${severityColor}`}>{t("pipelineEditor.preview.totalFits")}</span>
           </div>
           <div className="text-xl font-bold text-foreground">
             {formatVariantCount(breakdown.totalFits)}
@@ -146,7 +148,7 @@ export function ExecutionPreviewPanel({
       {/* Progress Indicator */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Execution Complexity</span>
+          <span className="text-muted-foreground">{t("pipelineEditor.preview.complexity")}</span>
           <span className={`font-medium ${severityColor}`}>
             {getComplexityLabel(severity)}
           </span>
@@ -166,7 +168,7 @@ export function ExecutionPreviewPanel({
       <Collapsible>
         <CollapsibleTrigger asChild>
           <Button variant="ghost" size="sm" className="w-full justify-between h-8 px-2">
-            <span className="text-xs text-muted-foreground">Calculation Details</span>
+            <span className="text-xs text-muted-foreground">{t("pipelineEditor.preview.calculationDetails")}</span>
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
           </Button>
         </CollapsibleTrigger>
@@ -179,7 +181,7 @@ export function ExecutionPreviewPanel({
                     {breakdown.sweepVariants}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>Sweep Variants</TooltipContent>
+                <TooltipContent>{t("pipelineEditor.preview.sweepVariants")}</TooltipContent>
               </Tooltip>
               <span className="text-muted-foreground">×</span>
               <Tooltip>
@@ -188,7 +190,7 @@ export function ExecutionPreviewPanel({
                     {Math.max(1, breakdown.finetuningTrials)}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>Finetuning Trials (or 1 if disabled)</TooltipContent>
+                <TooltipContent>{t("pipelineEditor.preview.finetuningTrialsTooltip")}</TooltipContent>
               </Tooltip>
               <span className="text-muted-foreground">×</span>
               <Tooltip>
@@ -197,7 +199,7 @@ export function ExecutionPreviewPanel({
                     {breakdown.cvFolds}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>CV Folds</TooltipContent>
+                <TooltipContent>{t("pipelineEditor.preview.cvFoldsTooltip")}</TooltipContent>
               </Tooltip>
               <span className="text-muted-foreground">=</span>
               <span className={`px-2 py-1 rounded font-bold ${
@@ -210,7 +212,7 @@ export function ExecutionPreviewPanel({
               </span>
             </div>
             <p className="text-[10px] text-muted-foreground text-center">
-              sweep variants × trials × cv folds = total model fits
+              {t("pipelineEditor.preview.formula")}
             </p>
           </div>
         </CollapsibleContent>
@@ -234,13 +236,13 @@ export function ExecutionPreviewPanel({
                   severity === "extreme" ? "text-red-500" : "text-amber-500"
                 }`}>
                   {severity === "extreme"
-                    ? "Very Large Execution"
-                    : "Large Execution"}
+                    ? t("pipelineEditor.preview.veryLargeExecution")
+                    : t("pipelineEditor.preview.largeExecution")}
                 </p>
                 <p className="text-muted-foreground mt-0.5">
                   {severity === "extreme"
-                    ? "This configuration will run a very large number of model fits. Consider reducing search space."
-                    : "This may take significant time. Review your configuration."}
+                    ? t("pipelineEditor.preview.veryLargeExecutionHint")
+                    : t("pipelineEditor.preview.largeExecutionHint")}
                 </p>
               </div>
             </div>
@@ -254,7 +256,7 @@ export function ExecutionPreviewPanel({
                   <span className="flex items-center gap-1.5 text-xs">
                     <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
                     <span className="text-amber-500 font-medium">
-                      {suggestions.length} Optimization Suggestion{suggestions.length > 1 ? "s" : ""}
+                      {t("pipelineEditor.preview.suggestions", { count: suggestions.length })}
                     </span>
                   </span>
                   <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
@@ -283,7 +285,7 @@ export function ExecutionPreviewPanel({
         <Collapsible>
           <CollapsibleTrigger asChild>
             <Button variant="ghost" size="sm" className="w-full justify-between h-8 px-2">
-              <span className="text-xs text-muted-foreground">Variant Breakdown by Step</span>
+              <span className="text-xs text-muted-foreground">{t("pipelineEditor.preview.variantBreakdown")}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
           </CollapsibleTrigger>
@@ -316,6 +318,7 @@ export function ExecutionPreviewCompact({
   steps: PipelineStep[];
   variantCount: number;
 }) {
+  const { t } = useTranslation();
   const breakdown = useMemo(
     () => analyzeExecution(steps, variantCount),
     [steps, variantCount]
@@ -340,13 +343,13 @@ export function ExecutionPreviewCompact({
             className={`gap-1 cursor-pointer transition-colors hover:bg-accent ${severityClass}`}
           >
             <Box className="h-3 w-3" />
-            <span>{formatVariantCount(breakdown.totalModels)} model{breakdown.totalModels !== 1 ? "s" : ""} trained</span>
+            <span>{t("pipelineEditor.preview.modelsTrained", { count: breakdown.totalModels, formatted: formatVariantCount(breakdown.totalModels) })}</span>
           </Badge>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-80 bg-popover">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium">Training Summary</h4>
+              <h4 className="text-sm font-medium">{t("pipelineEditor.preview.trainingSummary")}</h4>
               <span className={`text-lg font-bold ${getSeverityColor(severity)}`}>
                 {breakdown.totalModels.toLocaleString()}
               </span>
@@ -357,20 +360,20 @@ export function ExecutionPreviewCompact({
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground flex items-center gap-1.5">
                     <Repeat className="h-3 w-3" />
-                    Pipeline configurations
+                    {t("pipelineEditor.preview.pipelineConfigurations")}
                   </span>
                   <span className="font-mono">{breakdown.totalPipelines.toLocaleString()}</span>
                 </div>
               )}
               {breakdown.sweepVariants > 1 && (
                 <div className="flex items-center justify-between text-xs pl-4">
-                  <span className="text-muted-foreground">Sweep variants</span>
+                  <span className="text-muted-foreground">{t("pipelineEditor.preview.sweepVariantsLabel")}</span>
                   <span className="font-mono">{breakdown.sweepVariants.toLocaleString()}</span>
                 </div>
               )}
               {breakdown.generatorVariants > 1 && (
                 <div className="flex items-center justify-between text-xs pl-4">
-                  <span className="text-muted-foreground">Generator variants</span>
+                  <span className="text-muted-foreground">{t("pipelineEditor.preview.generatorVariants")}</span>
                   <span className="font-mono">{breakdown.generatorVariants.toLocaleString()}</span>
                 </div>
               )}
@@ -378,7 +381,7 @@ export function ExecutionPreviewCompact({
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground flex items-center gap-1.5">
                     <Sparkles className="h-3 w-3 text-purple-500" />
-                    Finetuning trials
+                    {t("pipelineEditor.preview.finetuningTrials")}
                   </span>
                   <span className="font-mono">{breakdown.finetuningTrials.toLocaleString()}</span>
                 </div>
@@ -386,14 +389,14 @@ export function ExecutionPreviewCompact({
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground flex items-center gap-1.5">
                   <Layers className="h-3 w-3" />
-                  CV folds
+                  {t("pipelineEditor.preview.cvFolds")}
                 </span>
                 <span className="font-mono">{breakdown.cvFolds}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground flex items-center gap-1.5">
                   <Calculator className="h-3 w-3" />
-                  CV fits
+                  {t("pipelineEditor.preview.cvFits")}
                 </span>
                 <span className="font-mono">{breakdown.totalFits.toLocaleString()}</span>
               </div>
@@ -401,7 +404,7 @@ export function ExecutionPreviewCompact({
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground flex items-center gap-1.5">
                     <RefreshCw className="h-3 w-3 text-teal-500" />
-                    Refit models
+                    {t("pipelineEditor.preview.refitModels")}
                   </span>
                   <span className="font-mono">+{breakdown.refitModels.toLocaleString()}</span>
                 </div>
@@ -413,7 +416,7 @@ export function ExecutionPreviewCompact({
                 {buildExecutionFormula(breakdown)} = {breakdown.totalModels.toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">
-                Total model training operations when you run this pipeline.
+                {t("pipelineEditor.preview.totalOperations")}
               </p>
             </div>
           </div>

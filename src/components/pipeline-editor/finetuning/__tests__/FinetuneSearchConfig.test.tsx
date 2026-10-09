@@ -7,6 +7,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import "@/lib/i18n";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { FinetuneConfig } from "../../types";
 import { FinetuneSearchConfig } from "../FinetuneSearchConfig";

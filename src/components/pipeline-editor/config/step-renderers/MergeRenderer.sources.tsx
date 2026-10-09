@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useEffect, useState, type ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import type { MergeConfig, MergePredictionSource } from "../../types";
 import {
   clearStructuredSources,
@@ -74,10 +75,19 @@ function SourceToggleCard({
   return (
     <div className="rounded-lg border overflow-hidden">
       <div
-        className={`flex items-center justify-between px-4 py-3 cursor-pointer transition-colors ${
+        role="switch"
+        aria-checked={enabled}
+        tabIndex={0}
+        className={`flex items-center justify-between px-4 py-3 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
           enabled ? classes.activeHeader : classes.inactiveHeader
         }`}
         onClick={onToggle}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onToggle();
+          }
+        }}
       >
         <div className="flex items-center gap-3">
           <div
@@ -115,6 +125,7 @@ function SourceToggleCard({
 }
 
 export function SourcesTab({ mergeConfig, onConfigChange }: SourcesTabProps) {
+  const { t } = useTranslation();
   const {
     predictionsEnabled,
     featuresEnabled,
@@ -154,11 +165,11 @@ export function SourcesTab({ mergeConfig, onConfigChange }: SourcesTabProps) {
       <SourceToggleCard
         enabled={predictionsEnabled}
         icon={GitBranch}
-        title="Predictions"
-        description="Merge model predictions from branches"
+        title={t("pipelineEditor.config.merge.sources.predictions")}
+        description={t("pipelineEditor.config.merge.sources.predictionsHint")}
         badge={
           predictionCount > 0
-            ? `${predictionCount} source${predictionCount !== 1 ? "s" : ""}`
+            ? t("pipelineEditor.config.merge.sources.sourceCount", { count: predictionCount })
             : undefined
         }
         tone="blue"
@@ -177,11 +188,11 @@ export function SourcesTab({ mergeConfig, onConfigChange }: SourcesTabProps) {
       <SourceToggleCard
         enabled={featuresEnabled}
         icon={Layers}
-        title="Features"
-        description="Merge transformed features from branches"
+        title={t("pipelineEditor.config.merge.sources.features")}
+        description={t("pipelineEditor.config.merge.sources.featuresHint")}
         badge={
           featureCount > 0
-            ? `${featureCount} branch${featureCount !== 1 ? "es" : ""}`
+            ? t("pipelineEditor.config.merge.sources.branchCount", { count: featureCount })
             : undefined
         }
         tone="green"
@@ -226,14 +237,17 @@ function StructuredSourcesSection({
   onBlur,
   onConfigChange,
 }: StructuredSourcesSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2 rounded-lg border p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <Label className="text-sm font-medium">Structured Source Payload</Label>
+          <Label className="text-sm font-medium">{t("pipelineEditor.config.merge.sources.structuredTitle")}</Label>
           <p className="text-xs text-muted-foreground mt-1">
-            Use this for canonical merge source payloads such as{" "}
-            <code>"concat"</code> or nested JSON objects.
+            <Trans
+              i18nKey="pipelineEditor.config.merge.sources.structuredHint"
+              components={{ code: <code /> }}
+            />
           </p>
         </div>
         {mergeConfig.sources !== undefined && (
@@ -243,7 +257,7 @@ function StructuredSourcesSection({
             className="h-7 px-2 text-xs"
             onClick={() => onConfigChange(clearStructuredSources(mergeConfig))}
           >
-            Clear
+            {t("pipelineEditor.config.merge.sources.clear")}
           </Button>
         )}
       </div>
@@ -268,13 +282,14 @@ function OutputOptionsSection({
   mergeConfig,
   onConfigChange,
 }: OutputOptionsSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
-      <Label className="text-sm font-medium">Output Options</Label>
+      <Label className="text-sm font-medium">{t("pipelineEditor.config.merge.sources.outputOptions")}</Label>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Output As</Label>
+          <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.merge.sources.outputAs")}</Label>
           <Select
             value={mergeConfig.output_as ?? "predictions"}
             onValueChange={(value) =>
@@ -288,14 +303,14 @@ function OutputOptionsSection({
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover">
-              <SelectItem value="predictions">Predictions</SelectItem>
-              <SelectItem value="features">Features</SelectItem>
+              <SelectItem value="predictions">{t("pipelineEditor.config.merge.sources.predictions")}</SelectItem>
+              <SelectItem value="features">{t("pipelineEditor.config.merge.sources.features")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">On Missing</Label>
+          <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.merge.sources.onMissing")}</Label>
           <Select
             value={mergeConfig.on_missing ?? "warn"}
             onValueChange={(value) =>
@@ -309,15 +324,15 @@ function OutputOptionsSection({
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover">
-              <SelectItem value="warn">Warn</SelectItem>
-              <SelectItem value="error">Error</SelectItem>
-              <SelectItem value="drop">Drop</SelectItem>
+              <SelectItem value="warn">{t("pipelineEditor.config.merge.sources.missingWarn")}</SelectItem>
+              <SelectItem value="error">{t("pipelineEditor.config.merge.sources.missingError")}</SelectItem>
+              <SelectItem value="drop">{t("pipelineEditor.config.merge.sources.missingDrop")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        How to handle missing data from branches
+        {t("pipelineEditor.config.merge.sources.onMissingHint")}
       </p>
     </div>
   );
@@ -332,6 +347,7 @@ function PredictionSourcesSection({
   predictions,
   onChange,
 }: PredictionSourcesSectionProps) {
+  const { t } = useTranslation();
   const addSource = () => {
     onChange([...predictions, createDefaultPredictionSource()]);
   };
@@ -349,25 +365,26 @@ function PredictionSourcesSection({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Prediction Sources</Label>
+        <Label className="text-sm font-medium">{t("pipelineEditor.config.merge.sources.predictionSources")}</Label>
         <Button
           variant="outline"
           size="sm"
           className="h-7 text-xs"
           onClick={addSource}
         >
-          + Add Source
+          {t("pipelineEditor.config.merge.sources.addSource")}
         </Button>
       </div>
 
       {predictions.map((source, idx) => (
         <div key={idx} className="p-3 rounded-lg bg-muted/50 border space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Source {idx + 1}</span>
+            <span className="text-sm font-medium">{t("pipelineEditor.config.merge.sources.sourceN", { index: idx + 1 })}</span>
             <Button
               variant="ghost"
               size="icon"
               className="h-6 w-6"
+              aria-label={t("pipelineEditor.config.merge.sources.removeSource", { index: idx + 1 })}
               onClick={() => removeSource(idx)}
             >
               <X className="h-3 w-3" />
@@ -377,7 +394,7 @@ function PredictionSourcesSection({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">
-                Branch Index
+                {t("pipelineEditor.config.merge.sources.branchIndex")}
               </Label>
               <Input
                 type="number"
@@ -393,7 +410,7 @@ function PredictionSourcesSection({
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Selection</Label>
+              <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.merge.sources.selection")}</Label>
               <Select
                 value={
                   typeof source.select === "object" ? "top_k" : source.select
@@ -411,9 +428,9 @@ function PredictionSourcesSection({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
-                  <SelectItem value="best">Best</SelectItem>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="top_k">Top K</SelectItem>
+                  <SelectItem value="best">{t("pipelineEditor.config.merge.sources.selectBest")}</SelectItem>
+                  <SelectItem value="all">{t("pipelineEditor.config.merge.sources.selectAll")}</SelectItem>
+                  <SelectItem value="top_k">{t("pipelineEditor.config.merge.sources.selectTopK")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -422,7 +439,7 @@ function PredictionSourcesSection({
           {typeof source.select === "object" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Top K</Label>
+                <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.merge.sources.selectTopK")}</Label>
                 <Input
                   type="number"
                   min={1}
@@ -437,7 +454,7 @@ function PredictionSourcesSection({
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Metric</Label>
+                <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.merge.sources.metric")}</Label>
                 <Select
                   value={source.metric ?? "rmse"}
                   onValueChange={(value) =>
@@ -463,7 +480,7 @@ function PredictionSourcesSection({
 
       {predictions.length === 0 && (
         <div className="text-center py-4 text-sm text-muted-foreground">
-          No prediction sources configured. Click "Add Source" to add one.
+          {t("pipelineEditor.config.merge.sources.noPredictionSources")}
         </div>
       )}
     </div>
@@ -479,6 +496,7 @@ function FeatureSourcesSection({
   features,
   onChange,
 }: FeatureSourcesSectionProps) {
+  const { t } = useTranslation();
   const addBranch = () => {
     const nextIdx = features.length > 0 ? Math.max(...features) + 1 : 0;
     onChange([...features, nextIdx]);
@@ -492,7 +510,7 @@ function FeatureSourcesSection({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <Label className="text-sm font-medium">
-          Feature Sources (Branch Indices)
+          {t("pipelineEditor.config.merge.sources.featureSources")}
         </Label>
         <Button
           variant="outline"
@@ -500,7 +518,7 @@ function FeatureSourcesSection({
           className="h-7 text-xs"
           onClick={addBranch}
         >
-          + Add Branch
+          {t("pipelineEditor.config.merge.sources.addBranch")}
         </Button>
       </div>
 
@@ -510,11 +528,12 @@ function FeatureSourcesSection({
             key={idx}
             className="flex items-center gap-1 px-2 py-1 rounded bg-muted border"
           >
-            <span className="text-sm">Branch {branchIdx}</span>
+            <span className="text-sm">{t("pipelineEditor.config.merge.sources.branchN", { index: branchIdx })}</span>
             <Button
               variant="ghost"
               size="icon"
               className="h-5 w-5"
+              aria-label={t("pipelineEditor.config.merge.sources.removeBranch", { index: branchIdx })}
               onClick={() => removeBranch(idx)}
             >
               <X className="h-3 w-3" />
@@ -525,7 +544,7 @@ function FeatureSourcesSection({
 
       {features.length === 0 && (
         <div className="text-center py-4 text-sm text-muted-foreground">
-          No feature sources configured. All branches will be used.
+          {t("pipelineEditor.config.merge.sources.noFeatureSources")}
         </div>
       )}
     </div>

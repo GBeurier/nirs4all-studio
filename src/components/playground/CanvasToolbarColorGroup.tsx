@@ -27,12 +27,12 @@ import {
   CATEGORICAL_PALETTES,
   getContinuousPaletteLabel,
   getCategoricalPaletteLabel,
-  getColorModeLabel,
   getContinuousPaletteGradient,
   isContinuousMode,
 } from '@/lib/playground/colorConfig';
 import type { TargetType } from '@/lib/playground/targetTypeDetection';
 import { RibbonGroup } from './CanvasToolbarRibbonGroup';
+import { useTranslation } from 'react-i18next';
 
 interface ColorModeSelectorProps {
   colorConfig: GlobalColorConfig;
@@ -53,6 +53,7 @@ const ColorModeSelector = memo(function ColorModeSelector({
   metadataColumns,
   colorContext,
 }: ColorModeSelectorProps) {
+  const { t } = useTranslation();
   const hasMetadata = metadataColumns.length > 0;
   const detectedTargetType = colorContext?.targetType;
 
@@ -76,7 +77,7 @@ const ColorModeSelector = memo(function ColorModeSelector({
           <TooltipTrigger asChild>
             <Palette className="w-3 h-3 text-muted-foreground cursor-help" />
           </TooltipTrigger>
-          <TooltipContent side="bottom">Color mode: how samples are colored</TooltipContent>
+          <TooltipContent side="bottom">{t('playground.toolbar.color.modeHelp')}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
       <Select
@@ -88,15 +89,15 @@ const ColorModeSelector = memo(function ColorModeSelector({
         })}
       >
         <SelectTrigger className="h-6 w-28 text-[10px]">
-          <SelectValue>{getColorModeLabel(colorConfig.mode)}</SelectValue>
+          <SelectValue>{t(`playground.toolbar.color.modeLabels.${colorConfig.mode}`)}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="target">By Y Value</SelectItem>
-          <SelectItem value="partition" disabled={!hasPartition}>By Partition</SelectItem>
-          <SelectItem value="fold" disabled={!hasFolds}>By Fold</SelectItem>
-          <SelectItem value="metadata" disabled={!hasMetadata}>By Metadata</SelectItem>
-          <SelectItem value="selection">By Selection</SelectItem>
-          <SelectItem value="outlier">By Outlier</SelectItem>
+          <SelectItem value="target">{t('playground.toolbar.color.modeLabels.target')}</SelectItem>
+          <SelectItem value="partition" disabled={!hasPartition}>{t('playground.toolbar.color.modeLabels.partition')}</SelectItem>
+          <SelectItem value="fold" disabled={!hasFolds}>{t('playground.toolbar.color.modeLabels.fold')}</SelectItem>
+          <SelectItem value="metadata" disabled={!hasMetadata}>{t('playground.toolbar.color.modeLabels.metadata')}</SelectItem>
+          <SelectItem value="selection">{t('playground.toolbar.color.modeLabels.selection')}</SelectItem>
+          <SelectItem value="outlier">{t('playground.toolbar.color.modeLabels.outlier')}</SelectItem>
         </SelectContent>
       </Select>
 
@@ -106,7 +107,7 @@ const ColorModeSelector = memo(function ColorModeSelector({
           onValueChange={(key) => onChange({ ...colorConfig, metadataKey: key })}
         >
           <SelectTrigger className="h-6 w-24 text-[10px]">
-            <SelectValue placeholder="Column..." />
+            <SelectValue placeholder={t('playground.toolbar.color.columnPlaceholder')} />
           </SelectTrigger>
           <SelectContent>
             {metadataColumns.map(col => (
@@ -118,7 +119,7 @@ const ColorModeSelector = memo(function ColorModeSelector({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" aria-label={t('playground.toolbar.color.paletteMenu')}>
             <Palette className="w-3 h-3" />
           </Button>
         </DropdownMenuTrigger>
@@ -126,10 +127,10 @@ const ColorModeSelector = memo(function ColorModeSelector({
           {colorConfig.mode === 'target' && (
             <>
               <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                Target Type
+                {t('playground.toolbar.color.targetType')}
                 {detectedTargetType && (
                   <span className="ml-1 text-muted-foreground/70">
-                    (detected: {detectedTargetType})
+                    {t('playground.toolbar.color.detected', { type: detectedTargetType })}
                   </span>
                 )}
               </DropdownMenuLabel>
@@ -141,16 +142,16 @@ const ColorModeSelector = memo(function ColorModeSelector({
                 })}
               >
                 <DropdownMenuRadioItem value="auto">
-                  <span className="text-xs">Auto-detect</span>
+                  <span className="text-xs">{t('playground.toolbar.color.autoDetect')}</span>
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="regression">
-                  <span className="text-xs">Force Regression (continuous)</span>
+                  <span className="text-xs">{t('playground.toolbar.color.forceRegression')}</span>
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="classification">
-                  <span className="text-xs">Force Classification (categorical)</span>
+                  <span className="text-xs">{t('playground.toolbar.color.forceClassification')}</span>
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="ordinal">
-                  <span className="text-xs">Force Ordinal (rating scale)</span>
+                  <span className="text-xs">{t('playground.toolbar.color.forceOrdinal')}</span>
                 </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
@@ -160,7 +161,7 @@ const ColorModeSelector = memo(function ColorModeSelector({
           {showContinuousPalette ? (
             <>
               <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                Continuous Palette
+                {t('playground.toolbar.color.continuousPalette')}
               </DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={colorConfig.continuousPalette}
@@ -180,7 +181,7 @@ const ColorModeSelector = memo(function ColorModeSelector({
           ) : (
             <>
               <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                Categorical Palette
+                {t('playground.toolbar.color.categoricalPalette')}
               </DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={colorConfig.categoricalPalette}
@@ -229,6 +230,7 @@ export const CanvasToolbarColorGroup = memo(function CanvasToolbarColorGroup({
   metadata,
   colorContext,
 }: CanvasToolbarColorGroupProps) {
+  const { t } = useTranslation();
   const metadataColumns = useMemo(() => {
     if (!metadata) return [];
     return Object.keys(metadata).filter(key => {
@@ -243,7 +245,7 @@ export const CanvasToolbarColorGroup = memo(function CanvasToolbarColorGroup({
   }, [onInteractionStart, onColorConfigChange]);
 
   return (
-    <RibbonGroup label="Coloration" icon={<Paintbrush className="w-2.5 h-2.5" />}>
+    <RibbonGroup label={t('playground.toolbar.color.groupLabel')} icon={<Paintbrush className="w-2.5 h-2.5" />}>
       <ColorModeSelector
         colorConfig={colorConfig}
         onChange={handleColorConfigChange}

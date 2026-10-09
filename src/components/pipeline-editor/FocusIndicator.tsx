@@ -5,6 +5,7 @@
  * Part of Phase 5: UX Polish
  */
 
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "@/lib/motion";
 import type { PanelFocus } from "@/hooks/useKeyboardNavigation";
@@ -59,10 +60,11 @@ export function FocusBadge({
   focusedPanel: PanelFocus;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const panelLabels: Record<PanelFocus, { label: string; color: string }> = {
-    palette: { label: "Palette", color: "bg-blue-500" },
-    tree: { label: "Pipeline", color: "bg-emerald-500" },
-    config: { label: "Config", color: "bg-purple-500" },
+    palette: { label: t("pipelineEditor.shell.focus.palette"), color: "bg-blue-500" },
+    tree: { label: t("pipelineEditor.shell.focus.tree"), color: "bg-emerald-500" },
+    config: { label: t("pipelineEditor.shell.focus.config"), color: "bg-purple-500" },
   };
 
   const { label, color } = panelLabels[focusedPanel];
@@ -81,7 +83,7 @@ export function FocusBadge({
       transition={{ duration: 0.2 }}
     >
       <span className="w-1.5 h-1.5 rounded-full bg-white/50 animate-pulse" />
-      {label} focused
+      {t("pipelineEditor.shell.focus.focused", { label })}
     </motion.div>
   );
 }
@@ -94,10 +96,11 @@ export function NavigationHint({
   focusedPanel: PanelFocus;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const hints: Record<PanelFocus, string> = {
-    palette: "Search or click to add steps",
-    tree: "Use ↑↓ to navigate, Enter to configure",
-    config: "Tab through fields, Esc to return",
+    palette: t("pipelineEditor.shell.focus.hintPalette"),
+    tree: t("pipelineEditor.shell.focus.hintTree"),
+    config: t("pipelineEditor.shell.focus.hintConfig"),
   };
 
   return (
@@ -124,11 +127,12 @@ export function NavigationStatusBar({
   selectedStepName?: string;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={cn("flex items-center gap-3 text-xs", className)}>
       {/* Panel indicator */}
       <div className="flex items-center gap-1.5">
-        <span className="text-muted-foreground">Panel:</span>
+        <span className="text-muted-foreground">{t("pipelineEditor.shell.focus.panel")}</span>
         <FocusBadge focusedPanel={focusedPanel} />
       </div>
 
@@ -136,7 +140,7 @@ export function NavigationStatusBar({
       {selectedStepName && (
         <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground/50">•</span>
-          <span className="text-muted-foreground">Selected:</span>
+          <span className="text-muted-foreground">{t("pipelineEditor.shell.focus.selected")}</span>
           <span className="font-medium text-foreground">{selectedStepName}</span>
         </div>
       )}

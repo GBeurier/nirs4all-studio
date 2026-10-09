@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from "vitest";
+import i18n from "i18next";
+import "@/lib/i18n";
 import type { YProcessingConfig } from "../yProcessingConfig";
 import {
   buildYProcessingQuickSetup,
@@ -25,6 +28,10 @@ function makeConfig(overrides: Partial<YProcessingConfig> = {}): YProcessingConf
     ...overrides,
   };
 }
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 describe("findYProcessingOption", () => {
   it("returns the matching option", () => {

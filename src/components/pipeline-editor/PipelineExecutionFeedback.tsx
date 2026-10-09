@@ -20,10 +20,11 @@ function ProgressDisplay({
   progress: number;
   message: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">{message || "Processing..."}</span>
+        <span className="text-muted-foreground">{message || t("pipelineEditor.execution.feedback.processing")}</span>
         <span className="font-medium">{Math.round(progress)}%</span>
       </div>
       <Progress value={progress} className="h-2" />
@@ -78,7 +79,7 @@ function ResultsDisplay({ result }: { result: ExecutionResult }) {
         <div className="space-y-2">
           <h4 className="text-sm font-medium flex items-center gap-2">
             <Trophy className="h-4 w-4 text-amber-500" />
-            Top Results
+            {t("pipelineEditor.execution.feedback.topResults")}
           </h4>
           <div className="rounded-lg border divide-y">
             {result.topResults.slice(0, 5).map((r) => (
@@ -91,7 +92,7 @@ function ResultsDisplay({ result }: { result: ExecutionResult }) {
                     {r.rank}
                   </Badge>
                   <span className="text-muted-foreground truncate max-w-[200px]">
-                    {r.config || "Configuration"}
+                    {r.config || t("pipelineEditor.execution.feedback.configuration")}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-xs">
@@ -115,7 +116,7 @@ function ResultsDisplay({ result }: { result: ExecutionResult }) {
       {result.modelPath && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Check className="h-4 w-4 text-emerald-500" />
-          Model saved to: <code className="text-xs bg-muted px-1 py-0.5 rounded">{result.modelPath}</code>
+          {t("pipelineEditor.execution.feedback.modelSavedTo")} <code className="text-xs bg-muted px-1 py-0.5 rounded">{result.modelPath}</code>
         </div>
       )}
 

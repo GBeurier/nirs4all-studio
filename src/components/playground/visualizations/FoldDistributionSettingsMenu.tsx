@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useTranslation } from 'react-i18next';
 
 export interface FoldDistributionSettingsMenuProps {
   showLegend: boolean;
@@ -31,23 +32,25 @@ export function FoldDistributionSettingsMenu({
   onShowYLegendChange,
   onShowMeanLineChange,
 }: FoldDistributionSettingsMenuProps) {
+  const { t } = useTranslation();
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 px-2">
+        <Button variant="ghost" size="sm" className="h-7 px-2" aria-label={t('playground.charts.fold.settings.displayOptions')}>
           <Settings2 className="w-3 h-3" />
           <ChevronDown className="w-3 h-3 ml-1" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel>Display Options</DropdownMenuLabel>
+        <DropdownMenuLabel>{t('playground.charts.fold.settings.displayOptions')}</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         <DropdownMenuCheckboxItem
           checked={showLegend}
           onCheckedChange={(checked) => onShowLegendChange(checked === true)}
         >
-          Show Color Legend
+          {t('playground.charts.fold.settings.showColorLegend')}
         </DropdownMenuCheckboxItem>
 
         <DropdownMenuCheckboxItem
@@ -55,7 +58,7 @@ export function FoldDistributionSettingsMenu({
           onCheckedChange={(checked) => onShowYLegendChange(checked === true)}
           disabled={disableYLegend}
         >
-          Show Y Value Legend
+          {t('playground.charts.fold.settings.showYLegend')}
         </DropdownMenuCheckboxItem>
 
         <DropdownMenuCheckboxItem
@@ -63,7 +66,7 @@ export function FoldDistributionSettingsMenu({
           onCheckedChange={(checked) => onShowMeanLineChange(checked === true)}
           disabled={disableMeanLine}
         >
-          Show Global Mean (Y Dist.)
+          {t('playground.charts.fold.settings.showGlobalMean')}
         </DropdownMenuCheckboxItem>
       </DropdownMenuContent>
     </DropdownMenu>

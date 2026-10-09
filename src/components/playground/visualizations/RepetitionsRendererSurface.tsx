@@ -14,6 +14,7 @@ import { RepetitionsRechartsPlot } from './RepetitionsRechartsPlot';
 import { RepetitionsWebglOverlays } from './RepetitionsWebglOverlays';
 import { RepetitionsWebglPlot } from './RepetitionsWebglPlot';
 import { WebglIndicatorBadge } from './WebglIndicatorBadge';
+import { useTranslation } from 'react-i18next';
 
 interface RepetitionsRendererSurfaceProps {
   chartRef: RefObject<HTMLDivElement | null>;
@@ -82,6 +83,8 @@ export function RepetitionsRendererSurface({
   webglData,
   clearWebglOnBackgroundClick,
 }: RepetitionsRendererSurfaceProps) {
+  const { t } = useTranslation();
+
   return (
     <SelectionContainer
       mode={selectionTool}
@@ -109,7 +112,7 @@ export function RepetitionsRendererSurface({
       >
         {isComputing && (
           <ChartLoadingOverlay
-            label="Computing distances..."
+            label={t('playground.charts.repetitions.computingDistances')}
             showLabel
             overlayClassName="bg-background/60 z-10"
           />

@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 
 import type { GlobalColorMode } from '@/lib/playground/colorConfig';
 import type { PartitionBarData } from '@/lib/playground/foldDistributionData';
@@ -28,9 +30,10 @@ export function FoldDistributionTooltip({
   getPartitionSegmentColor,
   getSegmentLabel,
 }: FoldDistributionTooltipProps) {
+  const { t } = useTranslation();
   const totalSamples = partitionBars.reduce((sum, partition) => sum + partition.count, 0);
   const percentage = totalSamples > 0 ? (entry.count / totalSamples) * 100 : 0;
-  const partitionTypeLabel = getPartitionTypeLabel(entry.partitionType);
+  const partitionTypeLabel = getPartitionTypeLabel(entry.partitionType, t);
   const foldData = entry.foldIndex !== null ? folds?.folds[entry.foldIndex] : null;
   const yStats: YStats | undefined = entry.partitionType === 'train'
     ? foldData?.y_train_stats
@@ -51,39 +54,39 @@ export function FoldDistributionTooltip({
 
       <div className="space-y-1">
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Type:</span>
+          <span className="text-muted-foreground">{t('playground.charts.fold.tooltip.type')}</span>
           <span className="font-medium">{partitionTypeLabel}</span>
         </div>
         {entry.foldIndex !== null && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Fold:</span>
-            <span className="font-medium">{entry.foldIndex + 1} of {folds?.n_folds}</span>
+            <span className="text-muted-foreground">{t('playground.charts.fold.tooltip.fold')}</span>
+            <span className="font-medium">{t('playground.charts.fold.tooltip.foldOf', { index: entry.foldIndex + 1, total: folds?.n_folds })}</span>
           </div>
         )}
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Samples:</span>
+          <span className="text-muted-foreground">{t('playground.charts.fold.tooltip.samples')}</span>
           <span className="font-medium">{entry.count} ({percentage.toFixed(1)}%)</span>
         </div>
       </div>
 
       {(yStats || entry.yMean !== undefined) && (
         <div className="mt-2 pt-1.5 border-t border-border space-y-1">
-          <div className="text-muted-foreground font-medium mb-1">Y Statistics</div>
+          <div className="text-muted-foreground font-medium mb-1">{t('playground.charts.fold.tooltip.yStatistics')}</div>
           {entry.yMean !== undefined && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Mean:</span>
+              <span className="text-muted-foreground">{t('playground.charts.fold.tooltip.mean')}</span>
               <span>{formatYValue(entry.yMean)}</span>
             </div>
           )}
           {entry.yStd !== undefined && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Std:</span>
+              <span className="text-muted-foreground">{t('playground.charts.fold.tooltip.std')}</span>
               <span>{formatYValue(entry.yStd)}</span>
             </div>
           )}
           {yStats?.min !== undefined && yStats?.max !== undefined && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Range:</span>
+              <span className="text-muted-foreground">{t('playground.charts.fold.tooltip.range')}</span>
               <span>[{formatYValue(yStats.min)}, {formatYValue(yStats.max)}]</span>
             </div>
           )}
@@ -92,7 +95,7 @@ export function FoldDistributionTooltip({
 
       {visibleSegmentKeys.length > 0 && (
         <div className="mt-2 pt-1.5 border-t border-border space-y-1">
-          <div className="text-muted-foreground font-medium mb-1">Distribution</div>
+          <div className="text-muted-foreground font-medium mb-1">{t('playground.charts.fold.tooltip.distribution')}</div>
           {visibleSegmentKeys.map((segmentKey) => {
             const count = entry.segments[segmentKey] ?? 0;
             const pct = entry.count > 0 ? (count / entry.count) * 100 : 0;
@@ -113,19 +116,19 @@ export function FoldDistributionTooltip({
       )}
 
       <div className="mt-2 pt-1 text-[10px] text-muted-foreground/70 text-center">
-        Click to select samples
+        {t('playground.charts.fold.tooltip.clickToSelect')}
       </div>
     </div>
   );
 }
 
-function getPartitionTypeLabel(partitionType: PartitionBarData['partitionType']): string {
+function getPartitionTypeLabel(partitionType: PartitionBarData['partitionType'], t: TFunction): string {
   switch (partitionType) {
     case 'train':
-      return 'Training';
+      return t('playground.charts.fold.partitionType.train');
     case 'val':
-      return 'Validation';
+      return t('playground.charts.fold.partitionType.val');
     case 'test':
-      return 'Test (Held-out)';
+      return t('playground.charts.fold.partitionType.test');
   }
 }

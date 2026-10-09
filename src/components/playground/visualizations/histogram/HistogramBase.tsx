@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   BarChart3,
   Download,
@@ -66,9 +67,16 @@ export default function HistogramBase({
   handleExport,
   children,
 }: HistogramBaseProps) {
+  const { t } = useTranslation();
   const histogramPartitionRoles = globalColorConfig?.mode === 'partition' && colorContext
     ? getPresentPartitionRoles(colorContext)
     : [];
+
+  const selectedOnlyLabel = config.selectedOnly
+    ? t('playground.charts.histogram.selectedOnly.showAll')
+    : selectedSamples.size > 0
+      ? t('playground.charts.histogram.selectedOnly.showOnly', { count: selectedSamples.size })
+      : t('playground.charts.histogram.selectedOnly.selectFirst');
 
   return (
     <div className="h-full flex flex-col" ref={chartRef}>
@@ -76,13 +84,13 @@ export default function HistogramBase({
       <div className="flex items-center justify-between mb-2 gap-1 flex-wrap">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-primary" />
-          {isClassificationMode ? 'Class Distribution' : 'Y Distribution'}
+          {isClassificationMode ? t('playground.charts.histogram.titleClasses') : t('playground.charts.histogram.titleY')}
           {isProcessed && (
-            <span className="text-[10px] text-muted-foreground font-normal">(processed)</span>
+            <span className="text-[10px] text-muted-foreground font-normal">{t('playground.charts.histogram.processed')}</span>
           )}
           {isClassificationMode && (
             <span className="text-[10px] text-muted-foreground font-normal">
-              ({colorContext?.classLabels?.length ?? 0} classes)
+              {t('playground.charts.histogram.classCount', { count: colorContext?.classLabels?.length ?? 0 })}
             </span>
           )}
         </h3>
@@ -93,11 +101,11 @@ export default function HistogramBase({
             value={config.binCount}
             onValueChange={(v) => updateConfig({ binCount: v as BinCountOption })}
           >
-            <SelectTrigger className="h-7 w-16 text-xs">
+            <SelectTrigger className="h-7 w-16 text-xs" aria-label={t('playground.charts.histogram.binCountLabel')}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="auto">Auto</SelectItem>
+              <SelectItem value="auto">{t('playground.charts.histogram.binAuto')}</SelectItem>
               <SelectItem value="10">10</SelectItem>
               <SelectItem value="20">20</SelectItem>
               <SelectItem value="30">30</SelectItem>
@@ -115,6 +123,7 @@ export default function HistogramBase({
                     className="h-7 px-2"
                     disabled={selectedSamples.size === 0}
                     onClick={() => updateConfig({ selectedOnly: !config.selectedOnly })}
+                    aria-label={selectedOnlyLabel}
                   >
                     <MousePointer2 className="w-3 h-3" />
                   </Button>
@@ -122,11 +131,7 @@ export default function HistogramBase({
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 <p className="text-xs">
-                  {config.selectedOnly
-                    ? 'Show all visible samples'
-                    : selectedSamples.size > 0
-                      ? `Show only ${selectedSamples.size} selected sample${selectedSamples.size === 1 ? '' : 's'}`
-                      : 'Select samples to enable selected-only view'}
+                  {selectedOnlyLabel}
                 </p>
               </TooltipContent>
             </TooltipUI>
@@ -135,65 +140,65 @@ export default function HistogramBase({
           {/* Settings dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 px-2">
+              <Button variant="ghost" size="sm" className="h-7 px-2" aria-label={t('playground.charts.histogram.options.title')}>
                 <Settings2 className="w-3 h-3" />
                 <ChevronDown className="w-3 h-3 ml-1" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Histogram Options</DropdownMenuLabel>
+              <DropdownMenuLabel>{t('playground.charts.histogram.options.title')}</DropdownMenuLabel>
               <DropdownMenuSeparator />
 
               <DropdownMenuCheckboxItem
                 checked={config.showMean}
                 onCheckedChange={(checked) => updateConfig({ showMean: checked })}
               >
-                Show Mean Line
+                {t('playground.charts.histogram.options.showMean')}
               </DropdownMenuCheckboxItem>
 
               <DropdownMenuCheckboxItem
                 checked={config.showMedian}
                 onCheckedChange={(checked) => updateConfig({ showMedian: checked })}
               >
-                Show Median Line
+                {t('playground.charts.histogram.options.showMedian')}
               </DropdownMenuCheckboxItem>
 
               <DropdownMenuCheckboxItem
                 checked={config.showKDE}
                 onCheckedChange={(checked) => updateConfig({ showKDE: checked })}
               >
-                Show KDE Overlay
+                {t('playground.charts.histogram.options.showKde')}
               </DropdownMenuCheckboxItem>
 
               <DropdownMenuCheckboxItem
                 checked={config.showStdBands}
                 onCheckedChange={(checked) => updateConfig({ showStdBands: checked })}
               >
-                Show ±1σ Bands
+                {t('playground.charts.histogram.options.showStdBands')}
               </DropdownMenuCheckboxItem>
 
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-xs text-muted-foreground">Y-Axis</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-xs text-muted-foreground">{t('playground.charts.histogram.options.yAxis')}</DropdownMenuLabel>
 
               <DropdownMenuCheckboxItem
                 checked={config.yAxisType === 'count'}
                 onCheckedChange={() => updateConfig({ yAxisType: 'count' })}
               >
-                Count
+                {t('playground.charts.histogram.yAxis.count')}
               </DropdownMenuCheckboxItem>
 
               <DropdownMenuCheckboxItem
                 checked={config.yAxisType === 'frequency'}
                 onCheckedChange={() => updateConfig({ yAxisType: 'frequency' })}
               >
-                Frequency (%)
+                {t('playground.charts.histogram.yAxis.frequency')}
               </DropdownMenuCheckboxItem>
 
               <DropdownMenuCheckboxItem
                 checked={config.yAxisType === 'density'}
                 onCheckedChange={() => updateConfig({ yAxisType: 'density' })}
               >
-                Density
+                {t('playground.charts.histogram.yAxis.density')}
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -208,12 +213,13 @@ export default function HistogramBase({
                     size="sm"
                     className="h-7 px-2 text-muted-foreground hover:text-foreground"
                     onClick={() => selectionCtx.clear()}
+                    aria-label={t('playground.charts.histogram.clearSelection', { count: selectionCtx.selectedSamples.size })}
                   >
                     <X className="w-3 h-3" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  <p className="text-xs">Clear selection ({selectionCtx.selectedSamples.size})</p>
+                  <p className="text-xs">{t('playground.charts.histogram.clearSelection', { count: selectionCtx.selectedSamples.size })}</p>
                 </TooltipContent>
               </TooltipUI>
             </TooltipProvider>
@@ -223,12 +229,12 @@ export default function HistogramBase({
           <TooltipProvider delayDuration={200}>
             <TooltipUI>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={handleExport}>
+                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={handleExport} aria-label={t('playground.charts.histogram.exportChart')}>
                   <Download className="w-3 h-3" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">Export chart</p>
+                <p className="text-xs">{t('playground.charts.histogram.exportChart')}</p>
               </TooltipContent>
             </TooltipUI>
           </TooltipProvider>
@@ -267,18 +273,18 @@ export default function HistogramBase({
                 </div>
               ))}
               {classBarData.length > 6 && (
-                <span className="text-muted-foreground">+{classBarData.length - 6} more</span>
+                <span className="text-muted-foreground">{t('playground.charts.histogram.moreClasses', { count: classBarData.length - 6 })}</span>
               )}
             </div>
           ) : (
             // Regression stats
             <div className="grid grid-cols-5 gap-1 text-[10px] flex-1">
               {[
-                { label: 'Mean', value: displayStats?.mean ?? 0, highlight: config.showMean },
-                { label: 'Med', value: displayStats?.median ?? 0, highlight: config.showMedian },
-                { label: 'Std', value: displayStats?.std ?? 0 },
-                { label: 'Min', value: displayStats?.min ?? 0 },
-                { label: 'Max', value: displayStats?.max ?? 0 },
+                { label: t('playground.charts.histogram.stats.mean'), value: displayStats?.mean ?? 0, highlight: config.showMean },
+                { label: t('playground.charts.histogram.stats.median'), value: displayStats?.median ?? 0, highlight: config.showMedian },
+                { label: t('playground.charts.histogram.stats.std'), value: displayStats?.std ?? 0 },
+                { label: t('playground.charts.histogram.stats.min'), value: displayStats?.min ?? 0 },
+                { label: t('playground.charts.histogram.stats.max'), value: displayStats?.max ?? 0 },
               ].map(({ label, value, highlight }) => (
                 <div
                   key={label}
@@ -296,7 +302,7 @@ export default function HistogramBase({
           )}
           {selectedSamples.size > 0 && (
             <div className="text-[10px] text-primary font-medium ml-2">
-              {selectedSamples.size} sel.
+              {t('playground.charts.histogram.selectedAbbrev', { count: selectedSamples.size })}
             </div>
           )}
         </div>
@@ -314,7 +320,7 @@ export default function HistogramBase({
                     style={{ backgroundColor: getHistogramPartitionRoleColor(role) }}
                   />
                   <span className="text-[9px] text-muted-foreground truncate max-w-[60px]">
-                    {getHistogramPartitionRoleLabel(role)}
+                    {getHistogramPartitionRoleLabel(role, t)}
                   </span>
                 </div>
               ))}

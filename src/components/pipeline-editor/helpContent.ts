@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 export interface OperatorHelp {
   name: string;
   displayName: string;
@@ -21,69 +23,64 @@ export interface OperatorHelp {
   docUrl?: string;
 }
 
-/** Built-in operator help content */
-const OPERATOR_HELP: Record<string, OperatorHelp> = {
+/** Non-textual part of the help entries; all user-facing text lives in the `pipelineEditor.help.operators.<name>` locale keys. */
+interface OperatorHelpSkeleton {
+  hasLongDescription?: boolean;
+  parameters?: Record<
+    string,
+    {
+      type: string;
+      default?: string | number | boolean;
+      range?: { min?: number; max?: number };
+      options?: string[];
+      hasTip?: boolean;
+    }
+  >;
+  examples?: string[];
+  tipCount?: number;
+  seeAlso?: string[];
+  docUrl?: string;
+}
+
+/** Built-in operator help content (structure only; text is resolved lazily from the locale files). */
+const OPERATOR_HELP: Record<string, OperatorHelpSkeleton> = {
   SNV: {
-    name: "SNV",
-    displayName: "Standard Normal Variate",
-    category: "Scatter Correction",
-    description: "Removes multiplicative scatter effects by centering and scaling each spectrum.",
-    longDescription:
-      "SNV is a row-wise operation that normalizes each spectrum independently. It subtracts the mean and divides by the standard deviation of each spectrum. This is particularly effective for removing physical effects like particle size variation.",
-    tips: [
-      "Best used as an early preprocessing step",
-      "Works well before derivative operations",
-      "Consider MSC as an alternative if you have a reference spectrum",
-    ],
+    hasLongDescription: true,
+    tipCount: 3,
     seeAlso: ["MSC", "RobustSNV"],
     docUrl: "https://nirs4all.readthedocs.io/en/latest/operators/snv.html",
   },
   MSC: {
-    name: "MSC",
-    displayName: "Multiplicative Scatter Correction",
-    category: "Scatter Correction",
-    description: "Corrects for scatter using a reference spectrum (typically the mean).",
     parameters: {
       reference: {
-        description: "Method to compute the reference spectrum",
         type: "choice",
         default: "mean",
         options: ["mean", "first", "median"],
-        tip: "Use 'mean' for most cases. 'median' is more robust to outliers.",
+        hasTip: true,
       },
     },
-    tips: [
-      "Use when you have consistent baseline shifts",
-      "The mean reference works well for homogeneous sample sets",
-    ],
+    tipCount: 2,
     seeAlso: ["SNV", "EMSC"],
   },
   SavitzkyGolay: {
-    name: "SavitzkyGolay",
-    displayName: "Savitzky-Golay Filter",
-    category: "Smoothing / Derivatives",
-    description: "Polynomial smoothing filter that can also compute derivatives.",
     parameters: {
       window_length: {
-        description: "Size of the smoothing window (must be odd)",
         type: "int",
         default: 11,
         range: { min: 3, max: 51 },
-        tip: "Larger windows = more smoothing. Use odd numbers only.",
+        hasTip: true,
       },
       polyorder: {
-        description: "Order of the polynomial used in the fit",
         type: "int",
         default: 2,
         range: { min: 0, max: 5 },
-        tip: "Should be less than window_length. 2-3 is typical.",
+        hasTip: true,
       },
       deriv: {
-        description: "Order of derivative to compute (0 = smoothing only)",
         type: "int",
         default: 0,
         range: { min: 0, max: 2 },
-        tip: "1st derivative enhances peaks, 2nd derivative enhances edges.",
+        hasTip: true,
       },
     },
     examples: [
@@ -93,86 +90,92 @@ const OPERATOR_HELP: Record<string, OperatorHelp> = {
     seeAlso: ["FirstDerivative", "SecondDerivative", "Gaussian"],
   },
   PLSRegression: {
-    name: "PLSRegression",
-    displayName: "Partial Least Squares Regression",
-    category: "Model",
-    description: "Projects X and Y to latent variables to maximize covariance.",
     parameters: {
       n_components: {
-        description: "Number of latent variables (components) to extract",
         type: "int",
         default: 10,
         range: { min: 1, max: 100 },
-        tip: "Start with 10-15 and tune based on cross-validation results.",
+        hasTip: true,
       },
       max_iter: {
-        description: "Maximum number of iterations for the algorithm",
         type: "int",
         default: 500,
         range: { min: 100, max: 10000 },
       },
     },
-    tips: [
-      "The most common model for NIRS data",
-      "Use cross-validation to find optimal n_components",
-      "Consider OPLS for data with strong orthogonal variation",
-    ],
+    tipCount: 3,
     seeAlso: ["OPLS", "IKPLS", "IntervalPLS"],
     docUrl: "https://scikit-learn.org/stable/modules/generated/sklearn.cross_decomposition.PLSRegression.html",
   },
   KFold: {
-    name: "KFold",
-    displayName: "K-Fold Cross-Validation",
-    category: "Splitting",
-    description: "Splits data into K consecutive folds for cross-validation.",
     parameters: {
       n_splits: {
-        description: "Number of folds",
         type: "int",
         default: 5,
         range: { min: 2, max: 20 },
-        tip: "5-10 folds is standard. More folds = more computation but better estimates.",
+        hasTip: true,
       },
       shuffle: {
-        description: "Whether to shuffle the data before splitting",
         type: "bool",
         default: true,
-        tip: "Enable for random data, disable for time-series data.",
+        hasTip: true,
       },
     },
     seeAlso: ["StratifiedKFold", "ShuffleSplit", "KennardStoneSplitter"],
   },
   KennardStoneSplitter: {
-    name: "KennardStoneSplitter",
-    displayName: "Kennard-Stone Splitter",
-    category: "Splitting",
-    description: "Selects samples to uniformly cover the feature space.",
-    longDescription:
-      "The Kennard-Stone algorithm iteratively selects samples that are maximally distant from already-selected samples. This ensures good coverage of the feature space in both training and test sets.",
+    hasLongDescription: true,
     parameters: {
       test_size: {
-        description: "Proportion of samples to include in the test set",
         type: "float",
         default: 0.2,
         range: { min: 0.1, max: 0.5 },
       },
       metric: {
-        description: "Distance metric to use",
         type: "choice",
         default: "euclidean",
         options: ["euclidean", "mahalanobis"],
       },
     },
-    tips: [
-      "Excellent for ensuring representative test sets",
-      "Works well with small datasets",
-      "Pairs well with PLS models",
-    ],
+    tipCount: 3,
     seeAlso: ["SPXYSplitter", "KFold"],
   },
 };
 
-/** Get help for an operator */
+/** Get help for an operator (text resolved in the active language at call time) */
 export function getOperatorHelp(name: string): OperatorHelp | null {
-  return OPERATOR_HELP[name] || null;
+  const skeleton = OPERATOR_HELP[name];
+  if (!skeleton) return null;
+  const base = `pipelineEditor.help.operators.${name}`;
+  const t = (key: string): string => i18n.t(`${base}.${key}`);
+
+  const help: OperatorHelp = {
+    name,
+    displayName: t("displayName"),
+    category: t("category"),
+    description: t("description"),
+    examples: skeleton.examples,
+    seeAlso: skeleton.seeAlso,
+    docUrl: skeleton.docUrl,
+  };
+  if (skeleton.hasLongDescription) help.longDescription = t("longDescription");
+  if (skeleton.tipCount) {
+    help.tips = Array.from({ length: skeleton.tipCount }, (_, i) => t(`tips.${i}`));
+  }
+  if (skeleton.parameters) {
+    help.parameters = Object.fromEntries(
+      Object.entries(skeleton.parameters).map(([paramName, param]) => {
+        const { hasTip, ...rest } = param;
+        return [
+          paramName,
+          {
+            ...rest,
+            description: t(`parameters.${paramName}.description`),
+            ...(hasTip ? { tip: t(`parameters.${paramName}.tip`) } : {}),
+          },
+        ];
+      })
+    );
+  }
+  return help;
 }

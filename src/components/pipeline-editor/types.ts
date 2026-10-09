@@ -412,8 +412,8 @@ export {
   getStepColor,
   stepColors,
   stepSubTypeColors,
-  stepSubTypeLabels,
-  stepTypeLabels,
+  getStepSubTypeLabels,
+  getStepTypeLabels,
 } from "./stepPresentation";
 
 export {

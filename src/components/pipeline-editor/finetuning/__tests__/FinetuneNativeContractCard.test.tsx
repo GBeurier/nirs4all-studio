@@ -7,6 +7,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
+import "@/lib/i18n";
 import type { KeywordRegistryDocument } from "@/ui/keywordRegistry";
 import type { FinetuneConfig } from "../../types";
 import {
@@ -271,7 +272,7 @@ describe("FinetuneNativeContractCard", () => {
         />,
     );
 
-    expect(container.textContent).toContain("Native nirs4all tuning contract");
+    expect(container.textContent).toContain("Model Optimization Settings");
     expect(container.textContent).toContain("run(tuning=...) candidate for PLSRegression; 50 trials.");
     expect(container.textContent).toContain("Ready for native tuning projection");
     expect(container.textContent).toContain("run.tuning");

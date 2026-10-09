@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from "vitest";
+import i18n from "@/lib/i18n";
 import type { FeatureAugmentationConfig } from "../featureAugmentationConfig";
 import {
   applyFeatureAugmentationPreset,
@@ -46,6 +48,10 @@ function makeConfig(
     ...overrides,
   };
 }
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 describe("featureAugmentationPanelData", () => {
   it("updates top-level config fields without mutating the source config", () => {
@@ -106,8 +112,7 @@ describe("featureAugmentationPanelData", () => {
 
   it("applies presets as an enabled replacement transform list", () => {
     const preset: FeatureAugmentationPreset = {
-      name: "Custom",
-      description: "Custom preset",
+      id: "custom",
       transforms: [
         { name: "SNV", params: {} },
         { name: "MSC", params: { reference: "mean", drop: undefined } },

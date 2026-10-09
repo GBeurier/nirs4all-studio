@@ -10,6 +10,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Repeat,
   X,
@@ -152,6 +153,7 @@ export function SweepsSummaryPanel({
   onOpenFinetuning,
   className,
 }: SweepsSummaryPanelProps) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
 
@@ -185,8 +187,16 @@ export function SweepsSummaryPanel({
       <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
         <CollapsibleTrigger asChild>
           <div
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setIsExpanded((open) => !open);
+              }
+            }}
             className={cn(
-              "flex items-center justify-between px-4 py-3 cursor-pointer transition-colors",
+              "flex items-center justify-between px-4 py-3 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
               getSeverityBg(severity)
             )}
           >
@@ -195,9 +205,9 @@ export function SweepsSummaryPanel({
                 <Repeat className="h-4 w-4 text-orange-500" />
               </div>
               <div>
-                <h4 className="font-medium text-sm">Active Sweeps</h4>
+                <h4 className="font-medium text-sm">{t("pipelineEditor.sweeps.summary.title")}</h4>
                 <p className="text-xs text-muted-foreground">
-                  {sweepInfos.length} step{sweepInfos.length !== 1 ? "s" : ""} with sweeps
+                  {t("pipelineEditor.sweeps.summary.stepsWithSweeps", { count: sweepInfos.length })}
                 </p>
               </div>
             </div>
@@ -207,7 +217,7 @@ export function SweepsSummaryPanel({
                 variant="secondary"
                 className={cn("font-bold", getSeverityColor(severity))}
               >
-                {totalVariants.toLocaleString()} variants
+                {t("pipelineEditor.sweeps.summary.variantsBadge", { count: totalVariants, formatted: totalVariants.toLocaleString() })}
               </Badge>
               {isExpanded ? (
                 <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -234,12 +244,11 @@ export function SweepsSummaryPanel({
                 <div>
                   <p className="font-medium">
                     {severity === "extreme"
-                      ? "Very Large Search Space"
-                      : "Large Search Space"}
+                      ? t("pipelineEditor.sweeps.summary.veryLargeSpace")
+                      : t("pipelineEditor.sweeps.summary.largeSpace")}
                   </p>
                   <p className="text-xs mt-0.5 opacity-80">
-                    {totalVariants.toLocaleString()} pipeline variants will be trained.
-                    Consider reducing ranges or using Optuna finetuning for smarter exploration.
+                    {t("pipelineEditor.sweeps.summary.largeSpaceHint", { count: totalVariants, formatted: totalVariants.toLocaleString() })}
                   </p>
                 </div>
               </div>
@@ -263,8 +272,18 @@ export function SweepsSummaryPanel({
                     >
                       {/* Step header */}
                       <div
-                        className="flex items-center justify-between px-3 py-2 cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isStepExpanded}
+                        className="flex items-center justify-between px-3 py-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                         onClick={() => toggleStep(info.stepId)}
+                        onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleStep(info.stepId);
+                          }
+                        }}
                       >
                         <div className="flex items-center gap-2">
                           <span className={cn("font-medium text-sm", colors.text)}>
@@ -274,7 +293,7 @@ export function SweepsSummaryPanel({
                             variant="secondary"
                             className="text-xs bg-orange-500/20 text-orange-600"
                           >
-                            {info.totalVariants} variants
+                            {t("pipelineEditor.sweeps.summary.variantsCount", { count: info.totalVariants })}
                           </Badge>
                         </div>
 
@@ -286,6 +305,7 @@ export function SweepsSummaryPanel({
                                   variant="ghost"
                                   size="sm"
                                   className="h-6 w-6 p-0"
+                                  aria-label={t("pipelineEditor.sweeps.summary.editStep")}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     onEditStep(info.stepId);
@@ -294,7 +314,7 @@ export function SweepsSummaryPanel({
                                   <Edit3 className="h-3.5 w-3.5" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>Edit step</TooltipContent>
+                              <TooltipContent>{t("pipelineEditor.sweeps.summary.editStep")}</TooltipContent>
                             </Tooltip>
                           )}
                           {isStepExpanded ? (
@@ -328,6 +348,7 @@ export function SweepsSummaryPanel({
                                     variant="ghost"
                                     size="sm"
                                     className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive"
+                                    aria-label={t("pipelineEditor.sweeps.summary.clearSweep", { param: param.replace(/_/g, " ") })}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       onClearSweep(info.stepId, param);
@@ -350,7 +371,7 @@ export function SweepsSummaryPanel({
             {/* Formula */}
             <div className="px-3 py-2 border-t border-border bg-muted/30">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Calculation:</span>
+                <span className="text-muted-foreground">{t("pipelineEditor.sweeps.summary.calculation")}</span>
                 <span className="font-mono">
                   {sweepInfos
                     .map((info) => info.totalVariants)
@@ -371,7 +392,7 @@ export function SweepsSummaryPanel({
                     className="text-xs h-7 text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="h-3.5 w-3.5 mr-1" />
-                    Clear All
+                    {t("pipelineEditor.sweeps.summary.clearAll")}
                   </Button>
                 )}
               </div>
@@ -386,11 +407,11 @@ export function SweepsSummaryPanel({
                       className="text-xs h-7 border-purple-500/50 text-purple-500 hover:bg-purple-500/10"
                     >
                       <Sparkles className="h-3.5 w-3.5 mr-1" />
-                      Use Finetuning Instead
+                      {t("pipelineEditor.sweeps.summary.useFinetuning")}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Switch to Optuna-based intelligent search
+                    {t("pipelineEditor.sweeps.summary.useFinetuningTooltip")}
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -422,6 +443,7 @@ export function SweepVsFinetuningAdvisor({
   onUseHybrid,
   className,
 }: SweepVsFinetuningAdvisorProps) {
+  const { t } = useTranslation();
   // Determine recommendation
   const recommendation = useMemo(() => {
     if (!hasModel) return "sweep";
@@ -434,11 +456,11 @@ export function SweepVsFinetuningAdvisor({
     <div className={cn("rounded-lg border border-border p-4 space-y-4", className)}>
       <div className="flex items-center gap-2">
         <Info className="h-5 w-5 text-blue-500" />
-        <h4 className="font-medium">Search Strategy Recommendation</h4>
+        <h4 className="font-medium">{t("pipelineEditor.sweeps.advisor.title")}</h4>
       </div>
 
       <p className="text-sm text-muted-foreground">
-        You have {variantCount.toLocaleString()} parameter variations. Choose your strategy:
+        {t("pipelineEditor.sweeps.advisor.intro", { count: variantCount, formatted: variantCount.toLocaleString() })}
       </p>
 
       <div className="grid grid-cols-2 gap-3">
@@ -448,24 +470,33 @@ export function SweepVsFinetuningAdvisor({
             "rounded-lg border-2 p-3 cursor-pointer transition-all",
             recommendation === "sweep"
               ? "border-orange-500 bg-orange-500/5"
-              : "border-border hover:border-orange-500/50"
+              : "border-border hover:border-orange-500/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           )}
+          role="button"
+          tabIndex={0}
           onClick={onUseSweep}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onUseSweep?.();
+            }
+          }}
         >
           <div className="flex items-center gap-2 mb-2">
             <Repeat className="h-5 w-5 text-orange-500" />
-            <span className="font-medium">Grid Sweep</span>
+            <span className="font-medium">{t("pipelineEditor.sweeps.advisor.grid.title")}</span>
             {recommendation === "sweep" && (
-              <Badge className="bg-orange-500 text-[10px]">Recommended</Badge>
+              <Badge className="bg-orange-500 text-[10px]">{t("pipelineEditor.sweeps.advisor.recommended")}</Badge>
             )}
           </div>
           <ul className="text-xs text-muted-foreground space-y-1">
-            <li>• Run ALL combinations</li>
-            <li>• Guaranteed best result</li>
-            <li>• {variantCount.toLocaleString()} runs needed</li>
+            <li>{t("pipelineEditor.sweeps.advisor.grid.point1")}</li>
+            <li>{t("pipelineEditor.sweeps.advisor.grid.point2")}</li>
+            <li>{t("pipelineEditor.sweeps.advisor.grid.point3", { count: variantCount, formatted: variantCount.toLocaleString() })}</li>
           </ul>
           <p className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border">
-            Best for: Small spaces, need all results
+            {t("pipelineEditor.sweeps.advisor.grid.bestFor")}
           </p>
         </div>
 
@@ -475,24 +506,33 @@ export function SweepVsFinetuningAdvisor({
             "rounded-lg border-2 p-3 cursor-pointer transition-all",
             recommendation === "finetune"
               ? "border-purple-500 bg-purple-500/5"
-              : "border-border hover:border-purple-500/50"
+              : "border-border hover:border-purple-500/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           )}
+          role="button"
+          tabIndex={0}
           onClick={onUseFinetuning}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onUseFinetuning?.();
+            }
+          }}
         >
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="h-5 w-5 text-purple-500" />
-            <span className="font-medium">Finetuning</span>
+            <span className="font-medium">{t("pipelineEditor.sweeps.advisor.finetune.title")}</span>
             {recommendation === "finetune" && (
-              <Badge className="bg-purple-500 text-[10px]">Recommended</Badge>
+              <Badge className="bg-purple-500 text-[10px]">{t("pipelineEditor.sweeps.advisor.recommended")}</Badge>
             )}
           </div>
           <ul className="text-xs text-muted-foreground space-y-1">
-            <li>• Smart exploration</li>
-            <li>• Early stopping</li>
-            <li>• ~50 trials typical</li>
+            <li>{t("pipelineEditor.sweeps.advisor.finetune.point1")}</li>
+            <li>{t("pipelineEditor.sweeps.advisor.finetune.point2")}</li>
+            <li>{t("pipelineEditor.sweeps.advisor.finetune.point3")}</li>
           </ul>
           <p className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border">
-            Best for: Large spaces, time-limited
+            {t("pipelineEditor.sweeps.advisor.finetune.bestFor")}
           </p>
         </div>
       </div>
@@ -504,19 +544,28 @@ export function SweepVsFinetuningAdvisor({
             "rounded-lg border-2 border-dashed p-3 cursor-pointer transition-all",
             recommendation === "hybrid"
               ? "border-teal-500 bg-teal-500/5"
-              : "border-border hover:border-teal-500/50"
+              : "border-border hover:border-teal-500/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           )}
+          role="button"
+          tabIndex={0}
           onClick={onUseHybrid}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onUseHybrid?.();
+            }
+          }}
         >
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-teal-500" />
-            <span className="text-sm font-medium">Hybrid Approach</span>
+            <span className="text-sm font-medium">{t("pipelineEditor.sweeps.advisor.hybrid.title")}</span>
             {recommendation === "hybrid" && (
-              <Badge className="bg-teal-500 text-[10px]">Recommended</Badge>
+              <Badge className="bg-teal-500 text-[10px]">{t("pipelineEditor.sweeps.advisor.recommended")}</Badge>
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Sweep preprocessing variants + Finetune model parameters
+            {t("pipelineEditor.sweeps.advisor.hybrid.description")}
           </p>
         </div>
       )}

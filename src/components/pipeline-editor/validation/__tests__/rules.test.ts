@@ -195,7 +195,7 @@ describe("CATEGORY_METADATA", () => {
 
     for (const category of categories) {
       expect(CATEGORY_METADATA[category]).toBeDefined();
-      expect(CATEGORY_METADATA[category].label).toBeDefined();
+      expect(CATEGORY_METADATA[category].labelKey).toBeDefined();
       expect(CATEGORY_METADATA[category].icon).toBeDefined();
     }
   });
@@ -207,7 +207,7 @@ describe("SEVERITY_METADATA", () => {
 
     for (const severity of severities) {
       expect(SEVERITY_METADATA[severity]).toBeDefined();
-      expect(SEVERITY_METADATA[severity].label).toBeDefined();
+      expect(SEVERITY_METADATA[severity].labelKey).toBeDefined();
       expect(SEVERITY_METADATA[severity].color).toBeDefined();
       expect(SEVERITY_METADATA[severity].icon).toBeDefined();
     }

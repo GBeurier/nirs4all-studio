@@ -38,6 +38,7 @@ import {
   getHistogramPartitionRoleLabel,
   isBarElement,
 } from './utils';
+import { useTranslation } from 'react-i18next';
 
 export default function HistogramByPartition({
   histogramData,
@@ -56,15 +57,16 @@ export default function HistogramByPartition({
   lastMouseEventRef,
   colorContext,
 }: HistogramChartProps) {
+  const { t } = useTranslation();
   const stackSegments = useMemo(() => (
     colorContext
       ? getPresentPartitionRoles(colorContext).map((role) => ({
           key: role,
-          label: getHistogramPartitionRoleLabel(role),
+          label: getHistogramPartitionRoleLabel(role, t),
           color: getHistogramPartitionRoleColor(role),
         }))
       : []
-  ), [colorContext]);
+  ), [colorContext, t]);
 
   // Transform data for partition stacking
   const stackedData = useMemo(() =>
@@ -213,7 +215,7 @@ export default function HistogramByPartition({
                   return (
                     <p key={segment.key} className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: segment.color }} />
-                      {segment.label}: {count}
+                      {t('playground.charts.histogram.tooltip.labelValue', { label: segment.label, value: count })}
                     </p>
                   );
                 })}

@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -112,7 +113,7 @@ export function ParameterSelect({
   tooltip,
   hasSweep = false,
   label,
-  placeholder = "Select...",
+  placeholder,
   disabled = false,
   className,
   showLabel = true,
@@ -120,6 +121,7 @@ export function ParameterSelect({
   error,
   suffix,
 }: ParameterSelectProps) {
+  const { t } = useTranslation();
   const isDisabled = disabled || hasSweep;
   const displayLabel = label ?? formatParamLabel(paramKey);
   const normalizedOptions = options.map(normalizeOption);
@@ -150,7 +152,7 @@ export function ParameterSelect({
               variant="outline"
               className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500"
             >
-              sweep
+              {t("pipelineEditor.shared.param.sweepBadge")}
             </Badge>
           )}
         </div>
@@ -176,7 +178,7 @@ export function ParameterSelect({
             aria-invalid={!!error}
             aria-describedby={error ? `${paramKey}-error` : undefined}
           >
-            <SelectValue placeholder={placeholder} />
+            <SelectValue placeholder={placeholder ?? t("pipelineEditor.shared.param.selectPlaceholder")} />
           </SelectTrigger>
           <SelectContent className="bg-popover">
             {normalizedOptions.map((option) => (

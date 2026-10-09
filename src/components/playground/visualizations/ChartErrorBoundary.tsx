@@ -8,6 +8,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import i18n from '@/lib/i18n';
 
 interface ChartErrorBoundaryProps {
   /** Chart type for display purposes */
@@ -58,11 +59,11 @@ export class ChartErrorBoundary extends Component<
           <AlertTriangle className="w-8 h-8 text-orange-500 mb-3" />
           <p className="text-sm font-medium mb-1">
             {this.props.chartType
-              ? `Failed to render ${this.props.chartType} chart`
-              : 'Chart rendering failed'}
+              ? i18n.t('playground.charts.common.renderFailedType', { chartType: this.props.chartType })
+              : i18n.t('playground.charts.common.renderFailed')}
           </p>
           <p className="text-xs text-muted-foreground mb-3 text-center max-w-xs">
-            {this.state.error?.message || 'An unexpected error occurred'}
+            {this.state.error?.message || i18n.t('playground.charts.common.unexpectedError')}
           </p>
           <Button
             variant="outline"
@@ -71,7 +72,7 @@ export class ChartErrorBoundary extends Component<
             className="gap-2"
           >
             <RefreshCw className="w-3 h-3" />
-            Retry
+            {i18n.t('common.retry')}
           </Button>
         </div>
       );

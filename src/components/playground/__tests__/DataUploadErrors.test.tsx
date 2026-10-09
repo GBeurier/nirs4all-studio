@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import i18n from "@/lib/i18n";
 import { DataUpload } from "../DataUpload";
 
 const query = vi.hoisted(() => ({
@@ -34,6 +35,10 @@ async function render(onLoadFromWorkspace = vi.fn()) {
     dataSource={null} currentDatasetInfo={null} onLoadDemo={vi.fn()}
     onLoadFromWorkspace={onLoadFromWorkspace} onClear={vi.fn()} />));
 }
+
+beforeAll(async () => {
+  await i18n.changeLanguage('en');
+});
 
 describe("Playground dataset errors", () => {
   it("shows the actual catalogue error and allows a retry", async () => {

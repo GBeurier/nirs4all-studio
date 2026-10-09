@@ -11,6 +11,7 @@
  */
 
 import { useState, memo, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   GitCompare,
   Database,
@@ -67,6 +68,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
   compact = false,
   onInteractionStart,
 }: ReferenceModeControlsProps) {
+  const { t } = useTranslation();
   const referenceCtx = useReferenceDatasetOptional();
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -82,7 +84,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
   const datasetsError = datasetsQuery.error
     ? datasetsQuery.error instanceof Error
       ? datasetsQuery.error.message
-      : 'Failed to load datasets'
+      : t('playground.reference.loadFailed')
     : null;
 
   // Filter out current dataset from picker
@@ -153,14 +155,14 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                 onClick={() => handleModeChange(mode === 'step' ? 'dataset' : 'step')}
               >
                 <GitCompare className="w-3 h-3" />
-                {mode === 'dataset' ? 'Dataset' : 'Step'}
+                {mode === 'dataset' ? t('playground.reference.dataset') : t('playground.reference.step')}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-xs">
               <p className="text-xs">
                 {mode === 'step'
-                  ? 'Step mode: Compare raw vs processed data using the step slider'
-                  : 'Dataset mode: Compare against another dataset'}
+                  ? t('playground.reference.stepModeTooltip')
+                  : t('playground.reference.datasetModeTooltip')}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -183,7 +185,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                   {isLoading ? (
                     <>
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      Loading...
+                      {t('playground.reference.loading')}
                     </>
                   ) : referenceInfo ? (
                     <>
@@ -193,7 +195,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                   ) : (
                     <>
                       <Database className="w-3 h-3" />
-                      Select...
+                      {t('playground.reference.select')}
                     </>
                   )}
                   <ChevronDown className="w-3 h-3 shrink-0 opacity-50" />
@@ -202,7 +204,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
               <PopoverContent className="w-64 p-0" align="start">
                 <div className="p-2 border-b">
                   <span className="text-xs font-medium text-muted-foreground">
-                    Select Reference Dataset
+                    {t('playground.reference.pickerTitle')}
                   </span>
                 </div>
                 {datasetsLoading ? (
@@ -215,11 +217,11 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                   </div>
                 ) : availableDatasets.length === 0 ? (
                   <div className="p-3 text-xs text-muted-foreground text-center">
-                    No other datasets available
+                    {t('playground.reference.noOtherDatasets')}
                   </div>
                 ) : (
                   <ScrollArea className="max-h-[200px]">
-                    <div className="p-1" role="listbox" aria-label="Available datasets">
+                    <div className="p-1" role="listbox" aria-label={t('playground.reference.availableDatasets')}>
                       {availableDatasets.map(dataset => (
                         <button
                           key={dataset.id}
@@ -235,9 +237,9 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                           <div className="font-medium truncate">{dataset.name}</div>
                           {(dataset.num_samples || dataset.num_features) && (
                             <div className="text-[10px] text-muted-foreground">
-                              {dataset.num_samples && `${dataset.num_samples} samples`}
+                              {dataset.num_samples && t('playground.reference.samplesCount', { count: dataset.num_samples })}
                               {dataset.num_samples && dataset.num_features && ' · '}
-                              {dataset.num_features && `${dataset.num_features} features`}
+                              {dataset.num_features && t('playground.reference.featuresCount', { count: dataset.num_features })}
                             </div>
                           )}
                         </button>
@@ -258,12 +260,12 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                       size="sm"
                       className="h-6 w-6 p-0"
                       onClick={handleClearReference}
-                      aria-label="Clear reference dataset"
+                      aria-label={t('playground.reference.clearReference')}
                     >
                       <X className="w-3 h-3" aria-hidden="true" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Clear reference dataset</TooltipContent>
+                  <TooltipContent>{t('playground.reference.clearReference')}</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
@@ -275,7 +277,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                   <TooltipTrigger asChild>
                     <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
                       <AlertTriangle className="w-3 h-3 mr-1" />
-                      Incompatible
+                      {t('playground.reference.incompatible')}
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-xs">
@@ -310,7 +312,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
             {isReferenceActive && compatibility?.compatible && (
               <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-emerald-600 border-emerald-300">
                 <Check className="w-3 h-3 mr-1" />
-                Active
+                {t('playground.reference.active')}
               </Badge>
             )}
 
@@ -320,7 +322,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
-                      Error
+                      {t('playground.reference.error')}
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-xs">
@@ -344,9 +346,9 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="index">By Index</SelectItem>
-                  <SelectItem value="id_column">By Sample ID</SelectItem>
-                  <SelectItem value="none">No Alignment</SelectItem>
+                  <SelectItem value="index">{t('playground.reference.alignment.index')}</SelectItem>
+                  <SelectItem value="id_column">{t('playground.reference.alignment.id_column')}</SelectItem>
+                  <SelectItem value="none">{t('playground.reference.alignment.none')}</SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -359,7 +361,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
   // Full-size rendering (non-compact)
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground">Reference:</span>
+      <span className="text-xs text-muted-foreground">{t('playground.reference.referenceLabel')}</span>
 
       {/* Mode selector */}
       <Select value={mode} onValueChange={(v) => handleModeChange(v as ReferenceMode)}>
@@ -370,13 +372,13 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
           <SelectItem value="step">
             <div className="flex items-center gap-2">
               <Layers className="w-3 h-3" />
-              Step
+              {t('playground.reference.step')}
             </div>
           </SelectItem>
           <SelectItem value="dataset">
             <div className="flex items-center gap-2">
               <Database className="w-3 h-3" />
-              Dataset
+              {t('playground.reference.dataset')}
             </div>
           </SelectItem>
         </SelectContent>
@@ -395,7 +397,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
               {isLoading ? (
                 <>
                   <Loader2 className="w-3 h-3 animate-spin" />
-                  Loading...
+                  {t('playground.reference.loading')}
                 </>
               ) : referenceInfo ? (
                 <>
@@ -405,16 +407,16 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
               ) : (
                 <>
                   <Database className="w-3 h-3" />
-                  Select dataset...
+                  {t('playground.reference.selectDatasetEllipsis')}
                 </>
               )}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-72 p-0" align="start">
             <div className="p-3 border-b">
-              <h4 className="text-sm font-medium">Select Reference Dataset</h4>
+              <h4 className="text-sm font-medium">{t('playground.reference.pickerTitle')}</h4>
               <p className="text-xs text-muted-foreground mt-1">
-                Choose a dataset to compare against the primary dataset
+                {t('playground.reference.pickerHelp')}
               </p>
             </div>
             {datasetsLoading ? (
@@ -425,7 +427,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
               <div className="p-4 text-sm text-destructive">{datasetsError}</div>
             ) : availableDatasets.length === 0 ? (
               <div className="p-4 text-sm text-muted-foreground text-center">
-                No other datasets available in workspace
+                {t('playground.reference.noOtherDatasetsWorkspace')}
               </div>
             ) : (
               <ScrollArea className="max-h-[250px]">
@@ -443,9 +445,9 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                       <div className="text-sm font-medium">{dataset.name}</div>
                       {(dataset.num_samples || dataset.num_features) && (
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {dataset.num_samples && `${dataset.num_samples} samples`}
+                          {dataset.num_samples && t('playground.reference.samplesCount', { count: dataset.num_samples })}
                           {dataset.num_samples && dataset.num_features && ' · '}
-                          {dataset.num_features && `${dataset.num_features} features`}
+                          {dataset.num_features && t('playground.reference.featuresCount', { count: dataset.num_features })}
                         </div>
                       )}
                     </button>

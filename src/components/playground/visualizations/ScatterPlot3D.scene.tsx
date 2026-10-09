@@ -22,6 +22,7 @@ import {
   normalizeData,
   parsePointColor,
 } from './ScatterPlot3D.helpers';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Simple line component using Three.js primitives (replaces drei Line to avoid NaN issues)
@@ -354,11 +355,13 @@ export function CameraController({ onReset }: CameraControllerProps) {
  * Loading fallback for Suspense
  */
 export function LoadingFallback() {
+  const { t } = useTranslation();
+
   return (
     <Html center>
       <div className="flex flex-col items-center gap-2">
         <Box className="w-8 h-8 text-primary animate-pulse" />
-        <span className="text-xs text-muted-foreground">Loading 3D view...</span>
+        <span className="text-xs text-muted-foreground">{t('playground.charts.scatter.loading3d')}</span>
       </div>
     </Html>
   );

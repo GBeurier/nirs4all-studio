@@ -36,20 +36,7 @@ import {
 } from '@/lib/playground/operatorPaletteData';
 import { OperatorPaletteCategorySection } from './OperatorPaletteCategorySection';
 import { OperatorPaletteSearch } from './OperatorPaletteSearch';
-
-/** Tier selector labels */
-const TIER_LABELS: Record<TierLevel, string> = {
-  core: "Essential",
-  standard: "Standard",
-  all: "All",
-};
-
-/** Tier selector tooltips */
-const TIER_TOOLTIPS: Record<TierLevel, string> = {
-  core: "Essential NIRS operators only",
-  standard: "Standard operators (nirs4all + common sklearn)",
-  all: "All operators including advanced and deep learning",
-};
+import { useTranslation } from 'react-i18next';
 
 interface OperatorPaletteProps {
   onAddOperator: (definition: OperatorDefinition) => void;
@@ -62,6 +49,7 @@ export function OperatorPalette({
   hasSplitter = false,
   currentSplitterName = null,
 }: OperatorPaletteProps) {
+  const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<PlaygroundTabType>('preprocessing');
@@ -162,8 +150,8 @@ export function OperatorPalette({
   };
 
   const replacementHint = currentSplitterName
-    ? `Adding another splitter will replace pipeline splitter "${currentSplitterName}".`
-    : 'Adding another splitter will replace the current pipeline splitter.';
+    ? t('playground.operators.replaceSplitterNamed', { name: currentSplitterName })
+    : t('playground.operators.replaceSplitter');
 
   const filteredOperators = useMemo(
     () => filterOperatorsBySearchQuery(operatorsByTab, searchQuery),
@@ -194,10 +182,10 @@ export function OperatorPalette({
       <div className="p-4">
         <div className="flex items-center gap-2 text-destructive">
           <AlertCircle className="w-4 h-4" />
-          <span className="text-sm">Failed to load operators</span>
+          <span className="text-sm">{t('playground.operators.loadFailed')}</span>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          {error?.message || 'Unknown error'}
+          {error?.message || t('playground.operators.unknownError')}
         </p>
       </div>
     );
@@ -208,12 +196,12 @@ export function OperatorPalette({
       {extendedError && (
         <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded px-2 py-1.5">
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-          <span className="text-xs">Extended operators could not be loaded. Showing base operators only.</span>
+          <span className="text-xs">{t('playground.operators.extendedFailed')}</span>
         </div>
       )}
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Operators
+          {t('playground.operators.title')}
         </h3>
         <div className="flex items-center gap-1.5">
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
@@ -232,11 +220,11 @@ export function OperatorPalette({
                         : "bg-muted/30 text-muted-foreground hover:bg-muted/60"
                     }`}
                   >
-                    {TIER_LABELS[tier]}
+                    {t(`playground.operators.tiers.${tier}`)}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="text-xs max-w-[200px]">
-                  {TIER_TOOLTIPS[tier]}
+                  {t(`playground.operators.tierTooltips.${tier}`)}
                 </TooltipContent>
               </Tooltip>
             ))}
@@ -245,7 +233,7 @@ export function OperatorPalette({
       </div>
 
       {tierLevel === "all" && registryContext?.isLoading && (
-        <div className="text-[10px] text-muted-foreground/70">Loading extended...</div>
+        <div className="text-[10px] text-muted-foreground/70">{t('playground.operators.loadingExtended')}</div>
       )}
 
       <OperatorPaletteSearch
@@ -262,16 +250,16 @@ export function OperatorPalette({
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'preprocessing' | 'augmentation' | 'splitting' | 'filter')}>
         <TabsList className="grid w-full grid-cols-4 h-8">
           <TabsTrigger value="preprocessing" className="text-[10px] px-1">
-            Preproc ({preprocessing.length})
+            {t('playground.operators.tabs.preprocessing', { count: preprocessing.length })}
           </TabsTrigger>
           <TabsTrigger value="augmentation" className="text-[10px] px-1">
-            Augment ({augmentation.length})
+            {t('playground.operators.tabs.augmentation', { count: augmentation.length })}
           </TabsTrigger>
           <TabsTrigger value="splitting" className="text-[10px] px-1">
-            Split ({splitting.length})
+            {t('playground.operators.tabs.splitting', { count: splitting.length })}
           </TabsTrigger>
           <TabsTrigger value="filter" className="text-[10px] px-1">
-            Filter ({filter.length})
+            {t('playground.operators.tabs.filter', { count: filter.length })}
           </TabsTrigger>
         </TabsList>
 
@@ -338,7 +326,7 @@ export function OperatorPalette({
           <ScrollArea className="h-[300px] pr-3">
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground bg-muted/50 px-2 py-1.5 rounded mb-2">
-                Filters remove samples from the dataset based on criteria
+                {t('playground.operators.filterHint')}
               </div>
               {Object.entries(filterByCategory).map(([category, ops]) => (
                 <OperatorPaletteCategorySection

@@ -16,6 +16,7 @@ import type { SubsetInfo } from '@/types/playground';
 import type { ChartType } from '@/context/usePlaygroundView';
 import { CHART_CONFIG } from './CanvasToolbarChartConfig';
 import { RibbonGroup } from './CanvasToolbarRibbonGroup';
+import { useTranslation } from 'react-i18next';
 
 export interface ToggleableChartControl {
   id: ChartType;
@@ -59,24 +60,26 @@ export const CanvasToolbarViewGroup = memo(function CanvasToolbarViewGroup({
   onSubsetModeChange,
   subsetInfo,
 }: CanvasToolbarViewGroupProps) {
-  const chartControls = toggleableCharts ?? CHART_CONFIG.map(({ id, label, requiresFolds, requiresRepetitions }) => {
+  const { t } = useTranslation();
+  const chartControls = toggleableCharts ?? CHART_CONFIG.map(({ id, requiresFolds, requiresRepetitions }) => {
     const disabled = (requiresFolds && !showFoldsChart) || (requiresRepetitions && !hasRepetitions) || false;
     const disabledReason = disabled
       ? (requiresFolds
-          ? 'Add a splitter operator (or load a dataset with a test partition) to see fold distribution'
-          : 'No repetitions detected in dataset')
+          ? t('playground.toolbar.view.foldsRequirement')
+          : t('playground.toolbar.view.noRepetitions'))
       : null;
 
-    return { id, label, disabled, disabledReason };
+    return { id, disabled, disabledReason };
   });
 
   return (
-    <RibbonGroup label="View" icon={<Layers className="w-2.5 h-2.5" />}>
-      {chartControls.map(({ id, label, disabled, disabledReason }, index) => {
+    <RibbonGroup label={t('playground.toolbar.view.groupLabel')} icon={<Layers className="w-2.5 h-2.5" />}>
+      {chartControls.map(({ id, disabled, disabledReason }, index) => {
         const isVisible = effectiveVisibleCharts.has(id);
+        const chartLabel = t(`playground.toolbar.view.chartShort.${id}`);
         const tooltipText = disabled
-          ? (disabledReason ?? 'Chart unavailable')
-          : `${isVisible ? 'Hide' : 'Show'} ${label} chart (press ${index + 1})`;
+          ? (disabledReason ?? t('playground.toolbar.view.chartUnavailable'))
+          : t(isVisible ? 'playground.toolbar.view.hideChart' : 'playground.toolbar.view.showChart', { label: chartLabel, key: index + 1 });
 
         return (
           <TooltipProvider key={id} delayDuration={200}>
@@ -95,7 +98,7 @@ export const CanvasToolbarViewGroup = memo(function CanvasToolbarViewGroup({
                   disabled={disabled}
                 >
                   {isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                  {label}
+                  {chartLabel}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">{tooltipText}</TooltipContent>
@@ -121,13 +124,13 @@ export const CanvasToolbarViewGroup = memo(function CanvasToolbarViewGroup({
                   onClick={() => onSpectraViewModeChange(spectraViewMode === 'difference' ? 'processed' : 'difference')}
                 >
                   <ArrowLeftRight className="w-3 h-3" />
-                  Diff
+                  {t('playground.toolbar.view.diff')}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {spectraViewMode === 'difference'
-                  ? 'Exit difference mode (show processed spectra)'
-                  : 'Enter difference mode (show per-sample distances)'}
+                  ? t('playground.toolbar.view.exitDiff')
+                  : t('playground.toolbar.view.enterDiff')}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -145,7 +148,7 @@ export const CanvasToolbarViewGroup = memo(function CanvasToolbarViewGroup({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  {showAbsoluteDifference ? 'Show signed differences' : 'Show absolute differences'}
+                  {showAbsoluteDifference ? t('playground.toolbar.view.showSigned') : t('playground.toolbar.view.showAbsolute')}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -170,21 +173,21 @@ export const CanvasToolbarViewGroup = memo(function CanvasToolbarViewGroup({
                   onClick={() => onSubsetModeChange(subsetMode === 'all' ? 'visible' : 'all')}
                 >
                   <Filter className="w-3 h-3" />
-                  {subsetMode === 'visible' ? 'Subset' : 'All'}
+                  {subsetMode === 'visible' ? t('playground.toolbar.view.subset') : t('playground.toolbar.view.all')}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-xs">
                 {subsetMode === 'visible' ? (
                   <div className="text-xs">
-                    <p className="font-medium">Subset mode (faster)</p>
-                    <p>Processing {subsetInfo?.displayed_samples ?? 200} of {subsetInfo?.total_samples ?? totalSamples} samples.</p>
-                    <p className="text-muted-foreground mt-1">Click to process all samples. Fold distributions may not be representative in subset mode.</p>
+                    <p className="font-medium">{t('playground.toolbar.view.subsetTitle')}</p>
+                    <p>{t('playground.toolbar.view.subsetProcessing', { displayed: subsetInfo?.displayed_samples ?? 200, total: subsetInfo?.total_samples ?? totalSamples })}</p>
+                    <p className="text-muted-foreground mt-1">{t('playground.toolbar.view.subsetHint')}</p>
                   </div>
                 ) : (
                   <div className="text-xs">
-                    <p className="font-medium">All samples mode</p>
-                    <p>Processing all {totalSamples} samples.</p>
-                    <p className="text-muted-foreground mt-1">Click to process a representative subset for faster rendering.</p>
+                    <p className="font-medium">{t('playground.toolbar.view.allTitle')}</p>
+                    <p>{t('playground.toolbar.view.allProcessing', { total: totalSamples })}</p>
+                    <p className="text-muted-foreground mt-1">{t('playground.toolbar.view.allHint')}</p>
                   </div>
                 )}
               </TooltipContent>

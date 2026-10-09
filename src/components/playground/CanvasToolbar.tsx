@@ -29,6 +29,7 @@ import {
 import { type ChartType } from '@/context/usePlaygroundView';
 import type { SpectraViewMode } from '@/lib/playground/spectraConfig';
 import type { PipelineExecutionMetricObservation } from '@/lib/pipelineExecutionContract';
+import { useTranslation } from 'react-i18next';
 
 // Re-export ChartType for consumers
 export type { ChartType };
@@ -148,13 +149,14 @@ export const CanvasToolbar = memo(function CanvasToolbar({
   onSubsetModeChange,
   subsetInfo,
 }: CanvasToolbarProps) {
+  const { t } = useTranslation();
   // hasPartition / hasFolds are now distinct concerns and are passed in directly.
 
   return (
     <div
       className="flex flex-col border-b border-border bg-card/50"
       role="toolbar"
-      aria-label="Chart controls"
+      aria-label={t('playground.toolbar.ariaLabel')}
     >
       {/* ============= ROW 1: View, Selection, Filter ============= */}
       <div className="flex items-stretch px-2 py-1 gap-0">

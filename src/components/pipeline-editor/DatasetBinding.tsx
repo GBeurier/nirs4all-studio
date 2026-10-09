@@ -16,6 +16,7 @@
  */
 
 import { useState, useCallback } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import {
   Database,
   X,
@@ -121,6 +122,7 @@ export function DatasetBinding({
   hasWarnings = false,
   warningMessage,
 }: DatasetBindingProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   const handleSelect = useCallback(
@@ -161,19 +163,20 @@ export function DatasetBinding({
                 </Badge>
               </>
             ) : (
-              <span>Bind Dataset</span>
+              <span>{t("pipelineEditor.binding.bindDataset")}</span>
             )}
             <ChevronDown className="h-3 w-3 opacity-50" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-80 bg-popover">
           <DropdownMenuLabel className="flex items-center justify-between">
-            <span>Data Binding</span>
+            <span>{t("pipelineEditor.binding.dataBinding")}</span>
             {onRefresh && (
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
+                aria-label={t("pipelineEditor.binding.refresh")}
                 onClick={(e) => {
                   e.stopPropagation();
                   onRefresh();
@@ -188,14 +191,14 @@ export function DatasetBinding({
           {isLoading ? (
             <div className="flex items-center justify-center py-6">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-sm text-muted-foreground">Loading datasets...</span>
+              <span className="ml-2 text-sm text-muted-foreground">{t("pipelineEditor.binding.loading")}</span>
             </div>
           ) : datasets.length === 0 ? (
             <div className="py-6 text-center">
               <Database className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-              <p className="text-sm text-muted-foreground">No datasets available</p>
+              <p className="text-sm text-muted-foreground">{t("pipelineEditor.binding.none")}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Link a dataset in the Datasets page
+                {t("pipelineEditor.binding.linkHint")}
               </p>
             </div>
           ) : (
@@ -212,6 +215,7 @@ export function DatasetBinding({
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
+                      aria-label={t("pipelineEditor.binding.clear")}
                       onClick={handleClear}
                     >
                       <X className="h-3 w-3" />
@@ -225,7 +229,7 @@ export function DatasetBinding({
               {availableDatasets.length > 0 && (
                 <>
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
-                    Available ({availableDatasets.length})
+                    {t("pipelineEditor.binding.available", { count: availableDatasets.length })}
                   </DropdownMenuLabel>
                   {availableDatasets.map((dataset) => (
                     <DropdownMenuItem
@@ -257,7 +261,7 @@ export function DatasetBinding({
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
-                    Missing ({missingDatasets.length})
+                    {t("pipelineEditor.binding.missing", { count: missingDatasets.length })}
                   </DropdownMenuLabel>
                   {missingDatasets.map((dataset) => (
                     <DropdownMenuItem
@@ -318,8 +322,7 @@ export function DatasetBinding({
           </TooltipTrigger>
           <TooltipContent side="bottom" className="max-w-xs">
             <p className="text-xs">
-              Dataset bound for shape validation. This binding is local and not
-              saved with the pipeline.
+              {t("pipelineEditor.binding.infoTooltip")}
             </p>
           </TooltipContent>
         </Tooltip>
@@ -367,6 +370,7 @@ export function ShapeChangeIndicator({
   outputShape,
   className = "",
 }: ShapeChangeIndicatorProps) {
+  const { t } = useTranslation();
   const hasChange =
     inputShape.samples !== outputShape.samples ||
     inputShape.features !== outputShape.features;
@@ -399,12 +403,12 @@ export function ShapeChangeIndicator({
         <div className="text-xs space-y-1">
           {samplesDiff !== 0 && (
             <div>
-              Samples: {samplesDiff > 0 ? "+" : ""}{samplesDiff.toLocaleString()}
+              {t("pipelineEditor.binding.samplesDiff", { diff: `${samplesDiff > 0 ? "+" : ""}${samplesDiff.toLocaleString()}` })}
             </div>
           )}
           {featuresDiff !== 0 && (
             <div>
-              Features: {featuresDiff > 0 ? "+" : ""}{featuresDiff.toLocaleString()}
+              {t("pipelineEditor.binding.featuresDiff", { diff: `${featuresDiff > 0 ? "+" : ""}${featuresDiff.toLocaleString()}` })}
             </div>
           )}
         </div>
@@ -429,6 +433,7 @@ export function DimensionWarningBadge({
   maxValue,
   stepName,
 }: DimensionWarningBadgeProps) {
+  const { t } = useTranslation();
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -443,8 +448,11 @@ export function DimensionWarningBadge({
       <TooltipContent className="max-w-xs">
         <p className="text-xs">
           {stepName && <strong>{stepName}: </strong>}
-          Parameter <code>{paramName}</code> ({paramValue}) exceeds the available
-          dimension ({maxValue}). This may cause an error during execution.
+          <Trans
+            i18nKey="pipelineEditor.binding.dimensionWarning"
+            values={{ paramName, paramValue, maxValue }}
+            components={{ code: <code /> }}
+          />
         </p>
       </TooltipContent>
     </Tooltip>

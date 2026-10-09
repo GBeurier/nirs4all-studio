@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 import {
   GraduationCap,
   Info,
@@ -102,6 +103,7 @@ interface ModelTabsHeaderProps {
 }
 
 function ModelTabsHeader({ viewState }: ModelTabsHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="border-b border-border px-2">
       <TabsList className="h-10 w-full justify-start bg-transparent gap-1">
@@ -110,7 +112,7 @@ function ModelTabsHeader({ viewState }: ModelTabsHeaderProps) {
           className={MODEL_TAB_TRIGGER_CLASS_NAME}
         >
           <Sliders className="h-3.5 w-3.5 mr-1.5" />
-          Parameters
+          {t("pipelineEditor.config.model.tabParameters")}
         </TabsTrigger>
         <TabsTrigger
           value="finetuning"
@@ -119,7 +121,7 @@ function ModelTabsHeader({ viewState }: ModelTabsHeaderProps) {
           onFocus={preloadFinetuneTab}
         >
           <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-          Finetuning
+          {t("pipelineEditor.config.model.tabFinetuning")}
           {viewState.hasFinetuning && (
             <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-purple-500">
               {viewState.finetuningTrialBadgeLabel}
@@ -131,10 +133,10 @@ function ModelTabsHeader({ viewState }: ModelTabsHeaderProps) {
           className={viewState.refitTabClassName}
         >
           <RefreshCcw className="h-3.5 w-3.5 mr-1.5" />
-          Refit
+          {t("pipelineEditor.config.model.tabRefit")}
           {viewState.hasRefit && (
             <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-emerald-500">
-              {viewState.refitBadgeLabel}
+              {t("pipelineEditor.config.model.refitOn")}
             </Badge>
           )}
         </TabsTrigger>
@@ -144,7 +146,7 @@ function ModelTabsHeader({ viewState }: ModelTabsHeaderProps) {
             className={MODEL_TAB_TRIGGER_CLASS_NAME}
           >
             <GraduationCap className="h-3.5 w-3.5 mr-1.5" />
-            Training
+            {t("pipelineEditor.config.model.tabTraining")}
           </TabsTrigger>
         )}
       </TabsList>
@@ -167,6 +169,7 @@ function ModelParametersTab({
   onResetParams,
   onConfigureFinetuning,
 }: ModelParametersTabProps) {
+  const { t } = useTranslation();
   return (
     <TabsContent value="parameters" className="flex-1 overflow-hidden mt-0">
       <ScrollArea className="h-full">
@@ -174,7 +177,7 @@ function ModelParametersTab({
           {viewState.hasParameters ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Parameters</Label>
+                <Label className="text-sm font-medium">{t("pipelineEditor.config.model.parameters")}</Label>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -182,7 +185,7 @@ function ModelParametersTab({
                   onClick={onResetParams}
                 >
                   <RotateCcw className="h-3 w-3 mr-1" />
-                  Reset
+                  {t("pipelineEditor.config.model.reset")}
                 </Button>
               </div>
               {Object.entries(step.params).map(([key, value]) =>
@@ -195,10 +198,10 @@ function ModelParametersTab({
                 <Info className="h-5 w-5 text-muted-foreground" />
               </div>
               <p className="text-sm text-muted-foreground">
-                No configurable parameters
+                {t("pipelineEditor.config.model.noParams")}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                This step uses default settings
+                {t("pipelineEditor.config.model.usesDefaults")}
               </p>
             </div>
           )}
@@ -208,10 +211,10 @@ function ModelParametersTab({
               <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm text-foreground">
-                  Optimize parameters automatically?
+                  {t("pipelineEditor.config.model.optimizeCta")}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Let Optuna find the best values intelligently.
+                  {t("pipelineEditor.config.model.optimizeCtaHint")}
                 </p>
               </div>
               <Button
@@ -221,7 +224,7 @@ function ModelParametersTab({
                 onClick={onConfigureFinetuning}
                 onMouseEnter={preloadFinetuneTab}
               >
-                Configure
+                {t("pipelineEditor.config.model.configure")}
               </Button>
             </div>
           )}
@@ -232,11 +235,12 @@ function ModelParametersTab({
 }
 
 function FinetuneTabSkeleton() {
+  const { t } = useTranslation();
   return (
     <div className="p-4 space-y-4 animate-pulse">
       <div className="flex items-center justify-center py-8">
         <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
-        <span className="ml-2 text-sm text-muted-foreground">Loading finetuning options...</span>
+        <span className="ml-2 text-sm text-muted-foreground">{t("pipelineEditor.config.model.loadingFinetuning")}</span>
       </div>
     </div>
   );

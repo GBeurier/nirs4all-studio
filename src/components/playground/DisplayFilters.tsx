@@ -11,6 +11,7 @@
  */
 
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
   MousePointer2,
@@ -73,7 +74,8 @@ const OutlierFilterSelect = memo(function OutlierFilterSelect({
   outlierCount,
   compact,
 }: OutlierFilterSelectProps) {
-  const label = value === 'all' ? 'All' : value === 'hide' ? 'Hide' : 'Only';
+  const { t } = useTranslation();
+  const label = value === 'all' ? t('playground.displayFilters.all') : value === 'hide' ? t('playground.displayFilters.hide') : t('playground.displayFilters.only');
 
   return (
     <div className="flex items-center gap-1">
@@ -95,12 +97,12 @@ const OutlierFilterSelect = memo(function OutlierFilterSelect({
         <SelectContent>
           <SelectItem value="all">
             <div className="flex items-center justify-between w-full gap-2">
-              <span>All</span>
+              <span>{t('playground.displayFilters.all')}</span>
             </div>
           </SelectItem>
           <SelectItem value="hide">
             <div className="flex items-center justify-between w-full gap-2">
-              <span>Hide Outliers</span>
+              <span>{t('playground.displayFilters.hideOutliers')}</span>
               {outlierCount > 0 && (
                 <Badge variant="outline" className="h-4 px-1 text-[9px]">
                   -{outlierCount}
@@ -110,7 +112,7 @@ const OutlierFilterSelect = memo(function OutlierFilterSelect({
           </SelectItem>
           <SelectItem value="only">
             <div className="flex items-center justify-between w-full gap-2">
-              <span>Outliers Only</span>
+              <span>{t('playground.displayFilters.outliersOnly')}</span>
               {outlierCount > 0 && (
                 <Badge variant="outline" className="h-4 px-1 text-[9px]">
                   {outlierCount}
@@ -139,8 +141,9 @@ const SelectionFilterSelect = memo(function SelectionFilterSelect({
   totalSamples,
   compact,
 }: SelectionFilterSelectProps) {
+  const { t } = useTranslation();
   const hasSelection = selectedCount > 0;
-  const label = value === 'all' ? 'All' : value === 'selected' ? 'Selected' : 'Unselected';
+  const label = value === 'all' ? t('playground.displayFilters.all') : value === 'selected' ? t('playground.displayFilters.selected') : t('playground.displayFilters.unselected');
 
   return (
     <div className="flex items-center gap-1">
@@ -162,7 +165,7 @@ const SelectionFilterSelect = memo(function SelectionFilterSelect({
         <SelectContent>
           <SelectItem value="all">
             <div className="flex items-center justify-between w-full gap-2">
-              <span>All Samples</span>
+              <span>{t('playground.displayFilters.allSamples')}</span>
               <Badge variant="outline" className="h-4 px-1 text-[9px]">
                 {totalSamples}
               </Badge>
@@ -170,7 +173,7 @@ const SelectionFilterSelect = memo(function SelectionFilterSelect({
           </SelectItem>
           <SelectItem value="selected" disabled={!hasSelection}>
             <div className="flex items-center justify-between w-full gap-2">
-              <span>Selected Only</span>
+              <span>{t('playground.displayFilters.selectedOnly')}</span>
               <Badge variant="outline" className="h-4 px-1 text-[9px]">
                 {selectedCount}
               </Badge>
@@ -178,7 +181,7 @@ const SelectionFilterSelect = memo(function SelectionFilterSelect({
           </SelectItem>
           <SelectItem value="unselected" disabled={!hasSelection}>
             <div className="flex items-center justify-between w-full gap-2">
-              <span>Unselected Only</span>
+              <span>{t('playground.displayFilters.unselectedOnly')}</span>
               <Badge variant="outline" className="h-4 px-1 text-[9px]">
                 {totalSamples - selectedCount}
               </Badge>
@@ -200,6 +203,7 @@ export const DisplayFilters = memo(function DisplayFilters({
   compact = false,
   className,
 }: DisplayFiltersProps) {
+  const { t } = useTranslation();
   const filterContext = useFilterOptional();
 
   // If no filter context, don't render
@@ -223,7 +227,7 @@ export const DisplayFilters = memo(function DisplayFilters({
       <div className="flex items-center gap-1">
         <Filter className="w-3 h-3 text-muted-foreground" />
         {!compact && (
-          <span className="text-[10px] text-muted-foreground">Display:</span>
+          <span className="text-[10px] text-muted-foreground">{t('playground.displayFilters.display')}</span>
         )}
       </div>
 
@@ -252,7 +256,7 @@ export const DisplayFilters = memo(function DisplayFilters({
             variant="secondary"
             className="h-5 px-1.5 text-[10px] font-medium bg-primary/10 text-primary"
           >
-            {activeFilterCount} filter{activeFilterCount !== 1 ? 's' : ''}
+            {t('playground.displayFilters.filterCount', { count: activeFilterCount })}
           </Badge>
           <TooltipProvider delayDuration={200}>
             <Tooltip>
@@ -262,12 +266,13 @@ export const DisplayFilters = memo(function DisplayFilters({
                   size="sm"
                   className="h-5 w-5 p-0"
                   onClick={clearAllFilters}
+                  aria-label={t('playground.displayFilters.clearAll')}
                 >
                   <X className="w-3 h-3" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">Clear all filters</p>
+                <p className="text-xs">{t('playground.displayFilters.clearAll')}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

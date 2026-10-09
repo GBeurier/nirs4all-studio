@@ -1,3 +1,4 @@
+import { useTranslation, Trans } from 'react-i18next';
 import {
   AlertCircle,
   Check,
@@ -27,18 +28,21 @@ import {
 import type { FoldsInfo } from '@/types/playground';
 import type { SpectraSettingsReadModel } from './SpectraSettingsPopupData';
 
-const PARTITION_OPTIONS: { value: PartitionFilter; label: string; description: string }[] = [
-  { value: 'all', label: 'All', description: 'Show all samples' },
-  { value: 'train', label: 'Train', description: 'Training set only' },
-  { value: 'test', label: 'Test', description: 'Test set only' },
-  { value: 'fold', label: 'Specific Fold', description: 'Show specific fold' },
-  { value: 'oof', label: 'Out-of-Fold', description: 'OOF predictions' },
+const FK = 'playground.charts.spectra.filter.';
+const SK = 'playground.charts.spectra.settings.';
+
+const PARTITION_OPTIONS: { value: PartitionFilter; labelKey: string }[] = [
+  { value: 'all', labelKey: `${FK}partitionAll` },
+  { value: 'train', labelKey: `${FK}partitionTrain` },
+  { value: 'test', labelKey: `${FK}partitionTest` },
+  { value: 'fold', labelKey: `${FK}partitionFold` },
+  { value: 'oof', labelKey: `${FK}partitionOof` },
 ];
 
-const QC_STATUS_OPTIONS: { value: 'all' | 'accepted' | 'rejected'; label: string }[] = [
-  { value: 'all', label: 'All QC Status' },
-  { value: 'accepted', label: 'Accepted Only' },
-  { value: 'rejected', label: 'Rejected Only' },
+const QC_STATUS_OPTIONS: { value: 'all' | 'accepted' | 'rejected'; labelKey: string }[] = [
+  { value: 'all', labelKey: `${FK}qcAll` },
+  { value: 'accepted', labelKey: `${FK}qcAccepted` },
+  { value: 'rejected', labelKey: `${FK}qcRejected` },
 ];
 
 interface SpectraSettingsPopupContentProps {
@@ -88,6 +92,7 @@ export function SpectraSettingsPopupContent({
   onTargetRangeChange,
   onQCStatusChange,
 }: SpectraSettingsPopupContentProps) {
+  const { t } = useTranslation();
   const {
     focusModifiedCount,
     filterModifiedCount,
@@ -101,11 +106,11 @@ export function SpectraSettingsPopupContent({
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <h4 className="text-xs font-semibold flex items-center gap-2">
           <Settings2 className="w-3.5 h-3.5 text-primary" />
-          Spectra Settings
+          {t(`${SK}title`)}
         </h4>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={onReset}>
           <RotateCcw className="w-3 h-3 mr-1" />
-          Reset All
+          {t(`${SK}resetAll`)}
         </Button>
       </div>
 
@@ -113,7 +118,7 @@ export function SpectraSettingsPopupContent({
         <TabsList className="w-full justify-start rounded-none border-b px-3 h-8 bg-transparent">
           <TabsTrigger value="focus" className="text-[10px] gap-1 px-2 h-6 data-[state=active]:bg-muted">
             <Focus className="w-3 h-3" />
-            Focus
+            {t(`${SK}tabFocus`)}
             {focusModifiedCount > 0 && (
               <Badge variant="secondary" className="h-3.5 px-1 text-[8px] ml-0.5">
                 {focusModifiedCount}
@@ -122,7 +127,7 @@ export function SpectraSettingsPopupContent({
           </TabsTrigger>
           <TabsTrigger value="filter" className="text-[10px] gap-1 px-2 h-6 data-[state=active]:bg-muted">
             <Filter className="w-3 h-3" />
-            Filter
+            {t(`${SK}tabFilter`)}
             {filterModifiedCount > 0 && (
               <Badge variant="secondary" className="h-3.5 px-1 text-[8px] ml-0.5">
                 {filterModifiedCount}
@@ -134,11 +139,11 @@ export function SpectraSettingsPopupContent({
         <TabsContent value="focus" className="p-3 space-y-3 m-0">
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <Label className="text-[10px] text-muted-foreground">NIR Region</Label>
+              <Label className="text-[10px] text-muted-foreground">{t(`${SK}nirRegion`)}</Label>
               {focusModifiedCount > 0 && (
                 <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[9px]" onClick={onResetFocus}>
                   <RotateCcw className="w-2.5 h-2.5 mr-0.5" />
-                  Reset
+                  {t('common.reset')}
                 </Button>
               )}
             </div>
@@ -160,7 +165,7 @@ export function SpectraSettingsPopupContent({
           <Separator />
 
           <div>
-            <Label className="text-[10px] text-muted-foreground mb-1.5 block">Wavelength Range</Label>
+            <Label className="text-[10px] text-muted-foreground mb-1.5 block">{t(`${SK}wavelengthRange`)}</Label>
             <Slider
               value={config.wavelengthFocus.range ?? wavelengthRange}
               min={wavelengthRange[0]}
@@ -176,7 +181,7 @@ export function SpectraSettingsPopupContent({
           </div>
 
           <div className="flex items-center justify-between">
-            <Label className="text-[10px]">Derivative</Label>
+            <Label className="text-[10px]">{t(`${SK}derivative`)}</Label>
             <div className="flex gap-0.5">
               {([0, 1, 2] as const).map((order) => (
                 <Button
@@ -193,14 +198,14 @@ export function SpectraSettingsPopupContent({
           </div>
 
           <div className="flex items-center justify-between">
-            <Label className="text-[10px]">Edge Mask</Label>
+            <Label className="text-[10px]">{t(`${SK}edgeMask`)}</Label>
             <Switch checked={config.wavelengthFocus.edgeMask.enabled} onCheckedChange={onEdgeMaskToggle} />
           </div>
 
           {config.wavelengthFocus.edgeMask.enabled && (
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-[9px] text-muted-foreground">Start pts</Label>
+                <Label className="text-[9px] text-muted-foreground">{t(`${SK}startPts`)}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -211,7 +216,7 @@ export function SpectraSettingsPopupContent({
                 />
               </div>
               <div>
-                <Label className="text-[9px] text-muted-foreground">End pts</Label>
+                <Label className="text-[9px] text-muted-foreground">{t(`${SK}endPts`)}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -230,12 +235,12 @@ export function SpectraSettingsPopupContent({
             <div className="flex items-center justify-between mb-1.5">
               <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <Layers className="w-3 h-3" />
-                Data Partition
+                {t(`${FK}dataPartition`)}
               </Label>
               {filterModifiedCount > 0 && (
                 <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[9px]" onClick={onResetFilters}>
                   <RotateCcw className="w-2.5 h-2.5 mr-0.5" />
-                  Reset
+                  {t('common.reset')}
                 </Button>
               )}
             </div>
@@ -249,7 +254,7 @@ export function SpectraSettingsPopupContent({
                   <SelectContent>
                     {PARTITION_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value} className="text-xs">
-                        {option.label}
+                        {t(option.labelKey)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -265,7 +270,7 @@ export function SpectraSettingsPopupContent({
                         className="h-5 text-[9px] px-1.5"
                         onClick={() => onFoldIndexChange(index)}
                       >
-                        Fold {index + 1}
+                        {t(`${FK}foldN`, { n: index + 1 })}
                       </Button>
                     ))}
                   </div>
@@ -273,7 +278,7 @@ export function SpectraSettingsPopupContent({
               </div>
             ) : (
               <div className="text-[10px] text-muted-foreground italic p-2 bg-muted/50 rounded">
-                Add a splitter to filter by partition/fold
+                {t(`${FK}addSplitter`)}
               </div>
             )}
           </div>
@@ -284,10 +289,16 @@ export function SpectraSettingsPopupContent({
             <div className="flex items-center justify-between mb-1.5">
               <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <Target className="w-3 h-3" />
-                Target Value Range
+                {t(`${FK}targetRange`)}
               </Label>
               {config.filters.targetRange && (
-                <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => onTargetRangeChange(undefined)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 p-0"
+                  onClick={() => onTargetRangeChange(undefined)}
+                  aria-label={t(`${FK}clearTargetRange`)}
+                >
                   <X className="w-3 h-3" />
                 </Button>
               )}
@@ -312,7 +323,7 @@ export function SpectraSettingsPopupContent({
               </div>
             ) : (
               <div className="text-[10px] text-muted-foreground italic p-2 bg-muted/50 rounded">
-                No Y values available
+                {t(`${FK}noYValues`)}
               </div>
             )}
           </div>
@@ -322,7 +333,7 @@ export function SpectraSettingsPopupContent({
           <div>
             <Label className="text-[10px] text-muted-foreground mb-1.5 flex items-center gap-1">
               <Check className="w-3 h-3" />
-              QC Status
+              {t(`${FK}qcStatus`)}
             </Label>
             <Select
               value={config.filters.qcStatus ?? 'all'}
@@ -334,7 +345,7 @@ export function SpectraSettingsPopupContent({
               <SelectContent>
                 {QC_STATUS_OPTIONS.map((option) => (
                   <SelectItem key={option.value} value={option.value} className="text-xs">
-                    {option.label}
+                    {t(option.labelKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -346,7 +357,7 @@ export function SpectraSettingsPopupContent({
               <Separator />
               <div>
                 <Label className="text-[10px] text-muted-foreground mb-1.5 block">
-                  Metadata Filters
+                  {t(`${FK}metadataFilters`)}
                 </Label>
                 <div className="text-[10px] text-muted-foreground italic p-2 bg-muted/50 rounded flex items-center gap-2">
                   <AlertCircle className="w-3 h-3" />
@@ -362,10 +373,14 @@ export function SpectraSettingsPopupContent({
         <div className="px-3 py-2 border-t bg-muted/30 text-[10px] text-muted-foreground">
           {filteredSamples !== undefined ? (
             <span>
-              Showing <strong className="text-foreground">{filteredSamples}</strong> of {totalSamples} samples
+              <Trans
+                i18nKey={`${FK}showing`}
+                values={{ filtered: filteredSamples, total: totalSamples }}
+                components={{ strong: <strong className="text-foreground" /> }}
+              />
             </span>
           ) : (
-            <span>{filterModifiedCount} filter{filterModifiedCount > 1 ? 's' : ''} active</span>
+            <span>{t(`${SK}filtersActive`, { count: filterModifiedCount })}</span>
           )}
         </div>
       )}

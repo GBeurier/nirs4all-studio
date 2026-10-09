@@ -16,6 +16,7 @@
  */
 
 import { forwardRef, useCallback, type ReactNode, type MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Loader2,
   Maximize2,
@@ -59,12 +60,12 @@ const CHART_ICONS: Record<ChartType, typeof Activity> = {
   repetitions: Repeat,
 };
 
-const CHART_LABELS: Record<ChartType, string> = {
-  spectra: 'Spectra',
-  histogram: 'Y Distribution',
-  folds: 'Fold Distribution',
-  pca: 'Dimension Reduction',
-  repetitions: 'Repetitions',
+const CHART_LABEL_KEYS: Record<ChartType, string> = {
+  spectra: 'playground.chartPanel.labels.spectra',
+  histogram: 'playground.chartPanel.labels.histogram',
+  folds: 'playground.chartPanel.labels.folds',
+  pca: 'playground.chartPanel.labels.pca',
+  repetitions: 'playground.chartPanel.labels.repetitions',
 };
 
 // ============= Types =============
@@ -123,12 +124,13 @@ interface ChartLoadingOverlayProps {
 }
 
 export function ChartLoadingOverlay({ visible }: ChartLoadingOverlayProps) {
+  const { t } = useTranslation();
   if (!visible) return null;
 
   return (
     <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-20 pointer-events-none">
       <Loader2 className="w-5 h-5 animate-spin text-primary" aria-hidden="true" />
-      <span className="sr-only">Updating chart</span>
+      <span className="sr-only">{t('playground.chartPanel.updating')}</span>
     </div>
   );
 }
@@ -158,8 +160,9 @@ function ChartHeader({
   headerContent,
   menuItems,
 }: ChartHeaderProps) {
+  const { t } = useTranslation();
   const Icon = CHART_ICONS[chartType];
-  const label = CHART_LABELS[chartType];
+  const label = t(CHART_LABEL_KEYS[chartType]);
 
   const handleDoubleClick = useCallback((e: MouseEvent) => {
     e.preventDefault();
@@ -204,11 +207,12 @@ function ChartHeader({
                   e.stopPropagation();
                   onRestore();
                 }}
+                aria-label={t('playground.chartPanel.restore')}
               >
                 <ChevronUp className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Restore</TooltipContent>
+            <TooltipContent side="bottom">{t('playground.chartPanel.restore')}</TooltipContent>
           </Tooltip>
         )}
 
@@ -221,6 +225,7 @@ function ChartHeader({
                 size="icon"
                 className="h-6 w-6"
                 onClick={(e) => e.stopPropagation()}
+                aria-label={t('playground.chartPanel.menu')}
               >
                 <MoreVertical className="h-3.5 w-3.5" />
               </Button>
@@ -243,11 +248,12 @@ function ChartHeader({
                   e.stopPropagation();
                   onHide();
                 }}
+                aria-label={t('playground.chartPanel.hide')}
               >
                 <X className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Hide</TooltipContent>
+            <TooltipContent side="bottom">{t('playground.chartPanel.hide')}</TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -262,18 +268,19 @@ interface ChartFooterProps {
 }
 
 function ChartFooter({ sampleCount, selectedCount, pinnedCount }: ChartFooterProps) {
+  const { t } = useTranslation();
   const hasStats = sampleCount !== undefined || selectedCount !== undefined || pinnedCount !== undefined;
   if (!hasStats) return null;
 
   const stats: string[] = [];
   if (sampleCount !== undefined) {
-    stats.push(`${sampleCount} samples`);
+    stats.push(t('playground.chartPanel.samples', { count: sampleCount }));
   }
   if (selectedCount !== undefined && selectedCount > 0) {
-    stats.push(`${selectedCount} selected`);
+    stats.push(t('playground.chartPanel.selected', { count: selectedCount }));
   }
   if (pinnedCount !== undefined && pinnedCount > 0) {
-    stats.push(`${pinnedCount} pinned`);
+    stats.push(t('playground.chartPanel.pinned', { count: pinnedCount }));
   }
 
   return (
@@ -311,6 +318,8 @@ export const ChartPanel = forwardRef<HTMLDivElement, ChartPanelProps>(
     },
     ref
   ) {
+    const { t } = useTranslation();
+    const chartLabel = t(CHART_LABEL_KEYS[chartType]);
     const isMinimized = viewState === 'minimized';
     const isHidden = viewState === 'hidden';
 
@@ -351,7 +360,7 @@ export const ChartPanel = forwardRef<HTMLDivElement, ChartPanelProps>(
           } : {}),
         }}
         role="img"
-        aria-label={ariaLabel ?? `${CHART_LABELS[chartType]} visualization`}
+        aria-label={ariaLabel ?? t('playground.chartPanel.visualization', { label: chartLabel })}
         data-chart-type={chartType}
         data-view-state={viewState}
       >
@@ -377,7 +386,7 @@ export const ChartPanel = forwardRef<HTMLDivElement, ChartPanelProps>(
         {!isMinimized && (
           <div className="flex-1 p-3 flex flex-col min-h-0 relative">
             <ChartLoadingOverlay visible={isLoading} />
-            <ChartErrorBoundary chartType={CHART_LABELS[chartType]}>
+            <ChartErrorBoundary chartType={chartLabel}>
               <div className="flex-1 min-h-0">
                 {children}
               </div>

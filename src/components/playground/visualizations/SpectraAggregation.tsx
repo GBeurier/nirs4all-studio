@@ -8,6 +8,7 @@
  */
 
 import { useMemo, type ReactElement } from 'react';
+import i18n from '@/lib/i18n';
 import { Area, Line } from 'recharts';
 import { DEFAULT_QUANTILE_BANDS, type AggregationMode, type AggregationConfig, type QuantileBand } from '@/lib/playground/spectraConfig';
 import { STATISTICS_COLORS, CHART_THEME, ANIMATION_CONFIG } from './chartConfig';
@@ -483,12 +484,12 @@ export function getAggregationLegendItems(
 
   switch (mode) {
     case 'mean_std':
-      items.push({ label: 'Mean', color: STATISTICS_COLORS.mean });
-      items.push({ label: '±1 Std', color: STATISTICS_COLORS.std, isArea: true });
+      items.push({ label: i18n.t('playground.charts.common.legendMean'), color: STATISTICS_COLORS.mean });
+      items.push({ label: i18n.t('playground.charts.common.legendStd'), color: STATISTICS_COLORS.std, isArea: true });
       break;
 
     case 'median_quantiles':
-      items.push({ label: 'Median', color: STATISTICS_COLORS.median });
+      items.push({ label: i18n.t('playground.charts.common.legendMedian'), color: STATISTICS_COLORS.median });
       // Show legend for multiple quantile bands
       if (quantileBands.length > 0) {
         const labels = quantileBands.map(b =>
@@ -501,13 +502,13 @@ export function getAggregationLegendItems(
       break;
 
     case 'minmax':
-      items.push({ label: 'Mean', color: STATISTICS_COLORS.mean });
-      items.push({ label: 'Min/Max', color: STATISTICS_COLORS.minMax, isArea: true });
+      items.push({ label: i18n.t('playground.charts.common.legendMean'), color: STATISTICS_COLORS.mean });
+      items.push({ label: i18n.t('playground.charts.common.legendMinMax'), color: STATISTICS_COLORS.minMax, isArea: true });
       break;
 
     case 'density':
-      items.push({ label: 'Mean', color: STATISTICS_COLORS.mean });
-      items.push({ label: 'Density', color: STATISTICS_COLORS.std, isArea: true });
+      items.push({ label: i18n.t('playground.charts.common.legendMean'), color: STATISTICS_COLORS.mean });
+      items.push({ label: i18n.t('playground.charts.common.legendDensity'), color: STATISTICS_COLORS.std, isArea: true });
       break;
 
     default:
@@ -515,7 +516,7 @@ export function getAggregationLegendItems(
   }
 
   if (showOriginal) {
-    items.push({ label: 'Original', color: STATISTICS_COLORS.original, dashed: true });
+    items.push({ label: i18n.t('playground.charts.common.legendOriginal'), color: STATISTICS_COLORS.original, dashed: true });
   }
 
   return items;

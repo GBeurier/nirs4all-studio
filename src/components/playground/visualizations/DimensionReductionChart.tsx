@@ -14,6 +14,7 @@
  */
 
 import React, { useMemo, useRef, useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { exportChart } from '@/lib/chartExport';
 import {
   type GlobalColorConfig,
@@ -174,8 +175,10 @@ export function DimensionReductionChart({
   isUMAPLoading = false,
   compact = false,
   referencePca,
-  referenceLabel = 'Reference',
+  referenceLabel: referenceLabelProp,
 }: DimensionReductionChartProps) {
+  const { t } = useTranslation();
+  const referenceLabel = referenceLabelProp ?? t('playground.charts.dimReduction.reference');
   const chartRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const scatter3DRef = useRef<Scatter3DHandle>(null);
@@ -469,7 +472,7 @@ export function DimensionReductionChart({
     return (
       <DimensionReductionChartEmptyState
         method={config.method}
-        error="Only one component is available. A two-axis projection requires at least two input features and two samples."
+        error={t('playground.charts.dimReduction.empty.singleComponent')}
         isUMAPLoading={isUMAPLoading}
       />
     );

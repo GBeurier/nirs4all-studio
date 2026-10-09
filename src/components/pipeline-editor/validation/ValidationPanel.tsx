@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   AlertTriangle,
@@ -20,6 +21,7 @@ import {
   X,
   ExternalLink,
 } from "lucide-react";
+import type { TFunction } from "i18next";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +79,9 @@ export interface ValidationPanelProps {
 
 type GroupBy = "severity" | "category" | "step" | "none";
 
+/** Sentinel group key for issues that are not attached to a step. */
+const PIPELINE_GROUP_KEY = "__pipeline__";
+
 // ============================================================================
 // ValidationPanel Component
 // ============================================================================
@@ -91,6 +96,7 @@ export function ValidationPanel({
   defaultCollapsed = false,
   className,
 }: ValidationPanelProps): React.ReactElement {
+  const { t } = useTranslation();
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [groupBy, setGroupBy] = useState<GroupBy>("severity");
   const [showErrors, setShowErrors] = useState(true);
@@ -125,7 +131,7 @@ export function ValidationPanel({
           key = issue.category;
           break;
         case "step":
-          key = issue.location.stepName || "Pipeline";
+          key = issue.location.stepName || PIPELINE_GROUP_KEY;
           break;
         default:
           key = "all";
@@ -161,7 +167,7 @@ export function ValidationPanel({
           ) : (
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           )}
-          <span className="font-medium text-sm">Validation</span>
+          <span className="font-medium text-sm">{t("pipelineEditor.validation.ui.title")}</span>
 
           {/* Summary badges */}
           <div className="flex items-center gap-1">
@@ -191,7 +197,7 @@ export function ValidationPanel({
           {result.isValid && errorCount === 0 && (
             <div className="flex items-center gap-1 text-emerald-500">
               <CheckCircle2 className="h-4 w-4" />
-              <span className="text-xs">Valid</span>
+              <span className="text-xs">{t("pipelineEditor.validation.ui.valid")}</span>
             </div>
           )}
         </div>
@@ -220,6 +226,7 @@ export function ValidationPanel({
                     className="h-7 w-7"
                     onClick={onRefresh}
                     disabled={isValidating}
+                    aria-label={t("pipelineEditor.validation.ui.refresh")}
                   >
                     <RefreshCw
                       className={cn(
@@ -230,7 +237,7 @@ export function ValidationPanel({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Refresh validation</p>
+                  <p>{t("pipelineEditor.validation.ui.refresh")}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -249,10 +256,10 @@ export function ValidationPanel({
                 {result.issues.length === 0 ? (
                   <div className="flex flex-col items-center gap-2">
                     <CheckCircle2 className="h-8 w-8 text-emerald-500" />
-                    <p>No validation issues</p>
+                    <p>{t("pipelineEditor.validation.ui.noIssues")}</p>
                   </div>
                 ) : (
-                  <p>No visible issues (adjust filters)</p>
+                  <p>{t("pipelineEditor.validation.ui.noVisibleIssues")}</p>
                 )}
               </div>
             ) : (
@@ -260,7 +267,7 @@ export function ValidationPanel({
                 {Object.entries(groupedIssues).map(([group, issues]) => (
                   <IssueGroup
                     key={group}
-                    title={formatGroupTitle(group, groupBy)}
+                    title={formatGroupTitle(group, groupBy, t)}
                     issues={issues}
                     groupBy={groupBy}
                     onNavigate={onNavigate}
@@ -300,63 +307,64 @@ function FilterDropdown({
   groupBy,
   onGroupByChange,
 }: FilterDropdownProps): React.ReactElement {
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-7 w-7">
+        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t("pipelineEditor.validation.ui.filter")}>
           <Filter className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel>Show</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("pipelineEditor.validation.ui.show")}</DropdownMenuLabel>
         <DropdownMenuCheckboxItem
           checked={showErrors}
           onCheckedChange={onShowErrorsChange}
         >
           <AlertCircle className="h-4 w-4 mr-2 text-destructive" />
-          Errors
+          {t("pipelineEditor.validation.ui.errorsFilter")}
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={showWarnings}
           onCheckedChange={onShowWarningsChange}
         >
           <AlertTriangle className="h-4 w-4 mr-2 text-orange-500" />
-          Warnings
+          {t("pipelineEditor.validation.ui.warningsFilter")}
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={showInfos}
           onCheckedChange={onShowInfosChange}
         >
           <Info className="h-4 w-4 mr-2 text-blue-500" />
-          Info
+          {t("pipelineEditor.validation.ui.infoFilter")}
         </DropdownMenuCheckboxItem>
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuLabel>Group by</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("pipelineEditor.validation.ui.groupBy")}</DropdownMenuLabel>
         <DropdownMenuCheckboxItem
           checked={groupBy === "severity"}
           onCheckedChange={() => onGroupByChange("severity")}
         >
-          Severity
+          {t("pipelineEditor.validation.ui.groupSeverity")}
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={groupBy === "category"}
           onCheckedChange={() => onGroupByChange("category")}
         >
-          Category
+          {t("pipelineEditor.validation.ui.groupCategory")}
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={groupBy === "step"}
           onCheckedChange={() => onGroupByChange("step")}
         >
-          Step
+          {t("pipelineEditor.validation.ui.groupStep")}
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={groupBy === "none"}
           onCheckedChange={() => onGroupByChange("none")}
         >
-          None
+          {t("common.none")}
         </DropdownMenuCheckboxItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -435,6 +443,7 @@ function IssueItem({
   showStep = true,
   onNavigate,
 }: IssueItemProps): React.ReactElement {
+  const { t } = useTranslation();
   const severityMeta = SEVERITY_METADATA[issue.severity];
   const Icon = issue.severity === "error" ? AlertCircle :
                issue.severity === "warning" ? AlertTriangle : Info;
@@ -457,7 +466,7 @@ function IssueItem({
         <p className="text-foreground">{issue.message}</p>
         {showStep && issue.location.stepName && (
           <p className="text-xs text-muted-foreground mt-0.5">
-            in {issue.location.stepName}
+            {t("pipelineEditor.validation.ui.inStep", { name: issue.location.stepName })}
             {issue.location.paramName && ` → ${issue.location.paramName}`}
           </p>
         )}
@@ -479,12 +488,13 @@ function IssueItem({
                   e.stopPropagation();
                   handleClick();
                 }}
+                aria-label={t("pipelineEditor.validation.ui.goToStep")}
               >
                 <ExternalLink className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Go to step</p>
+              <p>{t("pipelineEditor.validation.ui.goToStep")}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -497,15 +507,19 @@ function IssueItem({
 // Utilities
 // ============================================================================
 
-function formatGroupTitle(group: string, groupBy: GroupBy): string {
+function formatGroupTitle(group: string, groupBy: GroupBy, t: TFunction): string {
   switch (groupBy) {
-    case "severity":
-      return SEVERITY_METADATA[group as ValidationSeverity]?.label || group;
-    case "category":
-      return CATEGORY_METADATA[group as ValidationCategory]?.label || group;
+    case "severity": {
+      const severityMeta = SEVERITY_METADATA[group as ValidationSeverity];
+      return severityMeta ? t(severityMeta.labelKey) : group;
+    }
+    case "category": {
+      const categoryMeta = CATEGORY_METADATA[group as ValidationCategory];
+      return categoryMeta ? t(categoryMeta.labelKey) : group;
+    }
     case "step":
-      return group;
+      return group === PIPELINE_GROUP_KEY ? t("pipelineEditor.validation.ui.pipelineGroup") : group;
     default:
-      return "All Issues";
+      return t("pipelineEditor.validation.ui.allIssues");
   }
 }

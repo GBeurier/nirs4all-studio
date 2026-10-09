@@ -11,6 +11,7 @@ import {
   type OperatorAvailabilityEntry,
   type OperatorAvailabilityResponse,
 } from "@/api/system";
+import i18n from "i18next";
 import { runPreflight } from "@/api/runs";
 import type { PipelineStep } from "../types";
 import {
@@ -60,8 +61,8 @@ function makeSyntheticIssue(
   return {
     type: "missing_module",
     message: entry.error
-      ? `Pipeline '${pipelineName}': ${entry.error}. Install it via Settings > Advanced > Dependencies.`
-      : `Pipeline '${pipelineName}': ${entry.name} is unavailable.`,
+      ? i18n.t("pipelineEditor.contexts.pipelineIssueInstall", { pipeline: pipelineName, reason: entry.error })
+      : i18n.t("pipelineEditor.contexts.pipelineIssueUnavailable", { pipeline: pipelineName, name: entry.name }),
     details: {
       pipeline_name: pipelineName,
       step_name: entry.name,
@@ -79,15 +80,15 @@ function makeCapabilityIssue(
   pipelineName: string,
 ): MissingOperatorIssue {
   const entry = capability.entry;
-  const name = entry?.name ?? node.name ?? node.id ?? "Operator";
+  const name = entry?.name ?? node.name ?? node.id ?? i18n.t("pipelineEditor.contexts.operatorFallback");
   const type = entry?.type ?? node.type;
   const classPath = entry?.class_path ?? node.classPath ?? undefined;
   const functionPath = entry?.function_path ?? node.functionPath ?? undefined;
-  const reason = capability.reason ?? `${name} is not executable in the selected backend.`;
+  const reason = capability.reason ?? i18n.t("pipelineEditor.contexts.notExecutable", { name });
 
   return {
     type: "missing_module",
-    message: `Pipeline '${pipelineName}': ${reason}`,
+    message: i18n.t("pipelineEditor.contexts.pipelineIssue", { pipeline: pipelineName, reason }),
     details: {
       pipeline_name: pipelineName,
       step_name: name,
@@ -137,7 +138,7 @@ export function OperatorAvailabilityProvider({
         return;
       }
       operatorRetryAttempts.current += 1;
-      setOperatorsError(error instanceof Error ? error.message : "Failed to load operator availability");
+      setOperatorsError(error instanceof Error ? error.message : i18n.t("pipelineEditor.contexts.availabilityLoadFailed"));
     } finally {
       if (latestOperatorRequest.current === requestId) {
         setIsLoadingOperators(false);

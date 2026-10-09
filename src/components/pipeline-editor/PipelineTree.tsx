@@ -1,5 +1,6 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Plus, Sparkles, PlayCircle, Flag } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { usePipelineDnd } from "./usePipelineDnd";
 import { TreeNode } from "./TreeNode";
 import type { PipelineStep } from "./types";
@@ -28,6 +29,7 @@ export function PipelineTree({
   onAddChild,
   onRemoveChild,
 }: PipelineTreeProps) {
+  const { t } = useTranslation();
   const { isDragging } = usePipelineDnd();
 
   // Initial drop zone (when canvas is empty or at the top)
@@ -70,7 +72,7 @@ export function PipelineTree({
           {/* Start marker */}
           <div className="flex items-center gap-2 mb-1 ml-1">
             <PlayCircle className="h-3.5 w-3.5 text-emerald-500" />
-            <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Input</span>
+            <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{t("pipelineEditor.tree.input")}</span>
           </div>
 
           {/* Tree structure */}
@@ -109,7 +111,7 @@ export function PipelineTree({
           {/* End marker */}
           <div className="flex items-center gap-2 mt-1 ml-1">
             <Flag className="h-3.5 w-3.5 text-primary" />
-            <span className="text-xs font-medium text-primary">Output</span>
+            <span className="text-xs font-medium text-primary">{t("pipelineEditor.tree.output")}</span>
           </div>
         </div>
         </div>
@@ -126,6 +128,7 @@ function EmptyCanvasState({
   isOver: boolean;
   setDropRef: (node: HTMLElement | null) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       ref={setDropRef}
@@ -145,15 +148,15 @@ function EmptyCanvasState({
           <Sparkles className={`h-6 w-6 ${isOver ? "text-primary" : "text-primary/70"}`} />
         </div>
         <h3 className="text-base font-semibold text-foreground mb-1">
-          {isOver ? "Release to add" : "Build Your Pipeline"}
+          {isOver ? t("pipelineEditor.tree.releaseToAdd") : t("pipelineEditor.tree.buildTitle")}
         </h3>
         <p className="text-sm text-muted-foreground mb-3">
-          {isOver ? "Drop here to begin" : "Drag steps from the left panel"}
+          {isOver ? t("pipelineEditor.tree.dropToBegin") : t("pipelineEditor.tree.dragFromPanel")}
         </p>
         {!isOver && (
           <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <Plus className="h-3.5 w-3.5" />
-            <span>Drop steps here</span>
+            <span>{t("pipelineEditor.tree.dropStepsHere")}</span>
           </div>
         )}
       </div>
@@ -169,6 +172,7 @@ interface DropZoneProps {
 }
 
 function DropZone({ id, path, index }: DropZoneProps) {
+  const { t } = useTranslation();
   const { dropIndicator } = usePipelineDnd();
 
   const { setNodeRef, isOver } = useDroppable({
@@ -199,7 +203,7 @@ function DropZone({ id, path, index }: DropZoneProps) {
       {showIndicator && (
         <div className="h-9 rounded-lg border-2 border-dashed border-primary bg-primary/5 flex items-center justify-center gap-1.5">
           <Plus className="h-3.5 w-3.5 text-primary" />
-          <span className="text-xs font-medium text-primary">Drop here</span>
+          <span className="text-xs font-medium text-primary">{t("pipelineEditor.dnd.dropHere")}</span>
         </div>
       )}
     </div>

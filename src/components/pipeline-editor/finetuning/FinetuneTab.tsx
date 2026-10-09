@@ -9,6 +9,7 @@
  */
 
 import { useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Sparkles, Settings2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,7 @@ interface FinetuneTabProps {
 }
 
 export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
+  const { t } = useTranslation();
   // Initialize or get existing config
   const config = step.finetuneConfig ?? defaultFinetuneConfig;
   const keywordRegistry = useKeywordRegistry();
@@ -122,7 +124,7 @@ export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
           <div className="space-y-2">
             <Label className="text-sm font-medium flex items-center gap-2">
               <Settings2 className="h-4 w-4" />
-              Search Configuration
+              {t("pipelineEditor.finetune.tab.searchConfiguration")}
             </Label>
             <FinetuneSearchConfig config={config} onUpdate={handleConfigUpdate} />
           </div>
@@ -167,21 +169,21 @@ export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
                 <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0 mt-0.5" />
                 <div className="text-xs min-w-0 space-y-1">
                   <p className="font-medium text-foreground">
-                    {config.n_trials} trials will be explored
+                    {t("pipelineEditor.finetune.tab.trialsExplored", { count: config.n_trials })}
                   </p>
                   {config.model_params && config.model_params.length > 0 && (
                     <p className="text-muted-foreground truncate">
-                      <span className="text-foreground/70">Tuning model:</span> {config.model_params.map((p) => p.name).join(", ")}
+                      <span className="text-foreground/70">{t("pipelineEditor.finetune.tab.tuningModel")}</span> {config.model_params.map((p) => p.name).join(", ")}
                     </p>
                   )}
                   {config.train_params && config.train_params.length > 0 && (
                     <p className="text-muted-foreground truncate">
-                      <span className="text-foreground/70">Tuning training:</span> {config.train_params.map((p) => p.name).join(", ")}
+                      <span className="text-foreground/70">{t("pipelineEditor.finetune.tab.tuningTraining")}</span> {config.train_params.map((p) => p.name).join(", ")}
                     </p>
                   )}
                   {config.trial_train_params && Object.keys(config.trial_train_params).length > 0 && (
                     <p className="text-muted-foreground truncate">
-                      <span className="text-foreground/70">Per-trial:</span> {Object.entries(config.trial_train_params).map(([k, v]) => `${k}=${v}`).join(", ")}
+                      <span className="text-foreground/70">{t("pipelineEditor.finetune.tab.perTrial")}</span> {Object.entries(config.trial_train_params).map(([k, v]) => `${k}=${v}`).join(", ")}
                     </p>
                   )}
                 </div>

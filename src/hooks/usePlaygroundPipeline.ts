@@ -32,6 +32,7 @@ import {
   clientStorageKeys,
   removeClientStorageItem,
 } from '@/lib/clientStorage';
+import i18n from 'i18next';
 
 const MAX_HISTORY = 50;
 const PIPELINE_STORAGE_KEY = clientStorageKeys.playgroundPipelineState;
@@ -318,8 +319,8 @@ export function usePlaygroundPipeline(
     // Check single splitter constraint
     if (definition.type === 'splitting' && currentSplitterCount > 0) {
       // Replace existing splitter instead of adding
-      toast.warning('Only one splitter allowed', {
-        description: 'The existing splitter will be replaced.',
+      toast.warning(i18n.t('playground.hooks.pipeline.singleSplitter'), {
+        description: i18n.t('playground.hooks.pipeline.splitterReplaced'),
       });
 
       // Find and replace existing splitter
@@ -347,8 +348,8 @@ export function usePlaygroundPipeline(
 
     // Check single splitter constraint
     if (type === 'splitting' && currentSplitterCount > 0) {
-      toast.warning('Only one splitter allowed', {
-        description: 'The existing splitter will be replaced.',
+      toast.warning(i18n.t('playground.hooks.pipeline.singleSplitter'), {
+        description: i18n.t('playground.hooks.pipeline.splitterReplaced'),
       });
 
       const newOperators = currentOperators.filter(op => !isSplitter(op));

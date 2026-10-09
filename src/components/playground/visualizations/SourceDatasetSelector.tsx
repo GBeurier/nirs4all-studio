@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Select,
   SelectContent,
@@ -64,23 +65,24 @@ export function SourceDatasetSelector({
   onInteractionStart,
   className,
 }: SourceDatasetSelectorProps) {
+  const { t } = useTranslation();
   // Build options from pipeline if not provided
   const resolvedOptions = useMemo(() => {
     if (options.length > 0) return options;
     if (pipelineSteps && currentStepIndex !== undefined) {
-      return buildSourceOptions(pipelineSteps, currentStepIndex);
+      return buildSourceOptions(pipelineSteps, currentStepIndex, t);
     }
     // Default: just original
     return [
       {
         id: 'original',
-        label: 'Original Input',
+        label: t('playground.charts.sourceDataset.originalInput'),
         type: 'original' as const,
         position: 0,
         available: true,
       },
     ];
-  }, [options, pipelineSteps, currentStepIndex]);
+  }, [options, pipelineSteps, currentStepIndex, t]);
 
   // Find current selection
   const selectedOption = resolvedOptions.find(o => o.id === value) ?? resolvedOptions[0];
@@ -112,11 +114,11 @@ export function SourceDatasetSelector({
           compact ? 'w-[120px]' : 'w-[180px]',
           className
         )}
-        title="Compare against source dataset"
+        title={t('playground.charts.sourceDataset.compareTitle')}
       >
         <span className="flex items-center gap-1.5 truncate">
           <SourceOptionIcon type={selectedOption?.type ?? 'original'} />
-          <SelectValue placeholder="Source" />
+          <SelectValue placeholder={t('playground.charts.sourceDataset.sourcePlaceholder')} />
         </span>
       </SelectTrigger>
 

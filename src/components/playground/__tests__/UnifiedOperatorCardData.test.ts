@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { OperatorParamInfo } from '@/types/playground';
 
@@ -10,6 +11,7 @@ import {
   getVisibleParamEntries,
   normalizeNumericParamValue,
 } from '../UnifiedOperatorCardParamsData';
+import i18n from '@/lib/i18n';
 import { getFilterStatsBadgeViewModel } from '../UnifiedOperatorCardViewData';
 
 describe('UnifiedOperatorCardParamsData', () => {
@@ -67,12 +69,20 @@ describe('UnifiedOperatorCardParamsData', () => {
 });
 
 describe('UnifiedOperatorCardViewData', () => {
+  const t = i18n.t.bind(i18n);
+
+  beforeAll(async () => {
+    await i18n.changeLanguage('en');
+  });
+
   it('hides filter stats when the operator is not an active filter stat case', () => {
     expect(getFilterStatsBadgeViewModel({
+      t,
       isFilter: false,
       filterStats: { removed_count: 3 },
     })).toBeNull();
     expect(getFilterStatsBadgeViewModel({
+      t,
       isFilter: true,
       filterStats: { removed_count: 0 },
     })).toBeNull();
@@ -80,6 +90,7 @@ describe('UnifiedOperatorCardViewData', () => {
 
   it('builds the tagged stats badge copy', () => {
     expect(getFilterStatsBadgeViewModel({
+      t,
       isFilter: true,
       filterStats: {
         removed_count: 2,
@@ -95,6 +106,7 @@ describe('UnifiedOperatorCardViewData', () => {
 
   it('builds the removed stats badge copy', () => {
     expect(getFilterStatsBadgeViewModel({
+      t,
       isFilter: true,
       filterStats: {
         removed_count: 1,

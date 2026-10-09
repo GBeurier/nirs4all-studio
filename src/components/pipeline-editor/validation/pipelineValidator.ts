@@ -7,6 +7,7 @@
  * @see docs/_internals/implementation_roadmap.md Task 4.3
  */
 
+import i18n from "i18next";
 import type { PipelineStep, StepType } from "../types";
 import type {
   ValidationIssue,
@@ -61,9 +62,9 @@ export function validatePipeline(context: ValidationContext): ValidationIssue[] 
       createPipelineIssue(
         "PIPELINE_EMPTY",
         "info",
-        "Pipeline has no steps",
+        i18n.t("pipelineEditor.validation.pipeline.empty"),
         {},
-        { suggestion: "Add steps from the palette to build your pipeline" }
+        { suggestion: i18n.t("pipelineEditor.validation.pipeline.emptySuggestion") }
       )
     );
     return issues;
@@ -76,9 +77,9 @@ export function validatePipeline(context: ValidationContext): ValidationIssue[] 
       createPipelineIssue(
         "PIPELINE_EMPTY",
         "warning",
-        "All pipeline steps are disabled",
+        i18n.t("pipelineEditor.validation.pipeline.allDisabled"),
         {},
-        { suggestion: "Enable at least one step to run the pipeline" }
+        { suggestion: i18n.t("pipelineEditor.validation.pipeline.allDisabledSuggestion") }
       )
     );
     return issues;
@@ -115,11 +116,11 @@ function validateModelPresence(steps: PipelineStep[]): ValidationIssue[] {
       createPipelineIssue(
         "PIPELINE_NO_MODEL",
         "warning",
-        "Pipeline has no model step",
+        i18n.t("pipelineEditor.validation.pipeline.noModel"),
         {},
         {
-          details: "Without a model, the pipeline cannot make predictions",
-          suggestion: "Add a model step (e.g., PLSRegression, RandomForest)",
+          details: i18n.t("pipelineEditor.validation.pipeline.noModelDetails"),
+          suggestion: i18n.t("pipelineEditor.validation.pipeline.noModelSuggestion"),
           quickFix: "add_model",
         }
       )
@@ -149,11 +150,11 @@ function validateSplitterPlacement(steps: PipelineStep[]): ValidationIssue[] {
       createPipelineIssue(
         "PIPELINE_NO_SPLITTER",
         "info",
-        "Pipeline has no splitting step",
+        i18n.t("pipelineEditor.validation.pipeline.noSplitter"),
         {},
         {
-          details: "Without a splitter, the model will train on all data without validation",
-          suggestion: "Add a splitting step (e.g., KFold, ShuffleSplit) before the model",
+          details: i18n.t("pipelineEditor.validation.pipeline.noSplitterDetails"),
+          suggestion: i18n.t("pipelineEditor.validation.pipeline.noSplitterSuggestion"),
         }
       )
     );
@@ -170,7 +171,7 @@ function validateSplitterPlacement(steps: PipelineStep[]): ValidationIssue[] {
       createPipelineIssue(
         "PIPELINE_MODEL_BEFORE_SPLITTER",
         "warning",
-        "Model step appears before splitter",
+        i18n.t("pipelineEditor.validation.pipeline.modelBeforeSplitter"),
         {
           stepId: modelStep.id,
           stepName: modelStep.name,
@@ -178,8 +179,8 @@ function validateSplitterPlacement(steps: PipelineStep[]): ValidationIssue[] {
           stepIndex: firstModelIndex,
         },
         {
-          details: "Splitter should come before model for proper cross-validation",
-          suggestion: "Move the splitter step before the model step",
+          details: i18n.t("pipelineEditor.validation.pipeline.modelBeforeSplitterDetails"),
+          suggestion: i18n.t("pipelineEditor.validation.pipeline.modelBeforeSplitterSuggestion"),
           quickFix: "reorder_steps",
         }
       )
@@ -208,7 +209,7 @@ function validateMergeBranchPairing(steps: PipelineStep[]): ValidationIssue[] {
           createPipelineIssue(
             "PIPELINE_MERGE_WITHOUT_BRANCH",
             "error",
-            `Merge step "${step.name}" has no matching branch`,
+            i18n.t("pipelineEditor.validation.pipeline.mergeNoBranch", { name: step.name }),
             {
               stepId: step.id,
               stepName: step.name,
@@ -216,8 +217,8 @@ function validateMergeBranchPairing(steps: PipelineStep[]): ValidationIssue[] {
               stepIndex: i,
             },
             {
-              details: "Each Merge step should follow a Branch or Generator step",
-              suggestion: "Add a Branch step before this Merge, or remove the Merge",
+              details: i18n.t("pipelineEditor.validation.pipeline.mergeNoBranchDetails"),
+              suggestion: i18n.t("pipelineEditor.validation.pipeline.mergeNoBranchSuggestion"),
             }
           )
         );
@@ -234,11 +235,11 @@ function validateMergeBranchPairing(steps: PipelineStep[]): ValidationIssue[] {
       createPipelineIssue(
         "PIPELINE_MERGE_WITHOUT_BRANCH",
         "info",
-        `${branchDepth} branch step(s) have no merge step`,
+        i18n.t("pipelineEditor.validation.pipeline.branchesNoMerge", { count: branchDepth }),
         {},
         {
-          details: "Branch outputs will be processed independently",
-          suggestion: "Add Merge steps if you want to combine branch outputs",
+          details: i18n.t("pipelineEditor.validation.pipeline.branchesNoMergeDetails"),
+          suggestion: i18n.t("pipelineEditor.validation.pipeline.branchesNoMergeSuggestion"),
         }
       )
     );
@@ -278,7 +279,7 @@ function validateStepOrdering(steps: PipelineStep[]): ValidationIssue[] {
       createPipelineIssue(
         "DEP_INVALID_ORDER",
         "warning",
-        `Preprocessing step "${step.name}" appears after model`,
+        i18n.t("pipelineEditor.validation.pipeline.preprocessingAfterModel", { name: step.name }),
         {
           stepId: step.id,
           stepName: step.name,
@@ -286,8 +287,8 @@ function validateStepOrdering(steps: PipelineStep[]): ValidationIssue[] {
           stepIndex: index,
         },
         {
-          details: "Preprocessing typically comes before the model step",
-          suggestion: "Move preprocessing steps before the model",
+          details: i18n.t("pipelineEditor.validation.pipeline.preprocessingAfterModelDetails"),
+          suggestion: i18n.t("pipelineEditor.validation.pipeline.preprocessingAfterModelSuggestion"),
         }
       )
     );
@@ -303,7 +304,7 @@ function validateStepOrdering(steps: PipelineStep[]): ValidationIssue[] {
       createPipelineIssue(
         "DEP_INVALID_ORDER",
         "warning",
-        `Splitting step "${step.name}" appears after model`,
+        i18n.t("pipelineEditor.validation.pipeline.splittingAfterModel", { name: step.name }),
         {
           stepId: step.id,
           stepName: step.name,
@@ -311,8 +312,8 @@ function validateStepOrdering(steps: PipelineStep[]): ValidationIssue[] {
           stepIndex: index,
         },
         {
-          details: "Splitting should come before the model for cross-validation",
-          suggestion: "Move splitting step before the model",
+          details: i18n.t("pipelineEditor.validation.pipeline.splittingAfterModelDetails"),
+          suggestion: i18n.t("pipelineEditor.validation.pipeline.splittingAfterModelSuggestion"),
         }
       )
     );
@@ -342,11 +343,11 @@ function validateMultipleModels(steps: PipelineStep[]): ValidationIssue[] {
         createPipelineIssue(
           "PIPELINE_MULTIPLE_MODELS",
           "info",
-          `Pipeline has ${rootModels.length} model steps`,
+          i18n.t("pipelineEditor.validation.pipeline.multipleModels", { count: rootModels.length }),
           {},
           {
-            details: "Multiple models can be used for ensemble or comparison",
-            suggestion: "Consider using a Generator for systematic model comparison",
+            details: i18n.t("pipelineEditor.validation.pipeline.multipleModelsDetails"),
+            suggestion: i18n.t("pipelineEditor.validation.pipeline.multipleModelsSuggestion"),
           }
         )
       );

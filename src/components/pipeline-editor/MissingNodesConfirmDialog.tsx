@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,10 +32,11 @@ export function MissingNodesConfirmDialog({
   onOpenChange,
   issues,
   onConfirm,
-  title = "Launch without missing nodes?",
-  description = "The missing nodes will be removed from a temporary launch copy of the pipeline. Your saved pipeline stays unchanged.",
-  confirmLabel = "Launch Without Missing Nodes",
+  title,
+  description,
+  confirmLabel,
 }: MissingNodesConfirmDialogProps) {
+  const { t } = useTranslation();
   const groupedIssues = groupMissingIssuesByPipeline(issues);
 
   return (
@@ -43,9 +45,9 @@ export function MissingNodesConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
-            {title}
+            {title ?? t("pipelineEditor.shared.missingNodes.title")}
           </AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+          <AlertDialogDescription>{description ?? t("pipelineEditor.shared.missingNodes.description")}</AlertDialogDescription>
         </AlertDialogHeader>
 
         <ScrollArea className="max-h-72 rounded-md border bg-muted/20 p-3">
@@ -54,13 +56,13 @@ export function MissingNodesConfirmDialog({
               <div key={pipelineName} className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">{pipelineName}</div>
-                  <Badge variant="outline">{pipelineIssues.length} missing</Badge>
+                  <Badge variant="outline">{t("pipelineEditor.shared.missingNodes.missingCount", { count: pipelineIssues.length })}</Badge>
                 </div>
                 <div className="space-y-1">
                   {pipelineIssues.map((issue, index) => (
                     <div key={`${pipelineName}-${issue.details?.step_id ?? issue.details?.step_name ?? index}`} className="rounded-md border bg-background px-2 py-1.5">
                       <div className="text-xs font-medium">
-                        {issue.details?.step_name ?? "Unknown operator"}
+                        {issue.details?.step_name ?? t("pipelineEditor.shared.missingNodes.unknownOperator")}
                         {issue.details?.step_type ? (
                           <span className="ml-2 text-muted-foreground">({issue.details.step_type})</span>
                         ) : null}
@@ -77,8 +79,8 @@ export function MissingNodesConfirmDialog({
         </ScrollArea>
 
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>{confirmLabel}</AlertDialogAction>
+          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>{confirmLabel ?? t("pipelineEditor.shared.missingNodes.confirm")}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,6 +50,7 @@ export { ExecutionFeedback } from "./PipelineExecutionFeedback";
 export type PipelineLaunchMode = "execute" | "quick" | "background";
 
 export function ConnectionIndicator({ connected }: { connected: boolean }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -59,12 +61,12 @@ export function ConnectionIndicator({ connected }: { connected: boolean }) {
       {connected ? (
         <>
           <Wifi className="h-3 w-3" />
-          <span>Connected</span>
+          <span>{t("pipelineEditor.execution.connected")}</span>
         </>
       ) : (
         <>
           <WifiOff className="h-3 w-3" />
-          <span>Connecting...</span>
+          <span>{t("pipelineEditor.execution.connecting")}</span>
         </>
       )}
     </div>
@@ -72,16 +74,17 @@ export function ConnectionIndicator({ connected }: { connected: boolean }) {
 }
 
 export function StatusBadge({ status }: { status: ExecutionStatus }) {
+  const { t } = useTranslation();
   const variants: Record<
     ExecutionStatus,
     { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof Play }
   > = {
-    idle: { label: "Ready", variant: "secondary", icon: Play },
-    starting: { label: "Starting...", variant: "default", icon: Loader2 },
-    running: { label: "Running", variant: "default", icon: Loader2 },
-    completed: { label: "Completed", variant: "default", icon: Check },
-    failed: { label: "Failed", variant: "destructive", icon: X },
-    cancelled: { label: "Cancelled", variant: "secondary", icon: Square },
+    idle: { label: t("pipelineEditor.execution.status.idle"), variant: "secondary", icon: Play },
+    starting: { label: t("pipelineEditor.execution.status.starting"), variant: "default", icon: Loader2 },
+    running: { label: t("pipelineEditor.execution.status.running"), variant: "default", icon: Loader2 },
+    completed: { label: t("pipelineEditor.execution.status.completed"), variant: "default", icon: Check },
+    failed: { label: t("pipelineEditor.execution.status.failed"), variant: "destructive", icon: X },
+    cancelled: { label: t("pipelineEditor.execution.status.cancelled"), variant: "secondary", icon: Square },
   };
 
   const config = variants[status];
@@ -109,16 +112,17 @@ export function RunNameField({
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium flex items-center gap-2">
         <Pencil className="h-4 w-4" />
-        Run Name
+        {t("pipelineEditor.execution.runName")}
       </label>
       <Input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="Enter run name..."
+        placeholder={t("pipelineEditor.execution.runNamePlaceholder")}
         disabled={disabled}
       />
     </div>
@@ -126,12 +130,13 @@ export function RunNameField({
 }
 
 function DatasetOptionLabel({ dataset }: { dataset: Dataset }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2">
       <span>{dataset.name}</span>
       {dataset.numSamples && (
         <span className="text-xs text-muted-foreground">
-          ({dataset.numSamples} samples)
+          {t("pipelineEditor.execution.samples", { count: dataset.numSamples })}
         </span>
       )}
     </div>
@@ -151,11 +156,12 @@ export function DatasetSelector({
   selectedDataset: string;
   onDatasetChange: (datasetId: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium flex items-center gap-2">
         <Database className="h-4 w-4" />
-        Dataset
+        {t("pipelineEditor.execution.dataset")}
       </label>
       <Select
         value={selectedDataset}
@@ -163,16 +169,16 @@ export function DatasetSelector({
         disabled={disabled}
       >
         <SelectTrigger>
-          <SelectValue placeholder="Select a dataset..." />
+          <SelectValue placeholder={t("pipelineEditor.execution.selectDataset")} />
         </SelectTrigger>
         <SelectContent>
           {isLoading ? (
             <div className="p-2 text-sm text-muted-foreground">
-              Loading...
+              {t("common.loading")}
             </div>
           ) : datasets.length === 0 ? (
             <div className="p-2 text-sm text-muted-foreground">
-              No datasets available
+              {t("pipelineEditor.execution.noDatasets")}
             </div>
           ) : (
             datasets.map((dataset) => (
@@ -220,6 +226,7 @@ export function ExportPanel({
 }: {
   pipelineId: string;
 }) {
+  const { t } = useTranslation();
   const { isExporting, exportPipeline, downloadExport, copyToClipboard } =
     usePipelineExport();
   const [lastExport, setLastExport] = useState<ExportResult | null>(null);
@@ -228,14 +235,14 @@ export function ExportPanel({
     const result = await exportPipeline(pipelineId, { format });
     if (result) {
       setLastExport(result);
-      toast.success(`Exported as ${format.toUpperCase()}`);
+      toast.success(t("pipelineEditor.execution.exportedAs", { format: format.toUpperCase() }));
     }
   };
 
   const handleDownload = () => {
     if (lastExport) {
       downloadExport(lastExport);
-      toast.success("File downloaded");
+      toast.success(t("pipelineEditor.execution.fileDownloaded"));
     }
   };
 
@@ -243,7 +250,7 @@ export function ExportPanel({
     if (lastExport) {
       const success = await copyToClipboard(lastExport);
       if (success) {
-        toast.success("Copied to clipboard");
+        toast.success(t("pipelineEditor.execution.copiedToClipboard"));
       }
     }
   };
@@ -285,10 +292,10 @@ export function ExportPanel({
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">{lastExport.filename}</span>
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" onClick={handleCopy}>
+              <Button variant="ghost" size="sm" onClick={handleCopy} aria-label={t("pipelineEditor.execution.copyToClipboard")}>
                 <Copy className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleDownload}>
+              <Button variant="ghost" size="sm" onClick={handleDownload} aria-label={t("pipelineEditor.execution.downloadFile")}>
                 <Download className="h-4 w-4" />
               </Button>
             </div>
@@ -323,12 +330,13 @@ export function ExecutionActions({
   onRunAgain: () => void;
   onStopExecution: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <DialogFooter className="gap-2 flex-wrap">
       {status === "idle" && !isQuickRunning && (
         <>
           <Button variant="outline" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             variant="outline"
@@ -337,7 +345,7 @@ export function ExecutionActions({
             className="gap-2"
           >
             <Play className="h-4 w-4" />
-            Start in Background
+            {t("pipelineEditor.execution.actions.startBackground")}
           </Button>
           <Button
             variant="outline"
@@ -346,7 +354,7 @@ export function ExecutionActions({
             className="gap-2"
           >
             <ExternalLink className="h-4 w-4" />
-            Run & Track Progress
+            {t("pipelineEditor.execution.actions.runAndTrack")}
           </Button>
           <Button
             onClick={() => onLaunch("execute")}
@@ -354,7 +362,7 @@ export function ExecutionActions({
             className="gap-2"
           >
             <Play className="h-4 w-4" />
-            Execute Here
+            {t("pipelineEditor.execution.actions.executeHere")}
           </Button>
         </>
       )}
@@ -362,18 +370,18 @@ export function ExecutionActions({
       {isQuickRunning && (
         <Button disabled className="gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Starting Run...
+          {t("pipelineEditor.execution.actions.startingRun")}
         </Button>
       )}
 
       {(status === "starting" || status === "running") && (
         <>
           <Button variant="outline" onClick={onContinueWorking} className="gap-2">
-            Continue Working
+            {t("pipelineEditor.execution.actions.continueWorking")}
           </Button>
           <Button variant="destructive" onClick={onStopExecution} className="gap-2">
             <Square className="h-4 w-4" />
-            Stop Execution
+            {t("pipelineEditor.execution.actions.stop")}
           </Button>
         </>
       )}
@@ -383,9 +391,9 @@ export function ExecutionActions({
         status === "cancelled") && (
         <>
           <Button variant="outline" onClick={onRunAgain}>
-            Run Again
+            {t("pipelineEditor.execution.actions.runAgain")}
           </Button>
-          <Button onClick={onDone}>Done</Button>
+          <Button onClick={onDone}>{t("pipelineEditor.execution.actions.done")}</Button>
         </>
       )}
     </DialogFooter>

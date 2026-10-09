@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type {
   SpectraChartConfig,
   SpectraFilterConfig,
@@ -17,6 +18,7 @@ export interface SpectraSettingsReadModelInput {
   wavelengthUnitSuffix?: string;
   yRange?: NumericRange;
   metadataColumns?: string[];
+  t: TFunction;
 }
 
 export interface SpectraSettingsReadModel {
@@ -77,16 +79,16 @@ export function buildTargetRangeLabels(
   };
 }
 
-export function buildMetadataPreviewText(metadataColumns: string[] | undefined): string | null {
+export function buildMetadataPreviewText(metadataColumns: string[] | undefined, t: TFunction): string | null {
   if (!metadataColumns || metadataColumns.length === 0) {
     return null;
   }
 
   const preview = metadataColumns.slice(0, 2).join(', ');
   const remainingCount = metadataColumns.length - 2;
-  const suffix = remainingCount > 0 ? ` +${remainingCount} more` : '';
+  const suffix = remainingCount > 0 ? t('playground.charts.spectra.filter.metadataMore', { count: remainingCount }) : '';
 
-  return `Coming soon: Filter by ${preview}${suffix}`;
+  return `${t('playground.charts.spectra.filter.metadataComingSoon', { columns: preview })}${suffix}`;
 }
 
 export function buildSpectraSettingsReadModel({
@@ -95,6 +97,7 @@ export function buildSpectraSettingsReadModel({
   wavelengthUnitSuffix = '',
   yRange,
   metadataColumns,
+  t,
 }: SpectraSettingsReadModelInput): SpectraSettingsReadModel {
   const focusModifiedCount = countFocusModifiedSettings(config.wavelengthFocus);
   const filterModifiedCount = countFilterModifiedSettings(config.filters);
@@ -109,6 +112,6 @@ export function buildSpectraSettingsReadModel({
       wavelengthUnitSuffix
     ),
     targetRangeLabels: buildTargetRangeLabels(config.filters.targetRange, yRange),
-    metadataPreviewText: buildMetadataPreviewText(metadataColumns),
+    metadataPreviewText: buildMetadataPreviewText(metadataColumns, t),
   };
 }

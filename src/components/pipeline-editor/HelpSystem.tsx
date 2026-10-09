@@ -9,6 +9,7 @@
  */
 
 import { type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Tooltip,
   TooltipContent,
@@ -77,17 +78,18 @@ export function ParameterHelp({
   paramName: string;
   operatorName: string;
 }) {
+  const { t } = useTranslation();
   const help = getOperatorHelp(operatorName);
   const paramHelp = help?.parameters?.[paramName];
 
   if (!paramHelp) {
-    return <HelpTooltip content={`Parameter: ${paramName}`} />;
+    return <HelpTooltip content={t("pipelineEditor.help.parameterFallback", { name: paramName })} />;
   }
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button className="inline-flex">
+        <button className="inline-flex" aria-label={t("pipelineEditor.help.parameterHelp")}>
           <HelpCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground cursor-help" />
         </button>
       </PopoverTrigger>
@@ -105,7 +107,7 @@ export function ParameterHelp({
 
           {paramHelp.default !== undefined && (
             <div className="text-xs">
-              <span className="text-muted-foreground">Default: </span>
+              <span className="text-muted-foreground">{t("pipelineEditor.help.default")} </span>
               <code className="bg-muted px-1 py-0.5 rounded">
                 {String(paramHelp.default)}
               </code>
@@ -114,7 +116,7 @@ export function ParameterHelp({
 
           {paramHelp.range && (
             <div className="text-xs">
-              <span className="text-muted-foreground">Range: </span>
+              <span className="text-muted-foreground">{t("pipelineEditor.help.range")} </span>
               <code className="bg-muted px-1 py-0.5 rounded">
                 {paramHelp.range.min} – {paramHelp.range.max}
               </code>
@@ -123,7 +125,7 @@ export function ParameterHelp({
 
           {paramHelp.options && (
             <div className="text-xs">
-              <span className="text-muted-foreground">Options: </span>
+              <span className="text-muted-foreground">{t("pipelineEditor.help.options")} </span>
               {paramHelp.options.map((opt) => (
                 <code key={opt} className="bg-muted px-1 py-0.5 rounded mr-1">
                   {opt}
@@ -152,6 +154,7 @@ export function OperatorHelpCard({
   operatorName: string;
   onClose?: () => void;
 }) {
+  const { t } = useTranslation();
   const help = getOperatorHelp(operatorName);
 
   if (!help) {
@@ -160,13 +163,13 @@ export function OperatorHelpCard({
         <div className="flex items-center justify-between">
           <span className="font-medium">{operatorName}</span>
           {onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose}>
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("pipelineEditor.help.close")}>
               <X className="h-4 w-4" />
             </Button>
           )}
         </div>
         <p className="text-sm text-muted-foreground mt-2">
-          No documentation available for this operator.
+          {t("pipelineEditor.help.noDocs")}
         </p>
       </div>
     );
@@ -187,12 +190,12 @@ export function OperatorHelpCard({
               <Button variant="ghost" size="sm" asChild>
                 <a href={help.docUrl} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-4 w-4 mr-1" />
-                  Docs
+                  {t("pipelineEditor.help.docs")}
                 </a>
               </Button>
             )}
             {onClose && (
-              <Button variant="ghost" size="icon" onClick={onClose}>
+              <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("pipelineEditor.help.close")}>
                 <X className="h-4 w-4" />
               </Button>
             )}
@@ -209,7 +212,7 @@ export function OperatorHelpCard({
             <div className="space-y-2">
               <h4 className="text-sm font-medium flex items-center gap-2">
                 <Code className="h-4 w-4" />
-                Parameters
+                {t("pipelineEditor.help.parameters")}
               </h4>
               <div className="space-y-3">
                 {Object.entries(help.parameters).map(([name, param]) => (
@@ -234,7 +237,7 @@ export function OperatorHelpCard({
             <div className="space-y-2">
               <h4 className="text-sm font-medium flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
-                Examples
+                {t("pipelineEditor.help.examples")}
               </h4>
               <div className="space-y-1">
                 {help.examples.map((example, i) => (
@@ -254,7 +257,7 @@ export function OperatorHelpCard({
             <div className="space-y-2">
               <h4 className="text-sm font-medium flex items-center gap-2">
                 <Lightbulb className="h-4 w-4 text-amber-500" />
-                Tips
+                {t("pipelineEditor.help.tips")}
               </h4>
               <ul className="text-xs space-y-1 list-disc list-inside text-muted-foreground">
                 {help.tips.map((tip, i) => (
@@ -267,7 +270,7 @@ export function OperatorHelpCard({
           {/* See Also */}
           {help.seeAlso && help.seeAlso.length > 0 && (
             <div className="space-y-2">
-              <h4 className="text-sm font-medium">See Also</h4>
+              <h4 className="text-sm font-medium">{t("pipelineEditor.help.seeAlso")}</h4>
               <div className="flex flex-wrap gap-1">
                 {help.seeAlso.map((name) => (
                   <Badge key={name} variant="secondary" className="text-xs">
@@ -285,6 +288,7 @@ export function OperatorHelpCard({
 
 /** "What's This?" mode toggle button */
 export function WhatsThisButton() {
+  const { t } = useTranslation();
   const { helpModeActive, toggleHelpMode } = useHelpMode();
 
   return (
@@ -301,11 +305,11 @@ export function WhatsThisButton() {
             )}
           >
             <Sparkles className="h-4 w-4" />
-            {helpModeActive ? "Help Mode ON" : "What's This?"}
+            {helpModeActive ? t("pipelineEditor.help.helpModeOn") : t("pipelineEditor.help.whatsThis")}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          <p>Click any operator to see its documentation</p>
+          <p>{t("pipelineEditor.help.whatsThisTooltip")}</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   SelectGroup,
   SelectItem,
@@ -65,12 +66,13 @@ function SourceOptionItem({
 }
 
 export function SourceOptionGroups({ groups }: { groups: SourceOptionGroup[] }) {
+  const { t } = useTranslation();
   return (
     <>
       {groups.map(group => (
         <SelectGroup key={group.id}>
           <SelectLabel className="text-[10px] text-muted-foreground">
-            {group.label}
+            {t(group.labelKey)}
           </SelectLabel>
           {group.options.map(option => (
             <SourceOptionItem

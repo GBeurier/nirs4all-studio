@@ -9,6 +9,7 @@ import {
   type PipelineEditorStep,
 } from '@/lib/playground/operatorFormat';
 import type { ExecuteOptions, UnifiedOperator } from '@/types/playground';
+import { useTranslation } from 'react-i18next';
 
 export const PLAYGROUND_PIPELINE_JSON_FILENAME = 'playground-pipeline.json';
 export const PLAYGROUND_PIPELINE_EXPORT_NAME = 'Playground Export';
@@ -102,13 +103,6 @@ export function buildPlaygroundPipelineJsonExportPayload(
     })),
     exported_at: exportedAt,
   };
-}
-
-export function formatPlaygroundPipelineJsonExportDescription(
-  operatorCount: number,
-  filename = PLAYGROUND_PIPELINE_JSON_FILENAME,
-): string {
-  return `${operatorCount} operators saved to ${filename}`;
 }
 
 export function shouldClearOwnPlaygroundExportData(

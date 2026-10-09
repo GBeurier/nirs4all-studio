@@ -8,6 +8,7 @@
  */
 
 import { useState, useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, Timer, Hash, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ export function TrialTrainingConfig({
   onUpdate,
   modelName,
 }: TrialTrainingConfigProps) {
+  const { t } = useTranslation();
   const [showAddPopover, setShowAddPopover] = useState(false);
 
   // Only show for models that support training parameters
@@ -100,10 +102,10 @@ export function TrialTrainingConfig({
         <div className="min-w-0 flex-1">
           <Label className="text-sm font-medium flex items-center gap-2">
             <Timer className="h-4 w-4 text-sky-500" />
-            Trial Training (Quick)
+            {t("pipelineEditor.finetune.trial.title")}
           </Label>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Fast training per trial (e.g., 50 epochs)
+            {t("pipelineEditor.finetune.trial.hint")}
           </p>
         </div>
         <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
@@ -115,14 +117,14 @@ export function TrialTrainingConfig({
               disabled={unusedPresets.length === 0}
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
-              Add
+              {t("common.add")}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-64 bg-popover p-0">
             <div className="p-3 border-b border-border">
-              <h4 className="font-medium text-sm">Trial Training Params</h4>
+              <h4 className="font-medium text-sm">{t("pipelineEditor.finetune.trial.popTitle")}</h4>
               <p className="text-xs text-muted-foreground mt-1">
-                Quick training for each search trial
+                {t("pipelineEditor.finetune.trial.popHint")}
               </p>
             </div>
             <ScrollArea className="max-h-64">
@@ -130,8 +132,9 @@ export function TrialTrainingConfig({
                 {unusedPresets.map((preset) => (
                   <button
                     key={preset.name}
+                    type="button"
                     onClick={() => handleAddParam(preset)}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted transition-colors"
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-sm">{preset.name}</span>
@@ -140,13 +143,13 @@ export function TrialTrainingConfig({
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {preset.description}
+                      {t(preset.descriptionKey)}
                     </p>
                   </button>
                 ))}
                 {unusedPresets.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">
-                    All trial parameters added
+                    {t("pipelineEditor.finetune.trial.allAdded")}
                   </p>
                 )}
               </div>
@@ -158,7 +161,7 @@ export function TrialTrainingConfig({
       {!hasParams ? (
         <div className="text-center py-3 rounded-lg border border-dashed border-sky-500/30">
           <p className="text-xs text-muted-foreground">
-            Uses default trial training settings
+            {t("pipelineEditor.finetune.trial.usesDefault")}
           </p>
         </div>
       ) : (
@@ -190,6 +193,7 @@ export function TrialTrainingConfig({
                   size="sm"
                   className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive flex-shrink-0"
                   onClick={() => handleRemoveParam(paramName)}
+                  aria-label={t("pipelineEditor.finetune.removeParam", { name: paramName })}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -204,7 +208,7 @@ export function TrialTrainingConfig({
         <div className="flex items-start gap-2 p-2 rounded-lg bg-sky-500/5 border border-sky-500/20">
           <Timer className="h-3.5 w-3.5 text-sky-500 flex-shrink-0 mt-0.5" />
           <p className="text-[11px] text-muted-foreground">
-            These values are used for quick training during each trial to speed up hyperparameter search.
+            {t("pipelineEditor.finetune.trial.callout")}
           </p>
         </div>
       )}
