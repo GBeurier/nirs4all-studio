@@ -31,7 +31,7 @@ import App from "./App";
 import "./index.css";
 
 // Initialize i18n
-import "@/lib/i18n";
+import { i18nReady } from "@/lib/i18n";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -102,6 +102,8 @@ void (async () => {
   } catch {
     // Consent defaults to unset/disabled if the preference cannot be read.
   }
+
+  await i18nReady;
 
   createRoot(document.getElementById("root")!).render(
     <SentryErrorBoundary fallback={renderSentryFallback}>{appTree}</SentryErrorBoundary>
