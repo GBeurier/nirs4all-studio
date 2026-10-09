@@ -53,6 +53,7 @@ def test_missing_optional_model_blocks_execution_but_preserves_editing(monkeypat
 
 def test_available_optional_model_passes_execution_check(monkeypatch):
     from types import SimpleNamespace
+
     from nirs4all.api import studio_scientific_general
 
     real_import = studio_scientific_general.import_module
