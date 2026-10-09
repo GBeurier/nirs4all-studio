@@ -95,6 +95,12 @@ def test_linux_release_gates_run_clean_qualification_before_publication():
     assert not any(name.startswith("archive-") for name in release["jobs"])
     for job_name in ["installer-linux"]:
         steps = release["jobs"][job_name]["steps"]
+        checkout = next(step for step in steps if step.get("name") == "Checkout Linux packaging helpers")
+        assert checkout["with"]["ref"] == "${{ github.sha }}"
+        assert steps[0]["with"]["ref"] == "${{ needs.prepare.outputs.checkout_ref }}"
+        bundle_step = next(index for index, step in enumerate(steps) if "bundle-linux-openmp.py --runtime-root" in step.get("run", ""))
+        seal = next(index for index, step in enumerate(steps) if "build-native-sidecar.cjs" in step.get("run", ""))
+        assert bundle_step < seal
         clean = next(index for index, step in enumerate(steps) if "verify-linux-cpu-closure.py" in step.get("run", ""))
         upload = next(index for index, step in enumerate(steps) if step.get("uses", "").startswith("actions/upload-artifact"))
         assert clean < upload
