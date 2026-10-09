@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Check, Database, Filter, GitBranch, Play, type LucideIcon } from "lucide-react";
 
 import {
@@ -24,10 +25,11 @@ export interface NewExperimentStepProgressProps {
 }
 
 export function NewExperimentStepProgress({ currentStep }: NewExperimentStepProgressProps) {
+  const { t } = useTranslation();
   const wizardSteps = buildNewExperimentStepProgress(currentStep);
 
   return (
-    <nav aria-label="Experiment steps" className="mx-auto flex max-w-4xl items-center justify-between">
+    <nav aria-label={t("newExperiment.shell.stepsAria")} className="mx-auto flex max-w-4xl items-center justify-between">
       <ol className="flex w-full items-center justify-between">
         {wizardSteps.map((step) => {
           const StepIcon = wizardStepIcons[step.id];

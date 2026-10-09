@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import {
   getAvailableMetrics,
   getMetricDefinitions,
@@ -65,6 +66,7 @@ function buildRuntimeMetricDefinitions(metricKeys: readonly string[]): MetricSel
 
 function groupMetricSelectorDefinitions(
   definitions: readonly MetricSelectorMetricDefinition[],
+  t: TFunction,
 ): MetricSelectorSection[] {
   const customMetrics = definitions.filter((metric) => metric.isCustom);
   const knownKeys = definitions
@@ -72,11 +74,14 @@ function groupMetricSelectorDefinitions(
     .map((metric) => metric.key);
 
   return [
-    ...groupMetricDefinitions(knownKeys),
+    ...groupMetricDefinitions(knownKeys).map((section) => ({
+      ...section,
+      label: t(`results.scores.metricGroup.${section.group}`),
+    })),
     ...(customMetrics.length > 0
       ? [{
         group: 'custom' as const,
-        label: 'Custom',
+        label: t('results.scores.metricGroup.custom'),
         metrics: customMetrics,
       }]
       : []),
@@ -88,16 +93,18 @@ export function buildMetricSelectorData({
   taskTypes,
   selectedMetrics,
   availableMetricKeys,
+  t,
 }: {
   taskType: string | null;
   taskTypes?: readonly string[];
   selectedMetrics: readonly string[];
   availableMetricKeys?: readonly string[];
+  t: TFunction;
 }): MetricSelectorData {
   const available = availableMetricKeys
     ? buildRuntimeMetricDefinitions(availableMetricKeys)
     : getAvailableMetrics(taskType);
-  const availableSections = groupMetricSelectorDefinitions(available);
+  const availableSections = groupMetricSelectorDefinitions(available, t);
   const availableSet = new Set(available.map((metric) => metric.key));
   const presetSource = taskTypes && taskTypes.length > 0
     ? getPresetsForTaskTypes(taskTypes)
@@ -105,6 +112,7 @@ export function buildMetricSelectorData({
   const presets = presetSource
     .map((preset) => ({
       ...preset,
+      label: t(`results.scores.metricPreset.${preset.id}`),
       keys: preset.keys.filter((key) => availableSet.has(key)),
     }))
     .filter((preset) => preset.keys.length > 0);

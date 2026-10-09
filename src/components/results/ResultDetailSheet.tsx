@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   Sheet,
   SheetContent,
@@ -26,6 +27,7 @@ interface ResultDetailSheetProps {
 }
 
 export function ResultDetailSheet({ pipeline, datasetName, open, onOpenChange }: ResultDetailSheetProps) {
+  const { t } = useTranslation();
   const {
     activeTab,
     copied,
@@ -49,7 +51,7 @@ export function ResultDetailSheet({ pipeline, datasetName, open, onOpenChange }:
           <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
             <TabsTrigger value="results" className="text-xs">
               <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
-              Metrics
+              {t("results.detail.tabs.metrics")}
             </TabsTrigger>
             <TabsTrigger value="json" className="text-xs">
               <FileJson className="h-3.5 w-3.5 mr-1.5" />
@@ -57,7 +59,7 @@ export function ResultDetailSheet({ pipeline, datasetName, open, onOpenChange }:
             </TabsTrigger>
             <TabsTrigger value="logs" className="text-xs">
               <Terminal className="h-3.5 w-3.5 mr-1.5" />
-              Logs
+              {t("results.detail.tabs.logs")}
             </TabsTrigger>
           </TabsList>
 

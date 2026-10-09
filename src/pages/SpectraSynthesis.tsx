@@ -108,8 +108,8 @@ function SpectraSynthesisContent() {
     a.download = `${config.name}_synthesis_config.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Configuration exported");
-  }, [exportConfig]);
+    toast.success(t("spectraSynthesis.page.toast.exported"));
+  }, [exportConfig, t]);
 
   // Handle import config
   const handleImportConfig = useCallback(() => {
@@ -124,20 +124,20 @@ function SpectraSynthesisContent() {
         const text = await file.text();
         const config = JSON.parse(text);
         loadConfig(config);
-        toast.success("Configuration imported");
+        toast.success(t("spectraSynthesis.page.toast.imported"));
       } catch {
-        toast.error("Failed to import configuration");
+        toast.error(t("spectraSynthesis.page.toast.importFailed"));
       }
     };
     input.click();
-  }, [loadConfig]);
+  }, [loadConfig, t]);
 
   // Handle reset
   const handleReset = useCallback(() => {
     reset();
     setShowResetDialog(false);
-    toast.success("Builder reset to defaults");
-  }, [reset]);
+    toast.success(t("spectraSynthesis.page.toast.reset"));
+  }, [reset, t]);
 
   return (
     <motion.div
@@ -158,15 +158,15 @@ function SpectraSynthesisContent() {
             </div>
             <div>
               <h1 className="text-base font-semibold leading-tight">
-                Spectra Synthesis
+                {t("spectraSynthesis.page.title")}
               </h1>
               <p className="text-xs text-muted-foreground">
-                Generate synthetic NIRS datasets
+                {t("spectraSynthesis.page.subtitle")}
               </p>
             </div>
             {state.isDirty && (
               <Badge variant="secondary" className="text-xs">
-                Unsaved
+                {t("spectraSynthesis.page.unsaved")}
               </Badge>
             )}
           </div>
@@ -186,7 +186,7 @@ function SpectraSynthesisContent() {
                     <Undo2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Undo</TooltipContent>
+                <TooltipContent>{t("common.a11y.undo")}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -200,7 +200,7 @@ function SpectraSynthesisContent() {
                     <Redo2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Redo</TooltipContent>
+                <TooltipContent>{t("common.a11y.redo")}</TooltipContent>
               </Tooltip>
             </div>
 
@@ -217,7 +217,7 @@ function SpectraSynthesisContent() {
                     <Upload className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Import configuration</TooltipContent>
+                <TooltipContent>{t("common.a11y.importConfig")}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -230,7 +230,7 @@ function SpectraSynthesisContent() {
                     <Download className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Export configuration</TooltipContent>
+                <TooltipContent>{t("common.a11y.exportConfig")}</TooltipContent>
               </Tooltip>
             </div>
 
@@ -239,14 +239,14 @@ function SpectraSynthesisContent() {
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon" aria-label={t("common.a11y.resetConfig")}
+                  size="icon" aria-label={t("spectraSynthesis.page.resetToDefaults")}
                   className="h-7 w-7"
                   onClick={() => setShowResetDialog(true)}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Reset to defaults</TooltipContent>
+              <TooltipContent>{t("spectraSynthesis.page.resetToDefaults")}</TooltipContent>
             </Tooltip>
           </div>
         </div>
@@ -273,16 +273,15 @@ function SpectraSynthesisContent() {
       <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reset Builder</AlertDialogTitle>
+            <AlertDialogTitle>{t("spectraSynthesis.page.resetDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to reset the builder to defaults? This will
-              remove all steps and configurations. This action cannot be undone.
+              {t("spectraSynthesis.page.resetDialog.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleReset}>
-              Reset Builder
+              {t("spectraSynthesis.page.resetDialog.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

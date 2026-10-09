@@ -1,4 +1,5 @@
 import { BarChart3, Database, ListTree, Terminal } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
@@ -46,6 +47,8 @@ export function RunDetailSheetTabs({
   workspaceId: string;
   status: string;
 }) {
+  const { t } = useTranslation();
+
   return (
     <Tabs
       value={activeTab}
@@ -55,19 +58,19 @@ export function RunDetailSheetTabs({
       <TabsList className="grid w-full grid-cols-2 gap-1 sm:grid-cols-4 flex-shrink-0">
         <TabsTrigger value="overview" className="text-xs">
           <BarChart3 className="mr-1.5 h-3.5 w-3.5" />
-          Overview
+          {t("runs.detail.tabOverview")}
         </TabsTrigger>
         <TabsTrigger value="pipelines" className="text-xs">
           <ListTree className="mr-1.5 h-3.5 w-3.5" />
-          Pipelines
+          {t("runs.detail.tabPipelines")}
         </TabsTrigger>
         <TabsTrigger value="logs" className="text-xs">
           <Terminal className="mr-1.5 h-3.5 w-3.5" />
-          Logs
+          {t("runs.detail.tabLogs")}
         </TabsTrigger>
         <TabsTrigger value="datasets" className="text-xs">
           <Database className="mr-1.5 h-3.5 w-3.5" />
-          Datasets
+          {t("runs.detail.tabDatasets")}
         </TabsTrigger>
       </TabsList>
 

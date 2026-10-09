@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+/**
+ * @vitest-environment jsdom
+ */
 
+import i18n from "i18next";
+import { beforeAll, describe, expect, it } from "vitest";
+
+import "@/lib/i18n";
 import {
-  WORKSPACE_ACTION_COPY,
-  formatCountLabel,
+  getWorkspaceActionCopy,
   getDiscoveredCounts,
   getLastScannedLabel,
   getLinkedWorkspaceCountLabel,
@@ -10,6 +15,12 @@ import {
   getWorkspaceDiscoveredCountItems,
   getWorkspaceItemState,
 } from "../N4AWorkspaceListData";
+
+const t = i18n.t.bind(i18n);
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 describe("N4AWorkspaceListData", () => {
   it("fills missing discovered counts with zero defaults", () => {
@@ -29,11 +40,12 @@ describe("N4AWorkspaceListData", () => {
   });
 
   it("formats singular and plural count labels", () => {
-    expect(formatCountLabel(0, "run")).toBe("0 runs");
-    expect(formatCountLabel(1, "run")).toBe("1 run");
-    expect(formatCountLabel(2, "run")).toBe("2 runs");
-    expect(formatCountLabel(1, "analysis", "analyses")).toBe("1 analysis");
-    expect(formatCountLabel(2, "analysis", "analyses")).toBe("2 analyses");
+    const labelFor = (runs_count: number) =>
+      getWorkspaceDiscoveredCountItems({ runs_count }, t)[0].label;
+
+    expect(labelFor(0)).toBe("0 runs");
+    expect(labelFor(1)).toBe("1 run");
+    expect(labelFor(2)).toBe("2 runs");
   });
 
   it("builds discovered count display items in list order", () => {
@@ -43,7 +55,7 @@ describe("N4AWorkspaceListData", () => {
         exports_count: 2,
         datasets_count: 1,
         templates_count: 0,
-      }),
+      }, t),
     ).toEqual([
       { key: "runs", count: 1, label: "1 run" },
       { key: "exports", count: 2, label: "2 exports" },
@@ -53,26 +65,26 @@ describe("N4AWorkspaceListData", () => {
   });
 
   it("formats linked workspace and scan success messages", () => {
-    expect(getLinkedWorkspaceCountLabel(1)).toBe("1 workspace linked");
-    expect(getLinkedWorkspaceCountLabel(3)).toBe("3 workspaces linked");
-    expect(getScanSuccessMessage({ runs_count: 1, exports_count: 2 })).toBe(
+    expect(getLinkedWorkspaceCountLabel(1, t)).toBe("1 workspace linked");
+    expect(getLinkedWorkspaceCountLabel(3, t)).toBe("3 workspaces linked");
+    expect(getScanSuccessMessage({ runs_count: 1, exports_count: 2 }, t)).toBe(
       "Scanned: 1 run, 2 exports",
     );
-    expect(getScanSuccessMessage()).toBe("Scanned: 0 runs, 0 exports");
+    expect(getScanSuccessMessage(undefined, t)).toBe("Scanned: 0 runs, 0 exports");
   });
 
   it("returns a scanned label only when a scan timestamp exists", () => {
     const formatter = (value: string) => `relative:${value}`;
 
-    expect(getLastScannedLabel(null, formatter)).toBeNull();
-    expect(getLastScannedLabel("2026-06-30T08:00:00Z", formatter)).toBe(
+    expect(getLastScannedLabel(null, t, formatter)).toBeNull();
+    expect(getLastScannedLabel("2026-06-30T08:00:00Z", t, formatter)).toBe(
       "Scanned relative:2026-06-30T08:00:00Z",
     );
   });
 
   it("describes active and inactive workspace item state", () => {
-    const active = getWorkspaceItemState({ is_active: true });
-    const inactive = getWorkspaceItemState({ is_active: false });
+    const active = getWorkspaceItemState({ is_active: true }, t);
+    const inactive = getWorkspaceItemState({ is_active: false }, t);
 
     expect(active.containerClassName).toContain("border-primary");
     expect(active.activeBadge).toEqual({
@@ -85,11 +97,13 @@ describe("N4AWorkspaceListData", () => {
   });
 
   it("keeps action labels and tooltips outside JSX", () => {
-    expect(WORKSPACE_ACTION_COPY.activate).toEqual({
+    const copy = getWorkspaceActionCopy(t);
+
+    expect(copy.activate).toEqual({
       label: "Activate",
       tooltip: "Set as active workspace",
     });
-    expect(WORKSPACE_ACTION_COPY.scan.tooltip).toBe("Rescan workspace");
-    expect(WORKSPACE_ACTION_COPY.unlink.confirmLabel).toBe("Unlink");
+    expect(copy.scan.tooltip).toBe("Rescan workspace");
+    expect(copy.unlink.confirmLabel).toBe("Unlink");
   });
 });

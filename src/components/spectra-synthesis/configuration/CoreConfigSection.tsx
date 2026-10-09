@@ -3,6 +3,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dices } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ interface CoreConfigSectionProps {
 }
 
 export function CoreConfigSection({ className }: CoreConfigSectionProps) {
+  const { t } = useTranslation();
   const { state, setName, setSamples, setRandomState } = useSynthesisBuilder();
   const [localSamples, setLocalSamples] = useState(state.n_samples.toString());
 
@@ -43,7 +45,7 @@ export function CoreConfigSection({ className }: CoreConfigSectionProps) {
     <div className={cn("rounded-lg border bg-muted/30 p-2 space-y-2", className)}>
       {/* Row 1: Name */}
       <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground w-14 shrink-0">Name</span>
+        <span className="text-xs text-muted-foreground w-14 shrink-0">{t("spectraSynthesis.core.name")}</span>
         <Input
           value={state.name}
           onChange={(e) => setName(e.target.value)}
@@ -55,7 +57,7 @@ export function CoreConfigSection({ className }: CoreConfigSectionProps) {
       {/* Row 2: Samples + Seed */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 flex-1">
-          <span className="text-xs text-muted-foreground w-14 shrink-0">Samples</span>
+          <span className="text-xs text-muted-foreground w-14 shrink-0">{t("spectraSynthesis.core.samples")}</span>
           <Input
             type="number"
             value={localSamples}
@@ -67,7 +69,7 @@ export function CoreConfigSection({ className }: CoreConfigSectionProps) {
           />
         </div>
         <div className="flex items-center gap-2 flex-1">
-          <span className="text-xs text-muted-foreground shrink-0">Seed</span>
+          <span className="text-xs text-muted-foreground shrink-0">{t("spectraSynthesis.core.seed")}</span>
           <Input
             type="number"
             value={state.random_state ?? ""}
@@ -84,12 +86,13 @@ export function CoreConfigSection({ className }: CoreConfigSectionProps) {
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
+                aria-label={t("spectraSynthesis.core.randomSeed")}
                 onClick={generateRandomSeed}
               >
                 <Dices className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Random seed</TooltipContent>
+            <TooltipContent>{t("spectraSynthesis.core.randomSeed")}</TooltipContent>
           </Tooltip>
         </div>
       </div>

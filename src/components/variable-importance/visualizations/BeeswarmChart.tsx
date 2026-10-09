@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import {
   ScatterChart,
@@ -31,9 +32,10 @@ export const BeeswarmChart = memo(function BeeswarmChart({
   onSampleSelect,
   selectedSamples = [],
 }: BeeswarmChartProps) {
+  const { t } = useTranslation();
   const selectedSet = useMemo(() => new Set(selectedSamples), [selectedSamples]);
   const [data, setData] = useState<BeeswarmDataResponse | null>(null);
-  const axis = getShapAxisDisplay(data?.axis_unit);
+  const axis = getShapAxisDisplay(data?.axis_unit, t);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,10 +48,10 @@ export const BeeswarmChart = memo(function BeeswarmChart({
         setLoading(false);
       })
       .catch((err) => {
-        setError(err.message || 'Failed to load beeswarm data');
+        setError(err.message || t('results.variableImportance.beeswarm.loadFailed'));
         setLoading(false);
       });
-  }, [jobId]);
+  }, [jobId, t]);
 
   const chartData = useMemo(() => {
     if (!data) return [];
@@ -80,7 +82,7 @@ export const BeeswarmChart = memo(function BeeswarmChart({
   if (!data || data.bins.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
-        No beeswarm data available
+        {t('results.variableImportance.beeswarm.noData')}
       </div>
     );
   }
@@ -94,19 +96,19 @@ export const BeeswarmChart = memo(function BeeswarmChart({
             type="number"
             dataKey="x"
             domain={['auto', 'auto']}
-            label={{ value: 'SHAP value (impact on prediction)', position: 'bottom', offset: 20, className: 'fill-muted-foreground text-xs' }}
+            label={{ value: t('results.variableImportance.beeswarm.shapAxis'), position: 'bottom', offset: 20, className: 'fill-muted-foreground text-xs' }}
             className="text-xs"
           />
           <YAxis
             type="number"
             dataKey="y"
             domain={[-0.5, data.bins.length - 0.5]}
-            ticks={yTickLabels.map((t) => t.value)}
+            ticks={yTickLabels.map((tick) => tick.value)}
             tickFormatter={(value: number) => {
-              const tick = yTickLabels.find((t) => t.value === value);
+              const tick = yTickLabels.find((candidate) => candidate.value === value);
               return tick?.label || '';
             }}
-            label={{ value: `${axis.label} region`, angle: -90, position: 'insideLeft', offset: -80, className: 'fill-muted-foreground text-xs' }}
+            label={{ value: t('results.variableImportance.axis.region', { axis: axis.label }), angle: -90, position: 'insideLeft', offset: -80, className: 'fill-muted-foreground text-xs' }}
             className="text-xs"
             width={90}
           />
@@ -118,9 +120,9 @@ export const BeeswarmChart = memo(function BeeswarmChart({
               return (
                 <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
                   <p className="font-medium">{point.binLabel}{axis.suffix}</p>
-                  <p>SHAP: {point.x.toFixed(4)}</p>
-                  <p className="text-muted-foreground">Feature value: {(point.color * 100).toFixed(0)}%</p>
-                  <p className="text-xs text-muted-foreground">Sample #{point.sampleIdx}</p>
+                  <p>{t('results.variableImportance.beeswarm.shapValue', { value: point.x.toFixed(4) })}</p>
+                  <p className="text-muted-foreground">{t('results.variableImportance.beeswarm.featureValue', { percent: (point.color * 100).toFixed(0) })}</p>
+                  <p className="text-xs text-muted-foreground">{t('results.variableImportance.sample', { index: point.sampleIdx })}</p>
                 </div>
               );
             }}
@@ -153,12 +155,12 @@ export const BeeswarmChart = memo(function BeeswarmChart({
       </ResponsiveContainer>
 
       <div className="flex items-center justify-center gap-6 py-2 text-xs text-muted-foreground shrink-0">
-        <span>Feature value:</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-blue-500" />Low</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-green-500" />Med-Low</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-yellow-500" />Med</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-orange-500" />Med-High</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-red-500" />High</span>
+        <span>{t('results.variableImportance.beeswarm.featureValueLabel')}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-blue-500" />{t('results.variableImportance.beeswarm.low')}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-green-500" />{t('results.variableImportance.beeswarm.medLow')}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-yellow-500" />{t('results.variableImportance.beeswarm.med')}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-orange-500" />{t('results.variableImportance.beeswarm.medHigh')}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-red-500" />{t('results.variableImportance.beeswarm.high')}</span>
       </div>
     </div>
   );

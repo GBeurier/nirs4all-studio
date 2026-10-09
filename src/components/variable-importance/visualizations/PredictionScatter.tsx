@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef, memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import {
   ScatterChart,
@@ -33,6 +34,7 @@ export const PredictionScatter = memo(function PredictionScatter({
   selectedSamples,
   onSamplesChange,
 }: PredictionScatterProps) {
+  const { t } = useTranslation();
   const [data, setData] = useState<ScatterData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,10 +52,10 @@ export const PredictionScatter = memo(function PredictionScatter({
         setLoading(false);
       })
       .catch((err) => {
-        setError(err.message || 'Failed to load scatter data');
+        setError(err.message || t('results.variableImportance.scatter.loadFailed'));
         setLoading(false);
       });
-  }, [jobId]);
+  }, [jobId, t]);
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
@@ -90,14 +92,14 @@ export const PredictionScatter = memo(function PredictionScatter({
       const p = payload[0].payload as typeof chartPoints[0];
       return (
         <div className="bg-popover border rounded-lg shadow-lg p-2 text-xs">
-          <p className="font-medium">Sample #{p.sampleIdx}</p>
-          <p>True: {p.yTrue.toFixed(3)}</p>
-          <p>Pred: {p.yPred.toFixed(3)}</p>
-          <p className="text-muted-foreground">Residual: {p.residual.toFixed(3)}</p>
+          <p className="font-medium">{t('results.variableImportance.sample', { index: p.sampleIdx })}</p>
+          <p>{t('results.variableImportance.scatter.trueValue', { value: p.yTrue.toFixed(3) })}</p>
+          <p>{t('results.variableImportance.scatter.predValue', { value: p.yPred.toFixed(3) })}</p>
+          <p className="text-muted-foreground">{t('results.variableImportance.scatter.residualValue', { value: p.residual.toFixed(3) })}</p>
         </div>
       );
     },
-    [],
+    [t],
   );
 
   if (loading) {
@@ -111,7 +113,7 @@ export const PredictionScatter = memo(function PredictionScatter({
   if (error || !data || data.y_true.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
-        {error || 'No prediction data available'}
+        {error || t('results.variableImportance.scatter.noData')}
       </div>
     );
   }
@@ -120,7 +122,7 @@ export const PredictionScatter = memo(function PredictionScatter({
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-1">
         <h4 className="text-xs font-medium text-muted-foreground">
-          Predicted vs True — click points to select samples
+          {t('results.variableImportance.scatter.title')}
         </h4>
         <div className="flex items-center gap-3">
           {selectedSamples.length > 0 && (
@@ -128,13 +130,13 @@ export const PredictionScatter = memo(function PredictionScatter({
               className="text-xs text-primary hover:underline"
               onClick={handleClear}
             >
-              Clear ({selectedSamples.length} selected)
+              {t('results.variableImportance.scatter.clear', { count: selectedSamples.length })}
             </button>
           )}
           <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-500" />Good</span>
-            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-red-500" />Outlier</span>
-            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-amber-500" />Selected</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-500" />{t('results.variableImportance.scatter.good')}</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-red-500" />{t('results.variableImportance.scatter.outlier')}</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-amber-500" />{t('results.variableImportance.scatter.selected')}</span>
           </div>
         </div>
       </div>
@@ -147,7 +149,7 @@ export const PredictionScatter = memo(function PredictionScatter({
               dataKey="yTrue"
               domain={['auto', 'auto']}
               tick={{ fontSize: 10 }}
-              label={{ value: 'True', position: 'bottom', offset: 10, fontSize: 10, className: 'fill-muted-foreground' }}
+              label={{ value: t('results.variableImportance.scatter.trueAxis'), position: 'bottom', offset: 10, fontSize: 10, className: 'fill-muted-foreground' }}
             />
             <YAxis
               type="number"
@@ -155,7 +157,7 @@ export const PredictionScatter = memo(function PredictionScatter({
               domain={['auto', 'auto']}
               tick={{ fontSize: 10 }}
               width={50}
-              label={{ value: 'Predicted', angle: -90, position: 'insideLeft', offset: 5, fontSize: 10, className: 'fill-muted-foreground' }}
+              label={{ value: t('results.variableImportance.scatter.predictedAxis'), angle: -90, position: 'insideLeft', offset: 5, fontSize: 10, className: 'fill-muted-foreground' }}
             />
             <ReferenceLine
               segment={[{ x: bounds.min, y: bounds.min }, { x: bounds.max, y: bounds.max }]}

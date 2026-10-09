@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
+import { initEnglishI18n } from "../../predictionsTestI18n";
 import { PredictionViewer } from "../PredictionViewer";
 import { predictionOutputCount, coercePredictionVector } from "../predictionOutputs";
 import type { PartitionDataset } from "../types";
@@ -14,6 +15,7 @@ vi.mock("../PredictionViewerChartArea", () => ({ PredictionViewerChartArea: ({ d
   <pre data-testid="chart-data">{error ?? JSON.stringify(datasets.map(({ yTrue, yPred }) => ({ yTrue, yPred })))}</pre> }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
+beforeAll(async () => { await initEnglishI18n(); });
 afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; vi.clearAllMocks(); });
 
 async function render(source: "workspace" | "aggregated", payload: object) {

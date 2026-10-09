@@ -13,6 +13,7 @@
  */
 import { useState, useCallback } from "react";
 import { Settings2, RotateCcw, Wand2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -30,6 +31,7 @@ import { AdvancedLoadingOptions } from "./ParsingStepAdvancedOptions";
 import { detectFormat, autoDetectFile } from "@/api/datasets";
 
 export function ParsingStep() {
+  const { t } = useTranslation();
   const { state, dispatch } = useWizard();
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [detectingFiles, setDetectingFiles] = useState<Record<string, boolean>>({});
@@ -199,7 +201,7 @@ export function ParsingStep() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Settings2 className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-base font-medium">Global Settings</Label>
+            <Label className="text-base font-medium">{t("datasets.wizard.parsing.globalSettings")}</Label>
           </div>
           <div className="flex gap-2">
             <Button
@@ -209,11 +211,11 @@ export function ParsingStep() {
               disabled={autoDetecting || state.files.length === 0}
             >
               <Wand2 className="h-4 w-4 mr-1" />
-              {autoDetecting ? "Detecting..." : "Auto-detect"}
+              {autoDetecting ? t("datasets.wizard.parsing.detecting") : t("datasets.wizard.parsing.override.autoDetect")}
             </Button>
             <Button variant="ghost" size="sm" onClick={handleResetDefaults}>
               <RotateCcw className="h-4 w-4 mr-1" />
-              Reset
+              {t("common.reset")}
             </Button>
           </div>
         </div>
@@ -237,9 +239,9 @@ export function ParsingStep() {
       {/* Per-file overrides */}
       <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex items-center justify-between mb-2">
-          <Label className="text-base font-medium">Per-File Overrides</Label>
+          <Label className="text-base font-medium">{t("datasets.wizard.parsing.perFileOverrides")}</Label>
           <span className="text-xs text-muted-foreground">
-            {Object.keys(state.perFileOverrides).length} customized
+            {t("datasets.wizard.parsing.customizedCount", { count: Object.keys(state.perFileOverrides).length })}
           </span>
         </div>
 
@@ -273,7 +275,7 @@ export function ParsingStep() {
 
           ) : (
             <div className="p-8 text-center text-muted-foreground">
-              No files to configure
+              {t("datasets.wizard.parsing.noFilesToConfigure")}
             </div>
           )}
         </ScrollArea>

@@ -10,10 +10,11 @@ import {
   formatStandardizedResidual,
   getPredictionDiagnosticsEmptyMessage,
 } from '@/lib/inspector/predictionDiagnosticsPresentation';
+import { tStub } from './helpers/i18nStub';
 
 describe('inspector prediction diagnostics presentation helpers', () => {
   it('formats shared prediction diagnostic copy and values', () => {
-    expect(getPredictionDiagnosticsEmptyMessage()).toBe('No prediction data available. Select chains to visualize.');
+    expect(getPredictionDiagnosticsEmptyMessage(tStub)).toBe('inspector.charts.empty.predictionDiagnostics');
     expect(formatPredictionDiagnosticValue(0.123456)).toBe('0.1235');
     expect(formatPredictionDiagnosticResidual({ observed: 1, predicted: 1.23456 })).toBe('0.2346');
     expect(formatStandardizedResidual(0.5, 0.25)).toBe('2.00σ');
@@ -35,13 +36,15 @@ describe('inspector prediction diagnostics presentation helpers', () => {
       meanResidual: -0.025,
       stdResidual: 0.3774,
       pointCount: 4,
-    })).toBe('Mean = -0.0250 | Std = 0.3774 | n = 4');
+      t: tStub,
+    })).toBe('inspector.charts.diagnostics.summaryMean {"mean":"-0.0250","std":"0.3774","n":4}');
     expect(buildResidualCanvasAnnotations({
       meanResidual: -0.025,
       stdResidual: 0.3774,
       pointCount: 4,
+      t: tStub,
     })).toEqual([{
-      text: 'Mean = -0.0250 | Std = 0.3774 | n = 4',
+      text: 'inspector.charts.diagnostics.summaryMean {"mean":"-0.0250","std":"0.3774","n":4}',
       position: 'top-left',
     }]);
   });

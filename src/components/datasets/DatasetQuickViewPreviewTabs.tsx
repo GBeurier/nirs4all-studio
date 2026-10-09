@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { BarChart3, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +43,7 @@ export function DatasetQuickViewSpectraTab({
   testCount: number | undefined;
   partitionTheme: PartitionVisualTheme;
 }) {
+  const { t } = useTranslation();
   return (
     <TabsContent value="spectra" className="m-0 mt-0 h-full min-h-[400px] outline-none">
       {!loading && !error && (
@@ -50,18 +52,19 @@ export function DatasetQuickViewSpectraTab({
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-sm flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
-                Spectra Preview
+                {t("datasets.quickView.spectraPreview")}
               </CardTitle>
               <div className="flex items-center gap-2">
                 {preview && preview.summary.n_sources > 1 && preview.spectra_per_source && (
                   <select
                     className="h-8 rounded-md border border-input bg-background px-3 text-xs"
+                    aria-label={t("datasets.quickView.selectSource")}
                     value={selectedSource}
                     onChange={(event) => onSelectedSourceChange(Number(event.target.value))}
                   >
                     {Object.keys(preview.spectra_per_source).map((sourceIdx) => (
                       <option key={sourceIdx} value={Number(sourceIdx)}>
-                        Source {Number(sourceIdx) + 1}
+                        {t("datasets.quickView.sourceN", { n: Number(sourceIdx) + 1 })}
                       </option>
                     ))}
                   </select>
@@ -92,7 +95,7 @@ export function DatasetQuickViewSpectraTab({
               />
             ) : (
               <div className="h-[260px] flex items-center justify-center text-sm text-muted-foreground border border-dashed rounded-lg">
-                No spectra data available
+                {t("datasets.quickView.noSpectra")}
               </div>
             )}
           </CardContent>
@@ -125,6 +128,7 @@ export function DatasetQuickViewTargetsTab({
   testCount: number | undefined;
   partitionTheme: PartitionVisualTheme;
 }) {
+  const { t } = useTranslation();
   return (
     <TabsContent value="targets" className="m-0 mt-0 h-full outline-none">
       {!loading && !error && (
@@ -133,7 +137,7 @@ export function DatasetQuickViewTargetsTab({
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Target className="h-4 w-4" />
-                Target Distribution
+                {t("datasets.quickView.targetDistribution")}
               </CardTitle>
               <div className="flex items-center gap-2">
                 <PartitionToggle
@@ -166,7 +170,7 @@ export function DatasetQuickViewTargetsTab({
                     />
                   ) : (
                     <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground border border-dashed rounded-lg">
-                      No distribution chart available
+                      {t("datasets.quickView.noDistributionChart")}
                     </div>
                   )}
                 </div>
@@ -174,7 +178,7 @@ export function DatasetQuickViewTargetsTab({
               </div>
             ) : (
               <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground border border-dashed rounded-lg">
-                No target preview available
+                {t("datasets.quickView.noTargetPreview")}
               </div>
             )}
           </CardContent>
@@ -185,6 +189,7 @@ export function DatasetQuickViewTargetsTab({
 }
 
 function DatasetTargetStats({ distribution }: { distribution: TargetDistribution }) {
+  const { t } = useTranslation();
   if (distribution.type !== "regression") {
     return (
       <div className="space-y-2">
@@ -204,10 +209,10 @@ function DatasetTargetStats({ distribution }: { distribution: TargetDistribution
 
   return (
     <div className="space-y-2">
-      <DatasetTargetStat label="Min" value={distribution.min} />
-      <DatasetTargetStat label="Max" value={distribution.max} />
-      <DatasetTargetStat label="Mean" value={distribution.mean} />
-      <DatasetTargetStat label="Std" value={distribution.std} />
+      <DatasetTargetStat label={t("datasets.quickView.min")} value={distribution.min} />
+      <DatasetTargetStat label={t("datasets.quickView.max")} value={distribution.max} />
+      <DatasetTargetStat label={t("datasets.quickView.mean")} value={distribution.mean} />
+      <DatasetTargetStat label={t("datasets.quickView.std")} value={distribution.std} />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   formatBiasVariancePrecise,
   formatBiasVarianceSampleSummary,
@@ -15,6 +16,8 @@ interface BiasVarianceTooltipProps {
 }
 
 export function BiasVarianceTooltip({ active, payload }: BiasVarianceTooltipProps) {
+  const { t } = useTranslation();
+
   if (!active || !payload?.[0]) {
     return null;
   }
@@ -25,14 +28,15 @@ export function BiasVarianceTooltip({ active, payload }: BiasVarianceTooltipProp
   return (
     <div className="rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg">
       <div className="mb-1 font-medium">{data.group_label}</div>
-      <div>Bias²: {formatBiasVariancePrecise(data.bias_squared)} ({formatBiasVarianceShare(data.bias_share)})</div>
-      <div>Variance: {formatBiasVariancePrecise(data.variance)} ({formatBiasVarianceShare(data.variance_share)})</div>
-      <div>Total error: {formatBiasVariancePrecise(total)}</div>
+      <div>{t('inspector.charts.series.biasSquared')}: {formatBiasVariancePrecise(data.bias_squared)} ({formatBiasVarianceShare(data.bias_share)})</div>
+      <div>{t('inspector.charts.series.variance')}: {formatBiasVariancePrecise(data.variance)} ({formatBiasVarianceShare(data.variance_share)})</div>
+      <div>{t('inspector.charts.tooltip.totalError', { value: formatBiasVariancePrecise(total) })}</div>
       <div className="mt-1 text-muted-foreground">
         {formatBiasVarianceSampleSummary({
           chainCount: data.n_chains,
           foldCount: data.n_folds,
           sampleCount: data.n_samples,
+          t,
         })}
       </div>
     </div>

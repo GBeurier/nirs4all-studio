@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { InspectorFocusState } from "@/lib/inspector/focus";
+import { tStub } from "@/lib/__tests__/helpers/i18nStub";
 
 import {
   INSPECTOR_PANEL_RENDERER_CONFIGS,
@@ -42,10 +43,11 @@ describe("inspectorPanelRegistry", () => {
       config: INSPECTOR_PANEL_RENDERER_CONFIGS.scatter,
       focus: focus({ task: "classification" }),
       error: new Error("network failed"),
+      t: tStub,
     });
 
     expect(state.kind).toBe("notice");
-    expect(state.kind === "notice" ? state.notice.title : "").toContain("requires regression");
+    expect(state.kind === "notice" ? state.notice.title : "").toContain("inspector.notices.requires");
   });
 
   it("falls back to query errors when a diagnostic panel is otherwise ready", () => {
@@ -53,6 +55,7 @@ describe("inspectorPanelRegistry", () => {
       config: INSPECTOR_PANEL_RENDERER_CONFIGS.confusion,
       focus: focus({ task: "classification" }),
       error: new Error("bad matrix"),
+      t: tStub,
     });
 
     expect(state).toEqual({ kind: "error", message: "bad matrix" });
@@ -63,9 +66,10 @@ describe("inspectorPanelRegistry", () => {
       config: INSPECTOR_PANEL_RENDERER_CONFIGS.branch_topology,
       focus: focus({ topologyPipelineId: null }),
       error: null,
+      t: tStub,
     });
 
     expect(state.kind).toBe("notice");
-    expect(state.kind === "notice" ? state.notice.title : "").toBe("Topology needs one pipeline");
+    expect(state.kind === "notice" ? state.notice.title : "").toBe("inspector.notices.topologyTitle");
   });
 });

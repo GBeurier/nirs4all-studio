@@ -1,4 +1,5 @@
 import { CheckCircle2, Download, TrendingUp } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ export function PredictDialogResults({
   result,
   onExport,
 }: PredictDialogResultsProps) {
+  const { t } = useTranslation();
   const hasActual = hasActualValues(result);
   const displayCount = Math.min(result.predictions.length, 20);
   const rows = buildPredictionPreviewRows(result, displayCount);
@@ -39,7 +41,7 @@ export function PredictDialogResults({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-chart-1" />
-            <span className="font-medium">{result.num_samples} predictions</span>
+            <span className="font-medium">{t("runs.predict.count", { count: result.num_samples })}</span>
           </div>
           {result.metrics && (
             <div className="flex items-center gap-3 text-sm">
@@ -59,7 +61,7 @@ export function PredictDialogResults({
         </div>
         <Button variant="outline" size="sm" onClick={onExport}>
           <Download className="h-4 w-4 mr-2" />
-          Export CSV
+          {t("runs.predict.exportCsv")}
         </Button>
       </div>
 
@@ -69,9 +71,9 @@ export function PredictDialogResults({
             <TableHeader>
               <TableRow>
                 <TableHead className="w-16">#</TableHead>
-                <TableHead>Prediction</TableHead>
-                {hasActual && <TableHead>Actual</TableHead>}
-                {hasActual && <TableHead>Difference</TableHead>}
+                <TableHead>{t("runs.predict.colPrediction")}</TableHead>
+                {hasActual && <TableHead>{t("runs.predict.colActual")}</TableHead>}
+                {hasActual && <TableHead>{t("runs.predict.colDifference")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -101,7 +103,7 @@ export function PredictDialogResults({
         </ScrollArea>
         {result.predictions.length > displayCount && (
           <div className="p-2 text-center text-xs text-muted-foreground border-t">
-            Showing {displayCount} of {result.predictions.length} predictions
+            {t("runs.predict.showing", { shown: displayCount, total: result.predictions.length })}
           </div>
         )}
       </Card>

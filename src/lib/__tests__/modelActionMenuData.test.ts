@@ -7,6 +7,9 @@ import {
   buildModelActionLinks,
 } from "@/lib/modelActionMenuData";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
+import i18n from "@/lib/i18n";
+
+const t = i18n.getFixedT("en");
 
 function prediction(overrides: Partial<PartitionPrediction> = {}): PartitionPrediction {
   return {
@@ -71,7 +74,7 @@ describe("model action menu data", () => {
       deleteScope: "chain",
       modelName: "PLS",
       workspaceId: "workspace-1",
-    })).toMatchObject({
+    }, t)).toMatchObject({
       artifactHandling: "preserve-shared",
       canDelete: true,
       description: "This removes all stored predictions for the displayed PLS variant, including matched CV/refit siblings. Shared artifacts still used by other models are preserved automatically.",
@@ -84,7 +87,7 @@ describe("model action menu data", () => {
       deleteScope: "group",
       modelName: "PLS",
       workspaceId: "workspace-1",
-    })).toMatchObject({
+    }, t)).toMatchObject({
       artifactHandling: "cleanup-orphans",
       canDelete: false,
       label: "Delete prediction",
@@ -97,7 +100,7 @@ describe("model action menu data", () => {
       foldId: "fold-0",
       modelName: "PLS",
       workspaceId: "workspace-1",
-    })).toMatchObject({
+    }, t)).toMatchObject({
       artifactHandling: "cleanup-orphans",
       canDelete: true,
       description: "This removes the fold-0 prediction group for PLS, including linked arrays. Empty chains and orphaned artifacts will be cleaned automatically.",

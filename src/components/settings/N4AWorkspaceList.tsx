@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   FolderOpen,
   Clock,
@@ -50,7 +51,7 @@ import {
   useLinkedWorkspacesQuery,
 } from "@/hooks/useDatasetQueries";
 import {
-  WORKSPACE_ACTION_COPY,
+  getWorkspaceActionCopy,
   getLastScannedLabel,
   getLinkedWorkspaceCountLabel,
   getScanSuccessMessage,
@@ -81,6 +82,8 @@ function WorkspaceItem({
   onUnlink,
   isLoading,
 }: WorkspaceItemProps) {
+  const { t } = useTranslation();
+  const copy = getWorkspaceActionCopy(t);
   const [isScanning, setIsScanning] = useState(false);
 
   const handleScan = async () => {
@@ -92,9 +95,9 @@ function WorkspaceItem({
     }
   };
 
-  const itemState = getWorkspaceItemState(workspace);
-  const lastScannedLabel = getLastScannedLabel(workspace.last_scanned);
-  const discoveredCounts = getWorkspaceDiscoveredCountItems(workspace.discovered);
+  const itemState = getWorkspaceItemState(workspace, t);
+  const lastScannedLabel = getLastScannedLabel(workspace.last_scanned, t);
+  const discoveredCounts = getWorkspaceDiscoveredCountItems(workspace.discovered, t);
 
   return (
     <div className={itemState.containerClassName}>
@@ -149,10 +152,10 @@ function WorkspaceItem({
                     disabled={isLoading}
                   >
                     <Zap className="h-4 w-4 mr-1" />
-                    {WORKSPACE_ACTION_COPY.activate.label}
+                    {copy.activate.label}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{WORKSPACE_ACTION_COPY.activate.tooltip}</TooltipContent>
+                <TooltipContent>{copy.activate.tooltip}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
@@ -166,7 +169,7 @@ function WorkspaceItem({
                   className="h-8 w-8"
                   onClick={handleScan}
                   disabled={isLoading || isScanning}
-                  aria-label={WORKSPACE_ACTION_COPY.scan.tooltip}
+                  aria-label={copy.scan.tooltip}
                 >
                   {isScanning ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -175,7 +178,7 @@ function WorkspaceItem({
                   )}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{WORKSPACE_ACTION_COPY.scan.tooltip}</TooltipContent>
+              <TooltipContent>{copy.scan.tooltip}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
@@ -189,26 +192,26 @@ function WorkspaceItem({
                       size="icon"
                       className="h-8 w-8 text-muted-foreground hover:text-destructive"
                       disabled={isLoading}
-                      aria-label={WORKSPACE_ACTION_COPY.unlink.tooltip}
+                      aria-label={copy.unlink.tooltip}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </AlertDialogTrigger>
                 </TooltipTrigger>
-                <TooltipContent>{WORKSPACE_ACTION_COPY.unlink.tooltip}</TooltipContent>
+                <TooltipContent>{copy.unlink.tooltip}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>{WORKSPACE_ACTION_COPY.unlink.dialogTitle}</AlertDialogTitle>
+                <AlertDialogTitle>{copy.unlink.dialogTitle}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  {WORKSPACE_ACTION_COPY.unlink.dialogDescription}
+                  {copy.unlink.dialogDescription}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>{WORKSPACE_ACTION_COPY.unlink.cancelLabel}</AlertDialogCancel>
+                <AlertDialogCancel>{copy.unlink.cancelLabel}</AlertDialogCancel>
                 <AlertDialogAction onClick={() => onUnlink(workspace.id)}>
-                  {WORKSPACE_ACTION_COPY.unlink.confirmLabel}
+                  {copy.unlink.confirmLabel}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -228,6 +231,8 @@ export function N4AWorkspaceList({
   onWorkspaceChange,
   className = "",
 }: N4AWorkspaceListProps) {
+  const { t } = useTranslation();
+  const copy = getWorkspaceActionCopy(t);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const invalidateDatasets = useInvalidateDatasets();
@@ -251,11 +256,11 @@ export function N4AWorkspaceList({
     try {
       setError(null);
       await activateN4AWorkspace(id);
-      setSuccessMessage("Workspace activated");
+      setSuccessMessage(t("settings.n4aWorkspaces.activated"));
       await invalidateDatasets();
       onWorkspaceChange?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to activate");
+      setError(err instanceof Error ? err.message : t("settings.n4aWorkspaces.activateFailed"));
     }
   };
 
@@ -263,10 +268,10 @@ export function N4AWorkspaceList({
     try {
       setError(null);
       const result = await scanN4AWorkspace(id);
-      setSuccessMessage(getScanSuccessMessage(result.discovered));
+      setSuccessMessage(getScanSuccessMessage(result.discovered, t));
       await invalidateDatasets();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to scan");
+      setError(err instanceof Error ? err.message : t("settings.n4aWorkspaces.scanFailed"));
     }
   };
 
@@ -274,11 +279,11 @@ export function N4AWorkspaceList({
     try {
       setError(null);
       await unlinkN4AWorkspace(id);
-      setSuccessMessage("Workspace unlinked");
+      setSuccessMessage(t("settings.n4aWorkspaces.unlinked"));
       await invalidateDatasets();
       onWorkspaceChange?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to unlink");
+      setError(err instanceof Error ? err.message : t("settings.n4aWorkspaces.unlinkFailed"));
     }
   };
 
@@ -297,7 +302,7 @@ export function N4AWorkspaceList({
         <span>{error}</span>
         <Button variant="ghost" size="sm" onClick={() => void loadWorkspaces()}>
           <RefreshCw className="h-4 w-4 mr-1" />
-          {WORKSPACE_ACTION_COPY.retry.label}
+          {copy.retry.label}
         </Button>
       </div>
     );
@@ -306,7 +311,7 @@ export function N4AWorkspaceList({
   if (workspaces.length === 0) {
     return (
       <div className={"text-sm text-muted-foreground p-4 text-center " + className}>
-        No nirs4all workspaces linked yet. Use the button above to link one.
+        {t("settings.n4aWorkspaces.empty")}
       </div>
     );
   }
@@ -315,7 +320,7 @@ export function N4AWorkspaceList({
     <div className={"space-y-3 " + className}>
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-muted-foreground">
-          {getLinkedWorkspaceCountLabel(workspaces.length)}
+          {getLinkedWorkspaceCountLabel(workspaces.length, t)}
         </span>
         <TooltipProvider>
           <Tooltip>
@@ -326,12 +331,12 @@ export function N4AWorkspaceList({
                 className="h-8 w-8"
                 onClick={() => void loadWorkspaces()}
                 disabled={isLoading}
-                aria-label={WORKSPACE_ACTION_COPY.refresh.tooltip}
+                aria-label={copy.refresh.tooltip}
               >
                 <RefreshCw className={isLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{WORKSPACE_ACTION_COPY.refresh.tooltip}</TooltipContent>
+            <TooltipContent>{copy.refresh.tooltip}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>

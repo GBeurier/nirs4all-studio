@@ -7,6 +7,7 @@
  */
 
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   BarChart,
   Bar,
@@ -45,6 +46,7 @@ function getGradientColor(normalizedValue: number): string {
 }
 
 export function TargetHistogram({ data, className }: TargetHistogramProps) {
+  const { t } = useTranslation();
   const chartData = useMemo(() => {
     const { targets, target_type, statistics } = data;
 
@@ -54,7 +56,7 @@ export function TargetHistogram({ data, className }: TargetHistogramProps) {
         type: "classification" as const,
         data: Object.entries(statistics.class_distribution).map(
           ([cls, count], idx) => ({
-            name: `Class ${cls}`,
+            name: t("spectraSynthesis.metadata.classValue", { label: cls }),
             value: count as number,
             color: CLASS_COLORS[idx % CLASS_COLORS.length],
           })
@@ -70,9 +72,9 @@ export function TargetHistogram({ data, className }: TargetHistogramProps) {
     const binWidth = range / numBins;
 
     const bins: number[] = new Array(numBins).fill(0);
-    targets.forEach((t) => {
+    targets.forEach((target) => {
       const binIndex = Math.min(
-        Math.floor((t - minTarget) / binWidth),
+        Math.floor((target - minTarget) / binWidth),
         numBins - 1
       );
       bins[binIndex]++;
@@ -91,12 +93,12 @@ export function TargetHistogram({ data, className }: TargetHistogramProps) {
         };
       }),
     };
-  }, [data]);
+  }, [data, t]);
 
   if (chartData.data.length === 0) {
     return (
       <div className={cn("flex items-center justify-center h-full", className)}>
-        <p className="text-sm text-muted-foreground">No target data</p>
+        <p className="text-sm text-muted-foreground">{t("spectraSynthesis.histogram.noData")}</p>
       </div>
     );
   }
@@ -104,8 +106,9 @@ export function TargetHistogram({ data, className }: TargetHistogramProps) {
   return (
     <div className={cn("w-full h-full", className)}>
       <div className="text-xs font-medium text-muted-foreground mb-1 px-2">
-        Target Distribution (
-        {chartData.type === "classification" ? "Classes" : "Regression"})
+        {t("spectraSynthesis.histogram.title", {
+          kind: t(chartData.type === "classification" ? "spectraSynthesis.histogram.classes" : "spectraSynthesis.histogram.regression"),
+        })}
       </div>
       <ResponsiveContainer width="100%" height="90%">
         <BarChart
@@ -142,7 +145,7 @@ export function TargetHistogram({ data, className }: TargetHistogramProps) {
               borderRadius: "6px",
               fontSize: 11,
             }}
-            formatter={(value: number) => [value, "Count"]}
+            formatter={(value: number) => [value, t("spectraSynthesis.histogram.count")]}
           />
           <Bar dataKey="value" radius={[2, 2, 0, 0]}>
             {chartData.data.map((entry, index) => (

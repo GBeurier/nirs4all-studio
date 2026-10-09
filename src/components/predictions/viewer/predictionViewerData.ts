@@ -1,3 +1,6 @@
+import type { TFunction } from "i18next";
+
+import { getTaskTypeLabel } from "@/components/predictions/predictionLabels";
 import { isClassificationTask } from "@/components/runs/modelDetailClassification";
 import {
   sanitizeFilename,
@@ -68,24 +71,25 @@ export function buildPredictionViewerBaseFilename(
   return `${sanitizeFilename(header.datasetName)}_${sanitizeFilename(header.modelName)}_${CHART_KIND_LABELS[kind]}`;
 }
 
-export function buildPredictionViewerHeaderTitle(header: Pick<ViewerHeader, "datasetName" | "modelName">): string {
-  return [header.modelName ?? "Model", header.datasetName].filter(Boolean).join(" · ");
+export function buildPredictionViewerHeaderTitle(header: Pick<ViewerHeader, "datasetName" | "modelName">, t: TFunction): string {
+  return [header.modelName ?? t("predictions.viewer.header.defaultModel"), header.datasetName].filter(Boolean).join(" · ");
 }
 
 export function buildPredictionViewerHeaderDescription(
   header: Pick<ViewerHeader, "datasetName" | "modelName" | "taskType">,
+  t: TFunction,
 ): string {
   const details = [
-    header.datasetName ? `dataset ${header.datasetName}` : null,
-    header.modelName ? `model ${header.modelName}` : null,
-    header.taskType ? `${header.taskType} task` : null,
+    header.datasetName ? t("predictions.viewer.header.describeDataset", { name: header.datasetName }) : null,
+    header.modelName ? t("predictions.viewer.header.describeModel", { name: header.modelName }) : null,
+    header.taskType ? t("predictions.viewer.header.describeTask", { type: getTaskTypeLabel(t, header.taskType) }) : null,
   ].filter(Boolean);
 
   if (details.length === 0) {
-    return "Inspect prediction charts and export the current view.";
+    return t("predictions.viewer.header.describeEmpty");
   }
 
-  return `Inspect prediction charts for ${details.join(", ")}.`;
+  return t("predictions.viewer.header.describe", { details: details.join(", ") });
 }
 
 export function getPredictionViewerDistributionSeries(histogramSeries: HistogramSeries): DistributionSeries[] {

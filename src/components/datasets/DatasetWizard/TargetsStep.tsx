@@ -6,6 +6,8 @@
  */
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { Repeat } from "lucide-react";
+import i18n from "i18next";
+import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -46,27 +48,20 @@ import {
   type DetectedColumn,
 } from "./TargetsStepLogic";
 
-const TASK_TYPE_LABELS: Record<TaskType, string> = {
-  auto: "Auto",
-  regression: "Regression",
-  classification: "Classification",
-  binary_classification: "Binary",
-  multiclass_classification: "Multiclass",
-};
-
 const AGGREGATION_METHOD_OPTIONS = [
-  { value: "mean", label: "Mean" },
-  { value: "median", label: "Median" },
-  { value: "vote", label: "Vote" },
+  { value: "mean", labelKey: "datasets.wizard.targets.aggregationMethods.mean" },
+  { value: "median", labelKey: "datasets.wizard.targets.aggregationMethods.median" },
+  { value: "vote", labelKey: "datasets.wizard.targets.aggregationMethods.vote" },
 ];
 
-const FOLD_SOURCE_OPTIONS: { value: FoldSource; label: string }[] = [
-  { value: "none", label: "No cross-validation folds" },
-  { value: "column", label: "From column in metadata" },
-  { value: "file", label: "From external file" },
+const FOLD_SOURCE_OPTIONS: { value: FoldSource; labelKey: string }[] = [
+  { value: "none", labelKey: "datasets.wizard.targets.foldSources.none" },
+  { value: "column", labelKey: "datasets.wizard.targets.foldSources.column" },
+  { value: "file", labelKey: "datasets.wizard.targets.foldSources.file" },
 ];
 
 export function TargetsStep() {
+  const { t } = useTranslation();
   const { state, dispatch, beginInspection } = useWizard();
   const requestRevision = useRef(0);
   const [showAggregation, setShowAggregation] = useState(state.aggregation.enabled);
@@ -117,7 +112,7 @@ export function TargetsStep() {
             }
           }
         }
-        if (revision === requestRevision.current) setError("Could not read Y file content");
+        if (revision === requestRevision.current) setError(i18n.t("datasets.wizard.targets.readYFailed"));
         return;
       }
 
@@ -146,7 +141,7 @@ export function TargetsStep() {
         publishColumns([]);
       }
     } catch (e) {
-      if (revision === requestRevision.current) setError(e instanceof Error ? e.message : "Failed to detect columns");
+      if (revision === requestRevision.current) setError(e instanceof Error ? e.message : i18n.t("datasets.wizard.targets.detectFailed"));
     } finally {
       if (revision === requestRevision.current) setLoading(false);
       finishInspection();
@@ -261,12 +256,13 @@ export function TargetsStep() {
             <CollapsibleTrigger asChild>
               <div className="flex items-center gap-2 cursor-pointer flex-1">
                 <Repeat className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">Repetition</span>
-                <Badge variant="outline" className="text-[10px]">Optional</Badge>
+                <span className="font-medium">{t("datasets.wizard.targets.repetition.title")}</span>
+                <Badge variant="outline" className="text-[10px]">{t("common.optional")}</Badge>
               </div>
             </CollapsibleTrigger>
             <Switch
               checked={state.aggregation.enabled}
+              aria-label={t("datasets.wizard.targets.repetition.switchLabel")}
               onCheckedChange={(v) => {
                 dispatch({ type: "SET_AGGREGATION", payload: { enabled: v } });
                 setShowAggregation(v);
@@ -278,21 +274,21 @@ export function TargetsStep() {
             {state.aggregation.enabled && (
               <div className="px-4 pb-4 space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  Group repeated measurements of the same physical sample. Choose the metadata column whose repeated rows belong to the same biological sample, not the column containing repetition numbers like 1/2/3.
+                  {t("datasets.wizard.targets.repetition.description")}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">Sample Group Column</Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">{t("datasets.wizard.targets.repetition.groupColumn")}</Label>
                     {state.metadataColumns.length > 0 ? (
                       <Select
                         value={state.aggregation.column || ""}
                         onValueChange={(v) => dispatch({ type: "SET_AGGREGATION", payload: { column: v } })}
                       >
                         <SelectTrigger className="h-8">
-                          <SelectValue placeholder="Select..." />
+                          <SelectValue placeholder={t("datasets.wizard.targets.repetition.selectPlaceholder")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem disabled value="__meta_header__" className="text-xs font-semibold text-muted-foreground">Metadata columns</SelectItem>
+                          <SelectItem disabled value="__meta_header__" className="text-xs font-semibold text-muted-foreground">{t("datasets.wizard.targets.repetition.metadataColumns")}</SelectItem>
                           {state.metadataColumns.map((col) => (
                             <SelectItem key={`m:${col}`} value={col}>{col}</SelectItem>
                           ))}
@@ -313,7 +309,7 @@ export function TargetsStep() {
                     )}
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">Method</Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">{t("datasets.wizard.targets.repetition.method")}</Label>
                     <Select
                       value={state.aggregation.method}
                       onValueChange={(v) => dispatch({ type: "SET_AGGREGATION", payload: { method: v as "mean" | "median" | "vote" } })}
@@ -326,7 +322,7 @@ export function TargetsStep() {
                           const isClassification = state.taskType.includes("classification");
                           return isClassification ? opt.value === "vote" : opt.value !== "vote";
                         }).map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          <SelectItem key={opt.value} value={opt.value}>{t(opt.labelKey)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -345,17 +341,19 @@ export function TargetsStep() {
             <AccordionTrigger className="px-4 py-3 hover:no-underline">
               <div className="flex items-center gap-2 text-sm">
                 <Repeat className="h-4 w-4 text-muted-foreground" />
-                <span>Cross-Validation Folds</span>
-                <Badge variant="secondary" className="text-[10px]">Detected</Badge>
+                <span>{t("datasets.wizard.targets.folds.title")}</span>
+                <Badge variant="secondary" className="text-[10px]">{t("datasets.wizard.targets.folds.detected")}</Badge>
               </div>
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-4">
               <div className="space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  Fold file detected{state.foldFilePath && `: ${state.foldFilePath.split(/[/\\]/).pop()}`}
+                  {state.foldFilePath
+                    ? t("datasets.wizard.targets.folds.fileDetectedNamed", { name: state.foldFilePath.split(/[/\\]/).pop() })
+                    : t("datasets.wizard.targets.folds.fileDetected")}
                 </p>
                 <div>
-                  <Label className="text-xs text-muted-foreground mb-1 block">Source</Label>
+                  <Label className="text-xs text-muted-foreground mb-1 block">{t("datasets.wizard.targets.folds.source")}</Label>
                   <Select
                     value={state.folds?.source || "file"}
                     onValueChange={(v) => dispatch({ type: "SET_FOLDS", payload: v === "none" ? null : { source: v as FoldSource } })}
@@ -365,14 +363,14 @@ export function TargetsStep() {
                     </SelectTrigger>
                     <SelectContent>
                       {FOLD_SOURCE_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        <SelectItem key={opt.value} value={opt.value}>{t(opt.labelKey)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 {state.folds?.source === "column" && (
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">Column</Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">{t("datasets.wizard.targets.folds.column")}</Label>
                     <Input
                       value={state.folds?.column || ""}
                       onChange={(e) => dispatch({ type: "SET_FOLDS", payload: { ...state.folds!, column: e.target.value } })}
@@ -383,7 +381,7 @@ export function TargetsStep() {
                 )}
                 {state.folds?.source === "file" && (
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">File</Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">{t("datasets.wizard.targets.folds.file")}</Label>
                     <Input
                       value={state.folds?.file || state.foldFilePath || ""}
                       onChange={(e) => dispatch({ type: "SET_FOLDS", payload: { ...state.folds!, file: e.target.value } })}

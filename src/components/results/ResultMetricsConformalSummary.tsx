@@ -2,6 +2,8 @@ import {
   FileSpreadsheet,
   Ruler,
 } from "lucide-react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,8 +59,8 @@ const guaranteeBadgeVariant: Record<ConformalGuaranteeTone, "default" | "seconda
   muted: "outline",
 };
 
-function formatFingerprint(fingerprint: string | null): string {
-  if (!fingerprint) return "No fingerprint";
+function formatFingerprint(fingerprint: string | null, t: TFunction): string {
+  if (!fingerprint) return t("results.conformal.noFingerprint");
   return fingerprint.length > 24
     ? `${fingerprint.slice(0, 12)}…${fingerprint.slice(-8)}`
     : fingerprint;
@@ -70,11 +72,11 @@ function coverageOptionVariant(option: ConformalCoverageOption): "default" | "se
   return "outline";
 }
 
-function coverageOptionLabel(option: ConformalCoverageOption): string {
+function coverageOptionLabel(option: ConformalCoverageOption, t: TFunction): string {
   const flags = [
-    option.selected ? "selected" : null,
-    option.calibrated ? "calibrated" : null,
-    option.materialized ? "materialized" : "not materialized",
+    option.selected ? t("results.conformal.flag.selected") : null,
+    option.calibrated ? t("results.conformal.flag.calibrated") : null,
+    option.materialized ? t("results.conformal.flag.materialized") : t("results.conformal.flag.notMaterialized"),
   ].filter(Boolean);
   return `${option.label} · ${flags.join(", ")}`;
 }
@@ -114,19 +116,20 @@ const coverageGapBadgeVariant: Record<ConformalMetricRow["coverageGapDirection"]
 };
 
 function ConformalCoverageStrip({ segments }: { segments: ConformalCoverageStripSegment[] }) {
+  const { t } = useTranslation();
   if (segments.length === 0) return null;
 
   return (
     <div className="mb-3 rounded-md border border-border/60 bg-muted/10 p-2.5">
       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-medium text-foreground">Coverage strip</p>
+          <p className="text-xs font-medium text-foreground">{t("results.conformal.strip.title")}</p>
           <p className="text-[11px] text-muted-foreground">
-            Visual projection of calibrated, selected, and materialized coverages.
+            {t("results.conformal.strip.description")}
           </p>
         </div>
         <Badge variant="outline" className="text-[10px]">
-          {segments.length} coverage{segments.length === 1 ? "" : "s"}
+          {t("results.conformal.coverageCount", { count: segments.length })}
         </Badge>
       </div>
 
@@ -136,7 +139,7 @@ function ConformalCoverageStrip({ segments }: { segments: ConformalCoverageStrip
             key={segment.coverage}
             className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-foreground shadow-sm"
             style={{ left: `${segment.positionPercent}%` }}
-            title={`${segment.coverageLabel} · ${segment.tone}`}
+            title={`${segment.coverageLabel} · ${t(`results.conformal.tone.${segment.tone}`)}`}
           />
         ))}
       </div>
@@ -149,10 +152,10 @@ function ConformalCoverageStrip({ segments }: { segments: ConformalCoverageStrip
           >
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium">{segment.coverageLabel}</span>
-              <span>{segment.tone}</span>
+              <span>{t(`results.conformal.tone.${segment.tone}`)}</span>
             </div>
             <p className="text-muted-foreground">
-              qhat {segment.qhatLabel ?? "—"} · mean width {segment.meanWidthLabel ?? "—"}
+              {t("results.conformal.qhatWidth", { qhat: segment.qhatLabel ?? "—", width: segment.meanWidthLabel ?? "—" })}
             </p>
           </div>
         ))}
@@ -162,31 +165,32 @@ function ConformalCoverageStrip({ segments }: { segments: ConformalCoverageStrip
 }
 
 function ConformalMetricTable({ rows }: { rows: ConformalMetricRow[] }) {
+  const { t } = useTranslation();
   if (rows.length === 0) return null;
 
   return (
     <div className="mb-3 rounded-md border border-border/60 bg-muted/10 p-2.5">
       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-medium text-foreground">Coverage metrics</p>
+          <p className="text-xs font-medium text-foreground">{t("results.conformal.metrics.title")}</p>
           <p className="text-[11px] text-muted-foreground">
-            Attached conformal metric sets; Studio displays them without recomputing observed coverage or interval scores.
+            {t("results.conformal.metrics.description")}
           </p>
         </div>
         <Badge variant="outline" className="text-[10px]">
-          {rows.length} coverage{rows.length === 1 ? "" : "s"}
+          {t("results.conformal.coverageCount", { count: rows.length })}
         </Badge>
       </div>
 
       <div className="overflow-x-auto">
         <div className="min-w-[680px]">
           <div className="grid grid-cols-6 gap-1 border-b border-border/60 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-            <span>Coverage</span>
-            <span>Observed</span>
-            <span>Gap</span>
-            <span>Mean width</span>
-            <span>Interval score</span>
-            <span>Misses</span>
+            <span>{t("results.conformal.metrics.coverage")}</span>
+            <span>{t("results.conformal.metrics.observed")}</span>
+            <span>{t("results.conformal.metrics.gap")}</span>
+            <span>{t("results.conformal.metrics.meanWidth")}</span>
+            <span>{t("results.conformal.metrics.intervalScore")}</span>
+            <span>{t("results.conformal.metrics.misses")}</span>
           </div>
           <div className="divide-y divide-border/50">
             {rows.map(row => (
@@ -202,7 +206,7 @@ function ConformalMetricTable({ rows }: { rows: ConformalMetricRow[] }) {
                 <span>{row.meanWidthLabel}</span>
                 <span>{row.meanIntervalScoreLabel}</span>
                 <span className="text-muted-foreground">
-                  {row.missedBelow} below · {row.missedAbove} above · {row.nCovered}/{row.nSamples} covered
+                  {t("results.conformal.metrics.missSummary", { below: row.missedBelow, above: row.missedAbove, covered: row.nCovered, total: row.nSamples })}
                 </span>
               </div>
             ))}
@@ -214,6 +218,7 @@ function ConformalMetricTable({ rows }: { rows: ConformalMetricRow[] }) {
 }
 
 export function ResultMetricsConformalSummary({ summary }: ResultMetricsConformalSummaryProps) {
+  const { t } = useTranslation();
   if (!summary) return null;
 
   const handleExportMetrics = () => {
@@ -230,10 +235,10 @@ export function ResultMetricsConformalSummary({ summary }: ResultMetricsConforma
         <div>
           <h4 className="flex items-center gap-2 text-sm font-medium">
             <Ruler className="h-4 w-4 text-muted-foreground" />
-            Conformal prediction
+            {t("results.conformal.title")}
           </h4>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {summary.method} · {summary.unit} · {summary.nPredictions} predictions
+            {t("results.conformal.summaryLine", { method: summary.method, unit: summary.unit, count: summary.nPredictions })}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
@@ -246,7 +251,7 @@ export function ResultMetricsConformalSummary({ summary }: ResultMetricsConforma
               onClick={handleExportMetrics}
             >
               <FileSpreadsheet className="h-3 w-3" />
-              Metrics CSV
+              {t("results.conformal.metricsCsv")}
             </Button>
           )}
           <Badge variant={guaranteeBadgeVariant[summary.guarantee.tone]} className="text-[10px]">
@@ -276,7 +281,7 @@ export function ResultMetricsConformalSummary({ summary }: ResultMetricsConforma
             variant={coverageOptionVariant(option)}
             className={option.disabled ? "text-[10px] opacity-60" : "text-[10px]"}
           >
-            {coverageOptionLabel(option)}
+            {coverageOptionLabel(option, t)}
           </Badge>
         ))}
       </div>
@@ -284,11 +289,11 @@ export function ResultMetricsConformalSummary({ summary }: ResultMetricsConforma
       <div className="grid grid-cols-2 gap-2 text-[11px]">
         {summary.intervals.map(interval => (
           <div key={interval.coverage} className="rounded border border-border/50 bg-background/60 px-2 py-1">
-            <span className="text-muted-foreground">{interval.coverageLabel} interval</span>
+            <span className="text-muted-foreground">{t("results.conformal.interval", { coverage: interval.coverageLabel })}</span>
             <div className="font-medium text-foreground">
-              qhat {interval.qhatLabel} · mean width {interval.meanWidthLabel}
+              {t("results.conformal.qhatWidth", { qhat: interval.qhatLabel, width: interval.meanWidthLabel })}
             </div>
-            <p className="text-muted-foreground">{interval.nSamples} samples</p>
+            <p className="text-muted-foreground">{t("results.conformal.sampleCount", { count: interval.nSamples })}</p>
           </div>
         ))}
       </div>
@@ -297,32 +302,32 @@ export function ResultMetricsConformalSummary({ summary }: ResultMetricsConforma
         <span>{summary.guarantee.scope}</span>
         {summary.guarantee.requestedEngine !== "unknown" && summary.guarantee.requestedEngine !== summary.guarantee.effectiveEngine && (
           <Badge variant="outline" className="text-[10px]">
-            requested engine: {summary.guarantee.requestedEngine}
+            {t("results.conformal.requestedEngine", { engine: summary.guarantee.requestedEngine })}
           </Badge>
         )}
         {summary.guarantee.calibrationReplaySource && (
           <Badge variant="outline" className="text-[10px]">
-            calibration replay: {summary.guarantee.calibrationReplayLabel}
+            {t("results.conformal.calibrationReplay", { label: summary.guarantee.calibrationReplayLabel })}
           </Badge>
         )}
         {summary.guarantee.tuningCalibrationSource && (
           <Badge variant="outline" className="text-[10px]">
-            tuning calibration: {summary.guarantee.tuningCalibrationLabel}
+            {t("results.conformal.tuningCalibration", { label: summary.guarantee.tuningCalibrationLabel })}
           </Badge>
         )}
         <Badge variant="outline" className="max-w-48 break-all text-[10px]">
-          {formatFingerprint(summary.fingerprint)}
+          {formatFingerprint(summary.fingerprint, t)}
         </Badge>
       </div>
 
       {summary.guarantee.invalidationReasons.length > 0 && (
         <p className="mt-2 break-words text-[11px] text-destructive">
-          Invalidated: {summary.guarantee.invalidationReasons.join(", ")}
+          {t("results.conformal.invalidated", { reasons: summary.guarantee.invalidationReasons.join(", ") })}
         </p>
       )}
       {summary.guarantee.limitations.length > 0 && (
         <p className="mt-2 break-words text-[11px] text-muted-foreground">
-          Limitations: {summary.guarantee.limitations.join("; ")}
+          {t("results.conformal.limitations", { limitations: summary.guarantee.limitations.join("; ") })}
         </p>
       )}
     </div>

@@ -23,6 +23,10 @@ import {
   hasResultMetrics,
 } from "./resultDetailData";
 import type { PipelineRun } from "@/types/runs";
+import { formatDateTime } from "@/utils/formatters";
+import i18n from "@/lib/i18n";
+
+const t = i18n.getFixedT("en");
 
 function pipeline(overrides: Partial<PipelineRun> = {}): PipelineRun {
   return {
@@ -114,11 +118,11 @@ describe("resultDetailData", () => {
   });
 
   it("detects metrics and resolves empty-state copy", () => {
-    expect(hasResultMetrics(pipeline({ metrics: undefined, score: null, val_score: null, test_score: null }))).toBe(false);
-    expect(hasResultMetrics(pipeline({ metrics: undefined, score: 0.7, val_score: null, test_score: null }))).toBe(true);
-    expect(getResultEmptyMetricsMessage("running")).toBe("Results will appear when training completes");
-    expect(getResultEmptyMetricsMessage("queued")).toBe("Waiting to start...");
-    expect(getResultEmptyMetricsMessage("failed")).toBe("No results available");
+    expect(hasResultMetrics(pipeline({ metrics: undefined, score: null, val_score: null, test_score: null }), t)).toBe(false);
+    expect(hasResultMetrics(pipeline({ metrics: undefined, score: 0.7, val_score: null, test_score: null }), t)).toBe(true);
+    expect(getResultEmptyMetricsMessage("running", t)).toBe("Results will appear when training completes");
+    expect(getResultEmptyMetricsMessage("queued", t)).toBe("Waiting to start...");
+    expect(getResultEmptyMetricsMessage("failed", t)).toBe("No results available");
   });
 
   it("builds header status and quick facts", () => {
@@ -138,7 +142,7 @@ describe("resultDetailData", () => {
       badgeVariant: "secondary",
       progress: 42,
     });
-    expect(buildResultQuickFacts(pipeline())).toEqual([
+    expect(buildResultQuickFacts(pipeline(), t)).toEqual([
       { id: "model", label: "Model", value: "PLS", icon: "model" },
       { id: "preprocessing", label: "Preprocessing", value: "SNV", icon: "preprocessing" },
       { id: "split", label: "Split", value: "KFold", icon: "split" },
@@ -146,7 +150,7 @@ describe("resultDetailData", () => {
   });
 
   it("builds metric cards for the result detail metrics tab", () => {
-    expect(buildResultScoreMetricCards(pipeline())).toEqual([
+    expect(buildResultScoreMetricCards(pipeline(), t)).toEqual([
       {
         id: "cv_score",
         label: "CV Score",
@@ -167,7 +171,7 @@ describe("resultDetailData", () => {
 
     expect(buildResultMetricCards(pipeline({
       metrics: { r2: 0.91, rmse: 0.12, mae: 0.08, rpd: 2.4, nrmse: 0.03 },
-    }))).toEqual([
+    }), t)).toEqual([
       { id: "r2", label: "R² Score", value: 0.91, format: 4, icon: "target", variant: "primary" },
       { id: "rmse", label: "RMSE", value: 0.12, format: 4, icon: "trending", variant: "secondary" },
       { id: "mae", label: "MAE", value: 0.08, format: 4, icon: "bar", variant: "default" },
@@ -182,25 +186,25 @@ describe("resultDetailData", () => {
       score: 0.77,
       score_metric: "accuracy",
       val_score: null,
-    }))).toEqual([
+    }), t)).toEqual([
       { id: "score", label: "ACCURACY", value: 0.77, format: 4, icon: "target", variant: "primary" },
     ]);
   });
 
   it("builds execution time rows and export copy", () => {
-    expect(buildResultExecutionTimeRows(pipeline())).toEqual([
-      { id: "started", label: "Started", value: "2026-06-28T10:00:00Z" },
-      { id: "completed", label: "Completed", value: "2026-06-28T10:05:00Z" },
+    expect(buildResultExecutionTimeRows(pipeline(), t)).toEqual([
+      { id: "started", label: "Started", value: formatDateTime("2026-06-28T10:00:00Z") },
+      { id: "completed", label: "Completed", value: formatDateTime("2026-06-28T10:05:00Z") },
     ]);
-    expect(buildResultExecutionTimeRows(pipeline({ started_at: undefined, completed_at: undefined }))).toEqual([]);
-    expect(getResultExportModelLabel(true)).toBe("Export Final Model (.n4a)");
-    expect(getResultExportModelLabel(false)).toBe("Export Model (.n4a)");
-    expect(getResultExportModelDescription(true)).toBe("Exports the refit model trained on the full dataset");
-    expect(getResultExportModelDescription(false)).toBeNull();
+    expect(buildResultExecutionTimeRows(pipeline({ started_at: undefined, completed_at: undefined }), t)).toEqual([]);
+    expect(getResultExportModelLabel(true, t)).toBe("Export Final Model (.n4a)");
+    expect(getResultExportModelLabel(false, t)).toBe("Export Model (.n4a)");
+    expect(getResultExportModelDescription(true, t)).toBe("Exports the refit model trained on the full dataset");
+    expect(getResultExportModelDescription(false, t)).toBeNull();
   });
 
   it("builds related links with encoded prediction targets", () => {
-    expect(buildResultRelatedLinks(pipeline({ pipeline_name: "PLS & SNV" }), "Maize lot #1")).toEqual([
+    expect(buildResultRelatedLinks(pipeline({ pipeline_name: "PLS & SNV" }), "Maize lot #1", t)).toEqual([
       {
         id: "predictions",
         label: "Predictions",
@@ -486,7 +490,7 @@ describe("resultDetailData", () => {
         ],
         slice_by: ["batch"],
       },
-    }));
+    }), t);
 
     expect(launchPlan).toEqual({
       execution: null,
@@ -519,7 +523,7 @@ describe("resultDetailData", () => {
       test_score: null,
       val_score: null,
       robustness_plan: launchPlan,
-    }))).toBe(true);
+    }), t)).toBe(true);
   });
 
   it("threads robustness execution diagnostics into the launch plan", () => {
@@ -542,7 +546,7 @@ describe("resultDetailData", () => {
           "At least one spectral scenario requires the original X matrix and a frozen predictor replay surface.",
         ],
       },
-    }));
+    }), t);
 
     expect(launchPlan?.execution).toEqual({
       blockers: [
@@ -650,7 +654,7 @@ describe("resultDetailData", () => {
       }],
     });
 
-    expect(hasResultMetrics(pipelineWithConformalOnly)).toBe(true);
+    expect(hasResultMetrics(pipelineWithConformalOnly, t)).toBe(true);
     expect(buildResultConformalSummary(pipelineWithConformalOnly)).toMatchObject({
       fingerprint: "calibrated-result:abcdef1234567890",
       guarantee: {
@@ -789,7 +793,7 @@ describe("resultDetailData", () => {
       }],
     });
 
-    expect(hasResultMetrics(pipelineWithConformalOnly)).toBe(true);
+    expect(hasResultMetrics(pipelineWithConformalOnly, t)).toBe(true);
     expect(buildResultConformalSummary(pipelineWithConformalOnly)).toMatchObject({
       fingerprint: "calibrated-result:metadata-source",
       guarantee: {
@@ -895,8 +899,8 @@ describe("resultDetailData", () => {
       }],
     });
 
-    expect(hasResultMetrics(pipelineWithTuningOnly)).toBe(true);
-    expect(buildResultTuningSummary(pipelineWithTuningOnly)).toMatchObject({
+    expect(hasResultMetrics(pipelineWithTuningOnly, t)).toBe(true);
+    expect(buildResultTuningSummary(pipelineWithTuningOnly, t)).toMatchObject({
       persistence: {
         optimizerStateResumeSupported: true,
         resume: false,
@@ -993,8 +997,8 @@ describe("resultDetailData", () => {
       }],
     });
 
-    expect(hasResultMetrics(pipelineWithTuningSummaryOnly)).toBe(true);
-    expect(buildResultTuningSummary(pipelineWithTuningSummaryOnly)).toMatchObject({
+    expect(hasResultMetrics(pipelineWithTuningSummaryOnly, t)).toBe(true);
+    expect(buildResultTuningSummary(pipelineWithTuningSummaryOnly, t)).toMatchObject({
       persistence: {
         optimizerStateResumeSupported: true,
         resume: true,

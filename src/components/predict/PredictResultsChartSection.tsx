@@ -70,7 +70,7 @@ export function PredictChartSection({
       <TabsList>
         <TabsTrigger value="chart" className="gap-1.5">
           <Target className="h-3.5 w-3.5" />
-          Chart view
+          {t("predict.view.chartView")}
         </TabsTrigger>
         <TabsTrigger value="table" className="gap-1.5">
           <TableIcon className="h-3.5 w-3.5" />
@@ -167,6 +167,8 @@ export function PredictFullscreenChartDialog({
   taskKind,
   title,
 }: PredictFullscreenChartDialogProps) {
+  const { t } = useTranslation();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[88vh] w-[92vw] max-w-[1200px] flex-col gap-0 overflow-hidden p-0">
@@ -176,7 +178,7 @@ export function PredictFullscreenChartDialog({
             <span className="truncate">{title}</span>
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Fullscreen prediction chart - customize, export PNG or CSV.
+            {t("predict.view.fullscreenDescription")}
           </DialogDescription>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <Badge variant="outline" className={taskBadge.className}>

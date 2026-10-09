@@ -1,5 +1,6 @@
 import type { DragEventHandler } from "react";
 import { File, Plus, Upload } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -77,10 +78,11 @@ function FileMappingStepFileListHeader({
   filesCount,
   onAddFiles,
 }: FileMappingStepFileListHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between mb-2">
       <Label>
-        Dataset Files <span className="text-muted-foreground">({filesCount})</span>
+        {t("datasets.wizard.fileMapping.datasetFiles")} <span className="text-muted-foreground">({filesCount})</span>
       </Label>
       <Button
         variant="ghost"
@@ -89,7 +91,7 @@ function FileMappingStepFileListHeader({
         className="h-7 text-xs"
       >
         <Plus className="h-3 w-3 mr-1" />
-        Add Files
+        {t("datasets.wizard.fileMapping.addFiles")}
       </Button>
     </div>
   );
@@ -100,11 +102,12 @@ interface FileMappingStepEmptyStateProps {
 }
 
 function FileMappingStepEmptyState({ onAddFiles }: FileMappingStepEmptyStateProps) {
+  const { t } = useTranslation();
   return (
     <div className="p-8 text-center text-muted-foreground">
       <File className="h-8 w-8 mx-auto mb-2 opacity-50" />
-      <p>No files detected</p>
-      <p className="text-xs mt-1">Drag files here or use the button below</p>
+      <p>{t("datasets.wizard.fileMapping.noFiles")}</p>
+      <p className="text-xs mt-1">{t("datasets.wizard.fileMapping.dragHint")}</p>
       <Button
         variant="outline"
         size="sm"
@@ -112,18 +115,19 @@ function FileMappingStepEmptyState({ onAddFiles }: FileMappingStepEmptyStateProp
         onClick={onAddFiles}
       >
         <Plus className="h-4 w-4 mr-2" />
-        Add Files
+        {t("datasets.wizard.fileMapping.addFiles")}
       </Button>
     </div>
   );
 }
 
 function FileMappingStepDragOverlay() {
+  const { t } = useTranslation();
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-primary/5 rounded-md pointer-events-none z-10">
       <div className="flex flex-col items-center gap-2 text-primary">
         <Upload className="h-8 w-8" />
-        <span className="text-sm font-medium">Drop files to add</span>
+        <span className="text-sm font-medium">{t("datasets.wizard.fileMapping.dropToAdd")}</span>
       </div>
     </div>
   );

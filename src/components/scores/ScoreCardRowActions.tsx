@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Eye, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
@@ -27,10 +28,11 @@ export function InlineScoreCardRowActions({
   onViewPrediction,
   onViewChart,
 }: InlineScoreCardRowActionsProps) {
+  const { t } = useTranslation();
   return (
     <div className="mt-1 flex items-center justify-end gap-0.5 px-2 lg:mt-0 lg:px-0">
       {row.hasRefitArtifact && (
-        <Button variant="ghost" size="sm" className="h-5 w-5 p-0" asChild title="Predict">
+        <Button variant="ghost" size="sm" className="h-5 w-5 p-0" asChild title={t("results.scores.row.predict")} aria-label={t("results.scores.row.predict")}>
           <Link to={`/predict?model_id=${encodeURIComponent(row.predictChainId || row.chainId)}&source=chain`}>
             <Zap className="h-3 w-3 text-emerald-500" />
           </Link>
@@ -62,11 +64,12 @@ export function TableScoreCardRowActions({
   onViewPrediction,
   onViewChart,
 }: ScoreCardRowActionProps) {
+  const { t } = useTranslation();
   return (
     <TableCell onClick={(event) => event.stopPropagation()}>
       <div className="flex items-center gap-0.5">
         {onViewPrediction && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onViewPrediction(row.id)}>
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onViewPrediction(row.id)} aria-label={t("results.scores.row.viewPrediction")}>
             <Eye className="h-3.5 w-3.5" />
           </Button>
         )}

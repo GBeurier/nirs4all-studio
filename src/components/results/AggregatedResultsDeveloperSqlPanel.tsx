@@ -1,4 +1,5 @@
 import { RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,17 +35,19 @@ export function AggregatedResultsDeveloperSqlPanel({
   result,
   onRun,
 }: AggregatedResultsDeveloperSqlPanelProps) {
+  const { t } = useTranslation();
   return (
     <Card className="mb-4">
       <CardHeader className="pb-3">
-        <div className="text-sm font-medium">Developer SQL Query</div>
+        <div className="text-sm font-medium">{t("aggregatedResults.sql.title")}</div>
         <p className="text-xs text-muted-foreground">
-          Read-only SQL against prediction metadata (SQLite tables/views).
+          {t("aggregatedResults.sql.description")}
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
         <Textarea
           value={sql}
+          aria-label={t("aggregatedResults.sql.title")}
           onChange={(event) => onSqlChange(event.target.value)}
           className="font-mono text-xs min-h-[100px]"
         />
@@ -53,15 +56,15 @@ export function AggregatedResultsDeveloperSqlPanel({
             {loading ? (
               <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Running...
+                {t("aggregatedResults.sql.running")}
               </>
             ) : (
-              "Run Query"
+              t("aggregatedResults.sql.run")
             )}
           </Button>
           {result && (
             <span className="text-xs text-muted-foreground">
-              {result.row_count} rows
+              {t("aggregatedResults.sql.rows", { count: result.row_count })}
             </span>
           )}
         </div>

@@ -14,6 +14,8 @@
 
 import { useState, useEffect, useCallback, useReducer, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
+import i18next from "i18next";
+import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -65,6 +67,7 @@ function isNotFoundApiError(error: unknown): boolean {
 }
 
 export default function RunProgress() {
+  const { t } = useTranslation();
   const { id: runId } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const { data: workspacesData } = useLinkedWorkspacesQuery();
@@ -144,10 +147,10 @@ export default function RunProgress() {
       // Handle completion - show toast
       if (message.type === "job_completed") {
         void invalidatePredictionRelatedQueries(queryClient);
-        toast.success("Run completed successfully!");
+        toast.success(i18next.t("runs.progress.completedToast"));
       } else if (message.type === "job_failed") {
         void invalidatePredictionRelatedQueries(queryClient);
-        toast.error(`Run failed: ${message.data?.error || "Unknown error"}`);
+        toast.error(i18next.t("runs.progress.failedToast", { error: message.data?.error || i18next.t("runs.unknownError") }));
       }
 
       // Fold the message into granular + refit state via the pure reducer.
@@ -230,7 +233,7 @@ export default function RunProgress() {
       const merged = logChunks.flat();
       setPersistedLogs([...new Set(merged)]);
     } catch (err) {
-      setLogsError(err instanceof Error ? err.message : "Failed to load logs");
+      setLogsError(err instanceof Error ? err.message : i18next.t("runs.progress.logsLoadFailed"));
     } finally {
       setIsLoadingLogs(false);
     }
@@ -247,10 +250,10 @@ export default function RunProgress() {
     setIsStopping(true);
     try {
       await stopRun(runId);
-      toast.success("Run stopped");
+      toast.success(t("runs.progress.stopped"));
       queryClient.invalidateQueries({ queryKey: ["run", runId] });
     } catch (err) {
-      toast.error("Failed to stop run");
+      toast.error(t("runs.progress.stopFailed"));
     } finally {
       setIsStopping(false);
     }
@@ -278,7 +281,7 @@ export default function RunProgress() {
   if (isLoading && !run) {
     return (
       <div className="p-6">
-        <LoadingState message="Loading run details..." />
+        <LoadingState message={t("runs.progress.loading")} />
       </div>
     );
   }
@@ -287,17 +290,17 @@ export default function RunProgress() {
     return (
       <div className="p-6">
         <ErrorState
-          title="Run Not Found"
+          title={t("runs.progress.notFound")}
           message={
             error instanceof Error
               ? error.message
-              : "The run you're looking for doesn't exist or has been deleted."
+              : t("runs.progress.notFoundHint")
           }
           onRetry={() => refetch()}
         />
         <div className="mt-4 flex justify-center">
           <Button asChild variant="outline">
-            <Link to="/runs">Back to Runs</Link>
+            <Link to="/runs">{t("runs.progress.backToRuns")}</Link>
           </Button>
         </div>
       </div>
@@ -352,9 +355,9 @@ export default function RunProgress() {
 
       {(run.status === "failed" || executionJobRecord?.status === "failed") && (
         <Alert variant="destructive">
-          <AlertTitle>Run failed</AlertTitle>
+          <AlertTitle>{t("runs.progress.failedTitle")}</AlertTitle>
           <AlertDescription className="mt-2 whitespace-pre-wrap break-words font-mono">
-            {executionJobRecord?.error || run.error || "The backend did not provide an error description."}
+            {executionJobRecord?.error || run.error || t("runs.progress.noErrorDescription")}
           </AlertDescription>
         </Alert>
       )}
@@ -362,7 +365,7 @@ export default function RunProgress() {
       {/* WebSocket reconnecting indicator */}
       {wsReconnecting && isActiveRun && (
         <ReconnectingIndicator
-          message="Connection lost. Reconnecting..."
+          message={t("runs.progress.reconnecting")}
           attempt={wsReconnecting.attempt}
           maxAttempts={wsReconnecting.max}
         />

@@ -5,6 +5,8 @@
  */
 
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "i18next";
 import {
   Play,
   FileBox,
@@ -17,6 +19,7 @@ import {
   FileArchive,
   FileSpreadsheet,
 } from "lucide-react";
+import type { TFunction } from "i18next";
 import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
@@ -80,16 +83,16 @@ function getExportIcon(type: string) {
   }
 }
 
-function getExportLabel(type: string) {
+function getExportLabel(type: string, t: TFunction) {
   switch (type) {
     case "n4a_bundle":
-      return "Bundle";
+      return t("settings.workspaceDiscovery.exportType.bundle");
     case "pipeline_json":
-      return "Pipeline";
+      return t("settings.workspaceDiscovery.exportType.pipeline");
     case "summary_json":
-      return "Summary";
+      return t("settings.workspaceDiscovery.exportType.summary");
     case "predictions_csv":
-      return "Predictions";
+      return t("settings.workspaceDiscovery.exportType.predictions");
     default:
       return type;
   }
@@ -104,6 +107,7 @@ export function WorkspaceDiscoveryPanel({
   workspaceId,
   className = "",
 }: WorkspaceDiscoveryPanelProps) {
+  const { t } = useTranslation();
   const [runs, setRuns] = useState<DiscoveredRun[]>([]);
   const [exports, setExports] = useState<DiscoveredExport[]>([]);
   const [predictions, setPredictions] = useState<DiscoveredPrediction[]>([]);
@@ -135,7 +139,7 @@ export function WorkspaceDiscoveryPanel({
         setPredictions(predsRes.predictions);
         setTemplates(templatesRes.templates);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load data");
+        setError(err instanceof Error ? err.message : i18n.t("settings.workspaceDiscovery.loadFailed"));
       } finally {
         setIsLoading(false);
       }
@@ -147,7 +151,7 @@ export function WorkspaceDiscoveryPanel({
   if (!workspaceId) {
     return (
       <div className={"text-sm text-muted-foreground p-4 text-center " + className}>
-        Select a workspace to view discovered content.
+        {t("settings.workspaceDiscovery.selectWorkspace")}
       </div>
     );
   }
@@ -174,7 +178,7 @@ export function WorkspaceDiscoveryPanel({
   if (!hasContent) {
     return (
       <div className={"text-sm text-muted-foreground p-4 text-center " + className}>
-        No runs, exports, or predictions found in this workspace.
+        {t("settings.workspaceDiscovery.empty")}
       </div>
     );
   }
@@ -183,7 +187,7 @@ export function WorkspaceDiscoveryPanel({
     <div className={"space-y-1 " + className}>
       {runs.length > 0 && (
         <DiscoverySection
-          title="Runs"
+          title={t("settings.workspaceDiscovery.runs")}
           icon={<Play className="h-4 w-4 text-blue-500" />}
           count={runs.length}
           defaultOpen={true}
@@ -199,7 +203,7 @@ export function WorkspaceDiscoveryPanel({
                   <span className="text-muted-foreground">{run.dataset}</span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
-                  <span>{run.artifact_count} artifacts</span>
+                  <span>{t("settings.workspaceDiscovery.artifacts", { count: run.artifact_count })}</span>
                   {run.created_at && (
                     <span>{formatRelativeTime(run.created_at)}</span>
                   )}
@@ -208,7 +212,7 @@ export function WorkspaceDiscoveryPanel({
             ))}
             {runs.length > 10 && (
               <p className="text-xs text-muted-foreground text-center py-1">
-                + {runs.length - 10} more runs
+                {t("settings.workspaceDiscovery.moreRuns", { count: runs.length - 10 })}
               </p>
             )}
           </div>
@@ -217,7 +221,7 @@ export function WorkspaceDiscoveryPanel({
 
       {exports.length > 0 && (
         <DiscoverySection
-          title="Exports"
+          title={t("settings.workspaceDiscovery.exports")}
           icon={<FileBox className="h-4 w-4 text-green-500" />}
           count={exports.length}
         >
@@ -230,10 +234,10 @@ export function WorkspaceDiscoveryPanel({
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   {getExportIcon(exp.type)}
                   <span className="font-medium truncate">
-                    {exp.name || exp.model_name || "Export"}
+                    {exp.name || exp.model_name || t("settings.workspaceDiscovery.exportFallback")}
                   </span>
                   <Badge variant="outline" className="text-[10px]">
-                    {getExportLabel(exp.type)}
+                    {getExportLabel(exp.type, t)}
                   </Badge>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -246,7 +250,7 @@ export function WorkspaceDiscoveryPanel({
             ))}
             {exports.length > 10 && (
               <p className="text-xs text-muted-foreground text-center py-1">
-                + {exports.length - 10} more exports
+                {t("settings.workspaceDiscovery.moreExports", { count: exports.length - 10 })}
               </p>
             )}
           </div>
@@ -255,7 +259,7 @@ export function WorkspaceDiscoveryPanel({
 
       {predictions.length > 0 && (
         <DiscoverySection
-          title="Predictions"
+          title={t("settings.workspaceDiscovery.predictions")}
           icon={<Database className="h-4 w-4 text-purple-500" />}
           count={predictions.length}
         >
@@ -273,7 +277,7 @@ export function WorkspaceDiscoveryPanel({
                 </div>
                 <span className="text-muted-foreground">
                   {pred.prediction_count !== undefined
-                    ? `${pred.prediction_count} prediction${pred.prediction_count === 1 ? "" : "s"}`
+                    ? t("settings.workspaceDiscovery.predictionCount", { count: pred.prediction_count })
                     : pred.size_bytes !== undefined
                       ? formatBytes(pred.size_bytes)
                       : ""}
@@ -286,7 +290,7 @@ export function WorkspaceDiscoveryPanel({
 
       {templates.length > 0 && (
         <DiscoverySection
-          title="Templates"
+          title={t("settings.workspaceDiscovery.templates")}
           icon={<FileCode className="h-4 w-4 text-orange-500" />}
           count={templates.length}
         >
@@ -304,7 +308,7 @@ export function WorkspaceDiscoveryPanel({
                 </div>
                 {tmpl.steps_count && (
                   <span className="text-muted-foreground">
-                    {tmpl.steps_count} steps
+                    {t("settings.workspaceDiscovery.steps", { count: tmpl.steps_count })}
                   </span>
                 )}
               </div>

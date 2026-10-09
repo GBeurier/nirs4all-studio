@@ -7,10 +7,11 @@ import {
   getRankingsTableEmptyMessage,
   RANKINGS_TABLE_COLUMNS,
 } from '@/lib/inspector/rankingsTablePresentation';
+import { tStub } from './helpers/i18nStub';
 
 describe('inspector rankings table presentation helpers', () => {
   it('formats ranking table columns and cell labels', () => {
-    expect(getRankingsTableEmptyMessage()).toBe('No ranking data available.');
+    expect(getRankingsTableEmptyMessage(tStub)).toBe('inspector.charts.empty.rankings');
     expect(RANKINGS_TABLE_COLUMNS.map((column) => column.field)).toEqual([
       'rank',
       'model_class',

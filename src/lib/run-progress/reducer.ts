@@ -3,6 +3,8 @@
 // page's handleWsUpdate. Side effects (toast, query invalidation) stay in the
 // page; this reducer only computes the next state.
 
+import i18next from "i18next";
+
 import {
   initialGranularProgress,
   initialRefitState,
@@ -97,7 +99,7 @@ export function runProgressReducer(state: RunProgressState, action: RunProgressA
     refit = {
       status: "running",
       progress: 0,
-      message: data.description || "Refitting best model on all training data...",
+      message: data.description || i18next.t("runs.refit.runningMessage"),
       currentStep: 0,
       totalSteps: data.total_steps ?? 0,
       stepName: "",
@@ -131,7 +133,7 @@ export function runProgressReducer(state: RunProgressState, action: RunProgressA
       ...refit,
       status: "completed",
       progress: 100,
-      message: "Refit complete",
+      message: i18next.t("runs.refit.completeMessage"),
       score: data.score ?? null,
       metrics: (data.metrics as Record<string, number>) ?? refit.metrics,
     };
@@ -141,7 +143,7 @@ export function runProgressReducer(state: RunProgressState, action: RunProgressA
     refit = {
       ...refit,
       status: "failed",
-      error: data.error || "Refit failed",
+      error: data.error || i18next.t("runs.refit.failed"),
     };
   }
 

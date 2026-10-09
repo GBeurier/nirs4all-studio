@@ -1,8 +1,11 @@
+import type { TFunction } from "i18next";
+
 import { getPredictionMetricLabel } from "@/lib/predict-metrics";
 import { formatMetricValue } from "@/lib/scores";
 import { getMultimodalDatasetSummary, isStudioMultimodalDatasetDocument } from "@/lib/multimodalDatasetSummary";
 import type { AvailableModel } from "@/types/predict";
 import type { Dataset } from "@/types/datasets";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 export type DataSourceConfig =
   | { type: "dataset"; datasetId: string; partition: string }
@@ -31,8 +34,7 @@ export interface DataInputDatasetReadModel {
 
 export interface DataInputPartitionOption {
   value: string;
-  label: string;
-  labelKey?: string;
+  labelKey: string;
 }
 
 export interface DataInputCanSubmitInput {
@@ -91,14 +93,6 @@ export const DEFAULT_DATA_INPUT_TAB: DataInputTab = "dataset";
 export const DEFAULT_DATA_INPUT_PARTITION = "test";
 export const DATA_INPUT_FILE_ACCEPT = ".csv,.xlsx,.xls";
 
-export const DATA_INPUT_FIELD_LABELS = {
-  dataset: "Dataset",
-  partition: "Partition",
-} as const;
-
-export const DATA_INPUT_PARTITION_HINT =
-  "Use `test` by default when you want the displayed RMSEP to stay comparable.";
-
 const DATA_INPUT_SOURCE_DEFINITIONS: Array<Omit<DataInputSourceTab, "disabled">> = [
   { id: "dataset", icon: "dataset", labelKey: "predict.data.tabs.dataset" },
   { id: "upload", icon: "upload", labelKey: "predict.data.tabs.upload" },
@@ -106,9 +100,9 @@ const DATA_INPUT_SOURCE_DEFINITIONS: Array<Omit<DataInputSourceTab, "disabled">>
 ];
 
 export const DATA_INPUT_PARTITION_OPTIONS: DataInputPartitionOption[] = [
-  { value: "test", label: "Test" },
-  { value: "train", label: "Train" },
-  { value: "all", label: "All partitions", labelKey: "predict.data.dataset.allPartitions" },
+  { value: "test", labelKey: "predict.input.partitionTest" },
+  { value: "train", labelKey: "predict.input.partitionTrain" },
+  { value: "all", labelKey: "predict.data.dataset.allPartitions" },
 ];
 
 const ACCEPTED_DATA_INPUT_EXTENSIONS = [".csv", ".xlsx", ".xls"] as const;
@@ -132,19 +126,23 @@ export function compatiblePredictionDatasets(datasets: readonly Dataset[], model
 
 export function buildDataInputDatasetReadModel(
   datasets: readonly DataInputDatasetOption[],
+  t: TFunction,
+  multimodalOnly = false,
 ): DataInputDatasetReadModel {
   return {
     options: datasets.map((dataset) => ({
       id: dataset.id,
       label: dataset.name || dataset.id,
     })),
-    availabilityLabel: `${datasets.length} linked dataset${datasets.length === 1 ? "" : "s"} available.`,
+    availabilityLabel: t(multimodalOnly ? "predict.input.linkedMultimodalDatasets" : "predict.input.linkedDatasets", {
+      count: datasets.length,
+    }),
   };
 }
 
-export function formatDataInputPartitionLabel(value: string): string {
+export function formatDataInputPartitionLabel(value: string, t: TFunction): string {
   const option = DATA_INPUT_PARTITION_OPTIONS.find((entry) => entry.value === value);
-  if (option) return option.label;
+  if (option) return t(option.labelKey);
   if (!value) return value;
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
@@ -159,7 +157,7 @@ export function buildDataInputFileReadModel(file: Pick<File, "name" | "size"> | 
   if (!file) return null;
   return {
     name: file.name,
-    sizeLabel: `${(file.size / 1024).toFixed(1)} KB`,
+    sizeLabel: `${(file.size / 1024).toLocaleString(getActiveLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KB`,
   };
 }
 
@@ -213,12 +211,12 @@ export function buildDataSourceConfig(input: DataInputSubmitDraft): DataInputSub
   return { ok: false, reason: "unsupported-source" };
 }
 
-export function buildDataInputModelReadModel(model: AvailableModel | null): DataInputModelReadModel {
+export function buildDataInputModelReadModel(model: AvailableModel | null, t: TFunction): DataInputModelReadModel {
   if (!model) {
     return {
       isSelected: false,
-      title: "Model required",
-      description: "Select a trained model on the left before choosing data.",
+      title: t("predict.input.modelRequired"),
+      description: t("predict.input.modelRequiredHint"),
       badges: [],
       pills: [],
     };
@@ -236,7 +234,7 @@ export function buildDataInputModelReadModel(model: AvailableModel | null): Data
   if (model.prediction_score != null && model.prediction_metric) {
     pills.push({
       key: "prediction-score",
-      label: `${getPredictionMetricLabel(model.prediction_metric)} ${formatMetricValue(
+      label: `${getPredictionMetricLabel(model.prediction_metric, t)} ${formatMetricValue(
         model.prediction_score,
         model.prediction_metric,
       )}`,
@@ -254,7 +252,7 @@ export function buildDataInputModelReadModel(model: AvailableModel | null): Data
   return {
     isSelected: true,
     title: model.name,
-    description: "Input data will be replayed through this trained model path.",
+    description: t("predict.input.replayHint"),
     badges,
     pills,
   };

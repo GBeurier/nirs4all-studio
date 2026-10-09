@@ -111,7 +111,7 @@ function validateSteps(steps: SynthesisStep[]): {
   // Check mutual exclusivity
   if (enabledTypes.has("targets") && enabledTypes.has("classification")) {
     errors.push({
-      message: "Cannot have both Targets (Regression) and Classification enabled. Choose one.",
+      messageKey: "spectraSynthesis.validation.mutuallyExclusive",
       severity: "error",
     });
   }
@@ -120,10 +120,10 @@ function validateSteps(steps: SynthesisStep[]): {
   const complexitySteps: SynthesisStepType[] = ["nonlinear_targets", "target_complexity", "complex_landscape"];
   for (const step of enabledSteps) {
     if (complexitySteps.includes(step.type) && !enabledTypes.has("targets")) {
-      const def = getStepDefinition(step.type);
       warnings.push({
         stepId: step.id,
-        message: `${def?.name || step.type} works best with Targets step enabled`,
+        messageKey: "spectraSynthesis.validation.worksBestWithTargets",
+        stepType: step.type,
         severity: "warning",
       });
     }
@@ -132,7 +132,7 @@ function validateSteps(steps: SynthesisStep[]): {
   // Check if no steps
   if (enabledSteps.length === 0) {
     warnings.push({
-      message: "No steps enabled. Add at least a Features step for basic generation.",
+      messageKey: "spectraSynthesis.validation.noSteps",
       severity: "warning",
     });
   }

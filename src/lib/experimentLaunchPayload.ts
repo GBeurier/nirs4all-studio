@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   CampaignSinglePairSplitSpecResult,
 } from "./campaignPlanPreviewTypes";
@@ -211,33 +213,39 @@ function buildStrictCampaignPayloadSummary(
   executionAdapter: ExperimentExecutionAdapter,
   strictCampaignSpecs: CampaignSinglePairSplitSpecResult,
 ): Pick<ExperimentLaunchPayloadPlan, "strictCampaignPayloadStatus" | "strictCampaignPayloadSummary"> {
-  const strictSpecLabel = `${strictCampaignSpecs.splitSpecs.length} analysis ${strictCampaignSpecs.splitSpecs.length === 1 ? "plan" : "plans"}`;
-  const skippedRunLabel = `${strictCampaignSpecs.skippedRunIds.length} run ${strictCampaignSpecs.skippedRunIds.length === 1 ? "entry" : "entries"}`;
+  const strictSpecLabel = i18n.t("newExperiment.launch.payload.plans", { count: strictCampaignSpecs.splitSpecs.length });
+  const skippedRunLabel = i18n.t("newExperiment.launch.payload.entries", { count: strictCampaignSpecs.skippedRunIds.length });
 
   if (executionAdapter.id === LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER.id) {
     return {
       strictCampaignPayloadStatus: "legacy_only",
-      strictCampaignPayloadSummary: "The experiment is prepared for local analysis.",
+      strictCampaignPayloadSummary: i18n.t("newExperiment.launch.payload.summary.legacyOnly"),
     };
   }
 
   if (strictCampaignSpecs.splitSpecs.length === 0) {
     return {
       strictCampaignPayloadStatus: "unavailable",
-      strictCampaignPayloadSummary: "No analyses could be prepared. Check the selected data and pipelines.",
+      strictCampaignPayloadSummary: i18n.t("newExperiment.launch.payload.summary.unavailable"),
     };
   }
 
   if (strictCampaignSpecs.skippedRunIds.length > 0) {
     return {
       strictCampaignPayloadStatus: "partial",
-      strictCampaignPayloadSummary: `${strictSpecLabel} available; ${skippedRunLabel} could not be prepared.`,
+      strictCampaignPayloadSummary: i18n.t("newExperiment.launch.payload.summary.partial", {
+        plans: strictSpecLabel,
+        entries: skippedRunLabel,
+      }),
     };
   }
 
   return {
     strictCampaignPayloadStatus: "ready",
-    strictCampaignPayloadSummary: `${strictSpecLabel} ready for ${executionAdapter.label}.`,
+    strictCampaignPayloadSummary: i18n.t("newExperiment.launch.payload.summary.ready", {
+      plans: strictSpecLabel,
+      adapter: executionAdapter.label,
+    }),
   };
 }
 
@@ -273,7 +281,7 @@ export function getExperimentLaunchStrictPayloadActivation(
     return {
       status: "legacy_not_applicable",
       canUseStrictPayload: false,
-      message: "The experiment uses local analysis settings.",
+      message: i18n.t("newExperiment.launch.payload.activation.legacy"),
     };
   }
 
@@ -281,7 +289,7 @@ export function getExperimentLaunchStrictPayloadActivation(
     return {
       status: "ready",
       canUseStrictPayload: true,
-      message: "The experiment is ready to launch.",
+      message: i18n.t("newExperiment.launch.payload.activation.ready"),
     };
   }
 
@@ -289,14 +297,18 @@ export function getExperimentLaunchStrictPayloadActivation(
     return {
       status: "blocked",
       canUseStrictPayload: false,
-      message: `${launchPayloadPlan.strictCampaignSpecs.skippedRunIds.length} run ${launchPayloadPlan.strictCampaignSpecs.skippedRunIds.length === 1 ? "entry" : "entries"} must be prepared before the experiment can start.`,
+      message: i18n.t("newExperiment.launch.payload.activation.partial", {
+        entries: i18n.t("newExperiment.launch.payload.entries", {
+          count: launchPayloadPlan.strictCampaignSpecs.skippedRunIds.length,
+        }),
+      }),
     };
   }
 
   return {
     status: "blocked",
     canUseStrictPayload: false,
-    message: "The experiment could not be prepared. Check the selected data and pipelines.",
+    message: i18n.t("newExperiment.launch.payload.activation.unavailable"),
   };
 }
 

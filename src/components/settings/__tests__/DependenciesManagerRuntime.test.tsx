@@ -9,6 +9,7 @@ vi.mock("@/api/dependencies", () => ({
   getDependencies: mocks.inventory, refreshDependencies: mocks.refresh, installDependency: mocks.install,
   uninstallDependency: vi.fn(), revertDependency: vi.fn(),
 }));
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/api/system", () => ({ getRuntimeSummary: mocks.runtime }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -31,12 +32,12 @@ describe("DependenciesManager runtime inventory", () => {
   });
   afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
   async function mount() { await act(async () => root.render(<DependenciesManager />)); }
-  function installButton() { return [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("Install"))!; }
+  function installButton() { return [...container.querySelectorAll("button")].find((button) => button.textContent === "settings.dependencies.install")!; }
 
   it("honors read-only inventory even when the runtime summary is unavailable", async () => {
     await mount();
     expect(container.textContent).toContain("shap");
-    expect(container.textContent).toContain("Package management is unavailable");
+    expect(container.textContent).toContain("settings.dependencies.readOnlyExternal");
     expect(installButton().disabled).toBe(true);
     await act(async () => installButton().click());
     expect(mocks.install).not.toHaveBeenCalled();
@@ -45,9 +46,9 @@ describe("DependenciesManager runtime inventory", () => {
   it("reports refresh errors and allows retrying the inventory", async () => {
     await mount();
     mocks.refresh.mockRejectedValue(new Error("Runtime stopped"));
-    await act(async () => (container.querySelector('[title="Refresh dependencies"]') as HTMLButtonElement).click());
+    await act(async () => (container.querySelector('[title="settings.dependencies.refresh"]') as HTMLButtonElement).click());
     expect(container.textContent).toContain("Runtime stopped");
-    const retry = [...container.querySelectorAll("button")].find((button) => button.textContent?.includes("Retry"))!;
+    const retry = [...container.querySelectorAll("button")].find((button) => button.textContent === "common.retry")!;
     await act(async () => retry.click());
     expect(container.textContent).toContain("shap");
     expect(container.textContent).not.toContain("Runtime stopped");

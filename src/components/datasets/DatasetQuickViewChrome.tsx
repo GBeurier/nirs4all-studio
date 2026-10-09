@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   Database,
   ExternalLink,
@@ -22,6 +23,7 @@ export function DatasetQuickViewHeader({
   dataset: Dataset;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between border-b border-border p-4 flex-shrink-0">
       <div className="min-w-0 flex-1">
@@ -29,7 +31,7 @@ export function DatasetQuickViewHeader({
         <p className="text-xs text-muted-foreground font-mono truncate">{dataset.path}</p>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-        <Button variant="ghost" size="icon" onClick={onClose}>
+        <Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={onClose}>
           <X className="h-4 w-4" />
         </Button>
       </div>
@@ -46,6 +48,7 @@ export function DatasetQuickViewStats({
   counts: QuickViewCounts;
   multimodal?: MultimodalDatasetSummary | null;
 }) {
+  const { t } = useTranslation();
   const { numSamples, numFeatures, nSources, trainCount, testCount } = counts;
   const partitionCounts = multimodal && Object.entries(multimodal.partitions)
     .map(([name, count]) => `${name}: ${formatNumber(count)}`)
@@ -56,7 +59,7 @@ export function DatasetQuickViewStats({
       <div className="text-center">
         <Layers className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
         <p className="text-sm font-semibold">{formatNumber(multimodal?.samples ?? numSamples)}</p>
-        <p className="text-xs text-muted-foreground">Samples</p>
+        <p className="text-xs text-muted-foreground">{t("datasets.info.samples")}</p>
         {multimodal ? (partitionCounts && <p className="text-[10px] text-muted-foreground tabular-nums">{partitionCounts}</p>) : testCount != null && testCount > 0 && (
           <p className="text-[10px] text-muted-foreground tabular-nums">
             {formatNumber(trainCount)} / {formatNumber(testCount)}
@@ -66,17 +69,17 @@ export function DatasetQuickViewStats({
       <div className="text-center">
         <Hash className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
         <p className="text-sm font-semibold">{multimodal ? multimodal.alignment : formatNumber(numFeatures)}</p>
-        <p className="text-xs text-muted-foreground">{multimodal ? "Alignment" : "Features"}</p>
+        <p className="text-xs text-muted-foreground">{multimodal ? t("datasets.detailPage.stats.alignment") : t("datasets.info.features")}</p>
       </div>
       <div className="text-center">
         <Target className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
         <p className="text-sm font-semibold">{multimodal ? multimodal.targets.length : dataset.targets?.length || "--"}</p>
-        <p className="text-xs text-muted-foreground">Targets</p>
+        <p className="text-xs text-muted-foreground">{t("datasets.info.targets")}</p>
       </div>
       <div className="text-center">
         <Database className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
         <p className="text-sm font-semibold">{multimodal?.sources.length ?? nSources}</p>
-        <p className="text-xs text-muted-foreground">Sources</p>
+        <p className="text-xs text-muted-foreground">{t("datasets.detailPage.stats.sources")}</p>
       </div>
     </div>
   );
@@ -91,17 +94,18 @@ export function DatasetQuickViewFooter({
   onEdit?: (dataset: Dataset) => void;
   onOpenDetails: (dataset: Dataset) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="border-t border-border p-4 flex gap-2 flex-shrink-0">
       {onEdit && (
         <Button variant="outline" size="sm" className="flex-1" onClick={() => onEdit(dataset)}>
           <Settings className="h-4 w-4 mr-2" />
-          Edit
+          {t("common.edit")}
         </Button>
       )}
       <Button variant="outline" size="sm" className="flex-1" onClick={() => onOpenDetails(dataset)}>
         <ExternalLink className="h-4 w-4 mr-2" />
-        Open Details
+        {t("datasets.quickView.openDetails")}
       </Button>
     </div>
   );

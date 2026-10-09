@@ -17,6 +17,11 @@ import {
   type InspectorPanelRendererQueries,
 } from "./InspectorPanelRenderer";
 
+vi.mock("react-i18next", async () => {
+  const { tStub } = await import("@/lib/__tests__/helpers/i18nStub");
+  return { useTranslation: () => ({ t: tStub }) };
+});
+
 vi.mock("@/hooks/useInspectorExport", () => ({
   useInspectorExport: () => ({
     exportAllVisiblePanelsPng: vi.fn(),
@@ -181,7 +186,7 @@ describe("InspectorPanelRenderer", () => {
     const mounted = await renderNode(<InspectorPanelRenderer {...makeProps()} />);
 
     expect(mounted.container.querySelector('[data-panel-type="rankings"]')).not.toBeNull();
-    expect(mounted.container.textContent).toContain("1 rows");
+    expect(mounted.container.textContent).toContain('inspector.counts.rows {"count":1}');
     expect(mounted.container.querySelector('[data-testid="rankings-table"]')?.textContent).toBe("rankings:1");
 
     await mounted.unmount();
@@ -210,8 +215,8 @@ describe("InspectorPanelRenderer", () => {
       />,
     );
 
-    expect(mounted.container.textContent).toContain("Chains: 1");
-    expect(mounted.container.textContent).toContain("Scored chains: 1");
+    expect(mounted.container.textContent).toContain("inspector.counters.leaderboard.total: 1");
+    expect(mounted.container.textContent).toContain("inspector.counters.leaderboard.scored: 1");
 
     await mounted.unmount();
   });
@@ -229,7 +234,7 @@ describe("InspectorPanelRenderer", () => {
       />
     );
 
-    expect(mounted.container.textContent).toContain("Predicted vs observed requires regression");
+    expect(mounted.container.textContent).toContain("inspector.notices.requires");
     expect(mounted.container.querySelector('[data-testid="pred-vs-obs-chart"]')).toBeNull();
 
     await mounted.unmount();

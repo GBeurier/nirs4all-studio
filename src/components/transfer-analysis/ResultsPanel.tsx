@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Clock, Award, Layers, BarChart3, Grid3X3, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -31,6 +32,7 @@ export function ResultsPanel({
   selectedMetric,
   onMetricChange,
 }: ResultsPanelProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<string>('summary');
   const summary = getResultsPanelSummaryModel(results);
   const controls = getResultsPanelControlsModel(results, activePreprocessing);
@@ -44,9 +46,13 @@ export function ResultsPanel({
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-lg">Analysis Results</CardTitle>
+              <CardTitle className="text-lg">{t('transferAnalysis.results.title')}</CardTitle>
               <CardDescription>
-                {summary.description}
+                {[
+                  t('transferAnalysis.results.datasetCount', { count: summary.counts.datasets }),
+                  t('transferAnalysis.results.preprocessingCount', { count: summary.counts.preprocessings }),
+                  t('transferAnalysis.results.pairCount', { count: summary.counts.pairs }),
+                ].join(', ')}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -58,20 +64,20 @@ export function ResultsPanel({
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Best Preprocessing</p>
+              <p className="text-xs text-muted-foreground">{t('transferAnalysis.results.bestPreprocessing')}</p>
               <div className="flex items-center gap-2">
                 <Award className="h-4 w-4 text-primary" />
                 <span className="font-medium text-sm">{summary.bestPreprocessing}</span>
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Distance Reduction</p>
+              <p className="text-xs text-muted-foreground">{t('transferAnalysis.results.distanceReduction')}</p>
               <span className={`font-medium text-sm ${summary.reduction.className}`}>
                 {summary.reduction.label}
               </span>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Datasets</p>
+              <p className="text-xs text-muted-foreground">{t('transferAnalysis.results.datasets')}</p>
               <div className="flex flex-wrap gap-1">
                 {summary.datasetBadges.map((dataset) => (
                   <Badge key={dataset.id} variant="outline" className="text-xs">
@@ -86,8 +92,8 @@ export function ResultsPanel({
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Preprocessings</p>
-              <span className="font-medium text-sm">{summary.preprocessingsTestedLabel}</span>
+              <p className="text-xs text-muted-foreground">{t('transferAnalysis.results.preprocessings')}</p>
+              <span className="font-medium text-sm">{t('transferAnalysis.results.testedCount', { count: summary.preprocessingsTestedCount })}</span>
             </div>
           </div>
         </CardContent>
@@ -96,13 +102,13 @@ export function ResultsPanel({
       {/* Controls */}
       <div className="flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Preprocessing:</span>
+          <span className="text-sm text-muted-foreground">{t('transferAnalysis.results.preprocessingLabel')}</span>
           <Select
             value={controls.activePreprocessingSelectValue}
             onValueChange={(v) => onPreprocessingChange(v || null)}
           >
             <SelectTrigger className="w-[180px] h-8">
-              <SelectValue placeholder="Select preprocessing" />
+              <SelectValue placeholder={t('transferAnalysis.results.selectPreprocessing')} />
             </SelectTrigger>
             <SelectContent>
               {controls.preprocessingOptions.map((preprocessing) => (
@@ -114,7 +120,7 @@ export function ResultsPanel({
           </Select>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Metric:</span>
+          <span className="text-sm text-muted-foreground">{t('transferAnalysis.results.metricLabel')}</span>
           <Select
             value={selectedMetric}
             onValueChange={(v) => onMetricChange(v as TransferMetricType)}
@@ -125,7 +131,7 @@ export function ResultsPanel({
             <SelectContent>
               {controls.metricOptions.map((metric) => (
                 <SelectItem key={metric.value} value={metric.value}>
-                  {metric.label}
+                  {t(metric.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -138,11 +144,11 @@ export function ResultsPanel({
         <TabsList className="grid grid-cols-4 w-full max-w-lg">
           <TabsTrigger value="summary" className="flex items-center gap-1">
             <BarChart3 className="h-4 w-4" />
-            <span className="hidden sm:inline">Ranking</span>
+            <span className="hidden sm:inline">{t('transferAnalysis.results.tabs.ranking')}</span>
           </TabsTrigger>
           <TabsTrigger value="heatmap" className="flex items-center gap-1">
             <Grid3X3 className="h-4 w-4" />
-            <span className="hidden sm:inline">Distances</span>
+            <span className="hidden sm:inline">{t('transferAnalysis.results.tabs.distances')}</span>
           </TabsTrigger>
           <TabsTrigger value="pca" className="flex items-center gap-1">
             <Layers className="h-4 w-4" />
@@ -150,16 +156,16 @@ export function ResultsPanel({
           </TabsTrigger>
           <TabsTrigger value="metrics" className="flex items-center gap-1">
             <TrendingUp className="h-4 w-4" />
-            <span className="hidden sm:inline">Metrics</span>
+            <span className="hidden sm:inline">{t('transferAnalysis.results.tabs.metrics')}</span>
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="summary" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Preprocessing Ranking</CardTitle>
+              <CardTitle className="text-base">{t('transferAnalysis.results.ranking.title')}</CardTitle>
               <CardDescription>
-                Which preprocessing methods best reduce inter-dataset distances
+                {t('transferAnalysis.results.ranking.description')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -174,9 +180,9 @@ export function ResultsPanel({
         <TabsContent value="heatmap" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Distance Matrices</CardTitle>
+              <CardTitle className="text-base">{t('transferAnalysis.results.heatmap.title')}</CardTitle>
               <CardDescription>
-                Pairwise distances between datasets for: {activePreprocessingKey}
+                {t('transferAnalysis.results.heatmap.description', { preprocessing: activePreprocessingKey })}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -192,9 +198,9 @@ export function ResultsPanel({
         <TabsContent value="pca" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">PCA Visualization</CardTitle>
+              <CardTitle className="text-base">{t('transferAnalysis.results.pca.title')}</CardTitle>
               <CardDescription>
-                Dataset clustering in PCA space: {activePreprocessingKey}
+                {t('transferAnalysis.results.pca.description', { preprocessing: activePreprocessingKey })}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -209,9 +215,9 @@ export function ResultsPanel({
         <TabsContent value="metrics" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Metric Convergence</CardTitle>
+              <CardTitle className="text-base">{t('transferAnalysis.results.convergence.title')}</CardTitle>
               <CardDescription>
-                How preprocessing affects quality metric variance across datasets
+                {t('transferAnalysis.results.convergence.description')}
               </CardDescription>
             </CardHeader>
             <CardContent>

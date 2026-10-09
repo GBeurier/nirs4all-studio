@@ -8,10 +8,11 @@ import {
   formatCandlestickTick,
   getCandlestickEmptyMessage,
 } from '@/lib/inspector/candlestickPresentation';
+import { tStub } from './helpers/i18nStub';
 
 describe('inspector candlestick presentation helpers', () => {
   it('formats candlestick labels and numeric display values', () => {
-    expect(getCandlestickEmptyMessage()).toBe('No box plot data available.');
+    expect(getCandlestickEmptyMessage(tStub)).toBe('inspector.charts.empty.candlestick');
     expect(formatCandlestickLabel('short')).toBe('short');
     expect(formatCandlestickLabel('very-long-candlestick-category')).toBe('very-long-candlest\u2026');
     expect(formatCandlestickTick(0.123456)).toBe('0.123');

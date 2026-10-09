@@ -9,6 +9,7 @@
  */
 import { useRef } from "react";
 import { Folder, File, FolderSearch, Info } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { getDetectedFileOverrides, useWizard } from "./useWizard";
 import { selectFolder, selectFile, isDesktop } from "@/utils/fileDialogs";
 import { detectUnified, detectFilesList } from "@/api/datasets";
@@ -63,6 +64,7 @@ interface SourceStepProps {
 }
 
 export function SourceStep({ onScanFolder }: SourceStepProps) {
+  const { t } = useTranslation();
   const { state, dispatch, nextStep } = useWizard();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -142,7 +144,7 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
       console.error("Failed to select folder:", error);
       dispatch({
         type: "SET_ERROR",
-        payload: { key: "source", message: "Failed to select folder" },
+        payload: { key: "source", message: t("datasets.wizard.source.errors.selectFolder") },
       });
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
@@ -201,7 +203,7 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
       console.error("Failed to select files:", error);
       dispatch({
         type: "SET_ERROR",
-        payload: { key: "source", message: "Failed to select files" },
+        payload: { key: "source", message: t("datasets.wizard.source.errors.selectFiles") },
       });
     } finally {
       dispatch({ type: "SET_LOADING", payload: false });
@@ -226,16 +228,16 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
         <SourceOption
           type="folder"
           icon={<Folder className="h-12 w-12" />}
-          title="Select Folder"
-          description="Choose a folder with X_train, Y_train, etc. Files are auto-detected."
+          title={t("datasets.wizard.source.selectFolder.title")}
+          description={t("datasets.wizard.source.selectFolder.description")}
           onClick={handleSelectFolder}
         />
 
         <SourceOption
           type="files"
           icon={<File className="h-12 w-12" />}
-          title="Select Files"
-          description="Choose one or more CSV/Excel files manually."
+          title={t("datasets.wizard.source.selectFiles.title")}
+          description={t("datasets.wizard.source.selectFiles.description")}
           onClick={handleSelectFiles}
         />
 
@@ -243,8 +245,8 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
           <SourceOption
             type="folder"
             icon={<FolderSearch className="h-12 w-12" />}
-            title="Scan Folder"
-            description="Recursively scan a folder for multiple datasets."
+            title={t("datasets.wizard.source.scanFolder.title")}
+            description={t("datasets.wizard.source.scanFolder.description")}
             onClick={handleScanFolder}
           />
         )}
@@ -265,13 +267,13 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
           <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
           <div className="text-sm text-muted-foreground">
             <p className="mb-2">
-              Running in browser mode. For full file system access, use the desktop application.
+              {t("datasets.wizard.source.browserMode")}
             </p>
             <button
               onClick={() => fileInputRef.current?.click()}
               className="text-primary hover:underline"
             >
-              Click here to select files via browser dialog
+              {t("datasets.wizard.source.browserSelect")}
             </button>
           </div>
         </div>

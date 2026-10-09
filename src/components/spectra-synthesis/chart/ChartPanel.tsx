@@ -9,6 +9,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Sparkles, AlertCircle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSynthesisPreview } from "../contexts";
@@ -25,6 +26,7 @@ interface ChartPanelProps {
 }
 
 export function ChartPanel({ className }: ChartPanelProps) {
+  const { t } = useTranslation();
   const { state: builderState } = useSynthesisBuilder();
   const {
     state: previewState,
@@ -101,7 +103,7 @@ export function ChartPanel({ className }: ChartPanelProps) {
                 <div className="absolute inset-0 bg-background/50 flex items-center justify-center">
                   <div className="flex items-center gap-2 bg-background/90 rounded-md px-3 py-2 shadow-sm border">
                     <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                    <span className="text-xs text-muted-foreground">Regenerating...</span>
+                    <span className="text-xs text-muted-foreground">{t("spectraSynthesis.chart.regenerating")}</span>
                   </div>
                 </div>
               )}
@@ -112,7 +114,7 @@ export function ChartPanel({ className }: ChartPanelProps) {
                     <p className="text-xs text-muted-foreground mb-2">{error}</p>
                     <Button variant="outline" size="sm" onClick={handleGenerate} disabled={!canGenerate}>
                       <RotateCcw className="h-3 w-3 mr-1" />
-                      Retry
+                      {t("common.retry")}
                     </Button>
                   </div>
                 </div>
@@ -147,13 +149,14 @@ export function ChartPanel({ className }: ChartPanelProps) {
 }
 
 function LoadingState() {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="text-center">
         <div className="h-10 w-10 mx-auto mb-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-        <p className="text-sm text-muted-foreground">Generating preview...</p>
+        <p className="text-sm text-muted-foreground">{t("spectraSynthesis.chart.generatingPreview")}</p>
         <p className="text-xs text-muted-foreground mt-1">
-          This may take a few seconds
+          {t("spectraSynthesis.chart.mayTakeAWhile")}
         </p>
       </div>
     </div>
@@ -167,12 +170,13 @@ interface ErrorStateProps {
 }
 
 function ErrorState({ error, onRetry, canRetry }: ErrorStateProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="text-center max-w-md px-4">
         <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-3" />
         <p className="text-sm font-medium text-destructive mb-1">
-          Preview Generation Failed
+          {t("spectraSynthesis.chart.previewFailed")}
         </p>
         <p className="text-xs text-muted-foreground mb-4">{error}</p>
         <Button
@@ -182,7 +186,7 @@ function ErrorState({ error, onRetry, canRetry }: ErrorStateProps) {
           disabled={!canRetry}
         >
           <RotateCcw className="h-4 w-4 mr-2" />
-          Retry
+          {t("common.retry")}
         </Button>
       </div>
     </div>
@@ -196,19 +200,20 @@ interface EmptyStateProps {
 }
 
 function EmptyState({ onGenerate, canGenerate, hasErrors }: EmptyStateProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="text-center max-w-md px-4">
         <div className="h-16 w-16 mx-auto mb-4 rounded-full bg-muted/50 flex items-center justify-center">
           <Sparkles className="h-8 w-8 text-muted-foreground/50" />
         </div>
-        <h3 className="text-sm font-medium mb-1">No Preview Yet</h3>
+        <h3 className="text-sm font-medium mb-1">{t("spectraSynthesis.chart.empty.title")}</h3>
         <p className="text-xs text-muted-foreground mb-4">
           {hasErrors
-            ? "Fix validation errors in your configuration, then generate a preview."
+            ? t("spectraSynthesis.chart.empty.hasErrors")
             : canGenerate
-              ? "Click 'Generate' to see your synthetic spectra."
-              : "Add at least a Features step to generate synthetic data."}
+              ? t("spectraSynthesis.chart.empty.canGenerate")
+              : t("spectraSynthesis.chart.empty.needsFeatures")}
         </p>
         <Button
           size="sm"
@@ -217,7 +222,7 @@ function EmptyState({ onGenerate, canGenerate, hasErrors }: EmptyStateProps) {
           className="bg-teal-600 hover:bg-teal-700"
         >
           <Sparkles className="h-4 w-4 mr-2" />
-          Generate Preview
+          {t("spectraSynthesis.chart.empty.generatePreview")}
         </Button>
       </div>
     </div>

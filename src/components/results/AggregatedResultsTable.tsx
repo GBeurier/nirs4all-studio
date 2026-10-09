@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Table,
@@ -45,12 +46,13 @@ export function AggregatedResultsTable({
   onDeleted,
   onViewPrediction,
 }: AggregatedResultsTableProps) {
+  const { t } = useTranslation();
   return (
     <Card>
       <CardHeader className="pb-2 pt-4 px-4">
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">
-            {filteredCount} of {totalCount} chains
+            {t("aggregatedResults.table.count", { filtered: filteredCount, count: totalCount })}
           </span>
         </div>
       </CardHeader>
@@ -59,7 +61,7 @@ export function AggregatedResultsTable({
           <AggregatedResultsTableHeader sortKey={sortKey} sortAsc={sortAsc} onSort={onSort} />
           <TableBody>
             <AggregatedResultsSectionHeader
-              label="Refit models"
+              label={t("aggregatedResults.table.refit")}
               count={refitPredictions.length}
               variant="refit"
             />
@@ -78,7 +80,7 @@ export function AggregatedResultsTable({
               />
             ))}
             <AggregatedResultsSectionHeader
-              label="CV models"
+              label={t("aggregatedResults.table.cv")}
               count={cvPredictions.length}
               variant="cv"
             />

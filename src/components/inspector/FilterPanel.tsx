@@ -60,10 +60,10 @@ export function FilterPanel() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="border-border/60 text-[10px] uppercase tracking-[0.12em]">
-              {hasActiveFilters ? 'active' : 'idle'}
+              {hasActiveFilters ? t('inspector.filterPanel.active') : t('inspector.filterPanel.idle')}
             </Badge>
             <span className="text-[10px] text-muted-foreground">
-              {hasActiveFilters ? 'scope narrowed' : 'full scope'}
+              {hasActiveFilters ? t('inspector.filterPanel.scopeNarrowed') : t('inspector.filterPanel.fullScope')}
             </span>
           </div>
           <Button
@@ -74,7 +74,7 @@ export function FilterPanel() {
             disabled={!hasActiveFilters}
           >
             <X className="mr-0.5 h-3 w-3" />
-            Clear
+            {t('common.clear')}
           </Button>
         </div>
 
@@ -82,11 +82,11 @@ export function FilterPanel() {
           <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-3">
             <div className="flex items-center justify-between">
               <LabelWithHelp
-                label={t('inspector.sidebar.scoreRange', 'Score Range')}
-                help="Keep only chains whose active score falls inside this interval."
+                label={t('inspector.sidebar.scoreRange')}
+                help={t('inspector.filterPanel.scoreRangeHelp')}
               />
               <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-                {scoreRange ? 'custom' : 'full'}
+                {scoreRange ? t('inspector.filterPanel.custom') : t('inspector.filterPanel.full')}
               </Badge>
             </div>
             <Slider
@@ -113,34 +113,34 @@ export function FilterPanel() {
         <div className="grid gap-2">
           <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-3">
             <LabelWithHelp
-              label={t('inspector.sidebar.outlier', 'Outliers')}
-              help="Show all chains, hide statistical outliers, or isolate only outliers."
+              label={t('inspector.sidebar.outlier')}
+              help={t('inspector.filterPanel.outlierHelp')}
             />
             <Select value={outlier} onValueChange={setOutlierFilter}>
-              <SelectTrigger className="mt-2 h-8 text-xs">
+              <SelectTrigger className="mt-2 h-8 text-xs" aria-label={t('inspector.sidebar.outlier')}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="hide">Hide outliers</SelectItem>
-                <SelectItem value="only">Only outliers</SelectItem>
+                <SelectItem value="all">{t('inspector.filters.all')}</SelectItem>
+                <SelectItem value="hide">{t('inspector.filters.hideOutliers')}</SelectItem>
+                <SelectItem value="only">{t('inspector.filters.onlyOutliers')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-3">
             <LabelWithHelp
-              label={t('inspector.sidebar.selectionFilter', 'Selection')}
-              help="Restrict the scope to selected chains, unselected chains, or all chains."
+              label={t('inspector.sidebar.selectionFilter')}
+              help={t('inspector.filterPanel.selectionHelp')}
             />
             <Select value={selection} onValueChange={setSelectionFilter}>
-              <SelectTrigger className="mt-2 h-8 text-xs">
+              <SelectTrigger className="mt-2 h-8 text-xs" aria-label={t('inspector.sidebar.selectionFilter')}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="selected">Selected only</SelectItem>
-                <SelectItem value="unselected">Unselected only</SelectItem>
+                <SelectItem value="all">{t('inspector.filters.all')}</SelectItem>
+                <SelectItem value="selected">{t('inspector.filters.selectedOnly')}</SelectItem>
+                <SelectItem value="unselected">{t('inspector.filters.unselectedOnly')}</SelectItem>
               </SelectContent>
             </Select>
           </div>

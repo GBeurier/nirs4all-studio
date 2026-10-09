@@ -1,7 +1,7 @@
-export const CANDLESTICK_EMPTY_MESSAGE = 'No box plot data available.';
+import type { TFunction } from 'i18next';
 
-export function getCandlestickEmptyMessage(): string {
-  return CANDLESTICK_EMPTY_MESSAGE;
+export function getCandlestickEmptyMessage(t: TFunction): string {
+  return t('inspector.charts.empty.candlestick');
 }
 
 export function formatCandlestickLabel(label: string, maxLength = 20): string {

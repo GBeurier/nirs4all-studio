@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Download,
   Trash2,
@@ -69,18 +70,19 @@ function PackageVersionBadge({
   isAtRecommended: boolean;
   isAtLatest: boolean;
 }) {
+  const { t } = useTranslation();
   switch (getVersionBadgeKind(pkg, isAtRecommended)) {
     case "not-installed":
       return (
         <Badge variant="outline" className="text-xs text-muted-foreground">
-          Not installed
+          {t("settings.dependencies.notInstalled")}
         </Badge>
       );
     case "recommended":
       return (
         <Badge className="text-xs font-mono bg-green-600 hover:bg-green-600 text-white gap-1">
           <Check className="h-3 w-3" />
-          v{pkg.installed_version} (recommended)
+          {t("settings.dependencies.recommendedBadge", { version: pkg.installed_version })}
         </Badge>
       );
     case "below":
@@ -92,7 +94,7 @@ function PackageVersionBadge({
     case "above":
       return (
         <Badge className="text-xs font-mono bg-blue-500 hover:bg-blue-500 text-white">
-          v{pkg.installed_version} ({getAboveBadgeLabel(isAtLatest)})
+          {t("settings.dependencies.aboveBadge", { version: pkg.installed_version, label: t(`settings.dependencies.aboveLabel.${getAboveBadgeLabel(isAtLatest)}`) })}
         </Badge>
       );
     default:
@@ -121,6 +123,7 @@ export function PackageRow({
   onRevertToRecommended,
   isProcessing,
 }: PackageRowProps) {
+  const { t } = useTranslation();
   const isCurrentlyProcessing = isProcessing === pkg.name;
 
   const {
@@ -154,12 +157,12 @@ export function PackageRow({
             />
             {pkg.default_install && (
               <Badge variant="secondary" className="text-xs">
-                Default
+                {t("common.default")}
               </Badge>
             )}
             {pkg.managed_by_profile && (
               <Badge variant="outline" className="text-xs">
-                Profile-managed
+                {t("settings.dependencies.profileManaged")}
               </Badge>
             )}
           </div>
@@ -168,24 +171,24 @@ export function PackageRow({
           </p>
           {pkg.managed_by_profile && (
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Installed and aligned through the active compute profile when needed.
+              {t("settings.dependencies.profileManagedHint")}
             </p>
           )}
           {/* Version details line */}
           <div className="flex items-center gap-3 mt-0.5">
             {showRecommendedVersion && pkg.recommended_version && (
                 <span className="text-xs text-muted-foreground">
-                  Recommended: {pkg.recommended_version}
+                  {t("settings.dependencies.recommendedVersion", { version: pkg.recommended_version })}
                 </span>
               )}
             {showLatestVersion && pkg.latest_version && (
                 <span className="text-xs text-muted-foreground">
-                  Latest: {pkg.latest_version}
+                  {t("settings.dependencies.latestVersion", { version: pkg.latest_version })}
                 </span>
               )}
             {!pkg.is_installed && !pkg.recommended_version && (
               <span className="text-xs text-muted-foreground">
-                Min version: {pkg.min_version}
+                {t("settings.dependencies.minVersion", { version: pkg.min_version })}
               </span>
             )}
           </div>
@@ -197,7 +200,7 @@ export function PackageRow({
         {isCurrentlyProcessing ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Processing...</span>
+            <span>{t("settings.dependencies.processing")}</span>
           </div>
         ) : (
           <>
@@ -213,7 +216,7 @@ export function PackageRow({
                     className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/50"
                   >
                     <ArrowUpCircle className="h-4 w-4 mr-1" />
-                    Update to Recommended
+                    {t("settings.dependencies.updateToRecommended")}
                   </Button>
                 )}
 
@@ -227,7 +230,7 @@ export function PackageRow({
                     className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/50"
                   >
                     <ArrowDownCircle className="h-4 w-4 mr-1" />
-                    Revert to Recommended
+                    {t("settings.dependencies.revertToRecommended")}
                   </Button>
                 )}
 
@@ -242,27 +245,27 @@ export function PackageRow({
                         className="text-muted-foreground hover:text-foreground"
                       >
                         <ArrowUpCircle className="h-4 w-4 mr-1" />
-                        Update to Latest
+                        {t("settings.dependencies.updateToLatest")}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>
-                          Update {pkg.name} to latest?
+                          {t("settings.dependencies.updateLatestTitle", { name: pkg.name })}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                          Version {pkg.latest_version} is newer than the
-                          recommended {pkg.recommended_version}. This version
-                          has not been validated with the webapp. You can always
-                          revert to the recommended version.
+                          {t("settings.dependencies.updateLatestDescription", {
+                            latest: pkg.latest_version,
+                            recommended: pkg.recommended_version,
+                          })}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() => onUpdateToLatest(pkg.name)}
                         >
-                          Update to {pkg.latest_version}
+                          {t("settings.dependencies.updateTo", { version: pkg.latest_version })}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -280,7 +283,7 @@ export function PackageRow({
                       className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/50"
                     >
                       <ArrowUpCircle className="h-4 w-4 mr-1" />
-                      Update to Latest
+                      {t("settings.dependencies.updateToLatest")}
                     </Button>
                   )}
 
@@ -292,6 +295,7 @@ export function PackageRow({
                       size="sm"
                       disabled={!!isProcessing}
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      aria-label={t("settings.dependencies.uninstallAria", { name: pkg.name })}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -299,21 +303,19 @@ export function PackageRow({
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>
-                        Uninstall {pkg.name}?
+                        {t("settings.dependencies.uninstallTitle", { name: pkg.name })}
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will remove {pkg.name} from the current Python
-                        runtime. Some nirs4all features may not work without
-                        this package.
+                        {t("settings.dependencies.uninstallDescription", { name: pkg.name })}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={() => onUninstall(pkg.name)}
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       >
-                        Uninstall
+                        {t("settings.dependencies.uninstall")}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -328,7 +330,7 @@ export function PackageRow({
                 className="text-primary hover:bg-primary/10"
               >
                 <Download className="h-4 w-4 mr-1" />
-                Install
+                {t("settings.dependencies.install")}
               </Button>
             )}
           </>

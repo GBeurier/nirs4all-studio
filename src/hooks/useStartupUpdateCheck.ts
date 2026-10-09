@@ -12,6 +12,7 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import i18n from "i18next";
 import { useUpdateStatus, useUpdateSettings } from "./useUpdates";
 import { useSetupStatus, useIsConfigAligned } from "./useRecommendedConfig";
 import { api } from "@/api/transport";
@@ -75,11 +76,11 @@ export function useStartupUpdateCheck() {
       parts.push(`nirs4all ${status.nirs4all.latest_version}`);
     }
 
-    toast("Updates available", {
-      description: `New versions: ${parts.join(", ")}`,
+    toast(i18n.t("common.updates.available.title"), {
+      description: i18n.t("common.updates.available.description", { versions: parts.join(", ") }),
       duration: 8000,
       action: {
-        label: "View",
+        label: i18n.t("common.updates.available.view"),
         onClick: () => navigate("/settings?tab=updates"),
       },
     });
@@ -93,11 +94,11 @@ export function useStartupUpdateCheck() {
     if (isAligned) return;
     if (misalignedCount === 0) return;
 
-    toast("Configuration drift detected", {
-      description: `${misalignedCount} package${misalignedCount > 1 ? "s" : ""} differ from recommended config`,
+    toast(i18n.t("common.updates.drift.title"), {
+      description: i18n.t("common.updates.drift.description", { count: misalignedCount }),
       duration: 6000,
       action: {
-        label: "Review",
+        label: i18n.t("common.updates.drift.review"),
         onClick: () => navigate("/settings?tab=advanced"),
       },
     });

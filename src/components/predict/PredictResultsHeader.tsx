@@ -114,7 +114,7 @@ export function PredictResultsHeader({
       {preprocessingBadges.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Preprocessing
+            {t("predict.view.preprocessing")}
           </span>
           {preprocessingBadges.map((badge) => (
             <Badge key={badge.key} variant="outline" className="text-xs">

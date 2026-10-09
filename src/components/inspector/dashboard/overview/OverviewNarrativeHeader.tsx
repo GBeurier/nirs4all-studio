@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowUpRight, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,12 +19,6 @@ export interface OverviewNarrativeHeaderProps {
   className?: string;
 }
 
-const directionCopy: Record<NonNullable<OverviewNarrativeHeaderProps["direction"]>, string> = {
-  higher: "Higher is better",
-  lower: "Lower is better",
-  neutral: "Directional guidance not set",
-};
-
 const directionTone: Record<NonNullable<OverviewNarrativeHeaderProps["direction"]>, string> = {
   higher: "border-emerald-500/20 text-emerald-700 dark:text-emerald-300",
   lower: "border-amber-500/20 text-amber-700 dark:text-amber-300",
@@ -42,6 +37,8 @@ export function OverviewNarrativeHeader({
   actions,
   className,
 }: OverviewNarrativeHeaderProps) {
+  const { t } = useTranslation();
+
   return (
     <Card className={cn(
       "overflow-hidden border-border/60 shadow-sm",
@@ -54,29 +51,29 @@ export function OverviewNarrativeHeader({
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary" className="gap-1.5 border-border/60 bg-background/70 text-[10px] uppercase tracking-[0.18em]">
                 <Sparkles className="h-3 w-3" />
-                Guided overview
+                {t("inspector.dashboard.guidedOverview")}
               </Badge>
               <Badge variant="outline" className={cn("text-[10px] uppercase tracking-[0.16em]", directionTone[direction])}>
-                {directionCopy[direction]}
+                {t(`inspector.dashboard.direction.${direction}`)}
               </Badge>
             </div>
 
             <div className="space-y-1">
               <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                Metric focus
+                {t("inspector.dashboard.metricFocus")}
               </div>
               <div className="text-2xl font-semibold tracking-tight text-foreground">
                 {metricLabel}
               </div>
               <div className="text-sm leading-6 text-muted-foreground">
-                {narrative ?? `This view is scoped to ${scopeLabel}. Compare the filtered prediction space before diving into individual charts.`}
+                {narrative ?? t("inspector.dashboard.defaultNarrative", { scope: scopeLabel })}
               </div>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-xl border border-border/60 bg-background/70 p-3">
                 <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                  Current scope
+                  {t("inspector.dashboard.currentScope")}
                 </div>
                 <div className="mt-1 text-sm font-medium text-foreground">
                   {scopeLabel}
@@ -84,10 +81,10 @@ export function OverviewNarrativeHeader({
               </div>
               <div className="rounded-xl border border-border/60 bg-background/70 p-3">
                 <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                  Best chain
+                  {t("inspector.dashboard.bestChain")}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
-                  <span>{bestChainLabel ?? "No ranked chain"}</span>
+                  <span>{bestChainLabel ?? t("inspector.dashboard.noRankedChain")}</span>
                   {bestChainScore != null ? (
                     <Badge variant="outline" className="border-border/60 text-[10px] uppercase tracking-wide">
                       {bestChainScore}

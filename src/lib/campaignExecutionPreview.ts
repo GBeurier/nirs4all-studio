@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import { resolveExperimentExecutionAdapter } from "./experimentExecutionAdapter";
 import type { ExperimentExecutionAdapter } from "./experimentExecutionAdapter";
 import type { NewExperimentNativeBackendAvailability } from "./experimentExecutionEnvironment";
@@ -7,9 +9,9 @@ import type {
 import type { CampaignExecutionBackend, CampaignSpec } from "./campaignSpecTypes";
 
 export function getCampaignExecutionBackendLabel(backend: CampaignExecutionBackend): string {
-  if (backend === "cluster") return "Cluster";
-  if (backend === "wasm-local") return "WASM local";
-  return "Local Python";
+  if (backend === "cluster") return i18n.t("newExperiment.campaign.backend.cluster");
+  if (backend === "wasm-local") return i18n.t("newExperiment.campaign.backend.wasmLocal");
+  return i18n.t("newExperiment.campaign.backend.localPython");
 }
 
 export function buildCampaignExecutionAdapterPreview(

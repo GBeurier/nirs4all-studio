@@ -1,3 +1,4 @@
+import "@/lib/__tests__/support/experimentI18n";
 import { describe, expect, it } from "vitest";
 
 import type { CampaignPlanPreview } from "../campaignPlan";
@@ -5,7 +6,7 @@ import {
   buildCampaignCapabilityCardData,
   buildCampaignSummaryFields,
   campaignPlanHiddenLabels,
-  campaignSinglePairSplitTagLabel,
+  getCampaignSinglePairSplitTagLabel,
   formatCampaignCompatibilityDetailLabels,
   formatCampaignDatasetDetailLabels,
   formatCampaignExecutionAdapterLine,
@@ -141,7 +142,7 @@ describe("campaignPlanPresentation", () => {
     expect(campaignPlanHiddenLabels.datasets).toBe("more dataset inputs");
     expect(campaignPlanHiddenLabels.pipelines).toBe("more pipeline inputs");
     expect(campaignPlanHiddenLabels.singlePairSplits).toBe("more split candidates");
-    expect(campaignSinglePairSplitTagLabel).toBe("strict one-pair");
+    expect(getCampaignSinglePairSplitTagLabel()).toBe("one dataset / one pipeline");
     expect(formatHiddenCampaignPreviewCount(3, "more planned runs")).toBe("+ 3 more planned runs");
     expect(formatHiddenCampaignPreviewCount(0, "more planned runs")).toBeNull();
     expect(formatCampaignGroupByTag("batch")).toBe("group_by: batch");

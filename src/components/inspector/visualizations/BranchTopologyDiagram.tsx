@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { useInspectorSelection } from '@/context/useInspectorSelection';
 import { buildBranchTopologyDiagramLayout } from '@/lib/inspector/branchTopologyData';
@@ -14,6 +15,7 @@ interface BranchTopologyDiagramProps {
 }
 
 export function BranchTopologyDiagram({ data, isLoading }: BranchTopologyDiagramProps) {
+  const { t } = useTranslation();
   const { select } = useInspectorSelection();
   const { viewportRef, dimensions } = useInspectorChartViewport();
   const [hovered, setHovered] = useState<BranchTopologyHoveredNode | null>(null);
@@ -34,7 +36,7 @@ export function BranchTopologyDiagram({ data, isLoading }: BranchTopologyDiagram
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        <span className="text-sm">Loading topology data...</span>
+        <span className="text-sm">{t('inspector.charts.loading.branchTopology')}</span>
       </div>
     );
   }
@@ -42,7 +44,7 @@ export function BranchTopologyDiagram({ data, isLoading }: BranchTopologyDiagram
   if (layout.allNodes.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        {getBranchTopologyEmptyMessage()}
+        {getBranchTopologyEmptyMessage(t)}
       </div>
     );
   }

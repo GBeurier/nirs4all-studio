@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
@@ -49,6 +50,7 @@ interface GenerateResponse {
 }
 
 export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { state } = useSynthesisBuilder();
   const [exportMode, setExportMode] = useState<"workspace" | "csv">("workspace");
@@ -97,7 +99,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
           ? (error as { detail?: unknown }).detail
           : null;
         throw new Error(
-          typeof detail === "string" && detail ? detail : "Generation failed",
+          typeof detail === "string" && detail ? detail : t("spectraSynthesis.export.failedTitle"),
         );
       }
     },
@@ -130,10 +132,10 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
-            Export Synthetic Dataset
+            {t("spectraSynthesis.export.title")}
           </DialogTitle>
           <DialogDescription>
-            Generate and export the dataset with {state.n_samples} samples
+            {t("spectraSynthesis.export.description", { count: state.n_samples })}
           </DialogDescription>
         </DialogHeader>
 
@@ -143,19 +145,21 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
               <CheckCircle2 className="h-12 w-12" />
             </div>
             <div className="text-center space-y-2">
-              <p className="font-medium">Dataset Generated Successfully</p>
+              <p className="font-medium">{t("spectraSynthesis.export.successTitle")}</p>
               <p className="text-sm text-muted-foreground">
-                Shape: {generateMutation.data.shape[0]} samples x{" "}
-                {generateMutation.data.shape[1]} wavelengths
+                {t("spectraSynthesis.export.shape", {
+                  samples: generateMutation.data.shape[0],
+                  wavelengths: generateMutation.data.shape[1],
+                })}
               </p>
               {generateMutation.data.export_path && (
                 <p className="text-sm text-muted-foreground break-all">
-                  Saved to: {generateMutation.data.export_path}
+                  {t("spectraSynthesis.export.savedTo", { path: generateMutation.data.export_path })}
                 </p>
               )}
               {generateMutation.data.linked_to_workspace && (
                 <p className="text-sm text-green-600">
-                  Linked to workspace
+                  {t("spectraSynthesis.export.linkedToWorkspace")}
                 </p>
               )}
             </div>
@@ -166,11 +170,11 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
               <AlertCircle className="h-12 w-12" />
             </div>
             <div className="text-center space-y-2">
-              <p className="font-medium text-destructive">Generation Failed</p>
+              <p className="font-medium text-destructive">{t("spectraSynthesis.export.failedTitle")}</p>
               <p className="text-sm text-muted-foreground">
                 {generateMutation.error instanceof Error
                   ? generateMutation.error.message
-                  : "Unknown error"}
+                  : t("spectraSynthesis.export.unknownError")}
               </p>
             </div>
           </div>
@@ -178,7 +182,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
           <div className="space-y-4 py-4">
             {/* Dataset name */}
             <div className="space-y-2">
-              <Label htmlFor="dataset-name">Dataset Name</Label>
+              <Label htmlFor="dataset-name">{t("spectraSynthesis.export.datasetName")}</Label>
               <Input
                 id="dataset-name"
                 placeholder={state.name || "synthetic_nirs"}
@@ -189,7 +193,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
 
             {/* Export mode selection */}
             <div className="space-y-3">
-              <Label>Export Destination</Label>
+              <Label>{t("spectraSynthesis.export.destination")}</Label>
               <RadioGroup
                 value={exportMode}
                 onValueChange={(v) => setExportMode(v as "workspace" | "csv")}
@@ -203,11 +207,11 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
                   >
                     <Database className="h-4 w-4 text-teal-600" />
                     <div>
-                      <div>Add to Workspace</div>
+                      <div>{t("spectraSynthesis.export.toWorkspace")}</div>
                       <div className="text-xs text-muted-foreground">
                         {workspace
-                          ? `Export to ${workspace.name} and link automatically`
-                          : "No workspace selected"}
+                          ? t("spectraSynthesis.export.workspaceDescription", { name: workspace.name })
+                          : t("spectraSynthesis.export.noWorkspaceSelected")}
                       </div>
                     </div>
                   </Label>
@@ -221,9 +225,9 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
                   >
                     <FolderOpen className="h-4 w-4 text-cyan-600" />
                     <div>
-                      <div>Export to Folder</div>
+                      <div>{t("spectraSynthesis.export.toFolder")}</div>
                       <div className="text-xs text-muted-foreground">
-                        Save as CSV files to a custom location
+                        {t("spectraSynthesis.export.folderDescription")}
                       </div>
                     </div>
                   </Label>
@@ -234,7 +238,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
             {/* Custom path input */}
             {exportMode === "csv" && (
               <div className="space-y-2">
-                <Label htmlFor="custom-path">Export Path</Label>
+                <Label htmlFor="custom-path">{t("spectraSynthesis.export.path")}</Label>
                 <Input
                   id="custom-path"
                   placeholder="/path/to/export/folder"
@@ -242,8 +246,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
                   onChange={(e) => setCustomPath(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Dataset will be exported to this folder with Xcal.csv, Xval.csv,
-                  ycal.csv, yval.csv
+                  {t("spectraSynthesis.export.pathHint")}
                 </p>
               </div>
             )}
@@ -251,15 +254,13 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
             {/* Warnings */}
             {hasNoSteps && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                No steps are enabled. Add at least a Features step for basic
-                generation.
+                {t("spectraSynthesis.export.warningNoSteps")}
               </div>
             )}
 
             {exportMode === "workspace" && !workspace && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                No workspace is currently selected. Please select a workspace first
-                or use "Export to Folder" option.
+                {t("spectraSynthesis.export.warningNoWorkspace")}
               </div>
             )}
           </div>
@@ -267,11 +268,11 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
 
         <DialogFooter>
           {generateMutation.isSuccess || generateMutation.isError ? (
-            <Button onClick={handleClose}>Close</Button>
+            <Button onClick={handleClose}>{t("common.close")}</Button>
           ) : (
             <>
               <Button variant="outline" onClick={handleClose}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={handleGenerate}
@@ -285,12 +286,12 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
                 {generateMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
+                    {t("spectraSynthesis.export.generating")}
                   </>
                 ) : (
                   <>
                     <Download className="mr-2 h-4 w-4" />
-                    Generate & Export
+                    {t("spectraSynthesis.export.generate")}
                   </>
                 )}
               </Button>

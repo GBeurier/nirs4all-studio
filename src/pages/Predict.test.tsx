@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import i18next from "i18next";
 
 const mocks = vi.hoisted(() => ({
   predict: vi.fn(),
@@ -42,6 +43,7 @@ vi.mock("@/lib/motion", () => ({
 }));
 
 import Predict from "./Predict";
+import en from "@/locales/en";
 import { MlReadinessContext } from "@/context/useMlReadiness";
 import {
   createPersistedArchiveV2Selection,
@@ -50,6 +52,9 @@ import {
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
+
+// Library-level errors (not rendered through the mocked hook) use the real English resources.
+await i18next.init({ lng: "en", resources: { en: { translation: en } } });
 
 function selection() {
   return createPersistedArchiveV2Selection({
@@ -95,7 +100,7 @@ async function renderPage() {
 
 async function enterSpectraAndRun(container: HTMLElement, value: string) {
   const textarea = container.querySelector<HTMLTextAreaElement>(
-    'textarea[aria-label="Raw spectra matrix"]',
+    'textarea[aria-label="predict.archiveInput.matrixAria"]',
   )!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!
@@ -103,7 +108,7 @@ async function enterSpectraAndRun(container: HTMLElement, value: string) {
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
   });
   const run = Array.from(container.querySelectorAll("button"))
-    .find((button) => button.textContent?.includes("Run Archive V2 prediction"))!;
+    .find((button) => button.textContent?.includes("predict.archiveInput.calculate"))!;
   await act(async () => run.click());
 }
 
@@ -169,10 +174,10 @@ describe("Predict Archive V2 page", () => {
       }),
       execution: { engine: "core_rust_methods", allow_fallback: false },
     }));
-    await waitFor(() => expect(container.textContent).toContain("Archive V2 predictions"));
+    await waitFor(() => expect(container.textContent).toContain("predict.archiveResults.title"));
     expect(container.textContent).toContain("protein");
     expect(container.textContent).toContain("moisture");
-    expect(container.textContent).toContain("No validated conformal intervals were presented");
+    expect(container.textContent).toContain("predict.archiveResults.noConformal");
   });
 
   it("loads and renders persisted multi-target intervals without reshaping order", async () => {
@@ -202,8 +207,8 @@ describe("Predict Archive V2 page", () => {
     const container = await renderPage();
     await enterSpectraAndRun(container, "[[1, 2], [3, 4]]");
     await waitFor(() => expect(container.querySelector('[data-testid="conformal-presentation"]')).not.toBeNull());
-    expect(container.textContent).toContain("Persisted conformal intervals");
-    expect(container.textContent).toContain("Unbounded");
+    expect(container.textContent).toContain("predict.archiveResults.conformalIntervals");
+    expect(container.textContent).toContain("predict.archiveResults.unbounded");
     expect(container.textContent).toContain("predict.0");
     expect(mocks.loadConformal).toHaveBeenCalledWith(expect.objectContaining({
       presentation_fingerprint: "f".repeat(64),
@@ -220,7 +225,7 @@ describe("Predict Archive V2 page", () => {
 
     persistArchiveV2Selection({ ...selection(), target_names: ["moisture", "protein"] });
     await enterSpectraAndRun(container, "[[1, 2]]");
-    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith(expect.stringContaining("Archive identity changed")));
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("predict.errors.predictionFailed", { description: "predict.page.archiveIdentityChanged" }));
     expect(mocks.predict).not.toHaveBeenCalled();
   });
 });

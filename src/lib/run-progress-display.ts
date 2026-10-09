@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import type { PipelineRun, RunMetrics } from "@/types/runs";
 
 export type DisplayMetrics = Partial<RunMetrics>;
@@ -262,7 +263,7 @@ export function buildPipelinePrimarySummary(
 
   const fitCount = getPipelineFitCount(pipeline);
   if (fitCount != null) {
-    parts.push(`${fitCount} fits`);
+    parts.push(i18next.t("runs.progress.fits", { count: fitCount }));
   }
 
   return parts.join(" · ");
@@ -274,7 +275,7 @@ export function buildPipelineCompactSummary(
   const parts: string[] = [];
   const foldCount = getPipelineFoldCount(pipeline);
   if (foldCount != null) {
-    parts.push(`${foldCount} folds`);
+    parts.push(i18next.t("runs.progress.folds", { count: foldCount }));
   }
 
   if (pipeline.model) {

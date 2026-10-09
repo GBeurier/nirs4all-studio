@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ import { invalidatePredictionRelatedQueries } from "@/lib/prediction-deletion";
 import { buildRunStorageArtifactMetadata } from "@/lib/runs/pageData";
 import type { RunsExecutionJobListIndicators } from "@/lib/runs/pageData";
 import { formatRunProgress, formatRunTokenLabel } from "@/lib/runs/format";
+import { formatDatetime, formatDuration } from "./runDetailUtils";
 import { getRuntimeResultStatusDisplay } from "@/ui/runtime";
 import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
 import { getApiErrorMessage } from "@/api/transport";
@@ -59,31 +61,15 @@ interface RunItemProps {
   executionJob?: RunsExecutionJobListIndicators;
 }
 
+const DEFAULT_SELECTED_METRICS = [...DEFAULT_DATASET_ITEM_REGRESSION_METRICS];
+
 // ============================================================================
 // Formatting helpers
 // ============================================================================
 
-function formatDuration(seconds: number | null): string {
-  if (seconds == null) return "-";
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return `${h}h ${m}m`;
-}
-
-function formatDatetime(iso: string | null): string {
-  if (!iso) return "-";
-  try {
-    return new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
-  } catch {
-    return iso;
-  }
-}
-
-function formatExecutionTokenLabel(value: string | null): string | null {
+function formatExecutionTokenLabel(value: string | null, t: TFunction): string | null {
   if (!value) return null;
-  return formatRunTokenLabel(value);
+  return formatRunTokenLabel(value, t);
 }
 
 function formatExecutionProgress(progress: number | null): string | null {
@@ -108,36 +94,38 @@ function RunSummaryStrip({
   showBestScore?: boolean;
   className?: string;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className={cn("flex items-center gap-2 text-xs text-muted-foreground flex-wrap", className)}>
       <TooltipProvider>
         <Tooltip><TooltipTrigger asChild>
           <span className="flex items-center gap-0.5"><Database className="h-3 w-3" />{datasets.length}</span>
-        </TooltipTrigger><TooltipContent>Datasets</TooltipContent></Tooltip>
+        </TooltipTrigger><TooltipContent>{t("runs.item.datasets")}</TooltipContent></Tooltip>
       </TooltipProvider>
       <span className="text-muted-foreground/40">|</span>
       <TooltipProvider>
         <Tooltip><TooltipTrigger asChild>
           <span className="flex items-center gap-0.5"><Layers className="h-3 w-3" />{run.pipeline_runs_count}</span>
-        </TooltipTrigger><TooltipContent>Pipeline runs</TooltipContent></Tooltip>
+        </TooltipTrigger><TooltipContent>{t("runs.item.pipelineRuns")}</TooltipContent></Tooltip>
       </TooltipProvider>
       <span className="text-muted-foreground/40">|</span>
       <TooltipProvider>
         <Tooltip><TooltipTrigger asChild>
           <span className="flex items-center gap-0.5"><Target className="h-3 w-3" />{run.final_models_count}</span>
-        </TooltipTrigger><TooltipContent>Final models</TooltipContent></Tooltip>
+        </TooltipTrigger><TooltipContent>{t("runs.item.finalModels")}</TooltipContent></Tooltip>
       </TooltipProvider>
       <span className="text-muted-foreground/40">|</span>
       <TooltipProvider>
         <Tooltip><TooltipTrigger asChild>
           <span className="flex items-center gap-0.5"><Box className="h-3 w-3" />{run.total_models_trained}</span>
-        </TooltipTrigger><TooltipContent>Models trained</TooltipContent></Tooltip>
+        </TooltipTrigger><TooltipContent>{t("runs.item.modelsTrained")}</TooltipContent></Tooltip>
       </TooltipProvider>
       <span className="text-muted-foreground/40">|</span>
       <TooltipProvider>
         <Tooltip><TooltipTrigger asChild>
           <span className="flex items-center gap-0.5"><Layers className="h-3 w-3 rotate-90" />{run.total_folds}</span>
-        </TooltipTrigger><TooltipContent>Total folds</TooltipContent></Tooltip>
+        </TooltipTrigger><TooltipContent>{t("runs.item.totalFolds")}</TooltipContent></Tooltip>
       </TooltipProvider>
       {run.model_classes && run.model_classes.length > 0 && (
         <>
@@ -151,7 +139,7 @@ function RunSummaryStrip({
                   </Badge>
                 ))}
               </span>
-            </TooltipTrigger><TooltipContent>Trained model classes</TooltipContent></Tooltip>
+            </TooltipTrigger><TooltipContent>{t("runs.item.modelClasses")}</TooltipContent></Tooltip>
           </TooltipProvider>
         </>
       )}
@@ -177,11 +165,11 @@ function RunSummaryStrip({
 // RunItem — main component
 // ============================================================================
 
-export function RunItem({
+export const RunItem = memo(function RunItem({
   run,
   onViewDetails,
   workspaceId,
-  selectedMetrics = [...DEFAULT_DATASET_ITEM_REGRESSION_METRICS],
+  selectedMetrics = DEFAULT_SELECTED_METRICS,
   executionJob,
 }: RunItemProps) {
   const queryClient = useQueryClient();
@@ -192,17 +180,17 @@ export function RunItem({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const statusDisplay = getRuntimeResultStatusDisplay(run.status);
   const canDeleteRun = !statusDisplay.isBusy;
-  const storageArtifactMetadata = buildRunStorageArtifactMetadata(run);
+  const storageArtifactMetadata = buildRunStorageArtifactMetadata(run, t);
   const storageArtifactFields = storageArtifactMetadata.fields;
-  const executionRequestedBackend = formatExecutionTokenLabel(executionJob?.requestedBackend ?? null);
-  const executionBackend = formatExecutionTokenLabel(executionJob?.executionBackend ?? null);
-  const executionStatus = formatExecutionTokenLabel(executionJob?.executionStatus ?? null);
+  const executionRequestedBackend = formatExecutionTokenLabel(executionJob?.requestedBackend ?? null, t);
+  const executionBackend = formatExecutionTokenLabel(executionJob?.executionBackend ?? null, t);
+  const executionStatus = formatExecutionTokenLabel(executionJob?.executionStatus ?? null, t);
   const executionProgressUnavailable = executionJob?.progressUnavailable === true;
   const executionProgress = executionProgressUnavailable
     ? null
     : formatExecutionProgress(executionJob?.progress ?? null);
   const executionProgressSummary = executionProgressUnavailable
-    ? "Telemetry unavailable"
+    ? t("runs.item.telemetryUnavailable")
     : executionProgress;
   const executionJobCount = executionJob?.jobCount ?? 0;
   const executionActiveJobCount = executionJob?.activeJobCount ?? 0;
@@ -234,7 +222,7 @@ export function RunItem({
       await deleteN4AWorkspaceRun(workspaceId, run.run_id);
       await invalidatePredictionRelatedQueries(queryClient);
       setDeleteOpen(false);
-      toast.success(`Run ${run.name || run.run_id} deleted`);
+      toast.success(t("runs.item.deleted", { name: run.name || run.run_id }));
     } catch (error) {
       notifyApiError(error, t("errors.action.deleteRun"));
     } finally {
@@ -267,7 +255,7 @@ export function RunItem({
                     {run.project_id && (
                       <Badge variant="outline" className="text-xs shrink-0">
                         <FolderKanban className="h-3 w-3 mr-1" />
-                        {run.project_name || "Project"}
+                        {run.project_name || t("runs.item.project")}
                       </Badge>
                     )}
                     <RuntimeEngineBadge source={run} />
@@ -295,22 +283,22 @@ export function RunItem({
 
               <div className="ml-auto flex items-center gap-3 shrink-0 lg:ml-0 lg:justify-self-end">
                 <div className="hidden md:flex items-center gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1" title="Duration">
+                  <span className="flex items-center gap-1" title={t("runs.item.duration")}>
                     <Timer className="h-3 w-3" />
                     {formatDuration(run.duration_seconds)}
                   </span>
-                  <span className="flex items-center gap-1" title="Artifact size">
+                  <span className="flex items-center gap-1" title={t("runs.item.artifactSize")}>
                     <HardDrive className="h-3 w-3" />
                     {storageArtifactMetadata.artifactSizeLabel}
                   </span>
                   {showExecutionSummary && (
-                    <span className="flex items-center gap-1" title="Execution backend">
+                    <span className="flex items-center gap-1" title={t("runs.item.executionBackend")}>
                       <RefreshCw className={cn("h-3 w-3", executionJob?.executionStatus === "running" && "animate-spin")} />
-                      Task {executionStatus ?? executionRequestedBackend ?? executionBackend}
+                      {t("runs.item.task", { label: executionStatus ?? executionRequestedBackend ?? executionBackend })}
                       {executionProgressSummary
                         ? `${executionProgressUnavailable ? " · " : " "}${executionProgressSummary}`
                         : ""}
-                      {showExecutionJobCounts ? ` · ${executionJobCount} jobs` : ""}
+                      {showExecutionJobCounts ? ` · ${t("runs.item.jobs", { count: executionJobCount })}` : ""}
                     </span>
                   )}
                 </div>
@@ -327,13 +315,14 @@ export function RunItem({
                     e.stopPropagation();
                     setDeleteOpen(true);
                   }}
-                  title={canDeleteRun ? "Delete run" : "Stop the run before deleting it"}
+                  title={canDeleteRun ? t("runs.item.deleteRun") : t("runs.item.stopBeforeDelete")}
+                  aria-label={t("runs.item.deleteRun")}
                 >
                   {deleteBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onViewDetails(run); }}>
                   <Eye className="h-4 w-4 mr-1" />
-                  Details
+                  {t("runs.item.details")}
                 </Button>
               </div>
             </div>
@@ -346,7 +335,7 @@ export function RunItem({
             {executionJob?.hasDurableRecord && (
               <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="font-medium text-foreground">Execution</span>
+                  <span className="font-medium text-foreground">{t("runs.item.execution")}</span>
                   {executionStatus && (
                     <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
                       {executionStatus}
@@ -354,17 +343,17 @@ export function RunItem({
                   )}
                   {executionRequestedBackend && (
                     <span className="text-muted-foreground">
-                      requested {executionRequestedBackend}
+                      {t("runs.item.requested", { backend: executionRequestedBackend })}
                     </span>
                   )}
                   {executionBackend && executionBackend !== executionRequestedBackend && (
                     <span className="text-muted-foreground">
-                      running on {executionBackend}
+                      {t("runs.item.runningOn", { backend: executionBackend })}
                     </span>
                   )}
                   {executionProgressUnavailable && (
                     <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                      Telemetry unavailable
+                      {t("runs.item.telemetryUnavailable")}
                     </Badge>
                   )}
                   {executionProgress && (
@@ -374,17 +363,17 @@ export function RunItem({
                   )}
                   {showExecutionJobCounts && (
                     <span className="text-muted-foreground">
-                      {executionJobCount} jobs
+                      {t("runs.item.jobs", { count: executionJobCount })}
                     </span>
                   )}
                   {executionActiveJobCount > 0 && (
                     <span className="text-muted-foreground">
-                      {executionActiveJobCount} active
+                      {t("runs.item.active", { count: executionActiveJobCount })}
                     </span>
                   )}
                   {executionFailedJobCount > 0 && (
                     <span className="text-destructive">
-                      {executionFailedJobCount} failed
+                      {t("runs.item.failed", { count: executionFailedJobCount })}
                     </span>
                   )}
                 </div>
@@ -428,13 +417,13 @@ export function RunItem({
 
             {datasets.length === 0 && statusDisplay.isBusy && (
               <div className="text-sm text-muted-foreground text-center py-3">
-                Waiting for results...
+                {t("runs.item.waiting")}
               </div>
             )}
 
             {datasets.length === 0 && !statusDisplay.isBusy && !run.error && (
               <div className="text-sm text-muted-foreground text-center py-3">
-                No dataset results available
+                {t("runs.item.noResults")}
               </div>
             )}
           </CardContent>
@@ -445,20 +434,20 @@ export function RunItem({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete run?</AlertDialogTitle>
+            <AlertDialogTitle>{t("runs.item.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the run and all linked predictions, chains, arrays, logs, and orphaned artifacts from the active workspace.
+              {t("runs.item.deleteDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteBusy}>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteRun} disabled={!canDeleteRun || deleteBusy}>
               {deleteBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-              Delete run
+              {t("runs.item.deleteRun")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
   );
-}
+});

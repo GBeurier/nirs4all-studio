@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import {
   Activity,
@@ -51,10 +52,11 @@ export function SyntheticPresetTab({
   selectedPreset,
   setConfig,
 }: SyntheticPresetTabProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Select a preset configuration for quick dataset generation.
+        {t("datasets.synthetic.presetHint")}
       </p>
 
       {isLoadingPresets ? (
@@ -89,10 +91,10 @@ export function SyntheticPresetTab({
                     </p>
                     <div className="flex gap-2 mt-2">
                       <Badge variant="secondary" className="text-xs">
-                        {preset.n_samples} samples
+                        {t("datasets.samplesCount", { count: preset.n_samples })}
                       </Badge>
                       <Badge variant="outline" className="text-xs">
-                        {preset.complexity}
+                        {t(`datasets.synthetic.complexities.${preset.complexity}`, { defaultValue: preset.complexity })}
                       </Badge>
                     </div>
                   </div>
@@ -111,9 +113,9 @@ export function SyntheticPresetTab({
         >
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-xs">Dataset Name (optional)</Label>
+              <Label className="text-xs">{t("datasets.synthetic.nameOptional")}</Label>
               <Input
-                placeholder="Auto-generated if empty"
+                placeholder={t("datasets.synthetic.namePlaceholder")}
                 value={config.name ?? ""}
                 onChange={(event) =>
                   setConfig((prev) => ({
@@ -134,7 +136,7 @@ export function SyntheticPresetTab({
                   }
                 />
                 <Label htmlFor="auto-link-preset" className="text-xs">
-                  Auto-link to workspace
+                  {t("datasets.synthetic.options.autoLink")}
                 </Label>
               </div>
             </div>

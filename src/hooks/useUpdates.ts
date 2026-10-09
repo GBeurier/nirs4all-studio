@@ -10,6 +10,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import i18n from "i18next";
+import { formatBytes as formatByteSize } from "@/utils/formatters";
 import {
   getUpdateStatus,
   checkForUpdates,
@@ -168,14 +170,8 @@ export function useHasUpdates() {
  * Format bytes to human readable string
  */
 export function formatBytes(bytes: number | null | undefined): string {
-  if (bytes === null || bytes === undefined) return "Unknown size";
-  if (bytes === 0) return "0 B";
-
-  const units = ["B", "KB", "MB", "GB"];
-  const k = 1024;
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${units[i]}`;
+  if (bytes === null || bytes === undefined) return i18n.t("common.format.unknownSize");
+  return formatByteSize(bytes);
 }
 
 // ============= Auto-Update Hooks =============
@@ -233,7 +229,7 @@ export function useUpdateDownload() {
   // Cancel download mutation
   const cancelDownloadMutation = useMutation({
     mutationFn: () => {
-      if (!downloadJobId) throw new Error("No download in progress");
+      if (!downloadJobId) throw new Error(i18n.t("common.updates.noDownloadInProgress"));
       return cancelDownload(downloadJobId);
     },
     onSuccess: () => {

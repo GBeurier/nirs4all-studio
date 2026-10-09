@@ -4,7 +4,10 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import i18n from "i18next";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+import "@/lib/i18n";
 
 const mocks = vi.hoisted(() => ({
   readiness: vi.fn(async () => ({ ml_ready: true })),
@@ -18,11 +21,9 @@ const mocks = vi.hoisted(() => ({
   restartBackendForRuntimeSwitch: vi.fn(),
 }));
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 vi.mock("@/api/transport", async () => {
   const actual = await vi.importActual<typeof import("@/api/transport")>("@/api/transport");
@@ -340,11 +341,11 @@ describe("PythonEnvPicker", () => {
     const view = await renderComponent(electronApi);
 
     await waitFor(() => {
-      expect(view.container.textContent).toContain("settings.pythonEnv.change");
+      expect(view.container.textContent).toContain("Change...");
     });
 
     const changeButton = Array.from(document.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("settings.pythonEnv.change"),
+      (button) => button.textContent?.includes("Change..."),
     );
     expect(changeButton).toBeTruthy();
 
@@ -638,11 +639,11 @@ describe("PythonEnvPicker", () => {
     const view = await renderComponent(electronApi);
 
     await waitFor(() => {
-      expect(view.container.textContent).toContain("settings.pythonEnv.change");
+      expect(view.container.textContent).toContain("Change...");
     });
 
     const changeButton = Array.from(document.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("settings.pythonEnv.change"),
+      (button) => button.textContent?.includes("Change..."),
     );
     expect(changeButton).toBeTruthy();
 

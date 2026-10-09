@@ -12,6 +12,7 @@
  */
 
 import { Settings2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -56,6 +57,7 @@ export function ChartConfigPopover({
   onChange,
   onReset,
 }: ChartConfigPopoverProps) {
+  const { t } = useTranslation();
   const update = <K extends keyof ChartConfig>(key: K, value: ChartConfig[K]) => {
     onChange((prev) => ({ ...prev, [key]: value }));
   };
@@ -96,14 +98,14 @@ export function ChartConfigPopover({
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="h-8 gap-1.5">
           <Settings2 className="h-3.5 w-3.5" />
-          <span className="text-xs">Configure</span>
+          <span className="text-xs">{t("predictions.viewer.config.configure")}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[23rem] space-y-4 p-4">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold">Chart settings</div>
+          <div className="text-sm font-semibold">{t("predictions.viewer.config.title")}</div>
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onReset}>
-            Reset
+            {t("common.reset")}
           </Button>
         </div>
 

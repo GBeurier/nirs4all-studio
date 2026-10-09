@@ -1,3 +1,4 @@
+import "@/lib/__tests__/support/experimentI18n";
 /**
  * @vitest-environment jsdom
  */

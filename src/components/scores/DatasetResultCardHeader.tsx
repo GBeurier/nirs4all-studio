@@ -1,5 +1,6 @@
 import { forwardRef, type ComponentPropsWithoutRef } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardHeader } from "@/components/ui/card";
@@ -49,6 +50,7 @@ export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultC
   className,
   ...triggerProps
 }, ref) {
+  const { t } = useTranslation();
   return (
     <CardHeader
       ref={ref}
@@ -73,11 +75,11 @@ export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultC
             <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
               {taskType && <span className="capitalize">{taskType}</span>}
               {headerBestRow?.syntheticRefit && (
-                <span>CV estimate — not a refit score</span>
+                <span>{t("results.scores.cvEstimate")}</span>
               )}
               {headerSummary.refitCount > 0 && (
                 <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-emerald-500/10 text-emerald-600">
-                  {headerSummary.refitCount} refit{headerSummary.refitCount !== 1 ? "s" : ""}
+                  {t("results.scores.refitCount", { count: headerSummary.refitCount })}
                 </Badge>
               )}
             </div>
@@ -89,7 +91,7 @@ export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultC
             <div className="flex min-w-0 items-center gap-2 lg:grid lg:grid-cols-[minmax(0,6rem)_minmax(0,1fr)_minmax(0,7rem)] lg:items-center">
               <div className="min-w-0 shrink-0">
                 <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {headerSummary.bestSummaryLabel}
+                  {t(`results.scores.bestSummary.${headerSummary.bestSummaryKind}`)}
                 </div>
                 {headerSummary.delta != null && headerSummary.delta > 0 && (
                   <Badge variant="outline" className="mt-1 h-4 gap-0.5 px-1 text-[9px] text-emerald-500 border-emerald-500/20">
@@ -120,7 +122,8 @@ export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultC
                 event.stopPropagation();
                 onDeleteDataset();
               }}
-              title="Delete all predictions for this dataset"
+              title={t("results.scores.deleteDatasetPredictions")}
+              aria-label={t("results.scores.deleteDatasetPredictions")}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -135,11 +138,11 @@ export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultC
                 onOpenDetails();
               }}
             >
-              <Eye className="h-3 w-3" /> details
+              <Eye className="h-3 w-3" /> {t("results.scores.details")}
             </Button>
           )}
           {datasetId && <Button variant="ghost" size="sm" className="text-xs h-6" asChild onClick={(event) => event.stopPropagation()}>
-            <Link to={`/datasets/${encodeURIComponent(datasetId)}`} aria-label={`Open dataset ${datasetName}`}>
+            <Link to={`/datasets/${encodeURIComponent(datasetId)}`} aria-label={t("results.scores.openDataset", { name: datasetName })}>
               <ExternalLink className="h-3 w-3" />
             </Link>
           </Button>}

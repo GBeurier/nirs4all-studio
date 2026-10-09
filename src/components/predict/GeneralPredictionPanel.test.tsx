@@ -16,6 +16,7 @@ vi.mock("./DataInput", () => ({ DataInput: ({ model, onRunPrediction }: { model:
 </> }));
 vi.mock("./PredictResults", () => ({ PredictResults: ({ result }: { result: { predictions: number[] } }) => <p>Predicted values: {result.predictions.join(", ")}</p> }));
 
+import "@/lib/i18n";
 import { GeneralPredictionPanel } from "./GeneralPredictionPanel";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

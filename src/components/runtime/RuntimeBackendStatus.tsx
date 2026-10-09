@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Cpu } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { getRuntimeSummary } from "@/api/system";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ export function RuntimeBackendStatus({
   className,
   compact = false,
 }: RuntimeBackendStatusProps) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<NativeRuntimeStatus>("checking");
 
   useEffect(() => {
@@ -42,10 +44,10 @@ export function RuntimeBackendStatus({
   }, []);
 
   const statusLabel = status === "checking"
-    ? "Checking"
+    ? t("runs.runtime.checking")
     : status === "available"
-      ? "Available"
-      : "Unavailable";
+      ? t("runs.runtime.available")
+      : t("runs.runtime.unavailable");
 
   return (
     <div
@@ -55,14 +57,14 @@ export function RuntimeBackendStatus({
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Cpu className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Analysis Engine</span>
+          <span className="text-sm font-medium">{t("runs.runtime.analysisEngine")}</span>
         </div>
         <Badge variant={status === "available" ? "default" : "secondary"}>
           {statusLabel}
         </Badge>
       </div>
       <p className="text-xs text-muted-foreground">
-        Runs the analyses configured in Studio.
+        {t("runs.runtime.analysisEngineHint")}
       </p>
     </div>
   );

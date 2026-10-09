@@ -1,7 +1,7 @@
-export const BRANCH_COMPARISON_EMPTY_MESSAGE = 'No branch comparison data available.';
+import type { TFunction } from 'i18next';
 
-export function getBranchComparisonEmptyMessage(): string {
-  return BRANCH_COMPARISON_EMPTY_MESSAGE;
+export function getBranchComparisonEmptyMessage(t: TFunction): string {
+  return t('inspector.charts.empty.branchComparison');
 }
 
 export function formatBranchComparisonLabel(label: string, maxLength = 16): string {
@@ -20,10 +20,13 @@ export function formatBranchComparisonCountBadge(count: number): string {
   return `n=${count}`;
 }
 
-export function formatBranchComparisonChainCount(count: number): string {
-  return `Chains: ${count}`;
+export function formatBranchComparisonChainCount(count: number, t: TFunction): string {
+  return t('inspector.charts.tooltip.chains', { value: count });
 }
 
-export function formatBranchComparisonConfidenceInterval(lower: number, upper: number): string {
-  return `CI: [${formatBranchComparisonScore(lower)}, ${formatBranchComparisonScore(upper)}]`;
+export function formatBranchComparisonConfidenceInterval(lower: number, upper: number, t: TFunction): string {
+  return t('inspector.charts.tooltip.confidenceInterval', {
+    lower: formatBranchComparisonScore(lower),
+    upper: formatBranchComparisonScore(upper),
+  });
 }

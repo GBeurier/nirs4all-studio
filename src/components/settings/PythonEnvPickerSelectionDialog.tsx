@@ -4,6 +4,7 @@ import {
   FolderOpen,
   Loader2,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -205,6 +206,7 @@ function DetectedEnvironmentList({
   detectedLabel,
   onSelectDetectedEnv,
 }: DetectedEnvironmentListProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
       <label className="text-sm font-medium">{detectedLabel}</label>
@@ -235,7 +237,7 @@ function DetectedEnvironmentList({
                     {getDesktopEnvKindLabel(env.envKind)}
                   </Badge>
                   <Badge variant="outline" className="text-xs">
-                    {env.hasCorePackages ? "nirs4all available" : "nirs4all preparation needed"}
+                    {env.hasCorePackages ? t("settings.pythonEnvPicker.nirs4allAvailable") : t("settings.pythonEnvPicker.nirs4allNeedsPreparation")}
                   </Badge>
                   <Badge variant={env.writable ? "outline" : "secondary"} className="text-xs">
                     {getDesktopEnvWriteAccessLabel(env.writable)}
@@ -245,10 +247,10 @@ function DetectedEnvironmentList({
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground truncate" title={env.path}>
-                  Root: {env.path}
+                  {t("settings.pythonEnvPicker.root", { path: env.path })}
                 </p>
                 <p className="text-xs text-muted-foreground truncate" title={env.pythonPath}>
-                  Executable: {env.pythonPath}
+                  {t("settings.pythonEnvPicker.executable", { path: env.pythonPath })}
                 </p>
               </div>
               {!isCurrent && <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />}

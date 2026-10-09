@@ -10,6 +10,7 @@
  */
 
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Tooltip } from "recharts";
 import type { PreviewData } from "../contexts";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,7 @@ export function SpectraChart({
   className,
   unit = data.axis_unit ?? "nm",
 }: SpectraChartProps) {
+  const { t } = useTranslation();
   const { mergedData, lineColors } = useMemo(
     () => buildSynthesisChartData(data, maxSpectraLines),
     [data, maxSpectraLines],
@@ -56,7 +58,7 @@ export function SpectraChart({
   if (mergedData.length === 0) {
     return (
       <div className={cn("flex items-center justify-center h-full", className)}>
-        <p className="text-muted-foreground">No data to display</p>
+        <p className="text-muted-foreground">{t("spectraSynthesis.chart.noData")}</p>
       </div>
     );
   }
@@ -70,8 +72,8 @@ export function SpectraChart({
         margin={{ top: 10, right: 20, left: 0, bottom: 30 }}
         unit={unit}
         gridOpacity={0.5}
-        xLabel={{ value: unit === "index" ? "Feature index" : getWavelengthAxisLabel(unit), offset: -20, fontSize: 11 }}
-        yLabel={{ value: "Absorbance", fontSize: 11 }}
+        xLabel={{ value: unit === "index" ? t("spectraSynthesis.chart.featureIndex") : getWavelengthAxisLabel(unit), offset: -20, fontSize: 11 }}
+        yLabel={{ value: t("spectraSynthesis.chart.absorbance"), fontSize: 11 }}
         xAxisProps={{ stroke: SPECTRA_CHART_THEME.axisText, fontSize: 11 }}
         yAxisProps={{ stroke: SPECTRA_CHART_THEME.axisText, fontSize: 11 }}
         xTickFormatter={(v) => `${Math.round(v)}`}

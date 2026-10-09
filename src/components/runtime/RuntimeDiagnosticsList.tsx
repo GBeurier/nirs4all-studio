@@ -1,4 +1,5 @@
 import { AlertCircle, AlertTriangle, Info } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { RuntimeDiagnosticList as SharedRuntimeDiagnosticList } from "nirs4all-ui/components";
 
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,7 @@ const diagnosticIcons = {
 } as const;
 
 function RuntimeDiagnosticRow({ diagnostic }: { diagnostic: RuntimeDiagnosticItem }) {
+  const { t } = useTranslation();
   const tone = diagnosticToneClasses[diagnostic.tone];
   const Icon = diagnosticIcons[diagnostic.tone];
 
@@ -61,7 +63,7 @@ function RuntimeDiagnosticRow({ diagnostic }: { diagnostic: RuntimeDiagnosticIte
           )}
           {diagnostic.unsupportedCapability && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Missing capability: {formatRuntimeTokenLabel(diagnostic.unsupportedCapability)}
+              {t("runs.runtime.missingCapability", { capability: formatRuntimeTokenLabel(diagnostic.unsupportedCapability) })}
             </p>
           )}
         </div>
@@ -73,7 +75,7 @@ function RuntimeDiagnosticRow({ diagnostic }: { diagnostic: RuntimeDiagnosticIte
 export function RuntimeDiagnosticsList({
   source,
   diagnostics,
-  title = "Runtime Diagnostics",
+  title,
   className,
 }: {
   source?: unknown;
@@ -81,6 +83,7 @@ export function RuntimeDiagnosticsList({
   title?: string;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const items = diagnostics ?? normalizeRuntimeDiagnostics(source);
   if (items.length === 0) return null;
 
@@ -88,7 +91,7 @@ export function RuntimeDiagnosticsList({
     <div className={cn("space-y-2", className)}>
       <h4 className="flex items-center gap-2 text-sm font-medium">
         <AlertTriangle className="h-4 w-4 text-amber-600" />
-        {title}
+        {title ?? t("runs.runtime.diagnostics")}
       </h4>
       <SharedRuntimeDiagnosticList
         diagnostics={items}

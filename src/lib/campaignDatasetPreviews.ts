@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import {
   formatDatasetAggregationLabel,
   formatDatasetAggregationSourceLabel,
@@ -28,17 +30,17 @@ export function buildCampaignDatasetPreviews(campaign: CampaignSpec): CampaignDa
       sourceCountLabel: formatOptionalCampaignPreviewCount(dataset.schemaRef?.sourceCount, "source"),
       sourceModeLabel: formatCampaignDatasetSourceModeLabel(dataset.schemaRef),
       representationCountLabel: formatOptionalCampaignPreviewCount(dataset.schemaRef?.representations.length, "representation"),
-      dataViewLabel: defaultDataView?.label || "Unknown data view",
+      dataViewLabel: defaultDataView?.label || i18n.t("newExperiment.campaign.unknownDataView"),
       dataViewTaskLabel: formatCampaignDatasetTaskTypeLabel(defaultDataView?.taskType ?? dataset.schemaRef?.taskType),
       targetCountLabel: formatOptionalCampaignPreviewCount(getCampaignDatasetTargetCount(schema, dataset.schemaRef), "target"),
-      targetLabel: schema?.targetLabel || "Unknown target",
-      metadataColumnCountLabel: formatOptionalCampaignPreviewCount(schema?.metadataColumnCount, "metadata column"),
+      targetLabel: schema?.targetLabel || i18n.t("newExperiment.campaign.unknownTarget"),
+      metadataColumnCountLabel: formatOptionalCampaignPreviewCount(schema?.metadataColumnCount, "metadataColumn"),
       repetitionLabel: schema?.repetitionColumn
-        ? `repetition: ${schema.repetitionColumn}`
-        : "No repetition column",
+        ? i18n.t("newExperiment.campaign.repetition", { value: schema.repetitionColumn })
+        : i18n.t("newExperiment.campaign.noRepetition"),
       aggregationLabel: aggregation
         ? formatDatasetAggregationLabel(aggregation)
-        : "No aggregation configured",
+        : i18n.t("newExperiment.campaign.noAggregation"),
       aggregationSourceLabel: aggregation ? formatDatasetAggregationSourceLabel(aggregation) : null,
       splitGroupBy: dataset.splitGroupBy,
     };

@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import "@/lib/__tests__/support/experimentI18n";
 import { StrictMode, act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Routes, Route, useNavigate, useSearchParams } from "react-router-dom";

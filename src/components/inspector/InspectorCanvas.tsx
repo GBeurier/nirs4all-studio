@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Target } from "lucide-react";
 import { EmptyState } from "@/components/ui/state-display";
 import { useInspectorData } from "@/context/useInspectorDataContext";
@@ -18,6 +19,7 @@ import { InspectorWorkspaceStrip } from "./InspectorWorkspaceStrip";
 import { useInspectorPanelRuntime } from "./hooks/useInspectorPanelRuntime";
 
 export function InspectorCanvas() {
+  const { t } = useTranslation();
   const { groups, scoreColumn, selectedScoreRefKey, partition, targetIndex, refresh, chains, isLoading, error, totalChains } = useInspectorData();
   const { filteredChains, filteredChainIds, activeFilterCount, hasActiveFilters, clearAllFilters } = useInspectorFilter();
   const {
@@ -129,9 +131,9 @@ export function InspectorCanvas() {
       {panelIdsToRender.length === 0 ? (
         <EmptyState
           icon={Target}
-          title="No panels open"
-          description="Use the Panels control in the toolbar to reopen views, or restore the default workspace."
-          action={{ label: "Show all panels", onClick: showAll }}
+          title={t("inspector.canvas.noPanelsTitle")}
+          description={t("inspector.canvas.noPanelsDescription")}
+          action={{ label: t("inspector.toolbar.showAllPanels"), onClick: showAll }}
         />
       ) : (
         <div className={gridClassName}>

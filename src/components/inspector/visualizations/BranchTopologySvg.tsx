@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   buildBranchTopologyEdgePath,
   getBranchTopologySelectableChainIds,
@@ -25,6 +26,8 @@ export function BranchTopologySvg({
   onHoveredChange,
   onNodeClick,
 }: BranchTopologySvgProps) {
+  const { t } = useTranslation();
+
   return (
     <svg width={layout.svgWidth} height={layout.svgHeight} className="select-none">
       {layout.edges.map((edge, i) => (
@@ -106,7 +109,7 @@ export function BranchTopologySvg({
           fontSize={9}
           opacity={0.6}
         >
-          {formatBranchTopologyPipelineLabel(pipelineName)}
+          {formatBranchTopologyPipelineLabel(pipelineName, t)}
         </text>
       )}
     </svg>

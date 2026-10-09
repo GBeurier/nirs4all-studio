@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import {
   getResultAnalysisMetadata,
   getResultAnalysisMetadataDimension,
@@ -29,21 +30,20 @@ function coerceTargetIndex(value: unknown): number | null {
   return numeric;
 }
 
-function formatTargetLabel(index: number, targetNames: readonly string[]): string {
-  const fallbackLabel = `Target ${index + 1}`;
-  if (targetNames.length === 0) return fallbackLabel;
-  if (targetNames.length === 1) return `${targetNames[0]} (${fallbackLabel})`;
-  return `${fallbackLabel} (${targetNames.length} names)`;
+function formatTargetLabel(index: number, targetNames: readonly string[], t: TFunction): string {
+  if (targetNames.length === 0) return t("inspector.targets.fallback", { index: index + 1 });
+  if (targetNames.length === 1) return t("inspector.targets.withName", { name: targetNames[0], index: index + 1 });
+  return t("inspector.targets.withNames", { index: index + 1, count: targetNames.length });
 }
 
-function normalizeAvailableTarget(target: InspectorAvailableTarget): InspectorTargetOption | null {
+function normalizeAvailableTarget(target: InspectorAvailableTarget, t: TFunction): InspectorTargetOption | null {
   const index = coerceTargetIndex(target.index);
   if (index == null) return null;
   const targetNames = Array.isArray(target.target_names)
     ? [...new Set(target.target_names.map(name => normalizedResultAnalysisString(name)).filter(Boolean))]
       .sort((left, right) => left.localeCompare(right))
     : [];
-  const label = normalizedResultAnalysisString(target.label) || formatTargetLabel(index, targetNames);
+  const label = normalizedResultAnalysisString(target.label) || formatTargetLabel(index, targetNames, t);
   return {
     value: String(index),
     index,
@@ -57,11 +57,12 @@ export function buildInspectorTargetOptions(
   chains: readonly InspectorChainSummary[],
   selectedTargetIndex = 0,
   availableTargets: readonly InspectorAvailableTarget[] = [],
+  t: TFunction,
 ): InspectorTargetOption[] {
   if (availableTargets.length > 0) {
     const optionsByIndex = new Map<number, InspectorTargetOption>();
     for (const target of availableTargets) {
-      const option = normalizeAvailableTarget(target);
+      const option = normalizeAvailableTarget(target, t);
       if (option) {
         optionsByIndex.set(option.index, option);
       }
@@ -72,7 +73,7 @@ export function buildInspectorTargetOptions(
       optionsByIndex.set(selectedIndex, {
         value: String(selectedIndex),
         index: selectedIndex,
-        label: `Target ${selectedIndex + 1}`,
+        label: t("inspector.targets.fallback", { index: selectedIndex + 1 }),
         count: 0,
         targetNames: [],
       });
@@ -121,7 +122,7 @@ export function buildInspectorTargetOptions(
       return {
         value: String(bucket.index),
         index: bucket.index,
-        label: formatTargetLabel(bucket.index, targetNames),
+        label: formatTargetLabel(bucket.index, targetNames, t),
         count: bucket.count,
         targetNames,
       };
@@ -132,7 +133,7 @@ export function buildInspectorTargetOptions(
     : [{
       value: "0",
       index: 0,
-      label: "Target 1",
+      label: t("inspector.targets.fallback", { index: 1 }),
       count: 0,
       targetNames: [],
     }];

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   BarChart,
   Bar,
@@ -36,6 +37,8 @@ export function ScoreHistogramPlot({
   hasSelection,
   onBarClick,
 }: ScoreHistogramPlotProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="relative h-full w-full">
       {statsSegments.length > 0 && (
@@ -53,12 +56,12 @@ export function ScoreHistogramPlot({
           <XAxis
             dataKey="label"
             tick={{ fontSize: 9 }}
-            label={{ value: scoreColumn ?? 'Score', position: 'insideBottom', offset: -10, style: { fontSize: 12, fill: '#94a3b8' } }}
+            label={{ value: scoreColumn ?? t('inspector.charts.axis.score'), position: 'insideBottom', offset: -10, style: { fontSize: 12, fill: '#94a3b8' } }}
             interval="preserveStartEnd"
           />
           <YAxis
             tick={{ fontSize: 10 }}
-            label={{ value: 'Count', angle: -90, position: 'insideLeft', offset: -5, style: { fontSize: 12, fill: '#94a3b8' } }}
+            label={{ value: t('inspector.charts.axis.count'), angle: -90, position: 'insideLeft', offset: -5, style: { fontSize: 12, fill: '#94a3b8' } }}
           />
           <RechartsTooltip content={<ScoreHistogramTooltip totalChains={totalChains} />} />
 

@@ -1,3 +1,5 @@
+import i18next from "i18next";
+import { formatRunTokenLabel } from "@/lib/runs/format";
 import type { ExecutionJobRecord } from "@/lib/runs/executionJobRecords";
 import type { PipelineRun, Run, RunMetrics, RunStatus } from "@/types/runs";
 import type { WorkspaceRunDetail } from "@/types/enriched-runs";
@@ -94,12 +96,12 @@ export function buildRunFromWorkspaceDetail(detail: WorkspaceRunDetail): Run {
   };
 }
 
-const LEGACY_RUN_STATUS_MESSAGES: Record<RunStatus, string> = {
-  queued: "Run queued",
-  running: "Run running",
-  completed: "Run completed",
-  failed: "Run failed",
-  partial: "Run partially completed",
+const LEGACY_RUN_STATUS_MESSAGE_KEYS: Record<RunStatus, string> = {
+  queued: "runs.progress.runQueued",
+  running: "runs.progress.runRunning",
+  completed: "runs.progress.runCompleted",
+  failed: "runs.progress.runFailed",
+  partial: "runs.progress.runPartial",
 };
 
 function clampProgress(progress: number): number {
@@ -112,9 +114,11 @@ function nonBlankString(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
-function formatStatusFallbackMessage(prefix: string, status: string): string {
+function formatStatusFallbackMessage(subject: "job" | "run", status: string): string {
   const normalizedStatus = status.replace(/[_-]+/g, " ").trim();
-  return normalizedStatus ? `${prefix} ${normalizedStatus}` : `${prefix} progress unavailable`;
+  return normalizedStatus
+    ? i18next.t(`runs.progress.${subject}Status`, { status: formatRunTokenLabel(normalizedStatus, i18next.t) })
+    : i18next.t(`runs.progress.${subject}ProgressUnavailable`);
 }
 
 function buildExecutionJobRecordMessage(record: ExecutionJobRecord): string {
@@ -125,7 +129,7 @@ function buildExecutionJobRecordMessage(record: ExecutionJobRecord): string {
 
   return nonBlankString(record.progress_message)
     ?? error
-    ?? formatStatusFallbackMessage("Job", record.status);
+    ?? formatStatusFallbackMessage("job", record.status);
 }
 
 function formatFoldAverageMetricParts(metrics: RunMetrics): string[] {
@@ -160,25 +164,25 @@ export function buildRunDerivedLogs(run: Pick<Run, "datasets">): string[] {
   const logs: string[] = [];
 
   run.datasets.forEach((dataset, datasetIndex) => {
-    logs.push(`[INFO] Dataset ${datasetIndex + 1}/${run.datasets.length}: ${dataset.dataset_name}`);
+    logs.push(`[INFO] ${i18next.t("runs.progress.log.dataset", { index: datasetIndex + 1, total: run.datasets.length, name: dataset.dataset_name })}`);
 
     dataset.pipelines.forEach((pipeline, pipelineIndex) => {
       logs.push(
-        `[INFO] Pipeline ${pipelineIndex + 1}/${dataset.pipelines.length}: ${pipeline.pipeline_name} (model=${pipeline.model})`,
+        `[INFO] ${i18next.t("runs.progress.log.pipeline", { index: pipelineIndex + 1, total: dataset.pipelines.length, name: pipeline.pipeline_name, model: pipeline.model })}`,
       );
 
       const folds = Object.values(pipeline.fold_metrics ?? {});
       if (folds.length > 0) {
         const parts = formatFoldAverageMetricParts(averageFoldMetrics(folds));
         if (parts.length > 0) {
-          logs.push(`[INFO] Fold averages (${folds.length} folds): ${parts.join(" | ")}`);
+          logs.push(`[INFO] ${i18next.t("runs.progress.log.foldAverages", { count: folds.length, metrics: parts.join(" | ") })}`);
         }
       }
 
       if (pipeline.metrics) {
         const parts = formatFinalMetricParts(pipeline.metrics);
         if (parts.length > 0) {
-          logs.push(`[INFO] Final metrics: ${parts.join(" | ")}`);
+          logs.push(`[INFO] ${i18next.t("runs.progress.log.finalMetrics", { metrics: parts.join(" | ") })}`);
         }
       }
     });
@@ -245,7 +249,7 @@ export function buildRunProgressDisplayData(
     ? currentPipelineIndex
     : bestPipelineIndex;
   const summaryMetrics = summaryPipeline ? getPipelineDisplayMetrics(summaryPipeline) : undefined;
-  const summaryLabel = isActiveRun ? "Current pipeline" : "Best completed";
+  const summaryLabel = isActiveRun ? i18next.t("runs.progress.currentPipeline") : i18next.t("runs.progress.bestCompleted");
   const summaryPrimaryText = summaryPipeline
     ? buildPipelinePrimarySummary(summaryPipelineIndex, totalPipelineCount, summaryPipeline)
     : undefined;
@@ -299,7 +303,8 @@ function buildLegacyRunProgressMessage(
     }
   }
 
-  return LEGACY_RUN_STATUS_MESSAGES[run.status] ?? formatStatusFallbackMessage("Run", run.status);
+  const messageKey = LEGACY_RUN_STATUS_MESSAGE_KEYS[run.status];
+  return (messageKey ? i18next.t(messageKey) : undefined) ?? formatStatusFallbackMessage("run", run.status);
 }
 
 function getLegacyRunProgress(run: Run, overallProgress: number): number {

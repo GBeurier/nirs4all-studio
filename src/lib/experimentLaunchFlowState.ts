@@ -1,10 +1,15 @@
+import i18n from "i18next";
+
 import type { MissingOperatorIssue } from "@/lib/pipelineOperatorAvailability";
 import type { ExperimentConfig } from "@/types/runs";
 
-export const EXPERIMENT_LAUNCH_SUCCESS_MESSAGE = "Experiment started!";
-export const EXPERIMENT_LAUNCH_GROUPING_BLOCKED_MESSAGE = "Check sample grouping before launching this experiment.";
-export const EXPERIMENT_LAUNCH_PREFLIGHT_UNAVAILABLE_MESSAGE = "Required analysis tools could not be checked.";
-export const EXPERIMENT_LAUNCH_PREFLIGHT_BLOCKED_TITLE = "Cannot start experiment";
+/** Launch toast copy; getters resolve the active language at read time. */
+export const experimentLaunchMessages = {
+  get success() { return i18n.t("newExperiment.launch.started"); },
+  get groupingBlocked() { return i18n.t("newExperiment.launch.errors.groupingBlocked"); },
+  get preflightUnavailable() { return i18n.t("newExperiment.launch.errors.preflightUnavailable"); },
+  get preflightBlockedTitle() { return i18n.t("newExperiment.launch.errors.cannotStart"); },
+};
 
 export interface ExperimentMissingNodesDialogState {
   isOpen: boolean;
@@ -43,9 +48,9 @@ export function getExperimentLaunchFailureDetail(error: unknown): string {
   const apiDetail = (error as { detail?: unknown } | null)?.detail;
   if (typeof apiDetail === "string" && apiDetail.trim()) return apiDetail;
   if (error instanceof Error && error.message) return error.message;
-  return "Unknown error";
+  return i18n.t("newExperiment.launch.errors.unknown");
 }
 
 export function formatExperimentLaunchFailureMessage(detail: string): string {
-  return `Failed to start: ${detail}`;
+  return i18n.t("newExperiment.launch.errors.failedToStart", { detail });
 }

@@ -1,20 +1,19 @@
+import type { TFunction } from 'i18next';
 import type { HyperparameterTrend } from '@/lib/inspector/hyperparameterSensitivityData';
-
-export const HYPERPARAMETER_EMPTY_DESCRIPTION = 'Chains need numeric model parameters and scores to populate this scatter.';
 
 export interface HyperparameterAvailableParamTags {
   visibleParams: string[];
   overflowCount: number;
 }
 
-export function getHyperparameterEmptyDescription(reason: string | null | undefined): string {
-  return reason?.trim() || HYPERPARAMETER_EMPTY_DESCRIPTION;
+export function getHyperparameterEmptyDescription(reason: string | null | undefined, t: TFunction): string {
+  return reason?.trim() || t('inspector.charts.empty.hyperparameter');
 }
 
-export function getHyperparameterScaleDescription(useLogX: boolean, logAllowed: boolean): string {
-  const base = useLogX ? 'Log scale is active.' : 'Linear scale is active.';
+export function getHyperparameterScaleDescription(useLogX: boolean, logAllowed: boolean, t: TFunction): string {
+  const base = useLogX ? t('inspector.charts.hyperparameter.logActive') : t('inspector.charts.hyperparameter.linearActive');
   if (logAllowed) return base;
-  return `${base} Log scale is disabled because some values are not positive.`;
+  return `${base} ${t('inspector.charts.hyperparameter.logDisabled')}`;
 }
 
 export function getHyperparameterAvailableParamTags(
@@ -28,12 +27,12 @@ export function getHyperparameterAvailableParamTags(
   };
 }
 
-export function getHyperparameterSelectionSummary(hasSelection: boolean, selectedCount: number): string {
-  return hasSelection ? `${selectedCount} selected` : 'No selection';
+export function getHyperparameterSelectionSummary(hasSelection: boolean, selectedCount: number, t: TFunction): string {
+  return hasSelection ? t('inspector.counts.selected', { count: selectedCount }) : t('inspector.charts.noSelection');
 }
 
-export function formatHyperparameterTrendSlope(trend: HyperparameterTrend): string {
-  return `slope ${trend.slope.toFixed(4)}`;
+export function formatHyperparameterTrendSlope(trend: HyperparameterTrend, t: TFunction): string {
+  return t('inspector.charts.hyperparameter.slope', { value: trend.slope.toFixed(4) });
 }
 
 export function formatHyperparameterTrendCorrelation(trend: HyperparameterTrend): string {

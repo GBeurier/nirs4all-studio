@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
+import { initEnglishI18n } from "../../predictionsTestI18n";
 import { coercePredictionVector } from "../fetchPartitionData";
+
+beforeAll(async () => {
+  await initEnglishI18n();
+});
 
 describe("coercePredictionVector", () => {
   it("keeps one-dimensional prediction arrays", () => {

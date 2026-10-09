@@ -56,7 +56,7 @@ export default function TransferAnalysis() {
 
   const handleRunAnalysis = useCallback(async () => {
     if (selectedDatasets.length < 2) {
-      setError('Please select at least 2 datasets for transfer analysis.');
+      setError(t('transferAnalysis.page.errorMinDatasets'));
       return;
     }
 
@@ -76,12 +76,12 @@ export default function TransferAnalysis() {
         setActivePreprocessing(response.preprocessings[0]);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Analysis failed';
+      const message = err instanceof Error ? err.message : t('transferAnalysis.page.errorFailed');
       setError(message);
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDatasets, preprocessingConfig, nComponents, knn]);
+  }, [selectedDatasets, preprocessingConfig, nComponents, knn, t]);
 
   return (
     <MlLoadingOverlay>
@@ -102,7 +102,7 @@ export default function TransferAnalysis() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                 <ArrowLeftRight className="h-4 w-4 text-primary" />
               </div>
-              <CardTitle className="text-lg">Transfer Analysis</CardTitle>
+              <CardTitle className="text-lg">{t('transferAnalysis.page.title')}</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -132,19 +132,19 @@ export default function TransferAnalysis() {
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Analyzing...
+                  {t('transferAnalysis.page.analyzing')}
                 </>
               ) : (
                 <>
                   <PlayCircle className="mr-2 h-4 w-4" />
-                  Run Analysis
+                  {t('transferAnalysis.page.run')}
                 </>
               )}
             </Button>
 
             {selectedDatasets.length < 2 && (
               <p className="text-xs text-muted-foreground text-center">
-                Select at least 2 datasets to compare
+                {t('transferAnalysis.page.selectMinDatasets')}
               </p>
             )}
           </CardContent>
@@ -170,15 +170,14 @@ export default function TransferAnalysis() {
               <div className="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-muted mb-4">
                 <ArrowLeftRight className="h-8 w-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">No Results Yet</h3>
+              <h3 className="text-lg font-semibold mb-2">{t('transferAnalysis.page.empty.title')}</h3>
               <p className="text-muted-foreground max-w-md mx-auto mb-4">
-                Select datasets and configure preprocessing options, then click "Run Analysis"
-                to evaluate transfer learning potential between your datasets.
+                {t('transferAnalysis.page.empty.description')}
               </p>
               <div className="flex flex-wrap gap-2 justify-center text-xs text-muted-foreground">
-                <span className="px-2 py-1 bg-muted rounded">Compare multiple datasets</span>
-                <span className="px-2 py-1 bg-muted rounded">Evaluate preprocessing impact</span>
-                <span className="px-2 py-1 bg-muted rounded">PCA-based metrics</span>
+                <span className="px-2 py-1 bg-muted rounded">{t('transferAnalysis.page.empty.compare')}</span>
+                <span className="px-2 py-1 bg-muted rounded">{t('transferAnalysis.page.empty.evaluate')}</span>
+                <span className="px-2 py-1 bg-muted rounded">{t('transferAnalysis.page.empty.pca')}</span>
               </div>
             </CardContent>
           </Card>

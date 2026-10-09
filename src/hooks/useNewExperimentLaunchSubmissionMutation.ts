@@ -15,8 +15,7 @@ import {
   type ExperimentLaunchPayloadPlan,
 } from "@/lib/experimentLaunchPayload";
 import {
-  EXPERIMENT_LAUNCH_PREFLIGHT_BLOCKED_TITLE,
-  EXPERIMENT_LAUNCH_SUCCESS_MESSAGE,
+  experimentLaunchMessages,
   getExperimentLaunchFailureDetail,
 } from "@/lib/experimentLaunchFlowState";
 
@@ -51,7 +50,7 @@ export function useNewExperimentLaunchSubmissionMutation({
     mutationFn: (submission: ExperimentLaunchSubmission) =>
       submitExperimentLaunchSubmission(submission, createRun, launchSubmitters),
     onSuccess: (run) => {
-      toast.success(EXPERIMENT_LAUNCH_SUCCESS_MESSAGE);
+      toast.success(experimentLaunchMessages.success);
       queryClient.invalidateQueries({ queryKey: ["runs"] });
       onRunCreated(run.id);
     },
@@ -67,7 +66,7 @@ export function useNewExperimentLaunchSubmissionMutation({
   ) => {
     const submissionBlockMessage = getExperimentLaunchPayloadSubmissionBlockMessage(launchPayloadPlan);
     if (submissionBlockMessage) {
-      toast.error(EXPERIMENT_LAUNCH_PREFLIGHT_BLOCKED_TITLE, { description: submissionBlockMessage });
+      toast.error(experimentLaunchMessages.preflightBlockedTitle, { description: submissionBlockMessage });
       return false;
     }
 

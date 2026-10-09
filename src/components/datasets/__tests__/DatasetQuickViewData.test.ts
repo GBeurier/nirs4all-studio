@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { tEn } from "@/lib/__tests__/support/enTranslator";
 import {
   deriveQuickViewLoadState,
   formatNumber,
@@ -195,8 +196,8 @@ describe("wavelength labels", () => {
   });
 
   it("switches the range title to wavenumber for cm⁻¹", () => {
-    expect(getWavelengthRangeTitle("cm⁻¹")).toBe("Wavenumber Range");
-    expect(getWavelengthRangeTitle("nm")).toBe("Wavelength Range");
+    expect(getWavelengthRangeTitle("cm⁻¹", tEn)).toBe("Wavenumber Range");
+    expect(getWavelengthRangeTitle("nm", tEn)).toBe("Wavelength Range");
   });
 
   it("renders range and resolution labels with a fallback", () => {

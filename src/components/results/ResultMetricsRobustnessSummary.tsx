@@ -1,4 +1,6 @@
 import { Fragment } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import {
   FileSpreadsheet,
   ShieldCheck,
@@ -10,7 +12,6 @@ import {
   sanitizeFilename,
 } from "@/components/predictions/viewer/export";
 import {
-  ROBUSTNESS_COVERAGE_STATUS_LABELS,
   createRobustnessDegradationHeatmap,
   createRobustnessDegradationRows,
   createRobustnessWorstSliceRows,
@@ -114,15 +115,15 @@ function formatFingerprint(fingerprint: string): string {
     : fingerprint;
 }
 
-function formatSpectralReplaySource(source: NonNullable<ResultRobustnessSummaryData["spectralReplay"]>["source"]): string {
-  return source === "predictor_bundle" ? "saved bundle" : "in-memory predictor";
+function formatSpectralReplaySource(source: NonNullable<ResultRobustnessSummaryData["spectralReplay"]>["source"], t: TFunction): string {
+  return source === "predictor_bundle" ? t("results.robustness.replaySource.bundle") : t("results.robustness.replaySource.memory");
 }
 
-function formatExecutionScope(scope: RobustnessSummaryCard["executionScope"]): string {
-  if (scope === "baseline") return "baseline";
-  if (scope === "prediction_replay") return "prediction replay";
-  if (scope === "spectral_replay") return "spectral/OOD replay";
-  return "execution scope unknown";
+function formatExecutionScope(scope: RobustnessSummaryCard["executionScope"], t: TFunction): string {
+  if (scope === "baseline") return t("results.robustness.scope.baseline");
+  if (scope === "prediction_replay") return t("results.robustness.scope.predictionReplay");
+  if (scope === "spectral_replay") return t("results.robustness.scope.spectralReplay");
+  return t("results.robustness.scope.unknown");
 }
 
 export function buildRobustnessScenarioCsvRows(summary: ResultRobustnessSummaryData): RobustnessScenarioCsvRow[] {
@@ -156,28 +157,29 @@ export function buildRobustnessScenarioCsvFilename(summary: ResultRobustnessSumm
 }
 
 function RobustnessDegradationMatrix({ rows }: { rows: RobustnessDegradationRow[] }) {
+  const { t } = useTranslation();
   return (
     <div className="mb-3 rounded-md border border-border/60 bg-muted/10 p-2.5">
       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-medium text-foreground">Degradation matrix</p>
+          <p className="text-xs font-medium text-foreground">{t("results.robustness.matrix.title")}</p>
           <p className="text-[11px] text-muted-foreground">
-            Metadata-only view from summary rows; Studio does not recompute robustness metrics.
+            {t("results.robustness.matrix.description")}
           </p>
         </div>
         <Badge variant="outline" className="text-[10px]">
-          {rows.length} scenario{rows.length === 1 ? "" : "s"}
+          {t("results.robustness.scenarioCount", { count: rows.length })}
         </Badge>
       </div>
 
       <div className="overflow-x-auto">
         <div className="min-w-[620px]">
           <div className="grid grid-cols-5 gap-1 border-b border-border/60 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-            <span>Scenario</span>
+            <span>{t("results.robustness.scenario")}</span>
             <span>RMSE Δ</span>
             <span>MAE Δ</span>
-            <span>Coverage</span>
-            <span>Worst slice</span>
+            <span>{t("results.robustness.matrix.coverage")}</span>
+            <span>{t("results.robustness.matrix.worstSlice")}</span>
           </div>
           <div className="divide-y divide-border/50">
             {rows.map(row => (
@@ -193,7 +195,7 @@ function RobustnessDegradationMatrix({ rows }: { rows: RobustnessDegradationRow[
                   {row.maeDeltaLabel}
                 </Badge>
                 <Badge variant={statusBadgeVariant[row.coverageStatus]} className="w-fit text-[10px]">
-                  {row.coverageStatusLabel}
+                  {t(`results.robustness.coverageStatus.${row.coverageStatus}`)}
                 </Badge>
                 <span className="truncate text-muted-foreground">
                   {row.worstSliceLabel ?? "—"}
@@ -215,6 +217,7 @@ function heatmapCellBackground(cell: RobustnessDegradationHeatmapCell): string |
 }
 
 function RobustnessDegradationHeatmap({ cells }: { cells: RobustnessDegradationHeatmapCell[] }) {
+  const { t } = useTranslation();
   if (cells.length === 0) return null;
 
   const metrics = Array.from(new Map(cells.map(cell => [cell.metric, cell.metricLabel])).entries());
@@ -227,13 +230,13 @@ function RobustnessDegradationHeatmap({ cells }: { cells: RobustnessDegradationH
     <div className="mb-3 rounded-md border border-border/60 bg-muted/10 p-2.5">
       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-medium text-foreground">Degradation heatmap</p>
+          <p className="text-xs font-medium text-foreground">{t("results.robustness.heatmap.title")}</p>
           <p className="text-[11px] text-muted-foreground">
-            Visual projection of summary rows; color intensity is normalized per metric.
+            {t("results.robustness.heatmap.description")}
           </p>
         </div>
         <Badge variant="outline" className="text-[10px]">
-          {scenarios.length} scenario{scenarios.length === 1 ? "" : "s"} · {metrics.length} metric{metrics.length === 1 ? "" : "s"}
+          {t("results.robustness.scenarioCount", { count: scenarios.length })} · {t("results.robustness.metricCount", { count: metrics.length })}
         </Badge>
       </div>
 
@@ -242,7 +245,7 @@ function RobustnessDegradationHeatmap({ cells }: { cells: RobustnessDegradationH
           className="grid min-w-[520px] gap-1 text-[11px]"
           style={{ gridTemplateColumns: `minmax(140px, 1fr) repeat(${metrics.length}, minmax(86px, 0.7fr))` }}
         >
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Scenario</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{t("results.robustness.scenario")}</span>
           {metrics.map(([metric, label]) => (
             <span key={metric} className="text-[10px] uppercase tracking-wide text-muted-foreground">
               {label}
@@ -276,6 +279,7 @@ function RobustnessDegradationHeatmap({ cells }: { cells: RobustnessDegradationH
 }
 
 function RobustnessWorstSliceTable({ rows }: { rows: RobustnessWorstSliceRow[] }) {
+  const { t } = useTranslation();
   const availableRows = rows.filter(row => row.available);
   if (availableRows.length === 0) return null;
 
@@ -283,23 +287,23 @@ function RobustnessWorstSliceTable({ rows }: { rows: RobustnessWorstSliceRow[] }
     <div className="mb-3 rounded-md border border-border/60 bg-muted/10 p-2.5">
       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-medium text-foreground">Worst slices</p>
+          <p className="text-xs font-medium text-foreground">{t("results.robustness.slices.title")}</p>
           <p className="text-[11px] text-muted-foreground">
-            Summary-row view of nirs4all slice diagnostics; Studio does not recompute slice metrics.
+            {t("results.robustness.slices.description")}
           </p>
         </div>
         <Badge variant="outline" className="text-[10px]">
-          {availableRows.length} slice{availableRows.length === 1 ? "" : "s"}
+          {t("results.robustness.slices.count", { count: availableRows.length })}
         </Badge>
       </div>
 
       <div className="overflow-x-auto">
         <div className="min-w-[560px]">
           <div className="grid grid-cols-4 gap-1 border-b border-border/60 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-            <span>Scenario</span>
-            <span>Slice</span>
-            <span>Metric</span>
-            <span>Value</span>
+            <span>{t("results.robustness.scenario")}</span>
+            <span>{t("results.robustness.slices.slice")}</span>
+            <span>{t("results.robustness.slices.metric")}</span>
+            <span>{t("results.robustness.slices.value")}</span>
           </div>
           <div className="divide-y divide-border/50">
             {availableRows.map(row => (
@@ -323,6 +327,7 @@ function RobustnessWorstSliceTable({ rows }: { rows: RobustnessWorstSliceRow[] }
 }
 
 function RobustnessScenarioCard({ card }: { card: RobustnessSummaryCard }) {
+  const { t } = useTranslation();
   const distributionLabel = card.distribution ? card.distribution.replace(/_/g, " ") : null;
 
   return (
@@ -331,14 +336,14 @@ function RobustnessScenarioCard({ card }: { card: RobustnessSummaryCard }) {
         <div className="min-w-0">
           <p className="truncate text-xs font-medium text-foreground">{card.scenarioLabel}</p>
           <p className="text-[11px] text-muted-foreground">
-            severity {formatRobustnessSummaryMetric(card.severity, 2)}
+            {t("results.robustness.card.severity", { value: formatRobustnessSummaryMetric(card.severity, 2) })}
             {distributionLabel ? ` · ${distributionLabel}` : ""}
             {" · "}
-            {card.nSamples} samples
+            {t("results.conformal.sampleCount", { count: card.nSamples })}
           </p>
         </div>
         <Badge variant={statusBadgeVariant[card.status]} className="shrink-0 text-[10px]">
-          {ROBUSTNESS_COVERAGE_STATUS_LABELS[card.status]}
+          {t(`results.robustness.coverageStatus.${card.status}`)}
         </Badge>
       </div>
 
@@ -347,16 +352,16 @@ function RobustnessScenarioCard({ card }: { card: RobustnessSummaryCard }) {
           variant={card.requiresSpectralReplay ? "secondary" : "outline"}
           className="text-[10px]"
         >
-          {formatExecutionScope(card.executionScope)}
+          {formatExecutionScope(card.executionScope, t)}
         </Badge>
         {card.requiresSpectralReplay && (
           <Badge variant="outline" className="text-[10px]">
-            spectral/OOD replay evidence
+            {t("results.robustness.card.replayEvidence")}
           </Badge>
         )}
         {distributionLabel && (
           <Badge variant="outline" className="text-[10px]">
-            distribution {distributionLabel}
+            {t("results.robustness.card.distribution", { value: distributionLabel })}
           </Badge>
         )}
       </div>
@@ -364,13 +369,13 @@ function RobustnessScenarioCard({ card }: { card: RobustnessSummaryCard }) {
       <div className="grid grid-cols-2 gap-2 text-[11px]">
         <Metric label="RMSE" value={formatRobustnessSummaryMetric(card.rmse)} delta={card.rmseDelta} />
         <Metric label="MAE" value={formatRobustnessSummaryMetric(card.mae)} delta={card.maeDelta} />
-        <Metric label="Bias" value={formatRobustnessSummaryMetric(card.bias)} />
-        <Metric label="Coverage min" value={formatRobustnessSummaryMetric(card.coverage.minObserved)} />
+        <Metric label={t("results.robustness.card.bias")} value={formatRobustnessSummaryMetric(card.bias)} />
+        <Metric label={t("results.robustness.card.coverageMin")} value={formatRobustnessSummaryMetric(card.coverage.minObserved)} />
       </div>
 
       {card.worstSlice.label && (
         <p className="mt-2 break-words text-[11px] text-muted-foreground">
-          Worst slice: {card.worstSlice.label} · {card.worstSlice.metric} {formatRobustnessSummaryMetric(card.worstSlice.value)}
+          {t("results.robustness.card.worstSlice", { slice: card.worstSlice.label, metric: card.worstSlice.metric, value: formatRobustnessSummaryMetric(card.worstSlice.value) })}
         </p>
       )}
     </div>
@@ -394,6 +399,7 @@ function Metric({ label, value, delta }: { label: string; value: string; delta?:
 }
 
 export function ResultMetricsRobustnessSummary({ summary }: ResultMetricsRobustnessSummaryProps) {
+  const { t } = useTranslation();
   if (!summary || summary.cards.length === 0) return null;
 
   const degradationRows = createRobustnessDegradationRows(summary.cards);
@@ -414,11 +420,11 @@ export function ResultMetricsRobustnessSummary({ summary }: ResultMetricsRobustn
         <div>
           <h4 className="flex items-center gap-2 text-sm font-medium">
             <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-            Robustness summary
+            {t("results.robustness.title")}
           </h4>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {formatMode(summary.mode)} · report v{summary.reportVersion}
-            {summary.sliceBy.length > 0 && ` · slices: ${summary.sliceBy.join(", ")}`}
+            {t("results.robustness.report", { mode: formatMode(summary.mode), version: summary.reportVersion })}
+            {summary.sliceBy.length > 0 && ` · ${t("results.robustness.sliceBy", { slices: summary.sliceBy.join(", ") })}`}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <Badge variant={guaranteeBadgeVariant[summary.guarantee.tone]} className="text-[10px]">
@@ -437,22 +443,22 @@ export function ResultMetricsRobustnessSummary({ summary }: ResultMetricsRobustn
           </div>
           {summary.guarantee.invalidationReasons.length > 0 && (
             <p className="mt-1 text-[11px] text-destructive">
-              Invalidated: {summary.guarantee.invalidationReasons.join("; ")}
+              {t("results.conformal.invalidated", { reasons: summary.guarantee.invalidationReasons.join("; ") })}
             </p>
           )}
           {summary.spectralReplay && (
             <div className="mt-2 rounded-md border border-border/60 bg-muted/10 px-2 py-1.5 text-[11px] text-muted-foreground">
-              <p className="font-medium text-foreground">Spectral replay provenance</p>
+              <p className="font-medium text-foreground">{t("results.robustness.replay.title")}</p>
               <p>
-                {formatSpectralReplaySource(summary.spectralReplay.source)}
+                {formatSpectralReplaySource(summary.spectralReplay.source, t)}
                 {" · "}
-                route {summary.spectralReplay.route}
+                {t("results.robustness.replay.route", { route: summary.spectralReplay.route })}
                 {" · "}
-                sample ids {summary.spectralReplay.sample_ids_forwarded ? "forwarded" : "not forwarded"}
+                {summary.spectralReplay.sample_ids_forwarded ? t("results.robustness.replay.idsForwarded") : t("results.robustness.replay.idsNotForwarded")}
               </p>
               {summary.spectralReplay.predictor_bundle && (
                 <p className="break-all">
-                  bundle {summary.spectralReplay.predictor_bundle}
+                  {t("results.robustness.replay.bundle", { bundle: summary.spectralReplay.predictor_bundle })}
                 </p>
               )}
             </div>
@@ -467,7 +473,7 @@ export function ResultMetricsRobustnessSummary({ summary }: ResultMetricsRobustn
             onClick={handleExportScenarios}
           >
             <FileSpreadsheet className="h-3 w-3" />
-            Scenarios CSV
+            {t("results.robustness.scenariosCsv")}
           </Button>
           <Badge variant="outline" className="max-w-48 break-all text-[10px]">
             {formatFingerprint(summary.fingerprint)}

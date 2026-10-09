@@ -7,6 +7,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useInspectorSelection } from '@/context/useInspectorSelection';
 import {
@@ -32,6 +33,7 @@ interface HyperparameterSensitivityProps {
 }
 
 export function HyperparameterSensitivity({ data, isLoading }: HyperparameterSensitivityProps) {
+  const { t } = useTranslation();
   const { viewportRef, dimensions } = useInspectorChartViewport({
     initialWidth: 500,
     initialHeight: 350,
@@ -77,14 +79,14 @@ export function HyperparameterSensitivity({ data, isLoading }: HyperparameterSen
     return buildHyperparameterTickValues(yDomain);
   }, [yDomain]);
 
-  const chartTitle = chartData?.param_name ?? 'Parameter';
-  const scoreLabel = chartData?.score_column ?? 'Score';
+  const chartTitle = chartData?.param_name ?? t('inspector.charts.axis.parameter');
+  const scoreLabel = chartData?.score_column ?? t('inspector.charts.axis.score');
 
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        <span className="text-sm">Loading hyperparameter data...</span>
+        <span className="text-sm">{t('inspector.charts.loading.hyperparameter')}</span>
       </div>
     );
   }
@@ -93,8 +95,8 @@ export function HyperparameterSensitivity({ data, isLoading }: HyperparameterSen
     return (
       <HyperparameterStateCard
         icon={AlertCircle}
-        title="No hyperparameter signal"
-        description={getHyperparameterEmptyDescription(reason)}
+        title={t('inspector.charts.hyperparameter.noSignal')}
+        description={getHyperparameterEmptyDescription(reason, t)}
       />
     );
   }

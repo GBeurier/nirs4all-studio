@@ -289,6 +289,8 @@ export function WorkspacesSettingsTab({
   loadWorkspace,
   loadN4AWorkspaces,
 }: WorkspacesSettingsTabProps) {
+  const { t } = useTranslation();
+
   return (
     <>
       {/* Linked Workspaces Management */}
@@ -296,10 +298,10 @@ export function WorkspacesSettingsTab({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FolderOpen className="h-5 w-5" />
-            Workspaces
+            {t("settings.page.workspaces.title")}
           </CardTitle>
           <CardDescription>
-            Manage nirs4all workspaces. The active workspace is where all runs and artifacts are saved.
+            {t("settings.page.workspaces.description")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -313,7 +315,7 @@ export function WorkspacesSettingsTab({
               trigger={
                 <Button variant="outline">
                   <FolderPlus className="mr-2 h-4 w-4" />
-                  Create New
+                  {t("settings.page.workspaces.createNew")}
                 </Button>
               }
             />
@@ -342,10 +344,10 @@ export function WorkspacesSettingsTab({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileArchive className="h-5 w-5" />
-              Discovered Content
+              {t("settings.page.workspaces.discoveredTitle")}
             </CardTitle>
             <CardDescription>
-              Runs, exports, predictions, and templates from the active workspace.
+              {t("settings.page.workspaces.discoveredDescription")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -358,8 +360,7 @@ export function WorkspacesSettingsTab({
       <Card className="bg-muted/50">
         <CardContent className="p-4">
           <p className="text-sm text-muted-foreground">
-            <strong>Note:</strong> The active workspace is where nirs4all saves all runs, predictions,
-            and exported pipelines. You can link multiple workspaces and switch between them.
+            <strong>{t("settings.page.workspaces.noteLabel")}</strong> {t("settings.page.workspaces.note")}
           </p>
         </CardContent>
       </Card>

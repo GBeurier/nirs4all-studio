@@ -1,4 +1,5 @@
 import { useState, type ComponentType, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, HelpCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -21,6 +22,7 @@ export function InspectorSidebarSection({
   defaultOpen = true,
   children,
 }: InspectorSidebarSectionProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);
 
   return (
@@ -42,6 +44,7 @@ export function InspectorSidebarSection({
               <span
                 role="button"
                 tabIndex={-1}
+                aria-label={t('inspector.sidebar.helpLabel', { title })}
                 className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 onClick={e => e.stopPropagation()}
               >

@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { buildInspectorTargetOptions } from "@/lib/inspector/targetSelection";
-import type { InspectorChainSummary } from "@/types/inspector";
+import type { InspectorAvailableTarget, InspectorChainSummary } from "@/types/inspector";
+import { tStub } from "./helpers/i18nStub";
+
+function buildOptions(
+  chains: readonly InspectorChainSummary[],
+  selectedTargetIndex = 0,
+  availableTargets: readonly InspectorAvailableTarget[] = [],
+) {
+  return buildInspectorTargetOptions(chains, selectedTargetIndex, availableTargets, tStub);
+}
 
 function makeChain(
   chainId: string,
@@ -36,7 +45,7 @@ function makeChain(
 
 describe("inspector target selection", () => {
   it("derives target options from result metadata dimensions", () => {
-    const options = buildInspectorTargetOptions([
+    const options = buildOptions([
       makeChain("a", {
         variant_params: {
           result_metadata: {
@@ -67,14 +76,14 @@ describe("inspector target selection", () => {
       {
         value: "0",
         index: 0,
-        label: "moisture (Target 1)",
+        label: 'inspector.targets.withName {"name":"moisture","index":1}',
         count: 1,
         targetNames: ["moisture"],
       },
       {
         value: "1",
         index: 1,
-        label: "protein (Target 2)",
+        label: 'inspector.targets.withName {"name":"protein","index":2}',
         count: 2,
         targetNames: ["protein"],
       },
@@ -82,7 +91,7 @@ describe("inspector target selection", () => {
   });
 
   it("prefers backend-provided target catalog when available", () => {
-    const options = buildInspectorTargetOptions(
+    const options = buildOptions(
       [makeChain("a")],
       2,
       [
@@ -112,14 +121,14 @@ describe("inspector target selection", () => {
       {
         value: "1",
         index: 1,
-        label: "protein (Target 2)",
+        label: 'inspector.targets.withName {"name":"protein","index":2}',
         count: 2,
         targetNames: ["protein"],
       },
       {
         value: "2",
         index: 2,
-        label: "Target 3",
+        label: 'inspector.targets.fallback {"index":3}',
         count: 0,
         targetNames: [],
       },
@@ -127,7 +136,7 @@ describe("inspector target selection", () => {
   });
 
   it("keeps labels conservative when one target index carries mixed names", () => {
-    const options = buildInspectorTargetOptions([
+    const options = buildOptions([
       makeChain("a", {
         variant_params: {
           result_metadata: {
@@ -150,7 +159,7 @@ describe("inspector target selection", () => {
       {
         value: "0",
         index: 0,
-        label: "Target 1 (2 names)",
+        label: 'inspector.targets.withNames {"index":1,"count":2}',
         count: 2,
         targetNames: ["moisture", "protein"],
       },
@@ -158,11 +167,11 @@ describe("inspector target selection", () => {
   });
 
   it("falls back to the selected target when metadata does not expose target indexes", () => {
-    expect(buildInspectorTargetOptions([makeChain("a")], 2)).toEqual([
+    expect(buildOptions([makeChain("a")], 2)).toEqual([
       {
         value: "2",
         index: 2,
-        label: "Target 3",
+        label: 'inspector.targets.fallback {"index":3}',
         count: 0,
         targetNames: [],
       },
@@ -170,7 +179,7 @@ describe("inspector target selection", () => {
   });
 
   it("treats target names without indexes as the first target", () => {
-    expect(buildInspectorTargetOptions([
+    expect(buildOptions([
       makeChain("a", {
         variant_params: {
           result_metadata: {
@@ -182,7 +191,7 @@ describe("inspector target selection", () => {
       {
         value: "0",
         index: 0,
-        label: "moisture (Target 1)",
+        label: 'inspector.targets.withName {"name":"moisture","index":1}',
         count: 1,
         targetNames: ["moisture"],
       },

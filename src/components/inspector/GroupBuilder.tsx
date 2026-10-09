@@ -62,10 +62,10 @@ export function GroupBuilder() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-            Grouping
+            {t('inspector.groups.grouping')}
           </span>
           <Badge variant="outline" className="border-border/60 text-[10px] uppercase tracking-[0.12em]">
-            {groups.length} sets
+            {t('inspector.groups.sets', { count: groups.length })}
           </Badge>
         </div>
 
@@ -86,7 +86,7 @@ export function GroupBuilder() {
                 }
               }}
             >
-              {opt.label}
+              {t(opt.labelKey)}
             </Button>
           ))}
 
@@ -99,11 +99,11 @@ export function GroupBuilder() {
                 onClick={() => setAdvancedVisible(!advancedVisible)}
               >
                 {advancedVisible ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                {advancedVisible ? 'Less' : 'More'}
+                {advancedVisible ? t('inspector.groups.less') : t('inspector.groups.more')}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right" className="text-xs">
-              {advancedVisible ? 'Hide range, branch, and expression grouping.' : 'Show range, branch, and expression grouping.'}
+              {advancedVisible ? t('inspector.groups.hideAdvanced') : t('inspector.groups.showAdvanced')}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -114,12 +114,12 @@ export function GroupBuilder() {
             onValueChange={(val) => setGroupBy((val as GroupByVariable) || null)}
           >
             <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder={t('inspector.sidebar.groupBy', 'Group by...')} />
+              <SelectValue placeholder={t('inspector.sidebar.groupBy')} />
             </SelectTrigger>
             <SelectContent>
               {INSPECTOR_GROUP_BY_OPTIONS.map(opt => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -134,23 +134,24 @@ export function GroupBuilder() {
                 setRangeConfig({ column: val as ScoreColumn, binCount: rangeConfig?.binCount ?? 5 })
               }
             >
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-8 text-xs" aria-label={t('inspector.groups.scoreColumnLabel')}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {INSPECTOR_SCORE_OPTIONS.map(col => (
                   <SelectItem key={col.value} value={col.value}>
-                    {col.label}
+                    {t(col.labelKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <div className="flex items-center gap-2">
-              <label className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Bins</label>
+              <label className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t('inspector.groups.bins')}</label>
               <Input
                 type="number"
                 min={2}
                 max={20}
+                aria-label={t('inspector.groups.bins')}
                 className="h-8 w-[72px] text-xs"
                 value={rangeConfig?.binCount ?? 5}
                 onChange={(e) =>
@@ -172,13 +173,13 @@ export function GroupBuilder() {
                 setTopKConfig({ scoreColumn: val as ScoreColumn, k: topKConfig?.k ?? 5 })
               }
             >
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-8 text-xs" aria-label={t('inspector.groups.scoreColumnLabel')}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {INSPECTOR_SCORE_OPTIONS.map(col => (
                   <SelectItem key={col.value} value={col.value}>
-                    {col.label}
+                    {t(col.labelKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -189,6 +190,7 @@ export function GroupBuilder() {
                 type="number"
                 min={1}
                 max={100}
+                aria-label="K"
                 className="h-8 w-[72px] text-xs"
                 value={topKConfig?.k ?? 5}
                 onChange={(e) =>
@@ -204,7 +206,7 @@ export function GroupBuilder() {
 
         {groupMode === 'by_branch' && (
           <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-            Branch-derived groups.
+            {t('inspector.groups.branchDerived')}
           </div>
         )}
 

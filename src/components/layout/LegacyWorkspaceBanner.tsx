@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 
 import { getWorkspaceTransitionStatus } from "@/api/workspace";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import type { WorkspaceTransitionStatusResponse } from "@/types/storage";
 
 export function LegacyWorkspaceBanner() {
+  const { t } = useTranslation();
   const [status, setStatus] =
     useState<WorkspaceTransitionStatusResponse | null>(null);
 
@@ -41,14 +43,14 @@ export function LegacyWorkspaceBanner() {
         <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
-            <AlertTitle>Legacy workspace format detected</AlertTitle>
+            <AlertTitle>{t("layout.legacyWorkspace.title")}</AlertTitle>
             <AlertDescription className="mt-1">
               {status.message}
             </AlertDescription>
           </div>
           <Button asChild size="sm" variant="outline" className="shrink-0">
             <Link to="/settings?tab=workspaces">
-              Convert workspace
+              {t("layout.legacyWorkspace.convert")}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>

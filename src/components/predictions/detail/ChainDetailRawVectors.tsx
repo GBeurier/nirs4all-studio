@@ -4,6 +4,7 @@ import {
   Layers,
   Loader2,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { partitionBadgeClass } from "@/lib/partitionColors";
 import { formatMetricValue } from "@/lib/scores";
@@ -47,20 +48,21 @@ export function ChainDetailRawVectors({
   arrayArtifactRef,
   metric,
 }: ChainDetailRawVectorsProps) {
+  const { t } = useTranslation();
   return (
     <RawDetailsSection>
       {!hasSelectedPrediction ? (
         <div className="text-xs text-muted-foreground">
-          Select a related prediction above to inspect raw-vector summaries.
+          {t("predictions.detail.vectors.selectPrediction")}
         </div>
       ) : loading ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Loading vector summaries...
+          {t("predictions.detail.vectors.loading")}
         </div>
       ) : vectorSummaries.length === 0 ? (
         <div className="text-xs text-muted-foreground">
-          No vector data is available for the current selection.
+          {t("predictions.detail.vectors.none")}
         </div>
       ) : (
         <div className="space-y-4">
@@ -81,6 +83,7 @@ export function ChainDetailRawVectors({
 }
 
 function RawDetailsSection({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   return (
     <details className="group rounded-xl border border-border/70 bg-card/40 open:bg-card/70">
       <summary
@@ -94,7 +97,7 @@ function RawDetailsSection({ children }: { children: ReactNode }) {
           <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-muted-foreground">
             <Layers className="h-3.5 w-3.5" />
           </span>
-          <span className="text-sm font-semibold tracking-tight">Raw vectors</span>
+          <span className="text-sm font-semibold tracking-tight">{t("predictions.detail.vectors.title")}</span>
         </div>
         <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
@@ -110,6 +113,7 @@ function VectorSummaryCard({
   summary: VectorSummary;
   metric: string | null;
 }) {
+  const { t } = useTranslation();
   const { dataset, observed, predicted, residuals } = summary;
   return (
     <div className="rounded-xl border border-border/60 bg-background/65 p-4">
@@ -120,7 +124,7 @@ function VectorSummaryCard({
         >
           {dataset.label}
         </Badge>
-        <span className="text-[11px] text-muted-foreground">{dataset.nSamples} samples</span>
+        <span className="text-[11px] text-muted-foreground">{t("predictions.detail.samples", { count: dataset.nSamples })}</span>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
         <VectorStatCard label="y_true" stats={observed} metric={metric} />
@@ -140,13 +144,14 @@ function VectorStatCard({
   stats: SummaryStats | null;
   metric: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-lg border border-border/50 bg-card/70 px-3 py-2">
       <div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </div>
       <div className="mt-1 text-[10px] text-muted-foreground">
-        {stats ? `${formatMetricValue(stats.min, metric ?? undefined)} to ${formatMetricValue(stats.max, metric ?? undefined)}` : "-"}
+        {stats ? t("predictions.detail.vectors.range", { min: formatMetricValue(stats.min, metric ?? undefined), max: formatMetricValue(stats.max, metric ?? undefined) }) : "-"}
       </div>
       <div className="font-mono text-sm font-semibold">
         {stats ? formatMetricValue(stats.mean, metric ?? undefined) : "-"}
@@ -162,17 +167,18 @@ function ResidualStatCard({
   residuals: ResidualStats | null;
   metric: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-lg border border-border/50 bg-card/70 px-3 py-2">
       <div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-        residuals
+        {t("predictions.detail.vectors.residuals")}
       </div>
-      <div className="mt-1 text-[10px] text-muted-foreground">mean</div>
+      <div className="mt-1 text-[10px] text-muted-foreground">{t("predictions.detail.vectors.mean")}</div>
       <div className="font-mono text-sm font-semibold">
         {residuals ? formatMetricValue(residuals.mean, metric ?? undefined) : "-"}
       </div>
       <div className="mt-1 text-[10px] text-muted-foreground">
-        sigma {residuals ? formatMetricValue(residuals.sigma, metric ?? undefined) : "-"}
+        {t("predictions.detail.vectors.sigma", { value: residuals ? formatMetricValue(residuals.sigma, metric ?? undefined) : "-" })}
       </div>
     </div>
   );
@@ -185,21 +191,22 @@ function ArrayDataSummary({
   arrayData: PredictionArraysResponse;
   arrayArtifactRef: ResultArtifactRef | null;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <ArrayFact label="Prediction ID" value={arrayData.prediction_id} title={arrayData.prediction_id} />
-      <ArrayFact label="Samples" value={arrayData.n_samples} emphasis />
+      <ArrayFact label={t("predictions.detail.vectors.predictionId")} value={arrayData.prediction_id} title={arrayData.prediction_id} />
+      <ArrayFact label={t("predictions.detail.vectors.samples")} value={arrayData.n_samples} emphasis />
       <ArrayFact label="y_proba" value={arrayData.y_proba ? arrayData.y_proba.length : "-"} emphasis />
       {arrayArtifactRef && (
         <ArrayFact
-          label="Artifact ref"
+          label={t("predictions.detail.vectors.artifactRef")}
           value={arrayArtifactRef.source}
           title={arrayArtifactRef.id}
         />
       )}
       <div className="rounded-lg border border-border/60 bg-background/65 px-3 py-2">
         <div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-          Extra vectors
+          {t("predictions.detail.vectors.extra")}
         </div>
         <div className="mt-1 text-[11px] text-muted-foreground">
           sample_indices {arrayData.sample_indices ? arrayData.sample_indices.length : "-"}

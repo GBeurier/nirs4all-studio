@@ -18,6 +18,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useTranslation } from "react-i18next";
+import { getPartitionLabel } from "@/components/predictions/predictionLabels";
 import { buildPredictionColoration } from "../coloration";
 import { getPartitionColor } from "../palettes";
 import type { ChartConfig, ChartVariant, PartitionDataset } from "../types";
@@ -41,6 +43,7 @@ interface ScatterDot {
   predicted: number;
   predictedError?: [number, number];
   fill: string;
+  partition: string;
   partitionLabel: string;
   sampleIndex: number;
   metadataLabel?: string;
@@ -110,6 +113,7 @@ function conformalErrorFields(dataset: PartitionDataset, index: number, predicte
 
 export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatterChartProps>(
   function PredictionScatterChart({ datasets, config, variant, compact, className }, ref) {
+    const { t } = useTranslation();
     const resolved: ChartVariant = variant ?? (compact ? "thumbnail" : "full");
     const showChrome = resolved !== "thumbnail";
     const showTooltip = resolved !== "thumbnail";
@@ -146,6 +150,7 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
             ...conformalErrorFields(ds, i, p),
             predicted: p,
             fill: coloration.getPointColor(ds, i),
+            partition: ds.partition,
             partitionLabel: ds.label,
             sampleIndex: i,
             metadataLabel: coloration.metadataKey,
@@ -202,7 +207,7 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
             <XAxis
               dataKey="actual"
               type="number"
-              name="Actual"
+              name={t("predictions.charts.actual")}
               domain={["auto", "auto"]}
               hide={!showChrome}
               tick={showChrome ? { fill: "hsl(var(--muted-foreground))", fontSize: tickFontSize } : false}
@@ -210,7 +215,7 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
               label={
                 showAxisLabel
                   ? {
-                      value: "Actual",
+                      value: t("predictions.charts.actual"),
                       position: "bottom",
                       offset: 18,
                       style: { fill: "hsl(var(--muted-foreground))" },
@@ -221,7 +226,7 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
             <YAxis
               dataKey="predicted"
               type="number"
-              name="Predicted"
+              name={t("predictions.charts.predicted")}
               domain={["auto", "auto"]}
               hide={!showChrome}
               tick={showChrome ? { fill: "hsl(var(--muted-foreground))", fontSize: tickFontSize } : false}
@@ -229,7 +234,7 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
               label={
                 showAxisLabel
                   ? {
-                      value: "Predicted",
+                      value: t("predictions.charts.predicted"),
                       angle: -90,
                       position: "left",
                       offset: 38,
@@ -248,16 +253,16 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
                     <div
                       className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md"
                     >
-                      <div className="font-medium text-foreground">{dot.partitionLabel}</div>
-                      <div className="mt-1 text-muted-foreground">Sample {dot.sampleIndex + 1}</div>
+                      <div className="font-medium text-foreground">{getPartitionLabel(t, dot.partition, dot.partitionLabel)}</div>
+                      <div className="mt-1 text-muted-foreground">{t("predictions.charts.sample", { n: dot.sampleIndex + 1 })}</div>
                       <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
-                        <span className="text-muted-foreground">Actual</span>
+                        <span className="text-muted-foreground">{t("predictions.charts.actual")}</span>
                         <span>{formatTooltipValue(dot.actual)}</span>
-                        <span className="text-muted-foreground">Predicted</span>
+                        <span className="text-muted-foreground">{t("predictions.charts.predicted")}</span>
                         <span>{formatTooltipValue(dot.predicted)}</span>
                         {dot.conformalCoverageLabel && (
                           <>
-                            <span className="text-muted-foreground">{dot.conformalCoverageLabel} interval</span>
+                            <span className="text-muted-foreground">{t("predictions.charts.interval", { coverage: dot.conformalCoverageLabel })}</span>
                             <span>
                               {formatTooltipValue(dot.conformalLower)} – {formatTooltipValue(dot.conformalUpper)}
                             </span>
@@ -307,7 +312,7 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
               return (
                 <Scatter
                   key={`${dataset.predictionId}-${dataset.partition}`}
-                  name={dataset.label}
+                  name={getPartitionLabel(t, dataset.partition, dataset.label)}
                   data={points}
                   fill={color}
                   opacity={config.pointOpacity}

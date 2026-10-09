@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   BarChart,
   Bar,
@@ -17,10 +18,11 @@ interface PreprocessingRankingChartProps {
 }
 
 export function PreprocessingRankingChart({ ranking, metric }: PreprocessingRankingChartProps) {
+  const { t } = useTranslation();
   if (ranking.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
-        No ranking data available
+        {t('transferAnalysis.charts.noRanking')}
       </div>
     );
   }
@@ -40,12 +42,12 @@ export function PreprocessingRankingChart({ ranking, metric }: PreprocessingRank
         <div className="bg-background border rounded-lg shadow-lg p-3 text-sm">
           <p className="font-medium mb-1">{label}</p>
           <p className={payload[0].value > 0 ? 'text-green-600' : 'text-red-600'}>
-            Reduction: {payload[0].value.toFixed(1)}%
+            {t('transferAnalysis.charts.reductionTooltip', { value: payload[0].value.toFixed(1) })}
           </p>
           {item && (
             <>
-              <p className="text-muted-foreground">Raw: {item.raw_distance.toFixed(4)}</p>
-              <p className="text-muted-foreground">Preprocessed: {item.avg_distance.toFixed(4)}</p>
+              <p className="text-muted-foreground">{t('transferAnalysis.charts.rawTooltip', { value: item.raw_distance.toFixed(4) })}</p>
+              <p className="text-muted-foreground">{t('transferAnalysis.charts.preprocessedTooltip', { value: item.avg_distance.toFixed(4) })}</p>
             </>
           )}
         </div>
@@ -91,12 +93,12 @@ export function PreprocessingRankingChart({ ranking, metric }: PreprocessingRank
       {/* Summary text */}
       <div className="text-sm text-muted-foreground">
         <p>
-          <strong>{metric === 'centroid' ? 'Centroid' : 'Spread'} Distance Reduction:</strong> Positive values
-          indicate the preprocessing brings datasets closer together (better for transfer learning).
+          <strong>{t('transferAnalysis.charts.rankingLabel', { metric: t(metric === 'centroid' ? 'transferAnalysis.metrics.centroid' : 'transferAnalysis.metrics.spread') })}</strong>{' '}
+          {t('transferAnalysis.charts.rankingText')}
         </p>
         {ranking.length > 0 && (
           <p className="mt-1">
-            Best: <span className="font-medium text-foreground">{ranking[0].display_name}</span> (
+            {t('transferAnalysis.charts.best')} <span className="font-medium text-foreground">{ranking[0].display_name}</span> (
             {ranking[0].reduction_pct > 0 ? '+' : ''}
             {ranking[0].reduction_pct.toFixed(1)}%)
           </p>

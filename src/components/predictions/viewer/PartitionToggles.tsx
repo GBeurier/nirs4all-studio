@@ -5,7 +5,10 @@
  * renders as an informational chip but is non-interactive.
  */
 
+import { useTranslation } from "react-i18next";
+
 import { cn } from "@/lib/utils";
+import { getPartitionLabel } from "@/components/predictions/predictionLabels";
 import { getPartitionColor } from "./palettes";
 import type { PaletteId, ViewerPartitionColors, ViewerPartitionTarget } from "./types";
 
@@ -24,6 +27,7 @@ export function PartitionToggles({
   palette,
   colors,
 }: PartitionTogglesProps) {
+  const { t } = useTranslation();
   if (partitions.length === 0) return null;
   const interactive = partitions.length > 1;
 
@@ -32,7 +36,7 @@ export function PartitionToggles({
       {partitions.map((target) => {
         const isVisible = visible.has(target.partition);
         const color = getPartitionColor(target.partition, palette, colors);
-        const label = target.label ?? target.partition;
+        const label = getPartitionLabel(t, target.partition, target.label);
         return (
           <button
             key={`${target.predictionId}-${target.partition}`}

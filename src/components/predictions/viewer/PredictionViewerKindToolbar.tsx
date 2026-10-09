@@ -4,6 +4,7 @@ import {
   Grid3x3,
   TrendingUp,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { PartitionToggles } from "./PartitionToggles";
 import type {
@@ -34,6 +35,7 @@ export function PredictionViewerKindToolbar({
   partitions,
   visible,
 }: PredictionViewerKindToolbarProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-2">
       <ToggleGroup
@@ -50,25 +52,25 @@ export function PredictionViewerKindToolbar({
         {availableKinds.includes("scatter") && (
           <ToggleGroupItem value="scatter" className="h-8 gap-1.5 text-xs">
             <TrendingUp className="h-3.5 w-3.5" />
-            Scatter
+            {t("predictions.viewer.kinds.scatter")}
           </ToggleGroupItem>
         )}
         {availableKinds.includes("residuals") && (
           <ToggleGroupItem value="residuals" className="h-8 gap-1.5 text-xs">
             <BarChart3 className="h-3.5 w-3.5" />
-            Residuals
+            {t("predictions.charts.kinds.residuals")}
           </ToggleGroupItem>
         )}
         {availableKinds.includes("confusion") && (
           <ToggleGroupItem value="confusion" className="h-8 gap-1.5 text-xs">
             <Grid3x3 className="h-3.5 w-3.5" />
-            Confusion
+            {t("predictions.charts.kinds.confusion")}
           </ToggleGroupItem>
         )}
         {availableKinds.includes("distribution") && (
           <ToggleGroupItem value="distribution" className="h-8 gap-1.5 text-xs">
             <Activity className="h-3.5 w-3.5" />
-            Distribution
+            {t("predictions.charts.kinds.distribution")}
           </ToggleGroupItem>
         )}
       </ToggleGroup>

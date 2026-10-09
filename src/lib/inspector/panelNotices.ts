@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { InspectorFocusState, InspectorFocusTask } from "@/lib/inspector/focus";
 
 export type InspectorPanelNoticeTone = "default" | "warning";
@@ -13,10 +14,8 @@ export interface InspectorTaskPanelNoticeOptions {
   panelName: string;
   requiredTask: InspectorTaskPanelRequirement;
   focus: Pick<InspectorFocusState, "chainIds" | "task">;
+  t: TFunction;
 }
-
-const MIXED_FOCUS_BODY = "Selected chains mix regression and classification. Narrow the shared selection or rely on auto focus.";
-const EMPTY_FOCUS_BODY = "No chains are available in the current scope.";
 
 function oppositeTask(task: InspectorTaskPanelRequirement): InspectorTaskPanelRequirement {
   return task === "regression" ? "classification" : "regression";
@@ -26,11 +25,12 @@ export function getInspectorTaskPanelNotice({
   panelName,
   requiredTask,
   focus,
+  t,
 }: InspectorTaskPanelNoticeOptions): InspectorPanelNotice | null {
   if (focus.chainIds.length === 0) {
     return {
-      title: `${panelName} unavailable`,
-      body: EMPTY_FOCUS_BODY,
+      title: t("inspector.notices.unavailable", { panel: panelName }),
+      body: t("inspector.notices.emptyFocus"),
       tone: "default",
     };
   }
@@ -38,16 +38,19 @@ export function getInspectorTaskPanelNotice({
   const incompatibleTask = oppositeTask(requiredTask);
   if (focus.task === incompatibleTask) {
     return {
-      title: `${panelName} requires ${requiredTask}`,
-      body: `Current focus is ${incompatibleTask}. Select or pin ${requiredTask} chains to populate this panel.`,
+      title: t("inspector.notices.requires", { panel: panelName, task: t(`inspector.notices.tasks.${requiredTask}`) }),
+      body: t("inspector.notices.requiresBody", {
+        current: t(`inspector.notices.tasks.${incompatibleTask}`),
+        required: t(`inspector.notices.tasks.${requiredTask}`),
+      }),
       tone: "warning",
     };
   }
 
   if (focus.task === "mixed") {
     return {
-      title: `${panelName} needs a coherent focus`,
-      body: MIXED_FOCUS_BODY,
+      title: t("inspector.notices.needsCoherentFocus", { panel: panelName }),
+      body: t("inspector.notices.mixedFocusBody"),
       tone: "warning",
     };
   }
@@ -55,11 +58,11 @@ export function getInspectorTaskPanelNotice({
   return null;
 }
 
-export function getInspectorTopologyPanelNotice(topologyPipelineId: string | null): InspectorPanelNotice | null {
+export function getInspectorTopologyPanelNotice(topologyPipelineId: string | null, t: TFunction): InspectorPanelNotice | null {
   if (topologyPipelineId) return null;
   return {
-    title: "Topology needs one pipeline",
-    body: "Select or pin chains from a single pipeline to inspect topology.",
+    title: t("inspector.notices.topologyTitle"),
+    body: t("inspector.notices.topologyBody"),
     tone: "warning",
   };
 }

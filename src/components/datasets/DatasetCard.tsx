@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   FileSpreadsheet,
   MoreVertical,
@@ -36,7 +37,8 @@ import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import { getMultimodalDatasetSummary } from "@/lib/multimodalDatasetSummary";
 import { formatScore } from "@/lib/scores";
 import type { Dataset, DatasetGroup, DatasetVersionStatus } from "@/types/datasets";
-
+import { getActiveLocale } from "@/lib/activeLocale";
+
 export interface DatasetScoreInfo {
   score: number;
   metric: string;
@@ -68,9 +70,9 @@ function formatNumber(num: number | number[] | undefined | null): string {
   if (num == null) return "--";
   if (Array.isArray(num)) {
     const total = num.reduce((acc, v) => acc + (typeof v === "number" ? v : 0), 0);
-    return total.toLocaleString();
+    return total.toLocaleString(getActiveLocale());
   }
-  return num.toLocaleString();
+  return num.toLocaleString(getActiveLocale());
 }
 
 /**
@@ -79,7 +81,7 @@ function formatNumber(num: number | number[] | undefined | null): string {
  */
 function formatPerSource(num: number | number[] | undefined | null): string | null {
   if (!Array.isArray(num) || num.length < 2) return null;
-  return num.map((v) => (typeof v === "number" ? v.toLocaleString() : "?")).join("+");
+  return num.map((v) => (typeof v === "number" ? v.toLocaleString(getActiveLocale()) : "?")).join("+");
 }
 
 export function DatasetCard({
@@ -97,6 +99,7 @@ export function DatasetCard({
   onRelink,
   onAssignGroup,
 }: DatasetCardProps) {
+  const { t } = useTranslation();
   const versionStatus = (dataset.version_status || "unchecked") as DatasetVersionStatus;
   const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
   const multimodal = getMultimodalDatasetSummary(dataset.config?.dataset_document);
@@ -111,7 +114,7 @@ export function DatasetCard({
   const showRefreshAction = versionStatus === "modified";
   const showRelinkAction = versionStatus === "missing" || dataset.status === "missing";
 
-  const taskLabel = getDatasetTaskLabel(dataset.task_type, {
+  const taskLabel = getDatasetTaskLabel(dataset.task_type, t, {
     short: true,
     numClasses: dataset.num_classes,
   });
@@ -154,7 +157,7 @@ export function DatasetCard({
             <Badge
               variant="outline"
               className="text-[10px]"
-              title={`Repetition column: ${repetitionColumn}`}
+              title={t("datasets.card.repetitionColumn", { column: repetitionColumn })}
             >
               {repetitionColumn}
             </Badge>
@@ -209,7 +212,7 @@ export function DatasetCard({
                     bestScore.isFinal ? "text-emerald-500/80" : "text-chart-1/80"
                   }`}
                 >
-                  {bestScore.isFinal ? "Final" : "CV"}
+                  {bestScore.isFinal ? t("datasets.card.scoreFinal") : t("datasets.card.scoreCv")}
                 </span>
                 {bestScore.model && (
                   <>
@@ -225,7 +228,7 @@ export function DatasetCard({
                 {bestScore.isFinal && bestScore.cvScore != null && (
                   <>
                     <span className="text-muted-foreground/40">·</span>
-                    <span className="font-mono tabular-nums">CV {formatScore(bestScore.cvScore)}</span>
+                    <span className="font-mono tabular-nums">{t("datasets.card.cvScore", { score: formatScore(bestScore.cvScore) })}</span>
                   </>
                 )}
               </div>
@@ -234,7 +237,7 @@ export function DatasetCard({
             <div className="flex flex-col items-end leading-tight">
               <span className="text-lg font-mono tabular-nums text-muted-foreground/30">—</span>
               <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground/50 mt-0.5">
-                No score
+                {t("datasets.card.noScore")}
               </span>
             </div>
           )}
@@ -243,7 +246,7 @@ export function DatasetCard({
         {/* Samples */}
         <div className="flex flex-col items-end leading-tight">
           <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
-            Samples
+            {t("datasets.info.samples")}
           </span>
           <span className="font-semibold text-foreground font-mono tabular-nums text-sm mt-0.5">
             {formatNumber(multimodal?.samples ?? dataset.num_samples)}
@@ -259,7 +262,7 @@ export function DatasetCard({
             </span>
           ) : (
             <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">
-              unsplit
+              {t("datasets.card.unsplit")}
             </span>
           )}
         </div>
@@ -267,7 +270,7 @@ export function DatasetCard({
         {/* Features */}
         <div className="flex flex-col items-end leading-tight min-w-0">
           <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
-            {multimodal ? "Sources" : "Features"}
+            {multimodal ? t("datasets.detailPage.stats.sources") : t("datasets.info.features")}
           </span>
           <span className="font-semibold text-foreground font-mono tabular-nums text-sm mt-0.5">
             {multimodal ? multimodal.sources.length : formatNumber(dataset.num_features)}
@@ -291,7 +294,7 @@ export function DatasetCard({
         {/* Task */}
         <div className="flex flex-col items-end leading-tight">
           <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
-            Task
+            {t("datasets.card.task")}
           </span>
           <span
             className="font-semibold text-foreground text-sm mt-0.5 truncate max-w-[96px]"
@@ -317,12 +320,13 @@ export function DatasetCard({
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8"
+                  aria-label={t("datasets.card.quickView")}
                   onClick={() => onPreview(dataset)}
                 >
                   <Eye className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Quick View</TooltipContent>
+              <TooltipContent>{t("datasets.card.quickView")}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -337,12 +341,12 @@ export function DatasetCard({
                 className="h-8 w-8"
                 asChild
               >
-                <Link to={`/datasets/${dataset.id}`}>
+                <Link to={`/datasets/${dataset.id}`} aria-label={t("datasets.card.fullDetails")}>
                   <ExternalLink className="h-4 w-4" />
                 </Link>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Full Details</TooltipContent>
+            <TooltipContent>{t("datasets.card.fullDetails")}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
@@ -355,12 +359,13 @@ export function DatasetCard({
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8"
+                  aria-label={t("datasets.card.editConfig")}
                   onClick={() => onEdit(dataset)}
                 >
                   <Settings className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Edit Config</TooltipContent>
+              <TooltipContent>{t("datasets.card.editConfig")}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -373,6 +378,7 @@ export function DatasetCard({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
+                aria-label={t("datasets.card.openFolder")}
                 onClick={() => {
                   if (dataset.path) {
                     openFolderInExplorer(dataset.path);
@@ -382,7 +388,7 @@ export function DatasetCard({
                 <FolderOpen className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Open Folder</TooltipContent>
+            <TooltipContent>{t("datasets.card.openFolder")}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
@@ -395,12 +401,13 @@ export function DatasetCard({
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  aria-label={t("datasets.card.removeDataset")}
                   onClick={() => onDelete(dataset)}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Remove Dataset</TooltipContent>
+              <TooltipContent>{t("datasets.card.removeDataset")}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -408,7 +415,7 @@ export function DatasetCard({
         {/* More Actions Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("datasets.card.moreActions")}>
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -417,19 +424,19 @@ export function DatasetCard({
             {showVerifyAction && onVerify && (
               <DropdownMenuItem onClick={() => onVerify(dataset)}>
                 <ShieldCheck className="h-4 w-4 mr-2" />
-                Verify Integrity
+                {t("datasets.card.verifyIntegrity")}
               </DropdownMenuItem>
             )}
             {showRefreshAction && onRefresh && (
               <DropdownMenuItem onClick={() => onRefresh(dataset)}>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Accept Changes
+                {t("datasets.card.acceptChanges")}
               </DropdownMenuItem>
             )}
             {showRelinkAction && onRelink && (
               <DropdownMenuItem onClick={() => onRelink(dataset)}>
                 <Link2 className="h-4 w-4 mr-2" />
-                Relink Path
+                {t("datasets.card.relinkPath")}
               </DropdownMenuItem>
             )}
 
@@ -438,7 +445,7 @@ export function DatasetCard({
                 {(showVerifyAction || showRefreshAction || showRelinkAction) && <DropdownMenuSeparator />}
                 <DropdownMenuItem onClick={() => onExport(dataset)}>
                   <Download className="h-4 w-4 mr-2" />
-                  Export
+                  {t("datasets.actions.export")}
                 </DropdownMenuItem>
               </>
             )}
@@ -448,7 +455,7 @@ export function DatasetCard({
               <>
                 <DropdownMenuSeparator />
                 <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                  Assign to Group
+                  {t("datasets.card.assignToGroup")}
                 </div>
                 <DropdownMenuItem
                   onClick={() => onAssignGroup(dataset, null)}
@@ -456,7 +463,7 @@ export function DatasetCard({
                 >
                   {assignedGroups.length === 0 && <Check className="h-4 w-4 mr-2" />}
                   {assignedGroups.length > 0 && <span className="w-6" />}
-                  No Group
+                  {t("datasets.card.noGroup")}
                 </DropdownMenuItem>
                 {groups.map((group) => {
                   const isAssigned = assignedGroups.some(g => g.id === group.id);

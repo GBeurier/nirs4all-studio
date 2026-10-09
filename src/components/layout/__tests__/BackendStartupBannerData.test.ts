@@ -30,27 +30,21 @@ describe("BackendStartupBannerData", () => {
       workspacePhase: true,
       workspaceDone: false,
       canSettle: false,
-      title: {
-        key: "layout.backendStartup.connectingTitle",
-        defaultValue: "Connecting to the analysis engine...",
-      },
+      title: { key: "layout.backendStartup.connectingTitle" },
       description: {
         key: "layout.backendStartup.connectingDescription",
         error: null,
       },
       progressValue: 18,
       badge: {
-        label: {
-          key: "layout.backendStartup.badge",
-          defaultValue: "Backend loading",
-        },
+        label: { key: "layout.backendStartup.badge" },
         iconKind: "loading",
       },
     });
-    expect(model.steps.map((step) => [step.label.defaultValue, step.state])).toEqual([
-      ["Studio service", "loading"],
-      ["ML Engine", "waiting"],
-      ["Workspace", "waiting"],
+    expect(model.steps.map((step) => [step.label.key, step.state])).toEqual([
+      ["layout.backendStartup.apiLabel", "loading"],
+      ["layout.backendStartup.mlLabel", "waiting"],
+      ["layout.backendStartup.workspaceLabel", "waiting"],
     ]);
   });
 
@@ -61,10 +55,7 @@ describe("BackendStartupBannerData", () => {
       }),
     );
 
-    expect(model.title).toEqual({
-      key: "layout.backendStartup.loadingTitle",
-      defaultValue: "Loading analysis backend...",
-    });
+    expect(model.title).toEqual({ key: "layout.backendStartup.loadingTitle" });
     expect(model.description).toMatchObject({
       key: "layout.backendStartup.loadingDescription",
       error: null,
@@ -73,7 +64,6 @@ describe("BackendStartupBannerData", () => {
     expect(model.steps.map((step) => step.state)).toEqual(["done", "loading", "waiting"]);
     expect(model.steps[1].detail).toEqual({
       key: "layout.backendStartup.mlLoading",
-      defaultValue: "Importing nirs4all and sklearn",
     });
   });
 
@@ -96,12 +86,10 @@ describe("BackendStartupBannerData", () => {
     });
     expect(model.title).toEqual({
       key: "layout.backendStartup.workspaceTitle",
-      defaultValue: "Loading workspace...",
     });
     expect(model.steps[2]).toMatchObject({
       detail: {
         key: "layout.backendStartup.workspaceLoading",
-        defaultValue: "Loading datasets and run state",
       },
       state: "loading",
     });
@@ -126,7 +114,6 @@ describe("BackendStartupBannerData", () => {
     expect(model.steps.map((step) => step.state)).toEqual(["done", "done", "done"]);
     expect(model.steps[2].detail).toEqual({
       key: "layout.backendStartup.workspaceReady",
-      defaultValue: "Ready",
     });
   });
 
@@ -140,17 +127,14 @@ describe("BackendStartupBannerData", () => {
 
     expect(model.title).toEqual({
       key: "layout.backendStartup.errorTitle",
-      defaultValue: "Backend startup stalled",
     });
     expect(model.description).toEqual({
       key: "layout.backendStartup.errorDescription",
-      defaultValue: "Backend startup stalled.",
       error: "Import failed",
     });
     expect(model.badge).toEqual({
       label: {
         key: "layout.backendStartup.errorBadge",
-        defaultValue: "Startup issue",
       },
       iconKind: "error",
     });

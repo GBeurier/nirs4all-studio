@@ -1,4 +1,5 @@
 import { useMemo, useCallback, type MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useInspectorSelection, useInspectorHover } from '@/context/useInspectorSelection';
 import {
   buildPredVsObsCanvasPoints,
@@ -24,6 +25,7 @@ interface PredVsObsChartProps {
 }
 
 export function PredVsObsChart({ data, groups, isLoading }: PredVsObsChartProps) {
+  const { t } = useTranslation();
   const { select, selectedChains, hasSelection } = useInspectorSelection();
   const { hoveredChain, setHovered } = useInspectorHover();
 
@@ -67,7 +69,7 @@ export function PredVsObsChart({ data, groups, isLoading }: PredVsObsChartProps)
   }, [select]);
 
   if (isLoading) {
-    return <PredictionDiagnosticsLoadingState message="Loading scatter data..." />;
+    return <PredictionDiagnosticsLoadingState message={t('inspector.charts.loading.scatter')} />;
   }
 
   if (dots.length === 0) {
@@ -80,8 +82,8 @@ export function PredVsObsChart({ data, groups, isLoading }: PredVsObsChartProps)
         points={canvasPoints}
         referenceLines={canvasRefLines}
         annotations={canvasAnnotations}
-        xLabel="Observed"
-        yLabel="Predicted"
+        xLabel={t('inspector.charts.axis.observed')}
+        yLabel={t('inspector.charts.axis.predicted')}
         xDomain={[minVal, maxVal]}
         yDomain={[minVal, maxVal]}
         onPointClick={handleCanvasPointClick}

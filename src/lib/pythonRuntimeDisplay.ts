@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import type { DesktopEnvKind } from "@/types/pythonRuntime";
 import type { RuntimeSummaryResponse } from "@/types/settings";
 
@@ -20,17 +21,17 @@ export function getPythonRuntimeDisplayState(
     && !isBundledEmbedded
     && !isPyInstaller;
 
-  let label = "Current runtime";
+  let label = i18next.t("common.pythonEnv.runtime.current");
   if (isPyInstaller) {
-    label = "Packaged backend runtime";
+    label = i18next.t("common.pythonEnv.runtime.packagedBackend");
   } else if (isBundledEmbedded) {
-    label = "Bundled embedded runtime";
+    label = i18next.t("common.pythonEnv.runtime.bundledEmbedded");
   } else if (isBundledExternal) {
-    label = "External user-selected runtime";
+    label = i18next.t("common.pythonEnv.runtime.externalUserSelected");
   } else if (runtimeKind === "custom") {
-    label = "User-selected runtime";
+    label = i18next.t("common.pythonEnv.runtime.userSelected");
   } else if (runtimeKind === "managed") {
-    label = "Current runtime";
+    label = i18next.t("common.pythonEnv.runtime.current");
   }
 
   return {
@@ -46,19 +47,19 @@ export function getPythonRuntimeDisplayState(
 export function getDesktopEnvKindLabel(kind: DesktopEnvKind): string {
   switch (kind) {
     case "managed":
-      return "Managed";
+      return i18next.t("common.pythonEnv.kind.managed");
     case "conda":
-      return "Conda";
+      return i18next.t("common.pythonEnv.kind.conda");
     case "venv":
-      return "Virtualenv";
+      return i18next.t("common.pythonEnv.kind.venv");
     case "bundled":
-      return "Bundled";
+      return i18next.t("common.pythonEnv.kind.bundled");
     case "system":
     default:
-      return "Global";
+      return i18next.t("common.pythonEnv.kind.system");
   }
 }
 
 export function getDesktopEnvWriteAccessLabel(writable: boolean): string {
-  return writable ? "Likely writable" : "Likely read-only";
+  return writable ? i18next.t("common.pythonEnv.writable") : i18next.t("common.pythonEnv.readOnly");
 }

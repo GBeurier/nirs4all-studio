@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import type {
   LinkedWorkspace,
   WorkspaceDiscoveredCounts,
@@ -9,8 +11,6 @@ export type DiscoveredCountKey = "runs" | "exports" | "datasets" | "templates";
 type CountDefinition = {
   key: DiscoveredCountKey;
   countKey: keyof WorkspaceDiscoveredCounts;
-  singular: string;
-  plural: string;
 };
 
 export type DiscoveredCountItem = {
@@ -36,40 +36,36 @@ export const DEFAULT_DISCOVERED_COUNTS: WorkspaceDiscoveredCounts = {
 };
 
 const DISCOVERED_COUNT_DEFINITIONS: CountDefinition[] = [
-  { key: "runs", countKey: "runs_count", singular: "run", plural: "runs" },
-  { key: "exports", countKey: "exports_count", singular: "export", plural: "exports" },
-  { key: "datasets", countKey: "datasets_count", singular: "dataset", plural: "datasets" },
-  { key: "templates", countKey: "templates_count", singular: "template", plural: "templates" },
+  { key: "runs", countKey: "runs_count" },
+  { key: "exports", countKey: "exports_count" },
+  { key: "datasets", countKey: "datasets_count" },
+  { key: "templates", countKey: "templates_count" },
 ];
 
-const ACTIVE_WORKSPACE_BADGE = {
-  label: "Active",
-  variant: "default",
-  className: "text-xs",
-} as const;
-
-export const WORKSPACE_ACTION_COPY = {
-  activate: {
-    label: "Activate",
-    tooltip: "Set as active workspace",
-  },
-  refresh: {
-    tooltip: "Refresh list",
-  },
-  retry: {
-    label: "Retry",
-  },
-  scan: {
-    tooltip: "Rescan workspace",
-  },
-  unlink: {
-    tooltip: "Unlink workspace",
-    dialogTitle: "Unlink workspace?",
-    dialogDescription: "This will remove the workspace from your linked list. The actual files will not be deleted.",
-    cancelLabel: "Cancel",
-    confirmLabel: "Unlink",
-  },
-} as const;
+export function getWorkspaceActionCopy(t: TFunction) {
+  return {
+    activate: {
+      label: t("settings.n4aWorkspaces.activate"),
+      tooltip: t("settings.n4aWorkspaces.activateTooltip"),
+    },
+    refresh: {
+      tooltip: t("settings.n4aWorkspaces.refreshTooltip"),
+    },
+    retry: {
+      label: t("common.retry"),
+    },
+    scan: {
+      tooltip: t("settings.n4aWorkspaces.scanTooltip"),
+    },
+    unlink: {
+      tooltip: t("settings.n4aWorkspaces.unlinkTooltip"),
+      dialogTitle: t("settings.n4aWorkspaces.unlinkTitle"),
+      dialogDescription: t("settings.n4aWorkspaces.unlinkDescription"),
+      cancelLabel: t("common.cancel"),
+      confirmLabel: t("settings.n4aWorkspaces.unlink"),
+    },
+  } as const;
+}
 
 export function getDiscoveredCounts(
   discovered?: Partial<WorkspaceDiscoveredCounts> | null,
@@ -82,63 +78,68 @@ export function getDiscoveredCounts(
   };
 }
 
-export function formatCountLabel(
-  count: number,
-  singular: string,
-  plural = `${singular}s`,
-): string {
-  return `${count} ${count === 1 ? singular : plural}`;
+function getCountLabel(key: DiscoveredCountKey, count: number, t: TFunction): string {
+  switch (key) {
+    case "runs":
+      return t("settings.n4aWorkspaces.counts.runs", { count });
+    case "exports":
+      return t("settings.n4aWorkspaces.counts.exports", { count });
+    case "datasets":
+      return t("settings.n4aWorkspaces.counts.datasets", { count });
+    case "templates":
+      return t("settings.n4aWorkspaces.counts.templates", { count });
+  }
 }
 
 export function getWorkspaceDiscoveredCountItems(
-  discovered?: Partial<WorkspaceDiscoveredCounts> | null,
+  discovered: Partial<WorkspaceDiscoveredCounts> | null | undefined,
+  t: TFunction,
 ): DiscoveredCountItem[] {
   const counts = getDiscoveredCounts(discovered);
 
   return DISCOVERED_COUNT_DEFINITIONS.map((definition) => ({
     key: definition.key,
     count: counts[definition.countKey],
-    label: formatCountLabel(
-      counts[definition.countKey],
-      definition.singular,
-      definition.plural,
-    ),
+    label: getCountLabel(definition.key, counts[definition.countKey], t),
   }));
 }
 
-export function getLinkedWorkspaceCountLabel(count: number): string {
-  return `${count} ${count === 1 ? "workspace" : "workspaces"} linked`;
+export function getLinkedWorkspaceCountLabel(count: number, t: TFunction): string {
+  return t("settings.n4aWorkspaces.linkedCount", { count });
 }
 
 export function getLastScannedLabel(
   lastScanned: string | null | undefined,
+  t: TFunction,
   relativeTimeFormatter: (dateString: string) => string = formatRelativeTime,
 ): string | null {
   if (!lastScanned) {
     return null;
   }
 
-  return `Scanned ${relativeTimeFormatter(lastScanned)}`;
+  return t("settings.n4aWorkspaces.scanned", { time: relativeTimeFormatter(lastScanned) });
 }
 
 export function getScanSuccessMessage(
-  discovered?: Partial<WorkspaceDiscoveredCounts> | null,
+  discovered: Partial<WorkspaceDiscoveredCounts> | null | undefined,
+  t: TFunction,
 ): string {
   const counts = getDiscoveredCounts(discovered);
 
-  return `Scanned: ${formatCountLabel(counts.runs_count, "run")}, ${formatCountLabel(
-    counts.exports_count,
-    "export",
-  )}`;
+  return t("settings.n4aWorkspaces.scanSuccess", {
+    runs: getCountLabel("runs", counts.runs_count, t),
+    exports: getCountLabel("exports", counts.exports_count, t),
+  });
 }
 
 export function getWorkspaceItemState(
   workspace: Pick<LinkedWorkspace, "is_active">,
+  t: TFunction,
 ): WorkspaceItemState {
   if (workspace.is_active) {
     return {
       containerClassName: "p-4 rounded-lg border transition-colors bg-primary/5 border-primary/30",
-      activeBadge: ACTIVE_WORKSPACE_BADGE,
+      activeBadge: { label: t("common.active"), variant: "default", className: "text-xs" },
     };
   }
 

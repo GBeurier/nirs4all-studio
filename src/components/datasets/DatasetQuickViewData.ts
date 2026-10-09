@@ -6,6 +6,7 @@
  * label/style decisions the panel renders. React state, hooks, callbacks, and
  * JSX stay in the component; this module is unit-testable in isolation.
  */
+import type { TFunction } from "i18next";
 import type {
   Dataset,
   PartitionKey,
@@ -21,10 +22,11 @@ import {
   selectDatasetSpectraPreview,
   selectDatasetTargetDistribution,
 } from "./DatasetPreviewData";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 export function formatNumber(num: number | undefined | null): string {
   if (num == null) return "--";
-  return num.toLocaleString();
+  return num.toLocaleString(getActiveLocale());
 }
 
 export interface QuickViewLoadState {
@@ -155,8 +157,8 @@ export function getWavelengthUnitSuffix(unitSymbol: string): string {
 }
 
 /** Label for the spectral-range card, switching to wavenumber for cm⁻¹ units. */
-export function getWavelengthRangeTitle(unitSymbol: string): string {
-  return unitSymbol === "cm⁻¹" ? "Wavenumber Range" : "Wavelength Range";
+export function getWavelengthRangeTitle(unitSymbol: string, t: TFunction): string {
+  return unitSymbol === "cm⁻¹" ? t("datasets.quickView.wavenumberRange") : t("datasets.quickView.wavelengthRange");
 }
 
 /** "min - max[ unit]" range label, or "--" when no spectra are available. */

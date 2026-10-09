@@ -4,6 +4,7 @@
  * Displays distribution of target values for regression or classification tasks.
  * Used in dataset previews and quick views.
  */
+import { useTranslation } from "react-i18next";
 import {
   Bar,
   BarChart,
@@ -14,7 +15,8 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { HistogramData } from "./targetHistogramData";
-
+import { getActiveLocale } from "@/lib/activeLocale";
+
 export interface TargetHistogramProps {
   /** Histogram data with bins and counts */
   data: HistogramData[];
@@ -44,6 +46,7 @@ export function TargetHistogram({
   barColor,
   barOpacity = 0.7,
 }: TargetHistogramProps) {
+  const { t } = useTranslation();
   // Handle empty data
   if (!data?.length) {
     return (
@@ -51,13 +54,13 @@ export function TargetHistogram({
         className="flex items-center justify-center text-muted-foreground text-sm"
         style={{ width, height }}
       >
-        No distribution data
+        {t("datasets.charts.noDistribution")}
       </div>
     );
   }
 
   // Default label based on type
-  const displayLabel = xLabel ?? (type === "regression" ? "Value" : "Class");
+  const displayLabel = xLabel ?? (type === "regression" ? t("datasets.charts.value") : t("datasets.charts.class"));
   const defaultColor = "hsl(var(--primary))";
   const totalCount = data.reduce((sum, entry) => sum + entry.count, 0);
   const hasDenseCategories = type === "classification" && data.length > 6;
@@ -123,16 +126,16 @@ export function TargetHistogram({
             formatter={(value: number) => {
               if (type === "classification") {
                 const percentage = totalCount > 0 ? (value / totalCount) * 100 : 0;
-                return [`${value.toLocaleString()} (${percentage.toFixed(1)}%)`, "Samples"];
+                return [`${value.toLocaleString(getActiveLocale())} (${percentage.toFixed(1)}%)`, t("datasets.charts.samples")];
               }
-              return [value, "Count"];
+              return [value, t("datasets.charts.count")];
             }}
             labelFormatter={(label) => {
               if (type === "regression") {
                 const num = Number(label);
-                return "Bin: " + (!isNaN(num) ? num.toFixed(3) : label);
+                return t("datasets.charts.binLabel", { value: !isNaN(num) ? num.toFixed(3) : label });
               }
-              return "Class: " + String(label);
+              return t("datasets.charts.classLabel", { value: String(label) });
             }}
           />
           <Bar

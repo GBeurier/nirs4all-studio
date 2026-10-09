@@ -3,6 +3,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { PredictionConfusionChart } from "./charts/PredictionConfusionChart";
 import { PredictionHistogramChart } from "./charts/PredictionHistogramChart";
 import { PredictionResidualsChart } from "./charts/PredictionResidualsChart";
@@ -35,12 +36,13 @@ export function PredictionViewerChartArea({
   kind,
   taskKind,
 }: PredictionViewerChartAreaProps) {
+  const { t } = useTranslation();
   return (
     <div className="min-h-0 flex-1 px-5 py-3">
       {isLoading ? (
         <div className="flex h-full items-center justify-center text-muted-foreground">
           <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          <span className="text-sm">Loading prediction data…</span>
+          <span className="text-sm">{t("predictions.viewer.chart.loading")}</span>
         </div>
       ) : error ? (
         <div className="flex h-full items-center justify-center">
@@ -48,13 +50,13 @@ export function PredictionViewerChartArea({
             <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-destructive/15">
               <AlertCircle className="h-5 w-5 text-destructive" />
             </div>
-            <div className="text-sm font-medium text-destructive">Unable to load predictions</div>
+            <div className="text-sm font-medium text-destructive">{t("predictions.viewer.chart.loadError")}</div>
             <div className="mt-1 text-xs leading-5 text-destructive/80">{error}</div>
           </div>
         </div>
       ) : datasets.length === 0 ? (
         <div className="flex h-full items-center justify-center text-muted-foreground">
-          <span className="text-sm">Select at least one partition to display.</span>
+          <span className="text-sm">{t("predictions.viewer.chart.selectPartition")}</span>
         </div>
       ) : kind === "scatter" ? (
         <PredictionScatterChart ref={chartRef} datasets={datasets} config={config} variant="full" />

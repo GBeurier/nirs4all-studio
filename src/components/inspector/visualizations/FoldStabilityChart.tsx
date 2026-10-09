@@ -8,6 +8,7 @@
  */
 
 import { useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { useInspectorSelection, useInspectorHover } from '@/context/useInspectorSelection';
 import {
@@ -35,6 +36,7 @@ interface FoldStabilityChartProps {
 }
 
 export function FoldStabilityChart({ data, groups, isLoading }: FoldStabilityChartProps) {
+  const { t } = useTranslation();
   const { select, selectedChains, hasSelection } = useInspectorSelection();
   const { hoveredChain, setHovered } = useInspectorHover();
   const { viewportRef, dimensions } = useInspectorChartViewport();
@@ -63,7 +65,7 @@ export function FoldStabilityChart({ data, groups, isLoading }: FoldStabilityCha
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        <span className="text-sm">Loading fold stability data...</span>
+        <span className="text-sm">{t('inspector.charts.loading.foldStability')}</span>
       </div>
     );
   }
@@ -73,7 +75,7 @@ export function FoldStabilityChart({ data, groups, isLoading }: FoldStabilityCha
   if (lines.length === 0 || renderableLines.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        {getFoldStabilityEmptyMessage()}
+        {getFoldStabilityEmptyMessage(t)}
       </div>
     );
   }

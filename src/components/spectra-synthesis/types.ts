@@ -81,8 +81,6 @@ export interface SynthesisStepDefinition {
   id: string;
   type: SynthesisStepType;
   method: string;
-  name: string;
-  description: string;
   category: SynthesisCategory;
   icon: string;
   color: {
@@ -143,9 +141,7 @@ export type SynthesisCategory =
 
 export interface SynthesisCategoryDefinition {
   id: SynthesisCategory;
-  label: string;
   icon: string;
-  description: string;
   exclusive?: boolean;  // Only one step from this category allowed
 }
 
@@ -155,14 +151,18 @@ export interface SynthesisCategoryDefinition {
 export interface ValidationError {
   stepId?: string;
   field?: string;
-  message: string;
+  /** Locale key of the message shown to the user. */
+  messageKey: string;
   severity: "error";
 }
 
 export interface ValidationWarning {
   stepId?: string;
   field?: string;
-  message: string;
+  /** Locale key of the message shown to the user. */
+  messageKey: string;
+  /** Step the warning is about; its localized name fills the `{{step}}` placeholder. */
+  stepType?: SynthesisStepType;
   severity: "warning";
 }
 
@@ -216,8 +216,6 @@ export interface ExportOptions {
  */
 export interface ChemicalComponent {
   name: string;
-  displayName: string;
-  description: string;
   category: ComponentCategory;
 }
 

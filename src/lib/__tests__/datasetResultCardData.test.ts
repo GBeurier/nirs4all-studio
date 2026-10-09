@@ -90,7 +90,7 @@ describe('dataset result card data helpers', () => {
     const summary = buildDatasetResultHeaderSummary({
       scoreRows: [row], chains: [topChain({ synthetic_refit: true })], metric: 'rmse',
     });
-    expect(summary).toMatchObject({ bestSummaryLabel: 'CV estimate', refitCount: 0, delta: null });
+    expect(summary).toMatchObject({ bestSummaryKind: 'cvEstimate', refitCount: 0, delta: null });
     expect(summary.bestRow).toBe(row);
     expect(row.primaryTestScore).toBe(0.15);
   });
@@ -219,7 +219,7 @@ describe('dataset result card data helpers', () => {
     expect(summary).toMatchObject({
       bestRow: refitRow,
       bestContext: 'refit',
-      bestSummaryLabel: 'Best Refit',
+      bestSummaryKind: 'bestRefit',
       deltaDirection: 'down',
       refitCount: 1,
     });

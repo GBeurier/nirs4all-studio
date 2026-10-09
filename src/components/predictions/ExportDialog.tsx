@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,6 +37,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 }
 
 export function ExportDialog({ open, onOpenChange, datasets }: ExportDialogProps) {
+  const { t } = useTranslation();
   const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
 
@@ -53,7 +55,7 @@ export function ExportDialog({ open, onOpenChange, datasets }: ExportDialogProps
   const handleExportPredictions = async () => {
     const datasetNames = Array.from(exportSelection);
     if (datasetNames.length === 0) {
-      toast.error("Select at least one dataset");
+      toast.error(t("predictions.export.selectAtLeastOne"));
       return;
     }
 
@@ -67,10 +69,10 @@ export function ExportDialog({ open, onOpenChange, datasets }: ExportDialogProps
           ? `${datasetNames[0]}.parquet`
           : `predictions_export_${new Date().toISOString().slice(0, 10)}.zip`,
       );
-      toast.success("Export ready");
+      toast.success(t("predictions.export.ready"));
       onOpenChange(false);
     } catch (error) {
-      toast.error(getErrorMessage(error, "Export failed"));
+      toast.error(getErrorMessage(error, t("predictions.export.failed")));
     } finally {
       setIsExporting(false);
     }
@@ -80,8 +82,8 @@ export function ExportDialog({ open, onOpenChange, datasets }: ExportDialogProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Export Predictions</DialogTitle>
-          <DialogDescription>Select datasets to export (.parquet or .zip).</DialogDescription>
+          <DialogTitle>{t("predictions.export.title")}</DialogTitle>
+          <DialogDescription>{t("predictions.export.description")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2 max-h-60 overflow-auto">
           {datasets.map(datasetName => (
@@ -92,10 +94,10 @@ export function ExportDialog({ open, onOpenChange, datasets }: ExportDialogProps
           ))}
         </div>
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set(datasets))} disabled={isExporting}>All</Button>
-          <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set())} disabled={isExporting}>None</Button>
+          <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set(datasets))} disabled={isExporting}>{t("common.all")}</Button>
+          <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set())} disabled={isExporting}>{t("common.none")}</Button>
           <Button onClick={handleExportPredictions} disabled={isExporting}>
-            {isExporting ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Exporting...</> : "Download"}
+            {isExporting ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />{t("predictions.export.exporting")}</> : t("common.download")}
           </Button>
         </DialogFooter>
       </DialogContent>

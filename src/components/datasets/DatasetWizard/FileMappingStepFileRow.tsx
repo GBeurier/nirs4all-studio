@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   ChevronDown,
@@ -50,6 +51,7 @@ export function FileMappingStepFileRow({
   maxSource,
   validatedShape,
 }: FileMappingStepFileRowProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const shapeDisplay = getFileShapeDisplay(file, validatedShape);
 
@@ -71,12 +73,11 @@ export function FileMappingStepFileRow({
                     <TooltipTrigger>
                       <Badge variant="secondary" className="text-xs">
                         <Sparkles className="h-3 w-3 mr-1" />
-                        Auto
+                        {t("datasets.wizard.fileMapping.row.auto")}
                       </Badge>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Auto-detected ({Math.round(file.confidence * 100)}%
-                      confidence)
+                      {t("datasets.wizard.fileMapping.row.autoDetected", { confidence: Math.round(file.confidence * 100) })}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -96,7 +97,7 @@ export function FileMappingStepFileRow({
                     <TooltipTrigger>
                       <Badge variant="outline" className="text-xs font-mono text-destructive border-destructive/50">
                         <AlertCircle className="h-3 w-3 mr-1" />
-                        Error
+                        {t("common.error")}
                       </Badge>
                     </TooltipTrigger>
                     <TooltipContent>{shapeDisplay.error}</TooltipContent>
@@ -112,6 +113,8 @@ export function FileMappingStepFileRow({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
+                aria-label={expanded ? t("datasets.wizard.fileMapping.row.hideDetails") : t("datasets.wizard.fileMapping.row.showDetails")}
+                aria-expanded={expanded}
                 onClick={() => setExpanded(!expanded)}
               >
                 {expanded ? (
@@ -125,6 +128,7 @@ export function FileMappingStepFileRow({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                aria-label={t("datasets.wizard.fileMapping.row.removeFile")}
                 onClick={onRemove}
               >
                 <X className="h-3 w-3" />
@@ -133,7 +137,7 @@ export function FileMappingStepFileRow({
 
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <Label className="text-xs text-muted-foreground">Role</Label>
+                <Label className="text-xs text-muted-foreground">{t("datasets.wizard.fileMapping.row.role")}</Label>
                 <Select
                   value={file.type}
                   onValueChange={(value) =>
@@ -146,7 +150,7 @@ export function FileMappingStepFileRow({
                   <SelectContent>
                     {FILE_ROLE_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                        {t(option.labelKey)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -154,7 +158,7 @@ export function FileMappingStepFileRow({
               </div>
 
               <div>
-                <Label className="text-xs text-muted-foreground">Split</Label>
+                <Label className="text-xs text-muted-foreground">{t("datasets.wizard.fileMapping.row.split")}</Label>
                 <Select
                   value={file.split}
                   onValueChange={(value) =>
@@ -167,7 +171,7 @@ export function FileMappingStepFileRow({
                   <SelectContent>
                     {FILE_SPLIT_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                        {t(option.labelKey)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -175,7 +179,7 @@ export function FileMappingStepFileRow({
               </div>
 
               <div>
-                <Label className="text-xs text-muted-foreground">Source</Label>
+                <Label className="text-xs text-muted-foreground">{t("datasets.wizard.fileMapping.row.source")}</Label>
                 {file.type === "X" ? (
                   <Select
                     value={String(file.source || 1)}
@@ -187,14 +191,14 @@ export function FileMappingStepFileRow({
                     <SelectContent>
                       {getSourceOptions(maxSource).map((source) => (
                         <SelectItem key={source} value={String(source)}>
-                          Source {source}
+                          {t("datasets.wizard.fileMapping.row.sourceN", { n: source })}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 ) : (
                   <div className="h-8 px-3 flex items-center text-xs text-muted-foreground bg-muted/50 rounded-md">
-                    N/A
+                    {t("datasets.wizard.fileMapping.row.notApplicable")}
                   </div>
                 )}
               </div>
@@ -204,11 +208,11 @@ export function FileMappingStepFileRow({
               <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <span className="font-medium">Full path:</span>
+                    <span className="font-medium">{t("datasets.wizard.fileMapping.row.fullPath")}</span>
                     <div className="font-mono truncate">{file.path}</div>
                   </div>
                   <div>
-                    <span className="font-medium">Format:</span>
+                    <span className="font-medium">{t("datasets.wizard.fileMapping.row.format")}</span>
                     <div>{file.format.toUpperCase()}</div>
                   </div>
                 </div>

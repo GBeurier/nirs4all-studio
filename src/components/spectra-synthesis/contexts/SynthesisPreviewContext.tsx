@@ -16,6 +16,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSynthesisBuilder } from "./useSynthesisBuilderContext";
+import i18n from "i18next";
 import { api } from "@/api/transport";
 import {
   SynthesisPreviewContext,
@@ -108,7 +109,7 @@ export function SynthesisPreviewProvider({
       const enabledSteps = config.steps.filter((s) => s.enabled);
 
       if (enabledSteps.length === 0) {
-        throw new Error("No steps enabled. Add at least a Features step.");
+        throw new Error(i18n.t("spectraSynthesis.preview.noSteps"));
       }
 
       const request: PreviewRequest = {
@@ -123,7 +124,7 @@ export function SynthesisPreviewProvider({
       const response = await fetchPreview(request);
 
       if (!response.success) {
-        throw new Error(response.error || "Preview generation failed");
+        throw new Error(response.error || i18n.t("spectraSynthesis.chart.previewFailed"));
       }
 
       setState((prev) => ({
@@ -150,7 +151,7 @@ export function SynthesisPreviewProvider({
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : i18n.t("spectraSynthesis.export.unknownError"),
       }));
     }
   }, [exportConfig, previewSamples]);

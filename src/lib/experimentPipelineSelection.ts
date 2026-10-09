@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { PipelineInfo, PipelineStep } from "@/api/pipelines";
 
 import { buildCampaignPipelineProjection } from "./campaignPipelineAdapter";
@@ -112,7 +114,12 @@ export function buildAllPipelineOptions(
   return [
     {
       id: CURRENT_EDITED_PIPELINE_ID,
-      name: `[Current] ${currentEditedPipeline.name}${currentEditedPipeline.isDirty ? " (unsaved)" : ""}`,
+      name: i18n.t(
+        currentEditedPipeline.isDirty
+          ? "newExperiment.pipeline.currentUnsaved"
+          : "newExperiment.pipeline.current",
+        { name: currentEditedPipeline.name },
+      ),
       preset: false,
       favorite: false,
       ...graphFields,

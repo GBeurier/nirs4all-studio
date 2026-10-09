@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import { getNodeByClassPath, getNodeByName } from "@/data/nodes";
 import type { PipelineStep } from "@/api/pipelines";
 
@@ -47,36 +49,28 @@ export interface DatasetRuntimeGroupingState {
 
 type DatasetGroupingInput = DatasetGroupingFieldsInput;
 
+/** User-visible runtime-grouping copy; getters resolve the active language at read time. */
 export const RUNTIME_GROUPING_COPY = {
-  additiveDescription:
-    "Keep related samples together during cross-validation. Samples sharing a repetition identifier or the selected group stay in the same fold. Repeated measurements always remain together.",
-  conflictTitle: "A selected pipeline already defines sample groups.",
-  conflictDescription:
-    "Remove the grouping setting from the pipeline, then choose the sample groups here.",
-  conflictToast:
-    "This pipeline already defines sample groups. Remove its grouping setting, then choose the groups here.",
-  legacyGroupDeprecation:
-    "Update the sample grouping setting before using this pipeline.",
-  requiredBlocking:
-    "A selected pipeline requires sample groups. Choose a sample information column or define the repeated measurements in the dataset.",
-  noMetadataBlocking:
-    "A selected pipeline requires sample groups. Add sample information or define the repeated measurements in the dataset first.",
-  noSplitterRun:
-    "The selected pipelines do not divide the samples into validation sets. No sample grouping is needed.",
-  noSplitterInjection:
-    "No sample grouping is needed for the selected pipelines.",
-  noSplitterPipeline:
-    "This pipeline does not divide the samples into validation sets. No sample grouping is needed.",
-} as const;
+  get additiveDescription() { return i18n.t("newExperiment.runtimeGrouping.copy.additiveDescription"); },
+  get conflictTitle() { return i18n.t("newExperiment.runtimeGrouping.copy.conflictTitle"); },
+  get conflictDescription() { return i18n.t("newExperiment.runtimeGrouping.copy.conflictDescription"); },
+  get conflictToast() { return i18n.t("newExperiment.runtimeGrouping.copy.conflictToast"); },
+  get legacyGroupDeprecation() { return i18n.t("newExperiment.runtimeGrouping.copy.legacyGroupDeprecation"); },
+  get requiredBlocking() { return i18n.t("newExperiment.runtimeGrouping.copy.requiredBlocking"); },
+  get noMetadataBlocking() { return i18n.t("newExperiment.runtimeGrouping.copy.noMetadataBlocking"); },
+  get noSplitterRun() { return i18n.t("newExperiment.runtimeGrouping.copy.noSplitterRun"); },
+  get noSplitterInjection() { return i18n.t("newExperiment.runtimeGrouping.copy.noSplitterInjection"); },
+  get noSplitterPipeline() { return i18n.t("newExperiment.runtimeGrouping.copy.noSplitterPipeline"); },
+};
 
 export function getRuntimeGroupingRepetitionOnlyWarning(
   repetitionColumn: string,
 ): string {
-  return `No additional group selected. Repeated measurements will be kept together using '${repetitionColumn}'.`;
+  return i18n.t("newExperiment.runtimeGrouping.repetitionOnlyWarning", { column: repetitionColumn });
 }
 
 export function getRuntimeGroupingOptionalPropagationWarning(): string {
-  return "The sample groups selected here will apply to all selected pipelines.";
+  return i18n.t("newExperiment.runtimeGrouping.optionalPropagationWarning");
 }
 
 export function getRuntimeGroupingSummary(
@@ -84,18 +78,21 @@ export function getRuntimeGroupingSummary(
   selectedGroupBy: string | null,
 ): string {
   if (repetitionColumn && selectedGroupBy) {
-    return `Split constraints: ${repetitionColumn} + ${selectedGroupBy}`;
+    return i18n.t("newExperiment.runtimeGrouping.summary.both", {
+      repetition: repetitionColumn,
+      groupBy: selectedGroupBy,
+    });
   }
 
   if (selectedGroupBy) {
-    return `Group samples by: ${selectedGroupBy}`;
+    return i18n.t("newExperiment.runtimeGrouping.summary.groupBy", { groupBy: selectedGroupBy });
   }
 
   if (repetitionColumn) {
-    return `Dataset repetition only (${repetitionColumn})`;
+    return i18n.t("newExperiment.runtimeGrouping.summary.repetitionOnly", { repetition: repetitionColumn });
   }
 
-  return "No additional group";
+  return i18n.t("newExperiment.runtimeGrouping.summary.none");
 }
 
 export function analyzeSelectedPipelinesRuntimeGrouping(
@@ -153,7 +150,7 @@ export function analyzePipelineRuntimeGrouping(
 
     const params = isRecord(step.params) ? step.params : {};
     if (hasExplicitGroupValue(params.group_by) || hasExplicitGroupValue(params.group)) {
-      persistedGroupParamSteps.push(String(step.name || step.id || "Unnamed splitter"));
+      persistedGroupParamSteps.push(String(step.name || step.id || i18n.t("newExperiment.runtimeGrouping.unnamedSplitter")));
     }
   });
 
@@ -199,7 +196,7 @@ export function evaluateDatasetRuntimeGrouping(
       selectedGroupBy: cleanedGroupBy,
       requiresExplicitGroup: false,
       hasBlockingError: true,
-      blockingMessage: `Metadata column "${cleanedGroupBy}" is not available on this dataset.`,
+      blockingMessage: i18n.t("newExperiment.runtimeGrouping.metadataColumnMissing", { column: cleanedGroupBy }),
       repetitionOnlyWarning: null,
       optionalPropagationWarning: null,
     };

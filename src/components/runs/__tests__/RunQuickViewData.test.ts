@@ -4,7 +4,7 @@ import {
   getRunQuickViewDefaultSelectedPartitions,
   getRunQuickViewPartitionStats,
   RUN_QUICK_VIEW_PARTITION_COLORS,
-  RUN_QUICK_VIEW_PARTITION_LABELS,
+  RUN_QUICK_VIEW_PARTITION_LABEL_KEYS,
   toggleRunQuickViewPartitionSelection,
 } from "../RunQuickViewData";
 import type { ScoreDistribution } from "@/types/enriched-runs";
@@ -31,11 +31,11 @@ function partitionDistribution(overrides: Partial<ScoreDistribution["partitions"
 
 describe("RunQuickViewData", () => {
   it("keeps partition labels and colors centralized", () => {
-    expect(RUN_QUICK_VIEW_PARTITION_LABELS).toMatchObject({
-      val: "Validation",
-      test: "Test",
-      train: "Train",
-      final: "Final",
+    expect(RUN_QUICK_VIEW_PARTITION_LABEL_KEYS).toMatchObject({
+      val: "runs.quickView.partitions.val",
+      test: "runs.quickView.partitions.test",
+      train: "runs.quickView.partitions.train",
+      final: "runs.quickView.partitions.final",
     });
     expect(RUN_QUICK_VIEW_PARTITION_COLORS.val).toBe("bg-chart-1/20 text-chart-1 border-chart-1/30");
     expect(RUN_QUICK_VIEW_PARTITION_COLORS.final).toBe("bg-chart-4/20 text-chart-4 border-chart-4/30");

@@ -12,6 +12,10 @@ import { getWorkspaceTransitionStatus } from "@/api/workspace";
 import type { WorkspaceTransitionStatusResponse } from "@/types/storage";
 import { LegacyWorkspaceBanner } from "../LegacyWorkspaceBanner";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
 vi.mock("@/api/workspace", () => ({
   getWorkspaceTransitionStatus: vi.fn(),
 }));
@@ -73,7 +77,7 @@ describe("LegacyWorkspaceBanner", () => {
     const container = await render(<LegacyWorkspaceBanner />);
     await flushAsyncUi();
 
-    expect(container.textContent).toContain("Legacy workspace format detected");
+    expect(container.textContent).toContain("layout.legacyWorkspace.title");
     expect(container.textContent).toContain("Legacy DuckDB workspace detected");
     const link = container.querySelector("a");
     expect(link?.getAttribute("href")).toBe("/settings?tab=workspaces");

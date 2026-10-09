@@ -4,6 +4,8 @@
  * Fetches real data from the spectra API endpoint with pagination support.
  */
 import { useState, useEffect, useMemo } from "react";
+import i18n from "i18next";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,7 @@ import {
 import { PartitionToggle } from "../PartitionToggle";
 import type { Dataset, PartitionKey, PreviewDataResponse } from "@/types/datasets";
 import { getDatasetSpectra, type SpectraResponse } from "@/api/playground";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 /**
  * Cap the wavelength axis shipped to the raw-data viewer. Wide NIRS spectra can
@@ -35,6 +38,9 @@ import { getDatasetSpectra, type SpectraResponse } from "@/api/playground";
  * reports the true width in `num_features`.
  */
 const MAX_RAW_WAVELENGTHS = 2000;
+
+/** Internal key of the target column; its header is localized at render time. */
+const TARGET_COLUMN_KEY = "Target (y)";
 
 interface DatasetRawDataTabProps {
   dataset: Dataset;
@@ -51,6 +57,7 @@ export function DatasetRawDataTab({
   error,
   onRefresh,
 }: DatasetRawDataTabProps) {
+  const { t } = useTranslation();
   const trainCount = preview?.summary?.train_samples;
   const testCount = preview?.summary?.test_samples;
   const hasTest = testCount != null && testCount > 0;
@@ -94,7 +101,7 @@ export function DatasetRawDataTab({
         });
         if (!cancelled) setSpectraData(data);
       } catch (e) {
-        if (!cancelled) setFetchError(e instanceof Error ? e.message : "Failed to fetch data");
+        if (!cancelled) setFetchError(e instanceof Error ? e.message : i18n.t("datasets.detail.rawData.fetchFailed"));
       } finally {
         if (!cancelled) setFetchLoading(false);
       }
@@ -112,7 +119,7 @@ export function DatasetRawDataTab({
 
     // Show Y if available
     if (spectraData.y) {
-      cols.push("Target (y)");
+      cols.push(TARGET_COLUMN_KEY);
     }
 
     // Show metadata columns
@@ -136,7 +143,7 @@ export function DatasetRawDataTab({
 
       if (spectraData.y) {
         const yVal = spectraData.y[i];
-        values["Target (y)"] = yVal != null ? Number(yVal).toFixed(4) : "--";
+        values[TARGET_COLUMN_KEY] = yVal != null ? Number(yVal).toFixed(4) : "--";
       }
 
       for (const col of metaCols) {
@@ -163,7 +170,7 @@ export function DatasetRawDataTab({
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground">Loading raw data...</p>
+        <p className="text-muted-foreground">{t("datasets.detail.rawData.loading")}</p>
       </div>
     );
   }
@@ -172,13 +179,13 @@ export function DatasetRawDataTab({
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <AlertCircle className="h-8 w-8 text-destructive mb-4" />
-        <p className="text-destructive font-medium mb-2">Failed to load data</p>
+        <p className="text-destructive font-medium mb-2">{t("datasets.detail.rawData.loadFailed")}</p>
         <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
           {error}
         </p>
         <Button onClick={onRefresh} variant="outline">
           <RefreshCw className="h-4 w-4 mr-2" />
-          Retry
+          {t("common.retry")}
         </Button>
       </div>
     );
@@ -188,13 +195,13 @@ export function DatasetRawDataTab({
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <TableIcon className="h-8 w-8 text-muted-foreground mb-4 opacity-50" />
-        <p className="text-muted-foreground mb-2">No raw data available</p>
+        <p className="text-muted-foreground mb-2">{t("datasets.detail.rawData.none")}</p>
         <p className="text-sm text-muted-foreground text-center max-w-md">
-          Load the dataset preview to see sample data.
+          {t("datasets.detail.rawData.noneHint")}
         </p>
         <Button onClick={onRefresh} variant="outline" className="mt-4">
           <RefreshCw className="h-4 w-4 mr-2" />
-          Load Data
+          {t("datasets.detail.rawData.loadData")}
         </Button>
       </div>
     );
@@ -219,9 +226,9 @@ export function DatasetRawDataTab({
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
               <TableIcon className="h-4 w-4" />
-              Raw Data
+              {t("datasets.detail.rawData.title")}
               <Badge variant="secondary" className="ml-2">
-                {totalSamples.toLocaleString()} samples
+                {t("datasets.detail.rawData.samplesBadge", { count: totalSamples, value: totalSamples.toLocaleString(getActiveLocale()) })}
               </Badge>
             </CardTitle>
           </div>
@@ -230,7 +237,7 @@ export function DatasetRawDataTab({
           {fetchLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
-              <span className="text-muted-foreground text-sm">Loading page...</span>
+              <span className="text-muted-foreground text-sm">{t("datasets.detail.rawData.loadingPage")}</span>
             </div>
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center py-12">
@@ -244,7 +251,7 @@ export function DatasetRawDataTab({
                   <TableRow className="bg-muted/30">
                     {columns.map((col) => (
                       <TableHead key={col} className="text-xs font-medium whitespace-nowrap">
-                        {col}
+                        {col === TARGET_COLUMN_KEY ? t("datasets.detail.rawData.targetColumn") : col}
                       </TableHead>
                     ))}
                   </TableRow>
@@ -263,16 +270,18 @@ export function DatasetRawDataTab({
               </Table>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">No data for this partition.</p>
+            <p className="text-sm text-muted-foreground text-center py-8">{t("datasets.detail.rawData.noPartitionData")}</p>
           )}
 
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4">
               <p className="text-sm text-muted-foreground">
-                Showing {currentPage * pageSize + 1} to{" "}
-                {Math.min((currentPage + 1) * pageSize, totalSamples)} of{" "}
-                {totalSamples.toLocaleString()} samples
+                {t("datasets.detail.rawData.showing", {
+                  from: currentPage * pageSize + 1,
+                  to: Math.min((currentPage + 1) * pageSize, totalSamples),
+                  total: totalSamples.toLocaleString(getActiveLocale()),
+                })}
               </p>
               <div className="flex items-center gap-2">
                 <Button
@@ -280,17 +289,19 @@ export function DatasetRawDataTab({
                   size="sm"
                   onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
                   disabled={currentPage === 0}
+                  aria-label={t("common.previous")}
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <span className="text-sm">
-                  Page {currentPage + 1} of {totalPages}
+                  {t("datasets.detail.rawData.page", { page: currentPage + 1, pages: totalPages })}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
                   disabled={currentPage >= totalPages - 1}
+                  aria-label={t("common.next")}
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>

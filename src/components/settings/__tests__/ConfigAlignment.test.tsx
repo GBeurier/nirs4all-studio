@@ -34,7 +34,7 @@ describe("ConfigAlignment runtime capabilities", () => {
   it("does not offer an unsupported alignment for the native runtime", async () => {
     await mount(false);
     expect(container.textContent).not.toContain("settings.configAlignment.alignAll");
-    expect(container.textContent).toContain("Install an updated Studio release");
+    expect(container.textContent).toContain("settings.configAlignment.readOnlyNative");
   });
   it("retains alignment for the writable web backend", async () => {
     await mount();

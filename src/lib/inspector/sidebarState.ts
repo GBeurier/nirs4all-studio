@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 export {
   buildResultAnalysisMetadataFacetItems as buildInspectorSidebarMetadataFacetItems,
   buildResultAnalysisMetadataFacetQuery as buildInspectorSidebarMetadataFacetQuery,
@@ -10,7 +12,7 @@ export type {
   ResultAnalysisMetadataFacetValueItem as InspectorSidebarMetadataFacetValueItem,
 } from "@/lib/inspector/resultAnalysisMetadataFacetReadModel";
 
-export type InspectorSidebarStatusLabel = 'Error' | 'Loading' | 'No data' | 'Ready';
+export type InspectorSidebarStatusLabel = 'error' | 'loading' | 'noData' | 'ready';
 
 interface InspectorSidebarStatusInput {
   error?: string | null;
@@ -29,14 +31,16 @@ export function getInspectorSidebarStatusLabel({
   isLoading,
   chainCount,
 }: InspectorSidebarStatusInput): InspectorSidebarStatusLabel {
-  if (error) return 'Error';
-  if (isLoading) return 'Loading';
-  if (chainCount === 0) return 'No data';
-  return 'Ready';
+  if (error) return 'error';
+  if (isLoading) return 'loading';
+  if (chainCount === 0) return 'noData';
+  return 'ready';
 }
 
-export function getInspectorSelectionSubtitle(pinnedCount: number): string {
-  return pinnedCount > 0 ? `${pinnedCount} pinned` : 'active chains';
+export function getInspectorSelectionSubtitle(pinnedCount: number, t: TFunction): string {
+  return pinnedCount > 0
+    ? t('inspector.counts.pinned', { count: pinnedCount })
+    : t('inspector.sidebar.selectionSubtitle.activeChains');
 }
 
 export function isInspectorSelectAllDisabled({

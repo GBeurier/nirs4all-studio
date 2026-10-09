@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   CampaignPipelineRef,
   CampaignPipelineSource,
@@ -40,7 +42,7 @@ export function buildCampaignPipelineProjection({
 }
 
 export function summarizeCampaignPipelineSteps(steps: readonly unknown[] | null | undefined): string {
-  if (!steps?.length) return "Empty pipeline";
+  if (!steps?.length) return i18n.t("newExperiment.campaign.emptyPipeline");
   return buildCampaignPipelineProjection({
     id: "pipeline-preview",
     name: "Pipeline preview",

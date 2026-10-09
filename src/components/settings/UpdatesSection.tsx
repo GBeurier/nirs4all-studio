@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   useUpdateStatus,
   useCheckForUpdates,
@@ -58,6 +59,7 @@ import { UpdatesNirs4allDialog } from "./UpdatesNirs4allDialog";
 import { UpdatesWebappDialog } from "./UpdatesWebappDialog";
 
 export function UpdatesSection() {
+  const { t } = useTranslation();
   const { data: requiredRuntime } = useRecommendedConfig();
   const queryClient = useQueryClient();
   const { data: status, isLoading: statusLoading, error: statusError } = useUpdateStatus();
@@ -193,6 +195,7 @@ export function UpdatesSection() {
     status,
     stagedUpdate,
     download: updateDownload,
+    t,
   });
   // Prefer the resolved native installer (.exe/.dmg/.deb/.AppImage); fall back
   // to the release page when it couldn't be resolved.
@@ -210,12 +213,13 @@ export function UpdatesSection() {
   const isReadOnlyRuntime = runtimeDisplay.isReadOnly;
   const nirs4allRow = { ...getNirs4allUpdateRowState(status, isReadOnlyRuntime), managedByStudio: Boolean(getElectronApi()), requiredVersion: requiredRuntime?.nirs4all };
   const currentRuntime = getCurrentRuntime(venvStatus);
-  const runtimeExecutablePath = getRuntimeExecutablePath(runtimeSummary, currentRuntime);
-  const gpuDisplay = getGpuDisplay(gpuInfo, gpuLoading);
-  const torchDisplay = getTorchRuntimeDisplay(gpuInfo);
+  const runtimeExecutablePath = getRuntimeExecutablePath(runtimeSummary, currentRuntime, t);
+  const gpuDisplay = getGpuDisplay(gpuInfo, gpuLoading, t);
+  const torchDisplay = getTorchRuntimeDisplay(gpuInfo, t);
   const webappDialogCopy = getWebappDialogCopy({
     download: updateDownload,
     latestVersion: status?.webapp?.latest_version,
+    t,
   });
 
   const handleAutoCheckToggle = (checked: boolean) => {

@@ -4,6 +4,7 @@ import {
   Download,
   Loader2,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type {
   ConfigComparisonResponse,
   OptionalPackageInfo,
@@ -93,13 +94,14 @@ export function PythonRuntimeReviewDialog({
   onToggleReviewExtra,
   onAlignRuntime,
 }: PythonRuntimeReviewDialogProps) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden p-4 sm:max-w-4xl sm:p-6">
         <DialogHeader className="shrink-0 pr-6">
-          <DialogTitle>Python packages and optional features</DialogTitle>
+          <DialogTitle>{t("settings.pythonEnvPicker.review.title")}</DialogTitle>
           <DialogDescription>
-            Studio uses this environment for analysis. Recommended versions are informational: your compatible packages are kept, and optional packages enable additional features.
+            {t("settings.pythonEnvPicker.review.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -161,7 +163,7 @@ export function PythonRuntimeReviewDialog({
         )}
 
         <DialogFooter className="shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>
           {hasAlignmentPreview && (
           <Button
             onClick={() => {
@@ -182,7 +184,7 @@ export function PythonRuntimeReviewDialog({
             ) : (
               <Download className="mr-2 h-4 w-4" />
             )}
-            {isAligning ? "Aligning runtime..." : hasAlignmentPreview && alignmentChangesCount === 0 ? "Runtime aligned" : "Align runtime"}
+            {isAligning ? t("settings.pythonEnvPicker.review.aligning") : hasAlignmentPreview && alignmentChangesCount === 0 ? t("settings.pythonEnvPicker.review.aligned") : t("settings.pythonEnvPicker.review.align")}
           </Button>
           )}
         </DialogFooter>
@@ -202,16 +204,17 @@ function ReviewRuntimeSummary({
   runningPythonPath,
   runtimeDisplay,
 }: ReviewRuntimeSummaryProps) {
+  const { t } = useTranslation();
   const missingOptionalCount = postSwitchValidation.runtimeSummary?.missing_optional_packages.length ?? 0;
 
   return (
     <div className="rounded-lg border p-4 space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="font-semibold text-sm">
-          Python {shortVersion(postSwitchValidation.runtimeSummary?.runtime.version ?? null)}
+          Python {shortVersion(postSwitchValidation.runtimeSummary?.runtime.version ?? null, t)}
         </span>
         <Badge variant={postSwitchValidation.runtimeSummary?.core_ready ? "default" : "destructive"} className="text-xs">
-          {postSwitchValidation.runtimeSummary?.core_ready ? "Core ready" : "Core missing"}
+          {postSwitchValidation.runtimeSummary?.core_ready ? t("settings.pythonEnvPicker.review.coreReady") : t("settings.pythonEnvPicker.review.coreMissing")}
         </Badge>
         <Badge variant="secondary" className="text-xs">
           {postSwitchValidation.runtimeSummary?.runtime_kind ?? runtimeDisplay.runtimeKind}
@@ -222,8 +225,8 @@ function ReviewRuntimeSummary({
       </p>
       <p className="text-xs text-muted-foreground">
         {missingOptionalCount > 0
-          ? `${missingOptionalCount} optional package gap${missingOptionalCount === 1 ? "" : "s"} detected.`
-          : "No optional package gaps detected."}
+          ? t("settings.pythonEnvPicker.review.gapsDetected", { count: missingOptionalCount })
+          : t("settings.pythonEnvPicker.review.noGaps")}
       </p>
     </div>
   );
@@ -242,12 +245,13 @@ function AlignmentPreviewNotice({
   hasAlignmentPreview,
   message,
 }: AlignmentPreviewNoticeProps) {
+  const { t } = useTranslation();
   if (isReviewPreviewLoading) {
     return (
       <Alert>
         <Loader2 className="h-4 w-4 animate-spin" />
         <AlertDescription>
-          Preparing the alignment plan for the selected profile and optional packages.
+          {t("settings.pythonEnvPicker.review.preparingPlan")}
         </AlertDescription>
       </Alert>
     );
@@ -269,7 +273,7 @@ function AlignmentPreviewNotice({
       <Alert>
         <CheckCircle2 className="h-4 w-4 text-green-600" />
         <AlertDescription>
-          The selected runtime already matches the suggested profile and selected optional packages.
+          {t("settings.pythonEnvPicker.review.alreadyMatches")}
         </AlertDescription>
       </Alert>
     );
@@ -279,7 +283,7 @@ function AlignmentPreviewNotice({
     <Alert>
       <AlertCircle className="h-4 w-4" />
       <AlertDescription>
-        The alignment plan could not be loaded for this runtime yet.
+        {t("settings.pythonEnvPicker.review.planUnavailable")}
       </AlertDescription>
     </Alert>
   );
@@ -290,13 +294,15 @@ interface AlignFailuresListProps {
 }
 
 function AlignFailuresList({ failures }: AlignFailuresListProps) {
+  const { t } = useTranslation();
+
   if (failures.length === 0) {
     return null;
   }
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium">Install errors</p>
+      <p className="text-sm font-medium">{t("settings.pythonEnvPicker.review.installErrors")}</p>
       {failures.map((failure) => (
         <details
           key={failure.package}
@@ -327,13 +333,15 @@ function CompatibleProfilesList({
   recommendedProfileId,
   onUpdateReviewProfile,
 }: CompatibleProfilesListProps) {
+  const { t } = useTranslation();
+
   if (compatibleProfiles.length === 0) {
     return null;
   }
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium">Compute profile</label>
+      <label className="text-sm font-medium">{t("settings.pythonEnvPicker.review.computeProfile")}</label>
       <div className="space-y-2">
         {compatibleProfiles.map((profile) => (
           <button
@@ -349,7 +357,7 @@ function CompatibleProfilesList({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium text-sm">{profile.label}</span>
               {recommendedProfileId === profile.id && (
-                <Badge variant="default" className="text-xs">Recommended</Badge>
+                <Badge variant="default" className="text-xs">{t("setupWizard.profile.recommended")}</Badge>
               )}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">{profile.description}</p>
@@ -376,22 +384,23 @@ function ProfilePackageTargets({
   isReviewDetailsLoading,
   reviewProfileDiff,
 }: ProfilePackageTargetsProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium">Target packages for the selected profile</label>
+      <label className="text-sm font-medium">{t("settings.pythonEnvPicker.review.targetPackages")}</label>
       {isReviewDetailsLoading ? (
-        <LoadingPanel label="Loading current and target versions…" iconClassName="h-4 w-4" />
+        <LoadingPanel label={t("settings.pythonEnvPicker.review.loadingVersions")} iconClassName="h-4 w-4" />
       ) : reviewProfileDiff?.packages.length ? (
         <div className="space-y-2">
           {reviewProfileDiff.packages.map((pkg) => {
-            const badge = getPackageStatusBadge(pkg.status);
+            const badge = getPackageStatusBadge(pkg.status, t);
             return (
               <div key={pkg.name} className="rounded-lg border p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">{pkg.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      Current: {pkg.installed_version ?? "Not present"}
+                      {t("settings.pythonEnvPicker.review.currentWithVersion", { version: pkg.installed_version ?? t("settings.pythonEnvPicker.packageNotPresent") })}
                     </p>
                   </div>
                   <Badge variant={badge.variant} className="text-xs">
@@ -400,13 +409,13 @@ function ProfilePackageTargets({
                 </div>
                 <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
                   <div>
-                    <p className="uppercase tracking-wide">Current version</p>
+                    <p className="uppercase tracking-wide">{t("settings.pythonEnvPicker.review.currentVersion")}</p>
                     <p className="mt-1 font-mono text-foreground">
-                      {pkg.installed_version ?? "Not present"}
+                      {pkg.installed_version ?? t("settings.pythonEnvPicker.packageNotPresent")}
                     </p>
                   </div>
                   <div>
-                    <p className="uppercase tracking-wide">Target version</p>
+                    <p className="uppercase tracking-wide">{t("settings.pythonEnvPicker.review.targetVersion")}</p>
                     <p className="mt-1 font-mono text-foreground">{pkg.recommended_version}</p>
                   </div>
                 </div>
@@ -416,7 +425,7 @@ function ProfilePackageTargets({
         </div>
       ) : (
         <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-          Package details are not available for this runtime yet.
+          {t("settings.pythonEnvPicker.review.noPackageDetails")}
         </div>
       )}
     </div>
@@ -440,6 +449,7 @@ function OptionalFeaturePackages({
   selectedExtras,
   onToggleReviewExtra,
 }: OptionalFeaturePackagesProps) {
+  const { t } = useTranslation();
   const reviewDependencyIndex = buildDependencyIndex(reviewDependencies);
 
   if (reviewOptionalPackages.length === 0) {
@@ -448,14 +458,14 @@ function OptionalFeaturePackages({
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium">Optional feature packages</label>
+      <label className="text-sm font-medium">{t("settings.pythonEnvPicker.review.optionalPackages")}</label>
       <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
         {reviewOptionalPackages.map((pkg) => {
           const dependency = reviewDependencyIndex.get(normalizePackageName(pkg.name));
           const isSelected = selectedExtras.includes(pkg.name);
           const currentVersion = isReviewDetailsLoading
-            ? "Loading..."
-            : dependency?.installed_version ?? "Not present";
+            ? t("common.loading")
+            : dependency?.installed_version ?? t("settings.pythonEnvPicker.packageNotPresent");
           const isInstalled = !isReviewDetailsLoading && Boolean(dependency?.installed_version);
 
           return (
@@ -483,20 +493,20 @@ function OptionalFeaturePackages({
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <Badge variant={isSelected ? "default" : "outline"} className="text-xs">
-                    {isSelected ? "Selected" : "Skip"}
+                    {isSelected ? t("settings.pythonEnvPicker.review.selected") : t("settings.pythonEnvPicker.review.skip")}
                   </Badge>
                   <Badge variant={isReviewDetailsLoading ? "secondary" : isInstalled ? "outline" : "secondary"} className="text-xs">
-                    {isReviewDetailsLoading ? "Checking" : isInstalled ? "Present" : "Not present"}
+                    {isReviewDetailsLoading ? t("settings.pythonEnvPicker.review.checking") : isInstalled ? t("settings.pythonEnvPicker.packagePresent") : t("settings.pythonEnvPicker.packageNotPresent")}
                   </Badge>
                 </div>
               </div>
               <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
                 <div>
-                  <p className="uppercase tracking-wide">Current version</p>
+                  <p className="uppercase tracking-wide">{t("settings.pythonEnvPicker.review.currentVersion")}</p>
                   <p className="mt-1 font-mono text-foreground">{currentVersion}</p>
                 </div>
                 <div>
-                  <p className="uppercase tracking-wide">Target version</p>
+                  <p className="uppercase tracking-wide">{t("settings.pythonEnvPicker.review.targetVersion")}</p>
                   <p className="mt-1 font-mono text-foreground">
                     {getOptionalTargetVersion(pkg)}
                   </p>

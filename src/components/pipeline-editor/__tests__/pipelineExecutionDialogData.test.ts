@@ -1,3 +1,4 @@
+import "@/lib/i18n";
 import { describe, expect, it } from 'vitest';
 import {
   buildDefaultRunName,

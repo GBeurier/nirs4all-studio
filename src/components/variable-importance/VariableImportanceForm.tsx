@@ -55,12 +55,12 @@ export function VariableImportanceForm({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="text-sm font-medium">
-            {t('shap.form.model', 'Model')}
+            {t('shap.form.model')}
           </Label>
           {chainId && (
             <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 text-emerald-600" asChild>
               <Link to={buildShapPredictHref(chainId)}>
-                <Zap className="h-3 w-3" /> Predict
+                <Zap className="h-3 w-3" /> {t('results.variableImportance.predict')}
               </Link>
             </Button>
           )}
@@ -75,7 +75,7 @@ export function VariableImportanceForm({
       <div className="space-y-2">
         <div className="flex items-center gap-1">
           <Label className="text-sm font-medium">
-            {t('shap.form.partition', 'Partition')}
+            {t('shap.form.partition')}
           </Label>
           <TooltipProvider>
             <Tooltip>
@@ -84,10 +84,7 @@ export function VariableImportanceForm({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="max-w-xs text-xs">
-                  {t(
-                    'shap.form.partitionHelp',
-                    'Use the test partition for unbiased importance estimates'
-                  )}
+                  {t('shap.form.partitionHelp')}
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -100,7 +97,7 @@ export function VariableImportanceForm({
           <SelectContent>
             {SHAP_PARTITION_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>
-                {option.label}
+                {t(option.labelKey)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -111,7 +108,7 @@ export function VariableImportanceForm({
       <div className="space-y-2">
         <div className="flex items-center gap-1">
           <Label className="text-sm font-medium">
-            {t('shap.form.explainerType', 'Explainer Type')}
+            {t('shap.form.explainerType')}
           </Label>
           <TooltipProvider>
             <Tooltip>
@@ -120,10 +117,7 @@ export function VariableImportanceForm({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="max-w-xs text-xs">
-                  {t(
-                    'shap.form.explainerHelp',
-                    'Auto will select the best explainer based on your model type'
-                  )}
+                  {t('shap.form.explainerHelp')}
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -139,7 +133,7 @@ export function VariableImportanceForm({
           <SelectContent>
             {SHAP_EXPLAINER_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>
-                {option.label}
+                {t(option.labelKey)}
               </SelectItem>
             ))}
           </SelectContent>

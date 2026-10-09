@@ -14,6 +14,7 @@
  * Phase 5: System Information & Diagnostics
  */
 
+import i18n from "i18next";
 import { useTranslation } from "react-i18next";
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -58,6 +59,7 @@ import {
 import { getErrorLogs, clearErrorLogs } from "@/api/system";
 import type { ErrorLogEntry, ErrorLogResponse } from "@/types/settings";
 import { formatRelativeTime } from "@/utils/formatters";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 interface ErrorLogViewerProps {
   /** Maximum number of errors to display */
@@ -125,7 +127,7 @@ ${error.traceback ? `\nTraceback:\n${error.traceback}` : ""}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <Badge variant={getLevelBadgeVariant() as "destructive" | "outline"} className="text-xs">
-                  {error.level}
+                  {t(`settings.errorLog.levels.${error.level}`)}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
                   {error.endpoint}
@@ -164,14 +166,14 @@ ${error.traceback ? `\nTraceback:\n${error.traceback}` : ""}
           <div className="border-t p-3 space-y-3 bg-muted/30">
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1">
-                Full Message
+                {t("settings.errorLog.fullMessage")}
               </p>
               <p className="text-sm">{error.message}</p>
             </div>
             {error.details && (
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1">
-                  Details
+                  {t("settings.errorLog.details")}
                 </p>
                 <p className="text-sm text-muted-foreground">{error.details}</p>
               </div>
@@ -179,7 +181,7 @@ ${error.traceback ? `\nTraceback:\n${error.traceback}` : ""}
             {error.traceback && (
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1">
-                  Traceback
+                  {t("settings.advanced.errors.traceback")}
                 </p>
                 <pre className="text-xs bg-muted p-2 rounded overflow-x-auto max-h-48">
                   {error.traceback}
@@ -187,8 +189,8 @@ ${error.traceback ? `\nTraceback:\n${error.traceback}` : ""}
               </div>
             )}
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>ID: {error.id}</span>
-              <span>{new Date(error.timestamp).toLocaleString()}</span>
+              <span>{t("settings.errorLog.id", { id: error.id })}</span>
+              <span>{new Date(error.timestamp).toLocaleString(getActiveLocale())}</span>
             </div>
           </div>
         </CollapsibleContent>
@@ -219,7 +221,7 @@ export function ErrorLogViewer({
       if ((err as { status?: number }).status === 404) {
         setLogData({ errors: [], total: 0, max_stored: 100 });
       } else {
-        setError(err instanceof Error ? err.message : "Failed to load error logs");
+        setError(err instanceof Error ? err.message : i18n.t("settings.errorLog.loadFailed"));
       }
     } finally {
       setIsLoading(false);
@@ -232,7 +234,7 @@ export function ErrorLogViewer({
       await clearErrorLogs();
       setLogData({ errors: [], total: 0, max_stored: logData?.max_stored ?? 100 });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to clear logs");
+      setError(err instanceof Error ? err.message : i18n.t("settings.errorLog.clearFailed"));
     } finally {
       setIsClearing(false);
     }
@@ -253,7 +255,7 @@ export function ErrorLogViewer({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileWarning className="h-5 w-5" />
-            Error Log
+            {t("settings.advanced.errors.title")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -271,7 +273,7 @@ export function ErrorLogViewer({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
             <FileWarning className="h-5 w-5" />
-            Error Log
+            {t("settings.advanced.errors.title")}
           </CardTitle>
           <CardDescription className="text-destructive">
             {error}
@@ -280,7 +282,7 @@ export function ErrorLogViewer({
         <CardContent>
           <Button variant="outline" size="sm" onClick={loadLogs}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            Retry
+            {t("common.retry")}
           </Button>
         </CardContent>
       </Card>
@@ -296,7 +298,7 @@ export function ErrorLogViewer({
           <div>
             <CardTitle className="flex items-center gap-2">
               <FileWarning className="h-5 w-5" />
-              Error Log
+              {t("settings.advanced.errors.title")}
               {errors.length > 0 && (
                 <Badge variant="destructive" className="ml-2">
                   {errors.length}
@@ -304,8 +306,10 @@ export function ErrorLogViewer({
               )}
             </CardTitle>
             <CardDescription>
-              Recent errors for debugging ({logData?.total ?? 0} total, max{" "}
-              {logData?.max_stored ?? 100} stored)
+              {t("settings.errorLog.summary", {
+                total: logData?.total ?? 0,
+                max: logData?.max_stored ?? 100,
+              })}
             </CardDescription>
           </div>
           <div className="flex gap-2">
@@ -321,16 +325,15 @@ export function ErrorLogViewer({
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Clear Error Logs?</AlertDialogTitle>
+                    <AlertDialogTitle>{t("settings.errorLog.clearConfirmTitle")}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will clear all {errors.length} error log entries.
-                      This action cannot be undone.
+                      {t("settings.errorLog.clearConfirmDescription", { count: errors.length })}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                     <AlertDialogAction onClick={handleClearLogs}>
-                      Clear All
+                      {t("settings.errorLog.clearAll")}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -343,9 +346,9 @@ export function ErrorLogViewer({
         {errors.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <FileWarning className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>No errors logged</p>
+            <p>{t("settings.advanced.errors.empty")}</p>
             <p className="text-xs mt-1">
-              Errors will appear here when they occur
+              {t("settings.errorLog.emptyHint")}
             </p>
           </div>
         ) : (

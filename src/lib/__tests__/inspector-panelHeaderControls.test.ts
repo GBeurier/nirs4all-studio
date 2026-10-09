@@ -4,16 +4,17 @@ import {
   getInspectorPanelFieldLabel,
   INSPECTOR_BIAS_VARIANCE_GROUP_OPTIONS,
 } from "@/lib/inspector/panelHeaderControls";
+import { tStub } from "./helpers/i18nStub";
 
 describe("inspector panel header controls", () => {
   it("maps known chain fields to user-facing labels", () => {
-    expect(getInspectorPanelFieldLabel("model_class")).toBe("Model family");
-    expect(getInspectorPanelFieldLabel("dataset_name")).toBe("Dataset");
-    expect(getInspectorPanelFieldLabel("pipeline_id")).toBe("Pipeline");
+    expect(getInspectorPanelFieldLabel("model_class", tStub)).toBe("inspector.fields.modelFamily");
+    expect(getInspectorPanelFieldLabel("dataset_name", tStub)).toBe("inspector.fields.dataset");
+    expect(getInspectorPanelFieldLabel("pipeline_id", tStub)).toBe("inspector.fields.pipeline");
   });
 
   it("keeps unknown future metadata fields visible", () => {
-    expect(getInspectorPanelFieldLabel("backend_id")).toBe("backend_id");
+    expect(getInspectorPanelFieldLabel("backend_id", tStub)).toBe("backend_id");
   });
 
   it("exposes stable bias/variance grouping options", () => {

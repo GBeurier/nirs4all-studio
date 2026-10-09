@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import {
   alignConfig,
   detectGPU,
@@ -76,7 +77,7 @@ export async function loadPostSwitchValidation(): Promise<PostSwitchValidation> 
   ]);
 
   if (!runtimeSummary.coherent || !runtimeSummary.core_ready || readiness.ml_ready !== true) {
-    throw new Error("The selected Python environment is not ready for analysis. Prepare it from Python Environment settings.");
+    throw new Error(i18n.t("common.pythonEnv.error.notReady"));
   }
   runtimeSummary.scientific_ready = true;
   const visibleOptionalPackages = getVisibleOptionalPackages(config);
@@ -124,7 +125,7 @@ export async function restartBackendForRuntimeSwitch(
 ): Promise<PostSwitchValidation> {
   const result = await restartBackend({ skipEnsure: true });
   if (!result.success) {
-    throw new Error(result.error || "Failed to restart backend");
+    throw new Error(result.error || i18n.t("common.pythonEnv.error.restartFailed"));
   }
 
   announceBackendRestarted();

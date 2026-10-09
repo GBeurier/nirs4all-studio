@@ -1,10 +1,15 @@
 /** @vitest-environment jsdom */
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeAll } from "vitest";
+import i18n from "@/lib/i18n";
 import { ActiveRunContext, type RunProgressState } from "@/context/useActiveRuns";
 import { ProgressOverviewCard } from "@/components/runs/RunProgressSections";
 import { FloatingRunWidget } from "../FloatingRunWidget";
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 function renderWidget(runs: RunProgressState[]) {
   const container = document.createElement("div");

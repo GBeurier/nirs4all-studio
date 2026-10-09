@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
@@ -43,6 +44,7 @@ export function ModelTreeView({
   onViewDetails,
   defaultExpanded = true,
 }: ModelTreeViewProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   const { data, isLoading } = useQuery({
@@ -54,19 +56,19 @@ export function ModelTreeView({
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground justify-center">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading fold details...
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("results.scores.tree.loadingFolds")}
       </div>
     );
   }
 
   const predictions = data?.predictions || [];
   if (predictions.length === 0) {
-    return <div className="text-xs text-muted-foreground text-center py-3">No fold data available</div>;
+    return <div className="text-xs text-muted-foreground text-center py-3">{t("results.scores.tree.noFoldData")}</div>;
   }
 
   const treeDisplay = buildModelTreeDisplayData(predictions, foldArtifacts);
   if (!treeDisplay) {
-    return <div className="text-xs text-muted-foreground text-center py-3">No fold data available</div>;
+    return <div className="text-xs text-muted-foreground text-center py-3">{t("results.scores.tree.noFoldData")}</div>;
   }
 
   const handleViewPred = (predictionId: string) => {
@@ -82,7 +84,7 @@ export function ModelTreeView({
         {/* Root row */}
         <div className="flex items-center gap-1">
           <CollapsibleTrigger asChild>
-            <button className="shrink-0 p-0.5 hover:bg-muted/50 rounded">
+            <button className="shrink-0 p-0.5 hover:bg-muted/50 rounded" aria-label={expanded ? t("results.scores.tree.collapse") : t("results.scores.tree.expand")} aria-expanded={expanded}>
               {expanded
                 ? <ChevronDown className="h-3 w-3 text-muted-foreground" />
                 : <ChevronRight className="h-3 w-3 text-muted-foreground" />

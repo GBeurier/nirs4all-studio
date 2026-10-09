@@ -11,9 +11,9 @@ import {
 describe('shapVariableImportanceFormData', () => {
   it('exposes the existing partition and explainer option order', () => {
     expect(SHAP_PARTITION_OPTIONS).toEqual([
-      { value: 'test', label: 'Test' },
-      { value: 'train', label: 'Train' },
-      { value: 'all', label: 'All' },
+      { value: 'test', labelKey: 'results.variableImportance.partitionOptions.test' },
+      { value: 'train', labelKey: 'results.variableImportance.partitionOptions.train' },
+      { value: 'all', labelKey: 'results.variableImportance.partitionOptions.all' },
     ]);
     expect(SHAP_EXPLAINER_OPTIONS.map((option) => option.value)).toEqual([
       'auto',

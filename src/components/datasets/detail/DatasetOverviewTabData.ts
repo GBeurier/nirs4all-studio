@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type {
   Dataset,
   PartitionKey,
@@ -12,6 +13,7 @@ import {
   hasTargetDistributionTestPartition,
   selectDatasetTargetDistribution,
 } from "../DatasetPreviewData";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -20,22 +22,22 @@ export interface DatasetOverviewSampleCounts {
   testCount: number | undefined;
 }
 
-export function getRelativeTime(dateString: string, now = new Date()): string {
+export function getRelativeTime(dateString: string, t: TFunction, now = new Date()): string {
   const date = new Date(dateString);
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / DAY_MS);
 
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays} days ago`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
-  return `${Math.floor(diffDays / 365)} years ago`;
+  if (diffDays === 0) return t("datasets.detail.relativeTime.today");
+  if (diffDays === 1) return t("datasets.detail.relativeTime.yesterday");
+  if (diffDays < 7) return t("time.daysAgo", { count: diffDays });
+  if (diffDays < 30) return t("time.weeksAgo", { count: Math.floor(diffDays / 7) });
+  if (diffDays < 365) return t("time.monthsAgo", { count: Math.floor(diffDays / 30) });
+  return t("datasets.detail.relativeTime.yearsAgo", { count: Math.floor(diffDays / 365) });
 }
 
 export function formatCount(value: number | null | undefined): string {
   if (value == null) return "--";
-  return value.toLocaleString();
+  return value.toLocaleString(getActiveLocale());
 }
 
 export function getDatasetOverviewSampleCounts(
