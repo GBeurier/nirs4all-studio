@@ -156,7 +156,9 @@ pub trait ScientificJobExecutor: Debug + Send + Sync {
 /// remain owned by [`NativeJobRuntime`].
 pub trait ScientificJobTerminal: Debug + Send + Sync {
     /// Publish truthful worker activity without inventing a completed-fit count.
-    fn activity(&self, _job_id: &str, _message: &str) -> Result<(), NativeJobRuntimeError> { Ok(()) }
+    fn activity(&self, _job_id: &str, _message: &str) -> Result<(), NativeJobRuntimeError> {
+        Ok(())
+    }
     /// Publish and persist a validated scientific result as completed.
     ///
     /// # Errors
@@ -378,8 +380,17 @@ impl NativeJobRuntime {
         now: Instant,
         executor: Arc<dyn ScientificJobExecutor>,
     ) -> Result<ScientificSubmissionReceipt, NativeJobRuntimeError> {
-        self.submit_with_executor_kind_at(JobType::Training, run_name, requested_backend, payload,
-            workspace_id, workspace_path, timestamp, now, executor)
+        self.submit_with_executor_kind_at(
+            JobType::Training,
+            run_name,
+            requested_backend,
+            payload,
+            workspace_id,
+            workspace_path,
+            timestamp,
+            now,
+            executor,
+        )
     }
 
     /// Submit an explicitly typed native analysis/export operation through the
@@ -608,7 +619,9 @@ impl NativeJobRuntime {
     pub fn training_list_at(&self, workspace: &Path, now: Instant) -> Vec<Value> {
         // Submission stores a canonical path; linked-workspace settings may use
         // the ordinary Windows drive spelling of the same directory.
-        let canonical_workspace = workspace.canonicalize().unwrap_or_else(|_| workspace.to_path_buf());
+        let canonical_workspace = workspace
+            .canonicalize()
+            .unwrap_or_else(|_| workspace.to_path_buf());
         let jobs = self
             .registry
             .lock()
@@ -618,13 +631,20 @@ impl NativeJobRuntime {
             .durable_jobs
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        jobs.into_iter().filter_map(|job| {
-            let context = durable.get(&job.id)?;
-            if job.job_type != JobType::Training || context.workspace_path != canonical_workspace { return None; }
-            let mut public = job.public_json();
-            public["progress_unavailable"] = json!(job.progress == 0.0 && matches!(job.status, JobStatus::Running));
-            Some(json!({"job":public, "legacyConfig":context.request["legacyConfig"]}))
-        }).collect()
+        jobs.into_iter()
+            .filter_map(|job| {
+                let context = durable.get(&job.id)?;
+                if job.job_type != JobType::Training
+                    || context.workspace_path != canonical_workspace
+                {
+                    return None;
+                }
+                let mut public = job.public_json();
+                public["progress_unavailable"] =
+                    json!(job.progress == 0.0 && matches!(job.status, JobStatus::Running));
+                Some(json!({"job":public, "legacyConfig":context.request["legacyConfig"]}))
+            })
+            .collect()
     }
 
     /// Start an already registered job and publish its exact legacy event.
@@ -951,9 +971,24 @@ fn durable_record(snapshot: &JobSnapshot, context: &DurableScientificJob) -> Val
         "metrics": snapshot.metrics,
         "error": snapshot.error,
     });
-    if let Some(ids) = snapshot.result.as_ref().and_then(|result| result.pointer("/result/run_ids").or_else(|| result.get("run_ids"))).and_then(Value::as_array) {
-        record["driver"]["store_run_ids"] = json!(ids.iter().take(256).filter_map(Value::as_str)
-            .filter(|id| !id.is_empty() && id.len() <= 256 && !id.contains(['/', '\\', '\0']) && !matches!(*id, "." | ".."))
+    if let Some(ids) = snapshot
+        .result
+        .as_ref()
+        .and_then(|result| {
+            result
+                .pointer("/result/run_ids")
+                .or_else(|| result.get("run_ids"))
+        })
+        .and_then(Value::as_array)
+    {
+        record["driver"]["store_run_ids"] = json!(ids
+            .iter()
+            .take(256)
+            .filter_map(Value::as_str)
+            .filter(|id| !id.is_empty()
+                && id.len() <= 256
+                && !id.contains(['/', '\\', '\0'])
+                && !matches!(*id, "." | ".."))
             .collect::<Vec<_>>());
     }
     record
@@ -1020,7 +1055,6 @@ fn status_training(runtime: &NativeJobRuntime, job_id: &str) -> HttpResponse {
             "status": job.status.as_str(),
             "progress": job.progress,
             "progress_message": job.progress_message,
-            "progress_unavailable": job.progress == 0.0 && matches!(job.status, JobStatus::Running),
             "created_at": job.created_at,
             "started_at": job.started_at,
             "completed_at": job.completed_at,

@@ -16,8 +16,8 @@
     },
     {
       "path": "api/library_aggregated_results.py",
-      "size": 9202,
-      "sha256": "c3b652cbdfae52720e35d91ec0f5893721033ecb26b220308ece30b498caf4fb"
+      "size": 9051,
+      "sha256": "a5376ab6cb063d97be3c7ecb3cdbe95a8ea1a89315c9283df6d4943a1f783b39"
     },
     {
       "path": "api/library_aggregated_steps.py",
@@ -46,8 +46,8 @@
     },
     {
       "path": "api/library_operator_availability.py",
-      "size": 1858,
-      "sha256": "740d2abbdda5f3f5984059c960d9a42b4cbb21a716a0615c2fa8eb2092198601"
+      "size": 1823,
+      "sha256": "dd57745df10a5ce556ae7d1db75d166530e0296b209b051f129e49287de738cd"
     },
     {
       "path": "api/library_playground_views.py",
@@ -116,8 +116,8 @@
     },
     {
       "path": "api/shared/decimation.py",
-      "size": 3435,
-      "sha256": "c4ab56930b1b4767d2c0d935eec2c05caa19f4fb9673be8514c5bc1ae61274d9"
+      "size": 3332,
+      "sha256": "f8c1882a684e2821128a12c6b86c3ec8fbe44da8cd2d3f5b7d78a3649311c1c4"
     },
     {
       "path": "api/shared/filter_catalogue.py",
@@ -176,43 +176,43 @@
     },
     {
       "path": "src/data/nodes/definitions/models/advanced-pls.json",
-      "size": 23613,
-      "sha256": "4b11d2a4d0d0d4e3b190ea3d34bf1f492c7d991a351519ea0272bb6b4fafaea2"
+      "size": 22663,
+      "sha256": "db22617d38919dc3b2ea08c848db9ca9510a316fe686012e0b752cfbf322c997"
     },
     {
       "path": "src/data/nodes/definitions/models/deep-learning.json",
-      "size": 19034,
-      "sha256": "532290461248f9dd380bd22af81d24f89119c2c766f736f3d8ebc8961f79fa6b"
+      "size": 18298,
+      "sha256": "9c70e1db8cb378fc5b62bfda54f9531cae909d583119cb14e82d9288d4b1c958"
     },
     {
       "path": "src/data/nodes/definitions/models/ensemble.json",
-      "size": 19804,
-      "sha256": "60c49dbb043d1d3124f374f8416068b5edab3b4eb5c5f3bbb087cc732337117c"
+      "size": 18999,
+      "sha256": "2f1a5075e569d3ed8e91b2135d79973d779595e8e619bf9baa95030537dbf14b"
     },
     {
       "path": "src/data/nodes/definitions/models/kernel-pls.json",
-      "size": 6411,
-      "sha256": "b24baec31ebd8f08417b6706acfde5ba8086aec84d55d46523364bdd2c4125b4"
+      "size": 6143,
+      "sha256": "a308fc4d4459bdb030dde41be9f6f589c0bb81b51db1d45c693068d996308c5a"
     },
     {
       "path": "src/data/nodes/definitions/models/linear.json",
-      "size": 6313,
-      "sha256": "600127f13cdf55bad782bff716a13b3236efc42aae947a4fb7fb442f8c30f7fd"
+      "size": 6049,
+      "sha256": "8adc2a272ea332785ea7ace3bf10688eac455a0065bb42ee68787fea6ce97ce8"
     },
     {
       "path": "src/data/nodes/definitions/models/meta.json",
-      "size": 2575,
-      "sha256": "feaf7f254f5d6070449b8f11b803f6cb69d02a2ba59ac1ad8ac26268f614dde1"
+      "size": 2471,
+      "sha256": "0581be724d70b00c7fa996e931046fedb576bea0e640afcbf00083e6893580d8"
     },
     {
       "path": "src/data/nodes/definitions/models/pls-variants.json",
-      "size": 8931,
-      "sha256": "8d1abbdff361aaa1f361c5577c8a648e436571b580a2f457b035619bd26f40e6"
+      "size": 8544,
+      "sha256": "81575dba3ca28b78b21468102877b9290935ea1fd3e7579e0f481d0ffd348449"
     },
     {
       "path": "src/data/nodes/definitions/models/sklearn-discriminant.json",
-      "size": 3948,
-      "sha256": "66a83e26e1ed871817c4f248083d75669b026cd285c1a78e84ee41b0172c6000"
+      "size": 3771,
+      "sha256": "f7a2bff358da58b5778b22acbd39e6bbe91b769195390e9a4376ea46d5c2ad4b"
     },
     {
       "path": "src/data/nodes/definitions/models/sklearn-ensemble.json",
@@ -241,8 +241,8 @@
     },
     {
       "path": "src/data/nodes/definitions/models/sklearn-naive-bayes.json",
-      "size": 5495,
-      "sha256": "f94b13ddf38ae034d2596686f9675c380b4bd81976d7fecab3c3967de7e1afe7"
+      "size": 5256,
+      "sha256": "47111c52f21813d1ec204e7fab1d51dfb213976c33845620504c3278bfbad73c"
     },
     {
       "path": "src/data/nodes/definitions/models/sklearn-neighbors.json",
@@ -266,8 +266,8 @@
     },
     {
       "path": "src/data/nodes/definitions/models/svm.json",
-      "size": 5593,
-      "sha256": "b439e5176b3165a92d3d6307ccc0576e589487ce93e2caa7aff12185924b9daf"
+      "size": 5353,
+      "sha256": "950717fb8fda6fad4d292ab780e970dfb2972b706fea10173856ae306ca44e18"
     },
     {
       "path": "src/data/nodes/definitions/preprocessing/baseline.json",
