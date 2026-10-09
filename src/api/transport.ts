@@ -197,6 +197,7 @@ async function resolveApiRoute(endpoint: string, method: string): Promise<ApiRou
       detail: `Renderer transport preselection rejected the request: ${decision.reason}`,
       status: decision.status,
       code: "STUDIO_NATIVE_ROUTE_UNAVAILABLE",
+      reason: decision.reason,
     } satisfies ApiError;
   }
   if (!decision.renderer_transport || !decision.base_url) {
@@ -234,6 +235,7 @@ async function resolveWorkspaceRunDetailRoute(
       detail: `Native run-detail preselection rejected the request: ${decision.reason}`,
       status: decision.status,
       code: "STUDIO_NATIVE_RUN_DETAIL_UNAVAILABLE",
+      reason: decision.reason,
     } satisfies ApiError;
   }
 
@@ -251,10 +253,17 @@ async function resolveWorkspaceRunDetailRoute(
   return { baseUrl: `${info.url}/api`, source: "native-sidecar" };
 }
 
+/**
+ * Structured transport error. `code` is a stable machine identifier and
+ * `reason` the machine refusal reason (e.g. from renderer transport
+ * preselection); `detail` is diagnostic text, not user-facing copy — see
+ * `describeApiError` in `@/lib/userFacingError`.
+ */
 export interface ApiError {
   detail: string;
   status: number;
   code?: string;
+  reason?: string;
 }
 
 export interface RequestOptions extends Omit<RequestInit, "body"> {
@@ -359,12 +368,31 @@ function isAbortError(error: unknown): boolean {
  */
 async function parseResponseError(response: Response): Promise<ApiError> {
   const errorData = await response.json().catch(() => ({}));
+  return apiErrorFromBody(errorData, response.status);
+}
+
+/**
+ * Build an ApiError from a decoded error body. Understands the FastAPI
+ * `{detail}` shape and the Rust sidecar `{error: {code, message}}` envelope.
+ */
+function apiErrorFromBody(body: unknown, status: number): ApiError {
+  const record: Record<string, unknown> =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const envelope =
+    record.error && typeof record.error === "object"
+      ? (record.error as Record<string, unknown>)
+      : null;
+  const code =
+    typeof envelope?.code === "string"
+      ? envelope.code
+      : typeof record.code === "string"
+        ? record.code
+        : undefined;
+  const message = typeof envelope?.message === "string" ? envelope.message : undefined;
   return {
-    detail: formatApiErrorDetail(
-      errorData.detail ?? errorData,
-      response.status,
-    ),
-    status: response.status,
+    detail: formatApiErrorDetail(message ?? record.detail ?? body, status),
+    status,
+    ...(code ? { code } : {}),
   };
 }
 
@@ -547,10 +575,7 @@ class ApiClient {
         const errorData = await parseBoundedJsonResponse(response, maximumResponseBytes).catch(
           () => ({}),
         );
-        throw {
-          detail: formatApiErrorDetail(errorData, response.status),
-          status: response.status,
-        } satisfies ApiError;
+        throw apiErrorFromBody(errorData, response.status);
       }
       return (await parseBoundedJsonResponse(response, maximumResponseBytes)) as T;
     } catch (error) {
@@ -595,17 +620,7 @@ class ApiClient {
           response,
           maximumResponseBytes,
         ).catch(() => ({}));
-        const errorRecord =
-          errorData && typeof errorData === "object"
-            ? (errorData as Record<string, unknown>)
-            : {};
-        throw {
-          detail: formatApiErrorDetail(
-            errorRecord.detail ?? errorData,
-            response.status,
-          ),
-          status: response.status,
-        } satisfies ApiError;
+        throw apiErrorFromBody(errorData, response.status);
       }
       return (await parseBoundedJsonResponse(
         response,

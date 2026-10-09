@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -31,6 +32,7 @@ function getStatusVariant(mode: string): "default" | "secondary" | "destructive"
 }
 
 export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
+  const { t } = useTranslation();
   const [health, setHealth] = useState<StorageHealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
                 Hybrid storage diagnostics and maintenance controls.
               </CardDescription>
             </div>
-            <Button variant="ghost" size="icon" onClick={loadHealth}>
+            <Button variant="ghost" size="icon" aria-label={t("common.a11y.refresh")} onClick={loadHealth}>
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>

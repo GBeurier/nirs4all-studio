@@ -65,6 +65,11 @@ export const clientStorageKeys = {
     scope: "user",
     description: "UI zoom preference fallback when workspace settings are unavailable.",
   }),
+  sidebarCollapsed: defineClientStorageKey<string>("nirs4all-sidebar-collapsed", {
+    area: "local",
+    scope: "user",
+    description: "Whether the main navigation sidebar is collapsed to its icon rail.",
+  }),
   pipelineOperatorAvailability: defineClientStorageKey<unknown>(
     "pipelineEditor.operatorAvailability.v2",
     {

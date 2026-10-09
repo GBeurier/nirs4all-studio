@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Database,
   FlaskConical,
   GitBranch,
-  Pencil,
   Search,
   Play,
   BarChart3,
@@ -33,6 +32,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { useHasUpdates } from "@/hooks/useUpdates";
+import { clientStorageKeys, readClientStorageString, writeClientStorageString } from "@/lib/clientStorage";
 
 interface NavItem {
   titleKey: string;
@@ -44,8 +44,7 @@ interface NavItem {
 const prepareNavItems: NavItem[] = [
   { titleKey: "nav.datasets", href: "/datasets", icon: Database },
   { titleKey: "nav.pipelines", href: "/pipelines", icon: GitFork },
-  { titleKey: "nav.pipelineEditor", href: "/pipelines/new", icon: Pencil },
-  { titleKey: "nav.runEditor", href: "/editor", icon: Play },
+  { titleKey: "newExperiment.title", href: "/editor", icon: Play },
 ];
 
 const exploreNavItems: NavItem[] = [
@@ -55,38 +54,55 @@ const exploreNavItems: NavItem[] = [
 ];
 
 const outcomesNavItems: NavItem[] = [
-  { titleKey: "nav.history", href: "/runs", icon: TvMinimalPlay },
-  { titleKey: "nav.leaderboard", href: "/results", icon: Trophy },
-  { titleKey: "nav.database", href: "/predictions", icon: TableProperties },
+  { titleKey: "runs.title", href: "/runs", icon: TvMinimalPlay },
+  { titleKey: "results.title", href: "/results", icon: Trophy },
+  { titleKey: "predictions.title", href: "/predictions", icon: TableProperties },
 ];
 
 const applyNavItems: NavItem[] = [
   { titleKey: "nav.predict", href: "/predict", icon: Zap },
 ];
 
+const NARROW_WINDOW_QUERY = "(max-width: 767px)";
+
+function useIsNarrowWindow(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window.matchMedia === "function" && window.matchMedia(NARROW_WINDOW_QUERY).matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(NARROW_WINDOW_QUERY);
+    const onChange = (event: MediaQueryListEvent) => setNarrow(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  return narrow;
+}
+
 export function AppSidebar() {
   const { t } = useTranslation();
-  const [collapsed, setCollapsed] = useState(false);
+  const [userCollapsed, setUserCollapsed] = useState(
+    () => readClientStorageString(clientStorageKeys.sidebarCollapsed) === "true",
+  );
+  const narrow = useIsNarrowWindow();
+  // Narrow windows always keep the icon rail so navigation never disappears.
+  const collapsed = userCollapsed || narrow;
   const location = useLocation();
   const { updateCount } = useHasUpdates();
 
+  const toggleCollapsed = () => {
+    const next = !userCollapsed;
+    setUserCollapsed(next);
+    writeClientStorageString(clientStorageKeys.sidebarCollapsed, String(next));
+  };
+
   const isActive = (href: string) => {
-    if (href === "/pipelines/new") {
-      return location.pathname.startsWith("/pipelines/");
-    }
-    if (href === "/pipelines") {
-      return location.pathname === "/pipelines";
-    }
-    if (href === "/results") {
-      return location.pathname === "/results";
-    }
-    if (href === "/results/aggregated") {
-      return location.pathname === "/results/aggregated";
-    }
-    if (href === "/predict") {
+    // "/predict" is a prefix of "/predictions", which has its own entry.
+    const path = href.split("?")[0];
+    if (path === "/predict") {
       return location.pathname === "/predict";
     }
-    return location.pathname.startsWith(href);
+    return location.pathname.startsWith(path);
   };
 
   const renderNavItem = (item: NavItem) => {
@@ -185,14 +201,16 @@ export function AppSidebar() {
 
       {/* Settings at bottom */}
       <div className="border-t border-border/50 p-3">
-        {renderNavItem({ titleKey: "nav.settings", href: "/settings", icon: Settings, badge: updateCount })}
+        {renderNavItem({ titleKey: "nav.settings", href: updateCount > 0 ? "/settings?tab=updates" : "/settings", icon: Settings, badge: updateCount })}
       </div>
 
-      {/* Collapse button */}
+      {/* Collapse button (the rail is forced on narrow windows) */}
+      {!narrow && (
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={toggleCollapsed}
+        aria-label={t(collapsed ? "layout.sidebar.expand" : "layout.sidebar.collapse")}
         className="absolute -right-3 top-20 z-10 h-6 w-6 rounded-full border border-border bg-background shadow-sm hover:bg-muted"
       >
         {collapsed ? (
@@ -201,6 +219,7 @@ export function AppSidebar() {
           <ChevronLeft className="h-3 w-3" />
         )}
       </Button>
+      )}
     </div>
   );
 }

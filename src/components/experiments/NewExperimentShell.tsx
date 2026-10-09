@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 
 import { motion } from "@/lib/motion";
@@ -40,6 +41,7 @@ export function NewExperimentShell({
   onExit,
   ...stepContentProps
 }: NewExperimentShellProps) {
+  const { t } = useTranslation();
   const { currentStep, launchFlow } = stepContentProps;
 
   return (
@@ -50,7 +52,7 @@ export function NewExperimentShell({
       animate="visible"
     >
       <motion.div variants={itemVariants} className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={onExit}>
+        <Button variant="ghost" size="icon" aria-label={t("common.a11y.goBack")} onClick={onExit}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>

@@ -1,5 +1,6 @@
 import type { ChainPipelineReloadMetadata, RunPipelineReloadMetadata } from "@/api/aggregatedPredictions";
 import { buildCanonicalPreviewSteps } from "@/lib/canonicalPipelinePreview";
+import { getActiveLocale } from "@/lib/activeLocale";
 import { buildPipelinePreview } from "@/lib/pipelineStats";
 import type { WorkspaceRunPipelineLogEntry } from "@/types/enriched-runs";
 
@@ -29,7 +30,7 @@ export function formatBytes(bytes: number | null | undefined): string {
 export function formatDatetime(iso: string | null | undefined): string {
   if (!iso) return "-";
   try {
-    return new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+    return new Date(iso).toLocaleString(getActiveLocale(), { dateStyle: "short", timeStyle: "short" });
   } catch {
     return iso;
   }

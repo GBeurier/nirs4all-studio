@@ -159,7 +159,7 @@ function WorkspaceItem({
                   <AlertDialogTrigger asChild>
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="icon" aria-label={t("common.a11y.removeWorkspace")}
                       className="h-8 w-8 text-muted-foreground hover:text-destructive"
                       disabled={isRemoving || isSwitching}
                     >
@@ -331,7 +331,7 @@ export function RecentWorkspacesList({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon" aria-label={t("common.a11y.refresh")}
                 className="h-8 w-8"
                 onClick={loadWorkspaces}
                 disabled={isLoading}

@@ -18,6 +18,23 @@ const en = {
 },
   // ============= Common / Global =============
   common: {
+    a11y: {
+      goBack: "Go back",
+      undo: "Undo",
+      redo: "Redo",
+      toggleCodeView: "Toggle code view",
+      keyboardShortcuts: "Keyboard shortcuts",
+      commandPalette: "Command palette",
+      copy: "Copy",
+      refresh: "Refresh",
+      clearLogs: "Clear logs",
+      removeWorkspace: "Remove workspace",
+      toggleSortDirection: "Reverse sort order",
+      importConfig: "Import configuration",
+      exportConfig: "Export configuration",
+      resetConfig: "Reset configuration",
+    },
+    linkWorkspace: "Link Workspace",
     loading: "Loading...",
     save: "Save",
     cancel: "Cancel",
@@ -95,15 +112,10 @@ const en = {
   nav: {
     datasets: "Datasets",
     pipelines: "Pipelines",
-    pipelineEditor: "Pipeline Editor",
-    runEditor: "Run",
     editor: "Editor",
     playground: "Playground",
     inspector: "Inspector",
-    history: "History",
-    leaderboard: "Leaderboard",
     scores: "Scores",
-    database: "Database",
     aggregatedResults: "Aggregated Results",
     predict: "Predict",
     lab: "Lab",
@@ -118,8 +130,9 @@ const en = {
     // Tab labels
     tabs: {
       general: "General",
-      workspace: "Workspace",
+      workspace: "Workspaces",
       data: "Data Defaults",
+      updates: "Updates",
       advanced: "Advanced",
     },
 
@@ -525,6 +538,15 @@ const en = {
         outcomes: "Outcomes",
         apply: "Apply",
       },
+      collapse: "Collapse sidebar",
+      expand: "Expand sidebar",
+    },
+    routeError: {
+      title: "This page ran into a problem",
+      description: "The rest of the application is still available. Go back, pick another page, or reload.",
+      back: "Go back",
+      reload: "Reload",
+      details: "Technical details",
     },
     header: {
       searchPlaceholder: "Search...",
@@ -544,7 +566,7 @@ const en = {
         "Opening your workspace. Your datasets and results will appear when loading finishes.",
       errorBadge: "Startup issue",
       badge: "Starting Studio",
-      apiLabel: "API",
+      apiLabel: "Studio service",
       apiReady: "Connected",
       apiLoading: "Starting FastAPI",
       mlLabel: "ML Engine",
@@ -644,6 +666,7 @@ const en = {
 
   // ============= Datasets =============
   datasets: {
+    startExperiment: "Start experiment with this dataset",
     title: "Datasets",
     subtitle: "Manage your spectral datasets and configurations",
     workspace: "Workspace",
@@ -823,6 +846,25 @@ const en = {
 
   // ============= Runs =============
   runs: {
+    jobRecord: {
+      title: "Execution details",
+      titleDeveloper: "Execution job record",
+      actions: "Actions",
+      controlReadiness: "Control readiness",
+    },
+    execution: {
+      failed: "Execution failed",
+      details: "Technical details",
+      stopTitle: "Stop this run?",
+      stopDescription: "The run will be interrupted and any model still in training will be lost. Results already saved are kept.",
+      stopConfirm: "Stop run",
+      stopCancel: "Keep running",
+    },
+    notifications: {
+      completed: "Run \"{{name}}\" completed",
+      failed: "Run \"{{name}}\" failed",
+      viewRun: "View run",
+    },
     title: "Runs",
     subtitle: "Track and monitor active and historical pipeline executions",
     empty: "No runs yet",
@@ -1091,6 +1133,29 @@ const en = {
     invalidPath: "Invalid path",
     pathNotExists: "Path does not exist",
     alreadyExists: "Already exists",
+    action: {
+      relaunchRun: "Failed to relaunch run",
+      deleteRun: "Run deletion failed",
+      loadSamples: "Failed to load pipeline samples",
+      loadSample: "Failed to load sample",
+      savePipeline: "Failed to save pipeline",
+      exportPipeline: "Failed to export {{format}}",
+      importPipeline: "Failed to import pipeline",
+      loadPredictions: "Failed to load predictions",
+      runQuery: "Failed to run query",
+      exportCsv: "CSV export failed",
+    },
+    api: {
+      engineUnavailable: "This feature needs the analysis engine (Python), which is not available yet.",
+      openPythonSettings: "Open Python settings",
+      notAvailableYet: "This feature is not available in the desktop app yet.",
+      backendStarting: "The application backend is still starting. Try again in a few seconds.",
+      backendUnreachable: "Cannot reach the application backend. Check that it is running, then try again.",
+      engineStarting: "The analysis engine is still starting. Try again in a moment.",
+      featureUnavailable: "This feature is temporarily unavailable. Restart the application if the problem persists.",
+      timeout: "The operation took too long and was stopped.",
+      tooManyJobs: "Too many jobs are running. Wait for one to finish, then try again.",
+    },
   },
 
   // ============= Confirmations =============
