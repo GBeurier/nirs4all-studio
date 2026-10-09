@@ -54,6 +54,11 @@ requireText(
 );
 requireText(
   dockerfile,
+  "COPY scripts/normalize-plugin-wheel.py scripts/",
+  "SDK wheel normalization helper in plugin builder",
+);
+requireText(
+  dockerfile,
   "COPY build/constraints/plugin-runtime-cpython311.txt build/constraints/plugin-runtime-cpython311.txt",
   "mandatory CPython constraints in plugin builder project root",
 );

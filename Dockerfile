@@ -47,6 +47,7 @@ WORKDIR /build
 COPY recommended-config.json ./
 COPY --from=studio-document-adapter-sources / /build/
 COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/
+COPY scripts/normalize-plugin-wheel.py scripts/
 COPY build/constraints/plugin-runtime-cpython311.txt build/constraints/plugin-runtime-cpython311.txt
 RUN --mount=type=cache,target=/python-cache \
     node scripts/bake-python-plugin-runtime.cjs \
