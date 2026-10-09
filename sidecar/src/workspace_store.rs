@@ -667,6 +667,7 @@ pub(crate) fn read_run_detail_projection_from_connection(
 }
 
 /// Read only owner-published run metadata using the existing projection.
+#[cfg(test)]
 pub(crate) fn read_run_metadata_from_connection(
     connection: &Connection,
     run_id: &str,
@@ -843,6 +844,7 @@ pub fn read_ranked_chains(
 ///
 /// Returns [`WorkspaceStoreReadError`] when the contract, immutable snapshot,
 /// schema, required projection columns, or any source row is incompatible.
+#[cfg(test)]
 pub(crate) fn read_results_summary_source(
     workspace_path: &Path,
 ) -> Result<Vec<WorkspaceStoreResultsSummarySourceRow>, WorkspaceStoreReadError> {

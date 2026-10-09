@@ -156,6 +156,10 @@ pub trait ScientificJobExecutor: Debug + Send + Sync {
 /// remain owned by [`NativeJobRuntime`].
 pub trait ScientificJobTerminal: Debug + Send + Sync {
     /// Publish truthful worker activity without inventing a completed-fit count.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the activity update cannot be published.
     fn activity(&self, _job_id: &str, _message: &str) -> Result<(), NativeJobRuntimeError> {
         Ok(())
     }
@@ -365,10 +369,6 @@ impl NativeJobRuntime {
     /// # Errors
     /// Returns an error if executor preflight, durable registration, or submission fails.
     #[allow(clippy::too_many_arguments)]
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "preserve the published owned-Arc submission API"
-    )]
     pub fn submit_with_executor_at(
         &self,
         run_name: &str,
@@ -445,6 +445,7 @@ impl NativeJobRuntime {
             timestamp,
             now,
         )?;
+        let submit_executor = Arc::clone(&executor);
         self.durable_jobs
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -456,7 +457,7 @@ impl NativeJobRuntime {
                     execution_backend: selection.execution_backend.clone(),
                     execution_mode: selection.execution_mode.clone(),
                     request: payload.clone(),
-                    executor: Arc::clone(&executor),
+                    executor,
                 },
             );
         if let Err(error) = self.start_at(&job_id, timestamp, now) {
@@ -474,7 +475,7 @@ impl NativeJobRuntime {
             payload: selection.prepared_payload.clone(),
         };
         let terminal: Arc<dyn ScientificJobTerminal> = Arc::new(self.clone());
-        if let Err(error) = executor.submit_scientific(&execution_request, terminal) {
+        if let Err(error) = submit_executor.submit_scientific(&execution_request, terminal) {
             let _ = self.fail_at(
                 &job_id,
                 "Scientific executor refused the registered submission",

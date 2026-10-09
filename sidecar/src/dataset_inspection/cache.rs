@@ -72,6 +72,8 @@ fn metadata_stamp(path: &Path) -> Option<FileStamp> {
     }
 }
 
+// The hash budget is only consumed by the Windows content-hash branch.
+#[cfg_attr(not(windows), allow(clippy::needless_pass_by_ref_mut))]
 fn stamp(path: &Path, hash_budget: &mut u64) -> Option<FileStamp> {
     let before = metadata_stamp(path)?;
     #[cfg(windows)]
@@ -472,7 +474,7 @@ mod tests {
             json!(true)
         );
         let mut bounded = Cache::default();
-        for value in 0..MAX_ENTRIES + 1 {
+        for value in 0..=MAX_ENTRIES {
             let mut key = [0_u8; 32];
             key[..8].copy_from_slice(&(value as u64).to_le_bytes());
             bounded.insert(Entry {
