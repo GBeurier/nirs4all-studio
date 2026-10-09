@@ -66,8 +66,8 @@ impl LinkedWorkspaceAccess {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct StoreStamp {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoreStamp {
     device: u64,
     inode: u128,
     size: u64,
@@ -75,7 +75,7 @@ struct StoreStamp {
     changed: i128,
 }
 
-fn store_stamp(path: &Path) -> Result<Option<StoreStamp>, String> {
+pub fn store_stamp(path: &Path) -> Result<Option<StoreStamp>, String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
