@@ -30,14 +30,16 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .scientific_host
         .clone();
-    Some(match host {
-        Some(host) => match host.adapt_document("operators.availability", &json!({})) {
+    Some(host.map_or_else(
+        || {
+            HttpResponse::json(
+                503,
+                json!({"detail":"Scientific library runtime is unavailable"}).to_string(),
+            )
+        },
+        |host| match host.adapt_document("operators.availability", &json!({})) {
             Ok(value) => HttpResponse::json(200, value.to_string()),
             Err(error) => HttpResponse::json(503, json!({"detail":error}).to_string()),
         },
-        None => HttpResponse::json(
-            503,
-            json!({"detail":"Scientific library runtime is unavailable"}).to_string(),
-        ),
-    })
+    ))
 }

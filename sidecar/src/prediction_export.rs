@@ -7,18 +7,26 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-fn endpoint(path: &str) -> Option<Option<&str>> {
+enum Endpoint<'a> {
+    Collection,
+    Dataset(&'a str),
+}
+
+fn endpoint(path: &str) -> Option<Endpoint<'_>> {
     if path == "/api/aggregated-predictions/export" {
-        return Some(None);
+        return Some(Endpoint::Collection);
     }
     let dataset = path
         .strip_prefix("/api/aggregated-predictions/export/")?
         .strip_suffix(".parquet")?;
-    (!dataset.is_empty() && !dataset.contains('/')).then_some(Some(dataset))
+    (!dataset.is_empty() && !dataset.contains('/')).then_some(Endpoint::Dataset(dataset))
 }
 
 pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<HttpResponse> {
-    let dataset = endpoint(&request.path)?;
+    let dataset = match endpoint(&request.path)? {
+        Endpoint::Collection => None,
+        Endpoint::Dataset(name) => Some(name),
+    };
     let error =
         |status, detail: String| HttpResponse::json(status, json!({"detail":detail}).to_string());
     let method = if dataset.is_some() { "GET" } else { "POST" };
@@ -186,10 +194,10 @@ mod tests {
     }
     #[test]
     fn export_routes_exclude_unknown_suffixes() {
-        assert_eq!(
+        assert!(matches!(
             endpoint("/api/aggregated-predictions/export/Coffee.parquet"),
-            Some(Some("Coffee"))
-        );
+            Some(Endpoint::Dataset("Coffee"))
+        ));
         assert!(endpoint("/api/aggregated-predictions/export/../Coffee.parquet").is_none());
         assert!(endpoint("/api/aggregated-predictions/export").is_some());
     }

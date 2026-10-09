@@ -35,7 +35,7 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
     };
     Some(dispatch(&settings, request, &|operation, payload| {
         host.as_deref()
-            .ok_or("Scientific library runtime is unavailable".to_owned())?
+            .ok_or_else(|| "Scientific library runtime is unavailable".to_owned())?
             .adapt_document(operation, payload)
     }))
 }
@@ -74,38 +74,46 @@ fn dispatch(
 
 fn payload(request: &HttpRequest, operation: &str, method: &str) -> Result<Value, String> {
     if method == "POST" {
-        if request
-            .query
-            .as_deref()
-            .is_some_and(|query| !query.is_empty())
-        {
-            return Err("Inspector POST does not accept query fields".into());
-        }
-        if request.body.len() > 128 * 1024 {
-            return Err("Inspector request exceeds 128 KiB".into());
-        }
-        let value: Value = serde_json::from_slice(&request.body)
-            .map_err(|_| "Expected an Inspector request object")?;
-        if !value.is_object()
-            || value
-                .as_object()
-                .is_some_and(|items| items.contains_key("workspace_path"))
-        {
-            return Err("Invalid Inspector request fields".into());
-        }
-        if let Some(ids) = value.get("chain_ids") {
-            let ids = ids.as_array().ok_or("chain_ids must be an array")?;
-            if ids.len() > 256
-                || ids.iter().any(|id| {
-                    id.as_str()
-                        .is_none_or(|id| id.is_empty() || id.len() > 256 || id.contains('\0'))
-                })
-            {
-                return Err("Invalid Inspector chain identifiers".into());
-            }
-        }
-        return Ok(value);
+        return post_payload(request);
     }
+    get_payload(request, operation)
+}
+
+fn post_payload(request: &HttpRequest) -> Result<Value, String> {
+    if request
+        .query
+        .as_deref()
+        .is_some_and(|query| !query.is_empty())
+    {
+        return Err("Inspector POST does not accept query fields".into());
+    }
+    if request.body.len() > 128 * 1024 {
+        return Err("Inspector request exceeds 128 KiB".into());
+    }
+    let value: Value = serde_json::from_slice(&request.body)
+        .map_err(|_| "Expected an Inspector request object")?;
+    if !value.is_object()
+        || value
+            .as_object()
+            .is_some_and(|items| items.contains_key("workspace_path"))
+    {
+        return Err("Invalid Inspector request fields".into());
+    }
+    if let Some(ids) = value.get("chain_ids") {
+        let ids = ids.as_array().ok_or("chain_ids must be an array")?;
+        if ids.len() > 256
+            || ids.iter().any(|id| {
+                id.as_str()
+                    .is_none_or(|id| id.is_empty() || id.len() > 256 || id.contains('\0'))
+            })
+        {
+            return Err("Invalid Inspector chain identifiers".into());
+        }
+    }
+    Ok(value)
+}
+
+fn get_payload(request: &HttpRequest, operation: &str) -> Result<Value, String> {
     if !request.body.is_empty() {
         return Err("Inspector GET takes no body".into());
     }
@@ -191,7 +199,7 @@ mod tests {
             path: path.into(),
             query: query.map(str::to_owned),
             body: body.as_bytes().to_vec(),
-            headers: Default::default(),
+            headers: std::collections::BTreeMap::default(),
         }
     }
     #[test]
