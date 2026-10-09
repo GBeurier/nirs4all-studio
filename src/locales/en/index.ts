@@ -152,7 +152,7 @@ const en = {
       writable: "Likely writable",
       readOnly: "Likely read-only",
       error: {
-        versionUnsupported: "The selected Python environment has an unsupported nirs4all version. Choose Studio's included environment in Settings, or install nirs4all 1.4.7 in the selected environment.",
+        versionUnsupported: "The selected Python environment has an unsupported nirs4all version. Choose Studio's included environment in Settings, or install nirs4all 1.4.8 in the selected environment.",
         tampered: "The installed nirs4all package failed its integrity check. Choose Studio's included environment in Settings, or reinstall nirs4all in the selected environment.",
         notReady: "The selected Python environment is not ready for analysis. Prepare it from Python Environment settings.",
         restartFailed: "Failed to restart backend",

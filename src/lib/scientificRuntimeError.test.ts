@@ -11,7 +11,7 @@ describe("scientific runtime error messages", () => {
     const message = scientificRuntimeErrorMessage("scientific_distribution_version_unsupported");
     expect(message).toContain("unsupported nirs4all version");
     expect(message).toContain("Settings");
-    expect(message).toContain("1.4.7");
+    expect(message).toContain("1.4.8");
     expect(message).not.toContain("integrity");
   });
 

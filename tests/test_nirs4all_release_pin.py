@@ -47,12 +47,12 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     version = config["nirs4all"]
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
 
-    assert version == "1.4.7"
+    assert version == "1.4.8"
     ref = re.search(r"^  NIRS4ALL_LIBRARY_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert ref is not None
     assert source is not None
-    assert ref.group(1) == source.group(1) == "48542f1a48ee005eea8d49da3756cd6b192d03df"
+    assert ref.group(1) == source.group(1) == "f4e13a2163ee78f12c326e8853bbd7db44a4540f"
     parsed = yaml.safe_load(workflow)
     contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
     assert parsed["env"]["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
@@ -62,10 +62,10 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     assert environment["NIRS4ALL_PUBLICATION_STATUS"] == contract["publication_status"] == "source-built"
     assert contract["public_registry_verified"] is False
     assert environment["NIRS4ALL_WHEEL_URL"] == contract["selected_wheel_url"] == ""
-    assert environment["NIRS4ALL_SOURCE_EPOCH"] == "1791533216"
+    assert environment["NIRS4ALL_SOURCE_EPOCH"] == "1791548791"
     result = subprocess.run(["bash", "-c", validation], env=environment, cwd=ROOT, capture_output=True)
     assert result.returncode == 0, result.stderr.decode()
-    for changed in ({"NIRS4ALL_WHEEL_URL": "https://files.pythonhosted.org/old/nirs4all-1.4.7-py3-none-any.whl"},
+    for changed in ({"NIRS4ALL_WHEEL_URL": "https://files.pythonhosted.org/old/nirs4all-1.4.8-py3-none-any.whl"},
                     {"NIRS4ALL_SOURCE_EPOCH": "1791533217"}, {"NIRS4ALL_PUBLICATION_STATUS": "published"},
                     {"NIRS4ALL_SOURCE_URL": "https://github.com/GBeurier/nirs4all/archive/main.tar.gz"}):
         assert subprocess.run(["bash", "-c", validation], env=environment | changed, cwd=ROOT, capture_output=True).returncode != 0
@@ -112,7 +112,7 @@ def test_recommended_profiles_use_single_nirs4all_version() -> None:
         if package is None:
             continue
         assert package["recommended"] == version
-        # Compatibility floor remains 1.4.6 while the recommended cohort is 1.4.7.
+        # Compatibility floor remains 1.4.6 while the recommended cohort is 1.4.8.
         assert package["min"] == ">=1.4.6"
 
 
@@ -130,7 +130,7 @@ def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> No
                        if step.get("name") == "Build SDK and verify canonical plugin wheels")
     assert acquisition.count('curl --fail --location --proto "=https" --tlsv1.2') == 1
     assert "node scripts/setup-python-env.cjs" in acquisition
-    assert "--build-plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.7-py3-none-any.whl" in acquisition
+    assert "--build-plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.8-py3-none-any.whl" in acquisition
     assert '"$NIRS4ALL_TOOLS_WHEEL_URL"' in acquisition
     assert "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310" in acquisition
     assert "pip wheel" not in acquisition
@@ -144,11 +144,11 @@ def _wheel_normalizer():
 
 
 def _test_wheel(path: Path, *, windows: bool = False, corruption: bool = False, extra: bool = False) -> str:
-    metadata_name = "nirs4all-1.4.7.dist-info/METADATA"
-    record_name = "nirs4all-1.4.7.dist-info/RECORD"
+    metadata_name = "nirs4all-1.4.8.dist-info/METADATA"
+    record_name = "nirs4all-1.4.8.dist-info/RECORD"
     payloads = {"nirs4all/example.py": b"scientific_code = 'preserved'\n",
-                metadata_name: b"Metadata-Version: 2.4\nName: nirs4all\nVersion: 1.4.7\n\nDescription\n",
-                "nirs4all-1.4.7.dist-info/WHEEL": b"Wheel-Version: 1.0\nTag: py3-none-any\n"}
+                metadata_name: b"Metadata-Version: 2.4\nName: nirs4all\nVersion: 1.4.8\n\nDescription\n",
+                "nirs4all-1.4.8.dist-info/WHEEL": b"Wheel-Version: 1.0\nTag: py3-none-any\n"}
 
     def record_rows():
         return [(name, "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).decode().rstrip("="), str(len(payload)))
@@ -242,7 +242,7 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
 
     assert "node scripts/verify-plugin-runtime-reproducibility.cjs" in workflow
     assert "plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json" in workflow
-    assert "nirs4all==1.4.7" in constraints
+    assert "nirs4all==1.4.8" in constraints
     assert "nirs4all-core==0.4.5" in constraints
     assert "nirs4all-io==0.2.6" in constraints
     assert "dag-ml-data==0.2.13" in constraints

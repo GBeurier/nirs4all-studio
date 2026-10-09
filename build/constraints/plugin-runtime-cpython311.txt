@@ -25,7 +25,7 @@ kennard-stone==3.0.1
 Mako==1.4.1
 MarkupSafe==3.0.3
 narwhals==2.25.0
-nirs4all==1.4.7
+nirs4all==1.4.8
 nirs4all-core==0.4.5
 nirs4all-io==0.2.6
 nirs4all-formats==0.2.11
