@@ -355,16 +355,16 @@ describe("resultDetailData", () => {
       groups: [
         {
           id: "source-scope:native-results:run",
-          label: "Native results / Run",
-          sourceLabel: "Native results",
+          label: "Analysis results / Run",
+          sourceLabel: "Analysis results",
           scopeLabel: "Run",
           artifactCountLabel: "1 artifact",
-          artifactLabels: ["Native results directory"],
+          artifactLabels: ["Analysis results directory"],
         },
         {
           id: "source-scope:native-results:model",
-          label: "Native results / Model",
-          sourceLabel: "Native results",
+          label: "Analysis results / Model",
+          sourceLabel: "Analysis results",
           scopeLabel: "Model",
           artifactCountLabel: "1 artifact",
           artifactLabels: ["Native model artifact"],

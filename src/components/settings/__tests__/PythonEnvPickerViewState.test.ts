@@ -68,6 +68,7 @@ function createRuntimeSummary(overrides: Partial<RuntimeSummaryResponse> = {}): 
     bundled_runtime_available: false,
     configured_matches_running: true,
     core_ready: true,
+    scientific_ready: true,
     missing_core_packages: [],
     missing_optional_packages: [],
     python_match: true,
@@ -139,7 +140,18 @@ describe("derivePythonEnvRuntimeView", () => {
     expect(view.missingOptionalCount).toBe(2);
   });
 
-  it("falls back to env info when no runtime summary is present", () => {
+  it("does not report ready when only the core packages are importable", () => {
+    const view = derivePythonEnvRuntimeView({
+      runtimeSummary: createRuntimeSummary({ scientific_ready: false }),
+      envInfo: null,
+      postSwitchValidation: null,
+      selectedReviewProfile: "",
+    });
+
+    expect(view.isReady).toBe(false);
+  });
+
+  it("falls back to env info for path and version, but never for readiness, when no runtime summary is present", () => {
     const view = derivePythonEnvRuntimeView({
       runtimeSummary: null,
       envInfo: { status: "ready", pythonPath: "/fallback/python", pythonVersion: "3.9.0" },
@@ -147,7 +159,7 @@ describe("derivePythonEnvRuntimeView", () => {
       selectedReviewProfile: "",
     });
 
-    expect(view.isReady).toBe(true);
+    expect(view.isReady).toBe(false);
     expect(view.runningPythonPath).toBe("/fallback/python");
     expect(view.runtimeVersion).toBe("3.9.0");
     expect(view.missingCoreCount).toBe(0);

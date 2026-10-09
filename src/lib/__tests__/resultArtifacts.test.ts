@@ -515,7 +515,7 @@ describe("resultArtifacts", () => {
       id: "native-result:run-pipeline:run_dir:%2Ftmp%2Fnirs4all_results%2Fnative-run",
       kind: "native_result",
       role: "run_dir",
-      label: "Native results directory",
+      label: "Analysis results directory",
       source: "native-results",
       scope: "run",
       status: "available",
