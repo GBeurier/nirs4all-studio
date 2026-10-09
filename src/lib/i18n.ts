@@ -2,17 +2,39 @@
  * i18n (Internationalization) Configuration
  *
  * This module sets up react-i18next for the nirs4all webapp.
- * Only English (en) and French (fr) are bundled and selectable: the other
- * locale folders are partial and are not loaded until they are completed.
+ * Only English (en) and French (fr) are selectable: the other locale folders
+ * are partial and are not loaded until they are completed. English is bundled
+ * as the fallback; French is a separate chunk fetched on demand by a small
+ * i18next backend (`i18nReady` resolves once the detected language is loaded).
  */
 
-import i18n from "i18next";
+import i18n, { type BackendModule } from "i18next";
 import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 
-// Import translation resources
+// English is the fallback and always bundled; other languages load on demand.
 import en from "@/locales/en";
-import fr from "@/locales/fr";
+
+const lazyLocales: Record<string, () => Promise<{ default: object }>> = {
+  fr: () => import("@/locales/fr"),
+};
+
+/** i18next backend that fetches a non-bundled language the first time it is used. */
+const lazyLocaleBackend: BackendModule = {
+  type: "backend",
+  init: () => undefined,
+  read(language, _namespace, callback) {
+    const load = lazyLocales[language];
+    if (!load) {
+      callback(null, {});
+      return;
+    }
+    load().then(
+      (module) => callback(null, module.default as Record<string, unknown>),
+      (error: unknown) => callback(error instanceof Error ? error : new Error(String(error)), false),
+    );
+  },
+};
 
 // Supported languages configuration
 export const supportedLanguages = [
@@ -25,8 +47,9 @@ export type SupportedLanguage = (typeof supportedLanguages)[number]["code"];
 // Default language
 export const defaultLanguage: SupportedLanguage = "en";
 
-// Initialize i18next
-i18n
+/** Resolves once the detected UI language is loaded and ready to render. */
+export const i18nReady = i18n
+  .use(lazyLocaleBackend)
   // Detect user language
   .use(LanguageDetector)
   // Pass the i18n instance to react-i18next
@@ -36,8 +59,8 @@ i18n
     // Resources containing translations
     resources: {
       en: { translation: en },
-      fr: { translation: fr },
     },
+    partialBundledLanguages: true,
 
     // Default and fallback language
     fallbackLng: defaultLanguage,
@@ -67,7 +90,8 @@ i18n
     react: {
       useSuspense: true,
     },
-  });
+  })
+  .then(() => undefined);
 
 // Apply document direction on init and language change
 i18n.on("languageChanged", (lang) => {
