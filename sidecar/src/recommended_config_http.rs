@@ -27,7 +27,7 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
     ) {
         return None;
     }
-    let (settings, host, scientific, reused_runtime) = {
+    let (settings, host, scientific, reused_runtime, probes) = {
         let state = state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -36,6 +36,7 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
             state.python_plugin_host.clone(),
             state.scientific_host.clone(),
             !state.python_plugin_host_bundled,
+            state.python_probes.clone(),
         )
     };
     Some(handle_with_policy(
@@ -43,7 +44,8 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
         request,
         &|| {
             let host = host.as_deref().ok_or("No Python runtime is configured")?;
-            crate::read_python_system_build(host).map_err(|error| error.as_str().to_owned())
+            crate::cached_python_system_build(&probes, host)
+                .map_err(|error| error.as_str().to_owned())
         },
         &|operation, payload| {
             scientific
