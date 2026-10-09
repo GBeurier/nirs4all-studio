@@ -5,9 +5,10 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { PredictionsPagination } from "./PredictionsPagination";
+import { initEnglishI18n } from "./predictionsTestI18n";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,6 +42,10 @@ function buttonByLabel(container: HTMLElement, label: string): HTMLButtonElement
   expect(button).toBeDefined();
   return button as HTMLButtonElement;
 }
+
+beforeAll(async () => {
+  await initEnglishI18n();
+});
 
 describe("PredictionsPagination", () => {
   it("renders the result range and page state", async () => {

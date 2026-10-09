@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Bookmark, BookmarkPlus, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -28,14 +29,16 @@ export function InspectorSavedSelectionList({
   onLoad,
   onDelete,
 }: InspectorSavedSelectionListProps) {
+  const { t } = useTranslation();
+
   if (savedSelections.length === 0) {
     if (!showEmptyState) return null;
     return (
       <div className="text-center py-4 text-muted-foreground">
         <Bookmark className="w-6 h-6 mx-auto mb-1.5 opacity-40" />
-        <p className="text-xs">No saved selections</p>
+        <p className="text-xs">{t('inspector.saved.empty')}</p>
         <p className="text-[10px] mt-0.5">
-          Select chains, then click <BookmarkPlus className="w-3 h-3 inline-block" /> to save
+          {t('inspector.saved.emptyHintBefore')} <BookmarkPlus className="w-3 h-3 inline-block" aria-hidden="true" /> {t('inspector.saved.emptyHintAfter')}
         </p>
       </div>
     );
@@ -69,11 +72,13 @@ function InspectorSavedSelectionItem({
   onLoad: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div
       className={cn(
         'flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-colors',
-        'hover:bg-accent/50',
+        'hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         isActive && 'bg-accent',
       )}
       onClick={onLoad}
@@ -98,7 +103,8 @@ function InspectorSavedSelectionItem({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+              aria-label={t('inspector.saved.deleteSelection')}
               onClick={(event) => {
                 event.stopPropagation();
                 onDelete();
@@ -108,7 +114,7 @@ function InspectorSavedSelectionItem({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="left">
-            <p className="text-xs">Delete selection</p>
+            <p className="text-xs">{t('inspector.saved.deleteSelection')}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
 import type { ExperimentConfig, RunExecutionBackend } from "@/types/runs";
 import { STRICT_NATIVE_RUNTIME_ENGINE } from "./runtimeBackendPreference";
@@ -71,7 +73,7 @@ export function buildExperimentLaunchConfig({
       pipelineIssues,
     );
     if (pruned.steps.length === 0) {
-      throw new Error(`Pipeline "${pipeline.name}" would be empty after removing unavailable nodes.`);
+      throw new Error(i18n.t("newExperiment.launch.errors.emptyAfterPruning", { name: pipeline.name }));
     }
 
     inlinePipelines.push({

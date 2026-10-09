@@ -6,6 +6,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PipelineRun } from "@/types/runs";
+import "@/lib/i18n";
 import { useResultDetailSheetState } from "./useResultDetailSheetState";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })

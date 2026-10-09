@@ -12,6 +12,7 @@
  */
 
 import { forwardRef, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Bar,
   BarChart,
@@ -57,6 +58,7 @@ export const PredictionHistogramChart = forwardRef<HTMLDivElement, PredictionHis
     { datasets, config, taskKind, hasActuals, variant, className },
     ref,
   ) {
+    const { t } = useTranslation();
     const resolved: ChartVariant = variant ?? "full";
     const showChrome = resolved !== "thumbnail";
     const showTooltip = resolved !== "thumbnail";
@@ -82,8 +84,8 @@ export const PredictionHistogramChart = forwardRef<HTMLDivElement, PredictionHis
       yAxisLabel,
       emptyMessage,
     } = useMemo(
-      () => buildPredictionHistogramRenderModel({ datasets, config, taskKind, hasActuals }),
-      [datasets, config, taskKind, hasActuals],
+      () => buildPredictionHistogramRenderModel({ datasets, config, taskKind, hasActuals, t }),
+      [datasets, config, taskKind, hasActuals, t],
     );
 
     const fillOpacity = config.histogramBarOpacity;
@@ -163,7 +165,7 @@ export const PredictionHistogramChart = forwardRef<HTMLDivElement, PredictionHis
                   return (
                     <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
                       <div className="font-medium text-foreground">
-                        {getPredictionHistogramTooltipTitle(detectedTaskKind, label)}
+                        {getPredictionHistogramTooltipTitle(detectedTaskKind, label, t)}
                       </div>
                       <div className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
                         {payload.map((item) => {
@@ -241,7 +243,7 @@ export const PredictionHistogramChart = forwardRef<HTMLDivElement, PredictionHis
                 strokeDasharray="4 2"
                 ifOverflow="extendDomain"
                 label={{
-                  value: `μ ${formatMetricValue(refStats!.mean)}`,
+                  value: t("predictions.charts.histogram.meanLabel", { value: formatMetricValue(refStats!.mean) }),
                   position: "top",
                   style: { fill: "hsl(var(--primary))", fontSize: 10 },
                 }}
@@ -255,7 +257,7 @@ export const PredictionHistogramChart = forwardRef<HTMLDivElement, PredictionHis
                 strokeDasharray="2 2"
                 ifOverflow="extendDomain"
                 label={{
-                  value: `med ${formatMetricValue(refStats!.median)}`,
+                  value: t("predictions.charts.histogram.medianLabel", { value: formatMetricValue(refStats!.median) }),
                   position: "top",
                   style: { fill: "hsl(var(--muted-foreground))", fontSize: 10 },
                 }}

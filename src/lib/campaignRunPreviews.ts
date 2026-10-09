@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   DatasetPipelineCompatibilityPreview,
 } from "./campaignCompatibilityTypes";
@@ -66,7 +68,7 @@ export function buildCampaignRunPreviewsFromInputs({
       compatibilityStatusLabel: compatibilityPreview?.statusLabel ?? null,
       compatibilitySummary: compatibilityPreview?.summary ?? null,
       splitGroupBy: run.splitGroupBy,
-      positionLabel: `Run ${index + 1}`,
+      positionLabel: i18n.t("newExperiment.campaign.runPosition", { n: index + 1 }),
     };
   });
 }

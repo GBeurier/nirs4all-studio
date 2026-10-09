@@ -5,9 +5,10 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { PredictionRobustnessEvidenceResponse } from "@/types/aggregated-predictions";
 import { RobustnessEvidencePreflightCard } from "./RobustnessEvidencePreflightCard";
+import { initEnglishI18n } from "../predictionsTestI18n";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -64,6 +65,10 @@ function evidence(): PredictionRobustnessEvidenceResponse {
     blockers: ["Spectral/OOD scenarios require a row-aligned X/spectra matrix."],
   };
 }
+
+beforeAll(async () => {
+  await initEnglishI18n();
+});
 
 describe("RobustnessEvidencePreflightCard", () => {
   it("renders loading state", async () => {

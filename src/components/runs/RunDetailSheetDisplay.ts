@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import {
   getRuntimeResultEmptyMessage,
   getRuntimeResultStatusDisplay,
@@ -5,18 +6,13 @@ import {
   isRuntimeResultStatus,
   type RuntimeResultStatus,
 } from "@/ui/runtime";
+import { formatRunTokenLabel } from "@/lib/runs/format";
 import type { RunExecutionBackend } from "@/types/runs";
 import type { WorkspaceRunDetail } from "@/types/enriched-runs";
 
 export type RunDetailTab = "overview" | "pipelines" | "logs" | "datasets";
 
 export const DEFAULT_RUN_DETAIL_TAB: RunDetailTab = "overview";
-
-const RUN_EXECUTION_BACKEND_LABELS: Record<RunExecutionBackend, string> = {
-  "local-python": "Local Python",
-  cluster: "Cluster",
-  "wasm-local": "Local WASM",
-};
 
 export interface RunExecutionBackendDisplay {
   backend: RunExecutionBackend | null;
@@ -59,24 +55,27 @@ export function getRunExecutionBackend(detail: Pick<WorkspaceRunDetail, "config"
   return isRunExecutionBackend(backend) ? backend : null;
 }
 
-export function getRunExecutionBackendDisplay(detail: Pick<WorkspaceRunDetail, "config"> | null | undefined): RunExecutionBackendDisplay {
+export function getRunExecutionBackendDisplay(
+  detail: Pick<WorkspaceRunDetail, "config"> | null | undefined,
+  t: TFunction,
+): RunExecutionBackendDisplay {
   const backend = getRunExecutionBackend(detail);
 
   return {
     backend,
-    label: backend ? RUN_EXECUTION_BACKEND_LABELS[backend] : "Execution backend not recorded",
+    label: backend ? formatRunTokenLabel(backend, t) : t("runs.detail.backendNotRecorded"),
     isCluster: backend === "cluster",
   };
 }
 
-export function getRerunDisabledTitle(rerunReady: boolean | undefined): string | undefined {
-  return rerunReady === false ? "Relink the missing datasets before rerunning this run." : undefined;
+export function getRerunDisabledTitle(rerunReady: boolean | undefined, t: TFunction): string | undefined {
+  return rerunReady === false ? t("runs.detail.relinkBeforeRerun") : undefined;
 }
 
-export function getEmptyDatasetsMessage(status: string): string {
+export function getEmptyDatasetsMessage(status: string, t: TFunction): string {
   return getRuntimeResultEmptyMessage(status, {
-    queued: "Fold-level dataset results will appear here as pipelines complete.",
-    running: "Fold-level dataset results will appear here as pipelines complete.",
-    fallback: "No dataset results are available for this run.",
+    queued: t("runs.detail.datasetsPending"),
+    running: t("runs.detail.datasetsPending"),
+    fallback: t("runs.detail.datasetsEmpty"),
   });
 }

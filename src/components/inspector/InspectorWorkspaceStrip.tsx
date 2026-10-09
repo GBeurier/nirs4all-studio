@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Pin } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -73,27 +74,32 @@ export function InspectorWorkspaceStrip({
   mixedTaskTypes,
   selectionBar,
 }: InspectorWorkspaceStripProps) {
-  const focusModeLabel = focusMode === "selection" ? "Selection" : focusMode === "pinned" ? "Pinned" : "Auto";
+  const { t } = useTranslation();
+  const focusModeLabel = focusMode === "selection"
+    ? t("inspector.strip.modes.selection")
+    : focusMode === "pinned"
+      ? t("inspector.strip.modes.pinned")
+      : t("inspector.strip.modes.auto");
   const focusAccent = focusMode !== "top";
 
   return (
     <div className="overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-sm">
       <div className="grid grid-cols-5 divide-x divide-border/40">
-        <StatCell label="Chains" value={`${filteredCount} / ${totalCount}`} />
-        <StatCell label="Models" value={modelCount} />
-        <StatCell label="Datasets" value={datasetCount} />
+        <StatCell label={t("inspector.strip.chains")} value={`${filteredCount} / ${totalCount}`} />
+        <StatCell label={t("inspector.strip.models")} value={modelCount} />
+        <StatCell label={t("inspector.strip.datasets")} value={datasetCount} />
         <StatCell
-          label="Best Score"
+          label={t("inspector.strip.bestScore")}
           value={bestScoreLabel ?? "\u2014"}
           subvalue={bestChainLabel ?? undefined}
           accent={Boolean(bestScoreLabel)}
         />
-        <StatCell label="Focus Mode" value={focusModeLabel} accent={focusAccent} />
+        <StatCell label={t("inspector.strip.focusMode")} value={focusModeLabel} accent={focusAccent} />
       </div>
 
       <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-t border-border/40 bg-muted/10 px-4 py-2">
         <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground select-none">
-          Focus
+          {t("inspector.strip.focus")}
         </span>
         {focusChains.length > 0 ? (
           focusChains.map(chain => (
@@ -102,22 +108,22 @@ export function InspectorWorkspaceStrip({
             </Badge>
           ))
         ) : (
-          <span className="text-xs text-muted-foreground">No chains in scope.</span>
+          <span className="text-xs text-muted-foreground">{t("inspector.strip.noChains")}</span>
         )}
         {(mixedMetrics || mixedTaskTypes) && (
           <Badge variant="outline" className="ml-2 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-            mixed scope
+            {t("inspector.strip.mixedScope")}
           </Badge>
         )}
         {activeFilterCount > 0 && (
           <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-            {activeFilterCount} filters active
+            {t("inspector.strip.filtersActive", { count: activeFilterCount })}
           </Badge>
         )}
         {pinnedCount > 0 && (
           <Badge variant="outline" className="gap-1">
             <Pin className="h-3 w-3" />
-            {pinnedCount} pinned
+            {t("inspector.counts.pinned", { count: pinnedCount })}
           </Badge>
         )}
       </div>

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { InspectorChainSummary } from "@/types/inspector";
 import { buildResultAnalysisStore } from "@/lib/inspector/resultAnalysisStore";
@@ -7,6 +7,11 @@ import {
   computeInspectorGroups,
   computeInspectorGroupsFromStore,
 } from "@/lib/inspector/grouping";
+
+vi.mock("i18next", async () => {
+  const { tStub } = await import("./helpers/i18nStub");
+  return { default: { t: tStub } };
+});
 
 function chain(overrides: Partial<InspectorChainSummary> = {}): InspectorChainSummary {
   return {
@@ -101,8 +106,8 @@ describe("inspector grouping", () => {
     );
 
     expect(groups.map((group) => [group.label, group.chain_ids])).toEqual([
-      ["Top 2", ["best", "middle"]],
-      ["Others (1)", ["worst"]],
+      ['inspector.groups.topK {"k":2}', ["best", "middle"]],
+      ['inspector.groups.others {"count":1}', ["worst"]],
     ]);
   });
 
@@ -124,7 +129,7 @@ describe("inspector grouping", () => {
 
     expect(groups.map((group) => [group.label, group.chain_ids])).toEqual([
       ["left", ["left", "left-2"]],
-      ["(no branch)", ["root"]],
+      ["inspector.groups.noBranch", ["root"]],
     ]);
   });
 
@@ -166,7 +171,7 @@ describe("inspector grouping", () => {
 
     expect(groups.map((group) => [group.label, group.chain_ids])).toEqual([
       ["Good PLS", ["pls-good"]],
-      ["Group 2", ["pls-good", "pls-low"]],
+      ['inspector.groups.groupPlaceholder {"index":2}', ["pls-good", "pls-low"]],
     ]);
   });
 
@@ -207,8 +212,8 @@ describe("inspector grouping", () => {
       topKConfig: { scoreColumn: "cv_val_score", k: 1 },
       expressionConfig: null,
     }).map((group) => [group.label, group.chain_ids])).toEqual([
-      ["Top 1", ["pls"]],
-      ["Others (1)", ["rf"]],
+      ['inspector.groups.topK {"k":1}', ["pls"]],
+      ['inspector.groups.others {"count":1}', ["rf"]],
     ]);
 
     expect(computeInspectorGroupsFromStore(store, {

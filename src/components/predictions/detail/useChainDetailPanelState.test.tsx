@@ -4,7 +4,8 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import i18next from "i18next";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type {
   ChainDetailResponse,
   ChainPartitionDetailResponse,
@@ -37,6 +38,11 @@ import {
   buildChainDetailRobustnessUnavailableScenarios,
   useChainDetailPanelState,
 } from "./useChainDetailPanelState";
+import { initEnglishI18n } from "../predictionsTestI18n";
+
+beforeAll(async () => {
+  await initEnglishI18n();
+});
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -326,15 +332,15 @@ describe("useChainDetailPanelState", () => {
   it("derives stored-prediction robustness scenarios from the keyword registry when attached", () => {
     const registry = robustnessRegistry(["observed", "prediction_noise", "spectral_noise"]);
 
-    expect(buildChainDetailRobustnessScenarioOptions(registry).map((option) => option.kind)).toEqual([
+    expect(buildChainDetailRobustnessScenarioOptions(i18next.t, registry).map((option) => option.kind)).toEqual([
       "observed",
       "prediction_noise",
     ]);
-    expect(buildChainDetailRobustnessScenarioOptions(registry)[1]).toMatchObject({
+    expect(buildChainDetailRobustnessScenarioOptions(i18next.t, registry)[1]).toMatchObject({
       label: "prediction noise",
       severityLabel: "Severity",
     });
-    expect(buildChainDetailRobustnessUnavailableScenarios(registry)).toEqual([
+    expect(buildChainDetailRobustnessUnavailableScenarios(i18next.t, registry)).toEqual([
       {
         kind: "spectral_noise",
         label: "spectral noise",
@@ -346,16 +352,16 @@ describe("useChainDetailPanelState", () => {
   it("derives spectral robustness scenarios from the registry only when replay evidence is ready", () => {
     const registry = robustnessRegistry(["observed", "prediction_noise", "spectral_noise", "spectral_shift"]);
 
-    expect(buildChainDetailRobustnessScenarioOptions(registry).map((option) => option.kind)).toEqual([
+    expect(buildChainDetailRobustnessScenarioOptions(i18next.t, registry).map((option) => option.kind)).toEqual([
       "observed",
       "prediction_noise",
     ]);
-    expect(buildChainDetailRobustnessUnavailableScenarios(registry).map((option) => option.kind)).toEqual([
+    expect(buildChainDetailRobustnessUnavailableScenarios(i18next.t, registry).map((option) => option.kind)).toEqual([
       "spectral_noise",
       "spectral_shift",
     ]);
 
-    expect(buildChainDetailRobustnessScenarioOptions(registry, {
+    expect(buildChainDetailRobustnessScenarioOptions(i18next.t, registry, {
       includeSpectralReplay: true,
     }).map((option) => option.kind)).toEqual([
       "observed",
@@ -363,7 +369,7 @@ describe("useChainDetailPanelState", () => {
       "spectral_noise",
       "spectral_shift",
     ]);
-    expect(buildChainDetailRobustnessUnavailableScenarios(registry, {
+    expect(buildChainDetailRobustnessUnavailableScenarios(i18next.t, registry, {
       includeSpectralReplay: true,
     })).toEqual([]);
   });

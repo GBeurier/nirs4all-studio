@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Monitor,
   Cpu,
@@ -70,6 +71,7 @@ function CapabilityItem({ label, available }: CapabilityItemProps) {
 }
 
 export function SystemInfo({ compact = false }: SystemInfoProps) {
+  const { t } = useTranslation();
   const [systemInfo, setSystemInfo] = useState<SystemInfoResponse | null>(null);
   const [capabilities, setCapabilities] = useState<SystemCapabilities | null>(null);
   const [runtimeSummary, setRuntimeSummary] = useState<RuntimeSummaryResponse | null>(null);
@@ -91,7 +93,7 @@ export function SystemInfo({ compact = false }: SystemInfoProps) {
       setCapabilities(capabilitiesResponse.capabilities);
       setRuntimeSummary(runtimeResponse);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load system info");
+      setError(err instanceof Error ? err.message : t("settings.systemInfo.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -152,7 +154,7 @@ ${Object.entries(systemInfo.packages)
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Monitor className="h-5 w-5" />
-            System Information
+            {t("settings.advanced.system.title")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -178,7 +180,7 @@ ${Object.entries(systemInfo.packages)
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
             <Monitor className="h-5 w-5" />
-            System Information
+            {t("settings.advanced.system.title")}
           </CardTitle>
           <CardDescription className="text-destructive">
             {error}
@@ -187,7 +189,7 @@ ${Object.entries(systemInfo.packages)
         <CardContent>
           <Button variant="outline" size="sm" onClick={loadData}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            Retry
+            {t("common.retry")}
           </Button>
         </CardContent>
       </Card>
@@ -217,10 +219,10 @@ ${Object.entries(systemInfo.packages)
           <div>
             <CardTitle className="flex items-center gap-2">
               <Monitor className="h-5 w-5" />
-              System Information
+              {t("settings.advanced.system.title")}
             </CardTitle>
             <CardDescription>
-              Python environment and available features
+              {t("settings.systemInfo.description")}
             </CardDescription>
           </div>
           <div className="flex gap-2">
@@ -228,7 +230,8 @@ ${Object.entries(systemInfo.packages)
               variant="ghost"
               size="icon"
               onClick={copyToClipboard}
-              title="Copy system info"
+              title={t("settings.advanced.system.copyToClipboard")}
+              aria-label={t("settings.advanced.system.copyToClipboard")}
             >
               {copied ? (
                 <Check className="h-4 w-4 text-green-500" />
@@ -240,7 +243,8 @@ ${Object.entries(systemInfo.packages)
               variant="ghost"
               size="icon"
               onClick={loadData}
-              title="Refresh"
+              title={t("common.refresh")}
+              aria-label={t("common.refresh")}
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -254,39 +258,39 @@ ${Object.entries(systemInfo.packages)
           <div className="space-y-2">
             <h4 className="text-sm font-medium flex items-center gap-2">
               <Cpu className="h-4 w-4 text-muted-foreground" />
-              Python
+              {t("settings.advanced.system.python")}
             </h4>
             <div className="text-sm space-y-1 pl-6">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Version:</span>
+                <span className="text-muted-foreground">{t("settings.systemInfo.version")}</span>
                 <Badge variant="secondary">{pythonVersion}</Badge>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Platform:</span>
+                <span className="text-muted-foreground">{t("settings.systemInfo.platform")}</span>
                 <span>{systemInfo.python.platform}</span>
               </div>
               {runtimeSummary?.runtime_kind && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Runtime Kind:</span>
+                  <span className="text-muted-foreground">{t("settings.systemInfo.runtimeKind")}</span>
                   <Badge variant="outline">{runtimeSummary.runtime_kind}</Badge>
                 </div>
               )}
               {runtimeSummary && (
                 <>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Match:</span>
+                    <span className="text-muted-foreground">{t("settings.systemInfo.match")}</span>
                     <Badge variant={runtimeSummary.configured_matches_running ? "outline" : "destructive"}>
-                      {runtimeSummary.configured_matches_running ? "Configured = Running" : "Mismatch"}
+                      {runtimeSummary.configured_matches_running ? t("settings.systemInfo.matchOk") : t("settings.systemInfo.mismatch")}
                     </Badge>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Core Ready:</span>
+                    <span className="text-muted-foreground">{t("settings.systemInfo.coreReady")}</span>
                     <Badge variant={runtimeSummary.core_ready ? "default" : "destructive"}>
-                      {runtimeSummary.core_ready ? "Yes" : "No"}
+                      {runtimeSummary.core_ready ? t("common.yes") : t("common.no")}
                     </Badge>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Optional Gaps:</span>
+                    <span className="text-muted-foreground">{t("settings.systemInfo.optionalGaps")}</span>
                     <span>{runtimeSummary.missing_optional_packages.length}</span>
                   </div>
                 </>
@@ -294,11 +298,11 @@ ${Object.entries(systemInfo.packages)
               {!compact && (
                 <div className="space-y-2 text-xs text-muted-foreground break-all mt-2">
                   <div>
-                    <p className="uppercase tracking-wide">Configured Python</p>
+                    <p className="uppercase tracking-wide">{t("settings.systemInfo.configuredPython")}</p>
                     <p>{configuredPython}</p>
                   </div>
                   <div>
-                    <p className="uppercase tracking-wide">Running Python</p>
+                    <p className="uppercase tracking-wide">{t("settings.systemInfo.runningPython")}</p>
                     <p>{runningPython}</p>
                   </div>
                 </div>
@@ -310,17 +314,17 @@ ${Object.entries(systemInfo.packages)
           <div className="space-y-2">
             <h4 className="text-sm font-medium flex items-center gap-2">
               <Monitor className="h-4 w-4 text-muted-foreground" />
-              System
+              {t("settings.systemInfo.system")}
             </h4>
             <div className="text-sm space-y-1 pl-6">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">OS:</span>
+                <span className="text-muted-foreground">{t("settings.systemInfo.os")}</span>
                 <span>
                   {systemInfo.system.os} {systemInfo.system.release}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Architecture:</span>
+                <span className="text-muted-foreground">{t("settings.systemInfo.architecture")}</span>
                 <span>{systemInfo.system.machine}</span>
               </div>
             </div>
@@ -340,7 +344,7 @@ ${Object.entries(systemInfo.packages)
 
         {/* Capabilities */}
         <div className="space-y-2">
-          <h4 className="text-sm font-medium">Capabilities</h4>
+          <h4 className="text-sm font-medium">{t("settings.advanced.system.capabilities")}</h4>
           <div className="grid grid-cols-2 gap-2 text-sm">
             <CapabilityItem
               name="nirs4all"
@@ -349,7 +353,7 @@ ${Object.entries(systemInfo.packages)
             />
             <CapabilityItem
               name="visualization"
-              label="Visualization"
+              label={t("settings.systemInfo.visualization")}
               available={capabilities.visualization}
             />
             <CapabilityItem
@@ -374,7 +378,7 @@ ${Object.entries(systemInfo.packages)
             />
             <CapabilityItem
               name="export_excel"
-              label="Excel Export"
+              label={t("settings.systemInfo.excelExport")}
               available={capabilities.export_excel}
             />
           </div>
@@ -385,7 +389,7 @@ ${Object.entries(systemInfo.packages)
           <Collapsible open={packagesOpen} onOpenChange={setPackagesOpen}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="w-full justify-between p-2 h-auto">
-                <span className="text-sm font-medium">Installed Packages</span>
+                <span className="text-sm font-medium">{t("settings.advanced.system.packages")}</span>
                 <ChevronDown
                   className={`h-4 w-4 transition-transform ${
                     packagesOpen ? "rotate-180" : ""

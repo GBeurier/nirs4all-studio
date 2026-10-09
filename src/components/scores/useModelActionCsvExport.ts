@@ -34,7 +34,7 @@ export function useModelActionCsvExport({
 
   const handleCsvExport = useCallback(async () => {
     if (!chainId) {
-      toast.error("Missing chain id");
+      toast.error(t("results.scores.csv.missingChain"));
       return;
     }
     setCsvBusy(true);
@@ -42,13 +42,13 @@ export function useModelActionCsvExport({
       const detail = await getChainPartitionDetail(chainId);
       const rows = detail.predictions || [];
       if (rows.length === 0) {
-        toast.error("No predictions found for this chain");
+        toast.error(t("results.scores.csv.noPredictions"));
         return;
       }
       const csv = buildModelActionCsv(rows);
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       downloadBlob(blob, buildModelActionCsvFilename(modelName, chainId));
-      toast.success("CSV exported");
+      toast.success(t("results.scores.csv.exported"));
     } catch (err) {
       notifyApiError(err, t("errors.action.exportCsv"));
     } finally {

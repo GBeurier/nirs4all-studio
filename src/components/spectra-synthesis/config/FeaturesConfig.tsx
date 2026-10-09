@@ -10,6 +10,7 @@
  */
 
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Separator } from "@/components/ui/separator";
 import type { SynthesisStepDefinition } from "../types";
 import {
@@ -41,8 +42,9 @@ export function FeaturesConfig({
   params,
   onChange,
 }: FeaturesConfigProps) {
+  const { t } = useTranslation();
   const features = projectFeaturesParams(params);
-  const selectedComponentBadges = getSelectedComponentBadges(features.components);
+  const selectedComponentBadges = getSelectedComponentBadges(features.components, t);
 
   // Apply complexity preset
   const handleComplexityChange = useCallback(

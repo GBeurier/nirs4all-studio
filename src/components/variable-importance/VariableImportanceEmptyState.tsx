@@ -13,23 +13,20 @@ export function VariableImportanceEmptyState() {
           <TrendingUp className="h-8 w-8 text-muted-foreground" />
         </div>
         <h3 className="text-lg font-semibold mb-2">
-          {t('shap.noResults', 'No Results Yet')}
+          {t('shap.noResults')}
         </h3>
         <p className="text-muted-foreground max-w-md mx-auto mb-4">
-          {t(
-            'shap.instructions',
-            'Select a trained model, then click "Compute Explanations" to analyze which wavelengths are most important for predictions.',
-          )}
+          {t('shap.instructions')}
         </p>
         <div className="flex flex-wrap gap-2 justify-center text-xs text-muted-foreground">
           <span className="px-2 py-1 bg-muted rounded">
-            {t('shap.features.spectral', 'Spectral importance')}
+            {t('shap.features.spectral')}
           </span>
           <span className="px-2 py-1 bg-muted rounded">
-            {t('shap.features.beeswarm', 'SHAP distribution')}
+            {t('shap.features.beeswarm')}
           </span>
           <span className="px-2 py-1 bg-muted rounded">
-            {t('shap.features.waterfall', 'Sample breakdown')}
+            {t('shap.features.waterfall')}
           </span>
         </div>
       </CardContent>

@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { DatasetPipelineCompatibilityStatus } from "./campaignCompatibilityTypes";
 import type {
   CampaignCapabilityCheck,
@@ -8,27 +10,32 @@ import type { CampaignPlanPreview } from "./campaignPlanPreviewTypes";
 
 export type CampaignPreviewBadgeVariant = "secondary" | "outline" | "destructive";
 
-export const campaignPlanPreviewTitle = "Experiment Overview";
+export function getCampaignPlanPreviewTitle(): string {
+  return i18n.t("newExperiment.campaign.preview.title");
+}
 
+/** Section titles of the campaign preview; getters resolve the active language at read time. */
 export const campaignPlanSectionTitles = {
-  capabilities: "Readiness Checks",
-  datasets: "Dataset Inputs",
-  pipelines: "Pipeline Inputs",
-  compatibility: "Compatibility Preview",
-  executionEnvironment: "Execution Environment",
-  singlePairSplits: "Individual Analyses",
-  plannedRuns: "Planned Runs",
-} as const;
+  get capabilities() { return i18n.t("newExperiment.campaign.sections.capabilities"); },
+  get datasets() { return i18n.t("newExperiment.campaign.sections.datasets"); },
+  get pipelines() { return i18n.t("newExperiment.campaign.sections.pipelines"); },
+  get compatibility() { return i18n.t("newExperiment.campaign.sections.compatibility"); },
+  get executionEnvironment() { return i18n.t("newExperiment.campaign.sections.executionEnvironment"); },
+  get singlePairSplits() { return i18n.t("newExperiment.campaign.sections.singlePairSplits"); },
+  get plannedRuns() { return i18n.t("newExperiment.campaign.sections.plannedRuns"); },
+};
 
 export const campaignPlanHiddenLabels = {
-  datasets: "more dataset inputs",
-  pipelines: "more pipeline inputs",
-  compatibility: "more compatibility previews",
-  singlePairSplits: "more split candidates",
-  plannedRuns: "more planned runs",
-} as const;
+  get datasets() { return i18n.t("newExperiment.campaign.hidden.datasets"); },
+  get pipelines() { return i18n.t("newExperiment.campaign.hidden.pipelines"); },
+  get compatibility() { return i18n.t("newExperiment.campaign.hidden.compatibility"); },
+  get singlePairSplits() { return i18n.t("newExperiment.campaign.hidden.singlePairSplits"); },
+  get plannedRuns() { return i18n.t("newExperiment.campaign.hidden.plannedRuns"); },
+};
 
-export const campaignSinglePairSplitTagLabel = "one dataset / one pipeline";
+export function getCampaignSinglePairSplitTagLabel(): string {
+  return i18n.t("newExperiment.campaign.singlePairTag");
+}
 
 export interface CampaignSummaryField {
   id: string;
@@ -60,24 +67,27 @@ export function buildCampaignSummaryFields(
   campaignPreview: CampaignPlanPreview,
 ): CampaignSummaryField[] {
   return [
-    { id: "mode", label: "Mode", value: campaignPreview.modeLabel },
+    { id: "mode", label: i18n.t("newExperiment.campaign.summaryFields.mode"), value: campaignPreview.modeLabel },
     {
       id: "pairing",
-      label: "Pairing",
+      label: i18n.t("newExperiment.campaign.summaryFields.pairing"),
       value: formatCampaignPairingModeLine(campaignPreview.pairingMode),
     },
-    { id: "backend", label: "Backend", value: campaignPreview.executionBackendLabel },
-    { id: "adapter", label: "Adapter", value: campaignPreview.executionAdapter.statusLabel },
-    { id: "inputs", label: "Inputs", value: campaignPreview.summary.inputCardinalityLabel },
-    { id: "runs", label: "Runs", value: campaignPreview.summary.runCountLabel },
-    { id: "matrix", label: "Matrix", value: campaignPreview.summary.matrixCoverageLabel },
+    { id: "backend", label: i18n.t("newExperiment.campaign.summaryFields.backend"), value: campaignPreview.executionBackendLabel },
+    { id: "adapter", label: i18n.t("newExperiment.campaign.summaryFields.adapter"), value: campaignPreview.executionAdapter.statusLabel },
+    { id: "inputs", label: i18n.t("newExperiment.campaign.summaryFields.inputs"), value: campaignPreview.summary.inputCardinalityLabel },
+    { id: "runs", label: i18n.t("newExperiment.campaign.summaryFields.runs"), value: campaignPreview.summary.runCountLabel },
+    { id: "matrix", label: i18n.t("newExperiment.campaign.summaryFields.matrix"), value: campaignPreview.summary.matrixCoverageLabel },
   ];
 }
 
 export function formatCampaignPairingModeLine(
   pairingMode: PairingModePreview,
 ): string {
-  return `${pairingMode.label} (${pairingMode.strictPairingLabel})`;
+  return i18n.t("newExperiment.campaign.detail.pairingLine", {
+    label: pairingMode.label,
+    strict: pairingMode.strictPairingLabel,
+  });
 }
 
 export function formatCampaignExecutionAdapterLine(
@@ -109,12 +119,12 @@ export function formatHiddenCampaignPreviewCount(
   hiddenLabel: string,
 ): string | null {
   if (hiddenCount <= 0) return null;
-  return `+ ${hiddenCount} ${hiddenLabel}`;
+  return i18n.t("newExperiment.campaign.hidden.format", { count: hiddenCount, label: hiddenLabel });
 }
 
 export function formatCampaignGroupByTag(splitGroupBy: string | null): string | null {
   if (!splitGroupBy) return null;
-  return `Sample groups: ${splitGroupBy}`;
+  return i18n.t("newExperiment.campaign.detail.groupBy", { value: splitGroupBy });
 }
 
 export function formatCampaignDatasetDetailLabels(
@@ -126,10 +136,10 @@ export function formatCampaignDatasetDetailLabels(
     datasetPreview.sourceCountLabel,
     datasetPreview.sourceModeLabel,
     datasetPreview.representationCountLabel,
-    `view: ${datasetPreview.dataViewLabel}`,
-    `task: ${datasetPreview.dataViewTaskLabel}`,
+    i18n.t("newExperiment.campaign.detail.view", { value: datasetPreview.dataViewLabel }),
+    i18n.t("newExperiment.campaign.detail.task", { value: datasetPreview.dataViewTaskLabel }),
     datasetPreview.targetCountLabel,
-    `target: ${datasetPreview.targetLabel}`,
+    i18n.t("newExperiment.campaign.detail.target", { value: datasetPreview.targetLabel }),
     datasetPreview.metadataColumnCountLabel,
     datasetPreview.repetitionLabel,
     datasetPreview.aggregationLabel,
@@ -161,7 +171,7 @@ export function formatCampaignSinglePairSplitCandidateDetailLabels(
 ): string[] {
   return [
     candidatePreview.summaryLabel,
-    `source run: ${candidatePreview.runId}`,
+    i18n.t("newExperiment.campaign.detail.sourceRun", { value: candidatePreview.runId }),
   ];
 }
 
@@ -173,10 +183,10 @@ export function formatCampaignCompatibilityDetailLabels(
   compatibilityPreview: CompatibilityPreview,
 ): string[] {
   return presentLabels([
-    `view: ${compatibilityPreview.dataViewLabel}`,
-    `task: ${compatibilityPreview.dataViewTaskLabel}`,
+    i18n.t("newExperiment.campaign.detail.view", { value: compatibilityPreview.dataViewLabel }),
+    i18n.t("newExperiment.campaign.detail.task", { value: compatibilityPreview.dataViewTaskLabel }),
     compatibilityPreview.targetCountLabel,
-    `target: ${compatibilityPreview.targetLabel}`,
+    i18n.t("newExperiment.campaign.detail.target", { value: compatibilityPreview.targetLabel }),
     compatibilityPreview.sourceCountLabel,
     compatibilityPreview.sourceModeLabel,
     compatibilityPreview.datasetAggregationLabel,

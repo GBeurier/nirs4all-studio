@@ -1,4 +1,6 @@
+import type { TFunction } from "i18next";
 import { CHEMICAL_COMPONENTS } from "../definitions";
+import { getComponentLabel } from "../definitionLabels";
 import type { ChemicalComponent, Complexity } from "../types";
 
 export type WavelengthRange = [number, number];
@@ -212,24 +214,13 @@ export function groupChemicalComponents(
 
 export const CHEMICAL_COMPONENT_GROUPS = groupChemicalComponents();
 
-export function formatComponentCategoryLabel(category: string): string {
-  return category.charAt(0).toUpperCase() + category.slice(1);
-}
-
-export function getComponentBadgeLabel(
-  componentName: string,
-  components: readonly ChemicalComponent[] = CHEMICAL_COMPONENTS,
-): string {
-  return components.find((component) => component.name === componentName)?.displayName ?? componentName;
-}
-
 export function getSelectedComponentBadges(
   componentNames: readonly string[],
-  components: readonly ChemicalComponent[] = CHEMICAL_COMPONENTS,
+  t: TFunction,
 ): SelectedComponentBadge[] {
   return componentNames.map((name) => ({
     name,
-    label: getComponentBadgeLabel(name, components),
+    label: getComponentLabel(t, name),
   }));
 }
 

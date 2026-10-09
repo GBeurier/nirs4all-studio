@@ -1,14 +1,15 @@
 /** @vitest-environment jsdom */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import i18n from "i18next";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import "@/lib/i18n";
 import SetupWizard from "./SetupWizard";
 
 const mocks = vi.hoisted(() => ({
   inventory: vi.fn(), diff: vi.fn(), runtime: vi.fn(), readiness: vi.fn(), complete: vi.fn(), align: vi.fn(), navigate: vi.fn(), config: vi.fn(),
 }));
 vi.mock("react-router-dom", () => ({ useNavigate: () => mocks.navigate }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/api/dependencies", () => ({ getDependencies: mocks.inventory }));
 vi.mock("@/api/config", () => ({ getConfigDiff: mocks.diff, alignConfig: mocks.align }));
 vi.mock("@/api/system", () => ({ getRuntimeSummary: mocks.runtime }));
@@ -23,6 +24,10 @@ vi.mock("@/hooks/useRecommendedConfig", () => ({
   useSkipSetup: () => ({ mutate: vi.fn() }),
 }));
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 describe("SetupWizard packaged installation verification", () => {
   let root: Root;
@@ -47,7 +52,7 @@ describe("SetupWizard packaged installation verification", () => {
 
   it("verifies the included CPU runtime and completes without unsupported installs", async () => {
     await mount();
-    expect(container.textContent).toContain("required packages are ready");
+    expect(container.textContent).toContain("The analysis tools are ready.");
     expect(mocks.config).not.toHaveBeenCalled();
     await act(async () => openButton().click());
     expect(mocks.diff).toHaveBeenCalledTimes(1);
@@ -70,7 +75,7 @@ describe("SetupWizard packaged installation verification", () => {
   it("blocks completion when packages exist but importing the runtime fails", async () => {
     mocks.runtime.mockResolvedValue({ core_ready: false, coherent: true });
     await mount();
-    expect(container.textContent).toContain("runtime is not ready");
+    expect(container.textContent).toContain("The analysis tools are not ready.");
     expect(openButton().disabled).toBe(true);
   });
 
@@ -110,7 +115,7 @@ describe("SetupWizard packaged installation verification", () => {
       expect(mocks.complete).not.toHaveBeenCalled();
       const retry = [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry verification")!;
       await act(async () => retry.click());
-      expect(container.textContent).toContain("required packages are ready");
+      expect(container.textContent).toContain("The analysis tools are ready.");
       expect(openButton().disabled).toBe(false);
       expect(mocks.complete).not.toHaveBeenCalled();
       expect(mocks.navigate).not.toHaveBeenCalled();
@@ -129,7 +134,7 @@ describe("SetupWizard packaged installation verification", () => {
     mocks.inventory.mockResolvedValue({ runtime_valid: true, categories: [] });
     await mount();
     expect(mocks.config).toHaveBeenCalled();
-    expect(container.textContent).toContain("setupWizard.detect.title");
+    expect(container.textContent).toContain("Detecting Hardware");
     expect(mocks.runtime).not.toHaveBeenCalled();
   });
 });

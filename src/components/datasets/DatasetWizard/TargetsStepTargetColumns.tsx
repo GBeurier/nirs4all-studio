@@ -7,6 +7,7 @@ import {
   RotateCcw,
   Star,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -72,6 +73,7 @@ export function TargetColumnsSection({
   onResetTargetType,
   isTypeModified,
 }: TargetColumnsSectionProps) {
+  const { t } = useTranslation();
   const targetCandidates = getTargetCandidates(detectedColumns);
 
   return (
@@ -79,7 +81,7 @@ export function TargetColumnsSection({
       <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium">Target Columns</span>
+          <span className="font-medium">{t("datasets.wizard.targets.columns.title")}</span>
         </div>
         {hasTargetFile && (
           <Button
@@ -94,7 +96,7 @@ export function TargetColumnsSection({
             ) : (
               <RefreshCw className="h-3 w-3" />
             )}
-            Refresh
+            {t("common.refresh")}
           </Button>
         )}
       </div>
@@ -103,7 +105,7 @@ export function TargetColumnsSection({
         {loading && (
           <div className="flex items-center justify-center py-12 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin mr-2" />
-            <span className="text-sm">Detecting columns...</span>
+            <span className="text-sm">{t("datasets.wizard.targets.columns.detecting")}</span>
           </div>
         )}
 
@@ -111,12 +113,12 @@ export function TargetColumnsSection({
           <div className="p-4">
             <div className="flex items-center gap-2 text-amber-600 mb-2">
               <AlertCircle className="h-4 w-4" />
-              <span className="text-sm font-medium">Detection failed</span>
+              <span className="text-sm font-medium">{t("datasets.wizard.targets.columns.detectionFailed")}</span>
             </div>
             <p className="text-xs text-muted-foreground mb-2">{error}</p>
             <Button variant="outline" size="sm" onClick={onRefresh} className="h-7 text-xs">
               <RefreshCw className="h-3 w-3 mr-1" />
-              Retry
+              {t("common.retry")}
             </Button>
           </div>
         )}
@@ -124,10 +126,10 @@ export function TargetColumnsSection({
         {!loading && !error && detectedColumns.length > 0 && (
           <div className="divide-y">
             <div className="grid grid-cols-[1fr,100px,110px,70px] gap-2 px-4 py-2 text-xs text-muted-foreground bg-muted/20 font-medium">
-              <span>Column</span>
-              <span>Detected</span>
-              <span>Task Type</span>
-              <span className="text-center">Unit</span>
+              <span>{t("datasets.wizard.targets.columns.headerColumn")}</span>
+              <span>{t("datasets.wizard.targets.columns.headerDetected")}</span>
+              <span>{t("datasets.wizard.targets.columns.headerTaskType")}</span>
+              <span className="text-center">{t("datasets.wizard.targets.columns.headerUnit")}</span>
             </div>
 
             {detectedColumns.map((column) => (
@@ -152,8 +154,8 @@ export function TargetColumnsSection({
             <Info className="h-5 w-5 mb-2" />
             <span className="text-sm">
               {hasTargetFile
-                ? "No columns detected in Y file"
-                : "Map a file as 'Y' (Targets) to detect columns"}
+                ? t("datasets.wizard.targets.columns.noColumnsInY")
+                : t("datasets.wizard.targets.columns.mapYHint")}
             </span>
           </div>
         )}
@@ -161,10 +163,10 @@ export function TargetColumnsSection({
 
       {detectedColumns.length > 0 && (
         <div className="px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground">
-          {detectedColumns.length} column{detectedColumns.length > 1 ? "s" : ""} detected
-          {targetCandidates.length > 0 && <> &middot; {targetCandidates.length} target{targetCandidates.length > 1 ? "s" : ""}</>}
+          {t("datasets.wizard.targets.columns.columnsDetected", { count: detectedColumns.length })}
+          {targetCandidates.length > 0 && <> &middot; {t("datasets.wizard.targets.columns.targetsCount", { count: targetCandidates.length })}</>}
           {targetCandidates.length > 1 && (
-            <> &middot; <Star className="h-3 w-3 inline text-amber-500 fill-amber-500" /> = default</>
+            <> &middot; <Star className="h-3 w-3 inline text-amber-500 fill-amber-500" /> {t("datasets.wizard.targets.columns.defaultLegend")}</>
           )}
         </div>
       )}
@@ -183,6 +185,7 @@ function TargetColumnRow({
   onResetTargetType,
   isTypeModified,
 }: TargetColumnRowProps) {
+  const { t } = useTranslation();
   const isTargetCandidate = column.type !== "text";
   const targetConfig = targets.find((target) => target.column === column.name);
   const currentType = targetConfig?.type || column.inferred_task_type;
@@ -201,14 +204,14 @@ function TargetColumnRow({
                 type="button"
                 onClick={() => onSetDefaultTarget(column.name)}
                 aria-pressed={isDefault}
-                aria-label={isDefault ? "Default target" : `Set ${column.name} as default target`}
+                aria-label={isDefault ? t("datasets.wizard.targets.columns.defaultTarget") : t("datasets.wizard.targets.columns.setAsDefaultNamed", { name: column.name })}
                 className={`flex-shrink-0 ${isDefault ? "text-amber-500" : "text-muted-foreground/40 hover:text-muted-foreground"}`}
               >
                 <Star className={`h-3.5 w-3.5 ${isDefault ? "fill-current" : ""}`} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
-              {isDefault ? "Default target" : "Set as default"}
+              {isDefault ? t("datasets.wizard.targets.columns.defaultTarget") : t("datasets.wizard.targets.columns.setAsDefault")}
             </TooltipContent>
           </Tooltip>
         )}
@@ -220,11 +223,11 @@ function TargetColumnRow({
           variant={column.type === "numeric" ? "default" : column.type === "categorical" ? "secondary" : "outline"}
           className="text-[10px] px-1.5 py-0"
         >
-          {column.type === "numeric" ? "num" : column.type === "categorical" ? "cat" : "text"}
+          {column.type === "numeric" ? t("datasets.wizard.targets.columns.typeNumeric") : column.type === "categorical" ? t("datasets.wizard.targets.columns.typeCategorical") : t("datasets.wizard.targets.columns.typeText")}
         </Badge>
         {isTargetCandidate && (
           <span className="text-xs text-muted-foreground">
-            {column.inferred_task_type === "regression" ? "Reg" : "Class"}
+            {column.inferred_task_type === "regression" ? t("datasets.wizard.targets.columns.shortRegression") : t("datasets.wizard.targets.columns.shortClassification")}
           </span>
         )}
       </div>
@@ -237,9 +240,9 @@ function TargetColumnRow({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="regression">Regression</SelectItem>
-                <SelectItem value="binary_classification">Binary</SelectItem>
-                <SelectItem value="multiclass_classification">Multiclass</SelectItem>
+                <SelectItem value="regression">{t("datasets.wizard.targets.columns.regression")}</SelectItem>
+                <SelectItem value="binary_classification">{t("datasets.wizard.targets.columns.binary")}</SelectItem>
+                <SelectItem value="multiclass_classification">{t("datasets.wizard.targets.columns.multiclass")}</SelectItem>
               </SelectContent>
             </Select>
             {isModified && (
@@ -250,17 +253,17 @@ function TargetColumnRow({
                     size="sm"
                     className="h-7 w-7 p-0 flex-shrink-0"
                     onClick={() => onResetTargetType(column.name)}
-                    aria-label={`Reset ${column.name} to auto-detected type`}
+                    aria-label={t("datasets.wizard.targets.columns.resetNamedToAuto", { name: column.name })}
                   >
                     <RotateCcw className="h-3 w-3 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Reset to auto-detected</TooltipContent>
+                <TooltipContent>{t("datasets.wizard.targets.columns.resetToAuto")}</TooltipContent>
               </Tooltip>
             )}
           </>
         ) : (
-          <span className="text-xs text-muted-foreground italic">Not a target</span>
+          <span className="text-xs text-muted-foreground italic">{t("datasets.wizard.targets.columns.notATarget")}</span>
         )}
       </div>
 
@@ -274,7 +277,7 @@ function TargetColumnRow({
               <SelectValue placeholder={EMPTY_FIELD_LABEL} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={NO_UNIT_VALUE}>None</SelectItem>
+              <SelectItem value={NO_UNIT_VALUE}>{t("common.none")}</SelectItem>
               {COMMON_UNITS.map((unit) => (
                 <SelectItem key={unit} value={unit}>{unit}</SelectItem>
               ))}

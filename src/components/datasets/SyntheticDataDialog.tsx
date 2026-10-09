@@ -8,6 +8,7 @@
  */
 
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical } from "lucide-react";
 import {
@@ -51,6 +52,7 @@ export function SyntheticDataDialog({
   trigger,
   onDatasetGenerated,
 }: SyntheticDataDialogProps) {
+  const { t } = useTranslation();
   const [internalOpen, setInternalOpen] = useState(false);
   const isControlled = open !== undefined;
   const isOpen = isControlled ? open : internalOpen;
@@ -105,13 +107,13 @@ export function SyntheticDataDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FlaskConical className="h-5 w-5 text-primary" />
-            Generate Synthetic Dataset
+            {t("datasets.synthetic.title")}
             <Badge variant="outline" className="ml-2">
-              Dev Mode
+              {t("datasets.synthetic.devMode")}
             </Badge>
           </DialogTitle>
           <DialogDescription>
-            Create synthetic spectral data for testing and development purposes.
+            {t("datasets.synthetic.dialogDescription")}
           </DialogDescription>
         </DialogHeader>
 
@@ -120,8 +122,8 @@ export function SyntheticDataDialog({
           onValueChange={(value) => setActiveTab(value as SyntheticDialogTab)}
         >
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="presets">Quick Presets</TabsTrigger>
-            <TabsTrigger value="custom">Custom Configuration</TabsTrigger>
+            <TabsTrigger value="presets">{t("datasets.synthetic.tabPresets")}</TabsTrigger>
+            <TabsTrigger value="custom">{t("datasets.synthetic.tabCustom")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="presets">

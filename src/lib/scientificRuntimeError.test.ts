@@ -1,4 +1,9 @@
+/**
+ * @vitest-environment jsdom
+ */
+
 import { describe, expect, it } from "vitest";
+import "@/lib/i18n";
 import { scientificRuntimeErrorMessage } from "./scientificRuntimeError";
 
 describe("scientific runtime error messages", () => {

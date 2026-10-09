@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { formatMetricValue } from "@/lib/scores";
 import {
   buildCrossvalScorePairs,
@@ -16,13 +17,14 @@ export function ScoreCardScoreDisplay({
   row: ScoreCardRow;
   selectedMetrics: string[];
 }) {
+  const { t } = useTranslation();
   if (row.cardType === "refit") {
-    return <ScorePairList pairs={buildRefitScorePairs(row, selectedMetrics)} />;
+    return <ScorePairList pairs={buildRefitScorePairs(row, selectedMetrics, t)} />;
   }
   if (row.cardType === "crossval") {
-    return <ScorePairList pairs={buildCrossvalScorePairs(row, selectedMetrics)} />;
+    return <ScorePairList pairs={buildCrossvalScorePairs(row, selectedMetrics, t)} />;
   }
-  return <ScorePairList pairs={buildTrainScorePairs(row, selectedMetrics)} />;
+  return <ScorePairList pairs={buildTrainScorePairs(row, selectedMetrics, t)} />;
 }
 
 function ScorePairList({ pairs }: { pairs: ScorePairData[] }) {

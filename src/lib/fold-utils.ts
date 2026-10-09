@@ -6,6 +6,7 @@
  * and artifact availability logic.
  */
 
+import i18n from "i18next";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
 import type { ScoreCardType } from "@/types/score-cards";
 
@@ -36,22 +37,22 @@ export function foldIdBase(foldId: string): string {
 
 /** Human-readable label for a fold ID. */
 export function foldLabel(foldId: string): string {
-  const suffix = foldId.endsWith("_agg") ? " (agg)" : "";
+  const suffix = foldId.endsWith("_agg") ? ` (${i18n.t("common.fold.agg")})` : "";
   const base = foldIdBase(foldId);
-  if (base === "final") return `Final (refit)${suffix}`;
-  if (base === "avg") return `Average${suffix}`;
-  if (base === "w_avg") return `Weighted Avg${suffix}`;
-  return `Fold ${base}${suffix}`;
+  if (base === "final") return `${i18n.t("common.fold.final")}${suffix}`;
+  if (base === "avg") return `${i18n.t("common.fold.avg")}${suffix}`;
+  if (base === "w_avg") return `${i18n.t("common.fold.wAvg")}${suffix}`;
+  return `${i18n.t("common.fold.numbered", { id: base })}${suffix}`;
 }
 
 /** Short label for compact displays. */
 export function foldLabelShort(foldId: string): string {
-  const suffix = foldId.endsWith("_agg") ? "·Agg" : "";
+  const suffix = foldId.endsWith("_agg") ? `·${i18n.t("common.fold.aggShort")}` : "";
   const base = foldIdBase(foldId);
-  if (base === "final") return `Refit${suffix}`;
-  if (base === "avg") return `Avg${suffix}`;
-  if (base === "w_avg") return `W-Avg${suffix}`;
-  return `F${base}${suffix}`;
+  if (base === "final") return `${i18n.t("common.fold.finalShort")}${suffix}`;
+  if (base === "avg") return `${i18n.t("common.fold.avgShort")}${suffix}`;
+  if (base === "w_avg") return `${i18n.t("common.fold.wAvgShort")}${suffix}`;
+  return `${i18n.t("common.fold.numberedShort", { id: base })}${suffix}`;
 }
 
 /** Tailwind text color class for a fold ID. */

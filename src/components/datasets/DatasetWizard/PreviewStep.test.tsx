@@ -7,6 +7,7 @@ import { PreviewStep } from "./PreviewStep";
 import { useWizard } from "./useWizard";
 import { previewDataset } from "@/api/datasets";
 
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("./useWizard", () => ({ useWizard: vi.fn() }));
 vi.mock("@/api/datasets", () => ({ previewDataset: vi.fn(), previewDatasetWithUploads: vi.fn() }));
 vi.mock("../charts", () => ({ SpectraChart: () => null, TargetHistogram: () => null }));
@@ -26,7 +27,7 @@ describe("dataset preview failure", () => {
       await act(async () => root.render(createElement(PreviewStep)));
       expect(previewDataset).toHaveBeenCalledTimes(1);
       expect(element.textContent).toContain("CSV parsing failed");
-      const retry = [...element.querySelectorAll("button")].find(button => button.textContent?.includes("Retry"));
+      const retry = [...element.querySelectorAll("button")].find(button => button.textContent?.includes("common.retry"));
       expect(retry).toBeDefined();
       await act(async () => retry?.click());
       expect(previewDataset).toHaveBeenCalledTimes(2);

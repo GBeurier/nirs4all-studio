@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
 
 export type ModelActionDeleteScope = "chain" | "group";
@@ -39,26 +40,9 @@ export interface ModelActionDeleteDescriptor {
   title: string;
 }
 
-interface ModelActionDeleteCopy {
-  artifactHandling: ModelActionArtifactHandling;
-  description: (input: Pick<ModelActionDeleteInput, "foldId" | "modelName">) => string;
-  label: string;
-  title: string;
-}
-
-const MODEL_ACTION_DELETE_COPY: Record<ModelActionDeleteScope, ModelActionDeleteCopy> = {
-  chain: {
-    artifactHandling: "preserve-shared",
-    description: ({ modelName }) => `This removes all stored predictions for the displayed ${modelName} variant, including matched CV/refit siblings. Shared artifacts still used by other models are preserved automatically.`,
-    label: "Delete model",
-    title: "Delete model predictions?",
-  },
-  group: {
-    artifactHandling: "cleanup-orphans",
-    description: ({ foldId, modelName }) => `This removes the ${foldId || "selected"} prediction group for ${modelName}, including linked arrays. Empty chains and orphaned artifacts will be cleaned automatically.`,
-    label: "Delete prediction",
-    title: "Delete prediction group?",
-  },
+const MODEL_ACTION_ARTIFACT_HANDLING: Record<ModelActionDeleteScope, ModelActionArtifactHandling> = {
+  chain: "preserve-shared",
+  group: "cleanup-orphans",
 };
 
 function resolveModelActionDeleteScope(deleteScope?: ModelActionDeleteScope): ModelActionDeleteScope {
@@ -107,19 +91,20 @@ export function buildModelActionDeleteDescriptor({
   foldId,
   modelName,
   workspaceId,
-}: ModelActionDeleteInput): ModelActionDeleteDescriptor {
+}: ModelActionDeleteInput, t: TFunction): ModelActionDeleteDescriptor {
   const resolvedScope = resolveModelActionDeleteScope(deleteScope);
-  const copy = MODEL_ACTION_DELETE_COPY[resolvedScope];
   return {
-    artifactHandling: copy.artifactHandling,
+    artifactHandling: MODEL_ACTION_ARTIFACT_HANDLING[resolvedScope],
     canDelete: Boolean(
       workspaceId
       && chainId
       && (deleteScope === "chain" || (deleteScope === "group" && foldId)),
     ),
-    description: copy.description({ foldId, modelName }),
-    label: copy.label,
-    title: copy.title,
+    description: resolvedScope === "chain"
+      ? t("results.scores.delete.chain.description", { modelName })
+      : t("results.scores.delete.group.description", { group: foldId || t("results.scores.delete.selectedGroup"), modelName }),
+    label: t(`results.scores.delete.${resolvedScope}.label`),
+    title: t(`results.scores.delete.${resolvedScope}.title`),
   };
 }
 

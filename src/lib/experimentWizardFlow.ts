@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 export const NEW_EXPERIMENT_PIPELINES_STEP = 1;
 export const NEW_EXPERIMENT_DATASETS_STEP = 2;
 export const NEW_EXPERIMENT_RUNTIME_GROUPING_STEP = 3;
@@ -25,12 +27,12 @@ export interface NewExperimentStepProgressViewItem extends NewExperimentStepProg
   isLast: boolean;
 }
 
-export const NEW_EXPERIMENT_STEP_PROGRESS_ITEMS: NewExperimentStepProgressItem[] = [
-  { id: NEW_EXPERIMENT_PIPELINES_STEP, label: "Select Pipelines" },
-  { id: NEW_EXPERIMENT_DATASETS_STEP, label: "Select Datasets" },
-  { id: NEW_EXPERIMENT_RUNTIME_GROUPING_STEP, label: "Sample Grouping" },
-  { id: NEW_EXPERIMENT_REVIEW_STEP, label: "Review" },
-  { id: NEW_EXPERIMENT_LAUNCH_STEP, label: "Launch" },
+export const NEW_EXPERIMENT_STEP_PROGRESS_ITEMS: ReadonlyArray<{ id: NewExperimentWizardStep; labelKey: string }> = [
+  { id: NEW_EXPERIMENT_PIPELINES_STEP, labelKey: "newExperiment.steps.selectPipelines" },
+  { id: NEW_EXPERIMENT_DATASETS_STEP, labelKey: "newExperiment.steps.selectDatasets" },
+  { id: NEW_EXPERIMENT_RUNTIME_GROUPING_STEP, labelKey: "newExperiment.steps.sampleGrouping" },
+  { id: NEW_EXPERIMENT_REVIEW_STEP, labelKey: "newExperiment.steps.review" },
+  { id: NEW_EXPERIMENT_LAUNCH_STEP, labelKey: "newExperiment.steps.launch" },
 ];
 
 export interface NewExperimentStepReadinessInput {
@@ -44,7 +46,8 @@ export function buildNewExperimentStepProgress(
   currentStep: NewExperimentWizardStep,
 ): NewExperimentStepProgressViewItem[] {
   return NEW_EXPERIMENT_STEP_PROGRESS_ITEMS.map((step, index) => ({
-    ...step,
+    id: step.id,
+    label: i18n.t(step.labelKey),
     isActive: step.id === currentStep,
     isCompleted: step.id < currentStep,
     isLast: index === NEW_EXPERIMENT_STEP_PROGRESS_ITEMS.length - 1,

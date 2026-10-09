@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import i18next from "i18next";
 import { getN4AWorkspacePredictionScatter } from "@/api/linkedWorkspaces";
 import { getPredictionArrays } from "@/api/aggregatedPredictions";
 import type { PredictionArrayPayload } from "@/types/aggregated-predictions";
@@ -37,7 +38,7 @@ async function fetchOne(
   workspaceId: string | undefined,
 ): Promise<FetchedPartition> {
   if (target.source === "workspace" && !workspaceId) {
-    throw new Error("workspaceId is required for workspace-source predictions");
+    throw new Error(i18next.t("predictions.viewer.errors.workspaceRequired"));
   }
   const response = target.source === "workspace"
     ? await getN4AWorkspacePredictionScatter(workspaceId!, target.predictionId)
@@ -47,10 +48,10 @@ async function fetchOne(
   const trueOutputs = predictionOutputCount(rawYTrue);
   const outputCount = predictionOutputCount(rawYPred);
   if (rawYTrue.length && (rawYTrue.length !== rawYPred.length || trueOutputs !== outputCount)) {
-    throw new Error("Actual and predicted arrays have different sample/output shapes");
+    throw new Error(i18next.t("predictions.viewer.errors.shapeMismatch"));
   }
   if (response.sample_ids && response.sample_ids.length !== rawYPred.length) {
-    throw new Error("Prediction sample identities do not match the array rows");
+    throw new Error(i18next.t("predictions.viewer.errors.sampleIdentityMismatch"));
   }
   const dataset: FetchedPartition = {
     predictionId: target.predictionId,
@@ -97,13 +98,13 @@ export function usePartitionsData({ partitions, workspaceId, enabled = true }: O
       .then((results) => {
         if (cancelled) return;
         const counts = new Set(results.filter(result => result.nSamples > 0).map(result => result.outputCount));
-        if (counts.size > 1) throw new Error("Selected partitions have different numbers of outputs");
+        if (counts.size > 1) throw new Error(i18next.t("predictions.viewer.errors.outputCountMismatch"));
         setOutputIndex(0);
         setState({ data: results, isLoading: false, error: null });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        const message = err instanceof Error ? err.message : "Failed to load prediction data";
+        const message = err instanceof Error ? err.message : i18next.t("predictions.viewer.errors.loadFailed");
         setState({ data: [], isLoading: false, error: message });
       });
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { InspectorFocusState } from "@/lib/inspector/focus";
 import { InspectorDiagnosticPanel } from "./InspectorDiagnosticPanel";
@@ -25,10 +26,12 @@ export function InspectorPanelRendererDiagnosticPanel({
   isLoading,
   ...panelProps
 }: InspectorPanelRendererDiagnosticPanelProps) {
+  const { t } = useTranslation();
   const renderState = getInspectorPanelDiagnosticRenderState({
     config,
     focus,
     error,
+    t,
   });
 
   return (

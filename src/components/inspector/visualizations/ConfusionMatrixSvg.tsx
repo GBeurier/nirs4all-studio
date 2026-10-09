@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   buildConfusionMatrixCellView,
   formatConfusionMatrixLabel,
@@ -22,6 +23,8 @@ export function ConfusionMatrixSvg({
   hovered,
   setHovered,
 }: ConfusionMatrixSvgProps) {
+  const { t } = useTranslation();
+
   return (
     <svg width={layout.svgW} height={layout.svgH} className="select-none">
       <text
@@ -32,7 +35,7 @@ export function ConfusionMatrixSvg({
         fontSize={12}
         fontWeight={600}
       >
-        Predicted
+        {t('inspector.charts.axis.predicted')}
       </text>
       <text
         x={16}
@@ -43,7 +46,7 @@ export function ConfusionMatrixSvg({
         fontWeight={600}
         transform={`rotate(-90, 16, ${layout.marginTop + layout.plotH / 2})`}
       >
-        Actual
+        {t('inspector.charts.axis.actual')}
       </text>
 
       <g transform={`translate(${layout.marginLeft}, ${layout.marginTop})`}>

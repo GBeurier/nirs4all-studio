@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import { buildConfusionMatrixFromVectors } from "@/components/runs/modelDetailClassification";
 import type { PartitionDataset, TaskKind } from "./types";
 
@@ -65,7 +67,7 @@ function buildRegressionStats(datasets: PartitionDataset[]): MetricsStripStat[] 
   ];
 }
 
-function buildClassificationStats(datasets: PartitionDataset[]): MetricsStripStat[] {
+function buildClassificationStats(datasets: PartitionDataset[], t: TFunction): MetricsStripStat[] {
   const yTrue: number[] = [];
   const yPred: number[] = [];
   for (const dataset of datasets) {
@@ -85,10 +87,10 @@ function buildClassificationStats(datasets: PartitionDataset[]): MetricsStripSta
 
   if (matrix.labels.length === 0 || matrix.total_samples === 0) {
     return [
-      { label: "Accuracy", value: "—" },
-      { label: "F1 (macro)", value: "—" },
-      { label: "Precision (macro)", value: "—" },
-      { label: "Recall (macro)", value: "—" },
+      { label: t("predictions.viewer.metrics.accuracy"), value: "—" },
+      { label: t("predictions.viewer.metrics.f1Macro"), value: "—" },
+      { label: t("predictions.viewer.metrics.precisionMacro"), value: "—" },
+      { label: t("predictions.viewer.metrics.recallMacro"), value: "—" },
     ];
   }
 
@@ -120,18 +122,19 @@ function buildClassificationStats(datasets: PartitionDataset[]): MetricsStripSta
 
   const labelCount = matrix.labels.length;
   return [
-    { label: "Accuracy", value: formatMetric(correct / matrix.total_samples) },
-    { label: "F1 (macro)", value: formatMetric(sumF1 / labelCount) },
-    { label: "Precision (macro)", value: formatMetric(sumPrecision / labelCount) },
-    { label: "Recall (macro)", value: formatMetric(sumRecall / labelCount) },
+    { label: t("predictions.viewer.metrics.accuracy"), value: formatMetric(correct / matrix.total_samples) },
+    { label: t("predictions.viewer.metrics.f1Macro"), value: formatMetric(sumF1 / labelCount) },
+    { label: t("predictions.viewer.metrics.precisionMacro"), value: formatMetric(sumPrecision / labelCount) },
+    { label: t("predictions.viewer.metrics.recallMacro"), value: formatMetric(sumRecall / labelCount) },
   ];
 }
 
 export function buildMetricsStripStats(
   taskKind: TaskKind,
   datasets: PartitionDataset[],
+  t: TFunction,
 ): MetricsStripStat[] {
   return taskKind === "classification"
-    ? buildClassificationStats(datasets)
+    ? buildClassificationStats(datasets, t)
     : buildRegressionStats(datasets);
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   formatBranchComparisonChainCount,
   formatBranchComparisonConfidenceInterval,
@@ -16,6 +17,8 @@ interface BranchComparisonTooltipProps {
 }
 
 export function BranchComparisonTooltip({ hovered }: BranchComparisonTooltipProps) {
+  const { t } = useTranslation();
+
   if (!hovered) {
     return null;
   }
@@ -28,12 +31,12 @@ export function BranchComparisonTooltip({ hovered }: BranchComparisonTooltipProp
       style={{ left: hovered.mouseX + 12, top: hovered.mouseY - 80 }}
     >
       <div className="font-medium">{branch.label}</div>
-      <div>Mean: {formatBranchComparisonScore(branch.mean)}</div>
-      <div>Std: {formatBranchComparisonScore(branch.std)}</div>
-      <div>{formatBranchComparisonConfidenceInterval(branch.ci_lower, branch.ci_upper)}</div>
-      <div>Min: {formatBranchComparisonScore(branch.min)}</div>
-      <div>Max: {formatBranchComparisonScore(branch.max)}</div>
-      <div>{formatBranchComparisonChainCount(branch.count)}</div>
+      <div>{t('inspector.charts.tooltip.mean', { value: formatBranchComparisonScore(branch.mean) })}</div>
+      <div>{t('inspector.charts.tooltip.std', { value: formatBranchComparisonScore(branch.std) })}</div>
+      <div>{formatBranchComparisonConfidenceInterval(branch.ci_lower, branch.ci_upper, t)}</div>
+      <div>{t('inspector.charts.tooltip.min', { value: formatBranchComparisonScore(branch.min) })}</div>
+      <div>{t('inspector.charts.tooltip.max', { value: formatBranchComparisonScore(branch.max) })}</div>
+      <div>{formatBranchComparisonChainCount(branch.count, t)}</div>
     </div>
   );
 }

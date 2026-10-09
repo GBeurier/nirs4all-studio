@@ -1,4 +1,5 @@
 import { useMemo, useCallback, type MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useInspectorSelection, useInspectorHover } from '@/context/useInspectorSelection';
 import { useInspectorColor } from '@/context/useInspectorColor';
 import {
@@ -23,6 +24,7 @@ interface ResidualsChartProps {
 }
 
 export function ResidualsChart({ data, isLoading }: ResidualsChartProps) {
+  const { t } = useTranslation();
   const { select, selectedChains, hasSelection } = useInspectorSelection();
   const { hoveredChain, setHovered } = useInspectorHover();
   const { getChainColor, getChainOpacity } = useInspectorColor();
@@ -49,7 +51,8 @@ export function ResidualsChart({ data, isLoading }: ResidualsChartProps) {
     meanResidual,
     stdResidual,
     pointCount: dots.length,
-  }), [meanResidual, stdResidual, dots.length]);
+    t,
+  }), [meanResidual, stdResidual, dots.length, t]);
 
   const handleCanvasPointClick = useCallback((point: CanvasScatterPoint, event: MouseEvent) => {
     select([point.chainId], getResidualSelectionMode(event));
@@ -68,7 +71,7 @@ export function ResidualsChart({ data, isLoading }: ResidualsChartProps) {
   }, [select]);
 
   if (isLoading) {
-    return <PredictionDiagnosticsLoadingState message="Loading residuals data..." />;
+    return <PredictionDiagnosticsLoadingState message={t('inspector.charts.loading.residuals')} />;
   }
 
   if (dots.length === 0) {
@@ -81,8 +84,8 @@ export function ResidualsChart({ data, isLoading }: ResidualsChartProps) {
         points={canvasPoints}
         referenceLines={canvasRefLines}
         annotations={canvasAnnotations}
-        xLabel="Predicted"
-        yLabel="Residual"
+        xLabel={t('inspector.charts.axis.predicted')}
+        yLabel={t('inspector.charts.axis.residual')}
         onPointClick={handleCanvasPointClick}
         onPointHover={handleCanvasPointHover}
         renderTooltip={renderCanvasTooltip}

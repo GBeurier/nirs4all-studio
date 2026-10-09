@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import { buildCampaignCompatibilityPreviews } from "./campaignCompatibilityPreviews";
 import { buildCampaignDatasetPreviews } from "./campaignDatasetPreviews";
 import { buildCampaignExecutionAdapterPreview, getCampaignExecutionBackendLabel } from "./campaignExecutionPreview";
@@ -60,7 +62,7 @@ export function buildCampaignPlanPreview(
     executionBackendLabel,
     executionAdapter,
     schemaConstraint,
-    runMatrixLabel: `${summary.runCountLabel} in explicit run matrix`,
+    runMatrixLabel: i18n.t("newExperiment.campaign.runMatrix", { runs: summary.runCountLabel }),
     datasetPreviews,
     pipelinePreviews,
     compatibilityPreviews,

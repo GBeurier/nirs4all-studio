@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Minus, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ export function DiagnosticsCohortControls({
   maxSize = 1000,
   className,
 }: DiagnosticsCohortControlsProps) {
+  const { t } = useTranslation();
   const updateSize = (next: number) => {
     const clamped = Math.max(minSize, Math.min(maxSize, next));
     onSizeChange(clamped);
@@ -46,10 +48,10 @@ export function DiagnosticsCohortControls({
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
             <CardTitle className="text-sm font-semibold tracking-tight">
-              Diagnostic cohort
+              {t("inspector.dashboard.cohortTitle")}
             </CardTitle>
             <CardDescription className="text-xs">
-              Choose which chains are compared in the diagnostic panels.
+              {t("inspector.dashboard.cohortDescription")}
             </CardDescription>
           </div>
           <Badge variant="secondary" className="shrink-0">
@@ -81,16 +83,17 @@ export function DiagnosticsCohortControls({
             className="h-8 w-8 shrink-0"
             onClick={() => updateSize(size - 1)}
             disabled={size <= minSize}
-            aria-label="Decrease cohort size"
+            aria-label={t("inspector.dashboard.decreaseCohortSize")}
           >
             <Minus className="h-4 w-4" />
           </Button>
 
           <div className="flex-1 min-w-0">
             <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-              Cohort size
+              {t("inspector.dashboard.cohortSize")}
             </label>
             <input
+              aria-label={t("inspector.dashboard.cohortSize")}
               type="number"
               min={minSize}
               max={maxSize}
@@ -107,7 +110,7 @@ export function DiagnosticsCohortControls({
             className="h-8 w-8 shrink-0"
             onClick={() => updateSize(size + 1)}
             disabled={size >= maxSize}
-            aria-label="Increase cohort size"
+            aria-label={t("inspector.dashboard.increaseCohortSize")}
           >
             <Plus className="h-4 w-4" />
           </Button>

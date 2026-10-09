@@ -17,6 +17,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useTranslation } from "react-i18next";
+import { getPartitionLabel } from "@/components/predictions/predictionLabels";
 import { buildPredictionColoration } from "../coloration";
 import { getPartitionColor } from "../palettes";
 import type { ChartConfig, ChartVariant, PartitionDataset } from "../types";
@@ -35,6 +37,7 @@ interface ResidualDot {
   predicted: number;
   residual: number;
   fill: string;
+  partition: string;
   partitionLabel: string;
   sampleIndex: number;
   metadataLabel?: string;
@@ -65,6 +68,7 @@ function formatTooltipValue(value: unknown): string {
 
 export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionResidualsChartProps>(
   function PredictionResidualsChart({ datasets, config, variant, compact, className }, ref) {
+    const { t } = useTranslation();
     const resolved: ChartVariant = variant ?? (compact ? "thumbnail" : "full");
     const showChrome = resolved !== "thumbnail";
     const showTooltip = resolved !== "thumbnail";
@@ -98,6 +102,7 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
             predicted: p,
             residual: r,
             fill: coloration.getPointColor(ds, i),
+            partition: ds.partition,
             partitionLabel: ds.label,
             sampleIndex: i,
             metadataLabel: coloration.metadataKey,
@@ -149,7 +154,7 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
               label={
                 showAxisLabel
                   ? {
-                      value: "Predicted",
+                      value: t("predictions.charts.predicted"),
                       position: "bottom",
                       offset: 18,
                       style: { fill: "hsl(var(--muted-foreground))" },
@@ -167,7 +172,7 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
               label={
                 showAxisLabel
                   ? {
-                      value: "Residual",
+                      value: t("predictions.charts.residual"),
                       angle: -90,
                       position: "left",
                       offset: 38,
@@ -184,12 +189,12 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
                   if (!dot) return null;
                   return (
                     <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
-                      <div className="font-medium text-foreground">{dot.partitionLabel}</div>
-                      <div className="mt-1 text-muted-foreground">Sample {dot.sampleIndex + 1}</div>
+                      <div className="font-medium text-foreground">{getPartitionLabel(t, dot.partition, dot.partitionLabel)}</div>
+                      <div className="mt-1 text-muted-foreground">{t("predictions.charts.sample", { n: dot.sampleIndex + 1 })}</div>
                       <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
-                        <span className="text-muted-foreground">Predicted</span>
+                        <span className="text-muted-foreground">{t("predictions.charts.predicted")}</span>
                         <span>{formatTooltipValue(dot.predicted)}</span>
-                        <span className="text-muted-foreground">Residual</span>
+                        <span className="text-muted-foreground">{t("predictions.charts.residual")}</span>
                         <span>{formatTooltipValue(dot.residual)}</span>
                         {dot.metadataLabel && (
                           <>
@@ -234,7 +239,7 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
               return (
                 <Scatter
                   key={`${dataset.predictionId}-${dataset.partition}`}
-                  name={dataset.label}
+                  name={getPartitionLabel(t, dataset.partition, dataset.label)}
                   data={points}
                   fill={color}
                   opacity={config.pointOpacity}

@@ -5,6 +5,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FolderPlus, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ export function N4AWorkspaceSelector({
   onWorkspaceLinked,
   trigger,
 }: N4AWorkspaceSelectorProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [path, setPath] = useState("");
   const [name, setName] = useState("");
@@ -53,7 +55,7 @@ export function N4AWorkspaceSelector({
 
   const handleLink = async () => {
     if (!path) {
-      setError("Please select a workspace path");
+      setError(t("settings.n4aWorkspaces.selector.pathRequired"));
       return;
     }
 
@@ -71,7 +73,7 @@ export function N4AWorkspaceSelector({
         onWorkspaceLinked?.();
       }, 1500);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to link workspace";
+      const message = err instanceof Error ? err.message : t("settings.n4aWorkspaces.selector.linkFailed");
       // Extract detail from API error
       if (typeof err === "object" && err !== null && "detail" in err) {
         setError(String((err as { detail: string }).detail));
@@ -99,21 +101,21 @@ export function N4AWorkspaceSelector({
         {trigger || (
           <Button variant="outline" size="sm">
             <FolderPlus className="mr-2 h-4 w-4" />
-            Link Workspace
+            {t("common.linkWorkspace")}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Link nirs4all Workspace</DialogTitle>
+          <DialogTitle>{t("settings.n4aWorkspaces.selector.title")}</DialogTitle>
           <DialogDescription>
-            Select a nirs4all workspace folder to discover runs, exports, and predictions.
+            {t("settings.n4aWorkspaces.selector.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="ws-path">Workspace Path</Label>
+            <Label htmlFor="ws-path">{t("settings.n4aWorkspaces.selector.pathLabel")}</Label>
             <div className="flex gap-2">
               <Input
                 id="ws-path"
@@ -123,19 +125,19 @@ export function N4AWorkspaceSelector({
                 className="flex-1"
               />
               <Button variant="outline" onClick={handleBrowse}>
-                Browse
+                {t("common.browse")}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Select a nirs4all workspace folder
+              {t("settings.n4aWorkspaces.selector.pathHint")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="ws-name">Display Name (optional)</Label>
+            <Label htmlFor="ws-name">{t("settings.n4aWorkspaces.selector.nameLabel")}</Label>
             <Input
               id="ws-name"
-              placeholder="My Workspace"
+              placeholder={t("settings.n4aWorkspaces.selector.namePlaceholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -151,25 +153,25 @@ export function N4AWorkspaceSelector({
           {success && (
             <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 p-2 bg-green-50 dark:bg-green-950/20 rounded">
               <CheckCircle2 className="h-4 w-4" />
-              <span>Workspace linked successfully!</span>
+              <span>{t("settings.n4aWorkspaces.selector.linked")}</span>
             </div>
           )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsOpen(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleLink} disabled={isLinking || !path || success}>
             {isLinking ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Linking...
+                {t("settings.n4aWorkspaces.selector.linking")}
               </>
             ) : (
               <>
                 <FolderPlus className="mr-2 h-4 w-4" />
-                Link Workspace
+                {t("common.linkWorkspace")}
               </>
             )}
           </Button>

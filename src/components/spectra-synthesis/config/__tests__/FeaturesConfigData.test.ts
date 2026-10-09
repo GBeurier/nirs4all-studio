@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,13 +11,15 @@ import {
   buildWavelengthStartPatch,
   calculateWavelengthPointCount,
   coerceWavelengthRange,
-  formatComponentCategoryLabel,
-  getComponentBadgeLabel,
   getSelectedComponentBadges,
   groupChemicalComponents,
   normalizeNullableSelectValue,
   projectFeaturesParams,
 } from "../FeaturesConfigData";
+
+// Echoes the key, or the supplied default for identifiers without a translation.
+const t = ((key: string, options?: { defaultValue?: string }) =>
+  options?.defaultValue !== undefined ? `${key}|${options.defaultValue}` : key) as unknown as TFunction;
 
 describe("FeaturesConfigData", () => {
   it("projects raw params into a typed read model with defaults", () => {
@@ -97,12 +100,9 @@ describe("FeaturesConfigData", () => {
 
     expect(groups.water.map((component) => component.name)).toEqual(["water", "moisture"]);
     expect(groups.proteins.some((component) => component.name === "protein")).toBe(true);
-    expect(formatComponentCategoryLabel("carbohydrates")).toBe("Carbohydrates");
-    expect(getComponentBadgeLabel("protein")).toBe("Protein");
-    expect(getComponentBadgeLabel("unknown_component")).toBe("unknown_component");
-    expect(getSelectedComponentBadges(["lipid", "unknown_component"])).toEqual([
-      { name: "lipid", label: "Lipid" },
-      { name: "unknown_component", label: "unknown_component" },
+    expect(getSelectedComponentBadges(["lipid", "unknown_component"], t)).toEqual([
+      { name: "lipid", label: "spectraSynthesis.components.lipid|lipid" },
+      { name: "unknown_component", label: "spectraSynthesis.components.unknown_component|unknown_component" },
     ]);
   });
 

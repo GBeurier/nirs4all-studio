@@ -7,6 +7,7 @@ import {
   RotateCcw,
   XCircle,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import type { ChangelogEntry, UpdateStatus } from "@/api/updates";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -23,6 +24,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { formatBytes, type useUpdateDownload } from "@/hooks/useUpdates";
 import type { WebappDialogCopy } from "./UpdatesSectionLogic";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 type UpdateDownloadState = ReturnType<typeof useUpdateDownload>;
 
@@ -53,6 +55,7 @@ export function UpdatesWebappDialog({
   status,
   updateDownload,
 }: UpdatesWebappDialogProps) {
+  const { t } = useTranslation();
   const showIdleContent = !updateDownload.isDownloading && !updateDownload.readyToApply;
   const isCancelling =
     updateDownload.isCancellingDownload || updateDownload.isCancellingStagedUpdate;
@@ -65,7 +68,7 @@ export function UpdatesWebappDialog({
             {copy.title}
             {status?.webapp?.is_prerelease && (
               <Badge variant="outline" className="text-xs">
-                Pre-release
+                {t("settings.updates.webappDialog.preRelease")}
               </Badge>
             )}
           </DialogTitle>
@@ -94,7 +97,7 @@ export function UpdatesWebappDialog({
             <Alert>
               <CheckCircle2 className="h-4 w-4 text-green-500" />
               <AlertDescription>
-                Download complete. Click "Apply Update" to install. The application will restart automatically.
+                {t("settings.updates.webappDialog.downloadComplete")}
               </AlertDescription>
             </Alert>
           )}
@@ -103,7 +106,7 @@ export function UpdatesWebappDialog({
             <Alert>
               <Loader2 className="h-4 w-4 animate-spin" />
               <AlertDescription>
-                Applying update... The application will restart shortly.
+                {t("settings.updates.webappDialog.applying")}
               </AlertDescription>
             </Alert>
           )}
@@ -112,7 +115,7 @@ export function UpdatesWebappDialog({
             <Alert>
               <Loader2 className="h-4 w-4 animate-spin" />
               <AlertDescription>
-                Update applied! Restarting the application...
+                {t("settings.updates.webappDialog.applied")}
               </AlertDescription>
             </Alert>
           )}
@@ -121,18 +124,18 @@ export function UpdatesWebappDialog({
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                Failed to apply update: {updateDownload.applyError}
+                {t("settings.updates.webappDialog.applyFailed", { error: updateDownload.applyError })}
               </AlertDescription>
             </Alert>
           )}
 
           {showIdleContent && (
             <div className="max-h-48 overflow-y-auto p-3 bg-muted rounded-lg text-sm">
-              <h4 className="font-medium mb-2">What's New</h4>
+              <h4 className="font-medium mb-2">{t("settings.updates.webappDialog.whatsNew")}</h4>
               {isChangelogLoading ? (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Loading changelog...
+                  {t("settings.updates.webappDialog.loadingChangelog")}
                 </div>
               ) : changelogEntries && changelogEntries.length > 0 ? (
                 <div className="space-y-3">
@@ -142,17 +145,17 @@ export function UpdatesWebappDialog({
                         <span className="font-semibold text-primary">v{entry.version}</span>
                         {entry.prerelease && (
                           <Badge variant="outline" className="text-xs py-0">
-                            pre
+                            {t("settings.updates.webappDialog.preTag")}
                           </Badge>
                         )}
                         {entry.date && (
                           <span className="text-xs text-muted-foreground">
-                            {new Date(entry.date).toLocaleDateString()}
+                            {new Date(entry.date).toLocaleDateString(getActiveLocale())}
                           </span>
                         )}
                       </div>
                       <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap text-muted-foreground">
-                        {entry.body || "No release notes."}
+                        {entry.body || t("settings.updates.webappDialog.noNotes")}
                       </div>
                     </div>
                   ))}
@@ -162,14 +165,14 @@ export function UpdatesWebappDialog({
                   {status.webapp.release_notes}
                 </div>
               ) : (
-                <p className="text-muted-foreground italic">No release notes available.</p>
+                <p className="text-muted-foreground italic">{t("settings.updates.webappDialog.noNotesAvailable")}</p>
               )}
             </div>
           )}
 
           {showIdleContent && status?.webapp?.download_size_bytes && (
             <p className="text-sm text-muted-foreground">
-              Download size: {formatBytes(status.webapp.download_size_bytes)}
+              {t("settings.updates.webappDialog.downloadSize", { size: formatBytes(status.webapp.download_size_bytes) })}
             </p>
           )}
 
@@ -178,8 +181,8 @@ export function UpdatesWebappDialog({
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 {canApplyInPlace
-                  ? "Webapp updates will be downloaded and extracted. The application will restart to apply the update."
-                  : "This installation uses a native installer. Download it, close Studio, then run the installer."}
+                  ? t("settings.updates.webappDialog.inPlaceNote")
+                  : t("settings.updates.webappDialog.installerNote")}
               </AlertDescription>
             </Alert>
           )}
@@ -205,10 +208,10 @@ export function UpdatesWebappDialog({
               {updateDownload.isDownloading || updateDownload.readyToApply ? (
                 <>
                   <XCircle className="mr-2 h-4 w-4" />
-                  Cancel Update
+                  {t("settings.updates.webappDialog.cancelUpdate")}
                 </>
               ) : (
-                "Later"
+                t("settings.updates.webappDialog.later")
               )}
             </Button>
           )}
@@ -221,7 +224,7 @@ export function UpdatesWebappDialog({
                   <Button variant="outline" asChild>
                     <a href={installerUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="mr-2 h-4 w-4" />
-                      {canApplyInPlace ? "Manual Download" : "Download Installer"}
+                      {canApplyInPlace ? t("settings.updates.webappDialog.manualDownload") : t("settings.updates.webappDialog.downloadInstaller")}
                     </a>
                   </Button>
                 )}
@@ -236,7 +239,7 @@ export function UpdatesWebappDialog({
                     ) : (
                       <Download className="mr-2 h-4 w-4" />
                     )}
-                    Download & Install
+                    {t("settings.updates.webappDialog.downloadInstall")}
                   </Button>
                 )}
               </>
@@ -248,7 +251,7 @@ export function UpdatesWebappDialog({
             !updateDownload.applySuccess && (
               <Button onClick={onApplyClick}>
                 <RotateCcw className="mr-2 h-4 w-4" />
-                Apply Update
+                {t("settings.updates.applyUpdate")}
               </Button>
             )}
         </DialogFooter>

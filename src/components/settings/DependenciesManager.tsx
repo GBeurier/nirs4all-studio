@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import i18n from "i18next";
 import {
   getDependencies,
   installDependency,
@@ -60,7 +61,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       setDependencies(data);
       setRuntimeSummary(summary);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load dependencies");
+      setError(err instanceof Error ? err.message : i18n.t("settings.dependencies.loadFailed"));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -73,7 +74,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       await refreshDependencies();
       await loadDependencies(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refresh dependencies");
+      setError(err instanceof Error ? err.message : i18n.t("settings.dependencies.refreshFailed"));
     } finally {
       setIsRefreshing(false);
     }
@@ -98,7 +99,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         type: "install",
         package: packageName,
         success: false,
-        message: err instanceof Error ? err.message : "Installation failed",
+        message: err instanceof Error ? err.message : i18n.t("settings.dependencies.installFailed"),
       });
     } finally {
       setProcessingPackage(null);
@@ -124,7 +125,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         type: "uninstall",
         package: packageName,
         success: false,
-        message: err instanceof Error ? err.message : "Uninstallation failed",
+        message: err instanceof Error ? err.message : i18n.t("settings.dependencies.uninstallFailed"),
       });
     } finally {
       setProcessingPackage(null);
@@ -150,7 +151,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         type: "update",
         package: packageName,
         success: false,
-        message: err instanceof Error ? err.message : "Update failed",
+        message: err instanceof Error ? err.message : i18n.t("settings.dependencies.updateFailed"),
       });
     } finally {
       setProcessingPackage(null);
@@ -176,7 +177,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         type: "update",
         package: packageName,
         success: false,
-        message: err instanceof Error ? err.message : "Revert failed",
+        message: err instanceof Error ? err.message : i18n.t("settings.dependencies.revertFailed"),
       });
     } finally {
       setProcessingPackage(null);

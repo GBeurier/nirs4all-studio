@@ -6,6 +6,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import '@/lib/i18n';
 import type { ShapResultsResponse } from '@/types/shap';
 
 const apiMocks = vi.hoisted(() => ({

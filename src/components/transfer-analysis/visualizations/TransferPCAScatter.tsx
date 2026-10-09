@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ScatterChart,
   Scatter,
@@ -31,6 +32,7 @@ const DATASET_COLORS = [
 ];
 
 export function TransferPCAScatter({ coordinates, datasets }: TransferPCAScatterProps) {
+  const { t } = useTranslation();
   // Group coordinates by dataset
   const dataByDataset = useMemo(() => {
     const grouped: Record<string, { x: number; y: number; index: number }[]> = {};
@@ -56,7 +58,7 @@ export function TransferPCAScatter({ coordinates, datasets }: TransferPCAScatter
   if (coordinates.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
-        No PCA coordinates available
+        {t('transferAnalysis.charts.noPca')}
       </div>
     );
   }
@@ -74,7 +76,7 @@ export function TransferPCAScatter({ coordinates, datasets }: TransferPCAScatter
       return (
         <div className="bg-background border rounded-lg shadow-lg p-3 text-sm">
           <p className="font-medium">{datasetName}</p>
-          <p className="text-muted-foreground">Sample: {data.index}</p>
+          <p className="text-muted-foreground">{t('transferAnalysis.charts.sampleTooltip', { index: data.index })}</p>
           <p className="text-muted-foreground">PC1: {data.x.toFixed(3)}</p>
           <p className="text-muted-foreground">PC2: {data.y.toFixed(3)}</p>
         </div>

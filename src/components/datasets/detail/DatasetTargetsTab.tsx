@@ -2,6 +2,7 @@
  * DatasetTargetsTab - Target distribution visualization tab for dataset detail page
  */
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ export function DatasetTargetsTab({
   error,
   onRefresh,
 }: DatasetTargetsTabProps) {
+  const { t } = useTranslation();
   // Hooks must be called unconditionally before any early return.
   const hasTargets = hasDatasetTargets(dataset);
   const partitionMap = preview?.target_distribution_by_partition;
@@ -53,13 +55,13 @@ export function DatasetTargetsTab({
     [preview, effectivePartition],
   );
   const histogramData = useMemo(() => buildTargetHistogramData(distribution), [distribution]);
-  const regressionRange = useMemo(() => getRegressionThreeSigmaRange(distribution), [distribution]);
+  const regressionRange = useMemo(() => getRegressionThreeSigmaRange(distribution, t), [distribution, t]);
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground">Loading target distribution...</p>
+        <p className="text-muted-foreground">{t("datasets.detail.targets.loading")}</p>
       </div>
     );
   }
@@ -68,13 +70,13 @@ export function DatasetTargetsTab({
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <AlertCircle className="h-8 w-8 text-destructive mb-4" />
-        <p className="text-destructive font-medium mb-2">Failed to load targets</p>
+        <p className="text-destructive font-medium mb-2">{t("datasets.detail.targets.loadFailed")}</p>
         <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
           {error}
         </p>
         <Button onClick={onRefresh} variant="outline">
           <RefreshCw className="h-4 w-4 mr-2" />
-          Retry
+          {t("common.retry")}
         </Button>
       </div>
     );
@@ -84,9 +86,9 @@ export function DatasetTargetsTab({
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <Target className="h-8 w-8 text-muted-foreground mb-4 opacity-50" />
-        <p className="text-muted-foreground mb-2">No targets configured</p>
+        <p className="text-muted-foreground mb-2">{t("datasets.detail.targets.noneConfigured")}</p>
         <p className="text-sm text-muted-foreground text-center max-w-md">
-          Add target variables during dataset creation or edit the dataset configuration.
+          {t("datasets.detail.targets.noneConfiguredHint")}
         </p>
       </div>
     );
@@ -99,7 +101,7 @@ export function DatasetTargetsTab({
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Target className="h-4 w-4" />
-            Target Variables
+            {t("datasets.detail.targets.title")}
             {hasTargets && (
               <Badge variant="secondary" className="ml-2">
                 {dataset.targets!.length}
@@ -118,12 +120,12 @@ export function DatasetTargetsTab({
                   <div className="flex items-center gap-3">
                     <span className="font-medium">{target.column}</span>
                     {target.column === dataset.default_target && (
-                      <Badge variant="default" className="text-xs">Default</Badge>
+                      <Badge variant="default" className="text-xs">{t("common.default")}</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-xs">
-                      {getDatasetTaskLabel(target.type, { fallback: "Auto" })}
+                      {getDatasetTaskLabel(target.type, t, { fallback: t("datasets.task.auto") })}
                     </Badge>
                     {target.unit && (
                       <span className="text-sm text-muted-foreground">
@@ -135,7 +137,7 @@ export function DatasetTargetsTab({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No targets defined</p>
+            <p className="text-sm text-muted-foreground">{t("datasets.detail.targets.noneDefined")}</p>
           )}
         </CardContent>
       </Card>
@@ -146,9 +148,9 @@ export function DatasetTargetsTab({
           <CardHeader className="pb-2">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <CardTitle className="text-sm flex items-center gap-2">
-                Distribution
+                {t("datasets.detail.targets.distribution")}
                 <Badge variant="outline" className="text-xs capitalize">
-                  {distribution.type}
+                  {distribution.type === "regression" || distribution.type === "classification" ? t(`datasets.detail.distType.${distribution.type}`) : distribution.type}
                 </Badge>
               </CardTitle>
               <div className="flex items-center gap-2">
@@ -160,7 +162,7 @@ export function DatasetTargetsTab({
                   testCount={testCount}
                   size="xs"
                 />
-                <Button variant="ghost" size="sm" onClick={onRefresh}>
+                <Button variant="ghost" size="sm" onClick={onRefresh} aria-label={t("common.refresh")}>
                   <RefreshCw className="h-4 w-4" />
                 </Button>
               </div>
@@ -187,25 +189,25 @@ export function DatasetTargetsTab({
                   <>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="p-3 bg-muted/30 rounded-lg">
-                        <p className="text-xs text-muted-foreground">Minimum</p>
+                        <p className="text-xs text-muted-foreground">{t("datasets.detail.stats.minimum")}</p>
                         <p className="font-mono font-medium text-lg">
                           {formatTargetStatistic(distribution.min)}
                         </p>
                       </div>
                       <div className="p-3 bg-muted/30 rounded-lg">
-                        <p className="text-xs text-muted-foreground">Maximum</p>
+                        <p className="text-xs text-muted-foreground">{t("datasets.detail.stats.maximum")}</p>
                         <p className="font-mono font-medium text-lg">
                           {formatTargetStatistic(distribution.max)}
                         </p>
                       </div>
                       <div className="p-3 bg-muted/30 rounded-lg">
-                        <p className="text-xs text-muted-foreground">Mean</p>
+                        <p className="text-xs text-muted-foreground">{t("datasets.detail.stats.mean")}</p>
                         <p className="font-mono font-medium text-lg">
                           {formatTargetStatistic(distribution.mean)}
                         </p>
                       </div>
                       <div className="p-3 bg-muted/30 rounded-lg">
-                        <p className="text-xs text-muted-foreground">Std Dev</p>
+                        <p className="text-xs text-muted-foreground">{t("datasets.detail.stats.stdDev")}</p>
                         <p className="font-mono font-medium text-lg">
                           {formatTargetStatistic(distribution.std)}
                         </p>
@@ -213,7 +215,7 @@ export function DatasetTargetsTab({
                     </div>
                     {regressionRange.isVisible && (
                       <div className="p-3 bg-muted/30 rounded-lg">
-                        <p className="text-xs text-muted-foreground">Range (±3σ)</p>
+                        <p className="text-xs text-muted-foreground">{t("datasets.detail.targets.range")}</p>
                         <p className="font-mono font-medium">
                           {regressionRange.label}
                         </p>
@@ -224,7 +226,7 @@ export function DatasetTargetsTab({
 
                 {distribution.type === "classification" && distribution.class_counts && (
                   <div className="space-y-2">
-                    <p className="text-sm font-medium mb-3">Class Distribution</p>
+                    <p className="text-sm font-medium mb-3">{t("datasets.detail.targets.classDistribution")}</p>
                     {Object.entries(distribution.class_counts).map(([cls, count]) => (
                       <div
                         key={cls}
@@ -244,7 +246,7 @@ export function DatasetTargetsTab({
 
                 {distribution.classes && (
                   <div>
-                    <p className="text-sm text-muted-foreground mb-2">Classes</p>
+                    <p className="text-sm text-muted-foreground mb-2">{t("datasets.detail.targets.classes")}</p>
                     <div className="flex flex-wrap gap-2">
                       {distribution.classes.map((cls) => (
                         <Badge key={cls} variant="outline">

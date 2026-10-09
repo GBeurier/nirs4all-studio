@@ -44,17 +44,6 @@ export function getComponentsByCategory(category: string): ChemicalComponent[] {
 }
 
 /**
- * Get all component names as options for multiselect
- */
-export function getComponentOptions(): { value: string; label: string; description: string }[] {
-  return CHEMICAL_COMPONENTS.map((c) => ({
-    value: c.name,
-    label: c.displayName,
-    description: c.description,
-  }));
-}
-
-/**
  * Default synthesis configuration
  */
 export function getDefaultSynthesisConfig(): {

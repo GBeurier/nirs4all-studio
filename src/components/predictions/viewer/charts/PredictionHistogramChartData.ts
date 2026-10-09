@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import { buildPredictionColoration, type PredictionColoration } from "../coloration";
 import type {
   ChartConfig,
@@ -88,12 +90,14 @@ export function buildPredictionHistogramRenderModel({
   taskKind,
   hasActuals,
   coloration = buildPredictionColoration(datasets, config),
+  t,
 }: {
   datasets: PartitionDataset[];
   config: ChartConfig;
   taskKind?: TaskKind;
   hasActuals?: boolean;
   coloration?: PredictionColoration;
+  t: TFunction;
 }): PredictionHistogramRenderModel {
   const actualsAvailable = hasActuals ?? datasets.some((dataset) => dataset.yTrue.length > 0);
   const resolvedTaskKind = taskKind ?? detectPredictionHistogramTaskKind(datasets, actualsAvailable);
@@ -102,7 +106,7 @@ export function buildPredictionHistogramRenderModel({
     actualsAvailable,
   );
   const activeVariants = getPredictionHistogramActiveVariants(effectiveSeries);
-  const groups = buildPredictionHistogramGroups({ datasets, config, coloration });
+  const groups = buildPredictionHistogramGroups({ datasets, config, coloration, t });
   const seriesByGroup = buildPredictionHistogramSeriesByGroup({
     datasets,
     groups,
@@ -126,6 +130,7 @@ export function buildPredictionHistogramRenderModel({
     showErrorBars: config.histogramShowErrorBars,
     yAxis: config.histogramYAxis,
     effectiveSeries,
+    t,
   });
   const refStats = summarizePredictionHistogramValues(pooledValues);
   const refLineX = getPredictionHistogramReferenceLineX({
@@ -149,9 +154,9 @@ export function buildPredictionHistogramRenderModel({
     numBins,
     refStats,
     refLineX,
-    xAxisLabel: getPredictionHistogramXAxisLabel(resolvedTaskKind, effectiveSeries),
-    yAxisLabel: getPredictionHistogramYAxisLabel(config.histogramYAxis, resolvedTaskKind),
-    emptyMessage: actualsAvailable ? "No values to visualize." : "No predictions to visualize.",
+    xAxisLabel: getPredictionHistogramXAxisLabel(resolvedTaskKind, effectiveSeries, t),
+    yAxisLabel: getPredictionHistogramYAxisLabel(config.histogramYAxis, resolvedTaskKind, t),
+    emptyMessage: t(actualsAvailable ? "predictions.charts.histogram.noValues" : "predictions.charts.histogram.noPredictions"),
     ...rowsModel,
   };
 }

@@ -3,6 +3,8 @@
  * Supports Electron environment
  */
 
+import i18n from "i18next";
+
 /**
  * Check if running in Electron environment
  */
@@ -26,7 +28,7 @@ export async function selectFolder(): Promise<string | null> {
     return await window.electronApi.selectFolder();
   }
   // Browser fallback
-  return prompt("Enter folder path:");
+  return prompt(i18n.t("common.dialogs.enterFolderPath"));
 }
 
 /**
@@ -39,7 +41,7 @@ export async function confirmDroppedFolder(folderName: string): Promise<string |
     return await window.electronApi.confirmDroppedFolder(folderName);
   }
   // Browser fallback
-  return prompt(`Enter path for folder "${folderName}":`);
+  return prompt(i18n.t("common.dialogs.enterPathForFolder", { name: folderName }));
 }
 
 /**
@@ -53,7 +55,7 @@ export async function selectFile(
     return await window.electronApi.selectFile(fileTypes, allowMultiple);
   }
   // Browser fallback
-  const path = prompt("Enter file path:");
+  const path = prompt(i18n.t("common.dialogs.enterFilePath"));
   return allowMultiple && path ? [path] : path;
 }
 
@@ -68,7 +70,7 @@ export async function saveFile(
     return await window.electronApi.saveFile(defaultFilename, fileTypes);
   }
   // Browser fallback
-  return prompt("Enter save path:", defaultFilename);
+  return prompt(i18n.t("common.dialogs.enterSavePath"), defaultFilename);
 }
 
 /**

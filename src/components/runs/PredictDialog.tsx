@@ -90,7 +90,7 @@ export function PredictDialog({
     },
     onSuccess: (data) => {
       setResult(data);
-      toast.success(`${data.num_samples} predictions completed`);
+      toast.success(t("runs.predict.completed", { count: data.num_samples }));
     },
     onError: (err) => {
       notifyApiError(err, t("predict.errors.predictionFailed"));
@@ -110,7 +110,7 @@ export function PredictDialog({
     },
     onSuccess: (data) => {
       setResult(data);
-      toast.success(`${data.num_samples} predictions completed`);
+      toast.success(t("runs.predict.completed", { count: data.num_samples }));
     },
     onError: (err) => {
       notifyApiError(err, t("predict.errors.predictionFailed"));
@@ -120,14 +120,14 @@ export function PredictDialog({
   const handlePredict = () => {
     if (inputMode === "dataset") {
       if (!selectedDataset) {
-        toast.error("Please select a dataset");
+        toast.error(t("runs.predict.selectDatasetFirst"));
         return;
       }
       datasetPredictMutation.mutate();
     } else {
       const spectra = parsePredictionCsvInput(pasteData);
       if (spectra.length === 0) {
-        toast.error("No valid spectral data found");
+        toast.error(t("runs.predict.noSpectra"));
         return;
       }
       batchPredictMutation.mutate(spectra);
@@ -145,7 +145,7 @@ export function PredictDialog({
     a.download = `predictions_${modelId}_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Predictions exported");
+    toast.success(t("runs.predict.exported"));
   };
 
   const isLoading = batchPredictMutation.isPending || datasetPredictMutation.isPending;
@@ -160,13 +160,13 @@ export function PredictDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Target className="h-5 w-5" />
-            Make Predictions
+            {t("runs.predict.title")}
           </DialogTitle>
           <DialogDescription>
-            Using model: <code className="text-xs bg-muted px-1 py-0.5 rounded">{modelName}</code>
+            {t("runs.predict.usingModel")} <code className="text-xs bg-muted px-1 py-0.5 rounded">{modelName}</code>
             {pipelineName && (
               <span className="text-muted-foreground ml-2">
-                from {pipelineName}
+                {t("runs.predict.fromPipeline", { name: pipelineName })}
               </span>
             )}
           </DialogDescription>
@@ -191,25 +191,25 @@ export function PredictDialog({
           {result ? (
             <>
               <Button variant="outline" onClick={() => setResult(null)}>
-                New Prediction
+                {t("runs.predict.newPrediction")}
               </Button>
-              <Button onClick={() => handleOpenChange(false)}>Done</Button>
+              <Button onClick={() => handleOpenChange(false)}>{t("runs.predict.done")}</Button>
             </>
           ) : (
             <>
               <Button variant="outline" onClick={() => handleOpenChange(false)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button onClick={handlePredict} disabled={!canPredict || isLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Predicting...
+                    {t("runs.predict.predicting")}
                   </>
                 ) : (
                   <>
                     <Play className="h-4 w-4 mr-2" />
-                    Predict
+                    {t("runs.predict.predict")}
                   </>
                 )}
               </Button>

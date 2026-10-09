@@ -6,11 +6,13 @@ import {
   RefreshCw,
   type LucideIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { RuntimeResultStatusBadge } from "nirs4all-ui/components";
 
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { runtimeStatusLabel } from "./runtimeStatusLabel";
 import {
   buildRuntimeResultStatusView,
   getRuntimeResultStatusDisplay,
@@ -72,6 +74,7 @@ export function RuntimeStatusBadge({
   showIcon?: boolean;
   variant?: RuntimeResultBadgeVariant;
 }) {
+  const { t } = useTranslation();
   const display = getRuntimeResultStatusDisplay(status);
   const Icon = runtimeStatusIcons[display.icon];
 
@@ -79,6 +82,7 @@ export function RuntimeStatusBadge({
     <Badge variant={variant ?? display.badgeVariant} className={cn("gap-1.5", display.bgClass, className)}>
       <RuntimeResultStatusBadge
         status={status}
+        label={runtimeStatusLabel(status, t)}
         icon={showIcon ? <Icon className={cn("h-3.5 w-3.5", display.colorClass, display.iconClass, iconClassName)} /> : null}
         className="inline-flex items-center gap-1.5"
         showProgress={false}
@@ -90,7 +94,7 @@ export function RuntimeStatusBadge({
 export function RuntimeRunStatePresentation({
   status,
   progress,
-  label = "Progress",
+  label,
   className,
 }: {
   status: string | null | undefined;
@@ -98,13 +102,14 @@ export function RuntimeRunStatePresentation({
   label?: string;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const view = buildRuntimeResultStatusView(status, progress);
   if (view.progress == null) return null;
 
   return (
     <div className={cn("space-y-2", className)}>
       <div className="flex justify-between text-sm">
-        <span className="text-muted-foreground">{label}</span>
+        <span className="text-muted-foreground">{label ?? t("runs.runtime.progress")}</span>
         <span className="font-medium">{view.progress}%</span>
       </div>
       <Progress value={view.progress} className="h-2" />

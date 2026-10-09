@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { TabsContent } from "@/components/ui/tabs";
 import { RuntimeDiagnosticsList } from "@/components/runtime";
 import type { PipelineRun } from "@/types/runs";
@@ -34,16 +35,17 @@ interface ResultDetailMetricsTabProps {
 }
 
 export function ResultDetailMetricsTab({ pipeline, datasetName, hasMetrics }: ResultDetailMetricsTabProps) {
-  const scoreMetricCards = buildResultScoreMetricCards(pipeline);
-  const metricCards = buildResultMetricCards(pipeline);
-  const executionTimeRows = buildResultExecutionTimeRows(pipeline);
-  const relatedLinks = buildResultRelatedLinks(pipeline, datasetName);
+  const { t } = useTranslation();
+  const scoreMetricCards = buildResultScoreMetricCards(pipeline, t);
+  const metricCards = buildResultMetricCards(pipeline, t);
+  const executionTimeRows = buildResultExecutionTimeRows(pipeline, t);
+  const relatedLinks = buildResultRelatedLinks(pipeline, datasetName, t);
   const artifactSummary = buildResultArtifactSummary(pipeline);
   const nativeResultsSummary = buildResultNativeResultsSummary(pipeline);
   const conformalSummary = buildResultConformalSummary(pipeline);
   const robustnessSummary = buildResultRobustnessSummary(pipeline);
-  const robustnessLaunchPlan = buildResultRobustnessLaunchPlan(pipeline);
-  const tuningSummary = buildResultTuningSummary(pipeline);
+  const robustnessLaunchPlan = buildResultRobustnessLaunchPlan(pipeline, t);
+  const tuningSummary = buildResultTuningSummary(pipeline, t);
 
   return (
     <TabsContent value="results" className="m-0 space-y-4">
@@ -80,7 +82,7 @@ export function ResultDetailMetricsTab({ pipeline, datasetName, hasMetrics }: Re
           <ResultMetricsRelatedLinks links={relatedLinks} />
         </>
       ) : (
-        <ResultMetricsEmptyState message={getResultEmptyMetricsMessage(pipeline.status)} />
+        <ResultMetricsEmptyState message={getResultEmptyMetricsMessage(pipeline.status, t)} />
       )}
 
       {pipeline.status === "failed" && pipeline.error_message && (

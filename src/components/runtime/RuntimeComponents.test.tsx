@@ -5,13 +5,18 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
+import i18n from "@/lib/i18n";
 
 import { NativeResultsExportAffordance } from "./NativeResultsExportAffordance";
 import { RuntimeBackendStatus } from "./RuntimeBackendStatus";
 import { RuntimeDiagnosticsList } from "./RuntimeDiagnosticsList";
 import { RuntimeEngineBadge } from "./RuntimeEngineBadge";
 import { RuntimeRunStatePresentation } from "./RuntimeStatus";
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 const mocks = vi.hoisted(() => ({
   getRuntimeSummary: vi.fn(),
@@ -127,8 +132,8 @@ describe("RuntimeBackendStatus", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain("Native unavailable");
-    expect(container.textContent).toContain("Legacy execution and fallback are disabled");
+    expect(container.textContent).toContain("Analysis Engine");
+    expect(container.textContent).toContain("Unavailable");
     expect(container.querySelector("button")).toBeNull();
 
     await act(async () => {
@@ -151,7 +156,8 @@ describe("RuntimeBackendStatus", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain("Native available");
+    expect(container.textContent).toContain("Available");
+    expect(container.textContent).not.toContain("Unavailable");
 
     await act(async () => {
       root.unmount();

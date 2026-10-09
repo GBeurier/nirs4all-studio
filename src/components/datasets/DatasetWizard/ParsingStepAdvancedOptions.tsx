@@ -6,6 +6,7 @@
  * `onChange` callback; the parent owns wizard dispatch.
  */
 import { SlidersHorizontal } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -31,15 +32,16 @@ export interface AdvancedLoadingOptionsProps {
 }
 
 export function AdvancedLoadingOptions({ parsing, onChange }: AdvancedLoadingOptionsProps) {
+  const { t } = useTranslation();
   return (
     <Accordion type="single" collapsible className="mt-4">
       <AccordionItem value="advanced-loading" className="border-none">
         <AccordionTrigger className="py-2 hover:no-underline">
           <div className="flex items-center gap-2 text-sm">
             <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-            <span>Advanced Loading Options</span>
+            <span>{t("datasets.wizard.parsing.advanced.title")}</span>
             <Badge variant="outline" className="ml-2 text-xs font-normal">
-              Optional
+              {t("common.optional")}
             </Badge>
           </div>
         </AccordionTrigger>
@@ -48,7 +50,7 @@ export function AdvancedLoadingOptions({ parsing, onChange }: AdvancedLoadingOpt
             {/* Encoding */}
             <div>
               <Label className="text-xs text-muted-foreground mb-1 block">
-                File Encoding
+                {t("datasets.wizard.parsing.advanced.encoding")}
               </Label>
               <Select
                 value={parsing.encoding || "utf-8"}
@@ -60,7 +62,7 @@ export function AdvancedLoadingOptions({ parsing, onChange }: AdvancedLoadingOpt
                 <SelectContent>
                   {ENCODING_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {t(opt.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -70,7 +72,7 @@ export function AdvancedLoadingOptions({ parsing, onChange }: AdvancedLoadingOpt
             {/* Skip Rows */}
             <div>
               <Label className="text-xs text-muted-foreground mb-1 block">
-                Skip Rows at Start
+                {t("datasets.wizard.parsing.advanced.skipRows")}
               </Label>
               <Input
                 type="number"
@@ -85,11 +87,11 @@ export function AdvancedLoadingOptions({ parsing, onChange }: AdvancedLoadingOpt
             {/* Sheet Name (for Excel files) */}
             <div>
               <Label className="text-xs text-muted-foreground mb-1 block">
-                Sheet Name (Excel)
+                {t("datasets.wizard.parsing.advanced.sheetName")}
               </Label>
               <Input
                 type="text"
-                placeholder="First sheet (default)"
+                placeholder={t("datasets.wizard.parsing.advanced.sheetNamePlaceholder")}
                 value={parsing.sheet_name || ""}
                 onChange={(e) => onChange({ sheet_name: e.target.value || undefined })}
                 className="h-9"

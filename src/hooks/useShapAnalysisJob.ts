@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { computeShapExplanation, getShapResults, getShapStatus } from '@/api/shap';
 import { buildShapComputeRequest } from '@/lib/shapAnalysisRequest';
@@ -38,6 +39,7 @@ function readShapJobStatusError(job: Record<string, unknown>): string | null {
 }
 
 export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState = {}) {
+  const { t } = useTranslation();
   const [jobId, setJobId] = useState<string | null>(() => initialState.jobId ?? null);
   const [results, setResults] = useState<ShapResultsResponse | null>(() => initialState.results ?? null);
   const [rebinnedData, setRebinnedData] = useState<BinnedImportanceData | null>(() => initialState.rebinnedData ?? null);
@@ -98,7 +100,7 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
           setIsSubmitting(false);
           setJobId(null);
           if (!results) {
-            setError(statusError || 'SHAP computation failed');
+            setError(statusError || t('results.variableImportance.job.failed'));
           }
         }
       } catch (err) {
@@ -106,7 +108,7 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
 
         setIsSubmitting(false);
         if (!results) {
-          setError(getUnknownErrorMessage(err, 'Failed to restore SHAP analysis'));
+          setError(getUnknownErrorMessage(err, t('results.variableImportance.job.restoreFailed')));
           setJobId(null);
         }
       }
@@ -117,7 +119,7 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
     return () => {
       cancelled = true;
     };
-  }, [isSubmitting, jobId, results]);
+  }, [isSubmitting, jobId, results, t]);
 
   useEffect(() => {
     if (jobStatus && jobStatus !== 'failed') {
@@ -134,16 +136,16 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
           setError(null);
         })
         .catch((err: unknown) => {
-          setError(getUnknownErrorMessage(err, 'Failed to fetch results'));
+          setError(getUnknownErrorMessage(err, t('results.variableImportance.job.fetchFailed')));
           setIsSubmitting(false);
         });
     }
 
     if (jobStatus === 'failed' && !awaitingFreshStatusRef.current) {
-      setError(wsError || 'SHAP computation failed');
+      setError(wsError || t('results.variableImportance.job.failed'));
       setIsSubmitting(false);
     }
-  }, [jobId, jobStatus, results, wsError]);
+  }, [jobId, jobStatus, results, t, wsError]);
 
   const runAnalysis = useCallback(async ({
     chainId,
@@ -154,11 +156,11 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
   }: RunShapAnalysisInput) => {
     const selectedModelRef = modelRef ?? chainId;
     if (!selectedModelRef) {
-      setError('Please select a model to explain.');
+      setError(t('results.variableImportance.job.selectModel'));
       return;
     }
     if (!datasetId) {
-      setError('This model has no authorized dataset link. Select a model from a linked dataset.');
+      setError(t('results.variableImportance.model.noAuthorizedLink'));
       return;
     }
 
@@ -182,10 +184,10 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
         setIsSubmitting(false);
       }
     } catch (err) {
-      setError(getUnknownErrorMessage(err, 'Analysis failed'));
+      setError(getUnknownErrorMessage(err, t('results.variableImportance.job.analysisFailed')));
       setIsSubmitting(false);
     }
-  }, [resetResultStateForRun]);
+  }, [resetResultStateForRun, t]);
 
   return {
     jobId,

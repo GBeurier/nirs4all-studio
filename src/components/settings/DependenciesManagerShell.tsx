@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   CheckCircle2,
@@ -31,20 +32,22 @@ import {
 } from "./DependenciesManagerLogic";
 import type { DependenciesResponse } from "@/api/dependencies";
 import type { PythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 interface DependenciesLoadingCardProps {
   title?: string;
 }
 
 export function DependenciesLoadingCard({
-  title = "Optional Dependencies",
+  title,
 }: DependenciesLoadingCardProps) {
+  const { t } = useTranslation();
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Package className="h-5 w-5" />
-          {title}
+          {title ?? t("settings.dependencies.title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -65,19 +68,20 @@ export function DependenciesErrorCard({
   error,
   onRetry,
 }: DependenciesErrorCardProps) {
+  const { t } = useTranslation();
   return (
     <Card className="border-destructive/50">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-destructive">
           <Package className="h-5 w-5" />
-          Optional Dependencies
+          {t("settings.dependencies.title")}
         </CardTitle>
         <CardDescription className="text-destructive">{error}</CardDescription>
       </CardHeader>
       <CardContent>
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RefreshCw className="mr-2 h-4 w-4" />
-          Retry
+          {t("common.retry")}
         </Button>
       </CardContent>
     </Card>
@@ -164,15 +168,16 @@ function DependenciesHeader({
   isRefreshDisabled,
   onRefresh,
 }: DependenciesHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start justify-between">
       <div>
         <CardTitle className="flex items-center gap-2">
           <Package className="h-5 w-5" />
-          Optional Dependencies
+          {t("settings.dependencies.title")}
         </CardTitle>
         <CardDescription>
-          Manage nirs4all optional packages for extended functionality
+          {t("settings.dependencies.description")}
         </CardDescription>
       </div>
       <div className="flex items-center gap-2">
@@ -182,11 +187,11 @@ function DependenciesHeader({
               <TooltipTrigger asChild>
                 <Badge variant="outline" className="text-xs gap-1">
                   <Clock className="h-3 w-3" />
-                  Cached
+                  {t("settings.dependencies.cached")}
                 </Badge>
               </TooltipTrigger>
               <TooltipContent>
-                Last scanned: {new Date(cachedAt).toLocaleString()}
+                {t("settings.dependencies.lastScanned", { date: new Date(cachedAt).toLocaleString(getActiveLocale()) })}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -199,7 +204,8 @@ function DependenciesHeader({
                 size="icon"
                 onClick={onRefresh}
                 disabled={isRefreshDisabled}
-                title="Refresh dependencies"
+                title={t("settings.dependencies.refresh")}
+                aria-label={t("settings.dependencies.refresh")}
               >
                 <RefreshCw
                   className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
@@ -207,7 +213,7 @@ function DependenciesHeader({
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              Force refresh (re-scan packages)
+              {t("settings.dependencies.forceRefresh")}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -221,6 +227,7 @@ function RuntimeAlerts({
 }: {
   runtimeDisplay: PythonRuntimeDisplayState;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       {runtimeDisplay.isReadOnly && (
@@ -228,8 +235,8 @@ function RuntimeAlerts({
           <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription>
             {runtimeDisplay.isBundledEmbedded
-              ? "This bundled build is using its embedded Python runtime. Package management is disabled because the embedded runtime is read-only."
-              : "Studio keeps your existing optional packages. Available recommendations are shown below. Update nirs4all through Python Environment; use your environment’s package manager for optional libraries."}
+              ? t("settings.dependencies.readOnlyBundled")
+              : t("settings.dependencies.readOnlyExternal")}
           </AlertDescription>
         </Alert>
       )}
@@ -238,7 +245,7 @@ function RuntimeAlerts({
         <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
           <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription>
-            Studio is using your selected Python environment. Compatible packages are kept.
+            {t("settings.dependencies.externalRuntime")}
           </AlertDescription>
         </Alert>
       )}
@@ -257,6 +264,7 @@ function DependenciesSummaryBar({
   runtimeLabel,
   outdatedCount,
 }: DependenciesSummaryBarProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
       <div className="flex items-center gap-4">
@@ -265,12 +273,12 @@ function DependenciesSummaryBar({
           <span className="text-sm">
             <span className="font-semibold">{dependencies.total_installed}</span>
             <span className="text-muted-foreground">
-              /{dependencies.total_packages} installed
+              {t("settings.dependencies.installedCount", { total: dependencies.total_packages })}
             </span>
           </span>
         </div>
         <span className="text-xs text-muted-foreground">
-          Base nirs4all version is managed in the Updates section above.
+          {t("settings.dependencies.baseVersionNote")}
         </span>
         <Badge variant="outline" className="text-xs">
           {runtimeLabel}
@@ -279,7 +287,7 @@ function DependenciesSummaryBar({
       <div className="flex items-center gap-2">
         {outdatedCount > 0 && (
           <Badge variant="warning">
-            {outdatedCount} optional update{outdatedCount > 1 ? "s" : ""} available
+            {t("settings.dependencies.updatesAvailable", { count: outdatedCount })}
           </Badge>
         )}
         {!dependencies.runtime_valid && (
@@ -288,12 +296,11 @@ function DependenciesSummaryBar({
               <TooltipTrigger>
                 <Badge variant="outline" className="text-amber-600">
                   <AlertCircle className="h-3 w-3 mr-1" />
-                  Runtime Issue
+                  {t("settings.dependencies.runtimeIssue")}
                 </Badge>
               </TooltipTrigger>
               <TooltipContent>
-                The current Python runtime is not valid. Use the Python Runtime
-                settings to select or create a usable runtime.
+                {t("settings.dependencies.runtimeInvalid")}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -312,6 +319,7 @@ function LastActionNotification({
   lastAction,
   onDismiss,
 }: LastActionNotificationProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
@@ -325,14 +333,14 @@ function LastActionNotification({
       ) : (
         <AlertCircle className="h-4 w-4 flex-shrink-0" />
       )}
-      <span>{formatLastActionText(lastAction)}</span>
+      <span>{formatLastActionText(lastAction, t)}</span>
       <Button
         variant="ghost"
         size="sm"
         className="ml-auto h-6 px-2"
         onClick={onDismiss}
       >
-        Dismiss
+        {t("settings.dependencies.dismiss")}
       </Button>
     </div>
   );
@@ -343,14 +351,15 @@ function RestartBanner({
 }: {
   onRestartBackend: () => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   return (
     <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
       <AlertCircle className="h-4 w-4 text-amber-600" />
       <AlertDescription className="flex items-center justify-between">
-        <span>Package changes require a backend restart to take effect.</span>
+        <span>{t("settings.dependencies.restartRequired")}</span>
         <Button variant="outline" size="sm" onClick={onRestartBackend}>
           <RotateCcw className="mr-2 h-3 w-3" />
-          Restart Backend
+          {t("settings.dependencies.restartBackend")}
         </Button>
       </AlertDescription>
     </Alert>
@@ -358,13 +367,13 @@ function RestartBanner({
 }
 
 function DependenciesHelpText() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg text-sm text-muted-foreground">
       <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
       <div>
         <p>
-          These packages extend nirs4all functionality. Install only the packages
-          you need.
+          {t("settings.dependencies.helpText")}
         </p>
         <p className="mt-1">
           <a
@@ -373,7 +382,7 @@ function DependenciesHelpText() {
             rel="noopener noreferrer"
             className="text-primary hover:underline inline-flex items-center gap-1"
           >
-            View on PyPI
+            {t("settings.dependencies.viewOnPypi")}
             <ExternalLink className="h-3 w-3" />
           </a>
         </p>

@@ -4,6 +4,7 @@ import {
   getInspectorTaskPanelNotice,
   getInspectorTopologyPanelNotice,
 } from "@/lib/inspector/panelNotices";
+import { tStub } from "./helpers/i18nStub";
 
 describe("inspector panel notices", () => {
   it("returns a neutral unavailable notice when no chains are focused", () => {
@@ -11,9 +12,10 @@ describe("inspector panel notices", () => {
       panelName: "Predicted vs observed",
       requiredTask: "regression",
       focus: { chainIds: [], task: "none" },
+      t: tStub,
     })).toEqual({
-      title: "Predicted vs observed unavailable",
-      body: "No chains are available in the current scope.",
+      title: 'inspector.notices.unavailable {"panel":"Predicted vs observed"}',
+      body: "inspector.notices.emptyFocus",
       tone: "default",
     });
   });
@@ -23,18 +25,20 @@ describe("inspector panel notices", () => {
       panelName: "Fold stability",
       requiredTask: "regression",
       focus: { chainIds: ["chain-a"], task: "classification" },
+      t: tStub,
     })).toEqual({
-      title: "Fold stability requires regression",
-      body: "Current focus is classification. Select or pin regression chains to populate this panel.",
+      title: 'inspector.notices.requires {"panel":"Fold stability","task":"inspector.notices.tasks.regression"}',
+      body: 'inspector.notices.requiresBody {"current":"inspector.notices.tasks.classification","required":"inspector.notices.tasks.regression"}',
       tone: "warning",
     });
     expect(getInspectorTaskPanelNotice({
       panelName: "Confusion matrix",
       requiredTask: "classification",
       focus: { chainIds: ["chain-a"], task: "regression" },
+      t: tStub,
     })).toEqual({
-      title: "Confusion matrix requires classification",
-      body: "Current focus is regression. Select or pin classification chains to populate this panel.",
+      title: 'inspector.notices.requires {"panel":"Confusion matrix","task":"inspector.notices.tasks.classification"}',
+      body: 'inspector.notices.requiresBody {"current":"inspector.notices.tasks.regression","required":"inspector.notices.tasks.classification"}',
       tone: "warning",
     });
   });
@@ -44,9 +48,10 @@ describe("inspector panel notices", () => {
       panelName: "Bias-variance",
       requiredTask: "regression",
       focus: { chainIds: ["chain-a", "chain-b"], task: "mixed" },
+      t: tStub,
     })).toEqual({
-      title: "Bias-variance needs a coherent focus",
-      body: "Selected chains mix regression and classification. Narrow the shared selection or rely on auto focus.",
+      title: 'inspector.notices.needsCoherentFocus {"panel":"Bias-variance"}',
+      body: "inspector.notices.mixedFocusBody",
       tone: "warning",
     });
   });
@@ -56,20 +61,22 @@ describe("inspector panel notices", () => {
       panelName: "Residuals",
       requiredTask: "regression",
       focus: { chainIds: ["chain-a"], task: "regression" },
+      t: tStub,
     })).toBeNull();
     expect(getInspectorTaskPanelNotice({
       panelName: "Confusion matrix",
       requiredTask: "classification",
       focus: { chainIds: ["chain-a"], task: "classification" },
+      t: tStub,
     })).toBeNull();
   });
 
   it("returns topology notice only when no unique pipeline is available", () => {
-    expect(getInspectorTopologyPanelNotice(null)).toEqual({
-      title: "Topology needs one pipeline",
-      body: "Select or pin chains from a single pipeline to inspect topology.",
+    expect(getInspectorTopologyPanelNotice(null, tStub)).toEqual({
+      title: "inspector.notices.topologyTitle",
+      body: "inspector.notices.topologyBody",
       tone: "warning",
     });
-    expect(getInspectorTopologyPanelNotice("pipe-1")).toBeNull();
+    expect(getInspectorTopologyPanelNotice("pipe-1", tStub)).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { Archive, CheckCircle2, RefreshCw, Trash2 } from "lucide-react";
 
@@ -32,6 +33,7 @@ function selectionFromEntry(workspaceId: string, entry: ArchiveV2CatalogueEntry)
 }
 
 export function ModelSelector({ selectedModel, onSelect }: ModelSelectorProps) {
+  const { t } = useTranslation();
   const workspaces = useQuery({ queryKey: ["linked-workspaces", "archive-v2"], queryFn: getLinkedWorkspaces });
   const workspaceId = workspaces.data?.active_workspace_id ?? null;
   const catalogue = useQuery({
@@ -71,16 +73,16 @@ export function ModelSelector({ selectedModel, onSelect }: ModelSelectorProps) {
     <Card className="overflow-hidden border-border/60 shadow-sm">
       <CardHeader className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle className="flex items-center gap-2"><Archive className="h-4 w-4" />Persisted Archive V2</CardTitle>
-          {selectedModel && <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3" />Verified</Badge>}
+          <CardTitle className="flex items-center gap-2"><Archive className="h-4 w-4" />{t("predict.archiveSelector.title")}</CardTitle>
+          {selectedModel && <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3" />{t("predict.archiveSelector.verified")}</Badge>}
         </div>
-        <p className="text-xs leading-5 text-muted-foreground">Core-verified archives registered by the active workspace Store. Moved, changed, or unsafe entries stay hidden.</p>
+        <p className="text-xs leading-5 text-muted-foreground">{t("predict.archiveSelector.description")}</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {loading && <p className="text-sm text-muted-foreground">Loading verified archives…</p>}
-        {!loading && !workspaceId && <p className="text-sm text-muted-foreground">Activate a linked workspace to choose an archive.</p>}
-        {error && <p role="alert" className="text-sm text-destructive">The saved model list is unavailable.</p>}
-        {catalogue.data?.archives.length === 0 && <p className="text-sm text-muted-foreground">No verified Archive V2 is registered in this workspace.</p>}
+        {loading && <p className="text-sm text-muted-foreground">{t("predict.archiveSelector.loading")}</p>}
+        {!loading && !workspaceId && <p className="text-sm text-muted-foreground">{t("predict.archiveSelector.noWorkspace")}</p>}
+        {error && <p role="alert" className="text-sm text-destructive">{t("predict.archiveSelector.unavailable")}</p>}
+        {catalogue.data?.archives.length === 0 && <p className="text-sm text-muted-foreground">{t("predict.archiveSelector.empty")}</p>}
         {catalogue.data?.archives.map((entry) => {
           const selection = selectionFromEntry(workspaceId!, entry);
           const active = selectedModel !== null && archiveV2SelectionIdentityEquals(selectedModel, selection);
@@ -89,13 +91,13 @@ export function ModelSelector({ selectedModel, onSelect }: ModelSelectorProps) {
               className={`w-full rounded-lg border p-3 text-left text-xs transition-colors ${active ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}>
               <span className="block truncate font-medium">{entry.archive_id}</span>
               <span className="mt-1 block truncate text-muted-foreground">{entry.archive_ref}</span>
-              <span className="mt-1 block text-muted-foreground">{entry.n_features} features · {entry.target_names.join(" → ")}</span>
+              <span className="mt-1 block text-muted-foreground">{t("predict.archiveInput.features", { count: entry.n_features })} · {entry.target_names.join(" → ")}</span>
             </button>
           );
         })}
         <div className="flex gap-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={() => { void workspaces.refetch(); void catalogue.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
-          <Button type="button" variant="outline" size="icon" aria-label="Clear Archive V2 selection" onClick={clear} disabled={!selectedModel}><Trash2 className="h-4 w-4" /></Button>
+          <Button type="button" variant="outline" className="flex-1" onClick={() => { void workspaces.refetch(); void catalogue.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />{t("common.refresh")}</Button>
+          <Button type="button" variant="outline" size="icon" aria-label={t("predict.archiveSelector.clearAria")} onClick={clear} disabled={!selectedModel}><Trash2 className="h-4 w-4" /></Button>
         </div>
       </CardContent>
     </Card>

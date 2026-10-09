@@ -7,6 +7,7 @@
 
 import type { ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 interface ChartTileProps {
@@ -14,7 +15,7 @@ interface ChartTileProps {
   icon: ReactNode;
   /** Short caption below the chart (eg "y = Actual vs Predicted"). */
   subtitle?: string;
-  /** Customize link text; defaults to "Customize →". */
+  /** Customize link text; defaults to the localised "Customize". */
   customizeLabel?: string;
   /** Called when the customize button is clicked. */
   onCustomize?: () => void;
@@ -28,12 +29,13 @@ export function ChartTile({
   title,
   icon,
   subtitle,
-  customizeLabel = "Customize",
+  customizeLabel,
   onCustomize,
   height = "h-72",
   className,
   children,
 }: ChartTileProps) {
+  const { t } = useTranslation();
   return (
     <section
       className={cn(
@@ -67,7 +69,7 @@ export function ChartTile({
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
             )}
           >
-            {customizeLabel}
+            {customizeLabel ?? t("predictions.detail.tile.customize")}
             <ArrowUpRight className="h-3 w-3" />
           </button>
         )}

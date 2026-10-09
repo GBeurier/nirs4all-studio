@@ -27,7 +27,7 @@ function run(overrides: Partial<RunProgressState> = {}): RunProgressState {
 describe("FloatingRunWidgetData", () => {
   it("labels unavailable fit progress without inventing a percentage", () => {
     expect(buildRunItemReadModel(run({ progress: 0, progressUnavailable: true }), true))
-      .toMatchObject({ progressLabel: "Unavailable", progressUnavailable: true });
+      .toMatchObject({ progressLabel: null, progressUnavailable: true });
     expect(buildRunItemReadModel(run({ progress: 0, progressUnavailable: false }), true))
       .toMatchObject({ progressLabel: "0%", progressUnavailable: false });
   });

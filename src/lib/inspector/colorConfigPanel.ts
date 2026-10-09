@@ -8,11 +8,11 @@ import {
 } from '@/lib/playground/colorConfig';
 import type { InspectorColorConfig, InspectorColorMode } from '@/types/inspector';
 
-export const INSPECTOR_COLOR_MODE_OPTIONS: { value: InspectorColorMode; label: string }[] = [
-  { value: 'group', label: 'Group' },
-  { value: 'score', label: 'Score' },
-  { value: 'dataset', label: 'Dataset' },
-  { value: 'model_class', label: 'Model Class' },
+export const INSPECTOR_COLOR_MODE_OPTIONS: { value: InspectorColorMode; labelKey: string }[] = [
+  { value: 'group', labelKey: 'inspector.colors.mode.group' },
+  { value: 'score', labelKey: 'inspector.colors.mode.score' },
+  { value: 'dataset', labelKey: 'inspector.colors.mode.dataset' },
+  { value: 'model_class', labelKey: 'inspector.colors.mode.model_class' },
 ];
 
 export const INSPECTOR_CONTINUOUS_PALETTE_OPTIONS: { value: ContinuousPalette; label: string }[] = [

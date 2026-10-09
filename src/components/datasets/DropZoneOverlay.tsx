@@ -4,6 +4,7 @@
  * Provides visual feedback when files are dragged over the datasets page.
  * Automatically detects folder vs files and shows appropriate messaging.
  */
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "@/lib/motion";
 import { Folder, FileSpreadsheet, Upload } from "lucide-react";
 
@@ -21,6 +22,7 @@ export function DropZoneOverlay({
   dropType,
   itemCount,
 }: DropZoneOverlayProps) {
+  const { t } = useTranslation();
   const getIcon = () => {
     switch (dropType) {
       case "folder":
@@ -35,24 +37,22 @@ export function DropZoneOverlay({
   const getMessage = () => {
     switch (dropType) {
       case "folder":
-        return "Drop folder to import dataset";
+        return t("datasets.dropZone.folder");
       case "files":
-        return itemCount > 1
-          ? `Drop ${itemCount} files to import`
-          : "Drop file to import";
+        return t("datasets.dropZone.files", { count: itemCount });
       default:
-        return "Drop files or folder to import";
+        return t("datasets.dropZone.unknown");
     }
   };
 
   const getSubMessage = () => {
     switch (dropType) {
       case "folder":
-        return "Files will be auto-detected and mapped";
+        return t("datasets.dropZone.folderHint");
       case "files":
-        return "Configure file roles in the wizard";
+        return t("datasets.dropZone.filesHint");
       default:
-        return "Supported: CSV, Excel, Parquet, NPY, NPZ";
+        return t("datasets.dropZone.unknownHint");
     }
   };
 

@@ -1,9 +1,8 @@
+import type { TFunction } from 'i18next';
 import type { PerformanceHeatmapLayout } from '@/lib/inspector/performanceHeatmapData';
 
-export const PERFORMANCE_HEATMAP_EMPTY_MESSAGE = 'No heatmap data available.';
-
-export function getPerformanceHeatmapEmptyMessage(): string {
-  return PERFORMANCE_HEATMAP_EMPTY_MESSAGE;
+export function getPerformanceHeatmapEmptyMessage(t: TFunction): string {
+  return t('inspector.charts.empty.heatmap');
 }
 
 export function formatPerformanceHeatmapLabel(label: string, maxLength = 14): string {
@@ -27,6 +26,6 @@ export function formatPerformanceHeatmapCellValue(value: number): string {
   return value.toFixed(3);
 }
 
-export function formatPerformanceHeatmapTooltipValue(value: number | null): string {
-  return value !== null ? value.toFixed(4) : 'N/A';
+export function formatPerformanceHeatmapTooltipValue(value: number | null, t: TFunction): string {
+  return value !== null ? value.toFixed(4) : t('inspector.charts.na');
 }

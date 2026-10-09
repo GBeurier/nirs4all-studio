@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Loader2,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -97,6 +98,7 @@ export function PythonEnvStatusCard({
   onOpenReview,
   onOpenDialog,
 }: PythonEnvStatusCardProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -108,7 +110,7 @@ export function PythonEnvStatusCard({
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-sm">
-              Python {shortVersion(runtimeVersion)}
+              Python {shortVersion(runtimeVersion, t)}
             </span>
             <Badge variant={isReady ? "default" : "destructive"} className="text-xs">
               {isReady ? readyLabel : notReadyLabel}
@@ -120,17 +122,17 @@ export function PythonEnvStatusCard({
             )}
           </div>
           <div className="mt-1 space-y-1">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Running Python</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t("settings.pythonEnvPicker.runningPython")}</p>
             <p className="text-xs font-mono truncate" title={runningPythonPath ?? undefined}>
-              {shortenPath(runningPythonPath)}
+              {shortenPath(runningPythonPath, t)}
             </p>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             {missingCoreCount > 0
-              ? `${missingCoreCount} core package${missingCoreCount === 1 ? "" : "s"} missing`
+              ? t("settings.pythonEnvPicker.missingCore", { count: missingCoreCount })
               : missingOptionalCount > 0
-                ? `${missingOptionalCount} optional package${missingOptionalCount === 1 ? "" : "s"} missing`
-                : "Core runtime ready"}
+                ? t("settings.pythonEnvPicker.missingOptional", { count: missingOptionalCount })
+                : t("settings.pythonEnvPicker.coreReady")}
           </p>
         </div>
       </div>
@@ -141,7 +143,7 @@ export function PythonEnvStatusCard({
             size="sm"
             onClick={onOpenReview}
             disabled={isSettingUp}
-            title="See installed packages and available optional features"
+            title={t("settings.pythonEnvPicker.reviewPackagesHint")}
           >
             {reviewPackagesLabel}
           </Button>
@@ -190,13 +192,14 @@ interface RuntimeModeAlertsProps {
 }
 
 export function RuntimeModeAlerts({ runtimeDisplay }: RuntimeModeAlertsProps) {
+  const { t } = useTranslation();
   return (
     <>
       {runtimeDisplay.isBundledEmbedded && (
         <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
           <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription>
-            Studio uses its included Python environment. You can select your previous Studio environment or a local environment using Change… above.
+            {t("settings.pythonEnvPicker.modeEmbedded")}
           </AlertDescription>
         </Alert>
       )}
@@ -205,7 +208,7 @@ export function RuntimeModeAlerts({ runtimeDisplay }: RuntimeModeAlertsProps) {
         <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
           <AlertCircle className="h-4 w-4 text-blue-600" />
           <AlertDescription>
-            Studio uses your selected Python environment. Required nirs4all updates are installed there, while your other compatible packages are kept.
+            {t("settings.pythonEnvPicker.modeExternal")}
           </AlertDescription>
         </Alert>
       )}

@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -16,6 +18,36 @@ import type {
 } from "@/lib/inspector/resultAnalysisViewModels";
 import type { ResultAnalysisMetadataFacetCounter } from "@/lib/inspector/resultAnalysisMetadataFacets";
 import type { InspectorFocusMode } from "@/lib/inspector/focus";
+
+const COUNTER_LABEL_KEYS: Record<string, string> = {
+  "leaderboard.total": "inspector.counters.leaderboard.total",
+  "leaderboard.scored": "inspector.counters.leaderboard.scored",
+  "leaderboard.missing": "inspector.counters.leaderboard.missing",
+  "matrix.rows": "inspector.counters.matrix.rows",
+  "matrix.columns": "inspector.counters.matrix.columns",
+  "matrix.cells": "inspector.counters.matrix.cells",
+  "matrix.scoredCells": "inspector.counters.matrix.scoredCells",
+  "matrix.assignments": "inspector.counters.matrix.assignments",
+  "metadata.facets": "inspector.counters.metadataFacets",
+  "dimension.facets": "inspector.counters.dimensionFacets",
+  "summary.uniqueValues": "inspector.counters.facetValues",
+};
+
+interface InspectorCounterLike {
+  id: string;
+  label: string;
+  value: number;
+  formattedValue: string;
+}
+
+function getCounterText(counter: InspectorCounterLike, t: TFunction): string {
+  const labelKey = COUNTER_LABEL_KEYS[counter.id];
+  const label = labelKey ? t(labelKey) : counter.label;
+  const value = counter.id.endsWith(".values")
+    ? t("inspector.counters.valuesCount", { count: counter.value })
+    : counter.formattedValue;
+  return `${label}: ${value}`;
+}
 
 interface InspectorRowsBadgeProps {
   rowCount: number;
@@ -67,7 +99,8 @@ interface InspectorMetadataFacetCountersProps {
 }
 
 export function InspectorRowsBadge({ rowCount }: InspectorRowsBadgeProps) {
-  return <Badge variant="outline">{rowCount} rows</Badge>;
+  const { t } = useTranslation();
+  return <Badge variant="outline">{t("inspector.counts.rows", { count: rowCount })}</Badge>;
 }
 
 export function InspectorViewModelSummaryCounters({
@@ -75,6 +108,7 @@ export function InspectorViewModelSummaryCounters({
   source,
   maxItems = 3,
 }: InspectorViewModelSummaryCountersProps) {
+  const { t } = useTranslation();
   const visibleCounters = counters
     .filter(counter => !source || counter.source === source)
     .slice(0, maxItems);
@@ -85,7 +119,7 @@ export function InspectorViewModelSummaryCounters({
     <div className="flex flex-wrap items-center gap-1">
       {visibleCounters.map(counter => (
         <Badge key={counter.id} variant="outline" className="text-[10px]">
-          {counter.label}: {counter.formattedValue}
+          {getCounterText(counter, t)}
         </Badge>
       ))}
     </div>
@@ -96,6 +130,7 @@ export function InspectorMetadataFacetCounters({
   counters,
   maxItems = 6,
 }: InspectorMetadataFacetCountersProps) {
+  const { t } = useTranslation();
   const visibleCounters = counters.slice(0, maxItems);
 
   if (visibleCounters.length === 0) return null;
@@ -103,7 +138,7 @@ export function InspectorMetadataFacetCounters({
   return (
     <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
       <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground select-none">
-        Metadata
+        {t("inspector.counters.metadata")}
       </span>
       {visibleCounters.map(counter => (
         <Badge
@@ -111,7 +146,7 @@ export function InspectorMetadataFacetCounters({
           variant={counter.source === "summary" ? "secondary" : "outline"}
           className="text-[10px]"
         >
-          {counter.label}: {counter.formattedValue}
+          {getCounterText(counter, t)}
         </Badge>
       ))}
     </div>
@@ -119,7 +154,8 @@ export function InspectorMetadataFacetCounters({
 }
 
 export function InspectorFieldBadge({ field }: InspectorFieldBadgeProps) {
-  return <Badge variant="outline">{getInspectorPanelFieldLabel(field)}</Badge>;
+  const { t } = useTranslation();
+  return <Badge variant="outline">{getInspectorPanelFieldLabel(field, t)}</Badge>;
 }
 
 export function InspectorPipelineBadge({ pipelineId }: InspectorPipelineBadgeProps) {
@@ -129,7 +165,12 @@ export function InspectorPipelineBadge({ pipelineId }: InspectorPipelineBadgePro
 }
 
 export function InspectorFocusModeBadge({ mode }: InspectorFocusModeBadgeProps) {
-  return <Badge variant={mode === "top" ? "outline" : "secondary"}>{mode}</Badge>;
+  const { t } = useTranslation();
+  return (
+    <Badge variant={mode === "top" ? "outline" : "secondary"}>
+      {t(`inspector.strip.modes.${mode === "top" ? "auto" : mode}`)}
+    </Badge>
+  );
 }
 
 export function InspectorPartitionBadge({ partition, mode }: InspectorPartitionBadgeProps) {
@@ -141,6 +182,7 @@ export function InspectorHeatmapAxisControls({
   onXAxisChange,
   onYAxisChange,
 }: InspectorHeatmapAxisControlsProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">X</span>
@@ -148,12 +190,12 @@ export function InspectorHeatmapAxisControls({
         value={axes.xVariable}
         onValueChange={(val) => onXAxisChange(val as InspectorHeatmapAxisField)}
       >
-        <SelectTrigger className="h-7 w-[130px] text-xs">
+        <SelectTrigger className="h-7 w-[130px] text-xs" aria-label={t("inspector.header.xAxis")}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {INSPECTOR_HEATMAP_AXIS_OPTIONS.map(opt => (
-            <SelectItem key={opt} value={opt}>{getInspectorPanelFieldLabel(opt)}</SelectItem>
+            <SelectItem key={opt} value={opt}>{getInspectorPanelFieldLabel(opt, t)}</SelectItem>
           ))}
         </SelectContent>
       </Select>
@@ -163,12 +205,12 @@ export function InspectorHeatmapAxisControls({
         value={axes.yVariable}
         onValueChange={(val) => onYAxisChange(val as InspectorHeatmapAxisField)}
       >
-        <SelectTrigger className="h-7 w-[130px] text-xs">
+        <SelectTrigger className="h-7 w-[130px] text-xs" aria-label={t("inspector.header.yAxis")}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {INSPECTOR_HEATMAP_AXIS_OPTIONS.map(opt => (
-            <SelectItem key={opt} value={opt}>{getInspectorPanelFieldLabel(opt)}</SelectItem>
+            <SelectItem key={opt} value={opt}>{getInspectorPanelFieldLabel(opt, t)}</SelectItem>
           ))}
         </SelectContent>
       </Select>
@@ -181,11 +223,12 @@ export function InspectorHyperparameterSelect({
   activeHyperParam,
   onChange,
 }: InspectorHyperparameterSelectProps) {
+  const { t } = useTranslation();
   if (availableHyperParams.length === 0) return null;
 
   return (
     <Select value={activeHyperParam} onValueChange={onChange}>
-      <SelectTrigger className="h-8 w-[190px] text-xs">
+      <SelectTrigger className="h-8 w-[190px] text-xs" aria-label={t("inspector.header.hyperparameter")}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -203,15 +246,16 @@ export function InspectorBiasVarianceGroupSelect({
   value,
   onChange,
 }: InspectorBiasVarianceGroupSelectProps) {
+  const { t } = useTranslation();
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="h-8 w-[170px] text-xs">
+      <SelectTrigger className="h-8 w-[170px] text-xs" aria-label={t("inspector.header.groupBy")}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         {INSPECTOR_BIAS_VARIANCE_GROUP_OPTIONS.map(option => (
           <SelectItem key={option.value} value={option.value}>
-            {option.label}
+            {t(option.labelKey)}
           </SelectItem>
         ))}
       </SelectContent>

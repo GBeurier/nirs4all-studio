@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+/**
+ * @vitest-environment jsdom
+ */
+
+import i18n from "i18next";
+import { beforeAll, describe, expect, it } from "vitest";
+
+import "@/lib/i18n";
 
 import type { WorkspaceStatsResponse } from "@/types/settings";
 import {
@@ -8,6 +15,12 @@ import {
   getWorkspaceSpaceUsageRows,
   getWorkspaceStorageSummaryCards,
 } from "../WorkspaceStatsData";
+
+const t = i18n.t.bind(i18n);
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 function createStats(
   overrides: Partial<WorkspaceStatsResponse> = {},
@@ -48,11 +61,12 @@ describe("getWorkspaceSpaceUsageRows", () => {
           file_count: 0,
           percentage: 0,
         },
-      ]),
+      ], t),
     ).toEqual([
       {
         key: "Runs",
         name: "Runs",
+        label: "Runs",
         fileCountLabel: "3 files",
         sizeLabel: "1.5 KB",
         percentage: 12.5,
@@ -72,6 +86,7 @@ describe("workspace stat cards", () => {
           predictions_count: 7,
           models_count: 3,
         }),
+        t,
       ).map(({ key, label, value }) => ({ key, label, value })),
     ).toEqual([
       { key: "runs", label: "Runs", value: "4" },
@@ -92,6 +107,7 @@ describe("workspace stat cards", () => {
           parquet_arrays_size_bytes: 1536,
           storage_mode: "migrated",
         }),
+        t,
       ).map(({ key, label, value, detail }) => ({ key, label, value, detail })),
     ).toEqual([
       {
@@ -130,7 +146,7 @@ describe("getCleanCacheSuccessMessage", () => {
         files_removed: 5,
         bytes_freed: 1536,
         categories_cleaned: ["Temp"],
-      }),
+      }, t),
     ).toBe("Cleaned 5 files, freed 1.5 KB");
   });
 });

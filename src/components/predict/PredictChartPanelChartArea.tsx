@@ -1,4 +1,5 @@
 import type { Ref } from "react";
+import { useTranslation } from "react-i18next";
 import { PredictionConfusionChart } from "@/components/predictions/viewer/charts/PredictionConfusionChart";
 import { PredictionHistogramChart } from "@/components/predictions/viewer/charts/PredictionHistogramChart";
 import { PredictionResidualsChart } from "@/components/predictions/viewer/charts/PredictionResidualsChart";
@@ -32,6 +33,7 @@ export function PredictChartPanelChartArea({
   kind,
   taskKind,
 }: PredictChartPanelChartAreaProps) {
+  const { t } = useTranslation();
   const chartAreaClass = chartClassName
     ? cn("px-3 py-3", chartClassName)
     : isFullscreen
@@ -72,9 +74,7 @@ export function PredictChartPanelChartArea({
         />
       ) : (
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-          {hasActuals
-            ? "No data to display for this view."
-            : "Reference values are required for this chart. Switch to Distribution or predict on a dataset partition with targets."}
+          {t(hasActuals ? "predict.view.chart.noData" : "predict.view.chart.referenceRequired")}
         </div>
       )}
     </div>

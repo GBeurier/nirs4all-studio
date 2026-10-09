@@ -1,9 +1,11 @@
 import { Terminal } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { WorkspaceRunDetail, WorkspaceRunPipelineLogEntry } from "@/types/enriched-runs";
+import { formatRunTokenLabel } from "@/lib/runs/format";
 import { downloadTextFile, formatLogLine } from "./runDetailUtils";
 
 export function RunDetailLogs({
@@ -19,13 +21,14 @@ export function RunDetailLogs({
   logs: WorkspaceRunPipelineLogEntry[];
   logsLoading: boolean;
 }) {
+  const { t } = useTranslation();
   const selectedPipeline = detail?.pipelines.find((pipeline) => pipeline.pipeline_id === selectedPipelineId) ?? null;
 
   if (!detail || detail.pipelines.length === 0) {
     return (
       <div className="py-12 text-center text-muted-foreground">
         <Terminal className="mx-auto mb-2 h-8 w-8 opacity-50" />
-        <p className="text-sm">No persisted logs are available for this run.</p>
+        <p className="text-sm">{t("runs.detail.logs.none")}</p>
       </div>
     );
   }
@@ -40,10 +43,10 @@ export function RunDetailLogs({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pipeline Log Stream</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("runs.detail.logs.stream")}</p>
           <Select value={selectedPipelineId ?? undefined} onValueChange={onSelectedPipelineIdChange}>
             <SelectTrigger className="h-9 w-full lg:w-[340px]">
-              <SelectValue placeholder="Select a pipeline" />
+              <SelectValue placeholder={t("runs.detail.logs.selectPipeline")} />
             </SelectTrigger>
             <SelectContent>
               {detail.pipelines.map((pipeline) => (
@@ -55,10 +58,10 @@ export function RunDetailLogs({
           </Select>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{logs.length} entries</span>
+          <span>{t("runs.detail.logs.entries", { count: logs.length })}</span>
           <Button variant="outline" size="sm" disabled={logs.length === 0} onClick={handleDownload}>
             <Terminal className="mr-2 h-4 w-4" />
-            Download
+            {t("runs.detail.logs.download")}
           </Button>
         </div>
       </div>
@@ -67,20 +70,20 @@ export function RunDetailLogs({
         <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
           <div className="rounded-lg border bg-card p-4">
             <div className="space-y-2 text-sm">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Selected Pipeline</div>
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("runs.detail.logs.selected")}</div>
               <div className="font-medium">{selectedPipeline.name || selectedPipeline.pipeline_id}</div>
               {selectedPipeline.dataset_name && <div className="text-muted-foreground">{selectedPipeline.dataset_name}</div>}
               <Separator className="my-3" />
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Status</span>
-                <span>{selectedPipeline.status || "-"}</span>
+                <span className="text-muted-foreground">{t("runs.detail.logs.status")}</span>
+                <span>{selectedPipeline.status ? formatRunTokenLabel(selectedPipeline.status, t) : "-"}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Warnings</span>
+                <span className="text-muted-foreground">{t("runs.detail.overview.warnings")}</span>
                 <span>{selectedPipeline.warning_count ?? 0}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Errors</span>
+                <span className="text-muted-foreground">{t("runs.detail.overview.errors")}</span>
                 <span>{selectedPipeline.error_count ?? 0}</span>
               </div>
             </div>
@@ -112,7 +115,7 @@ export function RunDetailLogs({
               </div>
             ) : (
               <div className="py-10 text-center text-muted-foreground">
-                No structured log rows were stored for this pipeline.
+                {t("runs.detail.logs.empty")}
               </div>
             )}
           </div>

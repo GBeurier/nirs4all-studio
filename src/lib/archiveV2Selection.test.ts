@@ -4,6 +4,8 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 
+import "@/lib/i18n";
+
 import {
   archiveV2SelectionIdentityEquals,
   buildArchiveV2ArrayPredictionRequest,

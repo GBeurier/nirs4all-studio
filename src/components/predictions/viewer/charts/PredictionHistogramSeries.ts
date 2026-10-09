@@ -1,3 +1,6 @@
+import type { TFunction } from "i18next";
+
+import { getPartitionLabel } from "@/components/predictions/predictionLabels";
 import { getCategoricalColor } from "@/lib/playground/colorConfig";
 import type { PredictionColoration } from "../coloration";
 import { getPartitionColor } from "../palettes";
@@ -87,10 +90,12 @@ export function buildPredictionHistogramGroups({
   datasets,
   config,
   coloration,
+  t,
 }: {
   datasets: PartitionDataset[];
   config: ChartConfig;
   coloration: PredictionColoration;
+  t: TFunction;
 }): PredictionHistogramGroupDef[] {
   if (
     config.colorMode === "metadata"
@@ -106,7 +111,7 @@ export function buildPredictionHistogramGroups({
 
   return datasets.map((dataset) => ({
     key: `part:${dataset.predictionId}:${dataset.partition}`,
-    label: dataset.label,
+    label: getPartitionLabel(t, dataset.partition, dataset.label),
     color: getPartitionColor(dataset.partition, config.palette, config.partitionColors),
   }));
 }

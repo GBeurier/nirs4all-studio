@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import {
   FileSpreadsheet,
   SlidersHorizontal,
@@ -41,15 +43,15 @@ const trialToneVariant: Record<TuningTrialTone, "default" | "secondary" | "destr
   warning: "secondary",
 };
 
-function formatFingerprint(fingerprint: string | null): string {
-  if (!fingerprint) return "No fingerprint";
+function formatFingerprint(fingerprint: string | null, t: TFunction): string {
+  if (!fingerprint) return t("results.conformal.noFingerprint");
   return fingerprint.length > 24
     ? `${fingerprint.slice(0, 12)}…${fingerprint.slice(-8)}`
     : fingerprint;
 }
 
-function formatDirection(direction: ResultTuningSummaryData["study"]["direction"]): string {
-  return direction === "minimize" ? "minimize" : "maximize";
+function formatDirection(direction: ResultTuningSummaryData["study"]["direction"], t: TFunction): string {
+  return direction === "minimize" ? t("results.tuning.direction.minimize") : t("results.tuning.direction.maximize");
 }
 
 function formatOptionalOptimizerMetadata(value: string | number | null): string {
@@ -79,9 +81,9 @@ export function buildTuningTrialCsvFilename(summary: ResultTuningSummaryData): s
   return `native_tuning_${sanitizeFilename(source)}_trials.csv`;
 }
 
-function bestTrialLabel(summary: ResultTuningSummaryData): string {
+function bestTrialLabel(summary: ResultTuningSummaryData, t: TFunction): string {
   const best = summary.trials.find(trial => trial.isBest);
-  return best ? `Trial #${best.number}` : "—";
+  return best ? t("results.tuning.trialNumber", { number: best.number }) : "—";
 }
 
 function trialSegmentClass(tone: TuningTrialTone): string {
@@ -100,6 +102,7 @@ function trialSegmentClass(tone: TuningTrialTone): string {
 }
 
 export function ResultMetricsTuningSummary({ summary }: ResultMetricsTuningSummaryProps) {
+  const { t } = useTranslation();
   if (!summary) return null;
 
   const { persistence, study, trials } = summary;
@@ -118,10 +121,10 @@ export function ResultMetricsTuningSummary({ summary }: ResultMetricsTuningSumma
         <div>
           <h4 className="flex items-center gap-2 text-sm font-medium">
             <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-            Native tuning
+            {t("results.tuning.title")}
           </h4>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {study.optimizer} · {formatDirection(study.direction)} {study.metric} · {study.nTrials} trials
+            {t("results.tuning.summaryLine", { optimizer: study.optimizer, direction: formatDirection(study.direction, t), metric: study.metric, count: study.nTrials })}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
@@ -134,71 +137,71 @@ export function ResultMetricsTuningSummary({ summary }: ResultMetricsTuningSumma
             onClick={handleExportTrials}
           >
             <FileSpreadsheet className="h-3 w-3" />
-            Trials CSV
+            {t("results.tuning.trialsCsv")}
           </Button>
           <Badge variant="outline" className="max-w-48 break-all text-[10px]">
-            {formatFingerprint(study.fingerprint)}
+            {formatFingerprint(study.fingerprint, t)}
           </Badge>
         </div>
       </div>
 
       <div className="mb-3 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
-        <Metric label="Best value" value={study.bestValueLabel} />
-        <Metric label="Complete" value={String(study.completeTrials)} />
-        <Metric label="Failed" value={String(study.failedTrials)} />
-        <Metric label="Search dims" value={String(study.searchSpaceSize)} />
+        <Metric label={t("results.tuning.bestValue")} value={study.bestValueLabel} />
+        <Metric label={t("results.tuning.status.complete")} value={String(study.completeTrials)} />
+        <Metric label={t("results.tuning.status.failed")} value={String(study.failedTrials)} />
+        <Metric label={t("results.tuning.searchDims")} value={String(study.searchSpaceSize)} />
       </div>
 
       <div className="mb-3 grid grid-cols-3 gap-2 text-[11px]">
-        <Metric label="Sampler" value={formatOptionalOptimizerMetadata(study.sampler)} />
-        <Metric label="Pruner" value={formatOptionalOptimizerMetadata(study.pruner)} />
-        <Metric label="Seed" value={formatOptionalOptimizerMetadata(study.seed)} />
+        <Metric label={t("results.tuning.sampler")} value={formatOptionalOptimizerMetadata(study.sampler)} />
+        <Metric label={t("results.tuning.pruner")} value={formatOptionalOptimizerMetadata(study.pruner)} />
+        <Metric label={t("results.tuning.seed")} value={formatOptionalOptimizerMetadata(study.seed)} />
       </div>
 
       {persistence && (
         <div className="mb-3 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
           <Metric
-            label="Resume"
-            value={formatBooleanState(persistence.resume, "requested", "disabled")}
+            label={t("results.tuning.persistence.resume")}
+            value={formatBooleanState(persistence.resume, t("results.tuning.persistence.requested"), t("results.tuning.persistence.disabled"))}
           />
           <Metric
-            label="Storage"
-            value={formatBooleanState(persistence.storageConfigured, "configured", "not configured")}
+            label={t("results.tuning.persistence.storage")}
+            value={formatBooleanState(persistence.storageConfigured, t("results.tuning.persistence.configured"), t("results.tuning.persistence.notConfigured"))}
           />
           <Metric
-            label="Optimizer resume"
-            value={formatBooleanState(persistence.optimizerStateResumeSupported, "supported", "not supported")}
+            label={t("results.tuning.persistence.optimizerResume")}
+            value={formatBooleanState(persistence.optimizerStateResumeSupported, t("results.tuning.persistence.supported"), t("results.tuning.persistence.notSupported"))}
           />
-          <Metric label="Study" value={persistence.studyName ?? "—"} />
+          <Metric label={t("results.tuning.study")} value={persistence.studyName ?? "—"} />
         </div>
       )}
 
       {trials.length > 0 && (
         <div className="mb-3 rounded border border-border/50 bg-background/60 px-2 py-2 text-[11px]">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-muted-foreground">Trial status timeline</span>
-            <span className="font-medium text-foreground">Best {bestTrialLabel(summary)}</span>
+            <span className="text-muted-foreground">{t("results.tuning.timeline")}</span>
+            <span className="font-medium text-foreground">{t("results.tuning.bestTrial", { trial: bestTrialLabel(summary, t) })}</span>
           </div>
-          <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-label="Native tuning trial status timeline">
+          <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-label={t("results.tuning.timelineAria")}>
             {trials.map(trial => (
               <span
                 key={trial.number}
                 className={`${trialSegmentClass(trial.tone)} min-w-1 flex-1`}
-                title={`Trial #${trial.number}: ${trial.statusLabel}`}
+                title={t("results.tuning.trialStatusTitle", { number: trial.number, status: t(`results.tuning.status.${trial.status}`) })}
               />
             ))}
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-muted-foreground">
-            <span>{study.completeTrials} complete</span>
-            {study.failedTrials > 0 && <span>{study.failedTrials} failed</span>}
-            {study.prunedTrials > 0 && <span>{study.prunedTrials} pruned</span>}
-            {study.runningTrials > 0 && <span>{study.runningTrials} running</span>}
+            <span>{t("results.tuning.count.complete", { count: study.completeTrials })}</span>
+            {study.failedTrials > 0 && <span>{t("results.tuning.count.failed", { count: study.failedTrials })}</span>}
+            {study.prunedTrials > 0 && <span>{t("results.tuning.count.pruned", { count: study.prunedTrials })}</span>}
+            {study.runningTrials > 0 && <span>{t("results.tuning.count.running", { count: study.runningTrials })}</span>}
           </div>
         </div>
       )}
 
       <div className="mb-3 rounded border border-border/50 bg-background/60 px-2 py-1 text-[11px]">
-        <span className="text-muted-foreground">Best params</span>
+        <span className="text-muted-foreground">{t("results.tuning.bestParams")}</span>
         <div className="break-words font-medium text-foreground">
           {Object.entries(study.bestParams).length > 0
             ? Object.entries(study.bestParams).map(([key, value]) => `${key}=${String(value)}`).join(", ")
@@ -214,28 +217,28 @@ export function ResultMetricsTuningSummary({ summary }: ResultMetricsTuningSumma
               className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/50 bg-muted/20 px-2 py-1.5 text-[11px]"
             >
               <div className="min-w-0">
-                <span className="font-medium">Trial #{trial.number}</span>
-                {trial.isBest && <span className="ml-1 text-muted-foreground">best</span>}
+                <span className="font-medium">{t("results.tuning.trialNumber", { number: trial.number })}</span>
+                {trial.isBest && <span className="ml-1 text-muted-foreground">{t("results.tuning.best")}</span>}
                 <p className="truncate text-muted-foreground">{trial.paramsLabel}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 <span className="font-medium">{trial.valueLabel}</span>
                 <Badge variant={trialToneVariant[trial.tone]} className="text-[10px]">
-                  {trial.statusLabel}
+                  {t(`results.tuning.status.${trial.status}`)}
                 </Badge>
               </div>
             </div>
           ))}
           {trials.length > visibleTrials.length && (
             <p className="text-[11px] text-muted-foreground">
-              Showing {visibleTrials.length} of {trials.length} trials.
+              {t("results.tuning.showing", { shown: visibleTrials.length, count: trials.length })}
             </p>
           )}
         </div>
       )}
 
       {!persistence && study.studyName && (
-        <p className="mt-3 text-[11px] text-muted-foreground">Study: {study.studyName}</p>
+        <p className="mt-3 text-[11px] text-muted-foreground">{t("results.tuning.studyName", { name: study.studyName })}</p>
       )}
     </div>
   );

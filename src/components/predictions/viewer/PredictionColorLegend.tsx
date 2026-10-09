@@ -1,9 +1,11 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   getCategoricalColor,
   getContinuousPaletteGradient,
 } from "@/lib/playground/colorConfig";
 import { cn } from "@/lib/utils";
+import { getPartitionLabel } from "@/components/predictions/predictionLabels";
 import { buildPredictionColoration } from "./coloration";
 import { getPartitionColor } from "./palettes";
 import type { ChartConfig, PartitionDataset } from "./types";
@@ -21,6 +23,7 @@ export function PredictionColorLegend({
   className,
   maxItems = 8,
 }: PredictionColorLegendProps) {
+  const { t } = useTranslation();
   const coloration = useMemo(
     () => buildPredictionColoration(datasets, config),
     [datasets, config],
@@ -73,7 +76,7 @@ export function PredictionColorLegend({
             <span>{category}</span>
           </div>
         ))}
-        {remaining > 0 && <span>+{remaining} more</span>}
+        {remaining > 0 && <span>{t("predictions.viewer.colorLegend.more", { count: remaining })}</span>}
       </div>
     );
   }
@@ -99,7 +102,7 @@ export function PredictionColorLegend({
               ),
             }}
           />
-          <span>{partition.label}</span>
+          <span>{getPartitionLabel(t, partition.key, partition.label)}</span>
         </div>
       ))}
     </div>

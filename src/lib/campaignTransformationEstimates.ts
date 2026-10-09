@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { DataViewRef, DatasetSchemaRef } from "./datasetSchema";
 import type { PipelineGraphSpec } from "./pipelineGraphSpec";
 
@@ -20,12 +22,8 @@ function normalizeCount(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-function formatInteger(value: number): string {
-  return value.toLocaleString("en-US");
-}
-
-function formatUnitCount(value: number, singular: string): string {
-  return `${formatInteger(value)} ${singular}${value === 1 ? "" : "s"}`;
+function formatUnitCount(value: number, unit: "sample" | "feature" | "source" | "activeNode" | "cell"): string {
+  return i18n.t(`newExperiment.campaign.transformation.units.${unit}`, { count: value });
 }
 
 export function buildCampaignTransformationEstimate({
@@ -44,18 +42,19 @@ export function buildCampaignTransformationEstimate({
       sourceCount,
       activeNodeCount,
       estimatedCellCount: null,
-      label: "Unknown transformation size",
+      label: i18n.t("newExperiment.campaign.transformation.unknown"),
     };
   }
 
   const estimatedCellCount = sampleCount * featureCount * activeNodeCount;
 
-  const sourceSuffix = sourceCount !== null && sourceCount > 1
-    ? `across ${formatUnitCount(sourceCount, "source")}`
-    : null;
-  const estimateSuffix = sourceSuffix
-    ? `${sourceSuffix} (~${formatUnitCount(estimatedCellCount, "cell")})`
-    : `(~${formatUnitCount(estimatedCellCount, "cell")})`;
+  const cells = formatUnitCount(estimatedCellCount, "cell");
+  const estimateSuffix = sourceCount !== null && sourceCount > 1
+    ? i18n.t("newExperiment.campaign.transformation.acrossSources", {
+      sources: formatUnitCount(sourceCount, "source"),
+      cells,
+    })
+    : i18n.t("newExperiment.campaign.transformation.cellsOnly", { cells });
 
   return {
     sampleCount,
@@ -63,14 +62,11 @@ export function buildCampaignTransformationEstimate({
     sourceCount,
     activeNodeCount,
     estimatedCellCount,
-    label: [
-      "size:",
-      formatUnitCount(sampleCount, "sample"),
-      "x",
-      formatUnitCount(featureCount, "feature"),
-      "x",
-      formatUnitCount(activeNodeCount, "active node"),
-      estimateSuffix,
-    ].join(" "),
+    label: i18n.t("newExperiment.campaign.transformation.label", {
+      samples: formatUnitCount(sampleCount, "sample"),
+      features: formatUnitCount(featureCount, "feature"),
+      nodes: formatUnitCount(activeNodeCount, "activeNode"),
+      suffix: estimateSuffix,
+    }),
   };
 }

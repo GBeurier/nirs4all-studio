@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Loader2 } from "lucide-react";
@@ -40,6 +41,7 @@ interface DatasetResultCardProps {
 export function DatasetResultCard({
   dataset, allChains, selectedMetrics, runId, workspaceId, defaultExpanded = false,
 }: DatasetResultCardProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const {
     detailChainId,
@@ -65,9 +67,9 @@ export function DatasetResultCard({
     deleteBusy,
     handleDelete: handleDeleteDataset,
   } = usePredictionDeletionAction({
-    validate: () => workspaceId ? null : "No active workspace",
+    validate: () => workspaceId ? null : t("results.scores.delete.noWorkspace"),
     deleteRequest: () => deleteWorkspaceDatasetPredictions(workspaceId!, dataset.dataset_name),
-    failureMessage: "Dataset deletion failed",
+    failureMessage: t("results.scores.delete.datasetFailed"),
   });
   const {
     useFullDatasetChains,
@@ -119,7 +121,7 @@ export function DatasetResultCard({
               {expanded && useFullDatasetChains && isAllChainsLoading && (
                 <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Loading full model history...
+                  {t("results.scores.loadingHistory")}
                 </div>
               )}
               <ScoreCardTree

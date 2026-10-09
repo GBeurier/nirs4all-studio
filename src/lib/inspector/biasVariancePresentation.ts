@@ -1,7 +1,7 @@
-export const BIAS_VARIANCE_EMPTY_DESCRIPTION = 'This view needs chains with repeated fold-level predictions for the same samples.';
+import type { TFunction } from 'i18next';
 
-export function getBiasVarianceEmptyDescription(reason: string | null | undefined): string {
-  return reason?.trim() || BIAS_VARIANCE_EMPTY_DESCRIPTION;
+export function getBiasVarianceEmptyDescription(reason: string | null | undefined, t: TFunction): string {
+  return reason?.trim() || t('inspector.charts.empty.biasVariance');
 }
 
 export function formatBiasVarianceTotal(value: number): string {
@@ -22,14 +22,20 @@ export function formatBiasVarianceSampleSummary({
   chainCount,
   foldCount,
   sampleCount,
+  t,
 }: {
   chainCount: number;
   foldCount: number;
   sampleCount: number;
+  t: TFunction;
 }): string {
-  return `${chainCount} chains, ${foldCount} folds, ${sampleCount} samples`;
+  return [
+    t('inspector.counts.chains', { count: chainCount }),
+    t('inspector.counts.folds', { count: foldCount }),
+    t('inspector.counts.samples', { count: sampleCount }),
+  ].join(', ');
 }
 
-export function formatBiasVarianceSelectionStatus(hasSelection: boolean, selectedCount: number): string {
-  return hasSelection ? `${selectedCount} selected` : 'No selection';
+export function formatBiasVarianceSelectionStatus(hasSelection: boolean, selectedCount: number, t: TFunction): string {
+  return hasSelection ? t('inspector.counts.selected', { count: selectedCount }) : t('inspector.charts.noSelection');
 }

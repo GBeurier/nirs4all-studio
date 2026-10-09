@@ -30,12 +30,12 @@ export function ShapResultsHeader({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <CardTitle className="text-lg flex items-center gap-2">
           <Activity className="h-5 w-5 text-primary" />
-          {t('shap.results.title', 'SHAP Analysis Results')}
+          {t('shap.results.title')}
         </CardTitle>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Badge variant="secondary" className="flex items-center gap-1">
             <Hash className="h-3 w-3" />
-            {summary.sampleCount} {t('shap.results.samples', 'samples')}
+            {summary.sampleCount} {t('shap.results.samples')}
           </Badge>
           <Badge variant="secondary" className="flex items-center gap-1">
             <Target className="h-3 w-3" />

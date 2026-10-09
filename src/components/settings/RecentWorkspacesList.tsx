@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import i18n from "i18next";
 import {
   FolderOpen,
   Clock,
@@ -229,7 +230,7 @@ export function RecentWorkspacesList({
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to load recent workspaces"
+          : i18n.t("settings.workspace.recent.loadError")
       );
     } finally {
       setIsLoading(false);
@@ -257,7 +258,7 @@ export function RecentWorkspacesList({
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to switch workspace"
+          : t("settings.workspace.recent.switchError")
       );
     } finally {
       setIsSwitching(false);

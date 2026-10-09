@@ -1,4 +1,6 @@
 import { Activity } from "lucide-react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import type {
@@ -14,8 +16,8 @@ function formatMode(mode: string): string {
   return mode.replace(/_/g, " ");
 }
 
-function formatSeverity(severity: number | null): string {
-  return severity == null ? "default" : String(severity);
+function formatSeverity(severity: number | null, t: TFunction): string {
+  return severity == null ? t("results.robustness.launch.defaultSeverity") : String(severity);
 }
 
 function formatStatus(status: string): string {
@@ -26,20 +28,21 @@ function formatScenarioExecutionScope(scope: string): string {
   return scope.replace(/_/g, " ");
 }
 
-function requirementLabels(execution: ResultRobustnessExecutionDiagnosticData): string[] {
+function requirementLabels(execution: ResultRobustnessExecutionDiagnosticData, t: TFunction): string[] {
   const labels: string[] = [];
   if (execution.requiresTruth) labels.push("y_true");
   if (execution.requiresPredictions) labels.push("PredictResult/CalibratedRunResult");
-  if (execution.requiresSpectra) labels.push("X spectra");
-  if (execution.requiresPredictor) labels.push("frozen predictor");
+  if (execution.requiresSpectra) labels.push(t("results.robustness.launch.requirement.spectra"));
+  if (execution.requiresPredictor) labels.push(t("results.robustness.launch.requirement.predictor"));
   return labels;
 }
 
 export function ResultMetricsRobustnessLaunchPlan({ plan }: ResultMetricsRobustnessLaunchPlanProps) {
+  const { t } = useTranslation();
   if (!plan || plan.scenarioCount === 0) return null;
 
   const execution = plan.execution;
-  const requirements = execution ? requirementLabels(execution) : [];
+  const requirements = execution ? requirementLabels(execution, t) : [];
 
   return (
     <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3">
@@ -47,15 +50,15 @@ export function ResultMetricsRobustnessLaunchPlan({ plan }: ResultMetricsRobustn
         <div>
           <h4 className="flex items-center gap-2 text-sm font-medium">
             <Activity className="h-4 w-4 text-sky-500" />
-            Robustness launch plan
+            {t("results.robustness.launch.title")}
           </h4>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {formatMode(plan.mode)} · {plan.scenarioCount} scenario{plan.scenarioCount === 1 ? "" : "s"}
-            {plan.sliceBy.length > 0 && ` · slices: ${plan.sliceBy.join(", ")}`}
+            {formatMode(plan.mode)} · {t("results.robustness.scenarioCount", { count: plan.scenarioCount })}
+            {plan.sliceBy.length > 0 && ` · ${t("results.robustness.sliceBy", { slices: plan.sliceBy.join(", ") })}`}
           </p>
         </div>
         <Badge variant="outline" className="shrink-0 text-[10px]">
-          {execution ? formatStatus(execution.status) : "metadata only"}
+          {execution ? formatStatus(execution.status) : t("results.robustness.launch.metadataOnly")}
         </Badge>
       </div>
 
@@ -64,7 +67,7 @@ export function ResultMetricsRobustnessLaunchPlan({ plan }: ResultMetricsRobustn
           <p className="font-medium text-foreground">{execution.message}</p>
           {requirements.length > 0 && (
             <p className="mt-1 text-muted-foreground">
-              Required evidence: {requirements.join(", ")}
+              {t("results.robustness.launch.requiredEvidence", { evidence: requirements.join(", ") })}
             </p>
           )}
           {execution.blockers.length > 0 && (
@@ -96,12 +99,12 @@ export function ResultMetricsRobustnessLaunchPlan({ plan }: ResultMetricsRobustn
               </Badge>
             </div>
             <p className="mt-1 text-muted-foreground">
-              severity {formatSeverity(scenario.severity)}
-              {scenario.distribution && ` · distribution ${scenario.distribution}`}
+              {t("results.robustness.card.severity", { value: formatSeverity(scenario.severity, t) })}
+              {scenario.distribution && ` · ${t("results.robustness.card.distribution", { value: scenario.distribution })}`}
             </p>
             {scenario.requiresSpectralReplay && (
               <p className="mt-1 text-muted-foreground">
-                Requires row-aligned X spectra and frozen predictor replay before nirs4all can compute this scenario.
+                {t("results.robustness.launch.requiresReplay")}
               </p>
             )}
           </div>
@@ -109,8 +112,7 @@ export function ResultMetricsRobustnessLaunchPlan({ plan }: ResultMetricsRobustn
       </div>
 
       <p className="mt-3 text-[11px] text-muted-foreground">
-        This is the launch-time robustness plan transported by Studio. It is not a computed robustness report; metrics
-        appear separately when nirs4all produces a `RobustnessReport` artifact.
+        {t("results.robustness.launch.disclaimer")}
       </p>
     </div>
   );

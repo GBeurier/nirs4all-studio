@@ -1,3 +1,4 @@
+import "@/lib/__tests__/support/experimentI18n";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -49,7 +50,7 @@ describe("experimentWizardFlow", () => {
       },
       {
         id: NEW_EXPERIMENT_RUNTIME_GROUPING_STEP,
-        label: "Runtime Grouping",
+        label: "Sample Grouping",
         isActive: true,
         isCompleted: false,
         isLast: false,

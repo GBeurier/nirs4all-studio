@@ -5,6 +5,7 @@ import {
   Layers,
   type LucideIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
 import type { AggregatedResultsStats } from "@/lib/aggregatedResultsData";
 
@@ -19,11 +20,12 @@ interface StatItem {
 }
 
 export function AggregatedResultsStatsBar({ stats }: AggregatedResultsStatsBarProps) {
+  const { t } = useTranslation();
   const items: StatItem[] = [
-    { label: "Chains", value: stats.total, icon: Layers },
-    { label: "Datasets", value: stats.datasets, icon: Database },
-    { label: "Models", value: stats.models, icon: Box },
-    { label: "Metrics", value: stats.metrics, icon: BarChart3 },
+    { label: t("aggregatedResults.stats.chains"), value: stats.total, icon: Layers },
+    { label: t("aggregatedResults.stats.datasets"), value: stats.datasets, icon: Database },
+    { label: t("aggregatedResults.stats.models"), value: stats.models, icon: Box },
+    { label: t("aggregatedResults.stats.metrics"), value: stats.metrics, icon: BarChart3 },
   ];
 
   return (

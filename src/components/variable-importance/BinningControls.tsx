@@ -62,7 +62,7 @@ export const BinningControls = memo(function BinningControls({
           const result = await rebinShapResults(jobId, buildShapRebinRequest(size, stride, agg));
           onBinnedDataUpdateRef.current(result.binned_importance);
         } catch (err) {
-          const msg = getShapRebinErrorMessage(err);
+          const msg = getShapRebinErrorMessage(err, t);
           setRebinError(msg);
           console.error('Rebin failed:', err);
         } finally {
@@ -70,7 +70,7 @@ export const BinningControls = memo(function BinningControls({
         }
       }, 400);
     },
-    [jobId],
+    [jobId, t],
   );
 
   // Track whether this is the first render (skip initial rebin)
@@ -91,7 +91,7 @@ export const BinningControls = memo(function BinningControls({
     <div className="flex items-end gap-3 flex-wrap">
       <div className="space-y-1">
         <Label className="text-xs text-muted-foreground">
-          {t('shap.binning.size', 'Bin Size')}
+          {t('shap.binning.size')}
         </Label>
         <Input
           type="number"
@@ -108,7 +108,7 @@ export const BinningControls = memo(function BinningControls({
 
       <div className="space-y-1">
         <Label className="text-xs text-muted-foreground">
-          {t('shap.binning.stride', 'Stride')}
+          {t('shap.binning.stride')}
         </Label>
         <Input
           type="number"
@@ -125,7 +125,7 @@ export const BinningControls = memo(function BinningControls({
 
       <div className="space-y-1">
         <Label className="text-xs text-muted-foreground">
-          {t('shap.binning.aggregation', 'Aggregation')}
+          {t('shap.binning.aggregation')}
         </Label>
         <Select
           value={binAggregation}
@@ -137,7 +137,7 @@ export const BinningControls = memo(function BinningControls({
           <SelectContent>
             {SHAP_BIN_AGGREGATION_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>
-                {option.label}
+                {t(option.labelKey)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -150,7 +150,7 @@ export const BinningControls = memo(function BinningControls({
       {rebinError && (
         <span className="flex items-center gap-1 text-xs text-destructive mb-1" title={rebinError}>
           <AlertCircle className="h-3 w-3" />
-          Error
+          {t('common.error')}
         </span>
       )}
     </div>

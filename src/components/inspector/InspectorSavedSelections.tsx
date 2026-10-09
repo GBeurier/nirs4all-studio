@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback, useRef, type ChangeEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Bookmark,
   BookmarkPlus,
@@ -52,6 +53,7 @@ interface InspectorSavedSelectionsProps {
 }
 
 export function InspectorSavedSelections({ compact = false, className }: InspectorSavedSelectionsProps) {
+  const { t } = useTranslation();
   const {
     savedSelections,
     selectedChains,
@@ -67,23 +69,23 @@ export function InspectorSavedSelections({ compact = false, className }: Inspect
 
   const handleSave = useCallback((name: string, color: string) => {
     saveSelection(name, color);
-    toast.success('Selection saved', { description: `"${name}" with ${selectedCount} chains` });
-  }, [saveSelection, selectedCount]);
+    toast.success(t('inspector.saved.savedTitle'), { description: t('inspector.saved.savedDescription', { name, count: selectedCount }) });
+  }, [saveSelection, selectedCount, t]);
 
   const handleLoad = useCallback((selection: InspectorSavedSelection) => {
     loadSelection(selection.id);
-    toast.success('Selection loaded', { description: `"${selection.name}" — ${selection.chain_ids.length} chains` });
+    toast.success(t('inspector.saved.loadedTitle'), { description: t('inspector.saved.loadedDescription', { name: selection.name, count: selection.chain_ids.length }) });
     setIsOpen(false);
-  }, [loadSelection]);
+  }, [loadSelection, t]);
 
   const handleDelete = useCallback((selection: InspectorSavedSelection) => {
     deleteSavedSelection(selection.id);
-    toast.success('Selection deleted', { description: `"${selection.name}" removed` });
-  }, [deleteSavedSelection]);
+    toast.success(t('inspector.saved.deletedTitle'), { description: t('inspector.saved.deletedDescription', { name: selection.name }) });
+  }, [deleteSavedSelection, t]);
 
   const handleExportJson = useCallback(() => {
     if (savedSelections.length === 0) {
-      toast.warning('No selections to export');
+      toast.warning(t('inspector.saved.noneToExport'));
       return;
     }
     const data = buildInspectorSavedSelectionsJson(savedSelections);
@@ -94,8 +96,8 @@ export function InspectorSavedSelections({ compact = false, className }: Inspect
     a.download = 'inspector-selections.json';
     a.click();
     URL.revokeObjectURL(url);
-    toast.success('Selections exported', { description: `${savedSelections.length} selection(s) saved` });
-  }, [savedSelections]);
+    toast.success(t('inspector.saved.exportedTitle'), { description: t('inspector.saved.exportedDescription', { count: savedSelections.length }) });
+  }, [savedSelections, t]);
 
   const handleImport = useCallback(() => {
     fileInputRef.current?.click();
@@ -113,12 +115,12 @@ export function InspectorSavedSelections({ compact = false, className }: Inspect
         saveSelection(sel.name, sel.color);
         count++;
       }
-      toast.success('Selections imported', { description: `${count} selection(s) added` });
+      toast.success(t('inspector.saved.importedTitle'), { description: t('inspector.saved.importedDescription', { count }) });
     } catch {
-      toast.error('Import failed', { description: 'Invalid JSON file format' });
+      toast.error(t('inspector.saved.importFailedTitle'), { description: t('inspector.saved.importFailedDescription') });
     }
     e.target.value = '';
-  }, [saveSelection]);
+  }, [saveSelection, t]);
 
   const activeSelectionId = findActiveInspectorSavedSelectionId({
     savedSelections,
@@ -140,11 +142,11 @@ export function InspectorSavedSelections({ compact = false, className }: Inspect
                 disabled={selectedCount === 0}
               >
                 <BookmarkPlus className="w-3.5 h-3.5" />
-                Save
+                {t('common.save')}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-xs">
-              <p className="text-xs">Save the {selectedCount} selected chain{selectedCount !== 1 ? 's' : ''}</p>
+              <p className="text-xs">{t('inspector.saved.saveTooltip', { count: selectedCount })}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -154,7 +156,7 @@ export function InspectorSavedSelections({ compact = false, className }: Inspect
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[10px]">
                 <Bookmark className="w-3 h-3" />
-                Saved ({savedSelections.length})
+                {t('inspector.saved.savedButton', { count: savedSelections.length })}
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64 p-2">
@@ -184,7 +186,7 @@ export function InspectorSavedSelections({ compact = false, className }: Inspect
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium flex items-center gap-1.5">
           <Bookmark className="w-3.5 h-3.5" />
-          Saved Selections
+          {t('inspector.sidebar.savedSelections')}
         </span>
         <div className="flex items-center gap-1">
           <TooltipProvider delayDuration={200}>
@@ -196,31 +198,32 @@ export function InspectorSavedSelections({ compact = false, className }: Inspect
                   className="h-6 w-6 p-0"
                   onClick={() => setSaveDialogOpen(true)}
                   disabled={selectedCount === 0}
+                  aria-label={t('inspector.saved.saveCurrent')}
                 >
                   <BookmarkPlus className="w-3.5 h-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-xs">Save current selection</p>
+                <p className="text-xs">{t('inspector.saved.saveCurrent')}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" aria-label={t('inspector.saved.moreActions')}>
                 <MoreHorizontal className="w-3.5 h-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleExportJson} disabled={savedSelections.length === 0}>
                 <Download className="w-3.5 h-3.5 mr-2" />
-                Export all (JSON)
+                {t('inspector.saved.exportAll')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleImport}>
                 <Upload className="w-3.5 h-3.5 mr-2" />
-                Import (JSON)
+                {t('inspector.saved.import')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

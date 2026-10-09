@@ -33,13 +33,10 @@ export function MlLoadingOverlay({ children, capability = "ml" }: {
             <>
               <Loader2 className="h-10 w-10 animate-spin text-teal-500" />
               <h3 className="text-lg font-semibold">
-                {t("ml.loading.title", "Loading ML Engine...")}
+                {t("ml.loading.title")}
               </h3>
               <p className="text-sm text-muted-foreground">
-                {t(
-                  "ml.loading.description",
-                  "Machine learning dependencies are being initialized. This page will be available in a moment."
-                )}
+                {t("ml.loading.description")}
               </p>
             </>
           ) : error ? (
@@ -48,15 +45,15 @@ export function MlLoadingOverlay({ children, capability = "ml" }: {
                 <span className="text-destructive text-xl font-bold">!</span>
               </div>
               <h3 className="text-lg font-semibold text-destructive">
-                {t("ml.error.title", "ML Engine Error")}
+                {t("ml.error.title")}
               </h3>
               <p role="alert" className="text-sm text-muted-foreground">{error}</p>
             </>
           ) : (
             <p role="status" className="text-sm text-muted-foreground">
               {capability === "native-prediction"
-                ? t("ml.nativePrediction.unavailable", "Native prediction is unavailable. Check the configured Methods runtime in Settings.")
-                : t("ml.unavailable", "The scientific engine is unavailable. Check the runtime configuration in Settings.")}
+                ? t("layout.mlOverlay.nativePredictionUnavailable")
+                : t("layout.mlOverlay.unavailable")}
             </p>
           )}
         </div>

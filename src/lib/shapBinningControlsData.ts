@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { BinAggregation, RebinRequest } from '@/types/shap';
 
 export const SHAP_BIN_SIZE_LIMITS = {
@@ -10,11 +11,11 @@ export const SHAP_BIN_STRIDE_LIMITS = {
   max: 50,
 } as const;
 
-export const SHAP_BIN_AGGREGATION_OPTIONS: Array<{ value: BinAggregation; label: string }> = [
-  { value: 'sum', label: 'Sum' },
-  { value: 'sum_abs', label: 'Sum |SHAP|' },
-  { value: 'mean', label: 'Mean' },
-  { value: 'mean_abs', label: 'Mean |SHAP|' },
+export const SHAP_BIN_AGGREGATION_OPTIONS: Array<{ value: BinAggregation; labelKey: string }> = [
+  { value: 'sum', labelKey: 'results.variableImportance.binAggregation.sum' },
+  { value: 'sum_abs', labelKey: 'results.variableImportance.binAggregation.sum_abs' },
+  { value: 'mean', labelKey: 'results.variableImportance.binAggregation.mean' },
+  { value: 'mean_abs', labelKey: 'results.variableImportance.binAggregation.mean_abs' },
 ];
 
 export function normalizeShapBinAggregation(value: string): BinAggregation {
@@ -41,8 +42,8 @@ export function buildShapRebinRequest(
   };
 }
 
-export function getShapRebinErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Rebin failed';
+export function getShapRebinErrorMessage(error: unknown, t: TFunction): string {
+  return error instanceof Error ? error.message : t('results.variableImportance.rebinFailed');
 }
 
 function isShapBinAggregation(value: string): value is BinAggregation {

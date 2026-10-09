@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { InspectorFocusState } from "@/lib/inspector/focus";
 import {
   getInspectorTaskPanelNotice,
@@ -22,14 +23,14 @@ export type InspectorPanelDiagnosticConfig =
   | {
     kind: "task";
     queryKey: InspectorDiagnosticQueryKey;
-    panelName: string;
+    panelNameKey: string;
     requiredTask: InspectorTaskPanelRequirement;
-    errorFallback: string;
+    errorFallbackKey: string;
   }
   | {
     kind: "topology";
     queryKey: InspectorDiagnosticQueryKey;
-    errorFallback: string;
+    errorFallbackKey: string;
   };
 
 export const INSPECTOR_PANEL_RENDERER_CONFIGS: Record<InspectorPanelType, InspectorPanelRendererConfig> = {
@@ -76,7 +77,7 @@ export const INSPECTOR_PANEL_RENDERER_CONFIGS: Record<InspectorPanelType, Inspec
     diagnostic: {
       kind: "topology",
       queryKey: "topology",
-      errorFallback: "Failed to load topology.",
+      errorFallbackKey: "inspector.errors.topology",
     },
   },
   scatter: {
@@ -86,9 +87,9 @@ export const INSPECTOR_PANEL_RENDERER_CONFIGS: Record<InspectorPanelType, Inspec
     diagnostic: {
       kind: "task",
       queryKey: "scatter",
-      panelName: "Predicted vs observed",
+      panelNameKey: "inspector.panelDefs.scatter.name",
       requiredTask: "regression",
-      errorFallback: "Failed to load scatter data.",
+      errorFallbackKey: "inspector.errors.scatter",
     },
   },
   residuals: {
@@ -98,9 +99,9 @@ export const INSPECTOR_PANEL_RENDERER_CONFIGS: Record<InspectorPanelType, Inspec
     diagnostic: {
       kind: "task",
       queryKey: "scatter",
-      panelName: "Residuals",
+      panelNameKey: "inspector.panelDefs.residuals.name",
       requiredTask: "regression",
-      errorFallback: "Failed to load residual data.",
+      errorFallbackKey: "inspector.errors.residuals",
     },
   },
   fold_stability: {
@@ -110,9 +111,9 @@ export const INSPECTOR_PANEL_RENDERER_CONFIGS: Record<InspectorPanelType, Inspec
     diagnostic: {
       kind: "task",
       queryKey: "foldStability",
-      panelName: "Fold stability",
+      panelNameKey: "inspector.panelDefs.fold_stability.name",
       requiredTask: "regression",
-      errorFallback: "Failed to load fold stability.",
+      errorFallbackKey: "inspector.errors.foldStability",
     },
   },
   confusion: {
@@ -122,9 +123,9 @@ export const INSPECTOR_PANEL_RENDERER_CONFIGS: Record<InspectorPanelType, Inspec
     diagnostic: {
       kind: "task",
       queryKey: "confusion",
-      panelName: "Confusion matrix",
+      panelNameKey: "inspector.panelDefs.confusion.name",
       requiredTask: "classification",
-      errorFallback: "Failed to load confusion matrix.",
+      errorFallbackKey: "inspector.errors.confusion",
     },
   },
   bias_variance: {
@@ -134,9 +135,9 @@ export const INSPECTOR_PANEL_RENDERER_CONFIGS: Record<InspectorPanelType, Inspec
     diagnostic: {
       kind: "task",
       queryKey: "biasVariance",
-      panelName: "Bias-variance",
+      panelNameKey: "inspector.panelDefs.bias_variance.name",
       requiredTask: "regression",
-      errorFallback: "Failed to load bias-variance data.",
+      errorFallbackKey: "inspector.errors.biasVariance",
     },
   },
 };
@@ -167,12 +168,14 @@ export interface InspectorPanelDiagnosticRenderStateInput {
   config: InspectorPanelRendererConfig;
   focus: Pick<InspectorFocusState, "chainIds" | "task" | "topologyPipelineId">;
   error: unknown;
+  t: TFunction;
 }
 
 export function getInspectorPanelDiagnosticRenderState({
   config,
   focus,
   error,
+  t,
 }: InspectorPanelDiagnosticRenderStateInput): InspectorPanelRenderState {
   const diagnostic = config.diagnostic;
   if (!diagnostic) {
@@ -180,16 +183,17 @@ export function getInspectorPanelDiagnosticRenderState({
   }
 
   const notice = diagnostic.kind === "topology"
-    ? getInspectorTopologyPanelNotice(focus.topologyPipelineId)
+    ? getInspectorTopologyPanelNotice(focus.topologyPipelineId, t)
     : getInspectorTaskPanelNotice({
-      panelName: diagnostic.panelName,
+      panelName: t(diagnostic.panelNameKey),
       requiredTask: diagnostic.requiredTask,
       focus,
+      t,
     });
 
   return getInspectorPanelRenderState({
     notice,
     error,
-    errorFallback: diagnostic.errorFallback,
+    errorFallback: t(diagnostic.errorFallbackKey),
   });
 }

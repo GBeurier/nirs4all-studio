@@ -8,6 +8,7 @@
  * - Execution time
  */
 
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import {
   BarChart3,
@@ -25,6 +26,7 @@ interface StatsBarProps {
 }
 
 export function StatsBar({ data, className }: StatsBarProps) {
+  const { t } = useTranslation();
   const stats = data.statistics;
 
   return (
@@ -37,15 +39,15 @@ export function StatsBar({ data, className }: StatsBarProps) {
       {/* Sample count */}
       <StatBadge
         icon={<Hash className="h-3 w-3" />}
-        label="Samples"
+        label={t("spectraSynthesis.stats.samples")}
         value={data.spectra.length.toString()}
-        tooltip={`Preview: ${data.spectra.length} / Total: ${data.actual_samples}`}
+        tooltip={`${t("spectraSynthesis.metadata.preview", { count: data.spectra.length })} / ${t("spectraSynthesis.metadata.total", { count: data.actual_samples })}`}
       />
 
       {/* Wavelengths */}
       <StatBadge
         icon={<BarChart3 className="h-3 w-3" />}
-        label="Wavelengths"
+        label={t("spectraSynthesis.stats.wavelengths")}
         value={data.wavelengths.length.toString()}
       />
 
@@ -53,7 +55,7 @@ export function StatsBar({ data, className }: StatsBarProps) {
       {stats && (
         <StatBadge
           icon={<TrendingUp className="h-3 w-3" />}
-          label="Mean"
+          label={t("spectraSynthesis.stats.mean")}
           value={stats.spectra_mean.toFixed(3)}
         />
       )}
@@ -62,7 +64,7 @@ export function StatsBar({ data, className }: StatsBarProps) {
       {stats && (
         <StatBadge
           icon={<Sigma className="h-3 w-3" />}
-          label="Std"
+          label={t("spectraSynthesis.stats.std")}
           value={stats.spectra_std.toFixed(3)}
         />
       )}
@@ -70,7 +72,7 @@ export function StatsBar({ data, className }: StatsBarProps) {
       {/* Target range */}
       {stats && (
         <StatBadge
-          label="Target"
+          label={t("spectraSynthesis.stats.target")}
           value={`${stats.targets_min.toFixed(1)} - ${stats.targets_max.toFixed(1)}`}
         />
       )}
@@ -78,7 +80,7 @@ export function StatsBar({ data, className }: StatsBarProps) {
       {/* Execution time */}
       <StatBadge
         icon={<Clock className="h-3 w-3" />}
-        label="Time"
+        label={t("spectraSynthesis.stats.time")}
         value={`${data.execution_time_ms.toFixed(0)}ms`}
         variant="secondary"
       />

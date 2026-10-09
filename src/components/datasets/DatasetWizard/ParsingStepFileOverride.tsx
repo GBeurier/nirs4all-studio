@@ -7,6 +7,7 @@
  * through callbacks; the parent owns detection and wizard dispatch.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, Wand2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -42,6 +43,7 @@ export function FileOverrideRow({
   shape,
   isDetecting,
 }: FileOverrideRowProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
   // Auto-expand when override is enabled
@@ -58,7 +60,13 @@ export function FileOverrideRow({
       <div className="border-b last:border-0">
         <div className="flex items-center gap-3 p-3 hover:bg-muted/30">
           <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-6 w-6">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              aria-label={t("datasets.wizard.parsing.override.toggleFile")}
+              aria-expanded={expanded}
+            >
               {expanded ? (
                 <ChevronDown className="h-3 w-3" />
               ) : (
@@ -79,13 +87,14 @@ export function FileOverrideRow({
 
           {hasOverride && (
             <Badge variant="secondary" className="text-xs">
-              Custom
+              {t("common.custom")}
             </Badge>
           )}
 
           <Switch
             checked={hasOverride}
             onCheckedChange={handleToggle}
+            aria-label={t("datasets.wizard.parsing.override.switchLabel")}
             className="ml-2"
           />
         </div>
@@ -107,7 +116,7 @@ export function FileOverrideRow({
                     ) : (
                       <Wand2 className="h-3 w-3 mr-1" />
                     )}
-                    Auto-detect
+                    {t("datasets.wizard.parsing.override.autoDetect")}
                   </Button>
                 </div>
               )}
@@ -116,7 +125,7 @@ export function FileOverrideRow({
           )}
           {!hasOverride && expanded && (
             <div className="px-3 pb-3 pt-1 ml-9 text-sm text-muted-foreground">
-              Using global settings. Enable override to customize.
+              {t("datasets.wizard.parsing.override.usingGlobal")}
             </div>
           )}
         </CollapsibleContent>

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Box, Eye, GitBranch, Layers, ListTree, Terminal, Timer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ function PipelineCard({
   pipeline: WorkspaceRunPipelineDetail;
   onShowLogs: (pipelineId: string) => void;
 }) {
+  const { t } = useTranslation();
   const preview = buildStoredPipelinePreview(pipeline.expanded_config);
 
   return (
@@ -50,17 +52,17 @@ function PipelineCard({
             {pipeline.log_count != null && (
               <span className="flex items-center gap-1">
                 <Terminal className="h-3 w-3" />
-                {pipeline.log_count} logs
+                {t("runs.detail.pipelines.logCount", { count: pipeline.log_count })}
               </span>
             )}
             {(pipeline.warning_count ?? 0) > 0 && (
               <Badge variant="outline" className="border-amber-500/30 text-[10px] text-amber-600">
-                {pipeline.warning_count} warnings
+                {t("runs.detail.pipelines.warningCount", { count: pipeline.warning_count })}
               </Badge>
             )}
             {(pipeline.error_count ?? 0) > 0 && (
               <Badge variant="outline" className="border-destructive/30 text-[10px] text-destructive">
-                {pipeline.error_count} errors
+                {t("runs.detail.pipelines.errorCount", { count: pipeline.error_count })}
               </Badge>
             )}
           </div>
@@ -69,12 +71,12 @@ function PipelineCard({
         <div className="flex items-center gap-2 self-start">
           <Button variant="outline" size="sm" onClick={() => onShowLogs(pipeline.pipeline_id)}>
             <Terminal className="mr-2 h-4 w-4" />
-            Logs
+            {t("runs.detail.tabLogs")}
           </Button>
           <Button variant="outline" size="sm" asChild>
             <Link to={`/pipelines/new?runPipelineId=${encodeURIComponent(pipeline.pipeline_id)}`}>
               <Eye className="mr-2 h-4 w-4" />
-              Load Pipeline
+              {t("runs.detail.pipelines.load")}
             </Link>
           </Button>
         </div>
@@ -85,8 +87,8 @@ function PipelineCard({
       <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_16rem]">
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Stored Pipeline</span>
-            <span className="text-xs text-muted-foreground">{preview.totalSteps} step{preview.totalSteps === 1 ? "" : "s"}</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("runs.detail.pipelines.stored")}</span>
+            <span className="text-xs text-muted-foreground">{t("runs.detail.pipelines.stepCount", { count: preview.totalSteps })}</span>
           </div>
           <div className="rounded-lg border bg-muted/15 p-3">
             {preview.nodes.length > 0 ? (
@@ -107,41 +109,41 @@ function PipelineCard({
                     <span className="min-w-0 truncate">{node.label}</span>
                     {node.hasGenerator && (
                       <Badge variant="outline" className="text-[9px]">
-                        generator
+                        {t("runs.detail.pipelines.generator")}
                       </Badge>
                     )}
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">No stored steps available.</div>
+              <div className="text-sm text-muted-foreground">{t("runs.detail.pipelines.noSteps")}</div>
             )}
           </div>
         </div>
 
         <div className="space-y-3">
           <div className="rounded-lg border bg-muted/10 p-3">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Scores</div>
+            <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t("runs.detail.pipelines.scores")}</div>
             <div className="mt-2 grid gap-2 text-sm">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Best CV</span>
+                <span className="text-muted-foreground">{t("runs.detail.pipelines.bestCv")}</span>
                 <span className="font-mono">{formatMetricValue(pipeline.best_val, pipeline.metric ?? undefined)}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Best Refit</span>
+                <span className="text-muted-foreground">{t("runs.detail.pipelines.bestRefit")}</span>
                 <span className="font-mono">{formatMetricValue(pipeline.best_test, pipeline.metric ?? undefined)}</span>
               </div>
             </div>
           </div>
           <div className="rounded-lg border bg-muted/10 p-3">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Timestamps</div>
+            <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t("runs.detail.pipelines.timestamps")}</div>
             <div className="mt-2 grid gap-2 text-sm">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Started</span>
+                <span className="text-muted-foreground">{t("runs.detail.overview.started")}</span>
                 <span className="text-right">{formatDatetime(pipeline.created_at)}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Completed</span>
+                <span className="text-muted-foreground">{t("runs.detail.overview.completed")}</span>
                 <span className="text-right">{formatDatetime(pipeline.completed_at)}</span>
               </div>
             </div>
@@ -167,6 +169,8 @@ export function RunDetailPipelines({
   detailLoading: boolean;
   onShowLogs: (pipelineId: string) => void;
 }) {
+  const { t } = useTranslation();
+
   if (detailLoading) {
     return (
       <div className="space-y-3">
@@ -181,7 +185,7 @@ export function RunDetailPipelines({
     return (
       <div className="py-12 text-center text-muted-foreground">
         <ListTree className="mx-auto mb-2 h-8 w-8 opacity-50" />
-        <p className="text-sm">Stored pipeline detail is not available for this run.</p>
+        <p className="text-sm">{t("runs.detail.pipelines.unavailable")}</p>
       </div>
     );
   }

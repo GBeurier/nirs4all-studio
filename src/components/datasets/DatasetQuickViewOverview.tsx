@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   Hash,
@@ -22,6 +23,7 @@ import {
   getWavelengthRangeTitle,
   getWavelengthResolutionLabel,
 } from "./DatasetQuickViewData";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 export function DatasetQuickViewOverviewTab({
   dataset,
@@ -79,12 +81,13 @@ function DatasetQuickViewStatus({
   error: string | null;
   onRetry: () => void;
 }) {
+  const { t } = useTranslation();
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
         <p className="text-muted-foreground text-sm">
-          {waitingForWorkspace ? "Loading workspace..." : "Loading preview..."}
+          {waitingForWorkspace ? t("datasets.quickView.loadingWorkspace") : t("datasets.quickView.loadingPreview")}
         </p>
       </div>
     );
@@ -94,11 +97,11 @@ function DatasetQuickViewStatus({
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <AlertCircle className="h-8 w-8 text-destructive mb-4" />
-        <p className="text-destructive font-medium mb-2 text-sm">Failed to load</p>
+        <p className="text-destructive font-medium mb-2 text-sm">{t("datasets.quickView.loadFailed")}</p>
         <p className="text-xs text-muted-foreground mb-4 text-center">{error}</p>
         <Button onClick={onRetry} variant="outline" size="sm">
           <RefreshCw className="h-4 w-4 mr-2" />
-          Retry
+          {t("common.retry")}
         </Button>
       </div>
     );
@@ -108,18 +111,19 @@ function DatasetQuickViewStatus({
 }
 
 function DatasetTargetsCard({ dataset }: { dataset: Dataset }) {
+  const { t } = useTranslation();
   return (
     <Card className="border-0 shadow-none bg-muted/20">
       <CardHeader className="pb-2 pt-3 px-3">
         <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
-          <Target className="h-3.5 w-3.5" /> Targets & Types
+          <Target className="h-3.5 w-3.5" /> {t("datasets.quickView.targetsAndTypes")}
         </CardTitle>
       </CardHeader>
       <CardContent className="px-3 pb-3">
         <p className="font-semibold text-sm mb-1">
-          {getDatasetTaskLabel(dataset.task_type, {
+          {getDatasetTaskLabel(dataset.task_type, t, {
             numClasses: dataset.num_classes,
-            fallback: "Auto",
+            fallback: t("datasets.task.auto"),
           })}
         </p>
         <div className="flex flex-wrap gap-1 mt-1.5">
@@ -135,7 +139,7 @@ function DatasetTargetsCard({ dataset }: { dataset: Dataset }) {
               </Badge>
             ))
           ) : (
-            <span className="text-xs text-muted-foreground">No targets</span>
+            <span className="text-xs text-muted-foreground">{t("datasets.quickView.noTargets")}</span>
           )}
         </div>
       </CardContent>
@@ -148,11 +152,12 @@ function DatasetMetadataCard({
 }: {
   metadataColumns: string[];
 }) {
+  const { t } = useTranslation();
   return (
     <Card className="border-0 shadow-none bg-muted/20">
       <CardHeader className="pb-2 pt-3 px-3">
         <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
-          <Hash className="h-3.5 w-3.5" /> Metadata Fields
+          <Hash className="h-3.5 w-3.5" /> {t("datasets.quickView.metadataFields")}
           {metadataColumns.length > 0 && (
             <span className="ml-auto text-[10px] font-mono tabular-nums text-muted-foreground/80">
               {metadataColumns.length}
@@ -162,7 +167,7 @@ function DatasetMetadataCard({
       </CardHeader>
       <CardContent className="px-3 pb-3">
         {metadataColumns.length === 0 ? (
-          <span className="text-xs text-muted-foreground italic">No metadata columns</span>
+          <span className="text-xs text-muted-foreground italic">{t("datasets.quickView.noMetadataColumns")}</span>
         ) : (
           <div className="flex flex-wrap gap-1.5 items-center">
             {metadataColumns.map((column, index) => (
@@ -190,25 +195,26 @@ function DatasetSpectralPropertiesCard({
   wavelengthUnitSymbol: string;
   wavelengthUnitSuffix: string;
 }) {
+  const { t } = useTranslation();
   return (
     <Card className="border-0 shadow-none bg-muted/20">
       <CardHeader className="pb-2 pt-3 px-3">
         <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
-          <Layers className="h-3.5 w-3.5" /> Spectral Properties
+          <Layers className="h-3.5 w-3.5" /> {t("datasets.quickView.spectralProperties")}
         </CardTitle>
       </CardHeader>
       <CardContent className="px-3 pb-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <p className="text-[10px] text-muted-foreground mb-0.5">
-              {getWavelengthRangeTitle(wavelengthUnitSymbol)}
+              {getWavelengthRangeTitle(wavelengthUnitSymbol, t)}
             </p>
             <p className="text-sm font-semibold">
               {getWavelengthRangeLabel(spectraData, wavelengthUnitSuffix)}
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-muted-foreground mb-0.5">Resolution</p>
+            <p className="text-[10px] text-muted-foreground mb-0.5">{t("datasets.quickView.resolution")}</p>
             <p className="text-sm font-semibold">
               {getWavelengthResolutionLabel(spectraData, wavelengthUnitSuffix)}
             </p>
@@ -220,20 +226,21 @@ function DatasetSpectralPropertiesCard({
 }
 
 function DatasetDetailsCard({ dataset }: { dataset: Dataset }) {
+  const { t } = useTranslation();
   return (
     <Card className="border-0 shadow-sm border-border">
       <CardHeader className="pb-2 pt-3 px-3 border-b border-border/50">
-        <CardTitle className="text-xs text-muted-foreground">Dataset Details</CardTitle>
+        <CardTitle className="text-xs text-muted-foreground">{t("datasets.quickView.datasetDetails")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 px-3 py-3">
         <div>
-          <p className="text-[10px] text-muted-foreground mb-0.5">Original Data Path</p>
+          <p className="text-[10px] text-muted-foreground mb-0.5">{t("datasets.quickView.originalPath")}</p>
           <p className="font-mono text-[11px] truncate break-all" title={dataset.path}>
             {dataset.path}
           </p>
         </div>
         <div>
-          <p className="text-[10px] text-muted-foreground mb-0.5">Storage Location</p>
+          <p className="text-[10px] text-muted-foreground mb-0.5">{t("datasets.quickView.storageLocation")}</p>
           <p className="font-mono text-[11px] truncate break-all" title={dataset.storage_path}>
             {dataset.storage_path}
           </p>
@@ -241,13 +248,13 @@ function DatasetDetailsCard({ dataset }: { dataset: Dataset }) {
         <div className="grid grid-cols-2 gap-3">
           {dataset.version && (
             <div>
-              <p className="text-[10px] text-muted-foreground mb-0.5">Version</p>
+              <p className="text-[10px] text-muted-foreground mb-0.5">{t("datasets.quickView.version")}</p>
               <p className="text-xs font-medium">{dataset.version}</p>
             </div>
           )}
           {dataset.hash && (
             <div>
-              <p className="text-[10px] text-muted-foreground mb-0.5">File Hash</p>
+              <p className="text-[10px] text-muted-foreground mb-0.5">{t("datasets.quickView.fileHash")}</p>
               <p className="font-mono text-[11px] truncate" title={dataset.hash}>
                 {dataset.hash.substring(0, 16)}...
               </p>
@@ -255,16 +262,16 @@ function DatasetDetailsCard({ dataset }: { dataset: Dataset }) {
           )}
           {dataset.last_verified && (
             <div>
-              <p className="text-[10px] text-muted-foreground mb-0.5">Last Verified</p>
+              <p className="text-[10px] text-muted-foreground mb-0.5">{t("datasets.quickView.lastVerified")}</p>
               <p className="text-xs font-mono">
-                {new Date(dataset.last_verified).toLocaleDateString()}
+                {new Date(dataset.last_verified).toLocaleDateString(getActiveLocale())}
               </p>
             </div>
           )}
         </div>
         {dataset.description && (
           <div>
-            <p className="text-[10px] text-muted-foreground mb-0.5">Description</p>
+            <p className="text-[10px] text-muted-foreground mb-0.5">{t("datasets.quickView.description")}</p>
             <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-wrap">
               {dataset.description}
             </p>

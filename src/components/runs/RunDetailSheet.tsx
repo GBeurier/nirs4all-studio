@@ -88,8 +88,8 @@ export function RunDetailSheet({
         queryClient.invalidateQueries({ queryKey: ["runs"] }),
         queryClient.invalidateQueries({ queryKey: ["enriched-runs", workspaceId] }),
       ]);
-      toast.success("Run relaunched", {
-        description: `${response.cloned_pipelines.length} cloned pipeline${response.cloned_pipelines.length === 1 ? "" : "s"} started in a new run.`,
+      toast.success(t("runs.detail.relaunched"), {
+        description: t("runs.detail.relaunchedDescription", { count: response.cloned_pipelines.length }),
       });
       onOpenChange(false);
       navigate(`/runs/${encodeURIComponent(response.run.id)}`);
@@ -142,7 +142,7 @@ export function RunDetailSheet({
         {(detailError || (activeTab === "logs" && logsError)) && (
           <div role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
             <p>{getApiErrorMessage(detailError ?? logsError)}</p>
-            <button type="button" className="mt-2 underline" onClick={() => void (detailError ? refetchDetail() : refetchLogs())}>Retry</button>
+            <button type="button" className="mt-2 underline" onClick={() => void (detailError ? refetchDetail() : refetchLogs())}>{t("runs.actions.retry")}</button>
           </div>
         )}
 

@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,7 @@ import type {
 } from '@/types/inspector';
 
 export function ExpressionBuilder() {
+  const { t } = useTranslation();
   const { expressionConfig, setExpressionConfig } = useInspectorData();
 
   const config = useMemo(() => expressionConfig ?? { groups: [] }, [expressionConfig]);
@@ -80,7 +82,8 @@ export function ExpressionBuilder() {
           <div className="flex items-center gap-1">
             <Input
               className="h-6 text-xs flex-1"
-              placeholder={`Group ${gi + 1}`}
+              placeholder={t('inspector.groups.groupPlaceholder', { index: gi + 1 })}
+              aria-label={t('inspector.groups.groupName')}
               value={group.label}
               onChange={(e) => updateGroup(group.id, { label: e.target.value })}
             />
@@ -88,12 +91,12 @@ export function ExpressionBuilder() {
               value={group.combinator}
               onValueChange={(v) => updateGroup(group.id, { combinator: v as ExpressionCombinator })}
             >
-              <SelectTrigger className="h-6 text-[10px] w-16">
+              <SelectTrigger className="h-6 text-[10px] w-16" aria-label={t('inspector.groups.combinator')}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="AND">AND</SelectItem>
-                <SelectItem value="OR">OR</SelectItem>
+                <SelectItem value="AND">{t('inspector.groups.and')}</SelectItem>
+                <SelectItem value="OR">{t('inspector.groups.or')}</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -101,6 +104,7 @@ export function ExpressionBuilder() {
               size="sm"
               className="h-6 w-6 p-0"
               onClick={() => removeGroup(group.id)}
+              aria-label={t('inspector.groups.removeGroup')}
             >
               <X className="w-3 h-3" />
             </Button>
@@ -123,12 +127,12 @@ export function ExpressionBuilder() {
                     updateRule(group.id, rule.id, { field: newField, operator: newOp });
                   }}
                 >
-                  <SelectTrigger className="h-6 text-[10px] flex-1 min-w-0">
+                  <SelectTrigger className="h-6 text-[10px] flex-1 min-w-0" aria-label={t('inspector.groups.field')}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {INSPECTOR_EXPRESSION_FIELDS.map(f => (
-                      <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                      <SelectItem key={f.value} value={f.value}>{t(f.labelKey)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -136,18 +140,19 @@ export function ExpressionBuilder() {
                   value={rule.operator}
                   onValueChange={(v) => updateRule(group.id, rule.id, { operator: v as ExpressionOperator })}
                 >
-                  <SelectTrigger className="h-6 text-[10px] w-[68px]">
+                  <SelectTrigger className="h-6 text-[10px] w-[68px]" aria-label={t('inspector.groups.operator')}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {operators.map(op => (
-                      <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
+                      <SelectItem key={op.value} value={op.value}>{t(op.labelKey)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <Input
                   className="h-6 text-[10px] w-20"
-                  placeholder="value"
+                  placeholder={t('inspector.groups.valuePlaceholder')}
+                  aria-label={t('inspector.groups.valueLabel')}
                   value={rule.value}
                   onChange={(e) => updateRule(group.id, rule.id, { value: e.target.value })}
                 />
@@ -157,6 +162,7 @@ export function ExpressionBuilder() {
                   className="h-6 w-6 p-0 shrink-0"
                   onClick={() => removeRule(group.id, rule.id)}
                   disabled={group.rules.length <= 1}
+                  aria-label={t('inspector.groups.removeRule')}
                 >
                   <Trash2 className="w-3 h-3" />
                 </Button>
@@ -171,7 +177,7 @@ export function ExpressionBuilder() {
             onClick={() => addRule(group.id)}
           >
             <Plus className="w-3 h-3 mr-0.5" />
-            Rule
+            {t('inspector.groups.addRule')}
           </Button>
         </div>
       ))}
@@ -183,7 +189,7 @@ export function ExpressionBuilder() {
         onClick={addGroup}
       >
         <Plus className="w-3 h-3 mr-1" />
-        Add Group
+        {t('inspector.groups.addGroup')}
       </Button>
     </div>
   );

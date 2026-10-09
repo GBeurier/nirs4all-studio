@@ -6,6 +6,7 @@
  */
 
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -25,26 +26,28 @@ interface PreprocessingImpactProps {
 }
 
 function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: PreprocessingImpactBarData }> }) {
+  const { t } = useTranslation();
   if (!active || !payload?.[0]) return null;
   const d = payload[0].payload;
   return (
     <div className="bg-popover text-popover-foreground text-xs p-2 rounded shadow-md border border-border">
       <div className="font-medium mb-1">{d.name}</div>
-      <div>Impact: {formatSignedPreprocessingImpact(d.impact)}</div>
-      <div>Mean with: {d.meanWith.toFixed(4)} ({d.countWith} chains)</div>
-      <div>Mean without: {d.meanWithout.toFixed(4)} ({d.countWithout} chains)</div>
+      <div>{t('inspector.charts.tooltip.impact', { value: formatSignedPreprocessingImpact(d.impact) })}</div>
+      <div>{t('inspector.charts.tooltip.meanWith', { value: d.meanWith.toFixed(4), count: d.countWith })}</div>
+      <div>{t('inspector.charts.tooltip.meanWithout', { value: d.meanWithout.toFixed(4), count: d.countWithout })}</div>
     </div>
   );
 }
 
 export function PreprocessingImpact({ data, isLoading }: PreprocessingImpactProps) {
+  const { t } = useTranslation();
   const bars = useMemo(() => buildPreprocessingImpactBars(data), [data]);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        <span className="text-sm">Loading preprocessing impact...</span>
+        <span className="text-sm">{t('inspector.charts.loading.preprocessingImpact')}</span>
       </div>
     );
   }
@@ -52,7 +55,7 @@ export function PreprocessingImpact({ data, isLoading }: PreprocessingImpactProp
   if (!data || bars.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No preprocessing impact data available.
+        {t('inspector.charts.empty.preprocessingImpact')}
       </div>
     );
   }
@@ -72,7 +75,7 @@ export function PreprocessingImpact({ data, isLoading }: PreprocessingImpactProp
           />
           <YAxis
             tick={{ fontSize: 10, fill: 'currentColor' }}
-            label={{ value: 'Impact', angle: -90, position: 'insideLeft', style: { fontSize: 10 } }}
+            label={{ value: t('inspector.charts.axis.impact'), angle: -90, position: 'insideLeft', style: { fontSize: 10 } }}
           />
           <RechartsTooltip content={<CustomTooltip />} />
           <ReferenceLine y={0} stroke="#64748b" strokeDasharray="3 3" />

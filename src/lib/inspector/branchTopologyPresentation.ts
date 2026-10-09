@@ -1,7 +1,7 @@
+import type { TFunction } from 'i18next';
 import type { BranchTopologyLayoutNode } from '@/lib/inspector/branchTopologyData';
 import type { TopologyNode } from '@/types/inspector';
 
-export const BRANCH_TOPOLOGY_EMPTY_MESSAGE = 'No branch topology data available.';
 export const BRANCH_TOPOLOGY_FALLBACK_COLOR = '#64748b';
 
 export const BRANCH_TOPOLOGY_NODE_COLORS: Record<TopologyNode['type'], string> = {
@@ -31,8 +31,8 @@ export interface BranchTopologyNodeView {
   indicatorCy: number;
 }
 
-export function getBranchTopologyEmptyMessage(): string {
-  return BRANCH_TOPOLOGY_EMPTY_MESSAGE;
+export function getBranchTopologyEmptyMessage(t: TFunction): string {
+  return t('inspector.charts.empty.branchTopology');
 }
 
 export function getBranchTopologyNodeColor(type: TopologyNode['type']): string {
@@ -47,8 +47,8 @@ export function formatBranchTopologyScore(score: number | null | undefined): str
   return score == null ? null : score.toFixed(4);
 }
 
-export function formatBranchTopologyPipelineLabel(pipelineName: string): string {
-  return `Pipeline: ${pipelineName}`;
+export function formatBranchTopologyPipelineLabel(pipelineName: string, t: TFunction): string {
+  return t('inspector.charts.tooltip.pipeline', { value: pipelineName });
 }
 
 export function buildBranchTopologyNodeView({

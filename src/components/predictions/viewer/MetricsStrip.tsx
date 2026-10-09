@@ -6,6 +6,7 @@
  */
 
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   buildMetricsStripStats,
   type MetricsStripStat,
@@ -18,9 +19,10 @@ interface MetricsStripProps {
 }
 
 export function MetricsStrip({ taskKind, datasets }: MetricsStripProps) {
+  const { t } = useTranslation();
   const stats = useMemo<MetricsStripStat[]>(
-    () => buildMetricsStripStats(taskKind, datasets),
-    [taskKind, datasets],
+    () => buildMetricsStripStats(taskKind, datasets, t),
+    [taskKind, datasets, t],
   );
 
   return (

@@ -4,13 +4,14 @@
  * Provides common date/time formatting functions used across the application.
  */
 
+import i18next from "i18next";
 import { getActiveLocale } from "@/lib/activeLocale";
 
 /**
  * Format a date string to a human-readable relative time string
  *
  * @param dateString - ISO date string
- * @returns Relative time string like "Just now", "2 hours ago", "Yesterday", etc.
+ * @returns Localised relative time string like "Just now", "2 hours ago", "Yesterday", etc.
  *
  * @example
  * formatRelativeTime("2026-01-07T10:30:00Z") // "2 hours ago"
@@ -25,17 +26,17 @@ export function formatRelativeTime(dateString: string): string {
   const diffDays = Math.floor(diffHours / 24);
 
   if (diffSeconds < 60) {
-    return "Just now";
+    return i18next.t("time.justNow");
   } else if (diffMinutes < 60) {
-    return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
+    return i18next.t("time.minutesAgo", { count: diffMinutes });
   } else if (diffHours < 24) {
-    return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+    return i18next.t("time.hoursAgo", { count: diffHours });
   } else if (diffDays === 1) {
-    return "Yesterday";
+    return i18next.t("time.yesterday");
   } else if (diffDays < 7) {
-    return `${diffDays} days ago`;
+    return i18next.t("time.daysAgo", { count: diffDays });
   } else {
-    return date.toLocaleDateString();
+    return date.toLocaleDateString(getActiveLocale());
   }
 }
 
@@ -43,18 +44,19 @@ export function formatRelativeTime(dateString: string): string {
  * Format bytes to a human-readable string
  *
  * @param bytes - Number of bytes
- * @returns Formatted string like "1.5 MB", "256 KB", etc.
+ * @returns Localised formatted string like "1.5 MB", "256 KB" (en) or "1,5 Mo", "256 Ko" (fr)
  *
  * @example
- * formatBytes(1536) // "1.5 KB"
- * formatBytes(1048576) // "1 MB"
+ * formatBytes(1536) // "1.5 KB" (en), "1,5 Ko" (fr)
+ * formatBytes(1048576) // "1 MB" (en), "1 Mo" (fr)
  */
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
+  if (bytes === 0) return `0 ${i18next.t("common.format.byteUnit.b")}`;
   const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  const units = ["b", "kb", "mb", "gb", "tb"] as const;
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), units.length - 1);
+  const value = new Intl.NumberFormat(getActiveLocale(), { maximumFractionDigits: 1 }).format(bytes / Math.pow(k, i));
+  return `${value} ${i18next.t(`common.format.byteUnit.${units[i]}`)}`;
 }
 
 /**

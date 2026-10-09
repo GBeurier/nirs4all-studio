@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   CampaignDatasetRef,
   CampaignPipelineRef,
@@ -6,8 +8,6 @@ import type {
 } from "./campaignSpecTypes";
 import {
   buildDatasetPipelineCompatibilityChecks,
-  formatCompatibilityCount,
-  formatOptionalCompatibilityCount,
   getDatasetPipelineCompatibilityPreviewStatus,
   getDatasetPipelineCompatibilityPreviewSummary,
   getDatasetPipelineCompatibilityStatusLabel,
@@ -15,6 +15,7 @@ import {
 import {
   formatCampaignDatasetSourceModeLabel,
   formatCampaignDatasetTaskTypeLabel,
+  formatCampaignPreviewCount,
   formatOptionalCampaignPreviewCount,
   getCampaignDatasetDefaultDataView,
   getCampaignDatasetTargetCount,
@@ -67,19 +68,19 @@ export function buildDatasetPipelineCompatibilityPreview({
     status,
     statusLabel: getDatasetPipelineCompatibilityStatusLabel(status),
     summary: getDatasetPipelineCompatibilityPreviewSummary(status),
-    dataViewLabel: defaultDataView?.label || "Unknown data view",
+    dataViewLabel: defaultDataView?.label || i18n.t("newExperiment.campaign.unknownDataView"),
     dataViewTaskLabel: formatCampaignDatasetTaskTypeLabel(defaultDataView?.taskType ?? schemaRef?.taskType),
-    targetLabel: schemaRef?.defaultTargetColumn || "Unknown target",
+    targetLabel: schemaRef?.defaultTargetColumn || i18n.t("newExperiment.campaign.unknownTarget"),
     targetCountLabel: formatOptionalCampaignPreviewCount(getCampaignDatasetTargetCount(dataset?.schema, schemaRef), "target"),
-    sourceCountLabel: formatOptionalCompatibilityCount(schemaRef?.sourceCount, "source"),
+    sourceCountLabel: formatOptionalCampaignPreviewCount(schemaRef?.sourceCount, "source"),
     sourceModeLabel: formatCampaignDatasetSourceModeLabel(schemaRef),
     datasetAggregationLabel: aggregation
       ? formatDatasetAggregationLabel(aggregation)
-      : "No aggregation configured",
+      : i18n.t("newExperiment.campaign.noAggregation"),
     datasetAggregationSourceLabel: aggregation ? formatDatasetAggregationSourceLabel(aggregation) : null,
     pipelineNodeCountLabel: graph
-      ? formatCompatibilityCount(graph.stats.activeNodeCount, "active node")
-      : "Unknown active nodes",
+      ? formatCampaignPreviewCount(graph.stats.activeNodeCount, "activeNode")
+      : i18n.t("newExperiment.unknownCount.activeNode"),
     transformationSizeLabel: transformationEstimate.label,
     pipelineComplexityLabels: pipelineComplexity.labels,
     checks,

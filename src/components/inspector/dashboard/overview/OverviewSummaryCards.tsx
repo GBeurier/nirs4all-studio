@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,8 @@ export function OverviewSummaryCards({
   className,
   columns = 4,
 }: OverviewSummaryCardsProps) {
+  const { t } = useTranslation();
+
   return (
     <div className={cn(
       "grid gap-3",
@@ -70,7 +73,7 @@ export function OverviewSummaryCards({
                 ) : null}
               </div>
               <Badge variant="outline" className={cn("mt-0.5 shrink-0 text-[10px] uppercase tracking-wide", badgeStyles[tone])}>
-                {tone}
+                {t(`inspector.dashboard.tones.${tone}`)}
               </Badge>
             </CardContent>
           </Card>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Loader2, Play } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,13 +20,14 @@ export function ArchiveV2DataInput({
   isLoading,
   onRunPrediction,
 }: ArchiveV2DataInputProps) {
+  const { t } = useTranslation();
   const [pasteText, setPasteText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = () => {
     const spectra = parsePastedSpectra(pasteText);
     if (!spectra) {
-      setError("Paste a table of numeric values in CSV, TSV, or JSON format. All values must be finite.");
+      setError(t("predict.archiveInput.invalid"));
       return;
     }
     setError(null);
@@ -35,24 +37,24 @@ export function ArchiveV2DataInput({
   return (
     <Card className="border-border/60 shadow-sm">
       <CardHeader className="space-y-3">
-        <CardTitle>Enter Spectra</CardTitle>
+        <CardTitle>{t("predict.archiveInput.title")}</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Paste your spectra as a table: one sample per row, one wavelength per column.
+          {t("predict.archiveInput.description")}
         </p>
         {selection ? (
           <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">{selection.n_features} features</Badge>
+            <Badge variant="outline">{t("predict.archiveInput.features", { count: selection.n_features })}</Badge>
             {selection.target_names.map((target) => (
               <Badge key={target} variant="secondary">{target}</Badge>
             ))}
           </div>
         ) : (
-          <p className="text-sm font-medium">Select a saved model first.</p>
+          <p className="text-sm font-medium">{t("predict.archiveInput.selectFirst")}</p>
         )}
       </CardHeader>
       <CardContent className="space-y-3">
         <Textarea
-          aria-label="Raw spectra matrix"
+          aria-label={t("predict.archiveInput.matrixAria")}
           placeholder={'[[1.0, 2.0], [3.0, 4.0]]'}
           value={pasteText}
           onChange={(event) => {
@@ -72,9 +74,9 @@ export function ArchiveV2DataInput({
           onClick={handleSubmit}
         >
           {isLoading ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Calculating predictions...</>
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("predict.archiveInput.calculating")}</>
           ) : (
-            <><Play className="mr-2 h-4 w-4" />Calculate Predictions</>
+            <><Play className="mr-2 h-4 w-4" />{t("predict.archiveInput.calculate")}</>
           )}
         </Button>
       </CardContent>

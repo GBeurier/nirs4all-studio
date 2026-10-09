@@ -14,6 +14,11 @@ import {
   InspectorCanvasNoPredictionsState,
 } from "./InspectorCanvasStatusStates";
 
+vi.mock("react-i18next", async () => {
+  const { tStub } = await import("@/lib/__tests__/helpers/i18nStub");
+  return { useTranslation: () => ({ t: tStub }) };
+});
+
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -52,7 +57,7 @@ describe("InspectorCanvasStatusStates", () => {
   it("renders the loading message used by the canvas frame", async () => {
     const { container, root } = await render(<InspectorCanvasLoadingState />);
 
-    expect(container.textContent).toContain("Loading predictions inspector...");
+    expect(container.textContent).toContain("inspector.canvas.loading");
 
     await act(async () => {
       root.unmount();
@@ -68,11 +73,11 @@ describe("InspectorCanvasStatusStates", () => {
       />,
     );
 
-    expect(container.textContent).toContain("Inspector unavailable");
+    expect(container.textContent).toContain("inspector.canvas.errorTitle");
     expect(container.textContent).toContain("Prediction index unavailable");
 
     await act(async () => {
-      buttonByLabel(container, "Reload inspector").click();
+      buttonByLabel(container, "inspector.canvas.errorRetry").click();
     });
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
@@ -88,11 +93,11 @@ describe("InspectorCanvasStatusStates", () => {
       <InspectorCanvasNoPredictionsState onRefresh={onRefresh} />,
     );
 
-    expect(container.textContent).toContain("No predictions to inspect");
-    expect(container.textContent).toContain("Run or import predictions first");
+    expect(container.textContent).toContain("inspector.canvas.noPredictionsTitle");
+    expect(container.textContent).toContain("inspector.canvas.noPredictionsDescription");
 
     await act(async () => {
-      buttonByLabel(container, "Refresh").click();
+      buttonByLabel(container, "common.refresh").click();
     });
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
@@ -113,12 +118,12 @@ describe("InspectorCanvasStatusStates", () => {
       />,
     );
 
-    expect(container.textContent).toContain("No chains match the current scope");
-    expect(container.textContent).toContain("Clear local inspector filters");
+    expect(container.textContent).toContain("inspector.canvas.noMatchTitle");
+    expect(container.textContent).toContain("inspector.canvas.noMatchFiltered");
 
     await act(async () => {
-      buttonByLabel(container, "Clear local filters").click();
-      buttonByLabel(container, "Refresh").click();
+      buttonByLabel(container, "inspector.canvas.clearLocalFilters").click();
+      buttonByLabel(container, "common.refresh").click();
     });
 
     expect(onClearFilters).toHaveBeenCalledTimes(1);

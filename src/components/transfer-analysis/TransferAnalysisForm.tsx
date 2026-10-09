@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, Database, Settings2 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -32,6 +33,7 @@ export function TransferAnalysisForm({
   knn,
   onKnnChange,
 }: TransferAnalysisFormProps) {
+  const { t } = useTranslation();
   // Datasets come from the shared cache (see src/hooks/useDatasetQueries.ts)
   // — instant on mount, persisted through the shared dataset cache. Presets and preprocessing
   // options remain in their own effect because they have no shared cache yet.
@@ -133,13 +135,13 @@ export function TransferAnalysisForm({
       <div className="space-y-2">
         <Label className="flex items-center gap-2">
           <Database className="h-4 w-4" />
-          Datasets
+          {t('transferAnalysis.form.datasets')}
         </Label>
         <div className="space-y-2 max-h-48 overflow-y-auto border rounded-md p-2">
           {isLoading ? (
-            <p className="text-sm text-muted-foreground text-center py-4">Loading datasets...</p>
+            <p className="text-sm text-muted-foreground text-center py-4">{t('transferAnalysis.form.loadingDatasets')}</p>
           ) : datasets.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">No datasets available</p>
+            <p className="text-sm text-muted-foreground text-center py-4">{t('transferAnalysis.form.noDatasets')}</p>
           ) : (
             datasets.map((dataset) => (
               <div
@@ -160,7 +162,7 @@ export function TransferAnalysisForm({
                     {dataset.name}
                   </label>
                   <p className="text-xs text-muted-foreground">
-                    {dataset.num_samples ?? '?'} samples, {dataset.num_features ?? '?'} features
+                    {t('transferAnalysis.form.samplesFeatures', { samples: dataset.num_samples ?? '?', features: dataset.num_features ?? '?' })}
                   </p>
                 </div>
               </div>
@@ -182,7 +184,7 @@ export function TransferAnalysisForm({
       <div className="space-y-2">
         <Label className="flex items-center gap-2">
           <Settings2 className="h-4 w-4" />
-          Preprocessing
+          {t('transferAnalysis.form.preprocessing')}
         </Label>
 
         {/* Mode Toggle */}
@@ -193,7 +195,7 @@ export function TransferAnalysisForm({
             className="flex-1"
             onClick={() => handleModeChange('preset')}
           >
-            Preset
+            {t('transferAnalysis.form.preset')}
           </Button>
           <Button
             variant={preprocessingConfig.mode === 'manual' ? 'default' : 'outline'}
@@ -201,7 +203,7 @@ export function TransferAnalysisForm({
             className="flex-1"
             onClick={() => handleModeChange('manual')}
           >
-            Manual
+            {t('transferAnalysis.form.manual')}
           </Button>
         </div>
 
@@ -209,7 +211,7 @@ export function TransferAnalysisForm({
         {preprocessingConfig.mode === 'preset' && (
           <Select value={preprocessingConfig.preset} onValueChange={handlePresetChange}>
             <SelectTrigger>
-              <SelectValue placeholder="Select preset" />
+              <SelectValue placeholder={t('transferAnalysis.form.selectPreset')} />
             </SelectTrigger>
             <SelectContent>
               {presets.map((preset) => (
@@ -256,7 +258,7 @@ export function TransferAnalysisForm({
       <Collapsible open={isAdvancedOpen} onOpenChange={setIsAdvancedOpen}>
         <CollapsibleTrigger asChild>
           <Button variant="ghost" size="sm" className="w-full justify-between">
-            Advanced Options
+            {t('transferAnalysis.form.advancedOptions')}
             {isAdvancedOpen ? (
               <ChevronUp className="h-4 w-4" />
             ) : (
@@ -267,7 +269,7 @@ export function TransferAnalysisForm({
         <CollapsibleContent className="space-y-3 pt-2">
           <div className="space-y-1">
             <Label htmlFor="nComponents" className="text-xs">
-              PCA Components
+              {t('transferAnalysis.form.pcaComponents')}
             </Label>
             <Input
               id="nComponents"
@@ -279,12 +281,12 @@ export function TransferAnalysisForm({
               className="h-8"
             />
             <p className="text-xs text-muted-foreground">
-              Number of principal components for analysis (2-50)
+              {t('transferAnalysis.form.pcaComponentsHint')}
             </p>
           </div>
           <div className="space-y-1">
             <Label htmlFor="knn" className="text-xs">
-              KNN Neighbors
+              {t('transferAnalysis.form.knnNeighbors')}
             </Label>
             <Input
               id="knn"
@@ -296,7 +298,7 @@ export function TransferAnalysisForm({
               className="h-8"
             />
             <p className="text-xs text-muted-foreground">
-              Neighbors for trustworthiness metric (2-50)
+              {t('transferAnalysis.form.knnHint')}
             </p>
           </div>
         </CollapsibleContent>

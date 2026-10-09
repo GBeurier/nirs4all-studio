@@ -5,6 +5,7 @@
  */
 
 import { useMemo, useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { useInspectorSelection, useInspectorHover } from '@/context/useInspectorSelection';
 import {
@@ -27,6 +28,7 @@ interface RankingsTableProps {
 }
 
 export function RankingsTable({ data, groups, isLoading }: RankingsTableProps) {
+  const { t } = useTranslation();
   const { select, selectedChains, hasSelection } = useInspectorSelection();
   const { hoveredChain, setHovered } = useInspectorHover();
   const [localSort, setLocalSort] = useState<RankingSortState | null>(null);
@@ -58,7 +60,7 @@ export function RankingsTable({ data, groups, isLoading }: RankingsTableProps) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        <span className="text-sm">Loading rankings...</span>
+        <span className="text-sm">{t('inspector.charts.loading.rankings')}</span>
       </div>
     );
   }
@@ -66,7 +68,7 @@ export function RankingsTable({ data, groups, isLoading }: RankingsTableProps) {
   if (sortedRankings.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        {getRankingsTableEmptyMessage()}
+        {getRankingsTableEmptyMessage(t)}
       </div>
     );
   }

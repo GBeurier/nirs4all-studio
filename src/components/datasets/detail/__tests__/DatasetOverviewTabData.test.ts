@@ -7,6 +7,7 @@ import {
   getRelativeTime,
   hasTestPartition,
 } from "../DatasetOverviewTabData";
+import { tEn } from "@/lib/__tests__/support/enTranslator";
 import type { TargetDistribution } from "@/types/datasets";
 
 const trainDistribution: TargetDistribution = {
@@ -135,12 +136,12 @@ describe("DatasetOverviewTabData", () => {
   it("formats relative time labels", () => {
     const now = new Date("2026-06-29T12:00:00.000Z");
 
-    expect(getRelativeTime("2026-06-29T08:00:00.000Z", now)).toBe("Today");
-    expect(getRelativeTime("2026-06-28T12:00:00.000Z", now)).toBe("Yesterday");
-    expect(getRelativeTime("2026-06-25T12:00:00.000Z", now)).toBe("4 days ago");
-    expect(getRelativeTime("2026-06-08T12:00:00.000Z", now)).toBe("3 weeks ago");
-    expect(getRelativeTime("2026-03-29T12:00:00.000Z", now)).toBe("3 months ago");
-    expect(getRelativeTime("2025-06-29T12:00:00.000Z", now)).toBe("1 years ago");
+    expect(getRelativeTime("2026-06-29T08:00:00.000Z", tEn, now)).toBe("Today");
+    expect(getRelativeTime("2026-06-28T12:00:00.000Z", tEn, now)).toBe("Yesterday");
+    expect(getRelativeTime("2026-06-25T12:00:00.000Z", tEn, now)).toBe("4 days ago");
+    expect(getRelativeTime("2026-06-08T12:00:00.000Z", tEn, now)).toBe("3 weeks ago");
+    expect(getRelativeTime("2026-03-29T12:00:00.000Z", tEn, now)).toBe("3 months ago");
+    expect(getRelativeTime("2025-06-29T12:00:00.000Z", tEn, now)).toBe("1 year ago");
   });
 
   it("formats counts with a placeholder for missing values", () => {

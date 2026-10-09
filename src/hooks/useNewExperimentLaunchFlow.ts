@@ -19,9 +19,7 @@ import type { CampaignSinglePairSplitSpecResult } from "@/lib/campaignPlanPrevie
 import {
   createClosedExperimentMissingNodesDialogState,
   createOpenExperimentMissingNodesDialogState,
-  EXPERIMENT_LAUNCH_GROUPING_BLOCKED_MESSAGE,
-  EXPERIMENT_LAUNCH_PREFLIGHT_BLOCKED_TITLE,
-  EXPERIMENT_LAUNCH_PREFLIGHT_UNAVAILABLE_MESSAGE,
+  experimentLaunchMessages,
   setExperimentMissingNodesDialogOpen,
 } from "@/lib/experimentLaunchFlowState";
 import { resolveExperimentLaunchPreflightDecision } from "@/lib/experimentLaunchPreflight";
@@ -105,7 +103,7 @@ export function useNewExperimentLaunchFlow({
 
   const handleLaunch = useCallback(async () => {
     if (hasGroupingBlockingError) {
-      toast.error(EXPERIMENT_LAUNCH_GROUPING_BLOCKED_MESSAGE);
+      toast.error(experimentLaunchMessages.groupingBlocked);
       onGroupingBlockingError();
       return;
     }
@@ -128,7 +126,7 @@ export function useNewExperimentLaunchFlow({
       });
 
       if (preflightDecision.status === "blocked") {
-        toast.error(EXPERIMENT_LAUNCH_PREFLIGHT_BLOCKED_TITLE, { description: preflightDecision.message });
+        toast.error(experimentLaunchMessages.preflightBlockedTitle, { description: preflightDecision.message });
         return;
       }
 
@@ -147,7 +145,7 @@ export function useNewExperimentLaunchFlow({
         strictCampaignSpecs: singlePairSplitSpecResult,
       });
     } catch {
-      toast.warning(EXPERIMENT_LAUNCH_PREFLIGHT_UNAVAILABLE_MESSAGE);
+      toast.warning(experimentLaunchMessages.preflightUnavailable);
     } finally {
       setIsPreflighting(false);
     }

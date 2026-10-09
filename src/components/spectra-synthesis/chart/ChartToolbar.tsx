@@ -8,7 +8,7 @@
  * - Generate preview button
  */
 
-import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -48,6 +48,7 @@ export function ChartToolbar({
   hasErrors,
   className,
 }: ChartToolbarProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -72,11 +73,11 @@ export function ChartToolbar({
                   className="text-xs cursor-pointer flex items-center gap-1"
                 >
                   <TrendingUp className="h-3 w-3" />
-                  Mean
+                  {t("spectraSynthesis.toolbar.mean")}
                 </Label>
               </div>
             </TooltipTrigger>
-            <TooltipContent>Show mean spectrum line</TooltipContent>
+            <TooltipContent>{t("spectraSynthesis.toolbar.meanTooltip")}</TooltipContent>
           </Tooltip>
         </div>
 
@@ -95,11 +96,11 @@ export function ChartToolbar({
                   className="text-xs cursor-pointer flex items-center gap-1"
                 >
                   <Layers className="h-3 w-3" />
-                  Std Band
+                  {t("spectraSynthesis.toolbar.stdBand")}
                 </Label>
               </div>
             </TooltipTrigger>
-            <TooltipContent>Show standard deviation band</TooltipContent>
+            <TooltipContent>{t("spectraSynthesis.toolbar.stdBandTooltip")}</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -122,12 +123,12 @@ export function ChartToolbar({
                 <RefreshCw
                   className={cn("h-3 w-3", autoRefresh && "text-primary")}
                 />
-                Auto
+                {t("spectraSynthesis.toolbar.auto")}
               </Label>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            Auto-regenerate preview when configuration changes
+            {t("spectraSynthesis.toolbar.autoTooltip")}
           </TooltipContent>
         </Tooltip>
 
@@ -140,12 +141,12 @@ export function ChartToolbar({
           {isGenerating ? (
             <>
               <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-              Generating...
+              {t("spectraSynthesis.toolbar.generating")}
             </>
           ) : (
             <>
               <Play className="h-3.5 w-3.5 mr-1.5" />
-              Generate
+              {t("spectraSynthesis.toolbar.generate")}
             </>
           )}
         </Button>

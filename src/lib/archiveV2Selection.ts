@@ -1,3 +1,5 @@
+import i18next from "i18next";
+
 import { clientStorageKeys } from "@/lib/clientStorage/keyRegistry";
 import type { ClientStorageKey } from "@/lib/clientStorage/keyRegistry";
 import {
@@ -208,9 +210,7 @@ export function buildArchiveV2ArrayPredictionRequest(
         row.some((value) => !Number.isFinite(value)),
     )
   ) {
-    throw new TypeError(
-      `Input width must be exactly ${selection.n_features} finite features for every sample.`,
-    );
+    throw new TypeError(i18next.t("predict.page.inputWidth", { count: selection.n_features }));
   }
 
   return {

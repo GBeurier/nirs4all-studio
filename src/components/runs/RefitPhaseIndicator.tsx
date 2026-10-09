@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   CheckCircle2,
@@ -12,6 +13,8 @@ import type { RefitState } from "@/lib/run-progress";
 import { cn } from "@/lib/utils";
 
 export function RefitPhaseIndicator({ refit }: { refit: RefitState }) {
+  const { t } = useTranslation();
+
   if (refit.status === "idle") return null;
 
   const isRunning = refit.status === "running";
@@ -39,11 +42,11 @@ export function RefitPhaseIndicator({ refit }: { refit: RefitState }) {
               {isFailed && <AlertCircle className="h-4 w-4 text-destructive" />}
             </div>
             <div>
-              <h4 className="font-medium">Refit Phase</h4>
+              <h4 className="font-medium">{t("runs.refit.title")}</h4>
               <p className="text-xs text-muted-foreground">
-                {isRunning && "Refitting best model on all training data..."}
-                {isCompleted && "Best model refitted successfully"}
-                {isFailed && "Refit failed"}
+                {isRunning && t("runs.refit.runningMessage")}
+                {isCompleted && t("runs.refit.completedMessage")}
+                {isFailed && t("runs.refit.failed")}
               </p>
             </div>
           </div>
@@ -56,9 +59,9 @@ export function RefitPhaseIndicator({ refit }: { refit: RefitState }) {
               isFailed && "bg-destructive/10 text-destructive",
             )}
           >
-            {isRunning && "Refitting"}
-            {isCompleted && "Complete"}
-            {isFailed && "Failed"}
+            {isRunning && t("runs.refit.badgeRunning")}
+            {isCompleted && t("runs.refit.badgeComplete")}
+            {isFailed && t("runs.stats.failed")}
           </Badge>
         </div>
 
@@ -69,7 +72,7 @@ export function RefitPhaseIndicator({ refit }: { refit: RefitState }) {
               variant="outline"
               className="text-[10px] bg-teal-500/10 text-teal-600 border-teal-500/30"
             >
-              Step {refit.currentStep}/{refit.totalSteps}: {refit.stepName}
+              {t("runs.refit.step", { current: refit.currentStep, total: refit.totalSteps, name: refit.stepName })}
             </Badge>
             {refit.stepType && (
               <Badge
@@ -87,7 +90,7 @@ export function RefitPhaseIndicator({ refit }: { refit: RefitState }) {
           <div className="space-y-1 mb-3">
             <div className="flex justify-between text-xs text-muted-foreground">
               <span className="truncate max-w-[70%]">
-                {refit.message || "Refitting..."}
+                {refit.message || t("runs.refit.refitting")}
               </span>
               <span>{Math.round(refit.progress)}%</span>
             </div>
@@ -101,7 +104,7 @@ export function RefitPhaseIndicator({ refit }: { refit: RefitState }) {
             <div className="flex items-center gap-1.5">
               <TrendingUp className="h-3.5 w-3.5 text-chart-1" />
               <span className="font-mono">
-                Refit score: {refit.score.toFixed(4)}
+                {t("runs.refit.score", { score: refit.score.toFixed(4) })}
               </span>
             </div>
             {refit.metrics.rmse != null && (

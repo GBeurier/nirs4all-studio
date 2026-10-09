@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { tEn } from "@/lib/__tests__/support/enTranslator";
 
 import {
   applyPresetToConfig,
@@ -176,15 +177,15 @@ describe("isGenerateDisabled", () => {
 
 describe("getGenerationErrorMessage", () => {
   it("preserves structured native errors", () => {
-    expect(getGenerationErrorMessage({ detail: "Name must be a safe identifier", status: 400 })).toBe("Name must be a safe identifier");
+    expect(getGenerationErrorMessage({ detail: "Name must be a safe identifier", status: 400 }, tEn)).toBe("Name must be a safe identifier");
   });
   it("returns the error message when present", () => {
-    expect(getGenerationErrorMessage(new Error("boom"))).toBe("boom");
+    expect(getGenerationErrorMessage(new Error("boom"), tEn)).toBe("boom");
   });
 
   it("falls back for null, undefined, and empty messages", () => {
-    expect(getGenerationErrorMessage(null)).toBe("Unknown error");
-    expect(getGenerationErrorMessage(undefined)).toBe("Unknown error");
-    expect(getGenerationErrorMessage(new Error(""))).toBe("Unknown error");
+    expect(getGenerationErrorMessage(null, tEn)).toBe("Unknown error");
+    expect(getGenerationErrorMessage(undefined, tEn)).toBe("Unknown error");
+    expect(getGenerationErrorMessage(new Error(""), tEn)).toBe("Unknown error");
   });
 });

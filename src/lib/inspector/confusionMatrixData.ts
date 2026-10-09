@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { ConfusionMatrixCell, ConfusionMatrixResponse } from '@/types/inspector';
 
 export const CONFUSION_MATRIX_BLUES = [
@@ -175,8 +176,10 @@ export function formatConfusionMatrixAccuracy(accuracy: number): string {
   return `${(accuracy * 100).toFixed(1)}%`;
 }
 
-export function formatConfusionMatrixNormalizeLabel(normalize: string): string {
-  return normalize === 'none' ? 'raw counts' : `normalized: ${normalize}`;
+export function formatConfusionMatrixNormalizeLabel(normalize: string, t: TFunction): string {
+  return normalize === 'none'
+    ? t('inspector.charts.confusion.rawCounts')
+    : t('inspector.charts.confusion.normalized', { mode: normalize });
 }
 
 export function formatConfusionMatrixNormalizedPercent(value: number): string {
@@ -188,18 +191,20 @@ export function buildConfusionMatrixHeaderSegments({
   labelCount,
   totalSamples,
   accuracy,
+  t,
 }: {
   data: Pick<ConfusionMatrixData, 'partition' | 'normalize'>;
   labelCount: number;
   totalSamples: number;
   accuracy: number;
+  t: TFunction;
 }): string[] {
   return [
     data.partition,
-    formatConfusionMatrixNormalizeLabel(data.normalize),
-    `${labelCount} labels`,
-    `${totalSamples} samples`,
-    `diag accuracy ${formatConfusionMatrixAccuracy(accuracy)}`,
+    formatConfusionMatrixNormalizeLabel(data.normalize, t),
+    t('inspector.charts.confusion.labels', { count: labelCount }),
+    t('inspector.counts.samples', { count: totalSamples }),
+    t('inspector.charts.confusion.accuracy', { value: formatConfusionMatrixAccuracy(accuracy) }),
   ];
 }
 

@@ -64,7 +64,7 @@ export function InspectorSidebar() {
     isLoading,
     chainCount: chains.length,
   });
-  const selectionSubtitle = getInspectorSelectionSubtitle(pinnedCount);
+  const selectionSubtitle = getInspectorSelectionSubtitle(pinnedCount, t);
 
   return (
     <TooltipProvider delayDuration={180}>
@@ -103,34 +103,34 @@ export function InspectorSidebar() {
 
                 <InspectorSidebarSection
                   icon={Layers}
-                  title={t('inspector.sidebar.groups', 'Groups')}
-                  help="Build shared comparison sets from model, preprocessing, score bands, branch structure, or expressions."
+                  title={t('inspector.sidebar.groups')}
+                  help={t('inspector.sidebar.groupsHelp')}
                 >
                   <GroupBuilder />
                 </InspectorSidebarSection>
 
                 <InspectorSidebarSection
                   icon={Filter}
-                  title={t('inspector.sidebar.filters', 'Filters')}
+                  title={t('inspector.sidebar.filters')}
                   badge={activeFilterCount > 0 ? (
                     <Badge variant="secondary" className="h-5 min-w-5 justify-center rounded-full px-1 text-[10px]">
                       {activeFilterCount}
                     </Badge>
                   ) : undefined}
-                  help="Non-destructive scope filters. Use them to narrow the visible chain set without changing the underlying data."
+                  help={t('inspector.sidebar.filtersHelp')}
                 >
                   <FilterPanel />
                 </InspectorSidebarSection>
 
                 <InspectorSidebarSection
                   icon={MousePointerClick}
-                  title={t('inspector.sidebar.selection', 'Selection')}
+                  title={t('inspector.sidebar.selection')}
                   badge={hasSelection ? (
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                       {selectedCount}
                     </Badge>
                   ) : undefined}
-                  help="Selection is shared across every inspector panel and drives the focused diagnostics cohort."
+                  help={t('inspector.sidebar.selectionHelp')}
                 >
                   <InspectorSidebarSelectionSummary
                     chainIds={allChainIds}
@@ -146,31 +146,31 @@ export function InspectorSidebar() {
 
                 <InspectorSidebarSection
                   icon={Bookmark}
-                  title="Saved"
+                  title={t('inspector.sidebar.savedTitle')}
                   defaultOpen={false}
-                  help="Persisted selections for revisiting named cohorts later in the analysis session."
+                  help={t('inspector.sidebar.savedHelp')}
                 >
                   <InspectorSavedSelections />
                 </InspectorSidebarSection>
 
                 <InspectorSidebarSection
                   icon={Palette}
-                  title={t('inspector.sidebar.colors', 'Colors')}
+                  title={t('inspector.sidebar.colors')}
                   defaultOpen={false}
-                  help="Global palette and opacity controls used to color every panel consistently."
+                  help={t('inspector.sidebar.colorsHelp')}
                 >
                   <ColorConfigPanel />
                 </InspectorSidebarSection>
               </>
             ) : isLoading ? (
               <InspectorSidebarEmptyState
-                title="Loading inspector data"
-                description="Building the prediction scope and facet metadata."
+                title={t('inspector.sidebar.loadingTitle')}
+                description={t('inspector.sidebar.loadingDescription')}
               />
             ) : (
               <InspectorSidebarEmptyState
-                title={t('inspector.noData', 'No data available')}
-                description="Load predictions to unlock grouping, filtering, and shared selection."
+                title={t('inspector.noData')}
+                description={t('inspector.sidebar.emptyDescription')}
               />
             )}
           </div>

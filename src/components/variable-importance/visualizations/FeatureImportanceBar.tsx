@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   BarChart,
   Bar,
@@ -33,7 +34,8 @@ interface FeatureImportanceBarProps {
 }
 
 export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceBarProps) {
-  const axis = getShapAxisDisplay(results.axis_unit);
+  const { t } = useTranslation();
+  const axis = getShapAxisDisplay(results.axis_unit, t);
   // Use rebinned data if available, otherwise from results
   const activeBinned = binnedData || results.binned_importance;
 
@@ -43,7 +45,7 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
 
   // Export to CSV
   const handleExport = () => {
-    const csvContent = buildShapFeatureImportanceCsv(activeBinned, results.axis_unit);
+    const csvContent = buildShapFeatureImportanceCsv(activeBinned, results.axis_unit, t);
 
     // Download
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -71,7 +73,7 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
               domain={[0, 'auto']}
               tickFormatter={(value) => value.toFixed(3)}
               label={{
-                value: 'Mean |SHAP| (Importance)',
+                value: t('results.variableImportance.ranking.importanceAxis'),
                 position: 'bottom',
                 offset: 0,
                 className: 'fill-muted-foreground text-xs',
@@ -92,9 +94,9 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
                 return (
                   <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
                     <p className="font-medium">#{data.rank}: {data.label}{axis.suffix}</p>
-                    <p>Importance: {data.importance.toFixed(4)}</p>
+                    <p>{t('results.variableImportance.ranking.importanceValue', { value: data.importance.toFixed(4) })}</p>
                     <p className="text-muted-foreground">
-                      Center: {data.center.toFixed(1)}{axis.suffix}
+                      {t('results.variableImportance.ranking.centerValue', { value: `${data.center.toFixed(1)}${axis.suffix}` })}
                     </p>
                   </div>
                 );
@@ -115,19 +117,19 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
       {/* Table with export button */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-medium">Top Regions by Importance</h4>
+          <h4 className="text-sm font-medium">{t('results.variableImportance.ranking.topRegions')}</h4>
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-1" />
-            Export CSV
+            {t('results.variableImportance.ranking.exportCsv')}
           </Button>
         </div>
         <div className="border rounded-lg max-h-[200px] overflow-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-16">Rank</TableHead>
-                <TableHead>{axis.label} range</TableHead>
-                <TableHead className="text-right">Importance</TableHead>
+                <TableHead className="w-16">{t('results.variableImportance.ranking.rank')}</TableHead>
+                <TableHead>{t('results.variableImportance.axis.range', { axis: axis.label })}</TableHead>
+                <TableHead className="text-right">{t('results.variableImportance.ranking.importance')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

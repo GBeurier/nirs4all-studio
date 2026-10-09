@@ -1,4 +1,5 @@
 import { useMemo, useEffect, useState, useRef, memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ComposedChart,
   Line,
@@ -35,7 +36,8 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
   binnedData,
   selectedSamples,
 }: SpectralImportanceChartProps) {
-  const axis = getShapAxisDisplay(results.axis_unit);
+  const { t } = useTranslation();
+  const axis = getShapAxisDisplay(results.axis_unit, t);
   const [filteredShap, setFilteredShap] = useState<number[] | null>(null);
   const [filteredSpectrum, setFilteredSpectrum] = useState<number[] | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -96,9 +98,9 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
         <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
           {loadingDetail && <Loader2 className="h-3 w-3 animate-spin" />}
           {selectedSamples && selectedSamples.length > 0 && !loadingDetail && (
-            <span>Showing SHAP for {selectedSamples.length} selected sample{selectedSamples.length > 1 ? 's' : ''}</span>
+            <span>{t('results.variableImportance.spectral.showing', { count: selectedSamples.length })}</span>
           )}
-          {loadingDetail && <span>Loading sample detail...</span>}
+          {loadingDetail && <span>{t('results.variableImportance.spectral.loadingDetail')}</span>}
         </div>
       )}
 
@@ -121,7 +123,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
             <YAxis
               yAxisId="importance"
               width={70}
-              label={{ value: 'Importance', angle: -90, position: 'insideLeft', offset: 10, className: 'fill-muted-foreground text-xs' }}
+              label={{ value: t('results.variableImportance.spectral.importance'), angle: -90, position: 'insideLeft', offset: 10, className: 'fill-muted-foreground text-xs' }}
               className="text-xs"
               tickFormatter={(value: number) => value.toFixed(3)}
             />
@@ -130,7 +132,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
                 yAxisId="absorbance"
                 orientation="right"
                 width={60}
-                label={{ value: 'Absorbance', angle: 90, position: 'insideRight', offset: 10, className: 'fill-muted-foreground text-xs' }}
+                label={{ value: t('results.variableImportance.spectral.absorbance'), angle: 90, position: 'insideRight', offset: 10, className: 'fill-muted-foreground text-xs' }}
                 className="text-xs"
                 tickFormatter={(value: number) => value.toFixed(2)}
               />
@@ -154,8 +156,8 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
                 return (
                   <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
                     <p className="font-medium">{axis.name}: {d.wavelength.toFixed(1)}{axis.suffix}</p>
-                    <p className="text-muted-foreground">Importance: {d.importance.toFixed(4)}</p>
-                    {hasSpectrum && <p className="text-muted-foreground">Absorbance: {d.absorbance.toFixed(4)}</p>}
+                    <p className="text-muted-foreground">{t('results.variableImportance.ranking.importanceValue', { value: d.importance.toFixed(4) })}</p>
+                    {hasSpectrum && <p className="text-muted-foreground">{t('results.variableImportance.spectral.absorbanceValue', { value: d.absorbance.toFixed(4) })}</p>}
                   </div>
                 );
               }}
@@ -207,7 +209,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
             <YAxis
               yAxisId="binned"
               width={70}
-              label={{ value: 'Binned', angle: -90, position: 'insideLeft', offset: 10, className: 'fill-muted-foreground text-xs' }}
+              label={{ value: t('results.variableImportance.spectral.binned'), angle: -90, position: 'insideLeft', offset: 10, className: 'fill-muted-foreground text-xs' }}
               className="text-xs"
               tickFormatter={(value: number) => value.toFixed(3)}
             />
@@ -228,7 +230,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
                 return (
                   <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
                     <p className="font-medium">{d.label}{axis.suffix}</p>
-                    <p className="text-muted-foreground">Importance: {d.importance.toFixed(4)}</p>
+                    <p className="text-muted-foreground">{t('results.variableImportance.ranking.importanceValue', { value: d.importance.toFixed(4) })}</p>
                   </div>
                 );
               }}
@@ -240,11 +242,11 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
 
       {/* Compact legend */}
       <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground shrink-0">
-        <span className="flex items-center gap-1"><span className="inline-block w-6 h-0.5 bg-primary" />SHAP</span>
-        {hasSpectrum && <span className="flex items-center gap-1"><span className="inline-block w-6 h-0.5 border-t-2 border-dashed border-muted-foreground" />Spectrum</span>}
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(13, 148, 136, 0.7)' }} />High</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(45, 212, 191, 0.35)' }} />Med</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(153, 246, 228, 0.15)' }} />Low</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-6 h-0.5 bg-primary" />{t('results.variableImportance.spectral.shap')}</span>
+        {hasSpectrum && <span className="flex items-center gap-1"><span className="inline-block w-6 h-0.5 border-t-2 border-dashed border-muted-foreground" />{t('results.variableImportance.spectral.spectrum')}</span>}
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(13, 148, 136, 0.7)' }} />{t('results.variableImportance.spectral.high')}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(45, 212, 191, 0.35)' }} />{t('results.variableImportance.spectral.med')}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(153, 246, 228, 0.15)' }} />{t('results.variableImportance.spectral.low')}</span>
       </div>
     </div>
   );

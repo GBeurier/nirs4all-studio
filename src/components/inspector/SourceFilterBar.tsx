@@ -42,6 +42,7 @@ export function SourceFilterBar() {
     availableMetrics,
     totalChains,
     isLoading,
+    t,
   });
 
   const clearAll = () => setFilters({});
@@ -51,7 +52,7 @@ export function SourceFilterBar() {
       {filterBar.facets.map(facet => (
         <InspectorSourceFacetFilter
           key={facet.id}
-          label={t(facet.labelKey, facet.defaultLabel)}
+          label={t(facet.labelKey)}
           values={facet.values}
           selected={facet.selected}
           onChange={(values) => setFilters(patchInspectorSourceArrayFilter(filters, facet.id, values))}
@@ -63,7 +64,7 @@ export function SourceFilterBar() {
         value={filterBar.taskType.value}
         onValueChange={(value) => setFilters(patchInspectorSourceValueFilter(filters, filterBar.taskType.id, value))}
       >
-        <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs shrink-0">
+        <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs shrink-0" aria-label={filterBar.taskType.placeholder}>
           <SelectValue placeholder={filterBar.taskType.placeholder} />
         </SelectTrigger>
         <SelectContent>
@@ -79,7 +80,7 @@ export function SourceFilterBar() {
           value={filterBar.metric.value}
           onValueChange={(value) => setFilters(patchInspectorSourceValueFilter(filters, filterBar.metric!.id, value))}
         >
-          <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs shrink-0">
+          <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs shrink-0" aria-label={filterBar.metric.placeholder}>
             <SelectValue placeholder={filterBar.metric.placeholder} />
           </SelectTrigger>
           <SelectContent>
@@ -105,7 +106,7 @@ export function SourceFilterBar() {
           onClick={clearAll}
         >
           <X className="w-3 h-3 mr-0.5" />
-          Clear
+          {t('common.clear')}
         </Button>
       )}
     </div>

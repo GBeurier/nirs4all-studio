@@ -20,6 +20,8 @@ import {
   Loader2,
   Copy,
 } from "lucide-react";
+import i18n from "i18next";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,11 +39,13 @@ import { SpectraChart, TargetHistogram } from "../charts";
 import { getPartitionTheme } from "../partitionTheme";
 import { buildDatasetWizardFiles } from "./DatasetWizardConfig";
 import type { PartitionKey } from "@/types/datasets";
+import { getActiveLocale } from "@/lib/activeLocale";
 
 // Alias for backward compatibility in this file
 const Histogram = TargetHistogram;
 
 export function PreviewStep() {
+  const { t } = useTranslation();
   const { state, dispatch } = useWizard();
   const requestRevision = useRef(0);
   const lastRequestKey = useRef<string | null>(null);
@@ -98,7 +102,7 @@ export function PreviewStep() {
         }
 
         if (filesToUpload.length === 0) {
-          throw new Error("No files available for preview. Please try re-selecting your files.");
+          throw new Error(i18n.t("datasets.wizard.preview.noFilesForPreview"));
         }
 
         result = await previewDatasetWithUploads(
@@ -121,11 +125,11 @@ export function PreviewStep() {
       dispatch({ type: "SET_PREVIEW", payload: result });
 
       if (result.error || !result.success) {
-        setError(result.error || "Some files could not be loaded. Check their parsing options.");
+        setError(result.error || i18n.t("datasets.wizard.preview.someFilesFailed"));
       }
     } catch (e) {
       if (revision !== requestRevision.current) return;
-      const message = e instanceof Error ? e.message : "Failed to load preview";
+      const message = e instanceof Error ? e.message : i18n.t("datasets.wizard.preview.loadFailed");
       setError(message);
       dispatch({ type: "SET_PREVIEW", payload: null });
     } finally {
@@ -156,7 +160,7 @@ export function PreviewStep() {
       {loading && (
         <div className="flex flex-col items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-          <p className="text-muted-foreground">Loading dataset preview...</p>
+          <p className="text-muted-foreground">{t("datasets.wizard.preview.loading")}</p>
         </div>
       )}
 
@@ -167,7 +171,7 @@ export function PreviewStep() {
             <AlertCircle className="h-8 w-8" />
           </div>
           <p className="text-destructive font-medium mb-2">
-            Failed to load preview
+            {t("datasets.wizard.preview.loadFailed")}
           </p>
           <p className="text-sm text-muted-foreground mb-4 max-w-md text-center whitespace-pre-wrap">
             {error}
@@ -175,13 +179,14 @@ export function PreviewStep() {
           <div className="flex gap-2">
             <Button onClick={loadPreview} variant="outline">
               <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
+              {t("common.retry")}
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => navigator.clipboard.writeText(error)}
-              title="Copy error to clipboard"
+              title={t("datasets.wizard.preview.copyError")}
+              aria-label={t("datasets.wizard.preview.copyError")}
             >
               <Copy className="h-4 w-4" />
             </Button>
@@ -197,52 +202,52 @@ export function PreviewStep() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Database className="h-4 w-4" />
-                Dataset Summary
+                {t("datasets.wizard.preview.summary")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Name</span>
+                <span className="text-sm text-muted-foreground">{t("datasets.wizard.preview.name")}</span>
                 <span className="font-medium">{state.datasetName}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Layers className="h-3 w-3" /> Samples
+                  <Layers className="h-3 w-3" /> {t("datasets.wizard.preview.samples")}
                 </span>
                 <span className="font-medium">
-                  {preview.summary.num_samples.toLocaleString()}
+                  {preview.summary.num_samples.toLocaleString(getActiveLocale())}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Hash className="h-3 w-3" /> Features
+                  <Hash className="h-3 w-3" /> {t("datasets.wizard.preview.features")}
                 </span>
                 <span className="font-medium">
-                  {preview.summary.num_features.toLocaleString()}
+                  {preview.summary.num_features.toLocaleString(getActiveLocale())}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Sources</span>
+                <span className="text-sm text-muted-foreground">{t("datasets.wizard.preview.sources")}</span>
                 <span className="font-medium">{preview.summary.n_sources}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Train/Test</span>
+                <span className="text-sm text-muted-foreground">{t("datasets.wizard.preview.trainTest")}</span>
                 <span className="font-medium">
                   {preview.summary.train_samples} / {preview.summary.test_samples}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Target className="h-3 w-3" /> Targets
+                  <Target className="h-3 w-3" /> {t("datasets.wizard.preview.targets")}
                 </span>
                 <Badge variant={preview.summary.has_targets ? "default" : "secondary"}>
                   {preview.summary.has_targets
-                    ? preview.summary.target_columns?.join(", ") || "Yes"
-                    : "None"}
+                    ? preview.summary.target_columns?.join(", ") || t("common.yes")
+                    : t("common.none")}
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Signal Type</span>
+                <span className="text-sm text-muted-foreground">{t("datasets.wizard.parsing.form.signalType")}</span>
                 <Badge variant="outline">
                   {preview.summary.signal_type || "auto"}
                 </Badge>
@@ -256,7 +261,7 @@ export function PreviewStep() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <BarChart3 className="h-4 w-4" />
-                  Spectra Preview
+                  {t("datasets.wizard.preview.spectraPreview")}
                 </CardTitle>
                 <div className="flex items-center gap-2">
                   {preview.summary.n_sources > 1 && preview.spectra_per_source && (
@@ -265,12 +270,12 @@ export function PreviewStep() {
                       onValueChange={(v) => setSelectedSource(Number(v))}
                     >
                       <SelectTrigger className="w-[140px] h-8">
-                        <SelectValue placeholder="Select source" />
+                        <SelectValue placeholder={t("datasets.wizard.preview.selectSource")} />
                       </SelectTrigger>
                       <SelectContent>
                         {Object.keys(preview.spectra_per_source).map((sourceIdx) => (
                           <SelectItem key={sourceIdx} value={sourceIdx}>
-                            Source {Number(sourceIdx) + 1}
+                            {t("datasets.wizard.fileMapping.row.sourceN", { n: Number(sourceIdx) + 1 })}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -316,7 +321,7 @@ export function PreviewStep() {
                 }
                 return (
                   <div className="h-48 flex items-center justify-center text-muted-foreground">
-                    No spectra data available
+                    {t("datasets.wizard.preview.noSpectra")}
                   </div>
                 );
               })()}
@@ -330,7 +335,7 @@ export function PreviewStep() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Target className="h-4 w-4" />
-                    Target Distribution
+                    {t("datasets.wizard.preview.targetDistribution")}
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     <PartitionToggle
@@ -347,10 +352,10 @@ export function PreviewStep() {
                         onValueChange={(v) => setSelectedTarget(v || null)}
                       >
                         <SelectTrigger className="w-[160px] h-8">
-                          <SelectValue placeholder="Select target" />
+                          <SelectValue placeholder={t("datasets.wizard.preview.selectTarget")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">All (default)</SelectItem>
+                          <SelectItem value="">{t("datasets.wizard.preview.allDefault")}</SelectItem>
                           {Object.keys(preview.target_distributions).map((targetName) => (
                             <SelectItem key={targetName} value={targetName}>
                               {targetName}
@@ -364,7 +369,11 @@ export function PreviewStep() {
                         const dist = selectedTarget && preview.target_distributions?.[selectedTarget]
                           ? preview.target_distributions[selectedTarget]
                           : preview.target_distribution;
-                        return dist?.type || "unknown";
+                        return dist?.type === "regression"
+                          ? t("datasets.wizard.preview.typeRegression")
+                          : dist?.type === "classification"
+                            ? t("datasets.wizard.preview.typeClassification")
+                            : dist?.type || t("datasets.wizard.preview.typeUnknown");
                       })()}
                     </Badge>
                   </div>
@@ -394,19 +403,19 @@ export function PreviewStep() {
                         {targetDist.type === "regression" && (
                           <>
                             <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">Min</span>
+                              <span className="text-muted-foreground">{t("datasets.wizard.preview.min")}</span>
                               <span>{targetDist.min?.toFixed(3)}</span>
                             </div>
                             <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">Max</span>
+                              <span className="text-muted-foreground">{t("datasets.wizard.preview.max")}</span>
                               <span>{targetDist.max?.toFixed(3)}</span>
                             </div>
                             <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">Mean</span>
+                              <span className="text-muted-foreground">{t("datasets.wizard.preview.mean")}</span>
                               <span>{targetDist.mean?.toFixed(3)}</span>
                             </div>
                             <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">Std</span>
+                              <span className="text-muted-foreground">{t("datasets.wizard.preview.std")}</span>
                               <span>{targetDist.std?.toFixed(3)}</span>
                             </div>
                           </>
@@ -414,7 +423,7 @@ export function PreviewStep() {
                         {targetDist.type === "classification" && (
                           <>
                             <div className="text-sm">
-                              <span className="text-muted-foreground">Classes: </span>
+                              <span className="text-muted-foreground">{t("datasets.wizard.preview.classes")}</span>
                               {targetDist.classes?.join(", ")}
                             </div>
                             {targetDist.class_counts && (
@@ -448,10 +457,10 @@ export function PreviewStep() {
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
                     <div>
                       <p className="font-medium text-green-600">
-                        Dataset is ready to add
+                        {t("datasets.wizard.preview.ready")}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        All files parsed successfully. Click "Add Dataset" to continue.
+                        {t("datasets.wizard.preview.readyDescription")}
                       </p>
                     </div>
                   </>
@@ -460,10 +469,10 @@ export function PreviewStep() {
                     <AlertCircle className="h-5 w-5 text-amber-500" />
                     <div>
                       <p className="font-medium text-amber-600">
-                        Review warnings before adding
+                        {t("datasets.wizard.preview.reviewWarnings")}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {preview.error || "Some issues were detected during parsing."}
+                        {preview.error || t("datasets.wizard.preview.issuesDetected")}
                       </p>
                     </div>
                   </>
@@ -476,7 +485,7 @@ export function PreviewStep() {
                   onClick={loadPreview}
                 >
                   <RefreshCw className="h-4 w-4 mr-1" />
-                  Refresh
+                  {t("common.refresh")}
                 </Button>
               </div>
             </CardContent>

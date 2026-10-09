@@ -1,4 +1,4 @@
-import { campaignSinglePairSplitTagLabel } from "@/lib/campaignPlanPresentation";
+import { getCampaignSinglePairSplitTagLabel } from "@/lib/campaignPlanPresentation";
 
 import { campaignPreviewTagClass } from "./NewExperimentCampaignPreviewPrimitives";
 
@@ -12,7 +12,7 @@ export function NewExperimentCampaignSinglePairSplitStatusHeader({
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       <span className="font-medium text-foreground">{statusLabel}</span>
-      <span className={campaignPreviewTagClass}>{campaignSinglePairSplitTagLabel}</span>
+      <span className={campaignPreviewTagClass}>{getCampaignSinglePairSplitTagLabel()}</span>
     </div>
   );
 }

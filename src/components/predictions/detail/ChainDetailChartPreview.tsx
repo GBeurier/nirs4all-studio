@@ -5,6 +5,8 @@ import {
   Grid3x3,
   TrendingUp,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { cn } from "@/lib/utils";
 import type {
   ChartKind,
@@ -41,23 +43,24 @@ export function ChainDetailChartPreview({
   isViewerOpen,
   children,
 }: ChainDetailChartPreviewProps) {
-  const title = getChartPreviewTitle(previewKind);
+  const { t } = useTranslation();
+  const title = getChartPreviewTitle(previewKind, t);
   const icon = getChartPreviewIcon(previewKind);
 
   return (
     <section className="space-y-3">
       <div>
-        <div className="text-sm font-semibold tracking-tight">Chart preview</div>
+        <div className="text-sm font-semibold tracking-tight">{t("predictions.detail.chart.previewTitle")}</div>
         <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
           {selectedFoldLabel
-            ? `${selectedFoldLabel} · ${selectedPartitionCount} partition${selectedPartitionCount === 1 ? "" : "s"}`
-            : "Select a related prediction to display its chart preview."}
+            ? t("predictions.detail.chart.previewSelection", { fold: selectedFoldLabel, count: selectedPartitionCount })
+            : t("predictions.detail.chart.selectRelatedPreview")}
         </div>
       </div>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <PartitionLegend partitions={partitions} config={config} />
         <div className="inline-flex w-full rounded-xl border border-border/70 bg-card/50 p-1 lg:w-auto">
-          {getChartPreviewOptions(taskKind).map((option) => (
+          {getChartPreviewOptions(taskKind, t).map((option) => (
             <button
               key={option.kind}
               type="button"
@@ -78,14 +81,14 @@ export function ChainDetailChartPreview({
       <ChartTile
         title={title}
         icon={icon}
-        subtitle={getChartPreviewSubtitle(previewKind)}
+        subtitle={t(`predictions.detail.chart.subtitle.${previewKind}`)}
         onCustomize={canCustomize ? () => onCustomize(previewKind) : undefined}
         height="h-[380px] md:h-[420px] xl:h-[440px]"
         className="overflow-hidden"
       >
         {isViewerOpen ? (
           <div className="flex h-full items-center justify-center text-center text-xs text-muted-foreground">
-            Customizing in the full viewer - preview paused to avoid distracting updates.
+            {t("predictions.detail.chart.viewerOpen")}
           </div>
         ) : (
           children
@@ -95,24 +98,22 @@ export function ChainDetailChartPreview({
   );
 }
 
-function getChartPreviewOptions(taskKind: "regression" | "classification") {
+function getChartPreviewOptions(taskKind: "regression" | "classification", t: TFunction) {
   return taskKind === "classification"
     ? [
-        { kind: "confusion" as const, label: "Confusion", icon: <Grid3x3 className="h-3.5 w-3.5" /> },
-        { kind: "distribution" as const, label: "Distribution", icon: <Activity className="h-3.5 w-3.5" /> },
+        { kind: "confusion" as const, label: t("predictions.charts.kinds.confusion"), icon: <Grid3x3 className="h-3.5 w-3.5" /> },
+        { kind: "distribution" as const, label: t("predictions.charts.kinds.distribution"), icon: <Activity className="h-3.5 w-3.5" /> },
       ]
     : [
-        { kind: "scatter" as const, label: "Predicted vs Actual", icon: <TrendingUp className="h-3.5 w-3.5" /> },
-        { kind: "residuals" as const, label: "Residuals", icon: <BarChart3 className="h-3.5 w-3.5" /> },
-        { kind: "distribution" as const, label: "Distribution", icon: <Activity className="h-3.5 w-3.5" /> },
+        { kind: "scatter" as const, label: t("predictions.charts.kinds.scatter"), icon: <TrendingUp className="h-3.5 w-3.5" /> },
+        { kind: "residuals" as const, label: t("predictions.charts.kinds.residuals"), icon: <BarChart3 className="h-3.5 w-3.5" /> },
+        { kind: "distribution" as const, label: t("predictions.charts.kinds.distribution"), icon: <Activity className="h-3.5 w-3.5" /> },
       ];
 }
 
-function getChartPreviewTitle(kind: ChartKind): string {
-  if (kind === "confusion") return "Confusion matrix";
-  if (kind === "residuals") return "Residuals";
-  if (kind === "distribution") return "Distribution";
-  return "Predicted vs Actual";
+function getChartPreviewTitle(kind: ChartKind, t: TFunction): string {
+  if (kind === "confusion") return t("predictions.charts.titles.confusion");
+  return t(`predictions.charts.kinds.${kind}`);
 }
 
 function getChartPreviewIcon(kind: ChartKind) {
@@ -120,17 +121,4 @@ function getChartPreviewIcon(kind: ChartKind) {
   if (kind === "residuals") return <BarChart3 className="h-3.5 w-3.5" />;
   if (kind === "distribution") return <Activity className="h-3.5 w-3.5" />;
   return <TrendingUp className="h-3.5 w-3.5" />;
-}
-
-function getChartPreviewSubtitle(kind: ChartKind): string {
-  if (kind === "confusion") {
-    return "Shared chart-view rendering without the configuration controls";
-  }
-  if (kind === "residuals") {
-    return "Large preview of residual spread for the selected prediction";
-  }
-  if (kind === "distribution") {
-    return "Histogram of predicted / actual / residual values for the selected prediction";
-  }
-  return "Large preview using the same chart-view styling";
 }

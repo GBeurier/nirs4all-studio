@@ -16,6 +16,7 @@ import {
   getConfusionMatrixTextColor,
 } from '@/lib/inspector/confusionMatrixData';
 import type { ConfusionMatrixCell, ConfusionMatrixResponse } from '@/types/inspector';
+import { tStub } from './helpers/i18nStub';
 
 function cell(overrides: Partial<ConfusionMatrixCell> = {}): ConfusionMatrixCell {
   return {
@@ -96,8 +97,8 @@ describe('inspector confusion matrix data helpers', () => {
     expect(getConfusionMatrixTextColor(1, 9)).toBe('#0f172a');
     expect(formatConfusionMatrixLabel('short')).toBe('short');
     expect(formatConfusionMatrixLabel('very-long-label')).toBe('very-long-l…');
-    expect(formatConfusionMatrixNormalizeLabel('none')).toBe('raw counts');
-    expect(formatConfusionMatrixNormalizeLabel('row')).toBe('normalized: row');
+    expect(formatConfusionMatrixNormalizeLabel('none', tStub)).toBe('inspector.charts.confusion.rawCounts');
+    expect(formatConfusionMatrixNormalizeLabel('row', tStub)).toBe('inspector.charts.confusion.normalized {"mode":"row"}');
     expect(formatConfusionMatrixAccuracy(0.853)).toBe('85.3%');
     expect(formatConfusionMatrixNormalizedPercent(0.234)).toBe('23.4%');
     expect(buildConfusionMatrixHeaderSegments({
@@ -105,12 +106,13 @@ describe('inspector confusion matrix data helpers', () => {
       labelCount: 2,
       totalSamples: 20,
       accuracy: 0.85,
+      t: tStub,
     })).toEqual([
       'test',
-      'normalized: row',
-      '2 labels',
-      '20 samples',
-      'diag accuracy 85.0%',
+      'inspector.charts.confusion.normalized {"mode":"row"}',
+      'inspector.charts.confusion.labels {"count":2}',
+      'inspector.counts.samples {"count":20}',
+      'inspector.charts.confusion.accuracy {"value":"85.0%"}',
     ]);
   });
 

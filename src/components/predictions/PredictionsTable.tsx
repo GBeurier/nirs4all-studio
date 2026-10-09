@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScoreCardRowView } from "@/components/scores/ScoreCardRowView";
 import { SortableHeader } from "@/components/predictions/SortableHeader";
@@ -30,6 +32,7 @@ export function PredictionsTable({
   onViewPrediction,
   onViewDetails,
 }: PredictionsTableProps) {
+  const { t } = useTranslation();
   return (
     <div className="glass-card overflow-hidden">
       <div className="overflow-x-auto">
@@ -37,13 +40,13 @@ export function PredictionsTable({
           <TableHeader>
             <TableRow className="hover:bg-transparent text-[11px]">
               <TableHead className="w-8">#</TableHead>
-              <SortableHeader field="card_type" sortField={sortField} sortOrder={sortOrder} onSort={onSort}>Type</SortableHeader>
-              <SortableHeader field="model_name" sortField={sortField} sortOrder={sortOrder} onSort={onSort}>Model</SortableHeader>
-              <SortableHeader field="dataset_name" sortField={sortField} sortOrder={sortOrder} onSort={onSort}>Dataset</SortableHeader>
-              <SortableHeader field="preproc" sortField={sortField} sortOrder={sortOrder} onSort={onSort}>Preproc</SortableHeader>
+              <SortableHeader field="card_type" sortField={sortField} sortOrder={sortOrder} onSort={onSort}>{t("predictions.table.type")}</SortableHeader>
+              <SortableHeader field="model_name" sortField={sortField} sortOrder={sortOrder} onSort={onSort}>{t("predictions.table.model")}</SortableHeader>
+              <SortableHeader field="dataset_name" sortField={sortField} sortOrder={sortOrder} onSort={onSort}>{t("predictions.table.dataset")}</SortableHeader>
+              <SortableHeader field="preproc" sortField={sortField} sortOrder={sortOrder} onSort={onSort}>{t("predictions.table.preprocShort")}</SortableHeader>
               <SortableHeader field="test_score" sortField={sortField} sortOrder={sortOrder} onSort={onSort} align="right" className="text-right">{primaryMetricLabel}</SortableHeader>
-              <SortableHeader field="val_score" sortField={sortField} sortOrder={sortOrder} onSort={onSort} align="right" className="text-right">Val</SortableHeader>
-              <SortableHeader field="fold" sortField={sortField} sortOrder={sortOrder} onSort={onSort} align="right" className="text-right">Fold</SortableHeader>
+              <SortableHeader field="val_score" sortField={sortField} sortOrder={sortOrder} onSort={onSort} align="right" className="text-right">{t("predictions.table.valShort")}</SortableHeader>
+              <SortableHeader field="fold" sortField={sortField} sortOrder={sortOrder} onSort={onSort} align="right" className="text-right">{t("predictions.table.fold")}</SortableHeader>
               {selectedMetrics.map(metric => (
                 <SortableHeader
                   key={metric}
@@ -64,7 +67,7 @@ export function PredictionsTable({
             {pageRows.length === 0 ? (
               <TableRow>
                 <td colSpan={100} className="text-center py-8 text-muted-foreground text-sm">
-                  No models match your filters
+                  {t("predictions.table.noMatch")}
                 </td>
               </TableRow>
             ) : (

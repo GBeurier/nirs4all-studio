@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   CampaignPlanSummary,
   CampaignSpec,
@@ -20,8 +22,8 @@ export function buildCampaignPreviewNotices(
     notices.push({
       id: "missing-datasets",
       severity: "blocking",
-      title: "No dataset selected",
-      message: "Select at least one dataset before launching this campaign.",
+      title: i18n.t("newExperiment.campaign.notices.missingDatasets.title"),
+      message: i18n.t("newExperiment.campaign.notices.missingDatasets.message"),
     });
   }
 
@@ -29,8 +31,8 @@ export function buildCampaignPreviewNotices(
     notices.push({
       id: "missing-pipelines",
       severity: "blocking",
-      title: "No pipeline selected",
-      message: "Select at least one pipeline before launching this campaign.",
+      title: i18n.t("newExperiment.campaign.notices.missingPipelines.title"),
+      message: i18n.t("newExperiment.campaign.notices.missingPipelines.message"),
     });
   }
 
@@ -40,8 +42,8 @@ export function buildCampaignPreviewNotices(
     notices.push({
       id: "paired-count-mismatch",
       severity: "blocking",
-      title: "Unpaired campaign inputs",
-      message: "Paired campaigns require the same number of datasets and pipelines before launch.",
+      title: i18n.t("newExperiment.campaign.notices.unpaired.title"),
+      message: i18n.t("newExperiment.campaign.notices.unpaired.message"),
     });
   }
 
@@ -49,8 +51,8 @@ export function buildCampaignPreviewNotices(
     notices.push({
       id: "nonlocal-backend",
       severity: "warning",
-      title: `${executionBackendLabel} backend`,
-      message: "This frontend contract can describe the backend, but the current launch adapter still targets the legacy local run API.",
+      title: i18n.t("newExperiment.campaign.notices.nonLocalBackend.title", { backend: executionBackendLabel }),
+      message: i18n.t("newExperiment.campaign.notices.nonLocalBackend.message"),
     });
   }
 

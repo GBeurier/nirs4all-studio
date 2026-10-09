@@ -19,6 +19,7 @@
 
 import { ScoreCardRowView } from "./ScoreCardRowView";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { isLowerBetter } from "@/lib/scores";
@@ -57,6 +58,7 @@ export function ScoreCardTree({
   maxTableMetrics,
   startCollapsed = false,
 }: ScoreCardTreeProps) {
+  const { t } = useTranslation();
   const [nonRefitExpanded, setNonRefitExpanded] = useState(false);
 
   const { refitRows, cvRows, trainRows } = useMemo(() => {
@@ -73,7 +75,7 @@ export function ScoreCardTree({
 
   const trainingSection = showNonRefitSection && trainRows.length > 0 ? (
     <div className="space-y-1">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Training only · {trainRows.length} models</div>
+      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t("results.scores.tree.trainingOnly", { count: trainRows.length })}</div>
       {trainRows.map((row, index) => (
         <ScoreCardRowView key={row.id} row={row} variant="inline" selectedMetrics={selectedMetrics}
           workspaceId={workspaceId} rank={index + 1}
@@ -90,7 +92,7 @@ export function ScoreCardTree({
         {refitRows.length > 0 && (
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-              <span className="font-medium uppercase tracking-wide text-emerald-600">Refit models</span>
+              <span className="font-medium uppercase tracking-wide text-emerald-600">{t("results.scores.tree.refitModels")}</span>
               <div className="flex-1 border-t border-emerald-500/20" />
               <span className="text-muted-foreground">{refitRows.length}</span>
             </div>
@@ -122,7 +124,7 @@ export function ScoreCardTree({
                   ? <ChevronDown className="h-3 w-3" />
                   : <ChevronRight className="h-3 w-3" />
                 }
-                <span className="font-medium uppercase tracking-wide">CV models (not refit)</span>
+                <span className="font-medium uppercase tracking-wide">{t("results.scores.tree.cvModels")}</span>
                 <div className="flex-1 border-t border-border/40" />
                 <span>{cvRows.length}</span>
               </button>
@@ -149,7 +151,7 @@ export function ScoreCardTree({
 
         {rows.length === 0 && (
           <div className="text-xs text-muted-foreground text-center py-4">
-            No scored models available
+            {t("results.scores.tree.noScored")}
           </div>
         )}
       </div>
@@ -164,7 +166,7 @@ export function ScoreCardTree({
         <tr className="hover:bg-transparent">
           <td colSpan={100} className="py-1.5 px-3">
             <div className="flex items-center gap-2 text-[10px]">
-              <span className="font-medium uppercase tracking-wide text-emerald-600">Refit models</span>
+              <span className="font-medium uppercase tracking-wide text-emerald-600">{t("results.scores.tree.refitModels")}</span>
               <div className="flex-1 border-t border-emerald-500/20" />
               <span className="text-muted-foreground">{refitRows.length}</span>
             </div>
@@ -192,7 +194,7 @@ export function ScoreCardTree({
         <tr className="hover:bg-transparent">
           <td colSpan={100} className="py-1.5 px-3">
             <div className="flex items-center gap-2 text-[10px]">
-              <span className="font-medium uppercase tracking-wide text-muted-foreground">CV models (not refit)</span>
+              <span className="font-medium uppercase tracking-wide text-muted-foreground">{t("results.scores.tree.cvModels")}</span>
               <div className="flex-1 border-t border-border/40" />
               <span className="text-muted-foreground">{cvRows.length}</span>
             </div>

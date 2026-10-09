@@ -2,7 +2,9 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import i18n from "i18next";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import "@/lib/i18n";
 import { InstallationLogPanel } from "./InstallationLogPanel";
 import { api } from "@/api/transport";
 
@@ -11,6 +13,10 @@ vi.mock("@/api/transport", () => ({ api: { get: vi.fn() } }));
 const history = { status: "error", package: "example", started_at: Date.now() - 5000, updated_at: Date.now(),
   lines: [{ id: 1, time: Date.now(), text: "pip dependency resolution failed" }] };
 const flush = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); };
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 describe("installation details", () => {
   it("opens on failure, copies output, collapses, and restores history on remount", async () => {

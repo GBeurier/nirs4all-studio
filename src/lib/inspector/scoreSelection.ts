@@ -1,21 +1,23 @@
+import type { TFunction } from "i18next";
 import { getMetricAbbreviation, isLowerBetter } from "@/lib/scores";
 import type { InspectorChainSummary, ScoreColumn } from "@/types/inspector";
 
 export interface InspectorScoreOption {
   value: ScoreColumn;
-  label: string;
+  labelKey: string;
 }
 
 export const INSPECTOR_SCORE_OPTIONS: readonly InspectorScoreOption[] = [
-  { value: "cv_val_score", label: "CV Val Score" },
-  { value: "cv_test_score", label: "CV Test Score" },
-  { value: "cv_train_score", label: "CV Train Score" },
-  { value: "final_test_score", label: "Final Test Score" },
-  { value: "final_train_score", label: "Final Train Score" },
+  { value: "cv_val_score", labelKey: "inspector.scores.cv_val_score" },
+  { value: "cv_test_score", labelKey: "inspector.scores.cv_test_score" },
+  { value: "cv_train_score", labelKey: "inspector.scores.cv_train_score" },
+  { value: "final_test_score", labelKey: "inspector.scores.final_test_score" },
+  { value: "final_train_score", labelKey: "inspector.scores.final_train_score" },
 ] as const;
 
-export function getInspectorScoreColumnLabel(scoreColumn: ScoreColumn): string {
-  return INSPECTOR_SCORE_OPTIONS.find((option) => option.value === scoreColumn)?.label ?? scoreColumn;
+export function getInspectorScoreColumnLabel(scoreColumn: ScoreColumn, t: TFunction): string {
+  const option = INSPECTOR_SCORE_OPTIONS.find((candidate) => candidate.value === scoreColumn);
+  return option ? t(option.labelKey) : scoreColumn;
 }
 
 export function getInspectorReferenceMetric(
@@ -28,8 +30,10 @@ export function isInspectorScoreLowerBetter(metric: string | null | undefined): 
   return isLowerBetter(metric ?? null);
 }
 
-export function getInspectorScoreDirectionLabel(metric: string | null | undefined): string {
-  return isInspectorScoreLowerBetter(metric) ? "Lower is better" : "Higher is better";
+export function getInspectorScoreDirectionLabel(metric: string | null | undefined, t: TFunction): string {
+  return isInspectorScoreLowerBetter(metric)
+    ? t("inspector.scores.lowerIsBetter")
+    : t("inspector.scores.higherIsBetter");
 }
 
 export function getInspectorMetricDisplayName(

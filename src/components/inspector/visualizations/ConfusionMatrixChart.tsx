@@ -8,6 +8,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import {
   buildConfusionMatrixHeaderSegments,
@@ -33,6 +34,7 @@ interface ConfusionMatrixChartProps {
 }
 
 export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartProps) {
+  const { t } = useTranslation();
   const { viewportRef, dimensions } = useInspectorChartViewport({
     initialWidth: 500,
     initialHeight: 400,
@@ -48,7 +50,7 @@ export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartPr
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        <span className="text-sm">Loading confusion matrix...</span>
+        <span className="text-sm">{t('inspector.charts.loading.confusion')}</span>
       </div>
     );
   }
@@ -57,8 +59,8 @@ export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartPr
     return (
       <ConfusionMatrixStateCard
         icon={AlertCircle}
-        title={reason ? 'No confusion matrix available' : 'No confusion data'}
-        description={getConfusionMatrixEmptyDescription(reason)}
+        title={reason ? t('inspector.charts.confusion.noMatrix') : t('inspector.charts.confusion.noData')}
+        description={getConfusionMatrixEmptyDescription(reason, t)}
       />
     );
   }
@@ -68,8 +70,8 @@ export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartPr
     return (
       <ConfusionMatrixStateCard
         icon={AlertCircle}
-        title="No class labels found"
-        description={getConfusionMatrixNoLabelsDescription(reason)}
+        title={t('inspector.charts.confusion.noLabels')}
+        description={getConfusionMatrixNoLabelsDescription(reason, t)}
       />
     );
   }
@@ -84,6 +86,7 @@ export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartPr
     labelCount: labels.length,
     totalSamples,
     accuracy,
+    t,
   });
 
   return (

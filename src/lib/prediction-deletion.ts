@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 
 import type { PredictionDeletionReport } from "@/types/storage";
 
@@ -26,17 +27,17 @@ export async function invalidatePredictionRelatedQueries(queryClient: QueryClien
   });
 }
 
-export function formatPredictionDeletionSummary(result: PredictionDeletionReport): string {
-  const parts = [`${result.deleted_predictions} prediction${result.deleted_predictions === 1 ? "" : "s"} deleted`];
+export function formatPredictionDeletionSummary(result: PredictionDeletionReport, t: TFunction): string {
+  const parts = [t("results.scores.delete.summary.predictions", { count: result.deleted_predictions })];
 
   if (result.deleted_chains > 0) {
-    parts.push(`${result.deleted_chains} chain${result.deleted_chains === 1 ? "" : "s"} pruned`);
+    parts.push(t("results.scores.delete.summary.chains", { count: result.deleted_chains }));
   }
   if (result.deleted_pipelines > 0) {
-    parts.push(`${result.deleted_pipelines} pipeline${result.deleted_pipelines === 1 ? "" : "s"} pruned`);
+    parts.push(t("results.scores.delete.summary.pipelines", { count: result.deleted_pipelines }));
   }
   if (result.deleted_artifacts > 0) {
-    parts.push(`${result.deleted_artifacts} artifact file${result.deleted_artifacts === 1 ? "" : "s"} removed`);
+    parts.push(t("results.scores.delete.summary.artifacts", { count: result.deleted_artifacts }));
   }
 
   return parts.join(" · ");

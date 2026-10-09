@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +18,7 @@ import {
   getRunQuickViewDefaultSelectedPartitions,
   getRunQuickViewPartitionStats,
   RUN_QUICK_VIEW_PARTITION_COLORS,
-  RUN_QUICK_VIEW_PARTITION_LABELS,
+  RUN_QUICK_VIEW_PARTITION_LABEL_KEYS,
   toggleRunQuickViewPartitionSelection,
 } from "./RunQuickViewData";
 
@@ -32,6 +33,7 @@ interface RunQuickViewProps {
 }
 
 export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, metric, workspaceId }: RunQuickViewProps) {
+  const { t } = useTranslation();
   const [selectedPartitions, setSelectedPartitions] = useState<Set<string>>(getRunQuickViewDefaultSelectedPartitions);
 
   const { data: distribution } = useQuery({
@@ -88,7 +90,7 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
           <div className="space-y-4 pr-4">
             {/* Partition filter — only show partitions that have data */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Partitions:</span>
+              <span className="text-xs text-muted-foreground">{t("runs.quickView.partitions.label")}</span>
               {availablePartitions.map((part) => {
                 const isActive = selectedPartitions.has(part);
                 return (
@@ -100,7 +102,7 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
                     onClick={() => togglePartition(part)}
                   >
                     {isActive && <Check className="h-3 w-3" />}
-                    {RUN_QUICK_VIEW_PARTITION_LABELS[part]}
+                    {t(RUN_QUICK_VIEW_PARTITION_LABEL_KEYS[part])}
                   </Button>
                 );
               })}
@@ -111,7 +113,7 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {availablePartitions.filter((p) => selectedPartitions.has(p) && partitionStats[p]).map((part) => (
                   <div key={part} className={cn("rounded-lg border p-2 text-center", RUN_QUICK_VIEW_PARTITION_COLORS[part])}>
-                    <p className="text-[10px] uppercase font-medium mb-0.5">{RUN_QUICK_VIEW_PARTITION_LABELS[part]}</p>
+                    <p className="text-[10px] uppercase font-medium mb-0.5">{t(RUN_QUICK_VIEW_PARTITION_LABEL_KEYS[part])}</p>
                     <p className="text-lg font-bold font-mono">{partitionStats[part].mean.toFixed(4)}</p>
                     <p className="text-[10px] text-muted-foreground">
                       {partitionStats[part].min.toFixed(3)} – {partitionStats[part].max.toFixed(3)} ({partitionStats[part].n})
@@ -123,7 +125,7 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
 
             {/* Score histogram */}
             <div className="rounded-lg border p-3">
-              <h4 className="text-sm font-medium mb-2">Score Distribution</h4>
+              <h4 className="text-sm font-medium mb-2">{t("runs.quickView.scoreDistribution")}</h4>
               <ScoreHistogram
                 distribution={distribution ?? null}
                 selectedPartitions={selectedPartitions}
@@ -132,15 +134,15 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
 
             {/* Predictions table */}
             <div className="rounded-lg border overflow-hidden">
-              <h4 className="text-sm font-medium p-3 bg-muted/30 border-b">Chain Summaries</h4>
+              <h4 className="text-sm font-medium p-3 bg-muted/30 border-b">{t("runs.quickView.chainSummaries")}</h4>
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/20">
-                    <TableHead className="text-xs">Model</TableHead>
-                    <TableHead className="text-xs">Preprocessing</TableHead>
-                    <TableHead className="text-xs text-right">CV Val</TableHead>
-                    <TableHead className="text-xs text-right">CV Test</TableHead>
-                    <TableHead className="text-xs text-right">Folds</TableHead>
+                    <TableHead className="text-xs">{t("runs.quickView.model")}</TableHead>
+                    <TableHead className="text-xs">{t("runs.quickView.preprocessing")}</TableHead>
+                    <TableHead className="text-xs text-right">{t("runs.quickView.cvVal")}</TableHead>
+                    <TableHead className="text-xs text-right">{t("runs.quickView.cvTest")}</TableHead>
+                    <TableHead className="text-xs text-right">{t("runs.quickView.folds")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -168,7 +170,7 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
                   {predictions.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-6">
-                        No predictions available
+                        {t("runs.quickView.noPredictions")}
                       </TableCell>
                     </TableRow>
                   )}

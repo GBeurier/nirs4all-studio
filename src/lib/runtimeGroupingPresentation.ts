@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { DatasetRuntimeGroupingState } from "./runtimeSplitGrouping";
 
 export type RuntimeGroupingRequirementBadgeVariant = "destructive" | "outline";
@@ -7,20 +9,21 @@ export interface RuntimeGroupingRequirementBadge {
   variant: RuntimeGroupingRequirementBadgeVariant;
 }
 
+/** User-visible runtime-grouping labels; getters resolve the active language at read time. */
 export const runtimeGroupingPresentationCopy = {
-  title: "Sample Grouping",
-  selectPlaceholder: "Select metadata column...",
-  noAdditionalGroupLabel: "No additional group",
-  datasetRepetitionBadge: "Dataset repetition",
-  noMetadataColumns: "No metadata columns are available on this dataset.",
-} as const;
+  get title() { return i18n.t("newExperiment.steps.sampleGrouping"); },
+  get selectPlaceholder() { return i18n.t("newExperiment.runtimeGrouping.selectPlaceholder"); },
+  get noAdditionalGroupLabel() { return i18n.t("newExperiment.runtimeGrouping.summary.none"); },
+  get datasetRepetitionBadge() { return i18n.t("newExperiment.runtimeGrouping.datasetRepetitionBadge"); },
+  get noMetadataColumns() { return i18n.t("newExperiment.runtimeGrouping.noMetadataColumns"); },
+};
 
 export function formatRuntimeGroupingSelectedDatasetCount(count: number): string {
-  return `${count} dataset${count === 1 ? "" : "s"}`;
+  return i18n.t("newExperiment.counts.dataset", { count });
 }
 
 export function formatRuntimeGroupingMetadataColumnCount(count: number): string {
-  return `${count} metadata column${count === 1 ? "" : "s"}`;
+  return i18n.t("newExperiment.counts.metadataColumn", { count });
 }
 
 export function getRuntimeGroupingRequirementBadge(
@@ -28,15 +31,15 @@ export function getRuntimeGroupingRequirementBadge(
   hasRequiredSplitters: boolean,
 ): RuntimeGroupingRequirementBadge {
   if (groupingState.requiresExplicitGroup) {
-    return { label: "Required", variant: "destructive" };
+    return { label: i18n.t("common.required"), variant: "destructive" };
   }
 
   if (hasRequiredSplitters) {
     if (groupingState.embeddedGroups) {
-      return { label: "Using cohort groups", variant: "outline" };
+      return { label: i18n.t("newExperiment.runtimeGrouping.badges.usingCohortGroups"), variant: "outline" };
     }
-    return { label: "Optional with repetition", variant: "outline" };
+    return { label: i18n.t("newExperiment.runtimeGrouping.badges.optionalWithRepetition"), variant: "outline" };
   }
 
-  return { label: "Optional", variant: "outline" };
+  return { label: i18n.t("common.optional"), variant: "outline" };
 }

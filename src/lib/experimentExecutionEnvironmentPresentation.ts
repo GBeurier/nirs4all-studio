@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type {
   NewExperimentExecutionEnvironmentDiagnostics,
   NewExperimentNativeExecutionBackend,
@@ -15,11 +17,11 @@ function presentLabels(labels: Array<string | null>): string[] {
 }
 
 function formatNativeBackendList(backends: readonly NewExperimentNativeExecutionBackend[]): string {
-  return backends.length > 0 ? backends.join(", ") : "None";
+  return backends.length > 0 ? backends.join(", ") : i18n.t("common.none");
 }
 
 function formatExecutionBackendList(backends: readonly RunExecutionBackend[]): string {
-  return backends.length > 0 ? backends.join(", ") : "None";
+  return backends.length > 0 ? backends.join(", ") : i18n.t("common.none");
 }
 
 export function buildNewExperimentExecutionEnvironmentDiagnosticFields(
@@ -33,44 +35,44 @@ export function buildNewExperimentExecutionEnvironmentDiagnosticFields(
   return [
     {
       id: "available-adapters",
-      label: "Calculation options",
+      label: i18n.t("newExperiment.environment.diagnostics.calculationOptions"),
       value: diagnostics.availableAdapterIds.length > 0
         ? diagnostics.availableAdapterIds.join(", ")
-        : "None",
+        : i18n.t("common.none"),
     },
     {
       id: "available-execution-backends",
-      label: "Available analysis engines",
+      label: i18n.t("newExperiment.environment.diagnostics.availableEngines"),
       value: formatExecutionBackendList(diagnostics.availableExecutionBackends ?? []),
     },
     {
       id: "configured-native-backends",
-      label: "Ready to use",
+      label: i18n.t("newExperiment.environment.diagnostics.readyToUse"),
       value: formatNativeBackendList(diagnostics.configuredNativeBackends),
     },
     {
       id: "unavailable-execution-backends",
-      label: "Unavailable analysis engines",
+      label: i18n.t("newExperiment.environment.diagnostics.unavailableEngines"),
       value: formatExecutionBackendList(diagnostics.unavailableExecutionBackends ?? []),
     },
     {
       id: "unconfigured-native-backends",
-      label: "Setup required",
+      label: i18n.t("newExperiment.environment.diagnostics.setupRequired"),
       value: formatNativeBackendList(diagnostics.unconfiguredNativeBackends),
     },
     {
       id: "submitters",
-      label: "Ready to launch",
-      value: configuredSubmitters.length > 0 ? configuredSubmitters.join(", ") : "None",
+      label: i18n.t("newExperiment.environment.diagnostics.readyToLaunch"),
+      value: configuredSubmitters.length > 0 ? configuredSubmitters.join(", ") : i18n.t("common.none"),
     },
     {
       id: "workspace-prediction-publishers",
-      label: "Prediction saving available",
+      label: i18n.t("newExperiment.environment.diagnostics.predictionSavingAvailable"),
       value: formatNativeBackendList(diagnostics.workspacePredictionPublisherBackends),
     },
     {
       id: "workspace-prediction-handoff-only",
-      label: "Prediction saving not configured",
+      label: i18n.t("newExperiment.environment.diagnostics.predictionSavingNotConfigured"),
       value: formatNativeBackendList(diagnostics.workspacePredictionHandoffOnlyBackends),
     },
   ];

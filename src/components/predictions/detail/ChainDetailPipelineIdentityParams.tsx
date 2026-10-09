@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import { Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatParamValue } from "./ChainDetailPipelineIdentityFormatting";
@@ -12,7 +12,7 @@ interface ChainDetailPipelineParamsProps {
 interface ParamsPanelProps {
   tone: "variant" | "best";
   title: string;
-  description: string | ReactNode;
+  description: string;
   params: Record<string, unknown>;
 }
 
@@ -20,6 +20,7 @@ export function ChainDetailPipelineParams({
   variantParams,
   bestParams,
 }: ChainDetailPipelineParamsProps) {
+  const { t } = useTranslation();
   const hasBestParams = !!bestParams && Object.keys(bestParams).length > 0;
   const hasVariantParams = !!variantParams;
 
@@ -28,15 +29,8 @@ export function ChainDetailPipelineParams({
       {variantParams && (
         <ParamsPanel
           tone="variant"
-          title="Variant - sweep selection"
-          description={
-            <>
-              Concrete operator / param values picked from the pipeline's generators (
-              <span className="font-mono">_or_</span>,{" "}
-              <span className="font-mono">_range_</span>,{" "}
-              <span className="font-mono">_grid_</span>...).
-            </>
-          }
+          title={t("predictions.detail.identity.variantTitle")}
+          description={t("predictions.detail.identity.variantDescription", { or: "_or_", range: "_range_", grid: "_grid_" })}
           params={variantParams}
         />
       )}
@@ -44,15 +38,15 @@ export function ChainDetailPipelineParams({
       {bestParams && Object.keys(bestParams).length > 0 && (
         <ParamsPanel
           tone="best"
-          title="Finetune - best params"
-          description="Hyperparameters selected by the finetune / optimizer for this model."
+          title={t("predictions.detail.identity.finetuneTitle")}
+          description={t("predictions.detail.identity.finetuneDescription")}
           params={bestParams}
         />
       )}
 
       {!hasVariantParams && !hasBestParams && (
         <div className="mt-4 rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-3 text-[11px] text-muted-foreground">
-          No sweep variant or finetune best params recorded for this chain.
+          {t("predictions.detail.identity.noParams")}
         </div>
       )}
     </>
@@ -65,6 +59,7 @@ function ParamsPanel({
   description,
   params,
 }: ParamsPanelProps) {
+  const { t } = useTranslation();
   const isVariant = tone === "variant";
   return (
     <div
@@ -84,7 +79,7 @@ function ParamsPanel({
         <Sparkles className="h-3.5 w-3.5" />
         {title}
         <Badge variant="outline" className="ml-auto h-5 px-1.5 text-[10px]">
-          {Object.keys(params).length} param{Object.keys(params).length === 1 ? "" : "s"}
+          {t("predictions.detail.identity.params", { count: Object.keys(params).length })}
         </Badge>
       </div>
       <div className="mt-1 text-[11px] text-muted-foreground">{description}</div>

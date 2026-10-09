@@ -1,4 +1,5 @@
 import { Clock } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { ResultExecutionTimeRow } from "./resultDetailData";
 
 interface ResultMetricsExecutionTimesProps {
@@ -6,11 +7,12 @@ interface ResultMetricsExecutionTimesProps {
 }
 
 export function ResultMetricsExecutionTimes({ rows }: ResultMetricsExecutionTimesProps) {
+  const { t } = useTranslation();
   return (
     <div className="p-3 rounded-lg border">
       <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
         <Clock className="h-4 w-4 text-muted-foreground" />
-        Execution Times
+        {t("results.detail.times.title")}
       </h4>
       <div className="space-y-2 text-sm">
         {rows.map((row) => (

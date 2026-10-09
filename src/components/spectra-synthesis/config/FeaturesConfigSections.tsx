@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Activity,
   Beaker,
@@ -37,26 +38,27 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
+import { getComponentCategoryLabel, getComponentLabel } from "../definitionLabels";
 import { ConfigSection } from "./ConfigSection";
 import { SliderParam } from "./SliderParam";
 import {
   CHEMICAL_COMPONENT_GROUPS,
-  formatComponentCategoryLabel,
   type FeaturesReadModel,
   type SelectedComponentBadge,
   type WavelengthRange,
 } from "./FeaturesConfigData";
 
 export function FeaturesConfigHeader() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2">
       <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-500/10">
         <Waves className="h-4 w-4 text-blue-600" />
       </div>
       <div>
-        <h3 className="text-sm font-semibold">Features Configuration</h3>
+        <h3 className="text-sm font-semibold">{t("spectraSynthesis.features.header.title")}</h3>
         <p className="text-xs text-muted-foreground">
-          Physics-based spectral simulation
+          {t("spectraSynthesis.features.header.subtitle")}
         </p>
       </div>
     </div>
@@ -82,17 +84,18 @@ export function WavelengthConfigSection({
   onEndChange,
   onStepChange,
 }: WavelengthConfigSectionProps) {
+  const { t } = useTranslation();
   return (
     <ConfigSection
-      title="Wavelength Configuration"
+      title={t("spectraSynthesis.features.wavelength.title")}
       icon={<Radio className="h-4 w-4 text-blue-500" />}
       defaultOpen={true}
     >
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-xs font-medium">Range</Label>
+          <Label className="text-xs font-medium">{t("spectraSynthesis.features.wavelength.range")}</Label>
           <span className="text-xs text-muted-foreground">
-            {numWavelengths} points
+            {t("spectraSynthesis.features.wavelength.points", { count: numWavelengths })}
           </span>
         </div>
         <Slider
@@ -130,7 +133,7 @@ export function WavelengthConfigSection({
       </div>
 
       <SliderParam
-        label="Step"
+        label={t("spectraSynthesis.features.wavelength.step")}
         value={wavelengthStep}
         onChange={onStepChange}
         min={0.5}
@@ -156,18 +159,19 @@ export function ChemicalComponentsSection({
   onToggleComponent,
   onRemoveComponent,
 }: ChemicalComponentsSectionProps) {
+  const { t } = useTranslation();
   const [componentSearchOpen, setComponentSearchOpen] = useState(false);
 
   return (
     <ConfigSection
-      title="Chemical Components"
+      title={t("spectraSynthesis.features.components.title")}
       icon={<Beaker className="h-4 w-4 text-green-500" />}
       defaultOpen={true}
-      description="Select NIR-active components to include in spectra"
+      description={t("spectraSynthesis.features.components.description")}
     >
       <div className="flex flex-wrap gap-1.5 min-h-[32px] p-2 border rounded-md bg-muted/30">
         {selectedComponentBadges.length === 0 ? (
-          <span className="text-xs text-muted-foreground">No components selected</span>
+          <span className="text-xs text-muted-foreground">{t("spectraSynthesis.features.components.none")}</span>
         ) : (
           selectedComponentBadges.map(({ name, label }) => (
             <Badge key={name} variant="secondary" className="gap-1 pr-1 text-xs">
@@ -176,6 +180,7 @@ export function ChemicalComponentsSection({
                 variant="ghost"
                 size="icon"
                 className="h-3 w-3 p-0 hover:bg-destructive/20"
+                aria-label={t("spectraSynthesis.features.components.remove", { name: label })}
                 onClick={() => onRemoveComponent(name)}
               >
                 <X className="h-2.5 w-2.5" />
@@ -188,19 +193,19 @@ export function ChemicalComponentsSection({
       <Popover open={componentSearchOpen} onOpenChange={setComponentSearchOpen}>
         <PopoverTrigger asChild>
           <Button variant="outline" size="sm" className="w-full justify-start h-8 text-xs">
-            <span className="text-muted-foreground">Add components...</span>
+            <span className="text-muted-foreground">{t("spectraSynthesis.features.components.add")}</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[300px] p-0" align="start">
           <Command>
-            <CommandInput placeholder="Search components..." className="h-8" />
+            <CommandInput placeholder={t("spectraSynthesis.features.components.search")} className="h-8" />
             <CommandList>
-              <CommandEmpty>No components found.</CommandEmpty>
+              <CommandEmpty>{t("spectraSynthesis.features.components.empty")}</CommandEmpty>
               <ScrollArea className="h-[250px]">
                 {Object.entries(CHEMICAL_COMPONENT_GROUPS).map(([category, comps]) => (
                   <CommandGroup
                     key={category}
-                    heading={formatComponentCategoryLabel(category)}
+                    heading={getComponentCategoryLabel(t, category)}
                   >
                     {comps.map((comp) => {
                       const isSelected = components.includes(comp.name);
@@ -220,7 +225,7 @@ export function ChemicalComponentsSection({
                             {isSelected && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
                           </div>
                           <div className="flex-1 overflow-hidden">
-                            <span className="truncate">{comp.displayName}</span>
+                            <span className="truncate">{getComponentLabel(t, comp.name)}</span>
                           </div>
                         </CommandItem>
                       );
@@ -245,13 +250,14 @@ export function ComplexityPresetControl({
   complexity,
   onComplexityChange,
 }: ComplexityPresetControlProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label className="text-xs font-medium">Complexity Preset</Label>
+        <Label className="text-xs font-medium">{t("spectraSynthesis.features.complexity.label")}</Label>
         {complexity !== "custom" && (
           <Badge variant="outline" className="text-[10px]">
-            Preset: {complexity}
+            {t("spectraSynthesis.features.complexity.presetBadge", { name: t(`spectraSynthesis.features.complexity.names.${complexity}`, { defaultValue: complexity }) })}
           </Badge>
         )}
       </div>
@@ -261,23 +267,23 @@ export function ComplexityPresetControl({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="simple" className="text-xs">
-            Simple - Ideal conditions
+            {t("spectraSynthesis.features.complexity.options.simple")}
           </SelectItem>
           <SelectItem value="realistic" className="text-xs">
-            Realistic - Typical NIR
+            {t("spectraSynthesis.features.complexity.options.realistic")}
           </SelectItem>
           <SelectItem value="complex" className="text-xs">
-            Complex - Challenging
+            {t("spectraSynthesis.features.complexity.options.complex")}
           </SelectItem>
           <SelectItem value="custom" className="text-xs">
-            Custom - Manual config
+            {t("spectraSynthesis.features.complexity.options.custom")}
           </SelectItem>
         </SelectContent>
       </Select>
       <p className="text-[10px] text-muted-foreground">
         {complexity === "custom"
-          ? "Configure physics parameters manually below"
-          : "Preset applied. Modify parameters to switch to custom mode."}
+          ? t("spectraSynthesis.features.complexity.hintCustom")
+          : t("spectraSynthesis.features.complexity.hintPreset")}
       </p>
     </div>
   );
@@ -331,99 +337,100 @@ export function PhysicsParametersSections({
   onArtifactProbChange,
   onInstrumentalFwhmChange,
 }: PhysicsParametersSectionsProps) {
+  const { t } = useTranslation();
   return (
     <>
       <ConfigSection
-        title="Beer-Lambert Physics"
+        title={t("spectraSynthesis.features.physics.beerLambert.title")}
         icon={<Activity className="h-4 w-4 text-purple-500" />}
-        description="A = ε·c·L (absorbance = molar absorptivity × concentration × path length)"
+        description={t("spectraSynthesis.features.physics.beerLambert.description")}
       >
         <SliderParam
-          label="Path Length Variation"
+          label={t("spectraSynthesis.features.physics.pathLength.label")}
           value={model.pathLengthStd}
           onChange={onPathLengthStdChange}
           min={0}
           max={0.2}
           step={0.01}
-          tooltip="Standard deviation of optical path length (L factor). Higher values = more sample thickness variation."
+          tooltip={t("spectraSynthesis.features.physics.pathLength.tooltip")}
         />
       </ConfigSection>
 
       <ConfigSection
-        title="Baseline & Drift"
+        title={t("spectraSynthesis.features.physics.baseline.title")}
         icon={<Activity className="h-4 w-4 text-orange-500" />}
-        description="Polynomial baseline effects and spectral tilt"
+        description={t("spectraSynthesis.features.physics.baseline.description")}
       >
         <SliderParam
-          label="Baseline Amplitude"
+          label={t("spectraSynthesis.features.physics.baselineAmplitude.label")}
           value={model.baselineAmplitude}
           onChange={onBaselineAmplitudeChange}
           min={0}
           max={0.2}
           step={0.005}
-          tooltip="Amplitude of polynomial baseline drift"
+          tooltip={t("spectraSynthesis.features.physics.baselineAmplitude.tooltip")}
         />
         <SliderParam
-          label="Spectral Tilt"
+          label={t("spectraSynthesis.features.physics.tilt.label")}
           value={model.tiltStd}
           onChange={onTiltStdChange}
           min={0}
           max={0.1}
           step={0.005}
-          tooltip="Linear tilt variation across spectra"
+          tooltip={t("spectraSynthesis.features.physics.tilt.tooltip")}
         />
         <SliderParam
-          label="Global Slope Mean"
+          label={t("spectraSynthesis.features.physics.slopeMean.label")}
           value={model.globalSlopeMean}
           onChange={onGlobalSlopeMeanChange}
           min={-0.2}
           max={0.2}
           step={0.01}
-          tooltip="Mean slope across all spectra (systematic baseline)"
+          tooltip={t("spectraSynthesis.features.physics.slopeMean.tooltip")}
         />
         <SliderParam
-          label="Global Slope Std"
+          label={t("spectraSynthesis.features.physics.slopeStd.label")}
           value={model.globalSlopeStd}
           onChange={onGlobalSlopeStdChange}
           min={0}
           max={0.2}
           step={0.01}
-          tooltip="Variation in global slope between samples"
+          tooltip={t("spectraSynthesis.features.physics.slopeStd.tooltip")}
         />
       </ConfigSection>
 
       <ConfigSection
-        title="Scattering Effects"
+        title={t("spectraSynthesis.features.physics.scatter.title")}
         icon={<Zap className="h-4 w-4 text-cyan-500" />}
-        description="MSC-style multiplicative and additive scatter"
+        description={t("spectraSynthesis.features.physics.scatter.description")}
       >
         <SliderParam
-          label="Scatter Alpha (Multiplicative)"
+          label={t("spectraSynthesis.features.physics.scatterAlpha.label")}
           value={model.scatterAlphaStd}
           onChange={onScatterAlphaStdChange}
           min={0}
           max={0.2}
           step={0.01}
-          tooltip="MSC-like multiplicative scattering coefficient (α). Affects overall intensity."
+          tooltip={t("spectraSynthesis.features.physics.scatterAlpha.tooltip")}
         />
         <SliderParam
-          label="Scatter Beta (Additive)"
+          label={t("spectraSynthesis.features.physics.scatterBeta.label")}
           value={model.scatterBetaStd}
           onChange={onScatterBetaStdChange}
           min={0}
           max={0.1}
           step={0.005}
-          tooltip="Additive scattering offset (β). Adds constant offset."
+          tooltip={t("spectraSynthesis.features.physics.scatterBeta.tooltip")}
         />
       </ConfigSection>
 
       <ConfigSection
-        title="Wavelength Effects"
+        title={t("spectraSynthesis.features.physics.wavelengthEffects.title")}
         icon={<Radio className="h-4 w-4 text-yellow-500" />}
-        description="Wavelength axis shift and stretch (calibration variation)"
+        description={t("spectraSynthesis.features.physics.wavelengthEffects.description")}
       >
         <SliderParam
-          label="Wavelength Shift"
+          label={t("spectraSynthesis.features.physics.shift.label")}
           value={model.shiftStd}
           onChange={onShiftStdChange}
           min={0}
@@ -431,60 +438,60 @@ export function PhysicsParametersSections({
           step={0.1}
           unit="nm"
           precision={1}
-          tooltip="Random wavelength axis shift simulating calibration variation"
+          tooltip={t("spectraSynthesis.features.physics.shift.tooltip")}
         />
         <SliderParam
-          label="Wavelength Stretch"
+          label={t("spectraSynthesis.features.physics.stretch.label")}
           value={model.stretchStd}
           onChange={onStretchStdChange}
           min={0}
           max={0.01}
           step={0.0005}
           precision={4}
-          tooltip="Wavelength axis stretching/compression factor"
+          tooltip={t("spectraSynthesis.features.physics.stretch.tooltip")}
         />
       </ConfigSection>
 
       <ConfigSection
-        title="Noise Model"
+        title={t("spectraSynthesis.features.physics.noise.title")}
         icon={<Activity className="h-4 w-4 text-red-500" />}
-        description="Detector noise and signal-dependent shot noise"
+        description={t("spectraSynthesis.features.physics.noise.description")}
       >
         <SliderParam
-          label="Base Noise (Detector)"
+          label={t("spectraSynthesis.features.physics.noiseBase.label")}
           value={model.noiseBase}
           onChange={onNoiseBaseChange}
           min={0}
           max={0.05}
           step={0.001}
-          tooltip="Constant noise floor from detector (dark noise)"
+          tooltip={t("spectraSynthesis.features.physics.noiseBase.tooltip")}
         />
         <SliderParam
-          label="Signal-Dependent Noise"
+          label={t("spectraSynthesis.features.physics.noiseSignal.label")}
           value={model.noiseSignalDep}
           onChange={onNoiseSignalDepChange}
           min={0}
           max={0.1}
           step={0.005}
-          tooltip="Noise proportional to signal intensity (shot noise)"
+          tooltip={t("spectraSynthesis.features.physics.noiseSignal.tooltip")}
         />
         <SliderParam
-          label="Artifact Probability"
+          label={t("spectraSynthesis.features.physics.artifact.label")}
           value={model.artifactProb}
           onChange={onArtifactProbChange}
           min={0}
           max={0.2}
           step={0.01}
-          tooltip="Probability of spectral artifacts (spikes, dropouts)"
+          tooltip={t("spectraSynthesis.features.physics.artifact.tooltip")}
         />
       </ConfigSection>
 
       <ConfigSection
-        title="Instrumental Broadening"
+        title={t("spectraSynthesis.features.physics.broadening.title")}
         icon={<Gauge className="h-4 w-4 text-indigo-500" />}
       >
         <SliderParam
-          label="Instrumental FWHM"
+          label={t("spectraSynthesis.features.physics.fwhm.label")}
           value={model.instrumentalFwhm}
           onChange={onInstrumentalFwhmChange}
           min={1}
@@ -492,7 +499,7 @@ export function PhysicsParametersSections({
           step={1}
           unit="nm"
           precision={0}
-          tooltip="Full width at half maximum of instrumental line shape"
+          tooltip={t("spectraSynthesis.features.physics.fwhm.tooltip")}
         />
       </ConfigSection>
     </>
@@ -512,24 +519,25 @@ export function InstrumentSimulationSection({
   onInstrumentChange,
   onMeasurementModeChange,
 }: InstrumentSimulationSectionProps) {
+  const { t } = useTranslation();
   return (
     <ConfigSection
-      title="Instrument Simulation"
+      title={t("spectraSynthesis.features.instrument.title")}
       icon={<Settings2 className="h-4 w-4 text-slate-500" />}
-      description="Simulate specific instrument characteristics (Phase 2)"
+      description={t("spectraSynthesis.features.instrument.description")}
     >
       <div className="space-y-3">
         <div className="space-y-1.5">
-          <Label className="text-xs">Instrument Archetype</Label>
+          <Label className="text-xs">{t("spectraSynthesis.features.instrument.archetype")}</Label>
           <Select
             value={instrumentSelectValue}
             onValueChange={onInstrumentChange}
           >
             <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Generic" />
+              <SelectValue placeholder={t("spectraSynthesis.features.instrument.generic")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none" className="text-xs">Generic</SelectItem>
+              <SelectItem value="none" className="text-xs">{t("spectraSynthesis.features.instrument.generic")}</SelectItem>
               <SelectItem value="foss_xds" className="text-xs">FOSS XDS</SelectItem>
               <SelectItem value="foss_nirs_ds2500" className="text-xs">FOSS NIRS DS2500</SelectItem>
               <SelectItem value="bruker_mpa" className="text-xs">Bruker MPA</SelectItem>
@@ -543,20 +551,20 @@ export function InstrumentSimulationSection({
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs">Measurement Mode</Label>
+          <Label className="text-xs">{t("spectraSynthesis.features.instrument.mode")}</Label>
           <Select
             value={measurementModeSelectValue}
             onValueChange={onMeasurementModeChange}
           >
             <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Default" />
+              <SelectValue placeholder={t("spectraSynthesis.features.instrument.modeDefault")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none" className="text-xs">Default</SelectItem>
-              <SelectItem value="transmittance" className="text-xs">Transmittance</SelectItem>
-              <SelectItem value="reflectance" className="text-xs">Reflectance</SelectItem>
-              <SelectItem value="transflectance" className="text-xs">Transflectance</SelectItem>
-              <SelectItem value="interactance" className="text-xs">Interactance</SelectItem>
+              <SelectItem value="none" className="text-xs">{t("spectraSynthesis.features.instrument.modeDefault")}</SelectItem>
+              <SelectItem value="transmittance" className="text-xs">{t("spectraSynthesis.features.instrument.modes.transmittance")}</SelectItem>
+              <SelectItem value="reflectance" className="text-xs">{t("spectraSynthesis.features.instrument.modes.reflectance")}</SelectItem>
+              <SelectItem value="transflectance" className="text-xs">{t("spectraSynthesis.features.instrument.modes.transflectance")}</SelectItem>
+              <SelectItem value="interactance" className="text-xs">{t("spectraSynthesis.features.instrument.modes.interactance")}</SelectItem>
               <SelectItem value="atr" className="text-xs">ATR</SelectItem>
             </SelectContent>
           </Select>

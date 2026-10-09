@@ -2,12 +2,14 @@
  * PartitionsConfig - Configuration panel for with_partitions() step
  */
 
+import { useTranslation } from "react-i18next";
 import { Split } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import type { SynthesisStepDefinition } from "../types";
+import { getStepDescription } from "../definitionLabels";
 
 interface PartitionsConfigProps {
   params: Record<string, unknown>;
@@ -20,6 +22,7 @@ export function PartitionsConfig({
   definition,
   onChange,
 }: PartitionsConfigProps) {
+  const { t } = useTranslation();
   const trainRatio = (params.train_ratio as number) || 0.8;
   const stratify = (params.stratify as boolean) || false;
   const shuffle = (params.shuffle as boolean) ?? true;
@@ -32,8 +35,8 @@ export function PartitionsConfig({
           <Split className="h-4 w-4 text-cyan-600" />
         </div>
         <div>
-          <h3 className="text-sm font-semibold">Partitions Configuration</h3>
-          <p className="text-xs text-muted-foreground">{definition.description}</p>
+          <h3 className="text-sm font-semibold">{t("spectraSynthesis.config.partitions.title")}</h3>
+          <p className="text-xs text-muted-foreground">{getStepDescription(t, definition.type)}</p>
         </div>
       </div>
 
@@ -42,7 +45,7 @@ export function PartitionsConfig({
       {/* Train Ratio */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">Train Ratio</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.partitions.trainRatio")}</Label>
           <span className="text-sm font-medium">{(trainRatio * 100).toFixed(0)}%</span>
         </div>
         <Slider
@@ -53,17 +56,17 @@ export function PartitionsConfig({
           onValueChange={(v) => onChange({ train_ratio: v[0] })}
         />
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>Train: {(trainRatio * 100).toFixed(0)}%</span>
-          <span>Test: {((1 - trainRatio) * 100).toFixed(0)}%</span>
+          <span>{t("spectraSynthesis.config.partitions.train", { percent: (trainRatio * 100).toFixed(0) })}</span>
+          <span>{t("spectraSynthesis.config.partitions.test", { percent: ((1 - trainRatio) * 100).toFixed(0) })}</span>
         </div>
       </div>
 
       {/* Stratify */}
       <div className="flex items-center justify-between">
         <div className="space-y-0.5">
-          <Label className="text-sm font-medium">Stratify</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.partitions.stratify.label")}</Label>
           <p className="text-xs text-muted-foreground">
-            Maintain class proportions in splits
+            {t("spectraSynthesis.config.partitions.stratify.hint")}
           </p>
         </div>
         <Switch
@@ -75,9 +78,9 @@ export function PartitionsConfig({
       {/* Shuffle */}
       <div className="flex items-center justify-between">
         <div className="space-y-0.5">
-          <Label className="text-sm font-medium">Shuffle</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.partitions.shuffle.label")}</Label>
           <p className="text-xs text-muted-foreground">
-            Randomize sample order before splitting
+            {t("spectraSynthesis.config.partitions.shuffle.hint")}
           </p>
         </div>
         <Switch

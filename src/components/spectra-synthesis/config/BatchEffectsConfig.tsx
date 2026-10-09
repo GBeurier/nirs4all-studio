@@ -2,12 +2,14 @@
  * BatchEffectsConfig - Configuration panel for with_batch_effects() step
  */
 
+import { useTranslation } from "react-i18next";
 import { Layers } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import type { SynthesisStepDefinition } from "../types";
+import { getStepDescription } from "../definitionLabels";
 
 interface BatchEffectsConfigProps {
   params: Record<string, unknown>;
@@ -20,6 +22,7 @@ export function BatchEffectsConfig({
   definition,
   onChange,
 }: BatchEffectsConfigProps) {
+  const { t } = useTranslation();
   const enabled = (params.enabled as boolean) ?? true;
   const nBatches = (params.n_batches as number) || 3;
 
@@ -31,8 +34,8 @@ export function BatchEffectsConfig({
           <Layers className="h-4 w-4 text-yellow-600" />
         </div>
         <div>
-          <h3 className="text-sm font-semibold">Batch Effects Configuration</h3>
-          <p className="text-xs text-muted-foreground">{definition.description}</p>
+          <h3 className="text-sm font-semibold">{t("spectraSynthesis.config.batchEffects.title")}</h3>
+          <p className="text-xs text-muted-foreground">{getStepDescription(t, definition.type)}</p>
         </div>
       </div>
 
@@ -41,9 +44,9 @@ export function BatchEffectsConfig({
       {/* Enable Batch Effects */}
       <div className="flex items-center justify-between">
         <div className="space-y-0.5">
-          <Label className="text-sm font-medium">Enable Batch Effects</Label>
+          <Label className="text-sm font-medium">{t("spectraSynthesis.config.batchEffects.enable.label")}</Label>
           <p className="text-xs text-muted-foreground">
-            Simulate batch/session variations
+            {t("spectraSynthesis.config.batchEffects.enable.hint")}
           </p>
         </div>
         <Switch
@@ -56,7 +59,7 @@ export function BatchEffectsConfig({
       {enabled && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium">Number of Batches</Label>
+            <Label className="text-sm font-medium">{t("spectraSynthesis.config.batchEffects.nBatches.label")}</Label>
             <span className="text-sm font-medium">{nBatches}</span>
           </div>
           <Slider
@@ -67,7 +70,7 @@ export function BatchEffectsConfig({
             onValueChange={(v) => onChange({ n_batches: v[0] })}
           />
           <p className="text-xs text-muted-foreground">
-            Number of simulated measurement sessions
+            {t("spectraSynthesis.config.batchEffects.nBatches.hint")}
           </p>
         </div>
       )}

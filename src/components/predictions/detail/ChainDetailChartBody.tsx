@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   PredictionScatterChart,
 } from "@/components/predictions/viewer/charts/PredictionScatterChart";
@@ -35,11 +36,12 @@ export function ChainDetailChartBody({
   panelConfig,
   taskKind,
 }: ChainDetailChartBodyProps) {
+  const { t } = useTranslation();
   if (chartsLoading) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        <span className="text-xs">Loading...</span>
+        <span className="text-xs">{t("predictions.detail.chart.loading")}</span>
       </div>
     );
   }
@@ -53,7 +55,7 @@ export function ChainDetailChartBody({
   if (chartDatasets.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-        Select a related prediction to display charts.
+        {t("predictions.detail.chart.selectRelated")}
       </div>
     );
   }

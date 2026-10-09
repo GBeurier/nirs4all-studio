@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,6 +18,7 @@ interface ProjectFilterProps {
 }
 
 export function ProjectFilter({ selectedProjectId, onProjectChange }: ProjectFilterProps) {
+  const { t } = useTranslation();
   const { data } = useQuery({
     queryKey: ["projects"],
     queryFn: listProjects,
@@ -33,9 +35,10 @@ export function ProjectFilter({ selectedProjectId, onProjectChange }: ProjectFil
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">
           <FolderKanban className="h-4 w-4" />
-          {selectedProject ? selectedProject.name : "All Projects"}
+          {selectedProject ? selectedProject.name : t("runs.projectFilter.all")}
           {selectedProjectId && (
             <X
+              aria-label={t("runs.projectFilter.clear")}
               className="h-3 w-3 ml-1 hover:text-destructive"
               onClick={(e) => {
                 e.stopPropagation();
@@ -47,7 +50,7 @@ export function ProjectFilter({ selectedProjectId, onProjectChange }: ProjectFil
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => onProjectChange(null)}>
-          <span className={cn("mr-2", !selectedProjectId && "font-semibold")}>All Projects</span>
+          <span className={cn("mr-2", !selectedProjectId && "font-semibold")}>{t("runs.projectFilter.all")}</span>
           {!selectedProjectId && <Check className="h-4 w-4 ml-auto" />}
         </DropdownMenuItem>
         <DropdownMenuSeparator />

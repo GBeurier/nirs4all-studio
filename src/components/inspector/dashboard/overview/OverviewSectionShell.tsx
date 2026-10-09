@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,7 @@ export interface OverviewSectionShellProps {
 export function OverviewSectionShell({
   title,
   description,
-  kicker = "Overview",
+  kicker,
   badge,
   actions,
   footer,
@@ -31,6 +32,8 @@ export function OverviewSectionShell({
   contentClassName,
   compact = false,
 }: OverviewSectionShellProps) {
+  const { t } = useTranslation();
+
   return (
     <Card className={cn(
       "overflow-hidden border-border/60 shadow-sm",
@@ -42,11 +45,11 @@ export function OverviewSectionShell({
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="border-border/60 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                {kicker}
+                {kicker ?? t("inspector.dashboard.overview")}
               </Badge>
               <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
               <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                Guided comparison
+                {t("inspector.dashboard.guidedComparison")}
               </span>
             </div>
             <CardTitle className={cn("text-base font-semibold", compact && "text-sm")}>

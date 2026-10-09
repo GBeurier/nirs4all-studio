@@ -40,11 +40,12 @@ const itemVariants = {
 };
 
 export default function Predict() {
+  const { t } = useTranslation();
   return (
     <Tabs defaultValue={readPersistedArchiveV2Selection() ? "native" : "general"} className="space-y-4">
-      <TabsList aria-label="Prediction model profile">
-        <TabsTrigger value="general">Trained models</TabsTrigger>
-        <TabsTrigger value="native">Portable Archive V2</TabsTrigger>
+      <TabsList aria-label={t("predict.page.profileAria")}>
+        <TabsTrigger value="general">{t("predict.page.generalTab")}</TabsTrigger>
+        <TabsTrigger value="native">{t("predict.page.nativeTab")}</TabsTrigger>
       </TabsList>
       <TabsContent value="general"><GeneralPredictionPanel /></TabsContent>
       <TabsContent value="native"><NativePredictionPanel /></TabsContent>
@@ -65,7 +66,7 @@ function NativePredictionPanel() {
 
   const predictMutation = useMutation({
     mutationFn: async (spectra: number[][]) => {
-      if (!selectedModel) throw new Error("No Archive V2 selected.");
+      if (!selectedModel) throw new Error(t("predict.page.noArchiveSelected"));
 
       // Re-read the bounded contract immediately before transport. A cleared,
       // edited, moved-reference, digest, width, or target-order identity is
@@ -75,9 +76,7 @@ function NativePredictionPanel() {
         !persisted ||
         !archiveV2SelectionIdentityEquals(selectedModel, persisted)
       ) {
-        throw new Error(
-          "Archive identity changed. Verify and select the persisted Archive V2 again.",
-        );
+        throw new Error(t("predict.page.archiveIdentityChanged"));
       }
 
       const request = buildArchiveV2ArrayPredictionRequest(persisted, spectra);
@@ -104,7 +103,7 @@ function NativePredictionPanel() {
           presentationError:
             error instanceof Error
               ? error.message
-              : "No validated conformal presentation is available for this archive.",
+              : t("predict.page.noConformalPresentation"),
         };
       }
     },
@@ -113,7 +112,10 @@ function NativePredictionPanel() {
       setConformal(data.presentation);
       setConformalError(data.presentationError);
       toast.success(
-        `Predicted ${data.prediction.sample_ids.length} samples with ${data.prediction.archive_id}.`,
+        t("predict.page.predictedToast", {
+          count: data.prediction.sample_ids.length,
+          archive: data.prediction.archive_id,
+        }),
       );
     },
     onError: (error) => {
@@ -157,7 +159,7 @@ function NativePredictionPanel() {
             <div>
               <h1 className="text-2xl font-bold">{t("predict.title")}</h1>
               <p className="text-sm text-muted-foreground">
-                Predict new samples using a saved model.
+                {t("predict.page.nativeSubtitle")}
               </p>
             </div>
           </div>
@@ -200,7 +202,7 @@ function NativePredictionPanel() {
                       size="sm"
                       onClick={() => predictMutation.reset()}
                     >
-                      Dismiss
+                      {t("predict.page.dismiss")}
                     </Button>
                   </div>
                 </div>

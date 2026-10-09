@@ -6,33 +6,33 @@ import type {
   GroupByExpressionConfig,
 } from '@/types/inspector';
 
-export const INSPECTOR_EXPRESSION_FIELDS: { value: ExpressionField; label: string; type: 'string' | 'number' }[] = [
-  { value: 'model_class', label: 'Model Class', type: 'string' },
-  { value: 'preprocessings', label: 'Preprocessing', type: 'string' },
-  { value: 'dataset_name', label: 'Dataset', type: 'string' },
-  { value: 'task_type', label: 'Task Type', type: 'string' },
-  { value: 'cv_val_score', label: 'CV Val Score', type: 'number' },
-  { value: 'cv_test_score', label: 'CV Test Score', type: 'number' },
-  { value: 'cv_train_score', label: 'CV Train Score', type: 'number' },
-  { value: 'final_test_score', label: 'Final Test', type: 'number' },
-  { value: 'final_train_score', label: 'Final Train', type: 'number' },
-  { value: 'cv_fold_count', label: 'Fold Count', type: 'number' },
+export const INSPECTOR_EXPRESSION_FIELDS: { value: ExpressionField; labelKey: string; type: 'string' | 'number' }[] = [
+  { value: 'model_class', labelKey: 'inspector.fields.modelClass', type: 'string' },
+  { value: 'preprocessings', labelKey: 'inspector.fields.preprocessing', type: 'string' },
+  { value: 'dataset_name', labelKey: 'inspector.fields.dataset', type: 'string' },
+  { value: 'task_type', labelKey: 'inspector.fields.taskType', type: 'string' },
+  { value: 'cv_val_score', labelKey: 'inspector.scores.cv_val_score', type: 'number' },
+  { value: 'cv_test_score', labelKey: 'inspector.scores.cv_test_score', type: 'number' },
+  { value: 'cv_train_score', labelKey: 'inspector.scores.cv_train_score', type: 'number' },
+  { value: 'final_test_score', labelKey: 'inspector.scores.shortFinalTest', type: 'number' },
+  { value: 'final_train_score', labelKey: 'inspector.scores.shortFinalTrain', type: 'number' },
+  { value: 'cv_fold_count', labelKey: 'inspector.fields.foldCount', type: 'number' },
 ];
 
-export const INSPECTOR_STRING_OPERATORS: { value: ExpressionOperator; label: string }[] = [
-  { value: 'eq', label: '=' },
-  { value: 'neq', label: '!=' },
-  { value: 'contains', label: 'contains' },
-  { value: 'not_contains', label: '!contains' },
+export const INSPECTOR_STRING_OPERATORS: { value: ExpressionOperator; labelKey: string }[] = [
+  { value: 'eq', labelKey: 'inspector.groups.operators.eq' },
+  { value: 'neq', labelKey: 'inspector.groups.operators.neq' },
+  { value: 'contains', labelKey: 'inspector.groups.operators.contains' },
+  { value: 'not_contains', labelKey: 'inspector.groups.operators.not_contains' },
 ];
 
-export const INSPECTOR_NUMBER_OPERATORS: { value: ExpressionOperator; label: string }[] = [
-  { value: 'eq', label: '=' },
-  { value: 'neq', label: '!=' },
-  { value: 'gt', label: '>' },
-  { value: 'lt', label: '<' },
-  { value: 'gte', label: '>=' },
-  { value: 'lte', label: '<=' },
+export const INSPECTOR_NUMBER_OPERATORS: { value: ExpressionOperator; labelKey: string }[] = [
+  { value: 'eq', labelKey: 'inspector.groups.operators.eq' },
+  { value: 'neq', labelKey: 'inspector.groups.operators.neq' },
+  { value: 'gt', labelKey: 'inspector.groups.operators.gt' },
+  { value: 'lt', labelKey: 'inspector.groups.operators.lt' },
+  { value: 'gte', labelKey: 'inspector.groups.operators.gte' },
+  { value: 'lte', labelKey: 'inspector.groups.operators.lte' },
 ];
 
 let nextExpressionId = 1;

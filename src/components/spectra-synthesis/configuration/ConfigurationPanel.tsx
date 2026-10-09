@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FileOutput, AlertCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,6 +18,7 @@ import { useSynthesisBuilder } from "../contexts";
 import { CoreConfigSection } from "./CoreConfigSection";
 import { StepsList } from "./StepsList";
 import { ExportDialog } from "../ExportDialog";
+import { getStepName } from "../definitionLabels";
 import { cn } from "@/lib/utils";
 
 interface ConfigurationPanelProps {
@@ -24,6 +26,7 @@ interface ConfigurationPanelProps {
 }
 
 export function ConfigurationPanel({ className }: ConfigurationPanelProps) {
+  const { t } = useTranslation();
   const { state } = useSynthesisBuilder();
   const [showExportDialog, setShowExportDialog] = useState(false);
 
@@ -41,7 +44,7 @@ export function ConfigurationPanel({ className }: ConfigurationPanelProps) {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="text-xs">
                 {errors.map((e, i) => (
-                  <div key={i}>{e.message}</div>
+                  <div key={i}>{t(e.messageKey)}</div>
                 ))}
               </AlertDescription>
             </Alert>
@@ -52,7 +55,9 @@ export function ConfigurationPanel({ className }: ConfigurationPanelProps) {
               <AlertTriangle className="h-4 w-4 text-yellow-600" />
               <AlertDescription className="text-xs text-yellow-700 dark:text-yellow-400">
                 {warnings.map((w, i) => (
-                  <div key={i}>{w.message}</div>
+                  <div key={i}>
+                    {t(w.messageKey, { step: w.stepType ? getStepName(t, w.stepType) : "" })}
+                  </div>
                 ))}
               </AlertDescription>
             </Alert>
@@ -76,7 +81,7 @@ export function ConfigurationPanel({ className }: ConfigurationPanelProps) {
           disabled={hasErrors || state.steps.filter((s) => s.enabled).length === 0}
         >
           <FileOutput className="h-4 w-4 mr-2" />
-          Export Dataset
+          {t("spectraSynthesis.configurationPanel.exportDataset")}
         </Button>
       </div>
 

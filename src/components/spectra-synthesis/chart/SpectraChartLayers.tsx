@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+import { useTranslation } from "react-i18next";
 import { Line, type TooltipProps } from "recharts";
 
 import { SPECTRA_CHART_THEME } from "@/components/charts/BaseSpectraChart";
@@ -9,6 +10,7 @@ export function SynthesisChartTooltip({
   label,
   unitSymbol,
 }: TooltipProps<number, string> & { unitSymbol: string }) {
+  const { t } = useTranslation();
   if (!active || !payload || payload.length === 0) {
     return null;
   }
@@ -30,13 +32,13 @@ export function SynthesisChartTooltip({
       <div className="space-y-0.5 text-xs">
         {mean !== undefined && (
           <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">Mean:</span>
+            <span className="text-muted-foreground">{t("spectraSynthesis.chart.tooltipMean")}</span>
             <span className="font-mono">{mean.toFixed(4)}</span>
           </div>
         )}
         {upper !== undefined && lower !== undefined && (
           <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">Range:</span>
+            <span className="text-muted-foreground">{t("spectraSynthesis.chart.tooltipRange")}</span>
             <span className="font-mono">
               {lower.toFixed(3)} - {upper.toFixed(3)}
             </span>

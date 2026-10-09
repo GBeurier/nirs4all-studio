@@ -4,7 +4,6 @@ export type StartupBadgeIconKind = "loading" | "error";
 
 export interface StartupTranslationText {
   key: string;
-  defaultValue: string;
 }
 
 export interface StartupDescriptionText extends StartupTranslationText {
@@ -82,11 +81,9 @@ export function buildBackendStartupBannerReadModel(
       label: hasMlError
         ? {
             key: "layout.backendStartup.errorBadge",
-            defaultValue: "Startup issue",
           }
         : {
             key: "layout.backendStartup.badge",
-            defaultValue: "Starting Studio",
           },
       iconKind: hasMlError ? "error" : "loading",
     },
@@ -102,24 +99,20 @@ function getStartupTitle({
   if (!coreReady) {
     return {
       key: "layout.backendStartup.connectingTitle",
-      defaultValue: "Connecting to the analysis engine...",
     };
   }
   if (mlError) {
     return {
       key: "layout.backendStartup.errorTitle",
-      defaultValue: "Studio could not start",
     };
   }
   if (!mlReady) {
     return {
       key: "layout.backendStartup.loadingTitle",
-      defaultValue: "Starting analysis engine...",
     };
   }
   return {
     key: "layout.backendStartup.workspaceTitle",
-    defaultValue: "Loading workspace...",
   };
 }
 
@@ -131,30 +124,23 @@ function getStartupDescription({
   if (!coreReady) {
     return {
       key: "layout.backendStartup.connectingDescription",
-      defaultValue:
-        "Studio is still starting. Please wait.",
       error: null,
     };
   }
   if (mlError) {
     return {
       key: "layout.backendStartup.errorDescription",
-      defaultValue: "Studio could not start.",
       error: mlError,
     };
   }
   if (!mlReady) {
     return {
       key: "layout.backendStartup.loadingDescription",
-      defaultValue:
-        "nirs4all and its ML dependencies are initializing in the background. Heavy analysis features will unlock automatically.",
       error: null,
     };
   }
   return {
     key: "layout.backendStartup.workspaceDescription",
-    defaultValue:
-      "Opening your workspace. Your datasets and results will appear when loading finishes.",
     error: null,
   };
 }
@@ -177,42 +163,34 @@ function getStartupSteps(
     {
       label: {
         key: "layout.backendStartup.apiLabel",
-        defaultValue: "Studio service",
       },
       detail: state.coreReady
         ? {
             key: "layout.backendStartup.apiReady",
-            defaultValue: "Analysis engine ready",
           }
         : {
             key: "layout.backendStartup.apiLoading",
-            defaultValue: "Starting analysis engine",
           },
       state: state.coreReady ? "done" : "loading",
     },
     {
       label: {
         key: "layout.backendStartup.mlLabel",
-        defaultValue: "ML Engine",
       },
       detail: state.mlError
         ? {
             key: "layout.backendStartup.mlError",
-            defaultValue: "Initialization failed",
           }
         : state.mlReady
           ? {
               key: "layout.backendStartup.mlReady",
-              defaultValue: "Dependencies loaded",
             }
           : state.coreReady
             ? {
                 key: "layout.backendStartup.mlLoading",
-                defaultValue: "Importing nirs4all and sklearn",
               }
             : {
                 key: "layout.backendStartup.mlWaiting",
-                defaultValue: "Waiting for API",
               },
       state: state.mlError
         ? "error"
@@ -225,26 +203,21 @@ function getStartupSteps(
     {
       label: {
         key: "layout.backendStartup.workspaceLabel",
-        defaultValue: "Workspace",
       },
       detail: state.mlError
         ? {
             key: "layout.backendStartup.workspaceBlocked",
-            defaultValue: "Waiting for the analysis engine",
           }
         : workspaceDone
           ? {
               key: "layout.backendStartup.workspaceReady",
-              defaultValue: "Ready",
             }
           : state.mlReady
             ? {
                 key: "layout.backendStartup.workspaceLoading",
-                defaultValue: "Loading datasets and run state",
               }
             : {
                 key: "layout.backendStartup.workspaceWaiting",
-                defaultValue: "Queued behind ML startup",
               },
       state: state.mlError
         ? "error"

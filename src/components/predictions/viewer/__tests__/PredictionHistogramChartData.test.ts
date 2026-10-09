@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import i18next from "i18next";
+import { beforeAll, describe, expect, it } from "vitest";
 
+import { initEnglishI18n } from "../../predictionsTestI18n";
 import {
   buildPredictionHistogramRenderModel,
   detectPredictionHistogramTaskKind,
@@ -36,6 +38,10 @@ function chartConfig(overrides: Partial<ChartConfig> = {}): ChartConfig {
   };
 }
 
+beforeAll(async () => {
+  await initEnglishI18n();
+});
+
 describe("PredictionHistogramChartData", () => {
   it("detects task kind and resolves active histogram series", () => {
     expect(detectPredictionHistogramTaskKind([
@@ -67,6 +73,7 @@ describe("PredictionHistogramChartData", () => {
       ],
       config: chartConfig({ histogramSeries: "residuals" }),
       hasActuals: false,
+      t: i18next.t,
     });
 
     expect(model.actualsAvailable).toBe(false);
@@ -104,6 +111,7 @@ describe("PredictionHistogramChartData", () => {
       }),
       taskKind: "regression",
       hasActuals: false,
+      t: i18next.t,
     });
 
     expect(model.groups.map((group) => [group.key, group.label])).toEqual([
@@ -139,6 +147,7 @@ describe("PredictionHistogramChartData", () => {
       }),
       taskKind: "regression",
       hasActuals: false,
+      t: i18next.t,
     });
 
     expect(model.groups.map((group) => [group.key, group.label])).toEqual([
@@ -157,6 +166,7 @@ describe("PredictionHistogramChartData", () => {
     const model = buildPredictionHistogramRenderModel({
       datasets: [
         dataset({
+          partition: "val",
           label: "Validation",
           yTrue: [1, 2],
           yPred: [1.5, 1.75],
@@ -169,6 +179,7 @@ describe("PredictionHistogramChartData", () => {
       }),
       taskKind: "regression",
       hasActuals: true,
+      t: i18next.t,
     });
 
     expect(model.xAxisLabel).toBe("Value");
@@ -177,10 +188,10 @@ describe("PredictionHistogramChartData", () => {
       "Validation (actual)",
       "Validation (predicted)",
     ]);
-    expect(getPredictionHistogramXAxisLabel("regression", "residuals")).toBe("Residual (y_true − y_pred)");
-    expect(getPredictionHistogramYAxisLabel("density", "classification")).toBe("Count");
-    expect(getPredictionHistogramTooltipTitle("classification", "7")).toBe("Class 7");
-    expect(getPredictionHistogramTooltipTitle("regression", "1.5")).toBe("≈ 1.5");
+    expect(getPredictionHistogramXAxisLabel("regression", "residuals", i18next.t)).toBe("Residual (y_true − y_pred)");
+    expect(getPredictionHistogramYAxisLabel("density", "classification", i18next.t)).toBe("Count");
+    expect(getPredictionHistogramTooltipTitle("classification", "7", i18next.t)).toBe("Class 7");
+    expect(getPredictionHistogramTooltipTitle("regression", "1.5", i18next.t)).toBe("≈ 1.5");
     expect(formatPredictionHistogramTooltipValue(1.23456, "density")).toBe("1.235");
     expect(formatPredictionHistogramTooltipValue(1.6, "count")).toBe("2");
   });

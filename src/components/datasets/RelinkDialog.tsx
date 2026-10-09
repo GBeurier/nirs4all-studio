@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link2, FolderOpen, AlertTriangle, Check, X } from "lucide-react";
 import { selectFolder } from "@/utils/fileDialogs";
 import {
@@ -44,6 +45,7 @@ export function RelinkDialog({
   onRelink,
   isLoading = false,
 }: RelinkDialogProps) {
+  const { t } = useTranslation();
   const [newPath, setNewPath] = useState("");
   const [force, setForce] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +76,7 @@ export function RelinkDialog({
 
   const handleRelink = async () => {
     if (!newPath.trim()) {
-      setError("Please enter a path");
+      setError(t("datasets.relink.enterPath"));
       return;
     }
 
@@ -98,7 +100,7 @@ export function RelinkDialog({
           setError(err.message);
         }
       } else {
-        setError("Failed to relink dataset");
+        setError(t("datasets.relink.failed"));
       }
     }
   };
@@ -109,18 +111,17 @@ export function RelinkDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Link2 className="h-5 w-5 text-primary" />
-            Relink Dataset
+            {t("datasets.relink.title")}
           </DialogTitle>
           <DialogDescription>
-            Update the path for "{dataset.name}". This is useful when moving
-            datasets between machines or fixing broken paths.
+            {t("datasets.relink.description", { name: dataset.name })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Current path */}
           <div className="space-y-2">
-            <Label className="text-muted-foreground">Current Path</Label>
+            <Label className="text-muted-foreground">{t("datasets.relink.currentPath")}</Label>
             <div className="rounded-md border bg-muted/50 p-2">
               <p className="text-sm font-mono break-all text-muted-foreground">
                 {dataset.path}
@@ -130,7 +131,7 @@ export function RelinkDialog({
 
           {/* New path input */}
           <div className="space-y-2">
-            <Label htmlFor="new-path">New Path</Label>
+            <Label htmlFor="new-path">{t("datasets.relink.newPath")}</Label>
             <div className="flex gap-2">
               <Input
                 id="new-path"
@@ -144,7 +145,8 @@ export function RelinkDialog({
                 variant="outline"
                 size="icon"
                 onClick={handleBrowse}
-                title="Browse for folder"
+                title={t("datasets.relink.browse")}
+                aria-label={t("datasets.relink.browse")}
               >
                 <FolderOpen className="h-4 w-4" />
               </Button>
@@ -160,7 +162,7 @@ export function RelinkDialog({
                 ) : (
                   <X className="h-4 w-4 text-red-500" />
                 )}
-                <span>Structure matches original dataset</span>
+                <span>{t("datasets.relink.structureMatches")}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 {validation.file_count_matches ? (
@@ -168,7 +170,7 @@ export function RelinkDialog({
                 ) : (
                   <X className="h-4 w-4 text-amber-500" />
                 )}
-                <span>File count matches</span>
+                <span>{t("datasets.relink.fileCountMatches")}</span>
               </div>
               {validation.warnings.length > 0 && (
                 <div className="rounded-md border border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 p-2">
@@ -190,7 +192,7 @@ export function RelinkDialog({
               onCheckedChange={(checked) => setForce(checked === true)}
             />
             <Label htmlFor="force" className="text-sm font-normal cursor-pointer">
-              Force relink even if structure doesn't match
+              {t("datasets.relink.force")}
             </Label>
           </div>
 
@@ -209,15 +211,15 @@ export function RelinkDialog({
             onClick={() => handleOpenChange(false)}
             disabled={isLoading}
           >
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleRelink} disabled={isLoading || !newPath.trim()}>
             {isLoading ? (
-              "Relinking..."
+              t("datasets.relink.relinking")
             ) : (
               <>
                 <Link2 className="h-4 w-4 mr-2" />
-                Relink Dataset
+                {t("datasets.relink.title")}
               </>
             )}
           </Button>

@@ -8,6 +8,7 @@
 
 import { useMemo } from "react";
 import { Eye, Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { isClassificationTask } from "@/components/runs/modelDetailClassification";
 import { PredictionColorLegend } from "./PredictionColorLegend";
@@ -28,6 +29,7 @@ export function PredictionPreview({
   workspaceId,
   onOpenViewer,
 }: PredictionPreviewProps) {
+  const { t } = useTranslation();
   const configDatasetKey = useMemo(
     () => `${workspaceId ?? "__current__"}::${header.datasetName}`,
     [workspaceId, header.datasetName],
@@ -51,9 +53,9 @@ export function PredictionPreview({
   }, [header.taskType]);
 
   const headerLabel = useMemo(() => {
-    const parts = [header.modelName ?? "Model", header.datasetName].filter(Boolean);
+    const parts = [header.modelName ?? t("predictions.viewer.preview.defaultModel"), header.datasetName].filter(Boolean);
     return parts.join(" · ");
-  }, [header.modelName, header.datasetName]);
+  }, [header.modelName, header.datasetName, t]);
 
   const defaultKind: ChartKind = taskKind === "classification" ? "confusion" : "scatter";
 
@@ -70,14 +72,14 @@ export function PredictionPreview({
           onClick={() => onOpenViewer(defaultKind)}
         >
           <Eye className="h-3.5 w-3.5" />
-          Open viewer
+          {t("predictions.viewer.preview.openViewer")}
         </Button>
       </div>
 
       {isLoading ? (
         <div className="flex h-40 items-center justify-center text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          <span className="text-xs">Loading…</span>
+          <span className="text-xs">{t("predictions.viewer.preview.loading")}</span>
         </div>
       ) : error ? (
         <div className="flex h-40 items-center justify-center rounded-md border border-destructive/40 bg-destructive/10 px-3 text-xs text-destructive">
@@ -87,6 +89,7 @@ export function PredictionPreview({
         <button
           type="button"
           role="button"
+          aria-label={t("predictions.charts.titles.confusion")}
           className="group flex flex-col items-center rounded-md border border-border/60 bg-card p-2 transition hover:border-border hover:shadow-sm"
           onClick={() => onOpenViewer("confusion")}
           style={{ height: 240 }}
@@ -106,7 +109,7 @@ export function PredictionPreview({
             onClick={() => onOpenViewer("scatter")}
           >
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Pred vs Actual
+              {t("predictions.viewer.preview.predVsActual")}
             </div>
             <div style={{ height: 140 }} className="w-full">
               <PredictionScatterChart datasets={datasets} config={previewConfig} variant="thumbnail" />
@@ -120,7 +123,7 @@ export function PredictionPreview({
             onClick={() => onOpenViewer("residuals")}
           >
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Residuals
+              {t("predictions.charts.kinds.residuals")}
             </div>
             <div style={{ height: 140 }} className="w-full">
               <PredictionResidualsChart datasets={datasets} config={previewConfig} variant="thumbnail" />

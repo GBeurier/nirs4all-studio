@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+
+import { enT } from "@/lib/__tests__/enT";
 import {
   buildPredictAvailableKinds,
   buildPredictChartBaseFilename,
@@ -74,9 +76,10 @@ describe("predictResultsData", () => {
         sample_ids: ["s-test", "s-train-1", "s-val", "s-train-2"],
         partitions: ["test", "train", "val", "train"],
       }),
+      t: enT,
     })).toMatchObject([
       { partition: "train", label: "Train", yTrue: [21, 41], yPred: [20, 40], nSamples: 2, sampleIds: ["s-train-1", "s-train-2"] },
-      { partition: "val", label: "Val", yTrue: [31], yPred: [30], nSamples: 1, sampleIds: ["s-val"] },
+      { partition: "val", label: "Validation", yTrue: [31], yPred: [30], nSamples: 1, sampleIds: ["s-val"] },
       { partition: "test", label: "Test", yTrue: [11], yPred: [10], nSamples: 1, sampleIds: ["s-test"] },
     ]);
   });
@@ -91,9 +94,9 @@ describe("predictResultsData", () => {
   });
 
   it("builds labels, stats, table rows, metric entries, and filenames", () => {
-    expect(getPredictInputLabel({ type: "dataset", datasetId: "d1", datasetName: "Corn", partition: "test" }, "fallback")).toBe("Corn");
-    expect(getPredictInputSubLabel({ type: "dataset", datasetId: "d1", partition: "all" })).toBe("partition: all");
-    expect(formatPredictPartitionLabel("test")).toBe("Test");
+    expect(getPredictInputLabel({ type: "dataset", datasetId: "d1", datasetName: "Corn", partition: "test" }, "fallback", enT)).toBe("Corn");
+    expect(getPredictInputSubLabel({ type: "dataset", datasetId: "d1", partition: "all" }, enT)).toBe("partition: all");
+    expect(formatPredictPartitionLabel("test", enT)).toBe("Test");
     expect(computePredictStats([1, 2, 3, 4])).toMatchObject({
       count: 4,
       mean: 2.5,
@@ -159,16 +162,17 @@ describe("predictResultsData", () => {
       nSamples: 5,
     });
 
-    expect(buildPredictTaskBadge("classification")).toMatchObject({ label: "Classification" });
-    expect(buildPredictTaskBadge("classification").className).toContain("border-violet-500/40");
-    expect(buildPredictReferenceBadge(false)).toMatchObject({ label: "No reference values" });
-    expect(buildPredictReferenceBadge(false).className).toContain("border-amber-500/40");
+    expect(buildPredictTaskBadge("classification", enT)).toMatchObject({ label: "Classification" });
+    expect(buildPredictTaskBadge("classification", enT).className).toContain("border-violet-500/40");
+    expect(buildPredictReferenceBadge(false, enT)).toMatchObject({ label: "No reference values" });
+    expect(buildPredictReferenceBadge(false, enT).className).toContain("border-amber-500/40");
 
     expect(buildPredictSummaryCards({
       hasActuals: false,
       numSamples: 3,
       partitionCount: 2,
       summaryMetric: { key: "rmse", value: 0.2 },
+      t: enT,
     })).toEqual([
       { key: "samples", label: "Samples", value: "3", description: "2 partitions" },
       {
@@ -185,10 +189,10 @@ describe("predictResultsData", () => {
       },
     ]);
 
-    expect(buildPredictMetricCards([{ key: "r2", value: 0.81234 }])).toEqual([
+    expect(buildPredictMetricCards([{ key: "r2", value: 0.81234 }], enT)).toEqual([
       { key: "r2", label: "R²", value: "0.8123" },
     ]);
-    const statsCards = buildPredictStatsCards(computePredictStats([1, 2, 3])!);
+    const statsCards = buildPredictStatsCards(computePredictStats([1, 2, 3])!, enT);
     expect(statsCards.slice(0, 3)).toEqual([
       { label: "N", value: "3" },
       { label: "Mean", value: "2.0000" },
@@ -204,6 +208,7 @@ describe("predictResultsData", () => {
       displaySubLabel: "partition: test",
       nSamples: 3,
       preprocessings: "SNV · Smooth",
+      t: enT,
     })).toEqual(["3 samples", "partition: test", "SNV · Smooth"]);
   });
 
@@ -233,6 +238,7 @@ describe("predictResultsData", () => {
         actual_values: [0, 0, 1],
         sample_ids: ["c1", "c2", "c3"],
       }),
+      t: enT,
     });
 
     expect(buildPredictChartCsvExport({
@@ -245,9 +251,9 @@ describe("predictResultsData", () => {
     })).toEqual({
       columns: ["sample_id", "partition", "y_true", "y_pred"],
       rows: [
-        { sample_id: "c1", partition: "Test", y_pred: 0, y_true: 0 },
-        { sample_id: "c2", partition: "Test", y_pred: 1, y_true: 0 },
-        { sample_id: "c3", partition: "Test", y_pred: 1, y_true: 1 },
+        { sample_id: "c1", partition: "test", y_pred: 0, y_true: 0 },
+        { sample_id: "c2", partition: "test", y_pred: 1, y_true: 0 },
+        { sample_id: "c3", partition: "test", y_pred: 1, y_true: 1 },
       ],
     });
 
@@ -277,6 +283,7 @@ describe("predictResultsData", () => {
         actual_values: [1, 2],
         sample_ids: ["r1", "r2"],
       }),
+      t: enT,
     });
 
     expect(buildPredictChartCsvExport({
@@ -289,8 +296,8 @@ describe("predictResultsData", () => {
     })).toEqual({
       columns: ["sample_id", "partition", "y_true", "y_pred", "residual"],
       rows: [
-        { sample_id: "r1", partition: "Test", y_true: 1, y_pred: 1.2, residual: -0.19999999999999996 },
-        { sample_id: "r2", partition: "Test", y_true: 2, y_pred: 1.8, residual: 0.19999999999999996 },
+        { sample_id: "r1", partition: "test", y_true: 1, y_pred: 1.2, residual: -0.19999999999999996 },
+        { sample_id: "r2", partition: "test", y_true: 2, y_pred: 1.8, residual: 0.19999999999999996 },
       ],
     });
   });

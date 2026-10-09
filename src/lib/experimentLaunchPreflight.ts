@@ -1,3 +1,5 @@
+import i18n from "i18next";
+
 import type { PreflightResult } from "@/api/runs";
 import type { ExperimentConfig } from "@/types/runs";
 
@@ -24,7 +26,7 @@ export interface ResolveExperimentLaunchPreflightDecisionInput {
 function getPruneErrorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
-    : "Cannot remove missing nodes from this launch.";
+    : i18n.t("newExperiment.launch.errors.cannotRemoveMissingNodes");
 }
 
 export function resolveExperimentLaunchPreflightDecision({
