@@ -99,7 +99,7 @@ function github(options, behavior = {}) {
     }
     if (args[0] === "release" && args[1] === "create") {
       assert.deepEqual(args, ["release", "create", options.tag, "--repo", options.repo,
-        "--verify-tag", "--target", options.sha, "--title", `nirs4all Studio ${options.version}`,
+        "--verify-tag", "--title", `nirs4all Studio ${options.version}`,
         "--notes-file", options.notesPath, "--draft", ...(options.prerelease ? ["--prerelease"] : [])]);
       state.mutations.push("create-draft");
       state.release = { id: 99, tag_name: options.tag, draft: true, prerelease: options.prerelease, body: fs.readFileSync(options.notesPath, "utf8") };

@@ -193,8 +193,12 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   await assertTag();
   let release = await lookupRelease();
   if (!release) {
+    // The tag was already verified above. An older --target SHA whose workflows
+    // differ from main requires workflows:write, which GITHUB_TOKEN cannot have.
+    // Omit target_commitish so GitHub resolves the default branch for permission
+    // checks while the existing immutable tag still determines application code.
     const args = ["release", "create", tag, "--repo", repo, "--verify-tag",
-      "--target", sha, "--title", `nirs4all Studio ${version}`,
+      "--title", `nirs4all Studio ${version}`,
       "--notes-file", path.resolve(notesPath), "--draft"];
     if (prerelease) args.push("--prerelease");
     try {
