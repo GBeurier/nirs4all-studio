@@ -122,16 +122,16 @@ describe("NewExperimentReviewStep", () => {
       />,
     );
 
-    expect(container.textContent).toContain("Campaign Plan Preview");
-    expect(container.textContent).not.toContain("Legacy cartesian");
+    expect(container.textContent).toContain("Experiment Overview");
+    expect(container.textContent).not.toContain("All combinations");
     await expandCampaignPlanPreview(container);
-    expect(container.textContent).toContain("Legacy cartesian");
+    expect(container.textContent).toContain("All combinations");
     expect(container.textContent).toContain("Local Python");
     expect(container.textContent).toContain("Native adapter");
-    expect(container.textContent).toContain("Legacy local run API: Launches use the current local run API.");
+    expect(container.textContent).toContain("Local analysis: The experiment will run on this computer.");
     expect(container.textContent).toContain("Execution Environment");
     expect(container.textContent).toContain("legacy-local");
-    expect(container.textContent).toContain("Unconfigured native");
+    expect(container.textContent).toContain("Setup required");
     expect(container.textContent).toContain("cluster, wasm-local");
     expect(container.textContent).toContain("2 datasets x 2 pipelines");
     expect(container.textContent).toContain("4 runs");
@@ -154,9 +154,9 @@ describe("NewExperimentReviewStep", () => {
     expect(container.textContent).toContain("Planned Runs");
     expect(container.textContent).toContain("Run 1");
     expect(container.textContent).toContain("Corn -> PLS");
-    expect(container.textContent).toContain("group_by: batch");
+    expect(container.textContent).toContain("Sample groups: batch");
     expect(container.textContent).toContain("+ 2 more planned runs");
-    expect(container.textContent).toContain("Cartesian campaign");
+    expect(container.textContent).toContain("All combinations");
     expect(container.textContent).toContain("Every selected pipeline will run on every selected dataset.");
 
     await act(async () => {

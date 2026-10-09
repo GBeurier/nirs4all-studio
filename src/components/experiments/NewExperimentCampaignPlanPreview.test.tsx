@@ -104,16 +104,15 @@ describe("NewExperimentCampaignPlanPreview", () => {
       <NewExperimentCampaignPlanPreview campaignPreview={buildCampaignPlanPreview(campaign, { runPreviewLimit: 2 })} />,
     );
 
-    expect(container.textContent).toContain("Campaign Plan Preview");
-    expect(container.textContent).not.toContain("Legacy cartesian");
+    expect(container.textContent).toContain("Experiment Overview");
+    expect(container.textContent).not.toContain("All combinations");
     await expandCampaignPlanPreview(container);
-    expect(container.textContent).toContain("Legacy cartesian");
+    expect(container.textContent).toContain("All combinations");
     expect(container.textContent).toContain("Local Python");
     expect(container.textContent).toContain("2 datasets x 2 pipelines");
     expect(container.textContent).toContain("4 runs");
     expect(container.textContent).toContain("4 runs planned from 4 possible pairs");
-    expect(container.textContent).toContain("Cartesian matrix binding");
-    expect(container.textContent).toContain("Implicit all-pairs");
+    expect(container.textContent).toContain("All dataset/pipeline pairs");
     expect(container.textContent).toContain("Every selected pipeline is paired with every selected dataset.");
     expect(container.textContent).toContain("Readiness Checks");
     expect(container.textContent).toContain("Campaign schema binding");
@@ -122,7 +121,7 @@ describe("NewExperimentCampaignPlanPreview", () => {
     expect(container.textContent).toContain("split campaign work into one dataset/pipeline pair per campaign");
     expect(container.textContent).toContain("Dataset/pipeline schema compatibility");
     expect(container.textContent).toContain("Execution backend capabilities");
-    expect(container.textContent).toContain("Single-Pair Split Preview");
+    expect(container.textContent).toContain("Individual Analyses");
     expect(container.textContent).toContain("Split recommended");
     expect(container.textContent).toContain("4 planned runs can become 4 one-pair campaigns for strict execution.");
     expect(container.textContent).toContain("Campaign 1");
@@ -143,7 +142,7 @@ describe("NewExperimentCampaignPlanPreview", () => {
     expect(container.textContent).toContain("Run 1");
     expect(container.textContent).toContain("Corn -> PLS");
     expect(container.textContent).toContain("+ 2 more planned runs");
-    expect(container.textContent).toContain("Cartesian campaign");
+    expect(container.textContent).toContain("All combinations");
 
     await act(async () => {
       root.unmount();
@@ -201,13 +200,13 @@ describe("NewExperimentCampaignPlanPreview", () => {
 
     await expandCampaignPlanPreview(container);
     expect(container.textContent).toContain("Execution Environment");
-    expect(container.textContent).toContain("Adapters");
+    expect(container.textContent).toContain("Calculation options");
     expect(container.textContent).toContain("legacy-local, cluster");
-    expect(container.textContent).toContain("Configured native");
+    expect(container.textContent).toContain("Ready to use");
     expect(container.textContent).toContain("cluster");
-    expect(container.textContent).toContain("Unconfigured native");
+    expect(container.textContent).toContain("Setup required");
     expect(container.textContent).toContain("wasm-local");
-    expect(container.textContent).toContain("Submitters");
+    expect(container.textContent).toContain("Ready to launch");
 
     await act(async () => {
       root.unmount();

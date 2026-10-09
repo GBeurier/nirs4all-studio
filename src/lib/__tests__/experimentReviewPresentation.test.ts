@@ -46,7 +46,7 @@ describe("experimentReviewPresentation", () => {
   it("projects runtime grouping badge and no-splitter copy", () => {
     expect(getExperimentReviewGroupingBadgeLabel(noSplitterSelection)).toBe("No splitters");
     expect(getExperimentReviewNoSplitterMessage()).toBe(
-      "No runtime grouping will be injected because the selected pipelines do not contain splitters.",
+      "No sample grouping is needed for the selected pipelines.",
     );
     expect(getExperimentReviewGroupingBadgeLabel({
       ...noSplitterSelection,

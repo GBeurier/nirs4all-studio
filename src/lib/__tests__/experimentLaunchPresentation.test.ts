@@ -205,7 +205,7 @@ describe("experimentLaunchPresentation", () => {
       { id: "run-matrix", label: "1 run in explicit run matrix" },
     ]);
     expect(formatExperimentLaunchAdapterStatusLine(preview)).toBe(
-      "Native adapter: Launches use the current local run API.",
+      "Launches use the current local run API.",
     );
     expect(formatExperimentLaunchAdapterStatusLine(campaignPreview({
       executionAdapter: {
@@ -214,13 +214,13 @@ describe("experimentLaunchPresentation", () => {
         statusLabel: "Legacy fallback",
         message: "Cluster execution is typed but no native submitter is configured.",
       },
-    }))).toBe("Legacy fallback: Cluster execution is typed but no native submitter is configured.");
+    }))).toBe("Cluster execution is typed but no native submitter is configured.");
   });
 
   it("builds launch payload badges and status copy", () => {
     expect(buildExperimentLaunchPayloadBadgeLabels(launchPayloadPlan())).toEqual([
-      { id: "current-submission", label: "Submission: Legacy config", variant: "outline" },
-      { id: "strict-campaigns", label: "Strict campaigns: Legacy only", variant: "outline" },
+      { id: "current-submission", label: "Analysis: Local analysis", variant: "outline" },
+      { id: "strict-campaigns", label: "Preparation: Local analysis", variant: "outline" },
     ]);
     expect(formatExperimentLaunchPayloadStatusLine(launchPayloadPlan())).toBe(
       "Legacy local launches submit the current ExperimentConfig payload.",
@@ -242,8 +242,8 @@ describe("experimentLaunchPresentation", () => {
       },
     });
     expect(buildExperimentLaunchPayloadBadgeLabels(readyLaunchPayloadPlan)).toEqual([
-      { id: "current-submission", label: "Submission: Native payload", variant: "secondary" },
-      { id: "strict-campaigns", label: "Strict campaigns: Ready", variant: "secondary" },
+      { id: "current-submission", label: "Analysis: Experiment preparation", variant: "secondary" },
+      { id: "strict-campaigns", label: "Preparation: Ready", variant: "secondary" },
     ]);
     expect(formatExperimentLaunchPayloadActivationLine(readyLaunchPayloadPlan)).toBe(
       "Strict campaign payload is ready for native submitters.",
@@ -252,34 +252,28 @@ describe("experimentLaunchPresentation", () => {
 
   it("builds native payload manifest details for launch UI", () => {
     expect(buildExperimentLaunchPayloadManifestDetails(launchPayloadPlan(), campaignPreview())).toEqual([
-      { id: "legacy-inputs", label: "Legacy inputs", value: "1 dataset · 1 pipeline" },
-      { id: "native-payload", label: "Native payload", value: "0 strict campaigns · 0 skipped runs" },
+      { id: "legacy-inputs", label: "Selected data and pipelines", value: "1 dataset · 1 pipeline" },
+      { id: "native-payload", label: "Experiment preparation", value: "0 prepared analyses · 0 skipped runs" },
       {
         id: "submission-target",
-        label: "Submission target",
+        label: "Calculate with",
         value: "Legacy local run API",
-        title: "Native adapter: Launches use the current local run API.",
+        title: "Launches use the current local run API.",
       },
       {
         id: "campaign-cardinality",
-        label: "Campaign cardinality",
+        label: "Planned analyses",
         value: "1 dataset x 1 pipeline · 1 run",
         title: "1 run in explicit run matrix: 1 run planned from 1 possible pair",
       },
       {
         id: "schema-binding",
-        label: "Schema binding",
+        label: "Data and pipeline pairing",
         value: "Single dataset/pipeline binding · Single explicit pair",
-        title: "Single dataset/pipeline binding (Single explicit pair): One dataset is paired with one pipeline, the simplest schema-bound campaign shape. Ready for strict schema-bound execution with one dataset and one pipeline.",
+        title: "One dataset is paired with one pipeline, the simplest schema-bound campaign shape.",
       },
-      {
-        id: "payload-schema",
-        label: "Payload schema",
-        value: "studio.native-launch-payload.v1",
-        title: "Native launch payload schema version",
-      },
-      { id: "payload-readiness", label: "Payload readiness", value: "Legacy config submission" },
-      { id: "source-runs", label: "Source runs", value: "None" },
+      { id: "payload-readiness", label: "Preparation status", value: "Local experiment" },
+      { id: "source-runs", label: "Selected analyses", value: "None" },
     ]);
 
     expect(buildExperimentLaunchPayloadManifestDetails(launchPayloadPlan({
@@ -294,36 +288,30 @@ describe("experimentLaunchPresentation", () => {
       },
       strictCampaignSpecs,
     }), campaignPreview())).toEqual([
-      { id: "legacy-inputs", label: "Legacy inputs", value: "3 datasets · 3 pipelines" },
-      { id: "native-payload", label: "Native payload", value: "3 strict campaigns · 1 skipped run" },
+      { id: "legacy-inputs", label: "Selected data and pipelines", value: "3 datasets · 3 pipelines" },
+      { id: "native-payload", label: "Experiment preparation", value: "3 prepared analyses · 1 skipped run" },
       {
         id: "submission-target",
-        label: "Submission target",
+        label: "Calculate with",
         value: "Legacy local run API",
-        title: "Native adapter: Launches use the current local run API.",
+        title: "Launches use the current local run API.",
       },
       {
         id: "campaign-cardinality",
-        label: "Campaign cardinality",
+        label: "Planned analyses",
         value: "1 dataset x 1 pipeline · 1 run",
         title: "1 run in explicit run matrix: 1 run planned from 1 possible pair",
       },
       {
         id: "schema-binding",
-        label: "Schema binding",
+        label: "Data and pipeline pairing",
         value: "Single dataset/pipeline binding · Single explicit pair",
-        title: "Single dataset/pipeline binding (Single explicit pair): One dataset is paired with one pipeline, the simplest schema-bound campaign shape. Ready for strict schema-bound execution with one dataset and one pipeline.",
+        title: "One dataset is paired with one pipeline, the simplest schema-bound campaign shape.",
       },
-      {
-        id: "payload-schema",
-        label: "Payload schema",
-        value: "studio.native-launch-payload.v1",
-        title: "Native launch payload schema version",
-      },
-      { id: "payload-readiness", label: "Payload readiness", value: "Legacy config submission" },
+      { id: "payload-readiness", label: "Preparation status", value: "Local experiment" },
       {
         id: "source-runs",
-        label: "Source runs",
+        label: "Selected analyses",
         value: "d1::p1, d2::p2 + 1 more",
         title: "d1::p1, d2::p2, d3::p3",
       },
@@ -363,26 +351,26 @@ describe("experimentLaunchPresentation", () => {
     }), clusterPreview);
     expect(partialNativeDetails).toContainEqual({
       id: "submission-target",
-      label: "Submission target",
-      value: "Cluster via Cluster execution adapter",
-      title: "Native adapter: Cluster execution adapter is selected for this campaign backend.",
+      label: "Calculate with",
+      value: "Cluster execution adapter",
+      title: "Cluster execution adapter is selected for this campaign backend.",
     });
     expect(partialNativeDetails).toContainEqual({
       id: "campaign-cardinality",
-      label: "Campaign cardinality",
+      label: "Planned analyses",
       value: "1 dataset x 1 pipeline · 1 run",
       title: "1 run in explicit run matrix: 1 run planned from 1 possible pair",
     });
     expect(partialNativeDetails).toContainEqual({
       id: "schema-binding",
-      label: "Schema binding",
+      label: "Data and pipeline pairing",
       value: "Single dataset/pipeline binding · Single explicit pair",
-      title: "Single dataset/pipeline binding (Single explicit pair): One dataset is paired with one pipeline, the simplest schema-bound campaign shape. Ready for strict schema-bound execution with one dataset and one pipeline.",
+      title: "One dataset is paired with one pipeline, the simplest schema-bound campaign shape.",
     });
     expect(partialNativeDetails).toContainEqual({
       id: "payload-readiness",
-      label: "Payload readiness",
-      value: "Blocked for native submission",
+      label: "Preparation status",
+      value: "Settings need review",
       title: "1 run entry must be materialized before strict payload submission.",
     });
 
@@ -413,9 +401,9 @@ describe("experimentLaunchPresentation", () => {
       },
     }), wasmPreview)).toContainEqual({
       id: "submission-target",
-      label: "Submission target",
-      value: "WASM local via WASM local execution adapter",
-      title: "Native adapter: WASM local execution adapter is selected for this campaign backend.",
+      label: "Calculate with",
+      value: "WASM local execution adapter",
+      title: "WASM local execution adapter is selected for this campaign backend.",
     });
 
     const robustnessNativePayload = buildNativeExperimentLaunchPayload({
@@ -447,7 +435,7 @@ describe("experimentLaunchPresentation", () => {
       nativePayload: robustnessNativePayload,
     }), clusterPreview)).toContainEqual({
       id: "robustness-evidence-publication",
-      label: "Robustness evidence publication",
+      label: "Save robustness results",
       value: "Requested · 3 keywords · 6 effects",
       title: "Destination: result_metadata.robustness_evidence · Conformal artifacts: prediction_publisher_does_not_persist_conformal_artifacts",
     });

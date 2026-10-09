@@ -70,8 +70,8 @@ describe("campaignNotices", () => {
       {
         id: "legacy-cartesian-matrix",
         severity: "info",
-        title: "Cartesian campaign",
-        message: "Every selected pipeline will run on every selected dataset. Future campaign modes can replace this with previewed pairings.",
+        title: "All combinations",
+        message: "Every selected pipeline will run on every selected dataset.",
       },
     ]);
     expect(noticesFor(singleRunCampaign)).toEqual([]);
@@ -117,7 +117,7 @@ describe("campaignNotices", () => {
         id: "shared-dataset-campaign",
         severity: "info",
         title: "Shared dataset campaign",
-        message: "One dataset will be reused across multiple pipelines. Future schema-bound campaign modes should keep these pair previews explicit.",
+        message: "Each selected pipeline will analyse the same dataset.",
       },
     ]);
     expect(noticesFor(sharedPipelineCampaign)).toEqual([
@@ -125,7 +125,7 @@ describe("campaignNotices", () => {
         id: "shared-pipeline-campaign",
         severity: "info",
         title: "Shared pipeline campaign",
-        message: "One pipeline will be reused across multiple datasets. Future schema-bound campaign modes should keep these pair previews explicit.",
+        message: "The selected pipeline will analyse each dataset.",
       },
     ]);
   });

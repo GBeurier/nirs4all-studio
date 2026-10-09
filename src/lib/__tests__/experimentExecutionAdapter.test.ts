@@ -367,21 +367,21 @@ describe("experimentExecutionAdapter", () => {
       requestedBackend: "local-python",
       isNativeForBackend: true,
       statusLabel: "Native adapter",
-      message: "Launches use the current local run API.",
+      message: "The experiment will run on this computer.",
     });
     expect(resolveExperimentExecutionAdapter("cluster")).toMatchObject({
       adapter: LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
       requestedBackend: "cluster",
       isNativeForBackend: false,
       statusLabel: "Legacy fallback",
-      message: "No native adapter is wired for this backend yet; launches still target the legacy local run API.",
+      message: "This calculation option is not available yet. The experiment will run on this computer.",
     });
     expect(resolveExperimentExecutionAdapter("wasm-local")).toMatchObject({
       adapter: LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
       requestedBackend: "wasm-local",
       isNativeForBackend: false,
       statusLabel: "Legacy fallback",
-      message: "No native adapter is wired for this backend yet; launches still target the legacy local run API.",
+      message: "This calculation option is not available yet. The experiment will run on this computer.",
     });
   });
 
@@ -397,14 +397,14 @@ describe("experimentExecutionAdapter", () => {
       requestedBackend: "cluster",
       isNativeForBackend: true,
       statusLabel: "Native adapter",
-      message: "Cluster execution adapter is selected for this campaign backend.",
+      message: "The experiment will use Compute server.",
     });
     expect(resolveExperimentExecutionAdapter("wasm-local", { availableAdapters })).toMatchObject({
       adapter: WASM_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
       requestedBackend: "wasm-local",
       isNativeForBackend: true,
       statusLabel: "Native adapter",
-      message: "WASM local execution adapter is selected for this campaign backend.",
+      message: "The experiment will use Browser analysis.",
     });
   });
 });

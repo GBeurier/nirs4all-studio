@@ -52,7 +52,7 @@ describe("NewExperimentCampaignDatasetPreviewCard", () => {
       />,
     );
 
-    expect(container.textContent).toContain("group_by: batch");
+    expect(container.textContent).toContain("Sample groups: batch");
     expect(container.textContent).toContain("Aggregated by scan_id");
     expect(container.textContent).toContain("from repetition column");
   });
@@ -119,7 +119,7 @@ describe("NewExperimentCampaignRunPreviewCard", () => {
       />,
     );
 
-    expect(container.textContent).toContain("group_by: cluster_id");
+    expect(container.textContent).toContain("Sample groups: cluster_id");
   });
 
   it("omits the compatibility summary and badge when not evaluated", async () => {
