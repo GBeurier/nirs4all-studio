@@ -8,6 +8,7 @@
  */
 
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   ArrowLeft,
@@ -18,6 +19,17 @@ import {
   Square,
 } from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress, IndeterminateProgress } from "@/components/ui/progress";
@@ -45,13 +57,14 @@ export function RunProgressHeader({
   isStopping: boolean;
   onStop: () => void;
 }) {
+  const { t } = useTranslation();
   const isActive = run.status === "running" || run.status === "queued";
 
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link to="/runs">
+          <Link to="/runs" aria-label={t("common.back")}>
             <ArrowLeft className="h-5 w-5" />
           </Link>
         </Button>
@@ -68,18 +81,28 @@ export function RunProgressHeader({
 
       <div className="flex items-center gap-2">
         {isActive && (
-          <Button
-            variant="destructive"
-            onClick={onStop}
-            disabled={isStopping}
-          >
-            {isStopping ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Square className="h-4 w-4 mr-2" />
-            )}
-            Stop Run
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" disabled={isStopping}>
+                {isStopping ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Square className="h-4 w-4 mr-2" />
+                )}
+                {t("runs.execution.stopConfirm")}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t("runs.execution.stopTitle")}</AlertDialogTitle>
+                <AlertDialogDescription>{t("runs.execution.stopDescription")}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("runs.execution.stopCancel")}</AlertDialogCancel>
+                <AlertDialogAction onClick={onStop}>{t("runs.execution.stopConfirm")}</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </div>
     </div>

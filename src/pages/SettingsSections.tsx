@@ -386,6 +386,10 @@ export function DataSettingsTab() {
   );
 }
 
+export function UpdatesSettingsTab() {
+  return <UpdatesSection />;
+}
+
 export interface AdvancedSettingsTabProps {
   isDeveloperMode: boolean;
   handleDeveloperModeChange: (enabled: boolean) => void;
@@ -451,9 +455,6 @@ export function AdvancedSettingsTab({
 
       {/* Config Path Settings */}
       <ConfigPathSettings />
-
-      {/* Updates Section */}
-      <UpdatesSection />
 
       {/* Config Alignment */}
       <ConfigAlignment />

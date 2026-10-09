@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { describeApiError } from "@/lib/userFacingError";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +40,7 @@ function isMigrationReport(value: unknown): value is MigrationReport {
 }
 
 export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDialogProps) {
+  const { t } = useTranslation();
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [batchSize, setBatchSize] = useState<number>(10000);
@@ -63,7 +66,7 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
         if (mounted) setMigrationStatus(data);
       } catch (error) {
         if (mounted) {
-          const message = error instanceof Error ? error.message : "Failed to load migration status";
+          const message = describeApiError(error, t, "Failed to load migration status").message;
           setActionError(message);
         }
       } finally {
@@ -74,7 +77,7 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
     return () => {
       mounted = false;
     };
-  }, [open]);
+  }, [open, t]);
 
   useEffect(() => {
     if (jobStatus !== "completed") return;
@@ -113,7 +116,7 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
         throw new Error("Unexpected dry-run response");
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Dry run failed";
+      const message = describeApiError(error, t, "Dry run failed").message;
       setActionError(message);
       toast.error(message);
     }
@@ -134,7 +137,7 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
         throw new Error("Unexpected migration response");
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to start migration";
+      const message = describeApiError(error, t, "Failed to start migration").message;
       setActionError(message);
       toast.error(message);
     }

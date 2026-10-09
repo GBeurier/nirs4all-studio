@@ -7,6 +7,7 @@
  * Phase 5 Implementation
  */
 
+import { useTranslation } from "react-i18next";
 import { useState, useEffect, useCallback } from "react";
 import {
   Card,
@@ -276,6 +277,7 @@ export interface WorkspaceStatsProps {
 }
 
 export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps) {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<WorkspaceStatsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
@@ -416,7 +418,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon" aria-label={t("common.a11y.refresh")}
                   onClick={loadStats}
                   disabled={isLoading}
                 >

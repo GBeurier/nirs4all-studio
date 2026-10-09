@@ -322,7 +322,7 @@ export function DatasetsToolbar({
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon" aria-label={t("common.a11y.toggleSortDirection")}
               onClick={() => onSortDirectionChange(sortDirection === "asc" ? "desc" : "asc")}
             >
               {sortDirection === "asc" ? (
@@ -344,7 +344,7 @@ export function DatasetsToolbar({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon" aria-label={t("common.a11y.refresh")}
                 onClick={onRefreshAll}
                 disabled={refreshing}
               >

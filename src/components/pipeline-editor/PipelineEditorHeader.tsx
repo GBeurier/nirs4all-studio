@@ -11,6 +11,7 @@ import {
   Undo2,
   Workflow,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { PipelineSampleInfo } from "@/api/pipelines";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,6 +105,7 @@ export function PipelineEditorHeader({
   onSave,
   onUseInExperiment,
 }: PipelineEditorHeaderProps) {
+  const { t } = useTranslation();
   const nextViewMode = viewMode === "code" ? "tree" : "code";
 
   return (
@@ -114,7 +116,7 @@ export function PipelineEditorHeader({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon" aria-label={t("common.a11y.goBack")}
                 onClick={onBack}
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -180,7 +182,7 @@ export function PipelineEditorHeader({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon" aria-label={t("common.a11y.undo")}
                   onClick={onUndo}
                   disabled={!canUndo}
                 >
@@ -193,7 +195,7 @@ export function PipelineEditorHeader({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon" aria-label={t("common.a11y.redo")}
                   onClick={onRedo}
                   disabled={!canRedo}
                 >
@@ -213,7 +215,7 @@ export function PipelineEditorHeader({
             <TooltipTrigger asChild>
               <Button
                 variant={viewMode === "code" ? "secondary" : "ghost"}
-                size="icon"
+                size="icon" aria-label={t("common.a11y.toggleCodeView")}
                 onClick={() => onViewModeChange(nextViewMode)}
                 disabled={totalSteps === 0}
               >
@@ -229,7 +231,7 @@ export function PipelineEditorHeader({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon" aria-label={t("common.a11y.keyboardShortcuts")}
                 onClick={onOpenShortcuts}
               >
                 <Keyboard className="h-4 w-4" />
@@ -244,7 +246,7 @@ export function PipelineEditorHeader({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon" aria-label={t("common.a11y.commandPalette")}
                 onClick={onOpenCommandPalette}
               >
                 <Command className="h-4 w-4" />

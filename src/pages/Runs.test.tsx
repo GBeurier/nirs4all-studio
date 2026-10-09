@@ -18,8 +18,21 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, options?: { defaultValue?: string }) => {
+      const readable: Record<string, string> = {
+        "runs.jobRecord.title": "Execution details",
+        "runs.jobRecord.titleDeveloper": "Execution job record",
+        "runs.jobRecord.actions": "Actions",
+        "runs.jobRecord.controlReadiness": "Control readiness",
+      };
+      return readable[key] ?? options?.defaultValue ?? key;
+    },
   }),
+}));
+
+const developerMode = vi.hoisted(() => ({ enabled: true }));
+vi.mock("@/context/useDeveloperMode", () => ({
+  useIsDeveloperMode: () => developerMode.enabled,
 }));
 
 vi.mock("@/api/runs", async () => {
@@ -860,5 +873,39 @@ describe("Runs page", () => {
     expect(retryRun).not.toHaveBeenCalled();
 
     await view.unmount();
+  });
+});
+
+describe("Runs developer internals", () => {
+  afterEach(() => {
+    developerMode.enabled = true;
+  });
+
+  it("hides execution tasks and the raw job record unless developer mode is on", async () => {
+    developerMode.enabled = false;
+    const data = buildRunsExecutionTaskPanelData([
+      executionJobRecord({ job_id: "running", status: "running", run_id: "active" }),
+    ]);
+    const panel = await renderNode(<RunsExecutionTasksPanel data={data} />);
+    expect(panel.container.textContent).not.toContain("Execution tasks");
+    await panel.unmount();
+
+    const dialog = await renderNode(
+      <RunsExecutionJobRecordDialog
+        open
+        onOpenChange={vi.fn()}
+        jobId="job-1"
+        record={executionJobRecord({ job_id: "job-1", run_id: "run-1", status: "running" })}
+        isLoading={false}
+        errorMessage={null}
+        onCancelJob={vi.fn()}
+        onRetryRun={vi.fn()}
+      />,
+    );
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("Execution details");
+    expect(text).not.toContain("Control readiness");
+    expect(document.body.querySelector("pre")).toBeNull();
+    await dialog.unmount();
   });
 });

@@ -46,6 +46,7 @@ import {
   GeneralSettingsTab,
   WorkspacesSettingsTab,
   DataSettingsTab,
+  UpdatesSettingsTab,
   AdvancedSettingsTab,
 } from "./SettingsSections";
 
@@ -234,10 +235,10 @@ export default function Settings() {
       {/* Tabs for organization */}
       <motion.div variants={itemVariants}>
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             {SETTINGS_TABS.map((tab) => (
               <TabsTrigger key={tab.value} value={tab.value}>
-                {"labelKey" in tab ? t(tab.labelKey) : tab.label}
+                {t(tab.labelKey)}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -273,6 +274,11 @@ export default function Settings() {
           {/* Data Defaults Tab */}
           <TabsContent value="data" className="space-y-6">
             <DataSettingsTab />
+          </TabsContent>
+
+          {/* Updates Tab */}
+          <TabsContent value="updates" className="space-y-6">
+            <UpdatesSettingsTab />
           </TabsContent>
 
           {/* Advanced Tab */}

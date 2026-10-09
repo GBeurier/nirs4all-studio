@@ -35,6 +35,7 @@ import { RunItem } from "@/components/runs/RunItem";
 import { ProjectFilter } from "@/components/runs/ProjectFilter";
 import { MetricSelector } from "@/components/scores/MetricSelector";
 import { NoWorkspaceState, EmptyState, CardSkeleton, ErrorState } from "@/components/ui/state-display";
+import { useIsDeveloperMode } from "@/context/useDeveloperMode";
 import { cn } from "@/lib/utils";
 import type {
   RunsExecutionTaskPanelData,
@@ -211,8 +212,9 @@ function formatJsonValue(value: unknown): string {
 export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: RunsExecutionTasksPanelProps) {
   const [isPanelExpanded, setPanelExpanded] = useState(false);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
+  const isDeveloperMode = useIsDeveloperMode();
 
-  if (!data.hasTasks) {
+  if (!data.hasTasks || !isDeveloperMode) {
     return null;
   }
 
@@ -565,9 +567,13 @@ export function RunsExecutionJobRecordDialog({
   pendingAction,
   record,
 }: RunsExecutionJobRecordDialogProps) {
+  const { t } = useTranslation();
+  const isDeveloperMode = useIsDeveloperMode();
   const detail = record ? buildExecutionJobRecordDetail(record) : null;
   const displayJobId = detail?.description ?? (jobId ? `Job ${jobId}` : "");
-  const visibleActions = detail?.actions.filter(action => action.visible) ?? [];
+  const isControlAction = (action: ExecutionJobRecordDetailAction) => action.id === "cancel" || action.id === "retry";
+  // Readiness badges are diagnostics; everyone keeps the cancel / retry buttons.
+  const visibleActions = (detail?.actions ?? []).filter(action => action.visible && (isDeveloperMode || isControlAction(action)));
   const handleAction = (action: ExecutionJobRecordDetailAction) => {
     if (!action.enabled) return;
     if (action.id === "cancel") {
@@ -582,7 +588,7 @@ export function RunsExecutionJobRecordDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Execution job record</DialogTitle>
+          <DialogTitle>{t(isDeveloperMode ? "runs.jobRecord.titleDeveloper" : "runs.jobRecord.title")}</DialogTitle>
           <DialogDescription className="truncate">
             {displayJobId || "Execution snapshot"}
           </DialogDescription>
@@ -613,7 +619,7 @@ export function RunsExecutionJobRecordDialog({
 
               {visibleActions.length > 0 && (
                 <section className="space-y-1">
-                  <h3 className="text-xs font-semibold">Control readiness</h3>
+                  <h3 className="text-xs font-semibold">{t(isDeveloperMode ? "runs.jobRecord.controlReadiness" : "runs.jobRecord.actions")}</h3>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {visibleActions.map(action => (
                       <div key={action.id} className="rounded-md border bg-muted/20 p-2">
@@ -654,7 +660,7 @@ export function RunsExecutionJobRecordDialog({
                 </section>
               )}
 
-              {detail.jsonSections.map(section => (
+              {isDeveloperMode && detail.jsonSections.map(section => (
                 <ExecutionJobRecordJsonBlock
                   key={section.id}
                   label={section.label}

@@ -1,7 +1,7 @@
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "@/lib/motion";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertCircle, Check, Trophy } from "lucide-react";
 
 import {
@@ -32,20 +32,24 @@ function ProgressDisplay({
 }
 
 function ResultsDisplay({ result }: { result: ExecutionResult }) {
+  const { t } = useTranslation();
   if (!result.success) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
         <div className="flex items-start gap-3">
           <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
           <div>
-            <h4 className="font-medium text-destructive">Execution Failed</h4>
+            <h4 className="font-medium text-destructive">{t("runs.execution.failed")}</h4>
             <p className="text-sm text-muted-foreground mt-1">{result.error}</p>
             {result.traceback && (
-              <ScrollArea className="h-24 mt-2">
-                <pre className="text-xs text-muted-foreground font-mono bg-muted p-2 rounded">
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs text-muted-foreground">
+                  {t("runs.execution.details")}
+                </summary>
+                <pre className="mt-2 max-h-40 overflow-auto text-xs text-muted-foreground font-mono bg-muted p-2 rounded">
                   {result.traceback}
                 </pre>
-              </ScrollArea>
+              </details>
             )}
           </div>
         </div>
@@ -141,6 +145,7 @@ export function ExecutionFeedback({
   result: ExecutionResult | null;
   status: ExecutionStatus;
 }) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence mode="wait">
       {(status === "running" || status === "starting") && (
@@ -175,7 +180,7 @@ export function ExecutionFeedback({
             <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
             <div>
               <h4 className="font-medium text-destructive">
-                Execution Failed
+                {t("runs.execution.failed")}
               </h4>
               <p className="text-sm text-muted-foreground mt-1">
                 {error}

@@ -3,6 +3,8 @@ import type { ChangeEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { NavigateFunction } from "react-router-dom";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 import { renderCanonicalPipeline, savePipeline } from "@/api/pipelines";
 import {
   clearPersistedState,
@@ -66,6 +68,8 @@ export function usePipelineEditorRouteActions({
 }: UsePipelineEditorRouteActionsOptions) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const notifyApiError = useApiErrorToast();
 
   const savePipelineMutation = useMutation({
     mutationFn: async () => {
@@ -87,7 +91,7 @@ export function usePipelineEditorRouteActions({
       }
     },
     onError: (error) => {
-      toast.error(`Failed to save: ${error instanceof Error ? error.message : "Unknown error"}`);
+      notifyApiError(error, t("errors.action.savePipeline"));
     },
   });
 
@@ -138,14 +142,10 @@ export function usePipelineEditorRouteActions({
         toast.success(`Pipeline exported as ${format.toUpperCase()}`);
       } catch (error) {
         console.error("Canonical export error:", error);
-        toast.error(
-          `Failed to export ${format.toUpperCase()}: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`,
-        );
+        notifyApiError(error, t("errors.action.exportPipeline", { format: format.toUpperCase() }));
       }
     },
-    [pipelineName, steps],
+    [pipelineName, steps, t, notifyApiError],
   );
 
   const handleImportClick = useCallback(() => {
@@ -164,15 +164,13 @@ export function usePipelineEditorRouteActions({
         toast.success(`Pipeline "${imported.name}" imported successfully`);
       } catch (err) {
         console.error("Import error:", err);
-        toast.error(
-          `Failed to import: ${err instanceof Error ? err.message : "Invalid file"}`,
-        );
+        notifyApiError(err, t("errors.action.importPipeline"));
       }
     };
     reader.readAsText(file);
 
     event.target.value = "";
-  }, [importIntoEditor]);
+  }, [importIntoEditor, t, notifyApiError]);
 
   const handleClearPipeline = useCallback(() => {
     clearPipeline();

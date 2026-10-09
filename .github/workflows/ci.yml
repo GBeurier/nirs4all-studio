@@ -66,6 +66,9 @@ jobs:
       - name: Check client storage boundaries
         run: npm run lint:storage
 
+      - name: Check locale key parity
+        run: npm run lint:locales
+
       - name: Check backend dependency sync
         run: npm run lint:deps
 

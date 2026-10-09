@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import {
   Dialog,
@@ -22,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Play, Loader2, Target } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/api/transport";
+import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 import { PredictDialogInput } from "./PredictDialogInput";
 import { PredictDialogResults } from "./PredictDialogResults";
 import {
@@ -58,6 +60,8 @@ export function PredictDialog({
   pipelineName,
   runId,
 }: PredictDialogProps) {
+  const { t } = useTranslation();
+  const notifyApiError = useApiErrorToast();
   const [inputMode, setInputMode] = useState<PredictInputMode>("paste");
   const [pasteData, setPasteData] = useState("");
   const [selectedDataset, setSelectedDataset] = useState("");
@@ -88,8 +92,8 @@ export function PredictDialog({
       setResult(data);
       toast.success(`${data.num_samples} predictions completed`);
     },
-    onError: (err: Error) => {
-      toast.error(`Prediction failed: ${err.message}`);
+    onError: (err) => {
+      notifyApiError(err, t("predict.errors.predictionFailed"));
     },
   });
 
@@ -108,8 +112,8 @@ export function PredictDialog({
       setResult(data);
       toast.success(`${data.num_samples} predictions completed`);
     },
-    onError: (err: Error) => {
-      toast.error(`Prediction failed: ${err.message}`);
+    onError: (err) => {
+      notifyApiError(err, t("predict.errors.predictionFailed"));
     },
   });
 

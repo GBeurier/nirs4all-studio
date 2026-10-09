@@ -2,8 +2,9 @@ export const DEFAULT_SETTINGS_TAB = "general";
 
 export const SETTINGS_TABS = [
   { value: "general", labelKey: "settings.tabs.general" },
-  { value: "workspaces", label: "Workspaces" },
+  { value: "workspaces", labelKey: "settings.tabs.workspace" },
   { value: "data", labelKey: "settings.tabs.data" },
+  { value: "updates", labelKey: "settings.tabs.updates" },
   { value: "advanced", labelKey: "settings.tabs.advanced" },
 ] as const;
 

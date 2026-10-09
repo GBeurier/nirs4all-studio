@@ -25,6 +25,7 @@ import {
   Info,
   Layers,
   Hash,
+  FlaskConical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -274,6 +275,12 @@ export default function DatasetDetail() {
                   </Link>
                 </Button>}
                 <Button asChild>
+                  <Link to={`/editor?dataset=${encodeURIComponent(dataset.id)}`}>
+                    <FlaskConical className="mr-2 h-4 w-4" />
+                    {t("datasets.startExperiment")}
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild>
                   <Link to="/datasets">
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Back to Library

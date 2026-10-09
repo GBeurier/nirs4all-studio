@@ -5,18 +5,18 @@ import { BackendStartupBanner } from "./BackendStartupBanner";
 import { FloatingRunWidget } from "./FloatingRunWidget";
 import { LegacyWorkspaceBanner } from "./LegacyWorkspaceBanner";
 import { OfflineIndicator } from "./OfflineIndicator";
+import { RouteErrorBoundary } from "./RouteErrorBoundary";
+import { useRunCompletionNotifications } from "@/hooks/useRunCompletionNotifications";
 import { useStartupUpdateCheck } from "@/hooks/useStartupUpdateCheck";
 
 export function AppLayout() {
   useStartupUpdateCheck();
+  useRunCompletionNotifications();
 
   return (
     <TooltipProvider>
       <div className="flex h-screen w-full overflow-hidden bg-background">
-        {/* Desktop Sidebar - hidden on mobile */}
-        <div className="hidden md:block">
-          <AppSidebar />
-        </div>
+        <AppSidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
           <BackendStartupBanner />
           <LegacyWorkspaceBanner />
@@ -25,7 +25,9 @@ export function AppLayout() {
           </div>
           <main className="flex-1 overflow-auto p-4 md:p-6">
             <div className="h-full">
-              <Outlet />
+              <RouteErrorBoundary>
+                <Outlet />
+              </RouteErrorBoundary>
             </div>
           </main>
         </div>

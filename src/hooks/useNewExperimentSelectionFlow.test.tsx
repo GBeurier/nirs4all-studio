@@ -236,4 +236,15 @@ describe("useNewExperimentSelectionFlow", () => {
     await mounted.unmount();
   });
 
+  it("preselects the dataset named by the route and clears the URL once", async () => {
+    const onEditorRedirect = vi.fn();
+    const searchParams = new URLSearchParams("dataset=ds-1");
+    const mounted = await renderHook(() => useNewExperimentSelectionFlow(selectionFlowInput({ searchParams, onEditorRedirect })));
+    expect(mounted.result.current!.selectedDatasetIds).toEqual(["ds-1"]);
+    expect(mounted.result.current!.splitGroupByByDataset).toEqual({ "ds-1": null });
+    await mounted.rerender();
+    expect(onEditorRedirect).toHaveBeenCalledTimes(1);
+    await mounted.unmount();
+  });
+
 });

@@ -17,6 +17,23 @@ const fr = {
 },
   // ============= Common / Global =============
   common: {
+    a11y: {
+      goBack: "Retour",
+      undo: "Annuler",
+      redo: "Rétablir",
+      toggleCodeView: "Basculer l'affichage du code",
+      keyboardShortcuts: "Raccourcis clavier",
+      commandPalette: "Palette de commandes",
+      copy: "Copier",
+      refresh: "Actualiser",
+      clearLogs: "Effacer les journaux",
+      removeWorkspace: "Retirer l'espace de travail",
+      toggleSortDirection: "Inverser l'ordre de tri",
+      importConfig: "Importer la configuration",
+      exportConfig: "Exporter la configuration",
+      resetConfig: "Réinitialiser la configuration",
+    },
+    linkWorkspace: "Lier un espace de travail",
     loading: "Chargement...",
     save: "Enregistrer",
     cancel: "Annuler",
@@ -94,15 +111,10 @@ const fr = {
   nav: {
     datasets: "Jeux de données",
     pipelines: "Pipelines",
-    pipelineEditor: "Éditeur de pipeline",
-    runEditor: "Exécution",
     editor: "Éditeur",
     playground: "Bac à sable",
     inspector: "Inspecteur",
-    history: "Historique",
-    leaderboard: "Classement",
     scores: "Scores",
-    database: "Base de données",
     aggregatedResults: "Résultats agrégés",
     predict: "Prédire",
     lab: "Labo",
@@ -117,8 +129,9 @@ const fr = {
     // Tab labels
     tabs: {
       general: "Général",
-      workspace: "Espace de travail",
+      workspace: "Espaces de travail",
       data: "Données par défaut",
+      updates: "Mises à jour",
       advanced: "Avancé",
     },
 
@@ -525,6 +538,15 @@ const fr = {
         outcomes: "Bilan",
         apply: "Appliquer",
       },
+      collapse: "Réduire la barre latérale",
+      expand: "Développer la barre latérale",
+    },
+    routeError: {
+      title: "Cette page a rencontré un problème",
+      description: "Le reste de l'application reste disponible. Revenez en arrière, choisissez une autre page ou rechargez.",
+      back: "Retour",
+      reload: "Recharger",
+      details: "Détails techniques",
     },
     header: {
       searchPlaceholder: "Rechercher...",
@@ -544,7 +566,7 @@ const fr = {
         "Le moteur d’analyse charge l'espace de travail actif. Les vues des jeux de données, des exécutions, des résultats et des prédictions se rafraîchiront à la fin du démarrage.",
       errorBadge: "Problème de démarrage",
       badge: "Démarrage de Studio",
-      apiLabel: "API",
+      apiLabel: "Service Studio",
       apiReady: "Connecté",
       apiLoading: "Démarrage de FastAPI",
       mlLabel: "Moteur ML",
@@ -644,6 +666,7 @@ const fr = {
 
   // ============= Datasets =============
   datasets: {
+    startExperiment: "Lancer une expérience avec ce jeu de données",
     title: "Jeux de données",
     subtitle: "Gérez vos jeux de données spectraux et configurations",
     workspace: "Espace de travail",
@@ -823,6 +846,25 @@ const fr = {
 
   // ============= Runs =============
   runs: {
+    jobRecord: {
+      title: "Détails de l'exécution",
+      titleDeveloper: "Enregistrement de la tâche d'exécution",
+      actions: "Actions",
+      controlReadiness: "Disponibilité des commandes",
+    },
+    execution: {
+      failed: "L'exécution a échoué",
+      details: "Détails techniques",
+      stopTitle: "Arrêter cette exécution ?",
+      stopDescription: "L'exécution sera interrompue et les modèles en cours d'entraînement seront perdus. Les résultats déjà enregistrés sont conservés.",
+      stopConfirm: "Arrêter l'exécution",
+      stopCancel: "Continuer",
+    },
+    notifications: {
+      completed: "L'exécution « {{name}} » est terminée",
+      failed: "L'exécution « {{name}} » a échoué",
+      viewRun: "Voir l'exécution",
+    },
     title: "Exécutions",
     subtitle: "Suivez et surveillez les exécutions de pipelines actives et historiques",
     empty: "Aucune exécution",
@@ -1091,6 +1133,29 @@ const fr = {
     invalidPath: "Chemin invalide",
     pathNotExists: "Le chemin n'existe pas",
     alreadyExists: "Existe déjà",
+    action: {
+      relaunchRun: "Échec du relancement de l'exécution",
+      deleteRun: "Échec de la suppression de l'exécution",
+      loadSamples: "Échec du chargement des exemples de pipelines",
+      loadSample: "Échec du chargement de l'exemple",
+      savePipeline: "Échec de l'enregistrement du pipeline",
+      exportPipeline: "Échec de l'export {{format}}",
+      importPipeline: "Échec de l'import du pipeline",
+      loadPredictions: "Échec du chargement des prédictions",
+      runQuery: "Échec de l'exécution de la requête",
+      exportCsv: "Échec de l'export CSV",
+    },
+    api: {
+      engineUnavailable: "Cette fonction nécessite le moteur d'analyse (Python), qui n'est pas encore disponible.",
+      openPythonSettings: "Ouvrir les paramètres Python",
+      notAvailableYet: "Cette fonction n'est pas encore disponible dans l'application de bureau.",
+      backendStarting: "Le service de l'application démarre encore. Réessayez dans quelques secondes.",
+      backendUnreachable: "Impossible de joindre le service de l'application. Vérifiez qu'il est lancé, puis réessayez.",
+      engineStarting: "Le moteur d'analyse démarre encore. Réessayez dans un instant.",
+      featureUnavailable: "Cette fonction est temporairement indisponible. Redémarrez l'application si le problème persiste.",
+      timeout: "L'opération a pris trop de temps et a été interrompue.",
+      tooManyJobs: "Trop de tâches sont en cours. Attendez la fin de l'une d'elles, puis réessayez.",
+    },
   },
 
   // ============= Confirmations =============

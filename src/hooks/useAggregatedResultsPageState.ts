@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { useApiErrorToast } from "@/hooks/useApiErrorToast";
+import { describeApiError } from "@/lib/userFacingError";
 import {
   getAggregatedPredictions,
   getChainPartitionDetail,
@@ -34,6 +37,8 @@ const DEFAULT_AGGREGATED_RESULTS_SQL =
   "SELECT dataset_name, COUNT(*) AS predictions FROM predictions GROUP BY 1 ORDER BY 2 DESC";
 
 export function useAggregatedResultsPageState() {
+  const { t } = useTranslation();
+  const notifyApiError = useApiErrorToast();
   const isDeveloperMode = useIsDeveloperMode();
   const { workspaceReady } = useMlReadiness();
   const { data: workspacesData } = useLinkedWorkspacesQuery();
@@ -186,9 +191,9 @@ export function useAggregatedResultsPageState() {
       const bestGroup = selectBestViewerPredictionGroup(allPreds);
       handleViewPrediction("", bestGroup);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load predictions");
+      notifyApiError(err, t("errors.action.loadPredictions"));
     }
-  }, [handleViewPrediction]);
+  }, [handleViewPrediction, t, notifyApiError]);
 
   const handleRunSql = useCallback(async () => {
     setSqlLoading(true);
@@ -197,13 +202,13 @@ export function useAggregatedResultsPageState() {
       const result = await runAggregatedPredictionsQuery(sql);
       setSqlResult(result);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to run query";
+      const message = describeApiError(err, t, t("errors.action.runQuery")).message;
       setSqlError(message);
       toast.error(message);
     } finally {
       setSqlLoading(false);
     }
-  }, [sql]);
+  }, [sql, t]);
 
   return {
     activeWorkspaceId: activeWorkspace?.id,

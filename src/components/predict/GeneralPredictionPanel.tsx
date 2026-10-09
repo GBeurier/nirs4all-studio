@@ -65,7 +65,7 @@ export function GeneralPredictionPanel() {
       <div className="space-y-5">
         <div>
           <h1 className="text-2xl font-bold">Predict with trained models</h1>
-          <p className="text-sm text-muted-foreground">Replay a captured full-training model through DAG-ML, without retraining. These Python host models are not portable Archive V2 files.</p>
+          <p className="text-sm text-muted-foreground">Re-apply a model captured at the end of training, without retraining. These models only work in this application and are not portable Archive V2 files.</p>
         </div>
         <Card>
           <CardHeader><CardTitle>Trained model</CardTitle></CardHeader>

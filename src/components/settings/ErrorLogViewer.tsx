@@ -14,6 +14,7 @@
  * Phase 5: System Information & Diagnostics
  */
 
+import { useTranslation } from "react-i18next";
 import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle,
@@ -73,6 +74,7 @@ interface ErrorItemProps {
 }
 
 function ErrorItem({ error, onCopy }: ErrorItemProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -137,7 +139,7 @@ ${error.traceback ? `\nTraceback:\n${error.traceback}` : ""}
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon" aria-label={t("common.a11y.copy")}
                 className="h-6 w-6"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -200,6 +202,7 @@ export function ErrorLogViewer({
   autoRefresh = false,
   refreshInterval = 60,
 }: ErrorLogViewerProps) {
+  const { t } = useTranslation();
   const [logData, setLogData] = useState<ErrorLogResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -306,13 +309,13 @@ export function ErrorLogViewer({
             </CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button variant="ghost" size="icon" onClick={loadLogs}>
+            <Button variant="ghost" size="icon" aria-label={t("common.a11y.refresh")} onClick={loadLogs}>
               <RefreshCw className="h-4 w-4" />
             </Button>
             {errors.length > 0 && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="icon" disabled={isClearing}>
+                  <Button variant="ghost" size="icon" aria-label={t("common.a11y.clearLogs")} disabled={isClearing}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </AlertDialogTrigger>
