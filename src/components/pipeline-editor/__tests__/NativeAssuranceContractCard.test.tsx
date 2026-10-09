@@ -280,7 +280,7 @@ describe("NativeAssuranceContractCard", () => {
       <NativeAssuranceContractCard registry={registry()} runtimeEngine="dag-ml" />,
     );
 
-    expect(container.textContent).toContain("Native assurance contract");
+    expect(container.textContent).toContain("Analysis Requirements");
     expect(container.textContent).toContain("Conformal and robustness keywords for engine dag-ml");
     expect(container.textContent).toContain("registry registry");
     expect(container.textContent).toContain(`Required registry floor (7/${REQUIRED_NATIVE_REGISTRY_ENTRY_IDS.length})`);
