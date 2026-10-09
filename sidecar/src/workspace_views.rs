@@ -181,119 +181,106 @@ fn files(root: &Path) -> Result<Vec<(PathBuf, u64)>, String> {
     Ok(result)
 }
 
-fn scan(
-    access: &LinkedWorkspaceAccess,
-    settings: &AppSettingsStore,
-    include_external_sizes: bool,
-) -> Result<Value, String> {
-    let root = access.path();
-    let store_path = crate::workspace_store::workspace_store_path(root);
-    let content = store_path
-        .as_ref()
-        .and_then(|path| path.parent())
-        .unwrap_or(root);
-    let all = files(root)?;
-    let mut datasets: BTreeMap<DatasetCohortKey, (BTreeSet<String>, Value)> = BTreeMap::new();
-    let (runs_count, predictions_count, has_prediction_arrays_table) = if let Some(store) =
-        access.store()
-    {
-        let runs: i64 = store
-            .query_row("SELECT COUNT(*) FROM runs", [], |row| row.get(0))
-            .map_err(|error| error.to_string())?;
-        let predictions: i64 = store
-            .query_row("SELECT COUNT(*) FROM predictions", [], |row| row.get(0))
-            .map_err(|error| error.to_string())?;
-        let legacy:bool=store.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='prediction_arrays')",[],|row|row.get(0)).map_err(|error|error.to_string())?;
-        let mut statement = store
-            .prepare("SELECT run_id, datasets FROM runs LIMIT 20001")
-            .map_err(|error| error.to_string())?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-            })
-            .map_err(|error| error.to_string())?;
-        for (index, row) in rows.enumerate() {
-            if index >= MAX_ROWS {
-                return Err("Workspace discovery exceeds 20000 runs".into());
-            }
-            let (run, serialized) = row.map_err(|error| error.to_string())?;
-            let Some(serialized) = serialized else {
+type DatasetCohorts = BTreeMap<DatasetCohortKey, (BTreeSet<String>, Value)>;
+
+fn read_store_cohorts(
+    store: &rusqlite::Connection,
+) -> Result<(DatasetCohorts, i64, i64, bool), String> {
+    let mut datasets: DatasetCohorts = BTreeMap::new();
+    let runs: i64 = store
+        .query_row("SELECT COUNT(*) FROM runs", [], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    let predictions: i64 = store
+        .query_row("SELECT COUNT(*) FROM predictions", [], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    let legacy:bool=store.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='prediction_arrays')",[],|row|row.get(0)).map_err(|error|error.to_string())?;
+    let mut statement = store
+        .prepare("SELECT run_id, datasets FROM runs LIMIT 20001")
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+        })
+        .map_err(|error| error.to_string())?;
+    for (index, row) in rows.enumerate() {
+        if index >= MAX_ROWS {
+            return Err("Workspace discovery exceeds 20000 runs".into());
+        }
+        let (run, serialized) = row.map_err(|error| error.to_string())?;
+        let Some(serialized) = serialized else {
+            continue;
+        };
+        let values: Value = serde_json::from_str(&serialized)
+            .map_err(|error| format!("Invalid run dataset metadata: {error}"))?;
+        for dataset in values.as_array().ok_or("Run datasets must be an array")? {
+            let name = dataset
+                .as_str()
+                .or_else(|| dataset["name"].as_str())
+                .unwrap_or_default();
+            if name.is_empty() {
                 continue;
-            };
-            let values: Value = serde_json::from_str(&serialized)
-                .map_err(|error| format!("Invalid run dataset metadata: {error}"))?;
-            for dataset in values.as_array().ok_or("Run datasets must be an array")? {
-                let name = dataset
-                    .as_str()
-                    .or_else(|| dataset["name"].as_str())
-                    .unwrap_or_default();
-                if name.is_empty() {
-                    continue;
-                }
-                let identity = DatasetCohortKey {
-                    name: name.into(),
-                    // Preserve declaration presence even for malformed IDs;
-                    // these must never merge into a legacy name-only cohort.
-                    declared_link: dataset.get("linked_dataset_id").map(Value::to_string),
-                    content_hash: dataset["hash"]
-                        .as_str()
-                        .filter(|hash| !hash.is_empty())
-                        .map(str::to_owned),
-                };
-                let entry = datasets.entry(identity).or_insert_with(|| {
-                    (
-                        BTreeSet::new(),
-                        if dataset.is_object() {
-                            dataset.clone()
-                        } else {
-                            json!({"name":name})
-                        },
-                    )
-                });
-                entry.0.insert(run.clone());
             }
+            let identity = DatasetCohortKey {
+                name: name.into(),
+                // Preserve declaration presence even for malformed IDs;
+                // these must never merge into a legacy name-only cohort.
+                declared_link: dataset.get("linked_dataset_id").map(Value::to_string),
+                content_hash: dataset["hash"]
+                    .as_str()
+                    .filter(|hash| !hash.is_empty())
+                    .map(str::to_owned),
+            };
+            let entry = datasets.entry(identity).or_insert_with(|| {
+                (
+                    BTreeSet::new(),
+                    if dataset.is_object() {
+                        dataset.clone()
+                    } else {
+                        json!({"name":name})
+                    },
+                )
+            });
+            entry.0.insert(run.clone());
         }
-        (runs, predictions, legacy)
-    } else {
-        if root.join("store.duckdb").exists()
-            || all.iter().any(|(path, _)| {
-                path.starts_with(root.join("runs"))
-                    || path.starts_with(root.join("workspace/runs"))
-                    || path.starts_with(root.join("nirs4all_results"))
-            })
-        {
-            return Err(
-                "Workspace result format requires migration before native discovery".into(),
-            );
-        }
-        (0, 0, false)
-    };
-    let links = settings.dataset_links()?;
-    let datasets: Vec<Value> = datasets
+    }
+    Ok((datasets, runs, predictions, legacy))
+}
+
+fn resolve_cohort_paths(
+    datasets: DatasetCohorts,
+    links: &[crate::settings::DatasetLinkIdentity],
+) -> Vec<Value> {
+    datasets
         .into_iter()
         .map(|(identity, (runs, mut value))| {
             let name = identity.name;
-            let path = if let Some(declared_id) = value.get("linked_dataset_id") {
-                let candidates: Vec<_> = declared_id
-                    .as_str()
-                    .filter(|id| !id.is_empty())
-                    .into_iter()
-                    .flat_map(|id| links.iter().filter(move |link| link.id == id))
-                    .collect();
-                // An explicit identity is authoritative. Removed, malformed or
-                // ambiguous links remain unresolved, including legacy paths.
-                (candidates.len() == 1)
-                    .then(|| candidates[0].path.clone())
-                    .unwrap_or_default()
-            } else {
-                let candidates: Vec<_> = links.iter().filter(|link| link.name == name).collect();
-                value["path"]
-                    .as_str()
-                    .filter(|path| !path.is_empty())
-                    .map(str::to_owned)
-                    .or_else(|| (candidates.len() == 1).then(|| candidates[0].path.clone()))
-                    .unwrap_or_default()
-            };
+            let path = value.get("linked_dataset_id").map_or_else(
+                || {
+                    let candidates: Vec<_> =
+                        links.iter().filter(|link| link.name == name).collect();
+                    value["path"]
+                        .as_str()
+                        .filter(|path| !path.is_empty())
+                        .map(str::to_owned)
+                        .or_else(|| (candidates.len() == 1).then(|| candidates[0].path.clone()))
+                        .unwrap_or_default()
+                },
+                |declared_id| {
+                    let candidates: Vec<_> = declared_id
+                        .as_str()
+                        .filter(|id| !id.is_empty())
+                        .into_iter()
+                        .flat_map(|id| links.iter().filter(move |link| link.id == id))
+                        .collect();
+                    // An explicit identity is authoritative. Removed, malformed or
+                    // ambiguous links remain unresolved, including legacy paths.
+                    if candidates.len() == 1 {
+                        candidates[0].path.clone()
+                    } else {
+                        String::new()
+                    }
+                },
+            );
             value["name"] = json!(name);
             value["path"] = json!(path);
             value["runs_count"] = json!(runs.len());
@@ -312,7 +299,51 @@ fn scan(
             });
             value
         })
-        .collect();
+        .collect()
+}
+
+// Byte counts beyond 2^52 are not representable exactly, and the percentage
+// is a display ratio rounded by the client, so the f64 conversion is intended.
+#[allow(clippy::cast_precision_loss)]
+fn percentage(size: u64, total: u64) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        size as f64 / total as f64 * 100.0
+    }
+}
+
+fn scan(
+    access: &LinkedWorkspaceAccess,
+    settings: &AppSettingsStore,
+    include_external_sizes: bool,
+) -> Result<Value, String> {
+    let root = access.path();
+    let store_path = crate::workspace_store::workspace_store_path(root);
+    let content = store_path
+        .as_ref()
+        .and_then(|path| path.parent())
+        .unwrap_or(root);
+    let all = files(root)?;
+    let (datasets, runs_count, predictions_count, has_prediction_arrays_table) =
+        if let Some(store) = access.store() {
+            read_store_cohorts(&store)?
+        } else {
+            if root.join("store.duckdb").exists()
+                || all.iter().any(|(path, _)| {
+                    path.starts_with(root.join("runs"))
+                        || path.starts_with(root.join("workspace/runs"))
+                        || path.starts_with(root.join("nirs4all_results"))
+                })
+            {
+                return Err(
+                    "Workspace result format requires migration before native discovery".into(),
+                );
+            }
+            (BTreeMap::new(), 0, 0, false)
+        };
+    let links = settings.dataset_links()?;
+    let datasets = resolve_cohort_paths(datasets, &links);
     let exports:Vec<Value>=all.iter().filter(|(path,_)|path.starts_with(content.join("exports")) && path.extension().is_some_and(|extension|matches!(extension.to_str(),Some("n4a" | "json" | "csv")))).map(|(path,size)|json!({"type":if path.extension().is_some_and(|value|value=="n4a"){"n4a_bundle"}else{"pipeline_json"},"name":path.file_stem().and_then(|value|value.to_str()),"path":path,"size_bytes":size})).collect();
     let templates:Vec<Value>=all.iter().filter(|(path,_)|path.starts_with(content.join("library/templates")) && path.extension().is_some_and(|extension|extension=="json")).map(|(path,_)|json!({"type":"template","name":path.file_stem().and_then(|value|value.to_str()),"path":path})).collect();
     let predictions:Vec<Value>=all.iter().filter(|(path,_)|path.starts_with(content.join("arrays")) && path.extension().is_some_and(|extension|extension=="parquet")).map(|(path,size)|json!({"dataset":path.file_stem().and_then(|value|value.to_str()),"format":"parquet","path":path,"size_bytes":size})).collect();
@@ -326,7 +357,7 @@ fn scan(
         ("Cache", ".cache"),
         ("Temp", ".tmp"),
     ];
-    let usage:Vec<Value>=categories.iter().map(|(name,directory)|{let entries:Vec<_>=all.iter().filter(|(path,_)|path.starts_with(content.join(directory))).collect();let size:u64=entries.iter().map(|(_,size)|size).sum();json!({"name":name,"size_bytes":size,"file_count":entries.len(),"percentage":if total_size==0{0.0}else{size as f64/total_size as f64*100.0}})}).collect();
+    let usage:Vec<Value>=categories.iter().map(|(name,directory)|{let entries:Vec<_>=all.iter().filter(|(path,_)|path.starts_with(content.join(directory))).collect();let size:u64=entries.iter().map(|(_,size)|size).sum();json!({"name":name,"size_bytes":size,"file_count":entries.len(),"percentage":percentage(size,total_size)})}).collect();
     let arrays_size: u64 = all
         .iter()
         .filter(|(path, _)| path.starts_with(content.join("arrays")))
@@ -404,7 +435,7 @@ mod tests {
             method: method.into(),
             path: path.into(),
             query: None,
-            headers: Default::default(),
+            headers: BTreeMap::default(),
             body: Vec::new(),
         }
     }
@@ -459,7 +490,7 @@ mod tests {
         );
     }
 
-    fn discover_test_cohorts(directory: &Path, cohorts: &[Value], links: Value) -> Value {
+    fn discover_test_cohorts(directory: &Path, cohorts: &[Value], links: &Value) -> Value {
         let workspace = directory.join("workspace");
         let config = directory.join("config");
         fs::create_dir_all(&workspace).unwrap();
@@ -503,7 +534,7 @@ mod tests {
         let value = discover_test_cohorts(
             directory.path(),
             &[beer.clone(), beer, alpine],
-            json!({"datasets":[{"id":"beer","name":"raw","path":beer_path},{"id":"alpine","name":"raw","path":alpine_path}]}),
+            &json!({"datasets":[{"id":"beer","name":"raw","path":beer_path},{"id":"alpine","name":"raw","path":alpine_path}]}),
         );
         assert_eq!(value["total"], 2);
         let cohorts = value["datasets"].as_array().unwrap();
@@ -536,7 +567,7 @@ mod tests {
                 json!({"name":"raw","hash":"first"}),
                 json!({"name":"raw","hash":"second"}),
             ],
-            json!({"datasets":[]}),
+            &json!({"datasets":[]}),
         );
         assert_eq!(value["total"], 5);
         for cohort in value["datasets"].as_array().unwrap() {
@@ -558,7 +589,7 @@ mod tests {
                 json!({"name":"raw","hash":"same","linked_dataset_id":""}),
                 json!({"name":"raw","hash":"same"}),
             ],
-            json!({"datasets":[{"id":"replacement","name":"raw","path":current}]}),
+            &json!({"datasets":[{"id":"replacement","name":"raw","path":current}]}),
         );
         assert_eq!(value["total"], 4);
         for cohort in value["datasets"].as_array().unwrap() {

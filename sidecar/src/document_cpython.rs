@@ -155,8 +155,8 @@ pub fn route_prediction_upload(
     }
 }
 
-pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
-    if !matches!(
+fn is_supported_operation(operation: &str) -> bool {
+    matches!(
         operation,
         "workspace.upgrade"
             | "playground.operators"
@@ -220,7 +220,11 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
             | "synthesis.status"
             | "synthesis.validate"
             | "synthesis.generate"
-    ) {
+    )
+}
+
+pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
+    if !is_supported_operation(operation) {
         return Err("Unsupported document operation".into());
     }
     if !payload.is_object() {
