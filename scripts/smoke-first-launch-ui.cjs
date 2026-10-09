@@ -178,7 +178,7 @@ async function main(options = {}) {
     if (!options.existingProfile) {
     await page.getByRole("button", { name: options.consent === "accept" ? "Allow reports (recommended)" : "Do not send", exact: true }).click({ timeout: config.timeoutMs });
     await waitForSetupState(page,
-      () => page.getByText("The included CPU runtime and required packages are ready.", { exact: true }).isVisible(),
+      () => page.getByText("Your environment is ready for analysis.", { exact: true }).isVisible(),
       config.timeoutMs, "the included CPU runtime and required packages to be ready", sanitize);
     await page.getByRole("button", { name: "Open Studio", exact: true }).click();
     await waitForSetupState(page, () => /\/datasets(?:[?#]|$)/.test(page.url()),
