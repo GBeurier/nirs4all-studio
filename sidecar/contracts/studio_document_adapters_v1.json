@@ -16,13 +16,18 @@
     },
     {
       "path": "api/library_aggregated_results.py",
-      "size": 8550,
-      "sha256": "5e82749529fd3e4e155c9fb070d8112c157dcb72a7a17601559b3e1fde015103"
+      "size": 9202,
+      "sha256": "c3b652cbdfae52720e35d91ec0f5893721033ecb26b220308ece30b498caf4fb"
     },
     {
       "path": "api/library_aggregated_steps.py",
       "size": 5741,
       "sha256": "b752cf91ea3dca39fc9a5b7b148182bceaaf9b2a9266a1d1ea6ba50abf5e626f"
+    },
+    {
+      "path": "api/library_analysis.py",
+      "size": 21911,
+      "sha256": "86f66b62414507a740f7d4e43ae57c464ac3c722cba7c2e7d9ca4600b3989c25"
     },
     {
       "path": "api/library_dataset_inspection.py",
@@ -31,13 +36,28 @@
     },
     {
       "path": "api/library_documents.py",
-      "size": 18986,
-      "sha256": "0c789772ced50dcaf0b04f9c91b6eda03c97f2c08a0bbc2b646a4bf5f664e589"
+      "size": 21763,
+      "sha256": "c1c38de930d82a44519544cb4c310d8e4fdd7fe4f432eda2cf73e4c4a7e0c2ce"
+    },
+    {
+      "path": "api/library_inspector.py",
+      "size": 619,
+      "sha256": "56cc00f457585faa89c839c99afa2fe269d294b0f20417adac7e8ad1e97c8d7b"
+    },
+    {
+      "path": "api/library_operator_availability.py",
+      "size": 1858,
+      "sha256": "740d2abbdda5f3f5984059c960d9a42b4cbb21a716a0615c2fa8eb2092198601"
     },
     {
       "path": "api/library_playground_views.py",
       "size": 9694,
       "sha256": "bc62e5daf1ceb764023c57461033af7ebf5ef6dcbee16d5290b2a476b03dc349"
+    },
+    {
+      "path": "api/library_prediction_export.py",
+      "size": 632,
+      "sha256": "b8c38a114d8114fc97ec21f5c0b78c1d3d72455c86f219d47e2c192c3ed3be74"
     },
     {
       "path": "api/library_prediction_results.py",
@@ -46,8 +66,8 @@
     },
     {
       "path": "api/library_predictions.py",
-      "size": 11998,
-      "sha256": "83ebec51066ab73b35dd2357fa57fc2130c205d617c0b711acbbfd066acd9b29"
+      "size": 12309,
+      "sha256": "763c649b2445eb37699da1bc73c5a563eef98f4b02bd6489e59d253530fe0dc2"
     },
     {
       "path": "api/library_runtime_config.py",
@@ -78,6 +98,11 @@
       "path": "api/pipeline_canonical.py",
       "size": 68389,
       "sha256": "fa7446c075bedfc79cbdaad781e2f1123e787534205612f2d1f2512dd3cebe0f"
+    },
+    {
+      "path": "api/robustness_contract.py",
+      "size": 8901,
+      "sha256": "ccd166a13fe64a6cb4b7af55c7ca521e5f0d465cd240c7b385fc59f59cb2a4fe"
     },
     {
       "path": "api/shared/__init__.py",

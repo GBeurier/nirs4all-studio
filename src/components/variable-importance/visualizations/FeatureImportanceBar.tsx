@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
+import { getShapAxisDisplay } from '@/lib/shapAxisDisplay';
 import {
   buildShapFeatureImportanceCsv,
   buildShapFeatureImportanceRows,
@@ -32,6 +33,7 @@ interface FeatureImportanceBarProps {
 }
 
 export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceBarProps) {
+  const axis = getShapAxisDisplay(results.axis_unit);
   // Use rebinned data if available, otherwise from results
   const activeBinned = binnedData || results.binned_importance;
 
@@ -41,7 +43,7 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
 
   // Export to CSV
   const handleExport = () => {
-    const csvContent = buildShapFeatureImportanceCsv(activeBinned);
+    const csvContent = buildShapFeatureImportanceCsv(activeBinned, results.axis_unit);
 
     // Download
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -89,10 +91,10 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
                 const data = payload[0].payload;
                 return (
                   <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
-                    <p className="font-medium">#{data.rank}: {data.label} cm⁻¹</p>
+                    <p className="font-medium">#{data.rank}: {data.label}{axis.suffix}</p>
                     <p>Importance: {data.importance.toFixed(4)}</p>
                     <p className="text-muted-foreground">
-                      Center: {data.center.toFixed(1)} cm⁻¹
+                      Center: {data.center.toFixed(1)}{axis.suffix}
                     </p>
                   </div>
                 );
@@ -124,7 +126,7 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
             <TableHeader>
               <TableRow>
                 <TableHead className="w-16">Rank</TableHead>
-                <TableHead>Wavelength Range</TableHead>
+                <TableHead>{axis.label} range</TableHead>
                 <TableHead className="text-right">Importance</TableHead>
               </TableRow>
             </TableHeader>
@@ -132,7 +134,7 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
               {chartData.slice(0, 10).map((row) => (
                 <TableRow key={row.label}>
                   <TableCell className="font-medium">#{row.rank}</TableCell>
-                  <TableCell>{row.label} cm⁻¹</TableCell>
+                  <TableCell>{row.label}{axis.suffix}</TableCell>
                   <TableCell className="text-right font-mono">
                     {row.importance.toFixed(4)}
                   </TableCell>

@@ -155,6 +155,8 @@ pub trait ScientificJobExecutor: Debug + Send + Sync {
 /// WebSocket publication, cancellation acknowledgement, and durable storage
 /// remain owned by [`NativeJobRuntime`].
 pub trait ScientificJobTerminal: Debug + Send + Sync {
+    /// Publish truthful worker activity without inventing a completed-fit count.
+    fn activity(&self, _job_id: &str, _message: &str) -> Result<(), NativeJobRuntimeError> { Ok(()) }
     /// Publish and persist a validated scientific result as completed.
     ///
     /// # Errors
@@ -376,6 +378,28 @@ impl NativeJobRuntime {
         now: Instant,
         executor: Arc<dyn ScientificJobExecutor>,
     ) -> Result<ScientificSubmissionReceipt, NativeJobRuntimeError> {
+        self.submit_with_executor_kind_at(JobType::Training, run_name, requested_backend, payload,
+            workspace_id, workspace_path, timestamp, now, executor)
+    }
+
+    /// Submit an explicitly typed native analysis/export operation through the
+    /// same bounded scheduler, persistence and WebSocket lifecycle as training.
+    ///
+    /// # Errors
+    /// Returns an error if executor preflight, durable registration or submission fails.
+    #[allow(clippy::too_many_arguments)]
+    pub fn submit_with_executor_kind_at(
+        &self,
+        job_type: JobType,
+        run_name: &str,
+        requested_backend: &str,
+        payload: &Value,
+        workspace_id: &str,
+        workspace_path: &Path,
+        timestamp: &str,
+        now: Instant,
+        executor: Arc<dyn ScientificJobExecutor>,
+    ) -> Result<ScientificSubmissionReceipt, NativeJobRuntimeError> {
         if !executor.is_selected() {
             return Err(NativeJobRuntimeError::Executor(
                 JobExecutorError::Unselected,
@@ -405,7 +429,7 @@ impl NativeJobRuntime {
         self.register_with_selected_executor_at(
             executor.is_selected(),
             &job_id,
-            JobType::Training,
+            job_type,
             config,
             timestamp,
             now,
@@ -597,7 +621,9 @@ impl NativeJobRuntime {
         jobs.into_iter().filter_map(|job| {
             let context = durable.get(&job.id)?;
             if job.job_type != JobType::Training || context.workspace_path != canonical_workspace { return None; }
-            Some(json!({"job":job.public_json(), "legacyConfig":context.request["legacyConfig"]}))
+            let mut public = job.public_json();
+            public["progress_unavailable"] = json!(job.progress == 0.0 && matches!(job.status, JobStatus::Running));
+            Some(json!({"job":public, "legacyConfig":context.request["legacyConfig"]}))
         }).collect()
     }
 
@@ -860,6 +886,10 @@ impl NativeJobRuntime {
 }
 
 impl ScientificJobTerminal for NativeJobRuntime {
+    fn activity(&self, job_id: &str, message: &str) -> Result<(), NativeJobRuntimeError> {
+        self.progress_at(job_id, 0.0, message, &rfc3339_now(), Instant::now())?;
+        Ok(())
+    }
     fn complete(&self, job_id: &str, result: Value) -> Result<(), NativeJobRuntimeError> {
         self.complete_at(job_id, result, &rfc3339_now(), Instant::now())?;
         Ok(())
@@ -908,7 +938,7 @@ fn durable_record(snapshot: &JobSnapshot, context: &DurableScientificJob) -> Val
         "status": snapshot.status.as_str(),
         "progress": snapshot.progress,
         "progress_message": snapshot.progress_message,
-        "progress_unavailable": false,
+        "progress_unavailable": snapshot.progress == 0.0 && matches!(snapshot.status, JobStatus::Running),
         "created_at": snapshot.created_at,
         "started_at": snapshot.started_at,
         "completed_at": snapshot.completed_at,
@@ -990,6 +1020,7 @@ fn status_training(runtime: &NativeJobRuntime, job_id: &str) -> HttpResponse {
             "status": job.status.as_str(),
             "progress": job.progress,
             "progress_message": job.progress_message,
+            "progress_unavailable": job.progress == 0.0 && matches!(job.status, JobStatus::Running),
             "created_at": job.created_at,
             "started_at": job.started_at,
             "completed_at": job.completed_at,

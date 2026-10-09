@@ -106,11 +106,11 @@ function makeResources(): {
     product_backend: "rust-sidecar",
     transport: "bounded-cpython-stdio-v1",
     http_listener: "forbidden",
-    source_commit: "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc",
-    wheel_sha256: "0ed0b2cb1e3cda248ccfd52513d6874a763e7cc64fb4a28973058ada677ef8f6",
+    source_commit: "48542f1a48ee005eea8d49da3756cd6b192d03df",
+    wheel_sha256: "162306982aa142e201f45095d4c5aee2bcb164a1bbc8b86dbcc9dfcf72587858",
     distribution: "nirs4all",
     distribution_version: "1.4.7",
-    installed_manifest_sha256: "84acf9234ce7ec0b3f637be06524f6a3fa6d5e2c0ca208f3f47bd22bacd39e3e",
+    installed_manifest_sha256: "f173fe63246b2295b6afe0f7e275e9d1c21a140603136879ac7503a56d08b508",
     conversion_tools: {
       source_commit: "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
       wheel_sha256: "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310",
@@ -215,7 +215,9 @@ describe("packaged runtime contract", () => {
   it("keeps the transitive packaged Electron graph plugin-host only", () => {
     const root = process.cwd();
     const result = assertPackagedElectronGraph({ root, requireDist: false });
-    const relativeSources = result.sourceFiles.map((file) => path.relative(root, file));
+    const relativeSources = result.sourceFiles.map(
+      (file) => path.relative(root, file).split(path.sep).join("/"),
+    );
     expect(relativeSources).toContain("electron/env-manager.ts");
     expect(relativeSources).toContain("electron/env/provisioning.ts");
     expect(relativeSources).toContain("scripts/python-runtime-config.cjs");

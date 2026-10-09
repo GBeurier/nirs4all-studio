@@ -1,4 +1,5 @@
 import type { BinnedImportanceData } from '@/types/shap';
+import { getShapAxisDisplay } from '@/lib/shapAxisDisplay';
 
 export interface ShapFeatureImportanceRow {
   label: string;
@@ -47,8 +48,8 @@ export function buildShapFeatureImportanceExportRows(
     .sort((left, right) => right.importance - left.importance);
 }
 
-export function buildShapFeatureImportanceCsv(binnedImportance: BinnedImportanceData): string {
-  const headers = ['Rank', 'Wavelength Range (cm⁻¹)', 'Center', 'Importance'];
+export function buildShapFeatureImportanceCsv(binnedImportance: BinnedImportanceData, axisUnit?: string | null): string {
+  const headers = ['Rank', `${getShapAxisDisplay(axisUnit).label} range`, 'Center', 'Importance'];
   const rows = buildShapFeatureImportanceExportRows(binnedImportance);
 
   return [

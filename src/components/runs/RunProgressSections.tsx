@@ -20,7 +20,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { Progress, IndeterminateProgress } from "@/components/ui/progress";
 import type { DisplayMetrics } from "@/lib/run-progress-display";
 import type {
   GranularProgress,
@@ -91,10 +91,12 @@ export function ProgressOverviewCard({
   primaryText,
   secondaryText,
   overallProgress,
+  progressUnavailable = false,
 }: {
   primaryText: string;
   secondaryText: string | null;
   overallProgress: number;
+  progressUnavailable?: boolean;
 }) {
   return (
     <Card>
@@ -113,9 +115,11 @@ export function ProgressOverviewCard({
               )}
             </div>
           </div>
-          <span className="text-sm font-medium">{Math.round(overallProgress)}%</span>
+          <span className="text-sm font-medium">{progressUnavailable ? "Unavailable" : `${Math.round(overallProgress)}%`}</span>
         </div>
-        <Progress value={overallProgress} className="h-3" />
+        {progressUnavailable
+          ? <IndeterminateProgress className="h-3" />
+          : <Progress value={overallProgress} className="h-3" />}
       </CardContent>
     </Card>
   );

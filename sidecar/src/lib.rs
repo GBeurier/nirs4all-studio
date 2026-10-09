@@ -35,6 +35,11 @@ mod document_cpython;
 mod error_logs;
 pub mod execution_job_records;
 mod general_prediction;
+mod operator_availability;
+mod workspace_views;
+mod inspector_views;
+mod prediction_export;
+mod library_analysis;
 mod http_access;
 pub mod job_http;
 pub mod job_lifecycle;
@@ -518,11 +523,13 @@ impl CapabilitiesSnapshot {
         capabilities["features"]["dataset_score_routes"] = json!(true);
         capabilities["features"]["dataset_synthetic_preset_routes"] = json!(true);
         capabilities["features"]["native_webapp_update_routes"] = json!(true);
+        capabilities["features"]["workspace_discovery_routes"] = json!(true);
         let scientific_features = [
             "dataset_synthetic_generation_routes",
             "workspace_prediction_result_routes",
             "aggregated_prediction_result_routes",
             "playground_routes",
+            "operator_availability_route", "inspector_view_routes", "prediction_export_routes", "library_analysis_routes",
         ];
         for feature in scientific_features {
             capabilities["features"][feature] = json!(false);
@@ -972,6 +979,7 @@ impl SidecarState {
 pub struct HttpResponse {
     pub status: u16,
     pub body: String,
+    pub body_bytes: Option<Vec<u8>>,
     headers: Vec<(&'static str, String)>,
 }
 
@@ -981,8 +989,14 @@ impl HttpResponse {
         Self {
             status,
             body: body.into(),
+            body_bytes: None,
             headers: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn binary(status: u16, body: Vec<u8>, content_type: &'static str) -> Self {
+        Self { status, body: String::new(), body_bytes: Some(body), headers: vec![("Content-Type", content_type.into())] }
     }
 
     #[must_use]
@@ -4649,7 +4663,12 @@ fn route_result_and_upgrade(
     state: &Arc<Mutex<SidecarState>>,
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
-    workspace_metadata::route(state, request)
+    operator_availability::route(state, request)
+        .or_else(|| workspace_views::route(state, request))
+        .or_else(|| prediction_export::route(state, request))
+        .or_else(|| inspector_views::route(state, request))
+        .or_else(|| library_analysis::route(state, request))
+        .or_else(|| workspace_metadata::route(state, request))
         .or_else(|| workspace_upgrade::route(state, request))
         .or_else(|| prediction_results::route(state, request))
         .or_else(|| playground_views::route(state, request))
@@ -5119,16 +5138,20 @@ fn write_response(stream: &mut TcpStream, response: &HttpResponse) -> std::io::R
         504 => "Gateway Timeout",
         _ => "Internal Server Error",
     };
+    let bytes = response.body_bytes.as_deref().unwrap_or_else(|| response.body.as_bytes());
+    let content_type = response.headers.iter().find(|(name, _)| name.eq_ignore_ascii_case("Content-Type")).map_or("application/json", |(_, value)| value.as_str());
     write!(
         stream,
-        "HTTP/1.1 {} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
+        "HTTP/1.1 {} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n",
         response.status,
-        response.body.len(),
+        bytes.len(),
     )?;
     for (name, value) in &response.headers {
+        if name.eq_ignore_ascii_case("Content-Type") { continue; }
         write!(stream, "{name}: {value}\r\n")?;
     }
-    write!(stream, "\r\n{}", response.body)?;
+    write!(stream, "\r\n")?;
+    stream.write_all(bytes)?;
     stream.flush()
 }
 
@@ -5289,6 +5312,96 @@ mod tests {
         thread,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn binary_download_wire_preserves_non_utf8_body_and_access_headers() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let expected = b"PAR1\x00\xff\x80\r\nPAR1".to_vec();
+        let bytes = expected.clone();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let response = HttpResponse::binary(200, bytes, "application/octet-stream")
+                .with_header(
+                    "Content-Disposition",
+                    "attachment; filename=\"Coffee.parquet\"",
+                );
+            write_access_response(
+                &mut socket,
+                response,
+                &ResponseAccessContext {
+                    origin: Some("http://127.0.0.1:5173".into()),
+                    endpoint: None,
+                },
+            )
+            .unwrap();
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut wire = Vec::new();
+        client.read_to_end(&mut wire).unwrap();
+        server.join().unwrap();
+        let boundary = wire
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .unwrap();
+        let headers = std::str::from_utf8(&wire[..boundary]).unwrap();
+        assert!(headers.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert_eq!(
+            headers
+                .lines()
+                .filter(|line| line.starts_with("Content-Type:"))
+                .count(),
+            1
+        );
+        assert!(headers.contains("Content-Type: application/octet-stream\r\n"));
+        assert!(headers.contains(&format!("Content-Length: {}\r\n", expected.len())));
+        assert!(
+            headers.contains("Content-Disposition: attachment; filename=\"Coffee.parquet\"\r\n")
+        );
+        assert!(headers.contains("Access-Control-Allow-Origin: http://127.0.0.1:5173\r\n"));
+        assert!(headers.contains("Vary: Origin"));
+        assert_eq!(&wire[boundary + 4..], expected.as_slice());
+    }
+
+    #[test]
+    fn json_error_wire_remains_utf8_json_with_byte_content_length() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let body = json!({"detail":"Données indisponibles"}).to_string();
+        let expected = body.clone();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            write_access_response(
+                &mut socket,
+                HttpResponse::json(400, body),
+                &ResponseAccessContext {
+                    origin: Some("null".into()),
+                    endpoint: None,
+                },
+            )
+            .unwrap();
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut wire = Vec::new();
+        client.read_to_end(&mut wire).unwrap();
+        server.join().unwrap();
+        let boundary = wire
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .unwrap();
+        let headers = std::str::from_utf8(&wire[..boundary]).unwrap();
+        assert!(headers.starts_with("HTTP/1.1 400 Bad Request\r\n"));
+        assert!(headers.contains("Content-Type: application/json\r\n"));
+        assert!(headers.contains(&format!("Content-Length: {}\r\n", expected.len())));
+        assert!(headers.contains("Access-Control-Allow-Origin: null\r\n"));
+        assert_eq!(&wire[boundary + 4..], expected.as_bytes());
+    }
 
     #[test]
     fn readiness_validation_releases_route_lock_and_preserves_payload() {

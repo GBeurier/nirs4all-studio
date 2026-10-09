@@ -13,7 +13,7 @@ const PARTITION_RANK: Record<string, number> = {
   final: 3,
 };
 
-function toLabel(value: number | null | undefined): string | null {
+function toLabel(value: number | string | null | undefined): string | null {
   if (value == null) return null;
   if (typeof value === "number" && !Number.isFinite(value)) return null;
   return String(value);
@@ -49,8 +49,8 @@ export function buildConfusionMatrixFromVectors({
   normalize,
   partitionLabel,
 }: {
-  yTrue: Array<number | null | undefined>;
-  yPred: Array<number | null | undefined>;
+  yTrue: Array<number | string | null | undefined>;
+  yPred: Array<number | string | null | undefined>;
   normalize: ConfusionMatrixNormalize;
   partitionLabel: string;
 }): ConfusionMatrixResponse {
@@ -62,11 +62,12 @@ export function buildConfusionMatrixFromVectors({
   for (let index = 0; index < n; index += 1) {
     const trueLabel = toLabel(yTrue[index]);
     const predLabel = toLabel(yPred[index]);
-    if (!trueLabel || !predLabel) continue;
+    if (trueLabel === null || predLabel === null) continue;
 
     labels.add(trueLabel);
     labels.add(predLabel);
-    counts.set(`${trueLabel}|${predLabel}`, (counts.get(`${trueLabel}|${predLabel}`) ?? 0) + 1);
+    const key = JSON.stringify([trueLabel, predLabel]);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
     totalSamples += 1;
   }
 
@@ -102,21 +103,21 @@ export function buildConfusionMatrixFromVectors({
   for (const trueLabel of orderedLabels) {
     rowTotals.set(
       trueLabel,
-      orderedLabels.reduce((sum, predLabel) => sum + (counts.get(`${trueLabel}|${predLabel}`) ?? 0), 0),
+      orderedLabels.reduce((sum, predLabel) => sum + (counts.get(JSON.stringify([trueLabel, predLabel])) ?? 0), 0),
     );
   }
 
   for (const predLabel of orderedLabels) {
     colTotals.set(
       predLabel,
-      orderedLabels.reduce((sum, trueLabel) => sum + (counts.get(`${trueLabel}|${predLabel}`) ?? 0), 0),
+      orderedLabels.reduce((sum, trueLabel) => sum + (counts.get(JSON.stringify([trueLabel, predLabel])) ?? 0), 0),
     );
   }
 
   const cells: ConfusionMatrixCell[] = [];
   for (const trueLabel of orderedLabels) {
     for (const predLabel of orderedLabels) {
-      const count = counts.get(`${trueLabel}|${predLabel}`) ?? 0;
+      const count = counts.get(JSON.stringify([trueLabel, predLabel])) ?? 0;
       let normalized: number | null = null;
 
       if (normalize === "row") {

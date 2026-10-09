@@ -35,6 +35,62 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 }
 
 describe("renderer transport preselection", () => {
+  it("qualifies variant counting with a bounded host and rejects method/query drift", async () => {
+    const request = async () => capabilityResponse({ pipeline_library_routes: true, python_plugin_preflight: true });
+    await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/pipelines/count-variants" }, running, request))
+      .resolves.toMatchObject({ target: "native-sidecar" });
+    for (const [method, path] of [
+      ["GET", "/pipelines/count-variants"],
+      ["POST", "/pipelines/count-variants?unsafe=true"],
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, request))
+        .resolves.toMatchObject({ target: "reject", status: 400 });
+    }
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "POST", path: "/pipelines/count-variants" },
+      () => ({ ...running(), pythonPluginHostConfigured: false }), request,
+    )).resolves.toMatchObject({ target: "reject" });
+  });
+  it("qualifies exploration routes only through their native capabilities", async () => {
+    const features = {
+      workspace_discovery_routes: true, operator_availability_route: true,
+      prediction_export_routes: true, inspector_view_routes: true,
+      library_analysis_routes: true, python_plugin_preflight: true,
+    };
+    const request = async () => capabilityResponse(features);
+    for (const [method, path] of [
+      ["GET", "/system/operator-availability"], ["GET", "/workspace/stats"],
+      ["POST", "/workspaces/workspace-1/scan"], ["GET", "/workspaces/workspace-1/datasets/discovered"],
+      ["GET", "/aggregated-predictions/export/chain-1.parquet?partition=test"],
+      ["GET", "/inspector/data?run_id=run-1&run_id=run-2&metric=rmse"],
+      ["POST", "/inspector/confusion"], ["POST", "/synthesis/preview"],
+      ["POST", "/analysis/shap/compute"], ["GET", "/analysis/shap/results/job-1/sample/0?top_n=20"],
+      ["POST", "/analysis/shap/results/job-1/rebin"],
+      ["GET", "/aggregated-predictions/chain-1/robustness-evidence"],
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar" });
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, async () => capabilityResponse()))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+    const noPython = () => ({ ...running(), pythonPluginHostConfigured: false });
+    await expect(preselectRendererTransport({ kind: "http", method: "GET", path: "/workspace/stats" }, noPython, request))
+      .resolves.toMatchObject({ target: "native-sidecar" });
+    await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/analysis/shap/compute" }, noPython, request))
+      .resolves.toMatchObject({ target: "reject" });
+    for (const [method, path] of [
+      ["POST", "/workspace/stats"], ["GET", "/system/operator-availability?unsafe=true"],
+      ["POST", "/workspaces/workspace-1/scan?path=D:/other"],
+      ["GET", "/inspector/data?metric=rmse&metric=mae"],
+      ["GET", "/inspector/data?workspace_path=D:/other"],
+      ["GET", "/analysis/shap/results/job-1/sample/0?top_n=-1"],
+      ["GET", "/analysis/shap/results/job-1/rebin"],
+      ["GET", "/aggregated-predictions/export/chain-1.parquet?path=D:/other"],
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+  });
   it("routes historical deletion, logs and execution records to their native owners", async () => {
     const request = async () => capabilityResponse({ workspace_run_management_routes: true, python_plugin_preflight: true });
     await expect(preselectRendererTransport({ kind: "http", method: "GET", path: "/runs/execution-backends" }, running, request))

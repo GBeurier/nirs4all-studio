@@ -351,6 +351,7 @@ export default function RunProgress() {
           primaryText={progressOverviewText}
           secondaryText={progressOverviewDetailText}
           overallProgress={effectiveOverallProgress}
+          progressUnavailable={executionProgressDisplay.progressUnavailable}
         />
       )}
 

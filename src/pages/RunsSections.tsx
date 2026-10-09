@@ -105,6 +105,7 @@ export function RunsPageHeader({
 
 interface RunsStatsGridProps {
   stats: RunsPageStats;
+  scope?: string;
 }
 
 interface RunsStatCardProps {
@@ -137,11 +138,13 @@ function RunsStatCard({
   );
 }
 
-export function RunsStatsGrid({ stats }: RunsStatsGridProps) {
+export function RunsStatsGrid({ stats, scope }: RunsStatsGridProps) {
   const { t } = useTranslation();
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+    <section aria-label={scope || "Run summary"} className="space-y-2">
+      {scope && <p className="text-xs text-muted-foreground">{scope}</p>}
+      <div className={cn("grid grid-cols-1 gap-3", (stats.cancelledCount ?? 0) > 0 ? "sm:grid-cols-6" : "sm:grid-cols-5")}>
       <RunsStatCard
         icon={RefreshCw}
         iconClassName={cn("text-chart-2", stats.runningCount > 0 && "animate-spin")}
@@ -170,6 +173,15 @@ export function RunsStatsGrid({ stats }: RunsStatsGridProps) {
         label={t("runs.stats.failed")}
         value={stats.failedCount}
       />
+      {(stats.cancelledCount ?? 0) > 0 && (
+        <RunsStatCard
+          icon={X}
+          iconClassName="text-muted-foreground"
+          iconContainerClassName="bg-muted/50"
+          label={t("runs.stats.cancelled", { defaultValue: "Cancelled" })}
+          value={stats.cancelledCount!}
+        />
+      )}
       <RunsStatCard
         icon={Layers}
         iconClassName="text-primary"
@@ -177,7 +189,8 @@ export function RunsStatsGrid({ stats }: RunsStatsGridProps) {
         label={t("runs.stats.totalPipelines")}
         value={stats.totalPipelines}
       />
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -248,7 +261,7 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                 <Badge variant="outline">{data.remoteRequestedCount} remote requested</Badge>
                 <Badge variant="outline">{data.completedCount} completed</Badge>
                 {data.failedCount > 0 && (
-                  <Badge variant="destructive">{data.failedCount} failed</Badge>
+                  <Badge variant="destructive">{data.failedCount} failed / cancelled</Badge>
                 )}
                 {isPanelExpanded ? (
                   <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -387,7 +400,7 @@ export function RunsExecutionTasksPanel({ data, onInspectJob, onDismissJobs }: R
                           )}
                           {group.failedCount > 0 && (
                             <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
-                              {group.failedCount} failed
+                              {group.failedCount} failed / cancelled
                             </Badge>
                           )}
                         </div>

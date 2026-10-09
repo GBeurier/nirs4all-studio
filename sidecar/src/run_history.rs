@@ -119,7 +119,7 @@ fn compose_history(
                     "gain_from_previous_best": null, "pipeline_count": 0, "top_5": [],
                 })
             });
-            for field in ["n_samples", "n_features"] {
+            for field in ["n_samples", "n_features", "linked_dataset_id"] {
                 if !metadata[field].is_null() {
                     dataset[field] = metadata[field].clone();
                 }

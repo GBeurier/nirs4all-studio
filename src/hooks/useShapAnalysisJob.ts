@@ -22,7 +22,7 @@ export interface UseShapAnalysisJobInitialState {
 export interface RunShapAnalysisInput {
   chainId: string | null;
   modelRef?: ShapModelRequestRef | null;
-  datasetName: string | null;
+  datasetId: string | null;
   partition: Partition;
   explainerType: ExplainerType;
 }
@@ -148,13 +148,17 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
   const runAnalysis = useCallback(async ({
     chainId,
     modelRef,
-    datasetName,
+    datasetId,
     partition,
     explainerType,
   }: RunShapAnalysisInput) => {
     const selectedModelRef = modelRef ?? chainId;
-    if (!selectedModelRef || !datasetName) {
+    if (!selectedModelRef) {
       setError('Please select a model to explain.');
+      return;
+    }
+    if (!datasetId) {
+      setError('This model has no authorized dataset link. Select a model from a linked dataset.');
       return;
     }
 
@@ -163,7 +167,7 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
     try {
       const request = buildShapComputeRequest({
         modelRef: selectedModelRef,
-        datasetName,
+        datasetId,
         partition,
         explainerType,
       });

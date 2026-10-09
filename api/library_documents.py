@@ -13,6 +13,7 @@ from typing import Any
 
 from .pipeline_canonical import (
     canonical_to_editor,
+    count_runtime_variants,
     editor_steps_to_runtime_canonical,
     editor_to_canonical,
     hydrate_editor_steps,
@@ -109,6 +110,26 @@ def render_pipeline(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def count_pipeline_variants(document: dict[str, Any]) -> dict[str, Any]:
+    """Count editor search spaces through the owner, without expanding or fitting."""
+    from nirs4all.api.studio_scientific_general import validate_studio_pipeline_config
+
+    if set(document) != {"steps"} or not isinstance(document["steps"], list) or len(document["steps"]) > 256 or any(not isinstance(step, dict) for step in document["steps"]):
+        raise ValueError("Variant count requires only an array of editor steps")
+    steps = document["steps"]
+    if steps:
+        validate_studio_pipeline_config(steps)
+    runtime = editor_steps_to_runtime_canonical(steps)
+    if runtime:
+        validate_studio_pipeline_config(runtime)
+    count = count_runtime_variants(runtime)
+    breakdown = {str(step.get("id", index)): {"name": step.get("name", f"step_{index}"),
+                 "count": count_runtime_variants(editor_steps_to_runtime_canonical([step]))} for index, step in enumerate(steps)}
+    warning = (f"Large search space: {count:,} variants. Consider reducing with 'count' limiter." if count > 10000
+               else f"Moderate search space: {count:,} variants." if count > 1000 else None)
+    return {"count": count, "breakdown": breakdown, "warning": warning}
+
+
 def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
     """Expose library-resolved references for Rust's subsequent confinement check."""
     from nirs4all.api.dataset_documents import normalize_dataset_document
@@ -181,6 +202,30 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         raise ValueError("Document must be a JSON object")
     if isinstance(document.get("workspace_path"), str):
         document = {**document, "workspace_path": plain_windows_path(document["workspace_path"])}
+    if operation == "dataset.fingerprint":
+        from nirs4all.api.dataset_inspection import load_dataset_for_analysis
+        if set(document) != {"config"}:
+            raise ValueError("Dataset fingerprint requires only an authorized config")
+        dataset, _ = load_dataset_for_analysis(document["config"])
+        return {"content_hash": dataset.content_hash()}
+    if operation == "runs.recover_lineage":
+        from nirs4all.api.studio_lineage import reconcile_studio_job_lineage
+        fields = {"workspace_path", "job_id", "pipeline", "datasets", "run_name", "started_at", "completed_at"}
+        if set(document) != fields:
+            raise ValueError("Unexpected lineage recovery fields")
+        return reconcile_studio_job_lineage(**document)
+    if operation == "operators.availability":
+        from .library_operator_availability import operator_availability
+        return operator_availability(document)
+    if operation == "results.export":
+        from .library_prediction_export import prediction_export
+        return prediction_export(document)
+    if operation.startswith("inspector."):
+        from .library_inspector import inspector_view
+        return inspector_view(operation, document)
+    if operation.startswith("analysis.") or operation.startswith("synthesis."):
+        from .library_analysis import adapt_analysis
+        return adapt_analysis(operation, document)
     if operation in {"runs.preflight", "runs.detail", "runs.logs"}:
         return read_stored_run(operation, document)
     if operation == "runs.delete":
@@ -226,7 +271,7 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         for item in requests:
             if not isinstance(item, dict) or set(item) != {"operation", "payload"}:
                 raise ValueError("Invalid document batch member")
-            if item["operation"] not in {"dataset.configure", "pipeline.normalize", "pipeline.import"} or not isinstance(item["payload"], dict):
+            if item["operation"] not in {"dataset.configure", "pipeline.normalize", "pipeline.import", "dataset.fingerprint"} or not isinstance(item["payload"], dict):
                 raise ValueError("Document batch only supports normalization and pipeline import")
             if len(json.dumps(item["payload"], allow_nan=False).encode("utf-8")) > 2 * 1024 * 1024:
                 raise ValueError("Document batch member exceeds 2 MiB")
@@ -244,6 +289,7 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         "pipeline.normalize": normalize_pipeline,
         "pipeline.import": import_pipeline,
         "pipeline.render": render_pipeline,
+        "pipeline.count_variants": count_pipeline_variants,
         "dataset.configure": configure_dataset,
     }
     if operation not in operations:

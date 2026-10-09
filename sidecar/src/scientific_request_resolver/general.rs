@@ -29,11 +29,23 @@ pub(super) fn resolve(
         return Err(ScientificResolveError::UnsupportedSubmission);
     }
     let selection = selection(&preflight.payload, config)?;
-    let (datasets, pipelines) = normalize_documents(resolver, preflight, &selection, adapt)?;
+    let (datasets, pipelines) = normalize_documents(resolver, preflight, &selection, &adapt)?;
     let workspace = canonical_directory(&preflight.workspace_path)
         .map_err(|()| ScientificResolveError::PipelineUnsafe)?;
     let mut options = json!({"workspace_path": workspace, "verbose": 0,
         "save_artifacts": true, "save_charts": false});
+    if datasets.iter().all(|config| config.get("schema").is_none()) {
+    let fingerprints = adapt(&datasets.iter().map(|config| json!({"operation":"dataset.fingerprint","payload":{"config":config}})).collect::<Vec<_>>())
+        .map_err(|_| ScientificResolveError::DatasetAssembly)?;
+    if fingerprints.len() != selection.datasets.len() { return Err(ScientificResolveError::DatasetInvalid); }
+    let mut provenance = serde_json::Map::new();
+    for (fingerprint, id) in fingerprints.iter().zip(&selection.datasets) {
+        let hash = fingerprint["content_hash"].as_str().filter(|hash| hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .ok_or(ScientificResolveError::DatasetInvalid)?;
+        if provenance.insert(hash.into(), json!(id)).is_some() { return Err(ScientificResolveError::DatasetInvalid); }
+    }
+    options["studio_provenance"] = json!({"job_id":preflight.job_id,"dataset_ids_by_hash":provenance});
+    }
     for key in ["name", "random_state"] {
         if let Some(value) = config.get(key) {
             options[key] = value.clone();
@@ -603,6 +615,7 @@ mod tests {
                 "runtime_pipeline": value["steps"], "validation": {"valid": true},
                 "execution_validation": {"valid": true}
             })),
+            "dataset.fingerprint" => Ok(json!({"content_hash":if value["config"]["name"] == "Dataset B" { "b".repeat(64) } else { "a".repeat(64) }})),
             _ => Err("unexpected operation".into()),
         }
     }
@@ -743,7 +756,7 @@ mod tests {
     }
 
     #[test]
-    fn batched_normalization_is_one_invocation_with_identical_validation() {
+    fn batched_normalization_and_fingerprints_are_bounded_with_identical_validation() {
         use std::cell::Cell;
         let (root, config, workspace) = fixture("general-document-batch");
         let resolver = ScientificRequestResolver::new(config);
@@ -755,7 +768,7 @@ mod tests {
                 calls.set(calls.get() + 1);
                 assert_eq!(operation, "documents.batch");
                 let requests = payload["requests"].as_array().unwrap();
-                assert_eq!(requests.len(), 2);
+                assert_eq!(requests.len(), if calls.get() == 1 { 2 } else { 1 });
                 let results = requests
                     .iter()
                     .map(|request| {
@@ -766,7 +779,7 @@ mod tests {
                 Ok(json!(results))
             })
             .unwrap();
-        assert_eq!(calls.get(), 1);
+        assert_eq!(calls.get(), 2);
         assert_eq!(actual, expected);
         for malformed in [
             json!([]),
@@ -817,6 +830,7 @@ mod tests {
         let mut links: Value = serde_json::from_slice(&fs::read(&links_path).unwrap()).unwrap();
         let mut second = links["datasets"][0].clone();
         second["id"] = json!("dataset-b");
+        second["name"] = json!("Dataset B");
         links["datasets"].as_array_mut().unwrap().push(second);
         fs::write(links_path, serde_json::to_vec(&links).unwrap()).unwrap();
         let pipeline_path = workspace.join("pipelines/pipeline-a.json");

@@ -206,7 +206,8 @@ fn read(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Result<Val
         .dataset_links()
         .map_err(|error| crate::app_settings_storage_error("read run dataset links", &error))?;
     let mut history_statuses = statuses.iter().flatten().cloned().collect::<Vec<_>>();
-    let live = jobs.training_list_at(workspace.path(), Instant::now());
+    let mut live = jobs.training_list_at(workspace.path(), Instant::now());
+    append_durable_jobs(workspace.path(), &mut live);
     if !crate::run_management::has_live_training(&live)
         && statuses
             .as_ref()
@@ -290,6 +291,70 @@ fn parse_statuses(
     Ok(Some(values.into_iter().map(str::to_owned).collect()))
 }
 
+fn append_durable_jobs(workspace: &std::path::Path, jobs: &mut Vec<Value>) {
+    let known = jobs
+        .iter()
+        .filter_map(|context| context["job"]["id"].as_str().map(str::to_owned))
+        .collect::<HashSet<_>>();
+    let Ok(entries) = std::fs::read_dir(workspace.join("runs")) else {
+        return;
+    };
+    for entry in entries.take(2000).flatten() {
+        let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if known.contains(&id) {
+            continue;
+        }
+        let Ok(record) = crate::execution_job_records::read_execution_job_record(workspace, &id)
+        else {
+            continue;
+        };
+        if record["job_type"] != "training" {
+            continue;
+        }
+        // Completed executions are represented by their owner-persisted children.
+        // Failed/cancelled campaigns may never have created a scientific run.
+        if record["status"] == "completed" {
+            continue;
+        }
+        let status = match record["status"].as_str() {
+            Some("pending" | "running" | "queued" | "failed") => "failed",
+            Some("cancelled") => "cancelled",
+            _ => continue,
+        };
+        let error = if status == "failed" && record["error"].is_null() {
+            json!("Interrupted execution: no active worker in this Studio session.")
+        } else {
+            record["error"].clone()
+        };
+        let run_name = record
+            .pointer("/request/legacyConfig/name")
+            .and_then(Value::as_str)
+            .filter(|name| !name.trim().is_empty())
+            .or_else(|| {
+                record
+                    .pointer("/request/run_name")
+                    .and_then(Value::as_str)
+                    .filter(|name| !name.trim().is_empty())
+            })
+            .unwrap_or(&id);
+        let children = record
+            .pointer("/driver/store_run_ids")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .take(256)
+            .filter_map(|value| {
+                value
+                    .as_str()
+                    .filter(|id| !id.is_empty() && id.len() <= 256)
+            })
+            .collect::<Vec<_>>();
+        jobs.push(json!({"job":{"id":id,"status":status,"created_at":record["created_at"],"started_at":record["started_at"],"completed_at":record["completed_at"],"config":{"run_name":run_name,"execution_backend":record["execution_backend"]},"progress":record["progress"],"progress_message":record["progress_message"],"progress_unavailable":record["progress_unavailable"],"error":error,"result":{"run_ids":children}},"legacyConfig":record["request"]["legacyConfig"]}));
+    }
+}
+
 fn compose(
     stored: &Value,
     mut counters: Value,
@@ -354,7 +419,7 @@ fn compose(
             .map(|id| json!({"dataset_id":id,"dataset_name":id,"pipelines":[]}))
             .collect::<Vec<_>>();
         if statuses.is_none_or(|statuses| statuses.contains(status)) {
-            runs.push(json!({"id":job["id"],"name":job["config"]["run_name"],"status":status,"created_at":job["created_at"],"started_at":job["started_at"],"completed_at":job["completed_at"],"datasets":datasets,"execution_backend":job["config"]["execution_backend"],"config":legacy,"progress":job["progress"],"error":job["error"],"duration_seconds":job["duration_seconds"]}));
+            runs.push(json!({"id":job["id"],"name":job["config"]["run_name"],"status":status,"created_at":job["created_at"],"started_at":job["started_at"],"completed_at":job["completed_at"],"datasets":datasets,"execution_backend":job["config"]["execution_backend"],"config":legacy,"progress":job["progress"],"progress_message":job["progress_message"],"progress_unavailable":job["progress_unavailable"],"error":job["error"],"duration_seconds":job["duration_seconds"]}));
         }
         additional += 1;
         if let Some(value) = counters.get_mut(status) {
@@ -388,6 +453,104 @@ mod tests {
     use super::*;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn durable_record(workspace: &std::path::Path, id: &str, status: &str, children: &[&str]) {
+        let directory = workspace.join("runs").join(id);
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("execution_job_record.json"),json!({
+            "job_id":id,"job_type":"training","requested_backend":"local-python","execution_backend":"local-python","execution_mode":"embedded-cpython","status":status,"progress":50.0,"progress_message":"training","created_at":"2026-10-09T00:00:00Z","started_at":"2026-10-09T00:00:01Z","completed_at":if status=="running"{Value::Null}else{json!("2026-10-09T00:00:02Z")},"request":{"run_name":format!("Run {id}"),"legacyConfig":{"name":null,"dataset_ids":["coffee"]}},"driver":{"store_run_ids":children},"metrics":{},"error":if status=="failed"{json!("Scientific failure")}else{Value::Null}
+        }).to_string()).unwrap();
+    }
+
+    #[test]
+    fn restarted_durable_failures_and_cancellations_restore_counts_names_and_honest_interruption() {
+        let workspace = tempfile::tempdir().unwrap();
+        durable_record(workspace.path(), "failed-job", "failed", &[]);
+        durable_record(workspace.path(), "cancelled-job", "cancelled", &[]);
+        durable_record(workspace.path(), "interrupted-job", "running", &[]);
+        durable_record(workspace.path(), "completed-job", "completed", &["child"]);
+        durable_record(workspace.path(), "invalid-job", "garbage", &[]);
+        let before = fs::read(
+            workspace
+                .path()
+                .join("runs/interrupted-job/execution_job_record.json"),
+        )
+        .unwrap();
+        let mut jobs = Vec::new();
+        append_durable_jobs(workspace.path(), &mut jobs);
+        assert_eq!(jobs.len(), 3);
+        let stored = json!({"runs":[],"total":0});
+        let counters = json!({"running":0,"queued":0,"completed":0,"failed":0,"cancelled":0,"total":0,"total_pipelines":0});
+        let stats = compose(&stored, counters.clone(), jobs.clone(), None, true);
+        assert_eq!(stats["failed"], 2);
+        assert_eq!(stats["cancelled"], 1);
+        assert_eq!(stats["running"], 0);
+        assert_eq!(stats["completed"], 0);
+        assert_eq!(stats["total"], 3);
+        let selected = HashSet::from(["failed".into()]);
+        let history = compose(&stored, counters, jobs, Some(&selected), false);
+        assert_eq!(history["total"], 2);
+        assert_eq!(history["runs"].as_array().unwrap().len(), 2);
+        assert!(history["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|run| run["name"]
+                .as_str()
+                .is_some_and(|name| name.starts_with("Run "))));
+        let interrupted = history["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|run| run["id"] == "interrupted-job")
+            .unwrap();
+        assert!(interrupted["completed_at"].is_null());
+        assert!(interrupted["error"]
+            .as_str()
+            .unwrap()
+            .contains("Interrupted"));
+        assert_eq!(
+            fs::read(
+                workspace
+                    .path()
+                    .join("runs/interrupted-job/execution_job_record.json")
+            )
+            .unwrap(),
+            before
+        );
+    }
+
+    #[test]
+    fn durable_campaign_children_and_live_records_are_not_double_counted_after_restart() {
+        let workspace = tempfile::tempdir().unwrap();
+        durable_record(workspace.path(), "parent", "failed", &["child"]);
+        durable_record(workspace.path(), "live", "running", &[]);
+        let active =
+            json!({"job":{"id":"live","status":"running","config":{"run_name":"Active worker"}}});
+        let mut jobs = vec![active.clone()];
+        append_durable_jobs(workspace.path(), &mut jobs);
+        assert_eq!(
+            jobs.iter()
+                .filter(|context| context["job"]["id"] == "live")
+                .count(),
+            1
+        );
+        assert_eq!(jobs[0], active);
+        let stored = json!({"runs":[{"run_id":"child","status":"completed","pipeline_runs_count":1,"datasets":[]}],"total":1});
+        let counters =
+            json!({"running":0,"queued":0,"completed":1,"failed":0,"cancelled":0,"total":1});
+        let stats = compose(&stored, counters.clone(), jobs.clone(), None, true);
+        assert_eq!(stats["total"], 2);
+        assert_eq!(stats["running"], 1);
+        assert_eq!(stats["failed"], 0);
+        let history = compose(&stored, counters, jobs, None, false);
+        assert_eq!(history["runs"].as_array().unwrap().len(), 2);
+        assert!(history["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|run| run["id"] != "parent"));
+    }
 
     #[test]
     fn history_translates_one_bounded_batch_and_preserves_valid_pipeline_identities() {
@@ -466,7 +629,7 @@ mod tests {
         let stored = json!({"runs":[{"run_id":"child","name":"Stored","status":"completed","created_at":"2026-09-01","pipeline_runs_count":2,"datasets":[]}],"total":600});
         let jobs = vec![
             json!({"job":{"id":"parent","status":"completed","result":{"result":{"run_ids":["child"]}}}}),
-            json!({"job":{"id":"active","status":"running","created_at":"2026-09-02","config":{"run_name":"Actual worker"}},"legacyConfig":{"dataset_ids":["data"]}}),
+            json!({"job":{"id":"active","status":"running","created_at":"2026-09-02","config":{"run_name":"Actual worker"},"progress":0,"progress_message":"Fit progress is unavailable.","progress_unavailable":true},"legacyConfig":{"dataset_ids":["data"]}}),
         ];
         let stats =
             json!({"running":0,"queued":0,"completed":600,"failed":0,"total_pipelines":900});
@@ -474,6 +637,8 @@ mod tests {
         assert_eq!(result["total"], 601);
         assert_eq!(result["runs"].as_array().unwrap().len(), 2);
         assert_eq!(result["runs"][0]["id"], "active");
+        assert_eq!(result["runs"][0]["progress_unavailable"], true);
+        assert_eq!(result["runs"][0]["progress_message"], "Fit progress is unavailable.");
         let selected = HashSet::from(["completed".to_owned()]);
         let filtered = compose(&stored, stats.clone(), jobs.clone(), Some(&selected), false);
         assert_eq!(filtered["total"], 600);

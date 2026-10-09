@@ -186,6 +186,9 @@ export interface Run {
   fallback_policy?: Record<string, unknown> | null;
   robustness?: RunRobustnessLaunchPayload | null;
   status: RunStatus;
+  progress?: number;
+  progress_message?: string;
+  progress_unavailable?: boolean;
   format?: RunFormat;
   created_at: string;
   started_at?: string;
@@ -319,6 +322,7 @@ export interface RunStatsResponse {
   queued: number;
   completed: number;
   failed: number;
+  cancelled?: number;
   total_pipelines: number;
 }
 

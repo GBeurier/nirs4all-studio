@@ -33,6 +33,7 @@ export type RunExecutionProgressDisplayStatus = ExecutionJobRecord["status"] | R
 export interface RunExecutionProgressDisplayData {
   status: RunExecutionProgressDisplayStatus;
   progress: number;
+  progressUnavailable?: boolean;
   message: string;
 }
 
@@ -316,6 +317,8 @@ export function buildRunExecutionProgressDisplayData(
       progress: executionJobRecord.status === "completed"
         ? 100
         : clampProgress(executionJobRecord.progress),
+      ...(executionJobRecord.status !== "completed" && executionJobRecord.progress_unavailable
+        ? { progressUnavailable: true } : {}),
       message: buildExecutionJobRecordMessage(executionJobRecord),
     };
   }
@@ -324,6 +327,7 @@ export function buildRunExecutionProgressDisplayData(
   return {
     status: run.status,
     progress: getLegacyRunProgress(run, displayData.overallProgress),
+    ...(run.status !== "completed" && run.progress_unavailable ? { progressUnavailable: true } : {}),
     message: buildLegacyRunProgressMessage(run, displayData),
   };
 }

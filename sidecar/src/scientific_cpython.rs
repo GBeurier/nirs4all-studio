@@ -88,6 +88,9 @@ pub const SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(4
 /// Keep preview, setup and translation within the qualified cold-start budget.
 pub const SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT: Duration = SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT;
 pub const SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT: Duration = Duration::from_secs(120);
+// Training campaigns are cancellable and isolated from interactive readers.
+// Their computation budget must accommodate cross-validation and model sweeps.
+pub const SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT: Duration = Duration::from_secs(3600);
 pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
@@ -96,10 +99,10 @@ pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
 pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.7";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
-    "84acf9234ce7ec0b3f637be06524f6a3fa6d5e2c0ca208f3f47bd22bacd39e3e";
+    "f173fe63246b2295b6afe0f7e275e9d1c21a140603136879ac7503a56d08b508";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
-    "0ed0b2cb1e3cda248ccfd52513d6874a763e7cc64fb4a28973058ada677ef8f6";
-pub const SCIENTIFIC_SOURCE_COMMIT: &str = "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc";
+    "162306982aa142e201f45095d4c5aee2bcb164a1bbc8b86dbcc9dfcf72587858";
+pub const SCIENTIFIC_SOURCE_COMMIT: &str = "48542f1a48ee005eea8d49da3756cd6b192d03df";
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
 
@@ -142,7 +145,7 @@ try:
     record_path=distribution.locate_file(record_entry) if record_entry else None
     record_bytes=open(record_path,"rb").read() if record_path else b""
     distribution_record_sha256=hashlib.sha256(record_bytes).hexdigest() if record_bytes else None
-    record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
+    record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
     manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
     distribution_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest() if manifest_bytes else None
     distribution_files_verified=bool(record_rows)
@@ -164,7 +167,7 @@ except Exception as error:
     distribution_record_sha256=None
     distribution_files_verified=False
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"0ed0b2cb1e3cda248ccfd52513d6874a763e7cc64fb4a28973058ada677ef8f6","source_commit":"1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"162306982aa142e201f45095d4c5aee2bcb164a1bbc8b86dbcc9dfcf72587858","source_commit":"48542f1a48ee005eea8d49da3756cd6b192d03df"},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
@@ -205,9 +208,9 @@ if distribution.version != "1.4.7":
 record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
 record_path=distribution.locate_file(record_entry) if record_entry else None
 record_bytes=open(record_path,"rb").read() if record_path else b""
-record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
+record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
 manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-if hashlib.sha256(manifest_bytes).hexdigest() != "84acf9234ce7ec0b3f637be06524f6a3fa6d5e2c0ca208f3f47bd22bacd39e3e":
+if hashlib.sha256(manifest_bytes).hexdigest() != "f173fe63246b2295b6afe0f7e275e9d1c21a140603136879ac7503a56d08b508":
     raise RuntimeError("scientific distribution identity changed")
 for relative,encoded,size in record_rows:
     if "=" not in encoded or (size and not size.isdigit()):
@@ -236,7 +239,7 @@ if not os.path.samefile(actual_path, sys.argv[2]) or hashlib.sha256(open(actual_
 import contextlib
 with contextlib.redirect_stdout(sys.stderr):
     if request.get("schema") == "nirs4all.studio-document-request.v1":
-        document_limit=33554432 if request.get("operation") in {"predictions.run","predictions.file"} else (8388608 if request.get("operation") == "documents.batch" else 2097152)
+        document_limit=33554432 if request.get("operation") in {"predictions.run","predictions.file","analysis.shap_view"} else (8388608 if request.get("operation") == "documents.batch" else 2097152)
         if len(raw)>document_limit:
             raise RuntimeError("document request exceeds stdin budget")
         from studio_document_adapters.api.library_documents import adapt_document
@@ -245,7 +248,7 @@ with contextlib.redirect_stdout(sys.stderr):
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":True,"result":result,"error":None}
         except Exception as error:
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":False,"result":None,"error":str(error).encode("utf-8")[:4000].decode("utf-8",errors="ignore")}
-        response_limit=33554432 if request.get("operation") in {"spectra.data","spectra.stats","playground.operators","playground.presets","dataset.preview","dataset.stats","dataset.inspect_format","results.chain_steps","results.pipeline_steps","results.chains","results.top","results.chain","results.chain_detail","results.arrays","results.page","results.summary","predictions.catalogue","predictions.run","predictions.file"} else document_limit
+        response_limit=33554432 if request.get("operation") in {"spectra.data","spectra.stats","playground.operators","playground.presets","dataset.preview","dataset.stats","dataset.inspect_format","results.chain_steps","results.pipeline_steps","results.chains","results.top","results.chain","results.chain_detail","results.arrays","results.page","results.summary","predictions.catalogue","predictions.run","predictions.file","operators.availability","results.export","inspector.data","inspector.histogram","inspector.rankings","inspector.branch-topology","inspector.scatter","inspector.heatmap","inspector.candlestick","inspector.branch-comparison","inspector.fold-stability","inspector.confusion","inspector.preprocessing-impact","inspector.hyperparameter","inspector.bias-variance","analysis.shap_compute","analysis.shap_view","synthesis.preview"} else document_limit
     elif request.get("schema") == "nirs4all.studio-scientific-job.v2":
         general=getattr(nirs4all,"studio_scientific_job_v2",None)
         if not callable(general):
@@ -569,6 +572,10 @@ impl CpythonScientificJobExecutor {
     }
 
     pub(crate) fn adapt_document(&self, operation: &str, payload: &Value) -> Result<Value, String> {
+        self.adapt_document_cancellable(operation, payload, &AtomicBool::new(false))
+    }
+
+    pub(crate) fn adapt_document_cancellable(&self, operation: &str, payload: &Value, cancelled: &AtomicBool) -> Result<Value, String> {
         let _timing = BoundaryTiming::start(match operation {
             "dataset.configure" => "document_configure",
             "dataset.preview" => "document_preview",
@@ -591,7 +598,7 @@ impl CpythonScientificJobExecutor {
         let bytes = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
         let dedicated = matches!(
             operation,
-            "workspace.upgrade" | "predictions.run" | "predictions.file" | "runs.delete"
+            "workspace.upgrade" | "predictions.run" | "predictions.file" | "runs.delete" | "analysis.shap_compute"
         );
         let response = if dedicated {
             // Heavy operations must not occupy either interactive worker.
@@ -600,8 +607,8 @@ impl CpythonScientificJobExecutor {
                 callable,
                 self.packaged_runtime.as_ref(),
                 &bytes,
-                &AtomicBool::new(false),
-                SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
+                cancelled,
+                if operation == "analysis.shap_compute" { SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT } else { SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT },
             )
         } else {
             self.run_selected_interactive_request(
@@ -930,6 +937,22 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         let running = Arc::clone(&self.running);
         let terminal_callback_failed = Arc::clone(&self.terminal_callback_failed);
         std::thread::spawn(move || {
+            let worker_done = Arc::new(AtomicBool::new(false));
+            let activity_done = Arc::clone(&worker_done);
+            let activity_cancelled = Arc::clone(&cancelled);
+            let activity_terminal = Arc::clone(&terminal);
+            let activity_job_id = job_id.clone();
+            let activity_worker = std::thread::spawn(move || {
+                let started = Instant::now();
+                while !activity_done.load(Ordering::Acquire) && !activity_cancelled.load(Ordering::Acquire) {
+                    let elapsed = started.elapsed().as_secs();
+                    let _ = activity_terminal.activity(&activity_job_id, &format!("Scientific computation running · {elapsed}s elapsed. Fit progress is unavailable."));
+                    for _ in 0..50 {
+                        if activity_done.load(Ordering::Acquire) || activity_cancelled.load(Ordering::Acquire) { return; }
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                }
+            });
             let (outcome, diagnostic) = run_scientific_process(
                 &host,
                 &callable,
@@ -937,6 +960,8 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
                 &encoded,
                 &cancelled,
             );
+            worker_done.store(true, Ordering::Release);
+            let _ = activity_worker.join();
             running
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -2084,7 +2109,7 @@ fn run_scientific_process(
         packaged_runtime,
         input,
         cancelled,
-        SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
+        SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT,
         &mut diagnostic,
     );
     (result, diagnostic)
@@ -2097,7 +2122,7 @@ fn request_limits(request: &Value) -> (usize, usize) {
         Some(crate::document_cpython::REQUEST_SCHEMA) => {
             let limit = if matches!(
                 request["operation"].as_str(),
-                Some("predictions.run" | "predictions.file")
+                Some("predictions.run" | "predictions.file" | "analysis.shap_view")
             ) {
                 crate::document_cpython::MAX_PREDICTION_BYTES
             } else if request["operation"] == "documents.batch" {
@@ -2127,6 +2152,13 @@ fn request_limits(request: &Value) -> (usize, usize) {
                         | "predictions.catalogue"
                         | "predictions.run"
                         | "predictions.file"
+                        | "operators.availability"
+                        | "results.export"
+                        | "inspector.data" | "inspector.histogram" | "inspector.rankings" | "inspector.branch-topology"
+                        | "inspector.scatter" | "inspector.heatmap" | "inspector.candlestick" | "inspector.branch-comparison"
+                        | "inspector.fold-stability" | "inspector.confusion" | "inspector.preprocessing-impact"
+                        | "inspector.hyperparameter" | "inspector.bias-variance"
+                        | "analysis.shap_compute" | "analysis.shap_view" | "synthesis.preview"
                 )
             ) {
                 crate::document_cpython::MAX_INSPECTION_BYTES
@@ -2225,8 +2257,19 @@ fn run_scientific_process_with_diagnostic(
     let input = input.to_vec();
     let stdin_writer = std::thread::spawn(move || stdin.write_all(&input));
     let stdout_reader = std::thread::spawn(move || read_bounded(stdout, output_limit));
-    let stderr_reader =
-        std::thread::spawn(move || read_bounded(stderr, MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES));
+    // Training diagnostics are not the JSON protocol. A large campaign can
+    // emit repeated estimator warnings while producing a valid result. Drain
+    // that stream without growing memory, retaining its tail for failures.
+    let training_diagnostics = request.get("schema").and_then(Value::as_str)
+        == Some("nirs4all.studio-scientific-job.v2")
+        && request.get("operation").and_then(Value::as_str) == Some("run");
+    let stderr_reader = std::thread::spawn(move || {
+        if training_diagnostics {
+            read_bounded_tail(stderr, MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES)
+        } else {
+            read_bounded(stderr, MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES)
+        }
+    });
     let (status, cancellation_observed, timed_out) =
         wait_for_worker(&mut child, cancelled, execution_timeout)?;
     if let Some(identity) = packaged_runtime {
@@ -2240,8 +2283,11 @@ fn run_scientific_process_with_diagnostic(
     if stdout_exceeded {
         return Err(ScientificCpythonUnavailable::StdoutTooLarge);
     }
-    if stderr_exceeded {
+    if stderr_exceeded && !training_diagnostics {
         return Err(ScientificCpythonUnavailable::StderrTooLarge);
+    }
+    if stderr_exceeded {
+        eprintln!("Training job {expected_job_id}: diagnostics truncated to the final 64 KiB");
     }
     if cancellation_observed {
         return Err(ScientificCpythonUnavailable::Cancelled);
@@ -2829,6 +2875,7 @@ fn validate_general_request(
         "max_generation_count",
         "continue_on_error",
         "results_path",
+        "studio_provenance",
     ];
     if !valid
         || options.keys().any(|key| !allowed.contains(&key.as_str()))
@@ -2854,6 +2901,7 @@ fn validate_general_response(
     let root =
         exact_object(response, &["schema", "job_id", "engine", "result"]).map_err(|_| invalid)?;
     let archive_result = root["result"].get("archive_path").is_some();
+    let provenance_result = root["result"].get("dataset_run_ids").is_some();
     let result = exact_object(
         &root["result"],
         &[
@@ -2872,9 +2920,11 @@ fn validate_general_response(
         .iter()
         .copied()
         .chain(archive_result.then_some("archive_path"))
+        .chain(provenance_result.then_some("dataset_run_ids"))
         .collect::<Vec<_>>(),
     )
     .map_err(|_| invalid)?;
+    if provenance_result && !result["dataset_run_ids"].as_object().is_some_and(|mapping| mapping.len() <= 256 && mapping.iter().all(|(run, dataset)| valid_identifier(run) && dataset.as_str().is_some_and(valid_identifier) && result["run_ids"].as_array().is_some_and(|runs| runs.contains(&serde_json::json!(run))))) { return Err(invalid); }
     if root["engine"] != "dag-ml"
         || !root["job_id"].as_str().is_some_and(valid_identifier)
         || !result["workspace_path"]
@@ -3008,6 +3058,25 @@ fn join_reader(
         .map_err(|_| ScientificCpythonUnavailable::OutputReadFailed)
 }
 
+fn read_bounded_tail(mut reader: impl Read, limit: usize) -> std::io::Result<(Vec<u8>, bool)> {
+    let mut retained = Vec::with_capacity(limit.min(64 * 1024));
+    let mut buffer = [0_u8; 4096];
+    let mut exceeded = false;
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 { return Ok((retained, exceeded)); }
+        exceeded |= retained.len().saturating_add(count) > limit;
+        if count >= limit {
+            retained.clear();
+            retained.extend_from_slice(&buffer[count.saturating_sub(limit)..count]);
+        } else {
+            let discard = retained.len().saturating_add(count).saturating_sub(limit);
+            retained.drain(..discard);
+            retained.extend_from_slice(&buffer[..count]);
+        }
+    }
+}
+
 fn read_bounded(mut reader: impl Read, limit: usize) -> std::io::Result<(Vec<u8>, bool)> {
     let mut retained = Vec::with_capacity(limit.min(64 * 1024));
     let mut buffer = [0_u8; 4096];
@@ -3026,6 +3095,19 @@ fn read_bounded(mut reader: impl Read, limit: usize) -> std::io::Result<(Vec<u8>
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn training_diagnostic_tail_stays_bounded_and_preserves_final_exception() {
+        let mut output = vec![b'w'; 100_000];
+        output.extend_from_slice(b"\nValueError: final diagnostic\n");
+        let (retained, exceeded) = read_bounded_tail(output.as_slice(), 65_536).unwrap();
+        assert!(exceeded);
+        assert_eq!(retained.len(), 65_536);
+        assert!(retained.ends_with(b"ValueError: final diagnostic\n"));
+        let (small, exceeded) = read_bounded_tail(b"warning".as_slice(), 65_536).unwrap();
+        assert_eq!(small, b"warning");
+        assert!(!exceeded);
+        assert_eq!(read_bounded_tail(b"warning".as_slice(), 0).unwrap(), (vec![], true));
+    }
     #[cfg(windows)]
     fn serial_windows_snapshot(
         runtime_root: &Path,

@@ -8,6 +8,7 @@ export interface RunProgressState {
   runName: string;
   status: RunStatus;
   progress: number;
+  progressUnavailable?: boolean;
   message: string;
   logs: string[];
   startedAt?: string;

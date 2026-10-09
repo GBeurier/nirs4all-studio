@@ -7,6 +7,7 @@ import type {
   AvailableModelsResponse,
   PredictRequest,
   PredictResponse,
+  PredictionValue,
 } from "@/types/predict";
 import { STRICT_NATIVE_RUNTIME_ENGINE } from "@/lib/runtimeBackendPreference";
 
@@ -16,7 +17,7 @@ export async function getAvailableModels(): Promise<AvailableModelsResponse> {
 
 export async function runPrediction(
   request: PredictRequest
-): Promise<PredictResponse> {
+): Promise<PredictResponse<PredictionValue>> {
   return api.post("/predict", {
     ...request,
     engine: STRICT_NATIVE_RUNTIME_ENGINE,
@@ -41,7 +42,7 @@ export async function runPredictionWithFile(
   modelSource: string,
   file: File,
   options: { archive_fingerprint?: string; output_index?: number; has_header?: boolean } = {},
-): Promise<PredictResponse> {
+): Promise<PredictResponse<PredictionValue>> {
   const formData = new FormData();
   formData.append("model_id", modelId);
   formData.append("model_source", modelSource);
@@ -53,7 +54,7 @@ export async function runPredictionWithFile(
   if (options.has_header !== undefined) formData.append("has_header", String(options.has_header));
 
   try {
-    return await requestForm<PredictResponse>("/predict/file", formData);
+    return await requestForm<PredictResponse<PredictionValue>>("/predict/file", formData);
   } catch (error) {
     throw new Error(predictionErrorMessage(error));
   }

@@ -141,22 +141,34 @@ describe('shapModelSelectorData', () => {
     const datasets = [dataset()];
     const bundles = [bundle()];
 
-    expect(resolveShapModelSelection('', datasets, bundles)).toEqual({ chainId: null, datasetName: null, modelRef: null });
+    expect(resolveShapModelSelection('', datasets, bundles)).toEqual({ chainId: null, datasetName: null, datasetId: null, modelRef: null });
     expect(resolveShapModelSelection('high', datasets, bundles)).toEqual({
       chainId: 'high',
       datasetName: 'Dataset A',
+      datasetId: null,
       modelRef: { modelSource: 'chain', chainId: 'high' },
     });
     expect(resolveShapModelSelection('/tmp/model.n4a', datasets, bundles)).toEqual({
       chainId: '/tmp/model.n4a',
       datasetName: 'Dataset A',
+      datasetId: null,
       modelRef: { modelSource: 'bundle', bundlePath: '/tmp/model.n4a' },
     });
     expect(resolveShapModelSelection('future-id', datasets, bundles)).toEqual({
       chainId: 'future-id',
       datasetName: null,
+      datasetId: null,
       modelRef: { modelSource: 'chain', chainId: 'future-id' },
     });
+  });
+
+  it('uses only the authoritative linked dataset id, independently of a reused display name', () => {
+    const datasets = [dataset({ chains: [chain({ chain_id: 'corn-pls', dataset_name: 'raw', linked_dataset_id: 'dataset-corn', dataset_link_status: 'linked' })] }),
+      dataset({ chains: [chain({ chain_id: 'beer-pls', dataset_name: 'raw', linked_dataset_id: 'dataset-beer', dataset_link_status: 'linked' })] })];
+    expect(resolveShapModelSelection('corn-pls', datasets).datasetId).toBe('dataset-corn');
+    expect(resolveShapModelSelection('beer-pls', datasets).datasetId).toBe('dataset-beer');
+    expect(resolveShapModelSelection('corn-pls', [dataset({ chains: [chain({ chain_id: 'corn-pls', linked_dataset_id: 'dataset-corn', dataset_link_status: 'unresolved' })] })]).datasetId).toBeNull();
+    expect(resolveShapModelSelection('old-chain', datasets).datasetId).toBeNull();
   });
 
   it('builds labels, scores, tooltips, and counts', () => {

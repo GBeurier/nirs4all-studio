@@ -11,13 +11,13 @@ const projectRoot = path.join(__dirname, "..");
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
 const PLUGIN_MARKER_SCHEMA = "nirs4all.studio-python-plugin-runtime.v1";
 const PLUGIN_ROLE = "library-plugin-host-only";
-const PLUGIN_SOURCE_COMMIT = "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc";
-const PLUGIN_WHEEL_SHA256 = "0ed0b2cb1e3cda248ccfd52513d6874a763e7cc64fb4a28973058ada677ef8f6";
+const PLUGIN_SOURCE_COMMIT = "48542f1a48ee005eea8d49da3756cd6b192d03df";
+const PLUGIN_WHEEL_SHA256 = "162306982aa142e201f45095d4c5aee2bcb164a1bbc8b86dbcc9dfcf72587858";
 const { PLUGIN_DISTRIBUTION_VERSION } = require("./python-runtime-config.cjs");
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "84acf9234ce7ec0b3f637be06524f6a3fa6d5e2c0ca208f3f47bd22bacd39e3e";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "f173fe63246b2295b6afe0f7e275e9d1c21a140603136879ac7503a56d08b508";
 const PLUGIN_CONSTRAINTS_RELATIVE_PATH = "build/constraints/plugin-runtime-cpython311.txt";
 const PLUGIN_CONSTRAINTS_PATH = path.join(projectRoot, ...PLUGIN_CONSTRAINTS_RELATIVE_PATH.split("/"));
-const PLUGIN_CONSTRAINTS_SHA256 = "f6b0346806925580500a7bd2d45271211df15847110f70e3a9cf836c609645be";
+const PLUGIN_CONSTRAINTS_SHA256 = "f3a45806245ac1db1a7bdecd14b10cd4ac086cc11831efebfafb998f231b702b";
 const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
 const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
 const TOOLS_DISTRIBUTION_VERSION = "0.0.8";
@@ -98,7 +98,7 @@ if any(name.split(".")[0] in {"fastapi","starlette","uvicorn","api"} for name in
     raise RuntimeError("document adapter imported an HTTP/application module")
 d=importlib.metadata.distribution("nirs4all")
 r=next(x for x in d.files or [] if str(x).endswith(".dist-info/RECORD")); record_bytes=open(d.locate_file(r),"rb").read()
-rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
+rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
 m="".join(",".join(row)+"\n" for row in rows).encode("utf-8")
 verified=True
 for relative,encoded,size in rows:

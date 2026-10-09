@@ -436,6 +436,10 @@ fn list_records(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Ht
         Err(detail) => return error(409, detail),
     };
     let live = jobs.training_list_at(workspace.path(), Instant::now());
+    let host = runtime.lock().unwrap_or_else(std::sync::PoisonError::into_inner).scientific_host.clone();
+    if let Some(host) = host.as_deref() {
+        reconcile_records(&settings, host, workspace.id(), workspace.path());
+    }
     let entries = match std::fs::read_dir(workspace.path().join("runs")) {
         Ok(entries) => entries,
         Err(detail) if detail.kind() == std::io::ErrorKind::NotFound => {
@@ -549,6 +553,29 @@ pub fn legacy_store_run_id(workspace: &std::path::Path, job_id: &str) -> Option<
         .as_str()
         .filter(|id| valid_id(id))
         .map(str::to_owned)
+}
+
+fn reconcile_records(settings: &crate::settings::AppSettingsStore, host: &crate::scientific_cpython::CpythonScientificJobExecutor, workspace_id: &str, workspace: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(workspace.join("runs")) else { return; };
+    let resolver = crate::scientific_request_resolver::ScientificRequestResolver::new(settings.config_dir());
+    for entry in entries.take(2000).flatten() {
+        let Some(id) = entry.file_name().to_str().map(str::to_owned) else { continue; };
+        let Ok(mut record) = crate::execution_job_records::read_execution_job_record(workspace, &id) else { continue; };
+        if record["status"] != "completed" || record["job_type"] != "training" || !native_store_run_ids(&record).is_empty() { continue; }
+        let preflight = crate::job_http::ScientificSubmissionPreflight { job_id: id.clone(), workspace_id: workspace_id.into(), workspace_path: workspace.into(), requested_backend: "local-python".into(), payload: record["request"].clone() };
+        let Ok(resolved) = resolver.resolve_general_batched(&preflight, |operation, payload| host.adapt_document(operation, payload)) else { continue; };
+        let configs = if resolved["dataset"].is_array() { resolved["dataset"].as_array().cloned().unwrap_or_default() } else { vec![resolved["dataset"].clone()] };
+        let ids = record["request"]["legacyConfig"]["dataset_ids"].as_array().cloned().unwrap_or_default();
+        if configs.len() != ids.len() || configs.iter().any(|config| config.get("schema").is_some()) { continue; }
+        let datasets = ids.into_iter().zip(configs).map(|(dataset_id, config)| json!({"dataset_id":dataset_id,"config":config})).collect::<Vec<_>>();
+        let payload = json!({"workspace_path":workspace,"job_id":id,"pipeline":resolved["pipeline"],"datasets":datasets,"run_name":record["request"]["legacyConfig"]["name"],"started_at":record["started_at"],"completed_at":record["completed_at"]});
+        let Ok(recovered) = host.adapt_document("runs.recover_lineage", &payload) else { continue; };
+        let Some(ids) = recovered["run_ids"].as_array().filter(|ids| !ids.is_empty() && ids.len() <= 256 && ids.iter().all(|id| id.as_str().is_some_and(valid_id))) else { continue; };
+        record["driver"]["store_run_ids"] = json!(ids);
+        record["driver"]["dataset_run_ids"] = recovered["dataset_run_ids"].clone();
+        record["driver"]["lineage_source"] = json!("verified_owner_content_hash_and_recipe");
+        let _ = crate::execution_job_records::write_execution_job_record(workspace, &id, &record);
+    }
 }
 
 pub fn job_id_for_store_run(workspace: &std::path::Path, run_id: &str) -> Option<String> {

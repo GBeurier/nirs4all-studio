@@ -36,6 +36,7 @@ export default function VariableImportance() {
   const [chainId, setChainId] = useState<string | null>(() => persistedSession?.chainId ?? null);
   const [modelRef, setModelRef] = useState<ShapExplicitModelRef | null>(null);
   const [datasetName, setDatasetName] = useState<string | null>(() => persistedSession?.datasetName ?? null);
+  const [datasetId, setDatasetId] = useState<string | null>(null);
   const [partition, setPartition] = useState<Partition>(() => persistedSession?.partition ?? 'test');
 
   // Configuration state
@@ -94,17 +95,19 @@ export default function VariableImportance() {
     newChainId: string | null,
     newDatasetName: string | null,
     newModelRef: ShapExplicitModelRef | null = null,
+    newDatasetId: string | null = null,
   ) => {
     setChainId(newChainId);
     setModelRef(newModelRef);
     setDatasetName(newDatasetName);
+    setDatasetId(newDatasetId);
   }, []);
 
   const handleRunAnalysis = useCallback(async () => {
-    await runAnalysis({ chainId, modelRef, datasetName, partition, explainerType });
-  }, [chainId, datasetName, explainerType, modelRef, partition, runAnalysis]);
+    await runAnalysis({ chainId, modelRef, datasetId, partition, explainerType });
+  }, [chainId, datasetId, explainerType, modelRef, partition, runAnalysis]);
 
-  const canRun = Boolean(chainId && datasetName && !isRunning);
+  const canRun = Boolean(chainId && datasetId && !isRunning);
 
   return (
     <MlLoadingOverlay>

@@ -39,6 +39,7 @@ interface WsMessage {
   data: {
     job_id?: string;
     progress?: number;
+    progress_unavailable?: boolean;
     message?: string;
     log?: string;
     level?: string;
@@ -117,6 +118,10 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
                 if (message.type === "job_progress" && message.data) {
                   if (message.data.progress !== undefined) {
                     newState.progress = message.data.progress;
+                    if (message.data.progress > 0) newState.progressUnavailable = false;
+                  }
+                  if (typeof message.data.progress_unavailable === "boolean") {
+                    newState.progressUnavailable = message.data.progress_unavailable;
                   }
                   if (message.data.message) {
                     newState.message = message.data.message;
@@ -133,12 +138,14 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
                 if (message.type === "job_completed") {
                   newState.status = "completed";
                   newState.progress = 100;
+                  newState.progressUnavailable = false;
                 } else if (message.type === "job_failed") {
                   newState.status = "failed";
                   newState.message = message.data?.error || "Run failed";
                 }
 
-                if (newState.progress === existing.progress
+                if (newState.progressUnavailable === existing.progressUnavailable
+                    && newState.progress === existing.progress
                     && newState.message === existing.message
                     && newState.status === existing.status
                     && newState.logs === existing.logs) return prev;
@@ -199,12 +206,20 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       for (const run of activeRuns) {
         const existing = prev.get(run.id);
         if (existing) {
-          // Update status if changed
-          if (existing.status !== run.status || existing.runName !== run.name) {
+          // Polling restores progress even when the WebSocket was attached late.
+          const progress = typeof run.progress === "number" && Number.isFinite(run.progress)
+            ? run.progress : existing.progress;
+          const progressUnavailable = typeof run.progress_unavailable === "boolean"
+            ? run.progress_unavailable : existing.progressUnavailable;
+          const message = run.progress_message ?? existing.message;
+          if (existing.status !== run.status || existing.runName !== run.name
+              || existing.progress !== progress || existing.message !== message
+              || existing.progressUnavailable !== progressUnavailable) {
             updated.set(run.id, {
               ...existing,
               status: run.status,
               runName: run.name,
+              progress, progressUnavailable, message,
               updatedAt: Date.now(),
             });
           }
@@ -214,8 +229,9 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
             runId: run.id,
             runName: run.name,
             status: run.status,
-            progress: 0,
-            message: "Starting...",
+            progress: run.progress ?? 0,
+            progressUnavailable: run.progress_unavailable ?? (run.progress == null),
+            message: run.progress_message || "Starting...",
             logs: [],
             startedAt: run.started_at,
             updatedAt: Date.now(),
@@ -266,6 +282,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
           updated.set(runId, {
             ...existing, status,
             progress: status === "completed" ? 100 : existing.progress,
+            progressUnavailable: status === "completed" ? false : existing.progressUnavailable,
             message: record.error || existing.message, updatedAt: Date.now(),
           });
           return updated;

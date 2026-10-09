@@ -164,7 +164,7 @@
         {
           "field": "sdk_source_sha",
           "op": "eq",
-          "value": "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc"
+          "value": "48542f1a48ee005eea8d49da3756cd6b192d03df"
         },
         {
           "field": "dag_version",
@@ -403,7 +403,7 @@
         {
           "field": "sdk_source_sha",
           "op": "eq",
-          "value": "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc"
+          "value": "48542f1a48ee005eea8d49da3756cd6b192d03df"
         },
         {
           "field": "dag_version",

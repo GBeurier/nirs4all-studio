@@ -19,6 +19,13 @@ MAX_MULTIMODAL_DESCRIPTOR_BYTES = 1024 * 1024
 MULTIMODAL_DATASET_SCHEMA = "nirs4all.studio-multimodal-dataset.v1"
 
 
+def _valid_prediction_values(values: np.ndarray) -> bool:
+    """Accept finite numeric predictions or original, non-null class labels."""
+    if values.dtype.kind in "biuf":
+        return bool(np.isfinite(values).all())
+    return all(isinstance(value, str) for value in values.flat)
+
+
 def available_models(document: dict[str, Any]) -> dict[str, Any]:
     """Read captured-model metadata without deserializing any fitted payload."""
     from nirs4all.pipeline.dagml.general_archive import general_archive_manifest
@@ -134,7 +141,7 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
             target_mask = None if data.y is None else np.asarray(data.target_mask, dtype=bool)
         else:
             partitions = data.index_column("partition", {})
-            loaded_targets = np.asarray(data.y({}))
+            loaded_targets = np.asarray(data.y({"y": "raw"}))
             targets = loaded_targets if loaded_targets.size else None
         selected = np.ones(len(partitions), dtype=bool) if partition == "all" else np.asarray(partitions) == partition
         if not selected.any():
@@ -159,7 +166,7 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Prediction rows do not match the multimodal cohort identities")
     values = np.asarray(result.y_pred).reshape(len(ids), -1)
     names = metadata["target_names"]
-    if values.shape[1] != len(names) or not np.isfinite(values).all():
+    if values.shape[1] != len(names) or not _valid_prediction_values(values):
         raise ValueError("Prediction target dimensions or finitude are inconsistent")
     if selected is not None:
         if partitions is None or len(selected) != len(values) or (targets is not None and len(targets) != len(values)):
@@ -184,7 +191,7 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
         if target_matrix.shape[1] == len(names):
             actual = target_matrix[:, output_index]
             observed = target_mask is None or np.asarray(target_mask).reshape(len(values), -1)[:, output_index].all()
-            if observed and np.isfinite(actual).all():
+            if observed and _valid_prediction_values(actual):
                 task_type = detect_task_type(actual).value
                 metrics = eval_multi(actual, predictions, task_type)
             elif not observed:

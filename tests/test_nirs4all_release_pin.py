@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import base64
+import csv
+import hashlib
+import importlib.util
+import io
 import json
+import os
 import re
 import subprocess
+import sys
 import tomllib
+import zipfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,28 +52,23 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert ref is not None
     assert source is not None
-    assert ref.group(1) == source.group(1) == "1a828c3cad6b6571cbe14b9bd7da2f9f1db767cc"
+    assert ref.group(1) == source.group(1) == "48542f1a48ee005eea8d49da3756cd6b192d03df"
     parsed = yaml.safe_load(workflow)
     contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
     assert parsed["env"]["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
     validation = next(step["run"] for step in parsed["jobs"]["prepare"]["steps"]
                       if step.get("name") == "Validate pinned runtime dependency refs")
-    environment = {key: "" if value is None else str(value) for key, value in parsed["env"].items()}
-    if environment["NIRS4ALL_PUBLICATION_STATUS"] == "pending":
-        assert contract["publication_status"] == "pending"
-        assert contract["public_registry_verified"] is False
-        assert subprocess.run(["bash", "-c", validation], env=environment, capture_output=True).returncode != 0
-    else:
-        assert environment["NIRS4ALL_PUBLICATION_STATUS"] == "published"
-        assert contract["publication_status"] == "published"
-        assert contract["public_registry_verified"] is True
-        wheel_url = environment["NIRS4ALL_WHEEL_URL"]
-        assert wheel_url == contract["selected_wheel_url"]
-        assert wheel_url.startswith("https://files.pythonhosted.org/")
-        assert wheel_url.endswith(f"/nirs4all-{version}-py3-none-any.whl")
-        assert subprocess.run(["bash", "-c", validation], env=environment, capture_output=True).returncode == 0
-        environment["NIRS4ALL_WHEEL_URL"] = wheel_url.replace(f"nirs4all-{version}-", "nirs4all-1.3.0-")
-        assert subprocess.run(["bash", "-c", validation], env=environment, capture_output=True).returncode != 0
+    environment = dict(os.environ) | {key: "" if value is None else str(value) for key, value in parsed["env"].items()}
+    assert environment["NIRS4ALL_PUBLICATION_STATUS"] == contract["publication_status"] == "source-built"
+    assert contract["public_registry_verified"] is False
+    assert environment["NIRS4ALL_WHEEL_URL"] == contract["selected_wheel_url"] == ""
+    assert environment["NIRS4ALL_SOURCE_EPOCH"] == "1791533216"
+    result = subprocess.run(["bash", "-c", validation], env=environment, cwd=ROOT, capture_output=True)
+    assert result.returncode == 0, result.stderr.decode()
+    for changed in ({"NIRS4ALL_WHEEL_URL": "https://files.pythonhosted.org/old/nirs4all-1.4.7-py3-none-any.whl"},
+                    {"NIRS4ALL_SOURCE_EPOCH": "1791533217"}, {"NIRS4ALL_PUBLICATION_STATUS": "published"},
+                    {"NIRS4ALL_SOURCE_URL": "https://github.com/GBeurier/nirs4all/archive/main.tar.gz"}):
+        assert subprocess.run(["bash", "-c", validation], env=environment | changed, cwd=ROOT, capture_output=True).returncode != 0
     assert f"ref: {version}" not in workflow
 
     dag_ref = re.search(r"^  DAG_ML_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
@@ -123,12 +127,99 @@ def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> No
     assert workflow.count("--tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl") == 4
     parsed = yaml.safe_load(workflow)
     acquisition = next(step["run"] for step in parsed["jobs"]["pinned-plugin-wheels"]["steps"]
-                       if step.get("name") == "Acquire and verify canonical public wheels")
-    assert acquisition.count('curl --fail --location --proto "=https" --tlsv1.2') == 2
-    assert '"$NIRS4ALL_WHEEL_URL"' in acquisition
+                       if step.get("name") == "Build SDK and verify canonical plugin wheels")
+    assert acquisition.count('curl --fail --location --proto "=https" --tlsv1.2') == 1
+    assert "node scripts/setup-python-env.cjs" in acquisition
+    assert "--build-plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.7-py3-none-any.whl" in acquisition
     assert '"$NIRS4ALL_TOOLS_WHEEL_URL"' in acquisition
     assert "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310" in acquisition
     assert "pip wheel" not in acquisition
+
+
+def _wheel_normalizer():
+    specification = importlib.util.spec_from_file_location("plugin_wheel_normalizer", ROOT / "scripts/normalize-plugin-wheel.py")
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module.normalize_wheel
+
+
+def _test_wheel(path: Path, *, windows: bool = False, corruption: bool = False, extra: bool = False) -> str:
+    metadata_name = "nirs4all-1.4.7.dist-info/METADATA"
+    record_name = "nirs4all-1.4.7.dist-info/RECORD"
+    payloads = {"nirs4all/example.py": b"scientific_code = 'preserved'\n",
+                metadata_name: b"Metadata-Version: 2.4\nName: nirs4all\nVersion: 1.4.7\n\nDescription\n",
+                "nirs4all-1.4.7.dist-info/WHEEL": b"Wheel-Version: 1.0\nTag: py3-none-any\n"}
+
+    def record_rows():
+        return [(name, "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).decode().rstrip("="), str(len(payload)))
+                for name, payload in sorted(payloads.items())]
+
+    canonical_rows = record_rows()
+    manifest = hashlib.sha256("".join(",".join(row) + "\n" for row in canonical_rows).encode()).hexdigest()
+    if windows:
+        payloads[metadata_name] = payloads[metadata_name].replace(b"\n", b"\r\n")
+    output = io.StringIO()
+    csv.writer(output, lineterminator="\n").writerows(record_rows() + [(record_name, "", "")])
+    payloads[record_name] = output.getvalue().encode()
+    if corruption:
+        payloads["nirs4all/example.py"] = b"changed scientific code\n"
+    if extra:
+        payloads["nirs4all/unrecorded.py"] = b"unrecorded code\n"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, payload in reversed(list(payloads.items())) if windows else payloads.items():
+            info = zipfile.ZipInfo(name, (2026, 10, 10 if windows else 9, 1, 2, 4))
+            info.create_system = 0 if windows else 3
+            info.external_attr = (0o100666 if windows else 0o100755) << 16
+            archive.writestr(info, payload)
+    return manifest
+
+
+def test_wheel_normalization_is_portable_and_preserves_owner_payloads(tmp_path: Path) -> None:
+    linux, windows = tmp_path / "linux.whl", tmp_path / "windows.whl"
+    expected = _test_wheel(linux)
+    assert expected == _test_wheel(windows, windows=True)
+    normalize = _wheel_normalizer()
+    left, right = tmp_path / "left.whl", tmp_path / "right.whl"
+    assert normalize(linux, left, 1791533216, expected) == normalize(windows, right, 1791533216, expected)
+    assert left.read_bytes() == right.read_bytes()
+    with zipfile.ZipFile(left) as archive:
+        assert archive.read("nirs4all/example.py") == b"scientific_code = 'preserved'\n"
+        assert archive.namelist() == sorted(archive.namelist())
+        assert all(item.create_system == 3 and item.external_attr >> 16 == 0o100644 and item.compress_type == zipfile.ZIP_STORED
+                   and item.date_time == (2026, 10, 9, 8, 6, 56) for item in archive.infolist())
+
+
+@pytest.mark.parametrize("corruption,extra", [(True, False), (False, True)])
+def test_wheel_normalization_rejects_unverified_input_without_replacing_output(tmp_path: Path, corruption: bool, extra: bool) -> None:
+    source, destination = tmp_path / "input.whl", tmp_path / "output.whl"
+    expected = _test_wheel(source, corruption=corruption, extra=extra)
+    destination.write_bytes(b"existing qualified wheel")
+    with pytest.raises(ValueError, match="content mismatch|complete inventory"):
+        _wheel_normalizer()(source, destination, 1791533216, expected)
+    assert destination.read_bytes() == b"existing qualified wheel"
+
+
+def test_wheel_normalization_rejects_a_different_installed_manifest(tmp_path: Path) -> None:
+    source, destination = tmp_path / "input.whl", tmp_path / "output.whl"
+    _test_wheel(source)
+    with pytest.raises(ValueError, match="installed manifest mismatch"):
+        _wheel_normalizer()(source, destination, 1791533216, "0" * 64)
+    assert not destination.exists()
+
+
+def test_runtime_prunes_only_the_exact_additional_windows_launcher_record(tmp_path: Path) -> None:
+    record = tmp_path / "python/Lib/site-packages/example.dist-info/RECORD"
+    record.parent.mkdir(parents=True)
+    record.write_text("../../Scripts/nirs4all.exe,sha256=generated,1\n"
+                      "../../Scripts/unrelated.exe,sha256=keep,2\n"
+                      "../../other/source.py,sha256=keep,3\n"
+                      "example/module.py,sha256=keep,4\n", encoding="utf-8")
+    script = "require('./scripts/setup-python-env.cjs').removePrunedLauncherRecordRows(process.argv[1],process.argv[2]).catch(e=>{console.error(e);process.exit(1)})"
+    result = subprocess.run(["node", "-e", script, sys.executable, str(tmp_path)], cwd=ROOT, capture_output=True)
+    assert result.returncode == 0, result.stderr.decode()
+    assert "nirs4all.exe" not in record.read_text(encoding="utf-8")
+    assert "unrelated.exe" in record.read_text(encoding="utf-8")
+    assert "../../other/source.py" in record.read_text(encoding="utf-8")
 
 
 def test_generated_operator_registries_are_from_the_published_runtime() -> None:

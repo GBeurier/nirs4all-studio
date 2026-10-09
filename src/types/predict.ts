@@ -56,15 +56,17 @@ export interface PredictionRuntimeRecord {
   native_result_refs?: Record<string, unknown> | null;
 }
 
-export interface PredictResponse {
-  predictions: number[];
-  prediction_matrix?: number[][];
+export type PredictionValue = number | string;
+
+export interface PredictResponse<T extends PredictionValue = number> {
+  predictions: T[];
+  prediction_matrix?: T[][];
   target_names?: string[];
   output_index?: number;
   num_samples: number;
   model_name: string;
   preprocessing_steps: string[];
-  actual_values: number[] | null;
+  actual_values: T[] | null;
   metrics: Record<string, number> | null;
   sample_ids: (string | number)[] | null;
   /** Human-readable uploaded labels, separate from stable execution sample IDs. */

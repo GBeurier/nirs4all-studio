@@ -77,7 +77,7 @@ describe("workspace stat cards", () => {
       { key: "runs", label: "Runs", value: "4" },
       { key: "datasets", label: "Datasets", value: "2" },
       { key: "predictions", label: "Predictions", value: "7" },
-      { key: "models", label: "Models", value: "3" },
+      { key: "models", label: "Model exports", value: "3" },
     ]);
   });
 

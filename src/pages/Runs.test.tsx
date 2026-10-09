@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   listRuns: vi.fn(),
+  getRunStats: vi.fn().mockResolvedValue({ running: 0, queued: 0, completed: 0, failed: 0, total_pipelines: 0 }),
   getEnrichedRuns: vi.fn(),
   useLinkedWorkspacesQuery: vi.fn(),
   listRunExecutionJobRecords: vi.fn().mockResolvedValue({ records: [] }),
@@ -26,6 +27,7 @@ vi.mock("@/api/runs", async () => {
   return {
     ...actual,
     listRuns: mocks.listRuns,
+    getRunStats: mocks.getRunStats,
     listRunExecutionJobRecords: mocks.listRunExecutionJobRecords,
   };
 });
@@ -51,7 +53,9 @@ vi.mock("@/components/scores/useMetricSelection", () => ({
 }));
 
 vi.mock("@/components/runs/ProjectFilter", () => ({
-  ProjectFilter: () => null,
+  ProjectFilter: ({ onProjectChange }: { onProjectChange: (id: string) => void }) => (
+    <button onClick={() => onProjectChange("project-1")}>Filter project</button>
+  ),
 }));
 
 vi.mock("@/components/ui/tooltip", () => {
@@ -205,11 +209,44 @@ async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise
 
 afterEach(() => {
   vi.clearAllMocks();
+  mocks.getRunStats.mockResolvedValue({ running: 0, queued: 0, completed: 0, failed: 0, total_pipelines: 0 });
   mocks.listRunExecutionJobRecords.mockResolvedValue({ records: [] });
   removeClientStorageItem(clientStorageKeys.dismissedExecutionJobs);
 });
 
 describe("Runs page", () => {
+  it("shows durable-inclusive workspace totals and keeps project summaries scoped", async () => {
+    mocks.useLinkedWorkspacesQuery.mockReturnValue({ data: { active_workspace_id: "ws-1" } });
+    mocks.listRuns.mockResolvedValue({ runs: [] });
+    mocks.getEnrichedRuns.mockResolvedValue({ runs: [], total: 0 });
+    mocks.getRunStats.mockResolvedValue({ running: 0, queued: 0, completed: 15, failed: 7, cancelled: 1, total_pipelines: 75 });
+    const view = await renderPage();
+    const summaryValue = (scope: string, label: string) => {
+      const summary = view.container.querySelector(`[aria-label="${scope}"]`);
+      return Array.from(summary?.querySelectorAll("p") ?? [])
+        .find(node => node.textContent === label)?.parentElement?.querySelector(".text-xl")?.textContent;
+    };
+    await waitFor(() => {
+      expect(summaryValue("Workspace totals", "runs.stats.completed")).toBe("15");
+      expect(summaryValue("Workspace totals", "runs.stats.failed")).toBe("7");
+      expect(summaryValue("Workspace totals", "runs.stats.cancelled")).toBe("1");
+      expect(summaryValue("Workspace totals", "runs.stats.totalPipelines")).toBe("75");
+    });
+    const statsReads = mocks.getRunStats.mock.calls.length;
+    await act(async () => {
+      Array.from(view.container.querySelectorAll("button"))
+        .find(button => button.textContent === "Filter project")!.click();
+    });
+    await waitFor(() => {
+      expect(mocks.getEnrichedRuns).toHaveBeenCalledWith("ws-1", "project-1");
+      expect(summaryValue("Filtered runs", "runs.stats.failed")).toBe("0");
+      expect(summaryValue("Filtered runs", "runs.stats.completed")).toBe("0");
+      expect(summaryValue("Filtered runs", "runs.stats.totalPipelines")).toBe("0");
+    });
+    expect(mocks.getRunStats.mock.calls.length).toBe(statsReads);
+    await view.unmount();
+  });
+
   it("dismisses failed launch bars and keeps them dismissed when the page is reopened", async () => {
     mocks.useLinkedWorkspacesQuery.mockReturnValue({ data: { active_workspace_id: "ws-1" } });
     mocks.listRuns.mockResolvedValue({ runs: [] });
@@ -527,7 +564,7 @@ describe("Runs page", () => {
     expect(view.container.textContent).toContain("Grouped jobs");
     expect(view.container.textContent).toContain("2 jobs");
     expect(view.container.textContent).toContain("1 active");
-    expect(view.container.textContent).toContain("1 failed");
+    expect(view.container.textContent).toContain("1 failed / cancelled");
     expect(view.container.textContent).toContain("batch prediction");
     expect(view.container.textContent).toContain("export failed");
 

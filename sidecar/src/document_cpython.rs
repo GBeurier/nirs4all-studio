@@ -27,12 +27,16 @@ pub fn route(
     ) {
         return Some(route_prediction(settings, host, method, body));
     }
+    if path == "/api/pipelines/count-variants" && method != "POST" {
+        return Some(crate::method_not_allowed(method, path, "POST"));
+    }
     if method != "POST" {
         return None;
     }
     let operation = match path {
         "/api/pipelines/import-preview" | "/api/pipelines/import" => "pipeline.import",
         "/api/pipelines/render-canonical" => "pipeline.render",
+        "/api/pipelines/count-variants" => "pipeline.count_variants",
         _ => return None,
     };
     if body.len() > MAX_DOCUMENT_BYTES {
@@ -164,6 +168,7 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
             | "config.dependencies"
             | "pipeline.import"
             | "pipeline.render"
+            | "pipeline.count_variants"
             | "dataset.configure"
             | "documents.batch"
             | "dataset.preview"
@@ -181,16 +186,53 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
             | "results.summary"
             | "runs.delete"
             | "runs.preflight"
+            | "runs.recover_lineage"
             | "runs.detail"
             | "runs.logs"
             | "predictions.catalogue"
             | "predictions.run"
             | "predictions.file"
+            | "operators.availability"
+            | "dataset.fingerprint"
+            | "results.export"
+            | "inspector.data"
+            | "inspector.histogram"
+            | "inspector.rankings"
+            | "inspector.branch-topology"
+            | "inspector.scatter"
+            | "inspector.heatmap"
+            | "inspector.candlestick"
+            | "inspector.branch-comparison"
+            | "inspector.fold-stability"
+            | "inspector.confusion"
+            | "inspector.preprocessing-impact"
+            | "inspector.hyperparameter"
+            | "inspector.bias-variance"
+            | "analysis.shap_config"
+            | "analysis.shap_models"
+            | "analysis.shap_compute"
+            | "analysis.shap_view"
+            | "analysis.robustness_evidence"
+            | "analysis.robustness_report"
+            | "analysis.robustness_export"
+            | "synthesis.preview"
+            | "synthesis.components"
+            | "synthesis.status"
+            | "synthesis.validate"
+            | "synthesis.generate"
     ) {
         return Err("Unsupported document operation".into());
     }
     if !payload.is_object() {
         return Err("Document payload must be an object".into());
+    }
+    if operation == "pipeline.count_variants"
+        && (payload.as_object().is_none_or(|object| object.len() != 1)
+            || payload["steps"].as_array().is_none_or(|steps| {
+                steps.len() > 256 || steps.iter().any(|step| !step.is_object())
+            }))
+    {
+        return Err("Variant count requires only a bounded array of editor steps".into());
     }
     if operation == "documents.batch" {
         let members = payload
@@ -204,7 +246,12 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
                 member.as_object().is_none_or(|object| object.len() != 2)
                     || !matches!(
                         member["operation"].as_str(),
-                        Some("pipeline.normalize" | "dataset.configure" | "pipeline.import")
+                        Some(
+                            "pipeline.normalize"
+                                | "dataset.configure"
+                                | "pipeline.import"
+                                | "dataset.fingerprint"
+                        )
                     )
                     || !member["payload"].is_object()
                     || member["payload"].to_string().len() > MAX_DOCUMENT_BYTES
@@ -326,6 +373,42 @@ mod tests {
     #[test]
     fn document_protocol_refuses_unknown_operations_and_open_response_shapes() {
         assert!(request("pipeline.normalize", &json!({"steps": []})).is_ok());
+        assert!(request("pipeline.count_variants", &json!({"steps": []})).is_ok());
+        for payload in [
+            json!({}),
+            json!({"steps":"bad"}),
+            json!({"steps":[null]}),
+            json!({"steps":[],"workspace_path":"/outside"}),
+            json!({"steps":[],"query":"count=1"}),
+        ] {
+            assert!(request("pipeline.count_variants", &payload).is_err());
+        }
+        assert!(request(
+            "pipeline.count_variants",
+            &json!({"steps":vec![json!({});257]})
+        )
+        .is_err());
+        let settings = crate::settings::AppSettingsStore::new(
+            tempfile::tempdir().unwrap().path().join("settings"),
+        );
+        assert_eq!(
+            route(&settings, None, "GET", "/api/pipelines/count-variants", b"")
+                .unwrap()
+                .status,
+            405
+        );
+        assert_eq!(
+            route(
+                &settings,
+                None,
+                "POST",
+                "/api/pipelines/count-variants",
+                b"{}"
+            )
+            .unwrap()
+            .status,
+            503
+        );
         assert!(request("config.dependencies", &json!({"config": {}})).is_ok());
         assert!(request("run", &json!({})).is_err());
         assert!(request(

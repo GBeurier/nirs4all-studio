@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
   FolderOpen,
@@ -49,6 +49,7 @@ interface GenerateResponse {
 }
 
 export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
+  const queryClient = useQueryClient();
   const { state } = useSynthesisBuilder();
   const [exportMode, setExportMode] = useState<"workspace" | "csv">("workspace");
   const [customPath, setCustomPath] = useState("");
@@ -100,8 +101,13 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         );
       }
     },
-    onSuccess: () => {
-      // Could add a toast notification here
+    onSuccess: async (result) => {
+      if (result.linked_to_workspace) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["datasets"] }),
+          queryClient.invalidateQueries({ queryKey: ["workspace"] }),
+        ]);
+      }
     },
   });
 

@@ -89,7 +89,7 @@ export function getWorkspaceCountCards(
     },
     {
       key: "models",
-      label: "Models",
+      label: "Model exports",
       value: String(stats.models_count),
       valueClassName: "text-2xl font-bold",
     },

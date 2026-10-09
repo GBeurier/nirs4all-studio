@@ -74,11 +74,16 @@ describe('shapFeatureImportanceData', () => {
     ]);
 
     expect(buildShapFeatureImportanceCsv(binnedImportance())).toBe([
-      'Rank,Wavelength Range (cm⁻¹),Center,Importance',
+      'Rank,Spectral coordinate range,Center,Importance',
       '1,1200.0-1210.0,1205.0,0.800000',
       '2,1300.0-1310.0,1305.0,0.400000',
       '3,1100.0-1110.0,1105.0,0.200000',
     ].join('\n'));
+  });
+
+  it('exports the same data with the actual axis unit and no assumed inverse centimeters', () => {
+    expect(buildShapFeatureImportanceCsv(binnedImportance(), 'nm').split('\n')[0]).toBe('Rank,Wavelength (nm) range,Center,Importance');
+    expect(buildShapFeatureImportanceCsv(binnedImportance(), 'index').split('\n')[0]).toBe('Rank,Feature index range,Center,Importance');
   });
 
   it('builds the existing normalized teal fill', () => {

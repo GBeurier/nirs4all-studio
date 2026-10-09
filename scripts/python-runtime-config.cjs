@@ -28,6 +28,7 @@ const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
   "pyarrow==25.0.1",
   "shap==0.47.1",
   "matplotlib==3.10.1",
+  "lightgbm==4.6.0",
 ]);
 const PLUGIN_HOST_PACKAGES = Object.freeze([
   `nirs4all==${PLUGIN_DISTRIBUTION_VERSION}`,
