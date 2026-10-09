@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 
 import type { PipelineStep } from "@/components/pipeline-editor/types";
 import { migrateStep } from "@/components/pipeline-editor/types";
@@ -10,6 +10,7 @@ import {
   type PipelineConfig,
 } from "@/lib/pipelineEditorPersistence";
 import { hydrateEditorPipelineSteps } from "@/utils/pipelineEditorHydration";
+import { useDebouncedWrite } from "./useDebouncedWrite";
 
 interface ResolvePipelineEditorInitialStateOptions {
   persistedState: PersistedPipelineState | null;
@@ -94,32 +95,26 @@ export function usePipelineEditorPersistence({
   isFavorite,
   isDirty,
 }: UsePipelineEditorPersistenceOptions): UsePipelineEditorPersistenceReturn {
-  const isInitialMount = useRef(true);
-
-  useEffect(() => {
-    if (!persistState) return;
-
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-
-    const state: PersistedPipelineState = {
+  const write = useMemo(() => {
+    if (!persistState) return null;
+    return () => savePipelineEditorPersistedState(pipelineId, {
       steps,
       pipelineName,
       isFavorite,
       lastModified: Date.now(),
       config: pipelineConfig,
       isDirty,
-    };
-    savePipelineEditorPersistedState(pipelineId, state);
+    });
   }, [steps, pipelineName, isFavorite, pipelineConfig, pipelineId, persistState, isDirty]);
+
+  const { cancel } = useDebouncedWrite(write, { skipInitialWrite: true, scopeKey: pipelineId });
 
   const clearPersistedData = useCallback(() => {
     if (persistState) {
+      cancel();
       clearPipelineEditorPersistedState(pipelineId);
     }
-  }, [pipelineId, persistState]);
+  }, [pipelineId, persistState, cancel]);
 
   return { clearPersistedData };
 }

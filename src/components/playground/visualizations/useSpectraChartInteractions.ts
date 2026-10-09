@@ -9,7 +9,7 @@ import {
   type WheelEvent,
 } from 'react';
 
-import type { SelectionContextValue } from '@/context/useSelection';
+import { useSetHoveredSample, type SelectionContextValue } from '@/context/useSelection';
 import {
   chartYToSpectraValue,
   getSpectraRangeBounds,
@@ -119,6 +119,7 @@ export function useSpectraChartInteractions({
   const [rangeSelection, setRangeSelection] = useState<SpectraRangeSelection>(EMPTY_RANGE_SELECTION);
   const [rectSelection, setRectSelection] = useState<SpectraRectSelection>(EMPTY_RECT_SELECTION);
   const isAltKeyPressed = useAltKeyPressed();
+  const setHovered = useSetHoveredSample();
 
   const handleBackgroundClick = useCallback((event: MouseEvent) => {
     if (!selectionCtx) return;
@@ -252,12 +253,12 @@ export function useSpectraChartInteractions({
       if (match) {
         const displayIdx = parseInt(match[1], 10);
         const sampleIdx = displayIndices[displayIdx];
-        if (sampleIdx !== undefined && selectionCtx.hoveredSample !== sampleIdx) {
-          selectionCtx.setHovered(sampleIdx);
+        if (sampleIdx !== undefined) {
+          setHovered(sampleIdx);
         }
       }
-    } else if (!enableHover && selectionCtx && selectionCtx.hoveredSample !== null) {
-      selectionCtx.setHovered(null);
+    } else if (!enableHover && selectionCtx) {
+      setHovered(null);
     }
 
     if (rectSelection.isSelecting && chartEvent?.activeLabel && chartEvent.chartY !== undefined) {
@@ -275,6 +276,7 @@ export function useSpectraChartInteractions({
   }, [
     enableHover,
     selectionCtx,
+    setHovered,
     displayIndices,
     rectSelection.isSelecting,
     handleRectMouseMove,
@@ -283,9 +285,9 @@ export function useSpectraChartInteractions({
 
   const handleMouseLeave = useCallback(() => {
     if (selectionCtx) {
-      selectionCtx.setHovered(null);
+      setHovered(null);
     }
-  }, [selectionCtx]);
+  }, [selectionCtx, setHovered]);
 
   const handleRangeMouseUp = useCallback((event: MouseEvent) => {
     if (

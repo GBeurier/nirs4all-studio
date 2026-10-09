@@ -214,6 +214,7 @@ export function ScatterPlot3D({
           near: 0.1,
           far: 100,
         }}
+        frameloop="demand" // Render on change only (React updates and OrbitControls invalidate the frame)
         gl={{ preserveDrawingBuffer: true }} // Required for export
         style={{ background: 'transparent' }}
       >

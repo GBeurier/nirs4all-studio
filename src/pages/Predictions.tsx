@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { motion } from "@/lib/motion";
 import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/ui/state-display";
@@ -39,7 +39,14 @@ import {
   selectPredictionQuickView,
 } from "@/lib/predictions/pageData";
 
+/** The first page is small so rows appear immediately; the rest streams in behind it. */
+const FIRST_PAGE_SIZE = 200;
 const FETCH_PAGE_SIZE = 1000;
+
+interface PredictionPageParam {
+  offset: number;
+  limit: number;
+}
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
@@ -48,23 +55,6 @@ function getErrorMessage(error: unknown, fallback: string): string {
     if (typeof detail === "string" && detail.trim()) return detail;
   }
   return fallback;
-}
-
-async function getAllPredictionRecords(workspaceId: string): Promise<PredictionRecord[]> {
-  const records: PredictionRecord[] = [];
-  let offset = 0;
-
-  while (true) {
-    const page = await getN4AWorkspacePredictionsData(workspaceId, {
-      limit: FETCH_PAGE_SIZE,
-      offset,
-    });
-    records.push(...page.records);
-    if (!page.has_more || page.records.length === 0) break;
-    offset += page.records.length;
-  }
-
-  return records;
 }
 
 export default function Predictions() {
@@ -94,16 +84,42 @@ export default function Predictions() {
   const activeWorkspace: LinkedWorkspace | null = workspacesData?.workspaces.find(workspace => workspace.is_active) ?? null;
 
   const {
-    data: rawPredictions = [],
+    data: predictionPages,
     isLoading: predictionsLoading,
     error: predictionsError,
     refetch: refetchPredictions,
-  } = useQuery({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteQuery({
     queryKey: ["workspace-prediction-records", activeWorkspace?.id],
-    queryFn: () => getAllPredictionRecords(activeWorkspace!.id),
+    queryFn: ({ pageParam }) => getN4AWorkspacePredictionsData(activeWorkspace!.id, pageParam),
+    initialPageParam: { offset: 0, limit: FIRST_PAGE_SIZE } as PredictionPageParam,
+    getNextPageParam: (lastPage, allPages): PredictionPageParam | undefined => (
+      lastPage.has_more && lastPage.records.length > 0
+        ? { offset: allPages.reduce((count, page) => count + page.records.length, 0), limit: FETCH_PAGE_SIZE }
+        : undefined
+    ),
     enabled: !!activeWorkspace,
     staleTime: 30000,
   });
+
+  const rawPredictions = useMemo(
+    () => predictionPages?.pages.flatMap(page => page.records) ?? [],
+    [predictionPages],
+  );
+
+  // Stream the remaining pages in the background while the first rows are already usable.
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
+
+  useEffect(() => {
+    if (isFetchNextPageError) {
+      toast.error(`Could not load all predictions: ${getErrorMessage(predictionsError, "request failed")}`);
+    }
+  }, [isFetchNextPageError, predictionsError]);
 
   const rows = usePredictionRows(rawPredictions, metricTaskFilter);
   const {
@@ -208,7 +224,7 @@ export default function Predictions() {
     return <LoadingState message={t("predictions.loading")} className="min-h-[400px]" />;
   }
 
-  if (predictionsError) {
+  if (predictionsError && rawPredictions.length === 0) {
     return (
       <ErrorState
         title={t("predictions.error")}
@@ -244,7 +260,7 @@ export default function Predictions() {
         rows={rows}
         workspaceId={activeWorkspace.id}
         workspaceName={activeWorkspace.name}
-        predictionsLoading={predictionsLoading}
+        predictionsLoading={isFetchingNextPage || (hasNextPage && !isFetchNextPageError)}
         metricTaskFilter={metricTaskFilter}
         onMetricTaskFilterChange={setMetricTaskFilter}
         metricTaskType={effectiveMetricContext.taskType}

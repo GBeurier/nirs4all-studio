@@ -20,6 +20,21 @@ interface ScientificReadinessPayload {
 
 const electronApi = window.electronApi;
 
+const POLL_INTERVAL_MS = 1000;
+/** Once the backend is ready the heartbeats only watch for regressions: poll every 10 s instead of every second. */
+const SETTLED_POLL_EVERY_TICKS = 10;
+
+/** Ticks every second but only fires `run` each tick while `settled` is false, else every tenth tick. */
+function startAdaptivePoll(run: () => void, settled: { readonly current: boolean }): () => void {
+  let tick = 0;
+  const interval = setInterval(() => {
+    tick += 1;
+    if (settled.current && tick % SETTLED_POLL_EVERY_TICKS !== 0) return;
+    run();
+  }, POLL_INTERVAL_MS);
+  return () => clearInterval(interval);
+}
+
 const initialState = (datasetsPrimed: boolean): MlReadiness => ({
   controlReady: false,
   controlStatus: electronApi?.isElectron ? "starting" : "running",
@@ -53,6 +68,13 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
   const workspaceReadyFired = useRef(false);
   const scientificReadyObserved = useRef(false);
   const readinessRevision = useRef(0);
+  const controlSettled = useRef(false);
+  const runtimeSettled = useRef(false);
+
+  useEffect(() => {
+    controlSettled.current = state.controlReady;
+    runtimeSettled.current = state.mlReady && state.workspaceReady;
+  }, [state.controlReady, state.mlReady, state.workspaceReady]);
 
   useEffect(() => {
     // A fast environment switch can stop and restart Rust between heartbeats.
@@ -177,10 +199,10 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       }
     };
     void check();
-    const interval = setInterval(check, 1000);
+    const stopPolling = startAdaptivePoll(() => void check(), controlSettled);
     return () => {
       disposed = true;
-      clearInterval(interval);
+      stopPolling();
     };
   }, [setReadiness]);
 
@@ -249,10 +271,10 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       }
     };
     void check();
-    const interval = setInterval(check, 1000);
+    const stopPolling = startAdaptivePoll(() => void check(), runtimeSettled);
     return () => {
       disposed = true;
-      clearInterval(interval);
+      stopPolling();
     };
   }, [setReadiness]);
 

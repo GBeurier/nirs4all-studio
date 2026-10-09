@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const DEFAULT_PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200, 500, 1000] as const;
+const DEFAULT_PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200] as const;
 
 interface PredictionsPaginationProps {
   startIndex: number;

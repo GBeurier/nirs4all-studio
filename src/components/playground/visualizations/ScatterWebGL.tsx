@@ -18,7 +18,7 @@
 import { useRef, useMemo, useCallback, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { cn } from '@/lib/utils';
-import { useSelection } from '@/context/useSelection';
+import { useSelection, useSetHoveredSample } from '@/context/useSelection';
 import { detectDeviceCapabilities } from '@/lib/playground/renderOptimizer';
 import type { ScatterWebGLProps } from './ScatterWebGL.types';
 import { buildPointData, computeRanges, computeValueRange } from './ScatterWebGL.helpers';
@@ -56,8 +56,8 @@ export function ScatterWebGL({
   const {
     selectedSamples: contextSelectedSamples,
     pinnedSamples: contextPinnedSamples,
-    setHovered,
   } = selectionCtx;
+  const setHovered = useSetHoveredSample();
 
   const selectedIndicesSet = useMemo(() => {
     if (useSelectionContext) return contextSelectedSamples;
