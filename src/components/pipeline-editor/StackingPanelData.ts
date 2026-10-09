@@ -10,7 +10,8 @@ export type MetaModelCategory = "Linear" | "PLS" | "Ensemble" | "SVM";
 
 export interface MetaModelOption {
   name: string;
-  description: string;
+  /** i18n key of the localized description. */
+  descriptionKey: string;
   category: MetaModelCategory;
   defaultParams: Readonly<Record<string, unknown>>;
   icon: string;
@@ -23,52 +24,60 @@ export const META_MODEL_CATEGORIES = [
   "SVM",
 ] as const satisfies readonly MetaModelCategory[];
 
+/** i18n keys for the meta-model category labels. */
+export const META_MODEL_CATEGORY_LABEL_KEYS = {
+  Linear: "pipelineEditor.stacking.categories.linear",
+  PLS: "pipelineEditor.stacking.categories.pls",
+  Ensemble: "pipelineEditor.stacking.categories.ensemble",
+  SVM: "pipelineEditor.stacking.categories.svm",
+} as const satisfies Record<MetaModelCategory, string>;
+
 export const META_MODEL_OPTIONS = [
   {
     name: "Ridge",
-    description: "Ridge regression - simple and effective",
+    descriptionKey: "pipelineEditor.stacking.metaModels.ridge",
     category: "Linear",
     defaultParams: { alpha: 1.0 },
     icon: "📈",
   },
   {
     name: "Lasso",
-    description: "Lasso - sparse feature selection",
+    descriptionKey: "pipelineEditor.stacking.metaModels.lasso",
     category: "Linear",
     defaultParams: { alpha: 1.0 },
     icon: "🎯",
   },
   {
     name: "ElasticNet",
-    description: "Elastic Net - balanced regularization",
+    descriptionKey: "pipelineEditor.stacking.metaModels.elasticNet",
     category: "Linear",
     defaultParams: { alpha: 1.0, l1_ratio: 0.5 },
     icon: "⚖️",
   },
   {
     name: "PLSRegression",
-    description: "PLS - latent variable projection",
+    descriptionKey: "pipelineEditor.stacking.metaModels.plsRegression",
     category: "PLS",
     defaultParams: { n_components: 3 },
     icon: "🔄",
   },
   {
     name: "RandomForestRegressor",
-    description: "Random Forest - non-linear ensemble",
+    descriptionKey: "pipelineEditor.stacking.metaModels.randomForest",
     category: "Ensemble",
     defaultParams: { n_estimators: 50, max_depth: 5 },
     icon: "🌲",
   },
   {
     name: "XGBoost",
-    description: "XGBoost - gradient boosting",
+    descriptionKey: "pipelineEditor.stacking.metaModels.xgboost",
     category: "Ensemble",
     defaultParams: { n_estimators: 50, learning_rate: 0.1, max_depth: 3 },
     icon: "🚀",
   },
   {
     name: "SVR",
-    description: "Support Vector Regression",
+    descriptionKey: "pipelineEditor.stacking.metaModels.svr",
     category: "SVM",
     defaultParams: { kernel: "rbf", C: 1.0 },
     icon: "📊",

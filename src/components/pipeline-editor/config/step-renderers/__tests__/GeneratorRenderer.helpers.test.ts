@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from "vitest";
+import i18n from "i18next";
+import "@/lib/i18n";
 import type { PipelineStep, ScalarGeneratorEntry } from "../../../types";
 import {
   addScalarEntry,
@@ -49,6 +52,10 @@ function makeScalarEntry(overrides: Partial<ScalarGeneratorEntry>): ScalarGenera
     ...overrides,
   };
 }
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 describe("isRange", () => {
   it("treats a two-element array as a range", () => {

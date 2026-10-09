@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Info } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -51,6 +52,7 @@ function ParamLabel({
   info?: string;
   hasSweepActive: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2">
       <Label
@@ -73,7 +75,7 @@ function ParamLabel({
           variant="outline"
           className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500"
         >
-          sweep
+          {t("pipelineEditor.shared.param.sweepBadge")}
         </Badge>
       )}
     </div>
@@ -221,6 +223,7 @@ export function StructuredParamInput({
   info?: string;
   onParamChange: (key: string, value: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(() => safeJsonStringify(value));
   const [error, setError] = useState<string | null>(null);
 
@@ -246,7 +249,7 @@ export function StructuredParamInput({
             onParamChange(paramKey, JSON.parse(next));
             setError(null);
           } catch {
-            setError("Invalid JSON");
+            setError(t("pipelineEditor.shared.param.invalidJson"));
           }
         }}
         className="min-h-28 font-mono text-xs"
@@ -256,7 +259,7 @@ export function StructuredParamInput({
         <p className="text-xs text-destructive">{error}</p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Structured params are preserved as canonical JSON.
+          {t("pipelineEditor.shared.param.structuredHint")}
         </p>
       )}
     </div>

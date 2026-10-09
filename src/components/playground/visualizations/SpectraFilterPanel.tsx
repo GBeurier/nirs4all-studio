@@ -12,6 +12,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import {
   Filter,
   Layers,
@@ -78,18 +79,20 @@ export interface SpectraFilterPanelProps {
 
 // ============= Constants =============
 
-const PARTITION_OPTIONS: { value: PartitionFilter; label: string; description: string }[] = [
-  { value: 'all', label: 'All', description: 'Show all samples' },
-  { value: 'train', label: 'Train', description: 'Training set only' },
-  { value: 'test', label: 'Test', description: 'Test set only' },
-  { value: 'fold', label: 'Specific Fold', description: 'Show specific fold' },
-  { value: 'oof', label: 'Out-of-Fold', description: 'OOF predictions' },
+const FK = 'playground.charts.spectra.filter.';
+
+const PARTITION_OPTIONS: { value: PartitionFilter; labelKey: string; descriptionKey: string }[] = [
+  { value: 'all', labelKey: `${FK}partitionAll`, descriptionKey: `${FK}partitionAllDesc` },
+  { value: 'train', labelKey: `${FK}partitionTrain`, descriptionKey: `${FK}partitionTrainDesc` },
+  { value: 'test', labelKey: `${FK}partitionTest`, descriptionKey: `${FK}partitionTestDesc` },
+  { value: 'fold', labelKey: `${FK}partitionFold`, descriptionKey: `${FK}partitionFoldDesc` },
+  { value: 'oof', labelKey: `${FK}partitionOof`, descriptionKey: `${FK}partitionOofDesc` },
 ];
 
-const QC_STATUS_OPTIONS: { value: 'all' | 'accepted' | 'rejected'; label: string }[] = [
-  { value: 'all', label: 'All QC Status' },
-  { value: 'accepted', label: 'Accepted Only' },
-  { value: 'rejected', label: 'Rejected Only' },
+const QC_STATUS_OPTIONS: { value: 'all' | 'accepted' | 'rejected'; labelKey: string }[] = [
+  { value: 'all', labelKey: `${FK}qcAll` },
+  { value: 'accepted', labelKey: `${FK}qcAccepted` },
+  { value: 'rejected', labelKey: `${FK}qcRejected` },
 ];
 
 // ============= Helper Functions =============
@@ -116,6 +119,7 @@ export function SpectraFilterPanel({
   onInteractionStart,
   compact = false,
 }: SpectraFilterPanelProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   // Count active filters
@@ -130,9 +134,10 @@ export function SpectraFilterPanel({
 
     if (config.partition !== 'all') {
       if (config.partition === 'fold' && config.foldIndex !== undefined) {
-        parts.push(`Fold ${config.foldIndex + 1}`);
+        parts.push(t(`${FK}foldN`, { n: config.foldIndex + 1 }));
       } else {
-        parts.push(config.partition);
+        const partitionKey = PARTITION_OPTIONS.find(o => o.value === config.partition)?.labelKey;
+        parts.push(partitionKey ? t(partitionKey) : config.partition);
       }
     }
 
@@ -141,11 +146,11 @@ export function SpectraFilterPanel({
     }
 
     if (config.qcStatus && config.qcStatus !== 'all') {
-      parts.push(`QC: ${config.qcStatus}`);
+      parts.push(t(`${FK}descQc`, { status: t(config.qcStatus === 'accepted' ? `${FK}qcAcceptedShort` : `${FK}qcRejectedShort`) }));
     }
 
     return parts.join(', ');
-  }, [config]);
+  }, [config, t]);
 
   // Handle partition change
   const handlePartitionChange = useCallback((partition: PartitionFilter) => {
@@ -201,7 +206,7 @@ export function SpectraFilterPanel({
                 </Badge>
               </>
             ) : (
-              'Filters'
+              t(`${FK}filters`)
             )}
             <ChevronDown className="w-3 h-3 opacity-50" />
           </Button>
@@ -212,7 +217,7 @@ export function SpectraFilterPanel({
           <div className="flex items-center justify-between px-3 py-2 border-b">
             <h4 className="text-sm font-semibold flex items-center gap-2">
               <Filter className="w-4 h-4 text-primary" />
-              Sample Filters
+              {t(`${FK}title`)}
               {filteredSamples !== undefined && filteredSamples !== totalSamples && (
                 <Badge variant="outline" className="text-[10px]">
                   {filteredSamples}/{totalSamples}
@@ -227,7 +232,7 @@ export function SpectraFilterPanel({
                 onClick={handleReset}
               >
                 <RotateCcw className="w-3 h-3 mr-1" />
-                Clear All
+                {t(`${FK}clearAll`)}
               </Button>
             )}
           </div>
@@ -237,7 +242,7 @@ export function SpectraFilterPanel({
             <div>
               <Label className="text-xs text-muted-foreground mb-2 flex items-center gap-2">
                 <Layers className="w-3 h-3" />
-                Data Partition
+                {t(`${FK}dataPartition`)}
               </Label>
 
               {folds && folds.n_folds > 0 ? (
@@ -253,8 +258,8 @@ export function SpectraFilterPanel({
                       {PARTITION_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
                           <div className="flex flex-col">
-                            <span>{opt.label}</span>
-                            <span className="text-[10px] text-muted-foreground">{opt.description}</span>
+                            <span>{t(opt.labelKey)}</span>
+                            <span className="text-[10px] text-muted-foreground">{t(opt.descriptionKey)}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -272,7 +277,7 @@ export function SpectraFilterPanel({
                           className="h-6 text-[10px] px-2"
                           onClick={() => handleFoldIndexChange(i)}
                         >
-                          Fold {i + 1}
+                          {t(`${FK}foldN`, { n: i + 1 })}
                         </Button>
                       ))}
                     </div>
@@ -280,7 +285,7 @@ export function SpectraFilterPanel({
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground italic p-2 bg-muted/50 rounded">
-                  Add a splitter to filter by partition/fold
+                  {t(`${FK}addSplitter`)}
                 </div>
               )}
             </div>
@@ -292,7 +297,7 @@ export function SpectraFilterPanel({
               <div className="flex items-center justify-between mb-2">
                 <Label className="text-xs text-muted-foreground flex items-center gap-2">
                   <Target className="w-3 h-3" />
-                  Target Value Range
+                  {t(`${FK}targetRange`)}
                 </Label>
                 {config.targetRange && (
                   <Button
@@ -300,6 +305,7 @@ export function SpectraFilterPanel({
                     size="sm"
                     className="h-5 w-5 p-0"
                     onClick={() => handleTargetRangeChange(undefined)}
+                    aria-label={t(`${FK}clearTargetRange`)}
                   >
                     <X className="w-3 h-3" />
                   </Button>
@@ -326,7 +332,7 @@ export function SpectraFilterPanel({
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground italic p-2 bg-muted/50 rounded">
-                  No Y values available
+                  {t(`${FK}noYValues`)}
                 </div>
               )}
             </div>
@@ -337,7 +343,7 @@ export function SpectraFilterPanel({
             <div>
               <Label className="text-xs text-muted-foreground mb-2 flex items-center gap-2">
                 <Check className="w-3 h-3" />
-                QC Status
+                {t(`${FK}qcStatus`)}
               </Label>
               <Select
                 value={config.qcStatus ?? 'all'}
@@ -349,7 +355,7 @@ export function SpectraFilterPanel({
                 <SelectContent>
                   {QC_STATUS_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {t(opt.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -362,12 +368,12 @@ export function SpectraFilterPanel({
                 <Separator />
                 <div>
                   <Label className="text-xs text-muted-foreground mb-2 block">
-                    Metadata Filters
+                    {t(`${FK}metadataFilters`)}
                   </Label>
                   <div className="text-xs text-muted-foreground italic p-2 bg-muted/50 rounded flex items-center gap-2">
                     <AlertCircle className="w-3 h-3" />
-                    Coming soon: Filter by {metadataColumns.slice(0, 3).join(', ')}
-                    {metadataColumns.length > 3 && ` +${metadataColumns.length - 3} more`}
+                    {t(`${FK}metadataComingSoon`, { columns: metadataColumns.slice(0, 3).join(', ') })}
+                    {metadataColumns.length > 3 && t(`${FK}metadataMore`, { count: metadataColumns.length - 3 })}
                   </div>
                 </div>
               </>
@@ -379,10 +385,14 @@ export function SpectraFilterPanel({
             <div className="px-3 py-2 border-t bg-muted/30 text-xs text-muted-foreground">
               {filteredSamples !== undefined ? (
                 <span>
-                  Showing <strong className="text-foreground">{filteredSamples}</strong> of {totalSamples} samples
+                  <Trans
+                    i18nKey={`${FK}showing`}
+                    values={{ filtered: filteredSamples, total: totalSamples }}
+                    components={{ strong: <strong className="text-foreground" /> }}
+                  />
                 </span>
               ) : (
-                <span>Filters active</span>
+                <span>{t(`${FK}filtersActive`)}</span>
               )}
             </div>
           )}

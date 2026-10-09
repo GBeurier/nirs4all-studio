@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeAll } from "vitest";
 import type { PipelineStep } from "../types";
 import { analyzeExecution } from "../executionAnalysis";
 import {
@@ -8,6 +8,11 @@ import {
   getExecutionProgressValue,
   getFitsSeverity,
 } from "../executionPreviewPresentation";
+import i18n from "i18next";
+import en from "@/locales/en";
+beforeAll(async () => {
+  await i18n.init({ lng: "en", resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
+});
 
 function makeStep(overrides: Partial<PipelineStep> & { name: string }): PipelineStep {
   return {

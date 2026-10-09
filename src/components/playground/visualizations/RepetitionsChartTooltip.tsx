@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 import { formatYValue } from './chartConfig';
 import type { RepetitionsPlotDataPoint } from '@/lib/playground/repetitionsChartData';
 
@@ -16,6 +18,8 @@ export function RepetitionsChartTooltip({
   active,
   payload,
 }: RepetitionsChartTooltipProps) {
+  const { t } = useTranslation();
+
   if (!enableHover || !active || !payload || payload.length === 0) {
     return null;
   }
@@ -29,14 +33,14 @@ export function RepetitionsChartTooltip({
     <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs max-w-[200px]">
       <p className="font-medium mb-1 truncate">{point.bioSample}</p>
       <div className="space-y-0.5 text-muted-foreground">
-        <p>Repetition: {point.repIndex + 1}</p>
-        <p>Sample: {point.sampleId}</p>
-        <p>Distance: {formatYValue(point.y)}</p>
+        <p>{t('playground.charts.repetitions.tooltip.repetition', { value: point.repIndex + 1 })}</p>
+        <p>{t('playground.charts.repetitions.tooltip.sample', { value: point.sampleId })}</p>
+        <p>{t('playground.charts.repetitions.tooltip.distance', { value: formatYValue(point.y) })}</p>
         {point.targetY !== undefined && (
-          <p>Y Value: {formatYValue(point.targetY)}</p>
+          <p>{t('playground.charts.repetitions.tooltip.yValue', { value: formatYValue(point.targetY) })}</p>
         )}
         {point.isOutlier && (
-          <p className="text-amber-600 font-medium">High variability</p>
+          <p className="text-amber-600 font-medium">{t('playground.charts.repetitions.tooltip.highVariability')}</p>
         )}
       </div>
     </div>

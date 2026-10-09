@@ -6,7 +6,6 @@ import {
   buildPlaygroundSessionStatePayload,
   chartVisibilityToExecuteOptions,
   formatPlaygroundPipelineEditorExportName,
-  formatPlaygroundPipelineJsonExportDescription,
   isPlaygroundSessionExpired,
   parsePipelineEditorImportData,
   parsePlaygroundRouteAction,
@@ -16,6 +15,7 @@ import {
 import { DEFAULT_CHART_VISIBILITY, PLAYGROUND_SESSION_MAX_AGE_MS } from '@/lib/playground/sessionState';
 import type { PlaygroundExportData } from '@/lib/playground/operatorFormat';
 import type { UnifiedOperator } from '@/types/playground';
+import { useTranslation } from 'react-i18next';
 
 function operator(overrides: Partial<UnifiedOperator>): UnifiedOperator {
   return {
@@ -84,7 +84,6 @@ describe('playground route data helpers', () => {
       exported_at: '2026-06-30T10:00:00.000Z',
     });
     expect(PLAYGROUND_PIPELINE_JSON_FILENAME).toBe('playground-pipeline.json');
-    expect(formatPlaygroundPipelineJsonExportDescription(2)).toBe('2 operators saved to playground-pipeline.json');
     expect(formatPlaygroundPipelineEditorExportName({
       toLocaleDateString: () => '6/30/2026',
     } as Date)).toBe('Playground Export 6/30/2026');

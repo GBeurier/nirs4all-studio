@@ -13,6 +13,7 @@
  */
 
 import React, { useMemo, useState, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { exportDataAsCSV } from '@/lib/chartExport';
 import {
   formatFoldLabel,
@@ -110,6 +111,7 @@ export function FoldDistributionChart({
   globalColorConfig,
   colorContext,
 }: FoldDistributionChartProps) {
+  const { t } = useTranslation();
   const chartRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
   const [internalSelectedFold, setInternalSelectedFold] = useState<number | null>(null);
@@ -226,7 +228,7 @@ export function FoldDistributionChart({
   const valColorLight = PARTITION_COLORS.valLight;
 
   const heldOutTestColor = getHeldOutTestColor();
-  const validationLabel = folds && folds.n_folds > 1 ? 'Val' : 'Test';
+  const validationLabel = folds && folds.n_folds > 1 ? t('playground.charts.fold.yDist.val') : t('playground.charts.fold.yDist.test');
   const validationColor = folds && folds.n_folds > 1 ? PARTITION_COLORS.val : PARTITION_COLORS.test;
   const heldOutTestColorLight = useMemo(() => {
     return getFoldDistributionLightColor(heldOutTestColor);

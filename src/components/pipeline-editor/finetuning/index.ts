@@ -49,6 +49,7 @@ export {
 // Types and utilities
 export {
   formatParamType,
+  formatParamTypeShort,
   getParamTypeIcon,
   isNeuralNetworkModel,
   NEURAL_NETWORK_MODELS,

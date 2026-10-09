@@ -7,6 +7,7 @@
  * @see docs/_internals/implementation_roadmap.md Task 4.3
  */
 
+import i18n from "i18next";
 import type { PipelineStep, StepType, StepSubType, FlowStepSubType } from "../types";
 import { CONTAINER_CHILDREN_SUBTYPES, CONTAINER_BRANCH_SUBTYPES } from "../types";
 import type {
@@ -71,7 +72,7 @@ export function validateStep(
       createStepIssue(
         "STEP_DUPLICATE_ID",
         "error",
-        "Step has no ID",
+        i18n.t("pipelineEditor.validation.step.noId"),
         { ...location, stepId: "unknown" }
       )
     );
@@ -83,9 +84,9 @@ export function validateStep(
       createStepIssue(
         "STEP_INVALID_NAME",
         "error",
-        "Step has no name",
+        i18n.t("pipelineEditor.validation.step.noName"),
         location,
-        { suggestion: "Add a name to the step" }
+        { suggestion: i18n.t("pipelineEditor.validation.step.noNameSuggestion") }
       )
     );
   }
@@ -120,7 +121,7 @@ export function validateStep(
       createStepIssue(
         "STEP_UNKNOWN_TYPE",
         "info",
-        `Step "${step.name}" is disabled and will be skipped`,
+        i18n.t("pipelineEditor.validation.step.disabled", { name: step.name }),
         location
       )
     );
@@ -144,11 +145,11 @@ function validateContainerWithChildren(
       createStepIssue(
         "STEP_EMPTY_CONTAINER",
         "warning",
-        `${typeLabel} has no child steps`,
+        i18n.t("pipelineEditor.validation.step.emptyContainer", { type: typeLabel }),
         location,
         {
-          details: `Add operators to the ${step.name} container`,
-          suggestion: `Drag operators into the ${step.name} container`,
+          details: i18n.t("pipelineEditor.validation.step.emptyContainerDetails", { name: step.name }),
+          suggestion: i18n.t("pipelineEditor.validation.step.emptyContainerSuggestion", { name: step.name }),
           quickFix: "add_child",
         }
       )
@@ -173,9 +174,9 @@ function validateContainerWithBranches(
       createStepIssue(
         "STEP_EMPTY_BRANCHES",
         "error",
-        `${step.name} has no branches defined`,
+        i18n.t("pipelineEditor.validation.step.noBranches", { name: step.name }),
         location,
-        { suggestion: "Add at least one branch to the step" }
+        { suggestion: i18n.t("pipelineEditor.validation.step.noBranchesSuggestion") }
       )
     );
     return issues;
@@ -193,10 +194,10 @@ function validateContainerWithBranches(
         createStepIssue(
           "STEP_EMPTY_BRANCHES",
           severity,
-          `Branch ${index + 1} in "${step.name}" is empty`,
+          i18n.t("pipelineEditor.validation.step.emptyBranch", { index: index + 1, name: step.name }),
           { ...location, branchIndex: index },
           {
-            suggestion: "Add steps to the branch or remove it",
+            suggestion: i18n.t("pipelineEditor.validation.step.emptyBranchSuggestion"),
             quickFix: "remove_branch",
           }
         )
@@ -241,9 +242,9 @@ function validateGeneratorStep(
       createStepIssue(
         "STEP_UNKNOWN_TYPE",
         "warning",
-        `Generator "${step.name}" has no kind specified`,
+        i18n.t("pipelineEditor.validation.step.generatorNoKind", { name: step.name }),
         location,
-        { suggestion: 'Set generator kind (or, cartesian, grid, zip, chain, sample)' }
+        { suggestion: i18n.t("pipelineEditor.validation.step.generatorNoKindSuggestion") }
       )
     );
   }
@@ -255,9 +256,9 @@ function validateGeneratorStep(
         createStepIssue(
           "STEP_EMPTY_BRANCHES",
           "warning",
-          "OR generator should have at least 2 alternatives",
+          i18n.t("pipelineEditor.validation.step.orFewAlternatives"),
           location,
-          { suggestion: "Add more branches to compare alternatives" }
+          { suggestion: i18n.t("pipelineEditor.validation.step.orFewAlternativesSuggestion") }
         )
       );
     }
@@ -270,9 +271,9 @@ function validateGeneratorStep(
         createStepIssue(
           "STEP_EMPTY_BRANCHES",
           "warning",
-          "Cartesian generator should have at least 2 stages",
+          i18n.t("pipelineEditor.validation.step.cartesianFewStages"),
           location,
-          { suggestion: "Add more stages to generate combinations" }
+          { suggestion: i18n.t("pipelineEditor.validation.step.cartesianFewStagesSuggestion") }
         )
       );
     }
@@ -285,9 +286,9 @@ function validateGeneratorStep(
         createStepIssue(
           "STEP_EMPTY_BRANCHES",
           "warning",
-          "Grid generator should have at least 1 parameter dimension",
+          i18n.t("pipelineEditor.validation.step.gridNoDimension"),
           location,
-          { suggestion: "Add parameter value lists to search over" }
+          { suggestion: i18n.t("pipelineEditor.validation.step.gridNoDimensionSuggestion") }
         )
       );
     }
@@ -300,9 +301,9 @@ function validateGeneratorStep(
         createStepIssue(
           "STEP_EMPTY_BRANCHES",
           "warning",
-          "Zip generator should have at least 2 parameter lists to pair",
+          i18n.t("pipelineEditor.validation.step.zipFewLists"),
           location,
-          { suggestion: "Add more parameter lists for parallel iteration" }
+          { suggestion: i18n.t("pipelineEditor.validation.step.zipFewListsSuggestion") }
         )
       );
     }
@@ -329,9 +330,9 @@ function validateMergeStep(
       createStepIssue(
         "STEP_UNKNOWN_TYPE",
         "error",
-        "Merge step requires a preceding branch step",
+        i18n.t("pipelineEditor.validation.step.mergeNeedsBranch"),
         location,
-        { suggestion: "Add a Branch step before the Merge step" }
+        { suggestion: i18n.t("pipelineEditor.validation.step.mergeNeedsBranchSuggestion") }
       )
     );
     return issues;
@@ -357,11 +358,11 @@ function validateMergeStep(
       createStepIssue(
         "PIPELINE_MERGE_WITHOUT_BRANCH",
         "warning",
-        "Merge step has no preceding branch step",
+        i18n.t("pipelineEditor.validation.step.mergeWithoutBranch"),
         location,
         {
-          details: "Merge steps typically follow Branch or Generator steps",
-          suggestion: "Add a Branch step before the Merge",
+          details: i18n.t("pipelineEditor.validation.step.mergeWithoutBranchDetails"),
+          suggestion: i18n.t("pipelineEditor.validation.step.mergeWithoutBranchSuggestion"),
         }
       )
     );
@@ -386,9 +387,9 @@ function validateModelStep(
       createStepIssue(
         "COMPAT_DEPRECATED",
         "warning",
-        `Model "${step.name}" is deprecated`,
+        i18n.t("pipelineEditor.validation.step.deprecatedModel", { name: step.name }),
         location,
-        { suggestion: "Consider using a newer model variant" }
+        { suggestion: i18n.t("pipelineEditor.validation.step.deprecatedModelSuggestion") }
       )
     );
   }
@@ -400,9 +401,9 @@ function validateModelStep(
         createStepIssue(
           "STEP_INVALID_NAME",
           "warning",
-          "Finetuning is enabled but no parameters are configured",
+          i18n.t("pipelineEditor.validation.step.finetuneNoParams"),
           location,
-          { suggestion: "Add parameters to optimize via finetuning" }
+          { suggestion: i18n.t("pipelineEditor.validation.step.finetuneNoParamsSuggestion") }
         )
       );
     }
@@ -420,32 +421,10 @@ function validateModelStep(
  */
 function getStepTypeLabel(type: StepType, subType?: StepSubType): string {
   // Check subType labels first for finer distinction
-  if (subType) {
-    const subTypeLabels: Record<string, string> = {
-      branch: "Branch",
-      merge: "Merge",
-      generator: "Generator",
-      sample_augmentation: "Sample Augmentation",
-      feature_augmentation: "Feature Augmentation",
-      sample_filter: "Sample Filter",
-      concat_transform: "Concat Transform",
-      sequential: "Sequential",
-      chart: "Chart",
-      comment: "Comment",
-    };
-    if (subType in subTypeLabels) return subTypeLabels[subType];
+  if (subType && i18n.exists(`pipelineEditor.validation.stepType.${subType}`)) {
+    return i18n.t(`pipelineEditor.validation.stepType.${subType}`);
   }
-  const labels: Record<StepType, string> = {
-    preprocessing: "Preprocessing",
-    y_processing: "Target Processing",
-    splitting: "Splitting",
-    model: "Model",
-    filter: "Filter",
-    augmentation: "Augmentation",
-    flow: "Flow Control",
-    utility: "Utility",
-  };
-  return labels[type] || type;
+  return i18n.exists(`pipelineEditor.validation.stepType.${type}`) ? i18n.t(`pipelineEditor.validation.stepType.${type}`) : type;
 }
 
 /**
@@ -464,7 +443,7 @@ export function findDuplicateStepIds(steps: PipelineStep[]): ValidationIssue[] {
           createStepIssue(
             "STEP_DUPLICATE_ID",
             "error",
-            `Duplicate step ID: ${step.id}`,
+            i18n.t("pipelineEditor.validation.step.duplicateId", { id: step.id }),
             {
               stepId: step.id,
               stepName: step.name,
@@ -472,7 +451,7 @@ export function findDuplicateStepIds(steps: PipelineStep[]): ValidationIssue[] {
               stepIndex: i,
               path,
             },
-            { details: "Each step must have a unique ID" }
+            { details: i18n.t("pipelineEditor.validation.step.duplicateIdDetails") }
           )
         );
       } else {

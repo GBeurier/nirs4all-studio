@@ -17,7 +17,7 @@ export const paramPresets: ParamPreset[] = [
     low: 1,
     high: 30,
     step: 1,
-    description: "Number of PLS components",
+    descriptionKey: "pipelineEditor.finetune.preset.nComponents",
     forModels: [
       "PLSRegression",
       "PLSDA",
@@ -35,7 +35,7 @@ export const paramPresets: ParamPreset[] = [
     type: "log_float",
     low: 0.0001,
     high: 100,
-    description: "Regularization strength (log scale)",
+    descriptionKey: "pipelineEditor.finetune.preset.alpha",
     forModels: ["Ridge", "Lasso", "ElasticNet", "SparsePLS"],
   },
   {
@@ -43,7 +43,7 @@ export const paramPresets: ParamPreset[] = [
     type: "float",
     low: 0,
     high: 1,
-    description: "L1/L2 ratio for ElasticNet",
+    descriptionKey: "pipelineEditor.finetune.preset.l1Ratio",
     forModels: ["ElasticNet"],
   },
   // SVM
@@ -52,7 +52,7 @@ export const paramPresets: ParamPreset[] = [
     type: "log_float",
     low: 0.01,
     high: 100,
-    description: "SVM regularization parameter",
+    descriptionKey: "pipelineEditor.finetune.preset.svmC",
     forModels: ["SVR", "SVC"],
   },
   {
@@ -60,7 +60,7 @@ export const paramPresets: ParamPreset[] = [
     type: "log_float",
     low: 0.001,
     high: 1,
-    description: "SVR epsilon",
+    descriptionKey: "pipelineEditor.finetune.preset.epsilon",
     forModels: ["SVR"],
   },
   {
@@ -68,14 +68,14 @@ export const paramPresets: ParamPreset[] = [
     type: "log_float",
     low: 0.0001,
     high: 10,
-    description: "RBF kernel gamma",
+    descriptionKey: "pipelineEditor.finetune.preset.gamma",
     forModels: ["SVR", "SVC", "KernelPLS"],
   },
   {
     name: "kernel",
     type: "categorical",
     choices: ["rbf", "linear", "poly"],
-    description: "SVM kernel type",
+    descriptionKey: "pipelineEditor.finetune.preset.kernel",
     forModels: ["SVR", "SVC", "KernelPLS"],
   },
   // Ensemble
@@ -85,7 +85,7 @@ export const paramPresets: ParamPreset[] = [
     low: 50,
     high: 500,
     step: 50,
-    description: "Number of trees in ensemble",
+    descriptionKey: "pipelineEditor.finetune.preset.nEstimators",
     forModels: ["RandomForestRegressor", "RandomForestClassifier", "XGBoost", "LightGBM"],
   },
   {
@@ -94,7 +94,7 @@ export const paramPresets: ParamPreset[] = [
     low: 3,
     high: 20,
     step: 1,
-    description: "Maximum tree depth",
+    descriptionKey: "pipelineEditor.finetune.preset.maxDepth",
     forModels: ["RandomForestRegressor", "RandomForestClassifier", "XGBoost", "LightGBM"],
   },
   {
@@ -102,7 +102,7 @@ export const paramPresets: ParamPreset[] = [
     type: "log_float",
     low: 0.001,
     high: 0.3,
-    description: "Gradient boosting learning rate",
+    descriptionKey: "pipelineEditor.finetune.preset.boostingLearningRate",
     forModels: ["XGBoost", "LightGBM"],
   },
   // LWPLS
@@ -112,7 +112,7 @@ export const paramPresets: ParamPreset[] = [
     low: 10,
     high: 100,
     step: 10,
-    description: "Number of neighbors for local weighting",
+    descriptionKey: "pipelineEditor.finetune.preset.nNeighbors",
     forModels: ["LWPLS"],
   },
   // IntervalPLS
@@ -122,7 +122,7 @@ export const paramPresets: ParamPreset[] = [
     low: 5,
     high: 50,
     step: 5,
-    description: "Number of spectral intervals",
+    descriptionKey: "pipelineEditor.finetune.preset.nIntervals",
     forModels: ["IntervalPLS"],
   },
 ];
@@ -131,28 +131,28 @@ export const paramPresets: ParamPreset[] = [
  * Common training parameters for neural networks
  */
 export const trainParamPresets: ParamPreset[] = [
-  { name: "epochs", type: "int", low: 10, high: 500, step: 10, description: "Training epochs" },
+  { name: "epochs", type: "int", low: 10, high: 500, step: 10, descriptionKey: "pipelineEditor.finetune.preset.epochs" },
   {
     name: "batch_size",
     type: "categorical",
     choices: [16, 32, 64, 128, 256],
-    description: "Batch size",
+    descriptionKey: "pipelineEditor.finetune.preset.batchSize",
   },
-  { name: "learning_rate", type: "log_float", low: 0.0001, high: 0.1, description: "Learning rate" },
-  { name: "patience", type: "int", low: 5, high: 50, step: 5, description: "Early stopping patience" },
-  { name: "dropout", type: "float", low: 0.0, high: 0.5, step: 0.1, description: "Dropout rate" },
-  { name: "weight_decay", type: "log_float", low: 0.00001, high: 0.01, description: "Weight decay" },
+  { name: "learning_rate", type: "log_float", low: 0.0001, high: 0.1, descriptionKey: "pipelineEditor.finetune.preset.learningRate" },
+  { name: "patience", type: "int", low: 5, high: 50, step: 5, descriptionKey: "pipelineEditor.finetune.preset.patience" },
+  { name: "dropout", type: "float", low: 0.0, high: 0.5, step: 0.1, descriptionKey: "pipelineEditor.finetune.preset.dropout" },
+  { name: "weight_decay", type: "log_float", low: 0.00001, high: 0.01, descriptionKey: "pipelineEditor.finetune.preset.weightDecay" },
 ];
 
 /**
  * Static training parameter presets for final/best model (higher values)
  */
 export const staticTrainParamPresets: StaticParamPreset[] = [
-  { name: "epochs", default: 500, type: "number", description: "Training epochs (full training)" },
-  { name: "batch_size", default: 32, type: "number", description: "Batch size" },
-  { name: "learning_rate", default: 0.001, type: "number", description: "Learning rate" },
-  { name: "patience", default: 50, type: "number", description: "Early stopping patience" },
-  { name: "verbose", default: 0, type: "number", description: "Verbosity level (0-2)" },
+  { name: "epochs", default: 500, type: "number", descriptionKey: "pipelineEditor.finetune.preset.epochsFull" },
+  { name: "batch_size", default: 32, type: "number", descriptionKey: "pipelineEditor.finetune.preset.batchSize" },
+  { name: "learning_rate", default: 0.001, type: "number", descriptionKey: "pipelineEditor.finetune.preset.learningRate" },
+  { name: "patience", default: 50, type: "number", descriptionKey: "pipelineEditor.finetune.preset.patience" },
+  { name: "verbose", default: 0, type: "number", descriptionKey: "pipelineEditor.finetune.preset.verbosity" },
 ];
 
 /**
@@ -160,10 +160,10 @@ export const staticTrainParamPresets: StaticParamPreset[] = [
  * Lower values to speed up hyperparameter search
  */
 export const trialTrainParamPresets: StaticParamPreset[] = [
-  { name: "epochs", default: 50, type: "number", description: "Quick training epochs per trial" },
-  { name: "batch_size", default: 64, type: "number", description: "Batch size for trials" },
-  { name: "patience", default: 10, type: "number", description: "Early stopping patience" },
-  { name: "verbose", default: 0, type: "number", description: "Verbosity level (0-2)" },
+  { name: "epochs", default: 50, type: "number", descriptionKey: "pipelineEditor.finetune.preset.epochsTrial" },
+  { name: "batch_size", default: 64, type: "number", descriptionKey: "pipelineEditor.finetune.preset.batchSizeTrial" },
+  { name: "patience", default: 10, type: "number", descriptionKey: "pipelineEditor.finetune.preset.patience" },
+  { name: "verbose", default: 0, type: "number", descriptionKey: "pipelineEditor.finetune.preset.verbosity" },
 ];
 
 /**

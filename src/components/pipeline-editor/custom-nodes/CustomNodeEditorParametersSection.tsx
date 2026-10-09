@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ChevronDown,
   ChevronRight,
@@ -31,13 +32,7 @@ import {
   parseEditorParameterOptionsInput,
 } from './CustomNodeEditorLogic';
 
-const PARAMETER_TYPES: { value: ParameterType; label: string; description: string }[] = [
-  { value: 'int', label: 'Integer', description: 'Whole number' },
-  { value: 'float', label: 'Float', description: 'Decimal number' },
-  { value: 'bool', label: 'Boolean', description: 'True/False' },
-  { value: 'string', label: 'String', description: 'Text value' },
-  { value: 'select', label: 'Select', description: 'Dropdown options' },
-];
+const PARAMETER_TYPES: ParameterType[] = ['int', 'float', 'bool', 'string', 'select'];
 
 interface CustomNodeParametersSectionProps {
   parameters: ParameterDefinition[];
@@ -54,29 +49,30 @@ export function CustomNodeParametersSection({
   onRemoveParameter,
   onUpdateParameter,
 }: CustomNodeParametersSectionProps) {
+  const { t } = useTranslation();
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium">Parameters</h3>
+          <h3 className="text-sm font-medium">{t('pipelineEditor.customNodes.editor.params.heading')}</h3>
           <p className="text-xs text-muted-foreground">
-            Define the parameters for this operator
+            {t('pipelineEditor.customNodes.editor.params.hint')}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={onAddParameter}>
           <Plus className="h-4 w-4 mr-1" />
-          Add Parameter
+          {t('pipelineEditor.customNodes.editor.params.add')}
         </Button>
       </div>
 
       {parameters.length === 0 ? (
         <div className="text-center py-8 border rounded-lg border-dashed">
           <p className="text-sm text-muted-foreground">
-            No parameters defined yet.
+            {t('pipelineEditor.customNodes.editor.params.none')}
           </p>
           <Button variant="ghost" size="sm" onClick={onAddParameter} className="mt-2">
             <Plus className="h-4 w-4 mr-1" />
-            Add your first parameter
+            {t('pipelineEditor.customNodes.editor.params.addFirst')}
           </Button>
         </div>
       ) : (
@@ -123,6 +119,7 @@ function ParameterEditor({
   canMoveUp,
   canMoveDown,
 }: ParameterEditorProps) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
 
   const handleChange = useCallback(
@@ -153,7 +150,12 @@ function ParameterEditor({
           <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
 
           <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              aria-label={isExpanded ? t('pipelineEditor.customNodes.editor.params.collapse') : t('pipelineEditor.customNodes.editor.params.expand')}
+            >
               {isExpanded ? (
                 <ChevronDown className="h-4 w-4" />
               ) : (
@@ -177,9 +179,9 @@ function ParameterEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PARAMETER_TYPES.map(type => (
-                <SelectItem key={type.value} value={type.value}>
-                  {type.label}
+              {PARAMETER_TYPES.map((paramType) => (
+                <SelectItem key={paramType} value={paramType}>
+                  {t(`pipelineEditor.customNodes.paramTypes.${paramType}`)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -189,12 +191,12 @@ function ParameterEditor({
 
           <div className="flex items-center gap-1">
             {canMoveUp && (
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onMoveUp}>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onMoveUp} aria-label={t('pipelineEditor.customNodes.editor.params.moveUp')}>
                 ↑
               </Button>
             )}
             {canMoveDown && (
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onMoveDown}>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onMoveDown} aria-label={t('pipelineEditor.customNodes.editor.params.moveDown')}>
                 ↓
               </Button>
             )}
@@ -203,6 +205,7 @@ function ParameterEditor({
               size="sm"
               className="h-6 w-6 p-0 text-destructive hover:text-destructive"
               onClick={() => onRemove(index)}
+              aria-label={t('pipelineEditor.customNodes.editor.params.remove')}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -215,7 +218,7 @@ function ParameterEditor({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Default Value</Label>
+                <Label className="text-xs">{t('pipelineEditor.customNodes.editor.params.defaultValue')}</Label>
                 {param.type === 'bool' ? (
                   <div className="flex items-center gap-2">
                     <Switch
@@ -223,7 +226,7 @@ function ParameterEditor({
                       onCheckedChange={(checked) => handleChange('default', checked)}
                     />
                     <span className="text-xs text-muted-foreground">
-                      {param.default === true ? 'True' : 'False'}
+                      {param.default === true ? t('pipelineEditor.customNodes.editor.params.true') : t('pipelineEditor.customNodes.editor.params.false')}
                     </span>
                   </div>
                 ) : param.type === 'select' ? (
@@ -232,7 +235,7 @@ function ParameterEditor({
                     onValueChange={(v) => handleChange('default', v)}
                   >
                     <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Select default..." />
+                      <SelectValue placeholder={t('pipelineEditor.customNodes.editor.params.selectDefault')} />
                     </SelectTrigger>
                     <SelectContent>
                       {param.options?.map((opt) => {
@@ -259,11 +262,11 @@ function ParameterEditor({
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs">Description</Label>
+                <Label className="text-xs">{t('pipelineEditor.customNodes.editor.params.description')}</Label>
                 <Input
                   value={param.description ?? ''}
                   onChange={(e) => handleChange('description', e.target.value)}
-                  placeholder="Parameter description..."
+                  placeholder={t('pipelineEditor.customNodes.editor.params.descriptionPlaceholder')}
                   className="h-8 text-xs"
                 />
               </div>
@@ -272,33 +275,33 @@ function ParameterEditor({
             {(param.type === 'int' || param.type === 'float') && (
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Min</Label>
+                  <Label className="text-xs">{t('pipelineEditor.customNodes.editor.params.min')}</Label>
                   <Input
                     type="number"
                     value={param.min ?? ''}
                     onChange={(e) => handleChange('min', e.target.value ? Number(e.target.value) : undefined)}
                     className="h-8 text-xs font-mono"
-                    placeholder="No limit"
+                    placeholder={t('pipelineEditor.customNodes.editor.params.noLimit')}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Max</Label>
+                  <Label className="text-xs">{t('pipelineEditor.customNodes.editor.params.max')}</Label>
                   <Input
                     type="number"
                     value={param.max ?? ''}
                     onChange={(e) => handleChange('max', e.target.value ? Number(e.target.value) : undefined)}
                     className="h-8 text-xs font-mono"
-                    placeholder="No limit"
+                    placeholder={t('pipelineEditor.customNodes.editor.params.noLimit')}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Step</Label>
+                  <Label className="text-xs">{t('pipelineEditor.customNodes.editor.params.step')}</Label>
                   <Input
                     type="number"
                     value={param.step ?? ''}
                     onChange={(e) => handleChange('step', e.target.value ? Number(e.target.value) : undefined)}
                     className="h-8 text-xs font-mono"
-                    placeholder="Auto"
+                    placeholder={t('pipelineEditor.customNodes.editor.params.auto')}
                   />
                 </div>
               </div>
@@ -306,7 +309,7 @@ function ParameterEditor({
 
             {param.type === 'select' && (
               <div className="space-y-1.5">
-                <Label className="text-xs">Options (comma-separated)</Label>
+                <Label className="text-xs">{t('pipelineEditor.customNodes.editor.params.options')}</Label>
                 <Input
                   value={optionsString}
                   onChange={(e) => handleOptionsChange(e.target.value)}
@@ -324,7 +327,7 @@ function ParameterEditor({
                   id={`param-${index}-required`}
                 />
                 <Label htmlFor={`param-${index}-required`} className="text-xs">
-                  Required
+                  {t('common.required')}
                 </Label>
               </div>
 
@@ -335,7 +338,7 @@ function ParameterEditor({
                   id={`param-${index}-advanced`}
                 />
                 <Label htmlFor={`param-${index}-advanced`} className="text-xs">
-                  Advanced
+                  {t('pipelineEditor.customNodes.editor.params.advanced')}
                 </Label>
               </div>
 
@@ -346,7 +349,7 @@ function ParameterEditor({
                   id={`param-${index}-sweepable`}
                 />
                 <Label htmlFor={`param-${index}-sweepable`} className="text-xs">
-                  Sweepable
+                  {t('pipelineEditor.customNodes.editor.params.sweepable')}
                 </Label>
               </div>
             </div>

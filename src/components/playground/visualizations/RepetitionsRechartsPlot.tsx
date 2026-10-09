@@ -1,4 +1,5 @@
 import type { MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CartesianGrid,
   Cell,
@@ -49,6 +50,8 @@ export function RepetitionsRechartsPlot({
   getPointColor,
   onPointClick,
 }: RepetitionsRechartsPlotProps) {
+  const { t } = useTranslation();
+
   return (
     <ResponsiveContainer width="100%" height="100%">
       <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 45 }}>
@@ -82,7 +85,7 @@ export function RepetitionsRechartsPlot({
           width={40}
           scale={scaleType === 'log' ? 'linear' : 'linear'}
           label={{
-            value: scaleType === 'log' ? 'log(1 + Distance)' : 'Distance',
+            value: scaleType === 'log' ? t('playground.charts.repetitions.axisLogDistance') : t('playground.charts.repetitions.axisDistance'),
             angle: -90,
             position: 'insideLeft',
             fontSize: CHART_THEME.axisLabelFontSize,

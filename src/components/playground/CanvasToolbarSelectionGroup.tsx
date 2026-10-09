@@ -16,6 +16,7 @@ import { SavedSelections } from './SavedSelections';
 import { SelectionFilters } from './SelectionFilters';
 import { SelectionModeToggle } from './SelectionTools';
 import { RibbonGroup } from './CanvasToolbarRibbonGroup';
+import { useTranslation } from 'react-i18next';
 
 export interface CanvasToolbarSelectionGroupProps {
   selectedCount: number;
@@ -34,17 +35,18 @@ export const CanvasToolbarSelectionGroup = memo(function CanvasToolbarSelectionG
   sampleIds,
   totalSamples,
 }: CanvasToolbarSelectionGroupProps) {
+  const { t } = useTranslation();
   const selectionCtx = useSelection();
 
   return (
-    <RibbonGroup label="Selection" icon={<MousePointer2 className="w-2.5 h-2.5" />}>
+    <RibbonGroup label={t('playground.toolbar.selection.groupLabel')} icon={<MousePointer2 className="w-2.5 h-2.5" />}>
       <SelectionModeToggle
         mode={selectionCtx.selectionToolMode}
         onChange={selectionCtx.setSelectionToolMode}
       />
       {selectionCtx.selectionToolMode !== 'click' && (
         <span className="text-[9px] text-primary font-medium px-1 py-0.5 bg-primary/10 rounded">
-          {selectionCtx.selectionToolMode === 'box' ? 'Box' : 'Lasso'}
+          {selectionCtx.selectionToolMode === 'box' ? t('playground.toolbar.selection.box') : t('playground.toolbar.selection.lasso')}
         </span>
       )}
 
@@ -62,11 +64,11 @@ export const CanvasToolbarSelectionGroup = memo(function CanvasToolbarSelectionG
             <Tooltip>
               <TooltipTrigger asChild>
                 <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-medium cursor-help">
-                  {selectedCount} sel.
+                  {t('playground.toolbar.selection.selShort', { count: selectedCount })}
                 </Badge>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {selectedCount} sample{selectedCount !== 1 ? 's' : ''} currently selected. Press Esc to clear.
+                {t('playground.toolbar.selection.selectedTooltip', { count: selectedCount })}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -81,12 +83,12 @@ export const CanvasToolbarSelectionGroup = memo(function CanvasToolbarSelectionG
                     onClick={onFilterToSelection}
                   >
                     <Filter className="w-3 h-3" />
-                    Keep
+                    {t('playground.toolbar.selection.keep')}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
                   <p className="text-xs">
-                    Add a filter that keeps only the {selectedCount} selected sample{selectedCount !== 1 ? 's' : ''}.
+                    {t('playground.toolbar.selection.keepTooltip', { count: selectedCount })}
                   </p>
                 </TooltipContent>
               </Tooltip>

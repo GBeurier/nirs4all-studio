@@ -1,4 +1,5 @@
 import type { ChangeEvent, RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,6 +67,7 @@ export function PipelineEditorRouteOverlays({
   fileInputRef,
   onFileImport,
 }: PipelineEditorRouteOverlaysProps) {
+  const { t } = useTranslation();
   return (
     <>
       <CommandPalette
@@ -93,19 +95,18 @@ export function PipelineEditorRouteOverlays({
       <AlertDialog open={clearDialogOpen} onOpenChange={onClearDialogOpenChange}>
         <AlertDialogContent className="bg-card">
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear Pipeline?</AlertDialogTitle>
+            <AlertDialogTitle>{t("pipelineEditor.shell.overlays.clearTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove all {totalSteps} steps from your pipeline. This
-              action can be undone.
+              {t("pipelineEditor.shell.overlays.clearDescription", { count: totalSteps })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={onClearPipeline}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Clear All
+              {t("pipelineEditor.shell.overlays.clearConfirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

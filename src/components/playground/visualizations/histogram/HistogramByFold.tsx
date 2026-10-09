@@ -35,6 +35,7 @@ import {
 import type { HistogramChartProps, RechartsMouseEvent } from './types';
 import { RANGE_SELECTION_INITIAL } from './types';
 import { findBarRect, isBarElement } from './utils';
+import { useTranslation } from 'react-i18next';
 
 export default function HistogramByFold({
   histogramData,
@@ -55,12 +56,13 @@ export default function HistogramByFold({
   colorContext,
   uniqueFolds,
 }: HistogramChartProps) {
+  const { t } = useTranslation();
   const palette = globalColorConfig?.categoricalPalette ?? 'default';
   const showHeldOutTest = hasHeldOutTestSamples(colorContext ?? {});
   const stackSegments = useMemo(() => {
     const foldSegments = uniqueFolds.map((foldIdx) => ({
       key: `fold${foldIdx}`,
-      label: `Fold ${foldIdx + 1}`,
+      label: t('playground.charts.histogram.segment.foldN', { n: foldIdx + 1 }),
       color: getCategoricalColor(foldIdx, palette),
       getSamples: (samples: number[]) => samples.filter((sampleIdx) => colorContext?.foldLabels?.[sampleIdx] === foldIdx),
     }));
@@ -73,12 +75,12 @@ export default function HistogramByFold({
       ...foldSegments,
       {
         key: 'test',
-        label: 'Test',
+        label: t('playground.charts.histogram.segment.test'),
         color: getHeldOutTestColor(),
         getSamples: (samples: number[]) => samples.filter((sampleIdx) => colorContext ? isHeldOutTestSample(sampleIdx, colorContext) : false),
       },
     ];
-  }, [colorContext, palette, showHeldOutTest, uniqueFolds]);
+  }, [colorContext, palette, showHeldOutTest, uniqueFolds, t]);
 
   // Transform data for fold stacking
   const stackedData = useMemo(() =>
@@ -209,7 +211,7 @@ export default function HistogramByFold({
                         className="w-2 h-2 rounded-sm"
                         style={{ backgroundColor: segment.color }}
                       />
-                      {segment.label}: {typeof count === 'number' ? count.toFixed(config.yAxisType === 'count' ? 0 : 2) : count}
+                      {t('playground.charts.histogram.tooltip.labelValue', { label: segment.label, value: typeof count === 'number' ? count.toFixed(config.yAxisType === 'count' ? 0 : 2) : count })}
                     </p>
                   );
                 })}

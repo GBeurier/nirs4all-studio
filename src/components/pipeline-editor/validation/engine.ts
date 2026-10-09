@@ -7,6 +7,7 @@
  * @see docs/_internals/implementation_roadmap.md Phase 4
  */
 
+import i18n from "i18next";
 import type { PipelineStep } from "../types";
 import type {
   ValidationContext,
@@ -137,14 +138,14 @@ function validateStepParametersBasic(step: PipelineStep): ValidationIssue[] {
         code: "PARAM_INVALID_VALUE",
         severity: "error",
         category: "parameter",
-        message: `Parameter "${key}" has invalid value: NaN`,
+        message: i18n.t("pipelineEditor.validation.basic.invalidNaN", { name: key }),
         location: {
           stepId: step.id,
           stepName: step.name,
           stepType: step.type,
           paramName: key,
         },
-        suggestion: "Enter a valid numeric value",
+        suggestion: i18n.t("pipelineEditor.validation.param.expectedNumberSuggestion"),
       });
     }
 
@@ -155,14 +156,14 @@ function validateStepParametersBasic(step: PipelineStep): ValidationIssue[] {
         code: "PARAM_OUT_OF_RANGE",
         severity: "error",
         category: "parameter",
-        message: `Parameter "${key}" has invalid value: Infinity`,
+        message: i18n.t("pipelineEditor.validation.basic.invalidInfinity", { name: key }),
         location: {
           stepId: step.id,
           stepName: step.name,
           stepType: step.type,
           paramName: key,
         },
-        suggestion: "Enter a finite numeric value",
+        suggestion: i18n.t("pipelineEditor.validation.basic.enterFinite"),
       });
     }
   }
@@ -178,7 +179,7 @@ function validateStepParametersBasic(step: PipelineStep): ValidationIssue[] {
           code: "PARAM_OUT_OF_RANGE",
           severity: "error",
           category: "parameter",
-          message: "n_components must be at least 1",
+          message: i18n.t("pipelineEditor.validation.basic.nComponentsMin"),
           location: {
             stepId: step.id,
             stepName: step.name,
@@ -193,14 +194,14 @@ function validateStepParametersBasic(step: PipelineStep): ValidationIssue[] {
           code: "PARAM_OUT_OF_RANGE",
           severity: "warning",
           category: "parameter",
-          message: "n_components is unusually high (>100)",
+          message: i18n.t("pipelineEditor.validation.basic.nComponentsHigh"),
           location: {
             stepId: step.id,
             stepName: step.name,
             stepType: step.type,
             paramName: "n_components",
           },
-          suggestion: "Consider using fewer components to avoid overfitting",
+          suggestion: i18n.t("pipelineEditor.validation.basic.nComponentsHighSuggestion"),
         });
       }
     }
@@ -216,7 +217,7 @@ function validateStepParametersBasic(step: PipelineStep): ValidationIssue[] {
           code: "PARAM_OUT_OF_RANGE",
           severity: "error",
           category: "parameter",
-          message: "test_size must be between 0 and 1 (exclusive)",
+          message: i18n.t("pipelineEditor.validation.basic.testSizeRange"),
           location: {
             stepId: step.id,
             stepName: step.name,
@@ -234,7 +235,7 @@ function validateStepParametersBasic(step: PipelineStep): ValidationIssue[] {
         code: "PARAM_OUT_OF_RANGE",
         severity: "error",
         category: "parameter",
-        message: "n_splits must be at least 2",
+        message: i18n.t("pipelineEditor.validation.basic.nSplitsMin"),
         location: {
           stepId: step.id,
           stepName: step.name,
@@ -256,7 +257,7 @@ function validateStepParametersBasic(step: PipelineStep): ValidationIssue[] {
         code: "PARAM_OUT_OF_RANGE",
         severity: "error",
         category: "parameter",
-        message: "window_length must be at least 3",
+        message: i18n.t("pipelineEditor.validation.basic.windowMin"),
         location: {
           stepId: step.id,
           stepName: step.name,
@@ -272,14 +273,14 @@ function validateStepParametersBasic(step: PipelineStep): ValidationIssue[] {
         code: "PARAM_INVALID_VALUE",
         severity: "error",
         category: "parameter",
-        message: "window_length must be odd",
+        message: i18n.t("pipelineEditor.validation.basic.windowOdd"),
         location: {
           stepId: step.id,
           stepName: step.name,
           stepType: step.type,
           paramName: "window_length",
         },
-        suggestion: `Use ${(windowLength as number) + 1} instead`,
+        suggestion: i18n.t("pipelineEditor.validation.basic.windowOddSuggestion", { value: (windowLength as number) + 1 }),
       });
     }
 
@@ -293,7 +294,7 @@ function validateStepParametersBasic(step: PipelineStep): ValidationIssue[] {
         code: "PARAM_INVALID_VALUE",
         severity: "error",
         category: "parameter",
-        message: "polyorder must be less than window_length",
+        message: i18n.t("pipelineEditor.validation.basic.polyorderLess"),
         location: {
           stepId: step.id,
           stepName: step.name,

@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { PlaygroundStep } from '@/types/playground';
 
 export interface SourceOption {
@@ -33,13 +34,14 @@ function inferSourceType(step: PlaygroundStep): SourceOption['type'] {
 
 export function buildSourceOptions(
   pipelineSteps: PlaygroundStep[],
-  currentStepIndex: number
+  currentStepIndex: number,
+  t: TFunction,
 ): SourceOption[] {
   const options: SourceOption[] = [
     {
       id: 'original',
-      label: 'Original Input',
-      description: 'Raw input data before any processing',
+      label: t('playground.charts.sourceDataset.originalInput'),
+      description: t('playground.charts.sourceDataset.originalInputDesc'),
       type: 'original',
       position: 0,
       available: true,
@@ -50,7 +52,7 @@ export function buildSourceOptions(
     if (idx < currentStepIndex) {
       options.push({
         id: `step_${idx}`,
-        label: step.name ?? `Step ${idx + 1}`,
+        label: step.name ?? t('playground.charts.sourceDataset.stepN', { n: idx + 1 }),
         description: step.type ?? undefined,
         type: inferSourceType(step),
         position: idx + 1,

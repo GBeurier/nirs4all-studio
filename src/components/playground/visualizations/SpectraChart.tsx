@@ -16,6 +16,7 @@
  */
 
 import React, { useRef, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import type {
   GlobalColorConfig,
   ColorContext,
@@ -125,9 +126,11 @@ export function SpectraChart({
   onRenderModeChange,
   outlierIndices,
   referenceDataset,
-  referenceLabel = 'Reference',
+  referenceLabel: referenceLabelProp,
   showAbsoluteDifference = false,
 }: SpectraChartProps) {
+  const { t } = useTranslation();
+  const referenceLabel = referenceLabelProp ?? t('playground.charts.common.reference');
   const chartRef = useRef<HTMLDivElement>(null);
   const chartAreaRef = useRef<HTMLDivElement>(null);
 

@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useTranslation } from 'react-i18next';
 
 export type DimensionReductionPointSize = 'small' | 'medium' | 'large';
 export type DimensionReductionColorMode = 'target' | 'fold' | 'metadata';
@@ -48,23 +49,25 @@ export function DimensionReductionSettingsMenu({
   onColorModeChange,
   onMetadataKeyChange,
 }: DimensionReductionSettingsMenuProps) {
+  const { t } = useTranslation();
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 px-2">
+        <Button variant="ghost" size="sm" className="h-7 px-2" aria-label={t('playground.charts.dimReduction.settings.title')}>
           <Settings2 className="w-3 h-3" />
           <ChevronDown className="w-3 h-3 ml-1" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Point Size</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-muted-foreground">{t('playground.charts.dimReduction.settings.pointSize')}</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={pointSize}
           onValueChange={(value) => onPointSizeChange(value as DimensionReductionPointSize)}
         >
-          <DropdownMenuRadioItem value="small">Small</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="medium">Medium</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="large">Large</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="small">{t('playground.charts.dimReduction.settings.small')}</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="medium">{t('playground.charts.dimReduction.settings.medium')}</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="large">{t('playground.charts.dimReduction.settings.large')}</DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
 
         <DropdownMenuSeparator />
@@ -73,7 +76,7 @@ export function DimensionReductionSettingsMenu({
           checked={showGrid}
           onCheckedChange={(checked) => onShowGridChange(checked === true)}
         >
-          Show Grid
+          {t('playground.charts.dimReduction.settings.showGrid')}
         </DropdownMenuCheckboxItem>
 
         {showEqualAxisScale && (
@@ -81,31 +84,31 @@ export function DimensionReductionSettingsMenu({
             checked={preserveAspectRatio}
             onCheckedChange={(checked) => onPreserveAspectRatioChange(checked === true)}
           >
-            Equal Axis Scale
+            {t('playground.charts.dimReduction.settings.equalAxisScale')}
           </DropdownMenuCheckboxItem>
         )}
 
         {showLegacyColorOptions && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Color By</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">{t('playground.charts.dimReduction.settings.colorBy')}</DropdownMenuLabel>
             <DropdownMenuRadioGroup
               value={colorMode}
               onValueChange={(value) => onColorModeChange(value as DimensionReductionColorMode)}
             >
-              <DropdownMenuRadioItem value="target">Y Value</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="target">{t('playground.charts.dimReduction.settings.yValue')}</DropdownMenuRadioItem>
               {hasFolds && (
-                <DropdownMenuRadioItem value="fold">Fold</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="fold">{t('playground.charts.dimReduction.settings.fold')}</DropdownMenuRadioItem>
               )}
               {metadataKeys.length > 0 && (
-                <DropdownMenuRadioItem value="metadata">Metadata</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="metadata">{t('playground.charts.dimReduction.settings.metadata')}</DropdownMenuRadioItem>
               )}
             </DropdownMenuRadioGroup>
 
             {colorMode === 'metadata' && metadataKeys.length > 0 && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-xs text-muted-foreground">Field</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs text-muted-foreground">{t('playground.charts.dimReduction.settings.field')}</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={metadataKey || metadataKeys[0]}
                   onValueChange={onMetadataKeyChange}

@@ -6,6 +6,7 @@
  * `OrOptionItem` from here as a façade for compatibility.
  */
 
+import { useTranslation } from "react-i18next";
 import {
   X,
   ChevronDown,
@@ -54,6 +55,7 @@ export function OrOptionItem({
   onToggleExpand,
   onUpdate,
 }: OrOptionItemProps) {
+  const { t } = useTranslation();
   const colors = getStepColor(option);
   const optionState = getOrOptionState(option, index, isExpanded);
 
@@ -93,6 +95,8 @@ export function OrOptionItem({
                   variant="ghost"
                   size="sm"
                   className="h-6 w-6 p-0"
+                  aria-label={isExpanded ? t("pipelineEditor.generator.or.collapseParameters") : t("pipelineEditor.generator.or.expandParameters")}
+                  aria-expanded={isExpanded}
                   onClick={(e) => {
                     e.stopPropagation();
                     onToggleExpand();
@@ -106,7 +110,7 @@ export function OrOptionItem({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                {optionState.expandToggleLabel} parameters
+                {isExpanded ? t("pipelineEditor.generator.or.collapseParameters") : t("pipelineEditor.generator.or.expandParameters")}
               </TooltipContent>
             </Tooltip>
           )}
@@ -117,6 +121,7 @@ export function OrOptionItem({
                   variant="ghost"
                   size="sm"
                   className="h-6 w-6 p-0"
+                  aria-label={t("pipelineEditor.generator.or.duplicateOption")}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDuplicate();
@@ -125,7 +130,7 @@ export function OrOptionItem({
                   <Copy className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Duplicate option</TooltipContent>
+              <TooltipContent>{t("pipelineEditor.generator.or.duplicateOption")}</TooltipContent>
             </Tooltip>
           )}
           {onRemove && (
@@ -135,6 +140,7 @@ export function OrOptionItem({
                   variant="ghost"
                   size="sm"
                   className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                  aria-label={t("pipelineEditor.generator.or.removeOption")}
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemove();
@@ -143,7 +149,7 @@ export function OrOptionItem({
                   <X className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Remove option</TooltipContent>
+              <TooltipContent>{t("pipelineEditor.generator.or.removeOption")}</TooltipContent>
             </Tooltip>
           )}
         </div>

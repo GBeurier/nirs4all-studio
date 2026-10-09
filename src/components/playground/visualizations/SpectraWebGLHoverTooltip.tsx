@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 export interface SpectraWebGLHoverTooltipProps {
   showHoverTooltip: boolean;
   enableHover: boolean;
@@ -19,6 +21,7 @@ export function SpectraWebGLHoverTooltip({
   y,
   foldLabels,
 }: SpectraWebGLHoverTooltipProps) {
+  const { t } = useTranslation();
   if (!showHoverTooltip || !enableHover || hoveredSampleIdx === null || !mousePosition) {
     return null;
   }
@@ -36,7 +39,7 @@ export function SpectraWebGLHoverTooltip({
       }}
     >
       <div className="font-medium text-foreground mb-0.5">
-        {sampleIds?.[hoveredSampleIdx] ?? `Sample ${hoveredSampleIdx}`}
+        {sampleIds?.[hoveredSampleIdx] ?? t('playground.charts.common.sampleFallback', { index: hoveredSampleIdx })}
       </div>
       {yValue !== undefined && (
         <div className="text-muted-foreground">
@@ -45,7 +48,7 @@ export function SpectraWebGLHoverTooltip({
       )}
       {foldLabel !== undefined && foldLabel >= 0 && (
         <div className="text-muted-foreground">
-          Fold: {foldLabel + 1}
+          {t('playground.charts.common.foldLabel', { n: foldLabel + 1 })}
         </div>
       )}
     </div>

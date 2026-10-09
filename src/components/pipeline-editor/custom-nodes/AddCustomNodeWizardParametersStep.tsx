@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { ParameterDefinition } from '@/data/nodes/types';
@@ -17,6 +18,7 @@ export function AddCustomNodeWizardParametersStep({
   parameters,
   onChange,
 }: AddCustomNodeWizardParametersStepProps) {
+  const { t } = useTranslation();
   const addParameter = () => {
     onChange(appendWizardParameter(parameters));
   };
@@ -32,9 +34,9 @@ export function AddCustomNodeWizardParametersStep({
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium">Parameters</h3>
+        <h3 className="text-lg font-medium">{t('pipelineEditor.customNodes.wizard.params.heading')}</h3>
         <p className="text-sm text-muted-foreground">
-          Define the parameters your operator accepts. You can add more later.
+          {t('pipelineEditor.customNodes.wizard.params.hint')}
         </p>
       </div>
 
@@ -54,13 +56,14 @@ export function AddCustomNodeWizardParametersStep({
               <select
                 value={param.type}
                 onChange={(e) => updateParameter(index, { type: e.target.value as ParameterDefinition['type'] })}
+                aria-label={t('pipelineEditor.customNodes.editor.basic.type')}
                 className="h-8 px-2 text-sm rounded border bg-background"
               >
-                <option value="int">Integer</option>
-                <option value="float">Float</option>
-                <option value="bool">Boolean</option>
-                <option value="string">String</option>
-                <option value="select">Select</option>
+                <option value="int">{t('pipelineEditor.customNodes.paramTypes.int')}</option>
+                <option value="float">{t('pipelineEditor.customNodes.paramTypes.float')}</option>
+                <option value="bool">{t('pipelineEditor.customNodes.paramTypes.bool')}</option>
+                <option value="string">{t('pipelineEditor.customNodes.paramTypes.string')}</option>
+                <option value="select">{t('pipelineEditor.customNodes.paramTypes.select')}</option>
               </select>
               <Input
                 type={param.type === 'int' || param.type === 'float' ? 'number' : 'text'}
@@ -68,7 +71,7 @@ export function AddCustomNodeWizardParametersStep({
                 onChange={(e) => updateParameter(index, {
                   default: coerceWizardParameterDefault(e.target.value, param.type),
                 })}
-                placeholder="Default"
+                placeholder={t('pipelineEditor.customNodes.wizard.params.defaultPlaceholder')}
                 className="font-mono text-sm h-8"
               />
             </div>
@@ -77,6 +80,7 @@ export function AddCustomNodeWizardParametersStep({
               size="sm"
               className="h-8 w-8 p-0 text-destructive hover:text-destructive"
               onClick={() => removeParameter(index)}
+              aria-label={t('pipelineEditor.customNodes.wizard.params.remove')}
             >
               &times;
             </Button>
@@ -84,14 +88,13 @@ export function AddCustomNodeWizardParametersStep({
         ))}
 
         <Button variant="outline" size="sm" onClick={addParameter} className="w-full">
-          + Add Parameter
+          {t('pipelineEditor.customNodes.wizard.params.add')}
         </Button>
       </div>
 
       {parameters.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-4">
-          No parameters defined. Click "Add Parameter" to add one, or skip this step
-          if your operator doesn't need any.
+          {t('pipelineEditor.customNodes.wizard.params.none')}
         </p>
       )}
     </div>

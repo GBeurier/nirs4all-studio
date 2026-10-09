@@ -26,6 +26,7 @@ import { DynamicParamRenderer } from './UnifiedOperatorCardParams';
 import { UnifiedOperatorCardErrorDialog } from './UnifiedOperatorCardErrorDialog';
 import { UnifiedOperatorCardHeader } from './UnifiedOperatorCardHeader';
 import type { SplitRuntimeMetadata, UnifiedOperatorFilterStats } from './UnifiedOperatorCardTypes';
+import { useTranslation } from 'react-i18next';
 
 interface UnifiedOperatorCardProps {
   operator: UnifiedOperator;
@@ -70,6 +71,7 @@ export function UnifiedOperatorCard({
   onDragEnd,
   isDragging,
 }: UnifiedOperatorCardProps) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
 
@@ -90,10 +92,10 @@ export function UnifiedOperatorCard({
   const handleCopyError = useCallback(() => {
     if (!errorMessage) return;
     navigator.clipboard.writeText(errorMessage).then(
-      () => toast.success('Error copied to clipboard'),
-      () => toast.error('Failed to copy error')
+      () => toast.success(t('playground.operators.card.errorCopied')),
+      () => toast.error(t('playground.operators.card.errorCopyFailed'))
     );
-  }, [errorMessage]);
+  }, [errorMessage, t]);
 
   return (
     <TooltipProvider>

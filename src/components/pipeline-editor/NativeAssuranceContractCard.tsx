@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import i18n from "i18next";
 import { ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -77,138 +79,127 @@ const ROBUSTNESS_KEYWORD_IDS = [
   "robustness.workspace_robustness_id",
 ] as const;
 
-const FALLBACK_NATIVE_ASSURANCE_KEYWORDS: NativeAssuranceKeywordRow[] = [
+type FallbackKeywordDefinition = Omit<NativeAssuranceKeywordRow, "label" | "source" | "summary"> & {
+  /** Id under `pipelineEditor.assurance.fallback` holding the localized label and summary. */
+  id: string;
+};
+
+const FALLBACK_NATIVE_ASSURANCE_KEYWORDS: FallbackKeywordDefinition[] = [
   {
     domain: "conformal",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "searchSpace",
     invalidatesCalibration: "if_predictor_changes",
-    label: "Search space",
     path: "run.tuning.space",
-    source: "fallback",
     status: "partial",
-    summary: "Object/mapping search space for native tuning; changing it can select a different predictor.",
   },
   {
     domain: "conformal",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "forcedFirstTrial",
     invalidatesCalibration: "if_predictor_changes",
-    label: "Forced first trial",
     path: "run.tuning.force_params",
-    source: "fallback",
     status: "partial",
-    summary: "Optional warm-start parameters for the first tuning trial; keys must exist in run.tuning.space.",
   },
   {
     domain: "conformal",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "postTuningCalibration",
     invalidatesCalibration: "replaces_existing",
-    label: "Post-tuning calibration",
     path: "run.tuning.calibration",
-    source: "fallback",
     status: "partial",
-    summary: "Optional final calibration after tuning winner projection; calibration_data is derived from the winner.",
   },
   {
     domain: "conformal",
     engineSupport: { "dag-ml": "partial", legacy: "partial" },
+    id: "predictionCoverage",
     invalidatesCalibration: "not_applicable",
-    label: "Prediction coverage",
     path: "predict.coverage",
-    source: "fallback",
     status: "partial",
-    summary: "Selects a pre-materialized conformal coverage and fails closed when the bundle has no valid sidecar.",
   },
   {
     domain: "conformal",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "calibrationDataset",
     invalidatesCalibration: "not_applicable",
-    label: "Calibration dataset",
     path: "calibrate.calibration_data",
-    source: "fallback",
     status: "partial",
-    summary: "Explicit row-aligned calibration evidence; Studio must not synthesize sample identities.",
   },
   {
     domain: "conformal",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "devConformalScoring",
     invalidatesCalibration: "not_applicable",
-    label: "Dev conformal scoring cohort",
     path: "run.tuning.score_data.conformal_calibration",
-    source: "fallback",
     status: "partial",
-    summary: "Temporary conformal scoring during tuning; it never replaces the final calibrated result.",
   },
   {
     domain: "robustness",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "robustnessScenarios",
     invalidatesCalibration: "mode_dependent",
-    label: "Robustness scenarios",
     path: "robustness.scenarios",
-    source: "fallback",
     status: "partial",
-    summary: "Audit-only robustness scenario definitions; diagnostics do not create a new conformal guarantee.",
   },
   {
     domain: "robustness",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "scenarioDistribution",
     invalidatesCalibration: "mode_dependent",
-    label: "Scenario distribution",
     path: "robustness.scenarios.distribution",
-    source: "fallback",
     status: "partial",
-    summary: "Distribution vocabulary for stochastic robustness scenarios; deterministic scenarios keep it disabled.",
   },
   {
     domain: "robustness",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "robustnessX",
     invalidatesCalibration: "mode_dependent",
-    label: "Robustness X",
     path: "robustness.X",
-    source: "fallback",
     status: "partial",
-    summary: "Explicit input matrix for spectral robustness scenarios; Studio preserves the key but does not perturb spectra locally.",
   },
   {
     domain: "robustness",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "robustnessPredictor",
     invalidatesCalibration: "mode_dependent",
-    label: "Robustness predictor",
     path: "robustness.predictor",
-    source: "fallback",
     status: "partial",
-    summary: "In-memory frozen predictor hook for spectral robustness scenarios; Studio preserves the keyword metadata but does not serialize Python objects.",
   },
   {
     domain: "robustness",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "robustnessPredictorBundle",
     invalidatesCalibration: "mode_dependent",
-    label: "Robustness predictor bundle",
     path: "robustness.predictor_bundle",
-    source: "fallback",
     status: "partial",
-    summary: "Saved predictor path replay hook for explicit-X spectral robustness scenarios; full Python replays it without refit or recalibration.",
   },
   {
     domain: "robustness",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "robustnessMode",
     invalidatesCalibration: "mode_dependent",
-    label: "Robustness mode",
     path: "robustness.mode",
-    source: "fallback",
     status: "partial",
-    summary: "Controls whether perturbations keep the predictor frozen, recalibrate, or refit structurally.",
   },
   {
     domain: "robustness",
     engineSupport: { "dag-ml": "partial", legacy: "unsupported" },
+    id: "diagnosticSlices",
     invalidatesCalibration: "not_applicable",
-    label: "Diagnostic slices",
     path: "robustness.slice_by",
-    source: "fallback",
     status: "partial",
-    summary: "Adds diagnostic subgroup views without changing the statistical guarantee scope.",
   },
 ];
+
+/** Resolve the fallback keyword rows at call time so labels follow the active language. */
+function buildFallbackKeywordRows(): NativeAssuranceKeywordRow[] {
+  return FALLBACK_NATIVE_ASSURANCE_KEYWORDS.map(({ id, ...row }) => ({
+    ...row,
+    label: i18n.t(`pipelineEditor.assurance.fallback.${id}.label`),
+    source: "fallback" as const,
+    summary: i18n.t(`pipelineEditor.assurance.fallback.${id}.summary`),
+  }));
+}
 
 function registryRowsForDomain(
   registry: KeywordRegistryDocument,
@@ -239,14 +230,14 @@ function formatEngineSupport(engineSupport: Record<string, string>): string {
 export function buildNativeAssuranceKeywordRows(
   registry?: KeywordRegistryDocument | null,
 ): NativeAssuranceKeywordRow[] {
-  if (!registry) return FALLBACK_NATIVE_ASSURANCE_KEYWORDS;
+  if (!registry) return buildFallbackKeywordRows();
 
   const rows = [
     ...registryRowsForDomain(registry, CONFORMAL_KEYWORD_IDS, "conformal"),
     ...registryRowsForDomain(registry, ROBUSTNESS_KEYWORD_IDS, "robustness"),
   ];
 
-  return rows.length > 0 ? rows : FALLBACK_NATIVE_ASSURANCE_KEYWORDS;
+  return rows.length > 0 ? rows : buildFallbackKeywordRows();
 }
 
 export function buildNativeAssuranceContractSummary(
@@ -264,7 +255,9 @@ export function buildNativeAssuranceContractSummary(
       : REQUIRED_NATIVE_REGISTRY_ENTRY_IDS.join(", "),
     registrySource: rows.some((row) => row.source === "registry") ? "registry" : "fallback",
     robustnessCount: rows.filter((row) => row.domain === "robustness").length,
-    runtimeEngineLabel: runtimeEngine ? `engine ${runtimeEngine}` : "engine selected at launch",
+    runtimeEngineLabel: runtimeEngine
+      ? i18n.t("pipelineEditor.assurance.engineLabel", { engine: runtimeEngine })
+      : i18n.t("pipelineEditor.assurance.engineAtLaunch"),
   };
 }
 
@@ -272,6 +265,7 @@ export function NativeAssuranceContractCard({
   registry,
   runtimeEngine,
 }: NativeAssuranceContractCardProps) {
+  const { t } = useTranslation();
   const rows = buildNativeAssuranceKeywordRows(registry);
   const summary = buildNativeAssuranceContractSummary(rows, runtimeEngine);
   const conformalRows = rows.filter((row) => row.domain === "conformal").slice(0, 4);
@@ -283,36 +277,36 @@ export function NativeAssuranceContractCard({
         <div>
           <h4 className="flex items-center gap-2 text-sm font-medium">
             <ShieldCheck className="h-4 w-4 text-emerald-500" />
-            Analysis Requirements
+            {t("pipelineEditor.assurance.title")}
           </h4>
           <p className="mt-1 text-xs text-muted-foreground">
-            Conformal and robustness keywords for {summary.runtimeEngineLabel}; Studio displays contract effects only.
+            {t("pipelineEditor.assurance.subtitle", { engine: summary.runtimeEngineLabel })}
           </p>
         </div>
         <Badge variant="outline" className="shrink-0 text-[10px]">
-          registry {summary.registrySource}
+          {t("pipelineEditor.assurance.registryBadge", { source: t(`pipelineEditor.assurance.registrySource.${summary.registrySource}`) })}
         </Badge>
       </div>
 
       <div className="mb-3 grid grid-cols-3 gap-2 text-[11px]">
-        <Metric label="Conformal fields" value={String(summary.conformalCount)} />
-        <Metric label="Robustness fields" value={String(summary.robustnessCount)} />
-        <Metric label="Execution" value={summary.runtimeEngineLabel} />
+        <Metric label={t("pipelineEditor.assurance.conformalFields")} value={String(summary.conformalCount)} />
+        <Metric label={t("pipelineEditor.assurance.robustnessFields")} value={String(summary.robustnessCount)} />
+        <Metric label={t("pipelineEditor.assurance.execution")} value={summary.runtimeEngineLabel} />
       </div>
       <div className="mb-3 rounded border border-border/50 bg-background/60 px-2 py-1.5 text-[11px]">
         <p className="font-medium text-foreground">
-          Required registry floor ({summary.requiredRegistryEntryCount}/{REQUIRED_NATIVE_REGISTRY_ENTRY_IDS.length})
+          {t("pipelineEditor.assurance.requiredFloor", { count: summary.requiredRegistryEntryCount, total: REQUIRED_NATIVE_REGISTRY_ENTRY_IDS.length })}
         </p>
         <p className="mt-1 text-muted-foreground">{summary.requiredRegistryEntryLabel}</p>
       </div>
 
       <div className="grid gap-2 md:grid-cols-2">
-        <KeywordSection title="Conformal" rows={conformalRows} />
-        <KeywordSection title="Robustness" rows={robustnessRows} />
+        <KeywordSection title={t("pipelineEditor.assurance.conformal")} rows={conformalRows} />
+        <KeywordSection title={t("pipelineEditor.assurance.robustness")} rows={robustnessRows} />
       </div>
 
       <p className="mt-3 text-[11px] text-muted-foreground">
-        Guardrail: Studio does not recalibrate, refit, perturb spectra, or derive guarantees from displayed diagnostics.
+        {t("pipelineEditor.assurance.guardrail")}
       </p>
     </div>
   );

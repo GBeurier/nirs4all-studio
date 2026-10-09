@@ -5,6 +5,7 @@
  * Displays sweep indicators, finetuning badges, generator variants, and parameter summary.
  */
 
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/popover";
 import { Repeat, Sparkles, Package, Layers, AlertTriangle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { getStepTypeLabels } from "../../stepPresentation";
 import type { GeneratorKind, PipelineStep } from "../../types";
 import type { MissingOperatorIssue } from "@/lib/pipelineOperatorAvailability";
 
@@ -81,6 +83,7 @@ export function NodeHeader({
   isUnavailable = false,
   unavailableIssue = null,
 }: NodeHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 min-w-0 overflow-hidden">
       {/* Name and badges row */}
@@ -89,20 +92,20 @@ export function NodeHeader({
           {step.name}
         </span>
         <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
-          {step.type}
+          {getStepTypeLabels()[step.type] ?? step.type}
         </Badge>
         {isUnavailable && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Badge className="h-4 shrink-0 gap-1 bg-amber-500 px-1 py-0 text-[9px] text-white hover:bg-amber-600">
                 <AlertTriangle className="h-2.5 w-2.5" />
-                Unavailable
+                {t("pipelineEditor.palette.unavailable")}
               </Badge>
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-[260px]">
               <div className="space-y-1 text-xs">
-                <div className="font-semibold">Missing dependency</div>
-                <p>{unavailableIssue?.details?.error ?? unavailableIssue?.message ?? `${step.name} is unavailable.`}</p>
+                <div className="font-semibold">{t("pipelineEditor.tree.missingDependency")}</div>
+                <p>{unavailableIssue?.details?.error ?? unavailableIssue?.message ?? t("pipelineEditor.tree.stepUnavailable", { name: step.name })}</p>
               </div>
             </TooltipContent>
           </Tooltip>
@@ -122,18 +125,18 @@ export function NodeHeader({
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-medium flex items-center gap-1.5">
                     <Repeat className="h-4 w-4 text-orange-500" />
-                    Sweeps
+                    {t("pipelineEditor.tree.sweeps")}
                   </h4>
                   <Badge variant="secondary" className="text-xs">
-                    {totalVariants} variant{totalVariants !== 1 ? "s" : ""}
+                    {t("pipelineEditor.tree.variantsBadge", { count: totalVariants })}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {sweepCount} parameter{sweepCount !== 1 ? "s" : ""} with sweep configurations
+                  {t("pipelineEditor.tree.sweepParamCount", { count: sweepCount })}
                 </p>
                 {sweepSummary && (
                   <div className="space-y-1 pt-2 border-t">
-                    <p className="text-xs font-medium text-muted-foreground">Parameters:</p>
+                    <p className="text-xs font-medium text-muted-foreground">{t("pipelineEditor.tree.parametersLabel")}</p>
                     <pre className="text-xs text-foreground font-mono whitespace-pre-wrap">
                       {sweepSummary}
                     </pre>
@@ -158,24 +161,24 @@ export function NodeHeader({
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-medium flex items-center gap-1.5">
                     <Sparkles className="h-4 w-4 text-purple-500" />
-                    Optuna Finetuning
+                    {t("pipelineEditor.tree.optunaFinetuning")}
                   </h4>
                   <Badge variant="secondary" className="text-xs">
-                    {finetuneTrials} trials
+                    {t("pipelineEditor.tree.trialsBadge", { count: finetuneTrials })}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {finetuneParamCount} parameter{finetuneParamCount !== 1 ? "s" : ""} to optimize
+                  {t("pipelineEditor.tree.paramsToOptimize", { count: finetuneParamCount })}
                 </p>
                 {step.finetuneConfig?.model_params && step.finetuneConfig.model_params.length > 0 && (
                   <div className="space-y-1 pt-2 border-t">
-                    <p className="text-xs font-medium text-muted-foreground">Parameters:</p>
+                    <p className="text-xs font-medium text-muted-foreground">{t("pipelineEditor.tree.parametersLabel")}</p>
                     {step.finetuneConfig.model_params.slice(0, 5).map((param, idx) => (
                       <div key={idx} className="flex items-center justify-between text-xs">
                         <span className="text-foreground font-mono">{param.name}</span>
                         <span className="text-muted-foreground">
                           {param.type === "categorical"
-                            ? `${param.choices?.length ?? 0} choices`
+                            ? t("pipelineEditor.tree.choicesCount", { count: param.choices?.length ?? 0 })
                             : `${param.low} → ${param.high}`
                           }
                         </span>
@@ -183,7 +186,7 @@ export function NodeHeader({
                     ))}
                     {step.finetuneConfig.model_params.length > 5 && (
                       <p className="text-xs text-muted-foreground italic">
-                        +{step.finetuneConfig.model_params.length - 5} more...
+                        {t("pipelineEditor.tree.moreItems", { count: step.finetuneConfig.model_params.length - 5 })}
                       </p>
                     )}
                   </div>
@@ -207,27 +210,27 @@ export function NodeHeader({
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-medium flex items-center gap-1.5">
                     <Sparkles className="h-4 w-4 text-orange-500" />
-                    {generatorKind === "cartesian" ? "Cartesian Product"
-                      : generatorKind === "grid" ? "Grid Search"
-                      : generatorKind === "zip" ? "Zip"
-                      : generatorKind === "chain" ? "Chain"
-                      : generatorKind === "sample" ? "Sample"
-                      : "Or (Choose)"}
+                    {generatorKind === "cartesian" ? t("pipelineEditor.tree.generatorKinds.cartesian")
+                      : generatorKind === "grid" ? t("pipelineEditor.tree.generatorKinds.grid")
+                      : generatorKind === "zip" ? t("pipelineEditor.tree.generatorKinds.zip")
+                      : generatorKind === "chain" ? t("pipelineEditor.tree.generatorKinds.chain")
+                      : generatorKind === "sample" ? t("pipelineEditor.tree.generatorKinds.sample")
+                      : t("pipelineEditor.tree.generatorKinds.or")}
                   </h4>
                   <Badge variant="secondary" className="text-xs">
-                    {generatorVariantCount} variant{generatorVariantCount !== 1 ? "s" : ""}
+                    {t("pipelineEditor.tree.variantsBadge", { count: generatorVariantCount })}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {generatorOptionCount} option{generatorOptionCount !== 1 ? "s" : ""} • {generatorSelectionSummary}
+                  {t("pipelineEditor.tree.generatorOptionCount", { count: generatorOptionCount ?? 0, summary: generatorSelectionSummary })}
                 </p>
                 {generatorOptionNames && generatorOptionNames.length > 0 && (
                   <div className="space-y-1 pt-2 border-t">
                     <p className="text-xs font-medium text-muted-foreground">
-                      {generatorKind === "cartesian" ? "Stages:"
-                        : generatorKind === "grid" || generatorKind === "zip" ? "Params:"
-                        : generatorKind === "chain" ? "Configs:"
-                        : "Options:"}
+                      {generatorKind === "cartesian" ? t("pipelineEditor.tree.generatorItemsLabel.cartesian")
+                        : generatorKind === "grid" || generatorKind === "zip" ? t("pipelineEditor.tree.generatorItemsLabel.param")
+                        : generatorKind === "chain" ? t("pipelineEditor.tree.generatorItemsLabel.chain")
+                        : t("pipelineEditor.tree.generatorItemsLabel.options")}
                     </p>
                     {generatorOptionNames.slice(0, 8).map((name, idx) => (
                       <div key={idx} className="flex items-center gap-2 text-xs">
@@ -237,7 +240,7 @@ export function NodeHeader({
                     ))}
                     {generatorOptionNames.length > 8 && (
                       <p className="text-xs text-muted-foreground italic">
-                        +{generatorOptionNames.length - 8} more...
+                        {t("pipelineEditor.tree.moreItems", { count: generatorOptionNames.length - 8 })}
                       </p>
                     )}
                   </div>
@@ -262,8 +265,10 @@ export function NodeHeader({
             <TooltipContent side="right" className="max-w-[220px]">
               <div className="text-xs">
                 <div className="font-semibold mb-1">
-                  {containerChildren.length} {childLabel}
-                  {containerChildren.length !== 1 ? "s" : ""}
+                  {t("pipelineEditor.tree.foldLabels.children", {
+                    count: containerChildren.length,
+                    noun: t(`pipelineEditor.tree.childKind_${childLabel}`, { count: containerChildren.length }),
+                  })}
                 </div>
                 <p className="text-muted-foreground">
                   {containerChildren.map((c) => c.name).join(", ")}
@@ -280,7 +285,7 @@ export function NodeHeader({
           {displayParams && <span>{displayParams}</span>}
           {displayParams && sweepCount > 0 && <span className="mx-1">•</span>}
           <span className="text-orange-500">
-            {sweepCount} sweep{sweepCount !== 1 ? "s" : ""}
+            {t("pipelineEditor.tree.sweepsInline", { count: sweepCount })}
           </span>
         </p>
       ) : (

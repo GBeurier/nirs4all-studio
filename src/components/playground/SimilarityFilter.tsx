@@ -12,6 +12,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   GitCompare,
   ChevronDown,
@@ -49,7 +50,6 @@ import { cn } from '@/lib/utils';
 import { useSelection } from '@/context/useSelection';
 import {
   canUseSelectedReference,
-  getReferenceSampleLabel,
   getSelectedReferenceIndex,
   getSimilaritySearchArgs,
   getSimilaritySelectionIndices,
@@ -83,21 +83,21 @@ export interface SimilarityFilterProps {
 
 // ============= Constants =============
 
-const METRICS: { value: DistanceMetric; label: string; description: string }[] = [
+const METRICS: { value: DistanceMetric; labelKey: string; descriptionKey: string }[] = [
   {
     value: 'euclidean',
-    label: 'Euclidean',
-    description: 'Standard geometric distance',
+    labelKey: 'playground.similarity.metrics.euclidean.label',
+    descriptionKey: 'playground.similarity.metrics.euclidean.description',
   },
   {
     value: 'cosine',
-    label: 'Cosine',
-    description: 'Angular similarity (shape-focused)',
+    labelKey: 'playground.similarity.metrics.cosine.label',
+    descriptionKey: 'playground.similarity.metrics.cosine.description',
   },
   {
     value: 'correlation',
-    label: 'Correlation',
-    description: 'Pearson correlation distance',
+    labelKey: 'playground.similarity.metrics.correlation.label',
+    descriptionKey: 'playground.similarity.metrics.correlation.description',
   },
 ];
 
@@ -113,6 +113,7 @@ export function SimilarityFilter({
   isLoading = false,
   compact = false,
 }: SimilarityFilterProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [referenceIdx, setReferenceIdx] = useState<number | null>(null);
   const [metric, setMetric] = useState<DistanceMetric>('euclidean');
@@ -138,8 +139,9 @@ export function SimilarityFilter({
 
   // Get reference display name
   const referenceDisplay = useMemo(() => {
-    return getReferenceSampleLabel(referenceIdx, sampleIds);
-  }, [referenceIdx, sampleIds]);
+    if (referenceIdx === null) return '';
+    return sampleIds?.[referenceIdx] ?? t('playground.similarity.sampleFallback', { n: referenceIdx });
+  }, [referenceIdx, sampleIds, t]);
 
   // Handle search
   const handleSearch = useCallback(async () => {
@@ -198,7 +200,7 @@ export function SimilarityFilter({
           )}
         >
           <GitCompare className="w-3 h-3" />
-          Similar
+          {t('playground.similarity.trigger')}
           {lastResult?.n_similar !== undefined && lastResult.n_similar > 0 && (
             <Badge variant="secondary" className="h-4 px-1 text-[9px]">
               {lastResult.n_similar}
@@ -213,14 +215,14 @@ export function SimilarityFilter({
         <div className="flex items-center justify-between px-3 py-2 border-b">
           <h4 className="text-sm font-semibold flex items-center gap-2">
             <GitCompare className="w-4 h-4 text-blue-500" />
-            Similarity Search
+            {t('playground.similarity.title')}
           </h4>
         </div>
 
         <div className="p-3 space-y-4">
           {/* Reference sample */}
           <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Reference Sample</Label>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">{t('playground.similarity.referenceSample')}</Label>
             <div className="flex gap-2">
               <div className="flex-1 relative">
                 <Input
@@ -229,7 +231,7 @@ export function SimilarityFilter({
                   onChange={(e) => {
                     setReferenceIdx(parseReferenceIndexInput(e.target.value, totalSamples));
                   }}
-                  placeholder="Sample index..."
+                  placeholder={t('playground.similarity.sampleIndexPlaceholder')}
                   className="h-8 text-xs pr-16"
                   min={0}
                   max={totalSamples - 1}
@@ -251,6 +253,7 @@ export function SimilarityFilter({
                       className="h-8 px-2"
                       onClick={handleUseSelectedAsReference}
                       disabled={!canUseSelected}
+                      aria-label={t('playground.similarity.useSelected')}
                     >
                       <Target className="w-3 h-3" />
                     </Button>
@@ -258,8 +261,8 @@ export function SimilarityFilter({
                   <TooltipContent side="bottom">
                     <p className="text-xs">
                       {canUseSelected
-                        ? 'Use currently selected sample as reference'
-                        : 'Select a sample first (click on a spectrum or point)'}
+                        ? t('playground.similarity.useSelected')
+                        : t('playground.similarity.selectFirst')}
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -269,7 +272,7 @@ export function SimilarityFilter({
 
           {/* Distance metric */}
           <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Distance Metric</Label>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">{t('playground.similarity.distanceMetric')}</Label>
             <Select value={metric} onValueChange={(v) => setMetric(v as DistanceMetric)}>
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue />
@@ -278,8 +281,8 @@ export function SimilarityFilter({
                 {METRICS.map(m => (
                   <SelectItem key={m.value} value={m.value}>
                     <div className="flex flex-col">
-                      <span>{m.label}</span>
-                      <span className="text-[10px] text-muted-foreground">{m.description}</span>
+                      <span>{t(m.labelKey)}</span>
+                      <span className="text-[10px] text-muted-foreground">{t(m.descriptionKey)}</span>
                     </div>
                   </SelectItem>
                 ))}
@@ -290,7 +293,7 @@ export function SimilarityFilter({
           {/* Selection mode */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs">Top K nearest</Label>
+              <Label className="text-xs">{t('playground.similarity.topK')}</Label>
               <div className="flex items-center gap-2">
                 <Switch
                   checked={useTopK}
@@ -313,9 +316,9 @@ export function SimilarityFilter({
             {!useTopK && (
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <Label className="text-xs">Distance threshold</Label>
+                  <Label className="text-xs">{t('playground.similarity.distanceThreshold')}</Label>
                   <span className="text-xs font-mono text-primary">
-                    {threshold?.toPrecision(3) ?? 'auto'}
+                    {threshold?.toPrecision(3) ?? t('playground.similarity.auto')}
                   </span>
                 </div>
                 <Slider
@@ -332,7 +335,7 @@ export function SimilarityFilter({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ArrowLeftRight className="w-3 h-3 text-muted-foreground" />
-                <Label className="text-xs">Select different (far) samples</Label>
+                <Label className="text-xs">{t('playground.similarity.selectDifferent')}</Label>
               </div>
               <Switch
                 checked={selectDifferent}
@@ -353,12 +356,12 @@ export function SimilarityFilter({
             {isSearching ? (
               <>
                 <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                Searching...
+                {t('playground.similarity.searching')}
               </>
             ) : (
               <>
                 <GitCompare className="w-3 h-3 mr-1" />
-                Find {selectDifferent ? 'Different' : 'Similar'} Samples
+                {selectDifferent ? t('playground.similarity.findDifferent') : t('playground.similarity.findSimilar')}
               </>
             )}
           </Button>
@@ -369,13 +372,19 @@ export function SimilarityFilter({
               <div className="flex items-center gap-2">
                 <Check className="w-3 h-3 text-green-500" />
                 <span>
-                  Found <strong>{lastResult.n_similar}</strong> similar samples
+                  <Trans
+                    i18nKey="playground.similarity.found"
+                    values={{ count: lastResult.n_similar }}
+                    components={{ b: <strong /> }}
+                  />
                 </span>
               </div>
               {lastResult.distances && lastResult.distances.length > 0 && (
                 <div className="text-[10px] text-muted-foreground mt-1">
-                  Distance range: {lastResult.distances[0]?.toPrecision(3)} -{' '}
-                  {lastResult.distances[lastResult.distances.length - 1]?.toPrecision(3)}
+                  {t('playground.similarity.distanceRange', {
+                    min: lastResult.distances[0]?.toPrecision(3),
+                    max: lastResult.distances[lastResult.distances.length - 1]?.toPrecision(3),
+                  })}
                 </div>
               )}
             </div>
@@ -391,7 +400,7 @@ export function SimilarityFilter({
           {/* Hint */}
           {referenceIdx === null && (
             <div className="text-[10px] text-muted-foreground italic">
-              Tip: Click on a spectrum or PCA point, then use the target button to set it as reference.
+              {t('playground.similarity.tip')}
             </div>
           )}
         </div>

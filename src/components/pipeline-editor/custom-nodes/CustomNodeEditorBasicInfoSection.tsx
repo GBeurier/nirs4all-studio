@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,13 +14,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import type { NodeType } from '@/data/nodes/types';
 
-const NODE_TYPES: { value: NodeType; label: string }[] = [
-  { value: 'preprocessing', label: 'Preprocessing' },
-  { value: 'y_processing', label: 'Target Processing' },
-  { value: 'splitting', label: 'Splitting' },
-  { value: 'model', label: 'Model' },
-  { value: 'filter', label: 'Filter' },
-  { value: 'augmentation', label: 'Augmentation' },
+const NODE_TYPES: NodeType[] = [
+  'preprocessing',
+  'y_processing',
+  'splitting',
+  'model',
+  'filter',
+  'augmentation',
 ];
 
 interface CustomNodeBasicInfoSectionProps {
@@ -65,13 +66,14 @@ export function CustomNodeBasicInfoSection({
   onChangeTags,
   onChangeType,
 }: CustomNodeBasicInfoSectionProps) {
+  const { t } = useTranslation();
   return (
     <section className="space-y-4">
-      <h3 className="text-sm font-medium">Basic Information</h3>
+      <h3 className="text-sm font-medium">{t('pipelineEditor.customNodes.editor.basic.heading')}</h3>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <Label htmlFor="node-name">Name *</Label>
+          <Label htmlFor="node-name">{t('pipelineEditor.customNodes.editor.basic.name')}</Label>
           <Input
             id="node-name"
             value={name}
@@ -80,20 +82,20 @@ export function CustomNodeBasicInfoSection({
             className="font-mono"
           />
           <p className="text-xs text-muted-foreground">
-            ID: <code className="bg-muted px-1 py-0.5 rounded">{previewId}</code>
+            {t('pipelineEditor.customNodes.editor.basic.id')} <code className="bg-muted px-1 py-0.5 rounded">{previewId}</code>
           </p>
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="node-type">Type *</Label>
+          <Label htmlFor="node-type">{t('pipelineEditor.customNodes.editor.basic.type')}</Label>
           <Select value={type} onValueChange={(v) => onChangeType(v as NodeType)}>
             <SelectTrigger id="node-type">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {NODE_TYPES.map(t => (
-                <SelectItem key={t.value} value={t.value}>
-                  {t.label}
+              {NODE_TYPES.map((nodeType) => (
+                <SelectItem key={nodeType} value={nodeType}>
+                  {t(`pipelineEditor.customNodes.types.${nodeType}.label`)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -102,27 +104,27 @@ export function CustomNodeBasicInfoSection({
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="node-description">Description *</Label>
+        <Label htmlFor="node-description">{t('pipelineEditor.customNodes.editor.basic.description')}</Label>
         <Textarea
           id="node-description"
           value={description}
           onChange={(e) => onChangeDescription(e.target.value)}
-          placeholder="Describe what this operator does..."
+          placeholder={t('pipelineEditor.customNodes.editor.basic.descriptionPlaceholder')}
           rows={2}
         />
       </div>
 
       <div className="space-y-1.5">
         <Label htmlFor="node-classpath">
-          Class Path
+          {t('pipelineEditor.customNodes.editor.basic.classPath')}
           {classPathValid === true && (
             <Badge variant="outline" className="ml-2 text-green-500 border-green-500">
-              Valid
+              {t('pipelineEditor.customNodes.editor.basic.valid')}
             </Badge>
           )}
           {classPathValid === false && (
             <Badge variant="outline" className="ml-2 text-destructive border-destructive">
-              Not in allowlist
+              {t('pipelineEditor.customNodes.editor.basic.notAllowed')}
             </Badge>
           )}
         </Label>
@@ -137,13 +139,13 @@ export function CustomNodeBasicInfoSection({
           )}
         />
         <p className="text-xs text-muted-foreground">
-          Allowed packages: {allowedPackages.join(', ')}
+          {t('pipelineEditor.customNodes.editor.basic.allowedPackages', { packages: allowedPackages.join(', ') })}
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <Label htmlFor="node-category">Category</Label>
+          <Label htmlFor="node-category">{t('pipelineEditor.customNodes.editor.basic.category')}</Label>
           <Input
             id="node-category"
             value={category}
@@ -153,7 +155,7 @@ export function CustomNodeBasicInfoSection({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="node-tags">Tags (comma-separated)</Label>
+          <Label htmlFor="node-tags">{t('pipelineEditor.customNodes.editor.basic.tags')}</Label>
           <Input
             id="node-tags"
             value={tags}
@@ -171,7 +173,7 @@ export function CustomNodeBasicInfoSection({
             id="node-advanced"
           />
           <Label htmlFor="node-advanced" className="text-sm">
-            Advanced (hide in basic mode)
+            {t('pipelineEditor.customNodes.editor.basic.advanced')}
           </Label>
         </div>
 
@@ -182,7 +184,7 @@ export function CustomNodeBasicInfoSection({
             id="node-dl"
           />
           <Label htmlFor="node-dl" className="text-sm">
-            Deep Learning (show training config)
+            {t('pipelineEditor.customNodes.editor.basic.deepLearning')}
           </Label>
         </div>
       </div>

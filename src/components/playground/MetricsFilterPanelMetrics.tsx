@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Activity,
   AlertTriangle,
@@ -32,13 +33,13 @@ import {
 import { cn } from '@/lib/utils';
 import type { MetricFilter, MetricsResult, MetricStats } from '@/types/playground';
 
-const METRIC_CATEGORIES: Record<string, { label: string; icon: LucideIcon; color: string }> = {
-  amplitude: { label: 'Amplitude', icon: Activity, color: 'text-blue-500' },
-  energy: { label: 'Energy', icon: Zap, color: 'text-yellow-500' },
-  shape: { label: 'Shape', icon: AudioWaveform, color: 'text-green-500' },
-  noise: { label: 'Noise', icon: BarChart3, color: 'text-orange-500' },
-  quality: { label: 'Quality', icon: Shield, color: 'text-red-500' },
-  chemometric: { label: 'Chemometric', icon: FlaskConical, color: 'text-purple-500' },
+const METRIC_CATEGORIES: Record<string, { icon: LucideIcon; color: string }> = {
+  amplitude: { icon: Activity, color: 'text-blue-500' },
+  energy: { icon: Zap, color: 'text-yellow-500' },
+  shape: { icon: AudioWaveform, color: 'text-green-500' },
+  noise: { icon: BarChart3, color: 'text-orange-500' },
+  quality: { icon: Shield, color: 'text-red-500' },
+  chemometric: { icon: FlaskConical, color: 'text-purple-500' },
 };
 
 interface MiniHistogramProps {
@@ -131,7 +132,8 @@ interface MetricFilterRowProps {
 }
 
 function MetricFilterRow({ metricName, values, stats, filter, onChange }: MetricFilterRowProps) {
-  const displayName = getMetricDisplayName(metricName);
+  const { t } = useTranslation();
+  const displayName = t(`playground.metricsFilter.metricNames.${metricName}`, { defaultValue: getMetricDisplayName(metricName) });
   const hasFilter = filter !== undefined;
 
   const [sliderValue, setSliderValue] = useState<[number, number]>([
@@ -199,6 +201,7 @@ function MetricFilterRow({ metricName, values, stats, filter, onChange }: Metric
                       size="sm"
                       className="h-5 w-5 p-0"
                       onClick={handleInvertToggle}
+                      aria-label={filter?.invert ? t('playground.metricsFilter.invertSelectOutliers') : t('playground.metricsFilter.invertSelectTypical')}
                     >
                       {filter?.invert ? (
                         <AlertTriangle className="w-3 h-3 text-amber-500" />
@@ -209,7 +212,7 @@ function MetricFilterRow({ metricName, values, stats, filter, onChange }: Metric
                   </TooltipTrigger>
                   <TooltipContent side="left">
                     <p className="text-xs">
-                      {filter?.invert ? 'Selecting outliers (outside range)' : 'Selecting typical (inside range)'}
+                      {filter?.invert ? t('playground.metricsFilter.invertSelectOutliers') : t('playground.metricsFilter.invertSelectTypical')}
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -219,6 +222,7 @@ function MetricFilterRow({ metricName, values, stats, filter, onChange }: Metric
                 size="sm"
                 className="h-5 w-5 p-0"
                 onClick={handleRemove}
+                aria-label={t('playground.metricsFilter.removeFilter')}
               >
                 <X className="w-3 h-3" />
               </Button>
@@ -267,8 +271,9 @@ function MetricCategory({
   onFilterChange,
   defaultOpen = false,
 }: MetricCategoryProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  const defaultCategoryInfo = { label: category, icon: BarChart3 as LucideIcon, color: 'text-muted-foreground' };
+  const defaultCategoryInfo = { icon: BarChart3 as LucideIcon, color: 'text-muted-foreground' };
   const categoryInfo = METRIC_CATEGORIES[category] ?? defaultCategoryInfo;
   const Icon = categoryInfo.icon;
   const activeCount = countActiveMetricFiltersByCategory(activeFilters, category);
@@ -281,7 +286,7 @@ function MetricCategory({
       >
         <div className="flex items-center gap-2">
           <Icon className={cn('w-4 h-4', categoryInfo.color)} />
-          <span className="text-sm font-medium">{categoryInfo.label}</span>
+          <span className="text-sm font-medium">{t(`playground.metricsFilter.categories.${category}`, { defaultValue: category })}</span>
           {activeCount > 0 && (
             <Badge variant="secondary" className="h-4 px-1 text-[9px]">
               {activeCount}

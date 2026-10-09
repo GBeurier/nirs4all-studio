@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import i18n from "i18next";
 import type {
   PipelineStep,
   LegacyStepType,
@@ -122,7 +123,7 @@ export function usePipelineEditor(
 ): UsePipelineEditorReturn {
   const {
     initialSteps = [],
-    initialName = "New Pipeline",
+    initialName = i18n.t("pipelines.editor.newPipeline"),
     initialConfig = {},
     maxHistorySize = 50,
     pipelineId = "default",

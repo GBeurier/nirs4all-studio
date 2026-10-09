@@ -11,6 +11,7 @@
  */
 
 import { useMemo, useState, memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ChevronDown,
   ChevronUp,
@@ -133,6 +134,7 @@ export const SelectionStatsPanel = memo(function SelectionStatsPanel({
   compact = false,
   className,
 }: SelectionStatsPanelProps) {
+  const { t } = useTranslation();
   const { selectedSamples, pinnedSamples } = useSelection();
   const [isOpen, setIsOpen] = useState(true);
 
@@ -197,7 +199,7 @@ export const SelectionStatsPanel = memo(function SelectionStatsPanel({
         >
           <div className="flex items-center gap-2">
             <BarChart2 className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-medium">Selection Statistics</span>
+            <span className="text-xs font-medium">{t('playground.selection.stats.title')}</span>
             <Badge variant="secondary" className="h-4 px-1 text-[10px]">
               {selectedSamples.size}
             </Badge>
@@ -214,10 +216,10 @@ export const SelectionStatsPanel = memo(function SelectionStatsPanel({
         <div className="p-3 space-y-3 border-t">
           {/* Selection count */}
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Samples</span>
+            <span className="text-muted-foreground">{t('playground.selection.stats.samples')}</span>
             <div className="flex items-center gap-1.5">
               <span className="font-medium">
-                {selectedSamples.size} of {totalSamples}
+                {t('playground.selection.stats.countOf', { count: selectedSamples.size, total: totalSamples })}
               </span>
               <Badge variant="outline" className="h-4 px-1 text-[9px]">
                 {selectionPercentage}%
@@ -230,32 +232,32 @@ export const SelectionStatsPanel = memo(function SelectionStatsPanel({
             <>
               <div className="border-t pt-2">
                 <div className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wide">
-                  Y Statistics (vs All)
+                  {t('playground.selection.stats.yStats')}
                 </div>
                 <div className="space-y-1">
                   <StatComparison
-                    label="Mean"
+                    label={t('playground.selection.stats.mean')}
                     selectedValue={selectedStats.mean}
                     allValue={allStats.mean}
                   />
                   <StatComparison
-                    label="Median"
+                    label={t('playground.selection.stats.median')}
                     selectedValue={selectedStats.median}
                     allValue={allStats.median}
                   />
                   <StatComparison
-                    label="Std Dev"
+                    label={t('playground.selection.stats.std')}
                     selectedValue={selectedStats.std}
                     allValue={allStats.std}
                   />
                   <StatComparison
-                    label="Min"
+                    label={t('playground.selection.stats.min')}
                     selectedValue={selectedStats.min}
                     allValue={allStats.min}
                     showDiff={false}
                   />
                   <StatComparison
-                    label="Max"
+                    label={t('playground.selection.stats.max')}
                     selectedValue={selectedStats.max}
                     allValue={allStats.max}
                     showDiff={false}
@@ -265,7 +267,7 @@ export const SelectionStatsPanel = memo(function SelectionStatsPanel({
 
               {/* Range display */}
               <div className="bg-muted/50 rounded p-2">
-                <div className="text-[10px] text-muted-foreground mb-1">Y Range</div>
+                <div className="text-[10px] text-muted-foreground mb-1">{t('playground.selection.stats.yRange')}</div>
                 <div className="flex items-center gap-2">
                   <div className="h-1.5 flex-1 bg-muted rounded-full overflow-hidden relative">
                     {/* Full range */}
@@ -293,12 +295,12 @@ export const SelectionStatsPanel = memo(function SelectionStatsPanel({
             <div className="border-t pt-2">
               <div className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wide flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
-                Pinned ({pinnedSamples.size})
+                {t('playground.selection.stats.pinned', { count: pinnedSamples.size })}
               </div>
               <div className="text-xs">
-                <span className="text-muted-foreground">Mean: </span>
+                <span className="text-muted-foreground">{t('playground.selection.stats.meanLabel')}</span>
                 <span className="font-mono">{formatYValue(pinnedStats.mean, 2)}</span>
-                <span className="text-muted-foreground ml-2">Std: </span>
+                <span className="text-muted-foreground ml-2">{t('playground.selection.stats.stdLabel')}</span>
                 <span className="font-mono">{formatYValue(pinnedStats.std, 2)}</span>
               </div>
             </div>

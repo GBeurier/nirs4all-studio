@@ -1,4 +1,7 @@
+import i18n from 'i18next';
+
 import type { SavedSelection } from '@/context/useSelection';
+import { useTranslation } from 'react-i18next';
 
 export type SelectionImportFileType = 'json' | 'csv' | 'invalid';
 
@@ -49,33 +52,33 @@ export function getActiveSavedSelectionId(
 }
 
 export function buildSelectionSavedToastDescription(name: string, selectedCount: number): string {
-  return `"${name}" with ${selectedCount} samples`;
+  return i18n.t('playground.savedSelections.toast.savedDescription', { name, count: selectedCount });
 }
 
 export function buildSelectionLoadedToastDescription(
   selection: Pick<SavedSelection, 'name' | 'indices'>
 ): string {
-  return `"${selection.name}" - ${selection.indices.length} samples`;
+  return i18n.t('playground.savedSelections.toast.loadedDescription', { name: selection.name, count: selection.indices.length });
 }
 
 export function buildSelectionDeletedToastDescription(selection: Pick<SavedSelection, 'name'>): string {
-  return `"${selection.name}" removed`;
+  return i18n.t('playground.savedSelections.toast.deletedDescription', { name: selection.name });
 }
 
 export function buildSelectionsExportedToastDescription(selectionCount: number, filename: string): string {
-  return `${selectionCount} selection(s) saved to ${filename}`;
+  return i18n.t('playground.savedSelections.toast.exportedAll', { count: selectionCount, filename });
 }
 
 export function buildCurrentSelectionExportedToastDescription(selectedCount: number, filename: string): string {
-  return `${selectedCount} sample(s) saved to ${filename}`;
+  return i18n.t('playground.savedSelections.toast.exportedCurrent', { count: selectedCount, filename });
 }
 
 export function buildSaveSelectionDialogDescription(selectedCount: number): string {
-  return `Save the current ${selectedCount} selected sample${selectedCount !== 1 ? 's' : ''} for later use.`;
+  return i18n.t('playground.savedSelections.dialog.description', { count: selectedCount });
 }
 
 export function buildCompactSaveTooltipDescription(selectedCount: number): string {
-  return `Save the ${selectedCount} selected sample${selectedCount !== 1 ? 's' : ''} for later recall. Saved selections persist during this session.`;
+  return i18n.t('playground.savedSelections.compactTooltip', { count: selectedCount });
 }
 
 export function classifySelectionImportFile(filename: string): SelectionImportFileType {
@@ -92,15 +95,15 @@ export function buildJsonImportNotification({
   if (warnings.length > 0 || unmappedCount > 0) {
     return {
       level: 'warning',
-      title: 'Import completed with warnings',
-      description: warnings[0] || `${unmappedCount} sample IDs could not be mapped`,
+      title: i18n.t('playground.savedSelections.import.warningTitle'),
+      description: warnings[0] || i18n.t('playground.savedSelections.import.unmapped', { count: unmappedCount }),
     };
   }
 
   return {
     level: 'success',
-    title: 'Selections imported',
-    description: `${selectionCount} selection(s) added`,
+    title: i18n.t('playground.savedSelections.import.selectionsImported'),
+    description: i18n.t('playground.savedSelections.import.selectionsAdded', { count: selectionCount }),
   };
 }
 
@@ -112,30 +115,30 @@ export function buildCsvImportNotification({
   if (selectedCount === 0) {
     return {
       level: 'error',
-      title: 'Import failed',
-      description: 'No valid samples found in CSV',
+      title: i18n.t('playground.savedSelections.import.failed'),
+      description: i18n.t('playground.savedSelections.import.noValidSamples'),
     };
   }
 
   if (warnings.length > 0 || unmappedCount > 0) {
     return {
       level: 'warning',
-      title: 'Selection imported with warnings',
-      description: `${selectedCount} samples loaded, ${unmappedCount} unmapped`,
+      title: i18n.t('playground.savedSelections.import.selectionWarningTitle'),
+      description: i18n.t('playground.savedSelections.import.loadedUnmapped', { count: selectedCount, unmapped: unmappedCount }),
     };
   }
 
   return {
     level: 'success',
-    title: 'Selection imported',
-    description: `${selectedCount} samples selected`,
+    title: i18n.t('playground.savedSelections.import.selectionImported'),
+    description: i18n.t('playground.savedSelections.import.samplesSelected', { count: selectedCount }),
   };
 }
 
 export function buildInvalidImportFileNotification(): SavedSelectionNotification {
   return {
     level: 'error',
-    title: 'Invalid file format',
-    description: 'Please use .json or .csv files',
+    title: i18n.t('playground.savedSelections.import.invalidFormat'),
+    description: i18n.t('playground.savedSelections.import.useJsonOrCsv'),
   };
 }

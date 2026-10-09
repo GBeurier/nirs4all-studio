@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { motion } from "@/lib/motion";
 import {
@@ -54,6 +55,14 @@ export function PipelinesPageHeader({
   searchQuery,
   viewMode,
 }: PipelinesPageHeaderProps) {
+  const { t } = useTranslation();
+  const searchPlaceholder =
+    pageView === "templates"
+      ? t("pipelines.chrome.searchTemplates")
+      : pageView === "recent"
+        ? t("pipelines.chrome.searchRuns")
+        : t("pipelines.chrome.searchPipelines");
+
   return (
     <div
       className={cn(
@@ -62,17 +71,12 @@ export function PipelinesPageHeader({
       )}
     >
       <div className="flex items-center gap-4">
-        <h1 className="text-2xl font-bold tracking-tight">Pipelines</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("pipelines.title")}</h1>
         <div className="relative w-full sm:w-[240px] ml-4">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder={
-              pageView === "templates"
-                ? "Search templates..."
-                : pageView === "recent"
-                  ? "Search runs..."
-                  : "Search pipelines..."
-            }
+            aria-label={searchPlaceholder}
+            placeholder={searchPlaceholder}
             value={searchQuery}
             onChange={(event) => onSearchChange(event.target.value)}
             className="h-9 pl-9 bg-background/50 border-border/40"
@@ -91,7 +95,8 @@ export function PipelinesPageHeader({
                 "text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground",
                 viewMode === "grid" && "bg-muted text-foreground hover:bg-muted"
               )}
-              aria-label="Grid view"
+              aria-label={t("pipelines.chrome.gridView")}
+              aria-pressed={viewMode === "grid"}
             >
               <LayoutGrid className="h-4 w-4" />
             </button>
@@ -103,7 +108,8 @@ export function PipelinesPageHeader({
                 "text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground",
                 viewMode === "list" && "bg-muted text-foreground hover:bg-muted"
               )}
-              aria-label="List view"
+              aria-label={t("pipelines.chrome.listView")}
+              aria-pressed={viewMode === "list"}
             >
               <List className="h-4 w-4" />
             </button>
@@ -112,7 +118,7 @@ export function PipelinesPageHeader({
 
         <Button variant="outline" size="sm" onClick={onImportClick}>
           <Upload className="mr-2 h-4 w-4" />
-          Import
+          {t("pipelines.import")}
         </Button>
         <Button size="sm" asChild>
           <Link to="/pipelines/new">
@@ -160,29 +166,30 @@ export function PipelinesPageTabs({
   pageView,
   sortBy,
 }: PipelinesPageTabsProps) {
+  const { t } = useTranslation();
   const collectionViews: CollectionViewDefinition[] = [
     {
       id: "my-pipelines",
       icon: Workflow,
-      label: "My Pipelines",
+      label: t("pipelines.tabs.myPipelines"),
       count: counts.saved,
     },
     {
       id: "favorites",
       icon: Star,
-      label: "Favorites",
+      label: t("pipelines.tabs.favorites"),
       count: counts.favorites,
     },
     {
       id: "templates",
       icon: Sparkles,
-      label: "Templates",
+      label: t("pipelines.chrome.tabTemplates"),
       count: counts.templates,
     },
     {
       id: "recent",
       icon: Clock3,
-      label: "Recently Run",
+      label: t("pipelines.chrome.tabRecent"),
       count: counts.recent,
     },
   ];
@@ -219,15 +226,15 @@ export function PipelinesPageTabs({
         <div className="flex flex-wrap items-center justify-between gap-2 lg:justify-end">
           {pageView !== "recent" && pageView !== "templates" && (
             <Select value={sortBy} onValueChange={(value) => onSortChange(value as SortBy)}>
-              <SelectTrigger className="h-9 w-[140px] bg-background/50">
+              <SelectTrigger className="h-9 w-[140px] bg-background/50" aria-label={t("pipelines.chrome.sortBy")}>
                 <ArrowUpDown className="mr-2 h-4 w-4" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="lastModified">Last modified</SelectItem>
-                <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="runCount">Most runs</SelectItem>
-                <SelectItem value="steps">Most steps</SelectItem>
+                <SelectItem value="lastModified">{t("pipelines.sort.lastModified")}</SelectItem>
+                <SelectItem value="name">{t("pipelines.sort.name")}</SelectItem>
+                <SelectItem value="runCount">{t("pipelines.sort.mostRuns")}</SelectItem>
+                <SelectItem value="steps">{t("pipelines.sort.mostSteps")}</SelectItem>
               </SelectContent>
             </Select>
           )}

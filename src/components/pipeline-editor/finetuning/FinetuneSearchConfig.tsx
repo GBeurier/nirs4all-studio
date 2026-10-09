@@ -3,6 +3,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Info,
   ChevronDown,
@@ -43,6 +44,7 @@ export function FinetuneSearchConfig({
   config,
   onUpdate,
 }: FinetuneSearchConfigProps) {
+  const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const updateOptionalString = (
     key: "storage" | "study_name",
@@ -57,13 +59,13 @@ export function FinetuneSearchConfig({
       <div className="space-y-4">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label className="text-sm">Number of Trials</Label>
+            <Label className="text-sm">{t("pipelineEditor.finetune.search.numberOfTrials")}</Label>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
               </TooltipTrigger>
               <TooltipContent className="max-w-48">
-                How many configurations Optuna will try.
+                {t("pipelineEditor.finetune.search.numberOfTrialsHint")}
               </TooltipContent>
             </Tooltip>
           </div>
@@ -94,13 +96,13 @@ export function FinetuneSearchConfig({
 
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label className="text-sm">Timeout</Label>
+            <Label className="text-sm">{t("pipelineEditor.finetune.search.timeout")}</Label>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
               </TooltipTrigger>
               <TooltipContent className="max-w-48">
-                Maximum time for optimization.
+                {t("pipelineEditor.finetune.search.timeoutHint")}
               </TooltipContent>
             </Tooltip>
           </div>
@@ -115,7 +117,7 @@ export function FinetuneSearchConfig({
                     : undefined,
                 })
               }
-              placeholder="No limit"
+              placeholder={t("pipelineEditor.finetune.search.noLimit")}
               min={60}
               className="font-mono pr-10"
             />
@@ -123,12 +125,12 @@ export function FinetuneSearchConfig({
           </div>
           <div className="flex flex-wrap gap-1">
             {[
-              { label: "1h", value: 3600 },
-              { label: "2h", value: 7200 },
-              { label: "None", value: undefined },
+              { id: "1h", label: "1h", value: 3600 },
+              { id: "2h", label: "2h", value: 7200 },
+              { id: "none", label: t("common.none"), value: undefined },
             ].map((opt) => (
               <Button
-                key={opt.label}
+                key={opt.id}
                 variant={config.timeout === opt.value ? "secondary" : "ghost"}
                 size="sm"
                 className="h-6 px-2 text-xs"
@@ -149,7 +151,7 @@ export function FinetuneSearchConfig({
             size="sm"
             className="w-full justify-between h-8 text-muted-foreground"
           >
-            <span className="text-xs">Advanced Settings</span>
+            <span className="text-xs">{t("pipelineEditor.finetune.search.advanced")}</span>
             {showAdvanced ? (
               <ChevronUp className="h-4 w-4" />
             ) : (
@@ -162,16 +164,16 @@ export function FinetuneSearchConfig({
           {/* Approach */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Label className="text-sm">Optimization Approach</Label>
+              <Label className="text-sm">{t("pipelineEditor.finetune.search.approach")}</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-48">
-                  <p className="font-medium">Grouped</p>
-                  <p className="text-xs">Same params for all CV folds</p>
-                  <p className="font-medium mt-2">Individual</p>
-                  <p className="text-xs">Different params per fold</p>
+                  <p className="font-medium">{t("pipelineEditor.finetune.search.grouped")}</p>
+                  <p className="text-xs">{t("pipelineEditor.finetune.search.groupedHint")}</p>
+                  <p className="font-medium mt-2">{t("pipelineEditor.finetune.search.individual")}</p>
+                  <p className="text-xs">{t("pipelineEditor.finetune.search.individualHint")}</p>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -188,13 +190,13 @@ export function FinetuneSearchConfig({
                 <SelectItem value="grouped">
                   <div className="flex items-center gap-2">
                     <Target className="h-4 w-4" />
-                    <span>Grouped</span>
+                    <span>{t("pipelineEditor.finetune.search.grouped")}</span>
                   </div>
                 </SelectItem>
                 <SelectItem value="individual">
                   <div className="flex items-center gap-2">
                     <Zap className="h-4 w-4" />
-                    <span>Individual</span>
+                    <span>{t("pipelineEditor.finetune.search.individual")}</span>
                   </div>
                 </SelectItem>
               </SelectContent>
@@ -204,16 +206,16 @@ export function FinetuneSearchConfig({
           {/* Evaluation mode */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Label className="text-sm">Evaluation Mode</Label>
+              <Label className="text-sm">{t("pipelineEditor.finetune.search.evalMode")}</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-48">
-                  <p className="font-medium">Best Score</p>
-                  <p className="text-xs">Use best fold score</p>
-                  <p className="font-medium mt-2">Mean Score</p>
-                  <p className="text-xs">Average across folds</p>
+                  <p className="font-medium">{t("pipelineEditor.finetune.search.bestScore")}</p>
+                  <p className="text-xs">{t("pipelineEditor.finetune.search.bestScoreHint")}</p>
+                  <p className="font-medium mt-2">{t("pipelineEditor.finetune.search.meanScore")}</p>
+                  <p className="text-xs">{t("pipelineEditor.finetune.search.meanScoreHint")}</p>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -227,8 +229,8 @@ export function FinetuneSearchConfig({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-popover">
-                <SelectItem value="best">Best Score</SelectItem>
-                <SelectItem value="mean">Mean Score</SelectItem>
+                <SelectItem value="best">{t("pipelineEditor.finetune.search.bestScore")}</SelectItem>
+                <SelectItem value="mean">{t("pipelineEditor.finetune.search.meanScore")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -237,26 +239,24 @@ export function FinetuneSearchConfig({
           <div className="space-y-3 rounded-lg border border-border/60 p-3">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <Label className="text-sm">Optimizer Persistence</Label>
+                <Label className="text-sm">{t("pipelineEditor.finetune.search.persistence")}</Label>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-64">
-                    Persists Optuna optimizer state through nirs4all using the
-                    canonical finetune_params storage and study_name keywords.
+                    {t("pipelineEditor.finetune.search.persistenceTooltip")}
                   </TooltipContent>
                 </Tooltip>
               </div>
               <p className="text-xs text-muted-foreground">
-                Leave empty for an in-memory study. nirs4all validates the URI
-                and study semantics when the pipeline runs.
+                {t("pipelineEditor.finetune.search.persistenceHelp")}
               </p>
             </div>
 
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground" htmlFor="finetune-storage">
-                Optuna storage URI
+                {t("pipelineEditor.finetune.search.storageUri")}
               </Label>
               <Input
                 id="finetune-storage"
@@ -269,7 +269,7 @@ export function FinetuneSearchConfig({
 
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground" htmlFor="finetune-study-name">
-                Optuna study name
+                {t("pipelineEditor.finetune.search.studyName")}
               </Label>
               <Input
                 id="finetune-study-name"
@@ -288,10 +288,7 @@ export function FinetuneSearchConfig({
         <Lightbulb className="h-4 w-4 text-purple-500 flex-shrink-0 mt-0.5" />
         <div className="text-xs text-muted-foreground">
           <p>
-            Optuna uses Bayesian optimization to intelligently explore the
-            parameter space. It will typically find good solutions in ~
-            {config.n_trials} trials rather than exhaustively testing all
-            combinations.
+            {t("pipelineEditor.finetune.search.infoBox", { trials: config.n_trials })}
           </p>
         </div>
       </div>

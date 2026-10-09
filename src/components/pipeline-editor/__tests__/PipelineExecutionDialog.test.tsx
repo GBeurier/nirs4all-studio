@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "@/lib/i18n";
 import { PipelineExecutionDialog } from "../PipelineExecutionDialog";
 import type { PipelineStep } from "../types";
 

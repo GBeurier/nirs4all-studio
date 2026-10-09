@@ -7,6 +7,7 @@
  * @see docs/_internals/implementation_roadmap.md Task 4.2
  */
 
+import i18n from "i18next";
 import type { ParameterDefinition } from "@/data/nodes/types";
 import type { PipelineStep } from "../types";
 import type {
@@ -72,10 +73,10 @@ export function validateParameter(
         createParameterIssue(
           "PARAM_REQUIRED",
           "error",
-          `Parameter "${getParamLabel(definition)}" is required`,
+          i18n.t("pipelineEditor.validation.param.required", { label: getParamLabel(definition) }),
           location,
           {
-            suggestion: `Provide a value for "${getParamLabel(definition)}"`,
+            suggestion: i18n.t("pipelineEditor.validation.param.requiredSuggestion", { label: getParamLabel(definition) }),
           }
         )
       );
@@ -139,11 +140,11 @@ function validateParameterType(
           createParameterIssue(
             "PARAM_TYPE_MISMATCH",
             "error",
-            `Expected integer but got ${actualType}`,
+            i18n.t("pipelineEditor.validation.param.expectedInt", { actual: actualType }),
             location,
             {
-              details: `Value "${value}" is not a valid integer`,
-              suggestion: "Enter a whole number without decimals",
+              details: i18n.t("pipelineEditor.validation.param.expectedIntDetails", { value: String(value) }),
+              suggestion: i18n.t("pipelineEditor.validation.param.expectedIntSuggestion"),
             }
           )
         );
@@ -156,11 +157,11 @@ function validateParameterType(
           createParameterIssue(
             "PARAM_TYPE_MISMATCH",
             "error",
-            `Expected number but got ${actualType}`,
+            i18n.t("pipelineEditor.validation.param.expectedNumber", { actual: actualType }),
             location,
             {
-              details: `Value "${value}" is not a valid number`,
-              suggestion: "Enter a valid numeric value",
+              details: i18n.t("pipelineEditor.validation.param.expectedNumberDetails", { value: String(value) }),
+              suggestion: i18n.t("pipelineEditor.validation.param.expectedNumberSuggestion"),
             }
           )
         );
@@ -173,7 +174,7 @@ function validateParameterType(
           createParameterIssue(
             "PARAM_TYPE_MISMATCH",
             "error",
-            `Expected boolean but got ${actualType}`,
+            i18n.t("pipelineEditor.validation.param.expectedBoolean", { actual: actualType }),
             location
           )
         );
@@ -186,7 +187,7 @@ function validateParameterType(
           createParameterIssue(
             "PARAM_TYPE_MISMATCH",
             "error",
-            `Expected string but got ${actualType}`,
+            i18n.t("pipelineEditor.validation.param.expectedString", { actual: actualType }),
             location
           )
         );
@@ -199,7 +200,7 @@ function validateParameterType(
           createParameterIssue(
             "PARAM_TYPE_MISMATCH",
             "error",
-            `Expected array but got ${actualType}`,
+            i18n.t("pipelineEditor.validation.param.expectedArray", { actual: actualType }),
             location
           )
         );
@@ -212,7 +213,7 @@ function validateParameterType(
           createParameterIssue(
             "PARAM_TYPE_MISMATCH",
             "error",
-            `Expected object but got ${actualType}`,
+            i18n.t("pipelineEditor.validation.param.expectedObject", { actual: actualType }),
             location
           )
         );
@@ -243,11 +244,11 @@ function validateNumericRange(
       createParameterIssue(
         "PARAM_OUT_OF_RANGE",
         "error",
-        `${paramLabel} must be at least ${definition.min}`,
+        i18n.t("pipelineEditor.validation.param.min", { label: paramLabel, min: definition.min }),
         location,
         {
-          details: `Current value: ${value}, minimum: ${definition.min}`,
-          suggestion: `Set value to ${definition.min} or higher`,
+          details: i18n.t("pipelineEditor.validation.param.minDetails", { value, min: definition.min }),
+          suggestion: i18n.t("pipelineEditor.validation.param.minSuggestion", { min: definition.min }),
           quickFix: "set_min",
         }
       )
@@ -259,11 +260,11 @@ function validateNumericRange(
       createParameterIssue(
         "PARAM_OUT_OF_RANGE",
         "error",
-        `${paramLabel} must be at most ${definition.max}`,
+        i18n.t("pipelineEditor.validation.param.max", { label: paramLabel, max: definition.max }),
         location,
         {
-          details: `Current value: ${value}, maximum: ${definition.max}`,
-          suggestion: `Set value to ${definition.max} or lower`,
+          details: i18n.t("pipelineEditor.validation.param.maxDetails", { value, max: definition.max }),
+          suggestion: i18n.t("pipelineEditor.validation.param.maxSuggestion", { max: definition.max }),
           quickFix: "set_max",
         }
       )
@@ -278,11 +279,11 @@ function validateNumericRange(
         createParameterIssue(
           "PARAM_INVALID_VALUE",
           "warning",
-          `${paramLabel} should be a multiple of ${definition.step}`,
+          i18n.t("pipelineEditor.validation.param.multiple", { label: paramLabel, step: definition.step }),
           location,
           {
-            details: `Current value: ${value}`,
-            suggestion: `Use a value like ${Math.round(value / definition.step) * definition.step}`,
+            details: i18n.t("pipelineEditor.validation.param.multipleDetails", { value }),
+            suggestion: i18n.t("pipelineEditor.validation.param.multipleSuggestion", { value: Math.round(value / definition.step) * definition.step }),
           }
         )
       );
@@ -308,10 +309,10 @@ function validateStringConstraints(
       createParameterIssue(
         "PARAM_LENGTH_EXCEEDED",
         "error",
-        `${paramLabel} must be at least ${definition.minLength} characters`,
+        i18n.t("pipelineEditor.validation.param.stringMinLength", { label: paramLabel, count: definition.minLength }),
         location,
         {
-          details: `Current length: ${value.length}`,
+          details: i18n.t("pipelineEditor.validation.param.currentLength", { length: value.length }),
         }
       )
     );
@@ -322,10 +323,10 @@ function validateStringConstraints(
       createParameterIssue(
         "PARAM_LENGTH_EXCEEDED",
         "error",
-        `${paramLabel} must be at most ${definition.maxLength} characters`,
+        i18n.t("pipelineEditor.validation.param.stringMaxLength", { label: paramLabel, count: definition.maxLength }),
         location,
         {
-          details: `Current length: ${value.length}`,
+          details: i18n.t("pipelineEditor.validation.param.currentLength", { length: value.length }),
         }
       )
     );
@@ -338,10 +339,10 @@ function validateStringConstraints(
         createParameterIssue(
           "PARAM_PATTERN_MISMATCH",
           "error",
-          `${paramLabel} has invalid format`,
+          i18n.t("pipelineEditor.validation.param.patternMismatch", { label: paramLabel }),
           location,
           {
-            details: `Value "${value}" doesn't match pattern: ${definition.pattern}`,
+            details: i18n.t("pipelineEditor.validation.param.patternMismatchDetails", { value, pattern: definition.pattern }),
           }
         )
       );
@@ -367,10 +368,10 @@ function validateArrayConstraints(
       createParameterIssue(
         "PARAM_LENGTH_EXCEEDED",
         "error",
-        `${paramLabel} must have at least ${definition.minLength} items`,
+        i18n.t("pipelineEditor.validation.param.arrayMinLength", { label: paramLabel, count: definition.minLength }),
         location,
         {
-          details: `Current count: ${value.length}`,
+          details: i18n.t("pipelineEditor.validation.param.currentCount", { length: value.length }),
         }
       )
     );
@@ -381,10 +382,10 @@ function validateArrayConstraints(
       createParameterIssue(
         "PARAM_LENGTH_EXCEEDED",
         "error",
-        `${paramLabel} must have at most ${definition.maxLength} items`,
+        i18n.t("pipelineEditor.validation.param.arrayMaxLength", { label: paramLabel, count: definition.maxLength }),
         location,
         {
-          details: `Current count: ${value.length}`,
+          details: i18n.t("pipelineEditor.validation.param.currentCount", { length: value.length }),
         }
       )
     );
@@ -415,11 +416,11 @@ function validateSelectValue(
       createParameterIssue(
         "PARAM_INVALID_VALUE",
         "error",
-        `"${value}" is not a valid option for ${paramLabel}`,
+        i18n.t("pipelineEditor.validation.param.invalidOption", { value: String(value), label: paramLabel }),
         location,
         {
-          details: `Valid options: ${validValues.join(", ")}`,
-          suggestion: `Choose from: ${definition.options.map((o) => o.label).join(", ")}`,
+          details: i18n.t("pipelineEditor.validation.param.validOptions", { options: validValues.join(", ") }),
+          suggestion: i18n.t("pipelineEditor.validation.param.chooseFrom", { options: definition.options.map((o) => o.label).join(", ") }),
         }
       )
     );

@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeAll, describe, expect, it } from "vitest";
+import i18n from "i18next";
+import "@/lib/i18n";
 import type { ParameterDefinition } from "@/data/nodes";
 import type { StepType } from "../../types";
 import {
@@ -30,6 +33,10 @@ function createRegistry(
     getSweepableParams: (_type, name) => sweepableByName[name] ?? [],
   };
 }
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 describe("createStepMetadataCatalog", () => {
   it("prefers registry entries, quarantines stale aliases, and appends legacy-only fallback entries", () => {

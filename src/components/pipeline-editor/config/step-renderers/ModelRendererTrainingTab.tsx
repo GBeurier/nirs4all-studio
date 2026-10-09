@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,15 @@ interface ModelTrainingTabProps {
   onUpdate: (updates: Partial<PipelineStep>) => void;
 }
 
+const TRAINING_PRESETS = [
+  { id: "quick", epochs: 20, batch: 64, lr: 0.01, patience: 5 },
+  { id: "standard", epochs: 100, batch: 32, lr: 0.001, patience: 20 },
+  { id: "long", epochs: 500, batch: 16, lr: 0.0001, patience: 50 },
+  { id: "fineTune", epochs: 50, batch: 32, lr: 0.00001, patience: 10 },
+] as const;
+
 export function ModelTrainingTab({ step, onUpdate }: ModelTrainingTabProps) {
+  const { t } = useTranslation();
   const config = step.trainingConfig ?? DEFAULT_TRAINING_CONFIG;
 
   const handleUpdate = (updates: Partial<TrainingConfig>) => {
@@ -54,13 +63,13 @@ export function ModelTrainingTab({ step, onUpdate }: ModelTrainingTabProps) {
       <div className="space-y-4">
         <Label className="text-sm font-medium flex items-center gap-2">
           <GraduationCap className="h-4 w-4" />
-          Training Configuration
+          {t("pipelineEditor.config.training.title")}
         </Label>
 
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Epochs</Label>
+              <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.training.epochs")}</Label>
               <Input
                 type="number"
                 value={config.epochs}
@@ -72,7 +81,7 @@ export function ModelTrainingTab({ step, onUpdate }: ModelTrainingTabProps) {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Batch Size</Label>
+              <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.training.batchSize")}</Label>
               <Input
                 type="number"
                 value={config.batch_size}
@@ -88,7 +97,7 @@ export function ModelTrainingTab({ step, onUpdate }: ModelTrainingTabProps) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">
-                Learning Rate
+                {t("pipelineEditor.config.training.learningRate")}
               </Label>
               <Input
                 type="number"
@@ -105,7 +114,7 @@ export function ModelTrainingTab({ step, onUpdate }: ModelTrainingTabProps) {
             </div>
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">
-                Patience
+                {t("pipelineEditor.config.training.patience")}
               </Label>
               <Input
                 type="number"
@@ -120,7 +129,7 @@ export function ModelTrainingTab({ step, onUpdate }: ModelTrainingTabProps) {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Optimizer</Label>
+            <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.training.optimizer")}</Label>
             <div onWheel={handleOptimizerWheel}>
               <Select
                 value={config.optimizer}
@@ -146,40 +155,11 @@ export function ModelTrainingTab({ step, onUpdate }: ModelTrainingTabProps) {
       <Separator />
 
       <div className="space-y-2">
-        <Label className="text-sm font-medium">Quick Presets</Label>
+        <Label className="text-sm font-medium">{t("pipelineEditor.config.training.presets")}</Label>
         <div className="grid grid-cols-2 gap-2">
-          {[
-            {
-              label: "Quick",
-              epochs: 20,
-              batch: 64,
-              lr: 0.01,
-              patience: 5,
-            },
-            {
-              label: "Standard",
-              epochs: 100,
-              batch: 32,
-              lr: 0.001,
-              patience: 20,
-            },
-            {
-              label: "Long",
-              epochs: 500,
-              batch: 16,
-              lr: 0.0001,
-              patience: 50,
-            },
-            {
-              label: "Fine-tune",
-              epochs: 50,
-              batch: 32,
-              lr: 0.00001,
-              patience: 10,
-            },
-          ].map((preset) => (
+          {TRAINING_PRESETS.map((preset) => (
             <Button
-              key={preset.label}
+              key={preset.id}
               variant="outline"
               size="sm"
               className="h-auto py-1.5 justify-start text-left"
@@ -193,9 +173,9 @@ export function ModelTrainingTab({ step, onUpdate }: ModelTrainingTabProps) {
               }
             >
               <div>
-                <div className="font-medium text-xs">{preset.label}</div>
+                <div className="font-medium text-xs">{t(`pipelineEditor.config.training.preset.${preset.id}`)}</div>
                 <div className="text-[10px] text-muted-foreground">
-                  {preset.epochs}ep, lr={preset.lr}
+                  {t("pipelineEditor.config.training.presetSummary", { epochs: preset.epochs, lr: preset.lr })}
                 </div>
               </div>
             </Button>

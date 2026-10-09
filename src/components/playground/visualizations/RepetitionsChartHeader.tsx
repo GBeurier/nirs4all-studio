@@ -33,19 +33,20 @@ import type {
   RepetitionsZoomInfo,
 } from '@/lib/playground/repetitionsChartData';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 import { DiffModeControls } from './DiffModeControls';
 
 type RepetitionsRendererType = 'recharts' | 'webgl';
 
-const SORT_OPTIONS: { value: RepetitionsSortOption; label: string; description: string }[] = [
-  { value: 'index', label: 'Original Index', description: 'Original sample order' },
-  { value: 'name', label: 'Name', description: 'Alphabetical by bio sample' },
-  { value: 'distance', label: 'Distance ↑', description: 'Lowest distance first' },
-  { value: 'distance_desc', label: 'Distance ↓', description: 'Highest distance first' },
-  { value: 'variance', label: 'Variance ↑', description: 'Lowest within-group variance first' },
-  { value: 'variance_desc', label: 'Variance ↓', description: 'Highest within-group variance first' },
-  { value: 'color', label: 'Color Value', description: 'By color/target value' },
-  { value: 'metadata_column', label: 'Metadata Column', description: 'Group samples sharing the same metadata value on the same X' },
+const SORT_OPTIONS: { value: RepetitionsSortOption; labelKey: string; descriptionKey: string }[] = [
+  { value: 'index', labelKey: 'playground.charts.repetitions.sort.index.label', descriptionKey: 'playground.charts.repetitions.sort.index.description' },
+  { value: 'name', labelKey: 'playground.charts.repetitions.sort.name.label', descriptionKey: 'playground.charts.repetitions.sort.name.description' },
+  { value: 'distance', labelKey: 'playground.charts.repetitions.sort.distance.label', descriptionKey: 'playground.charts.repetitions.sort.distance.description' },
+  { value: 'distance_desc', labelKey: 'playground.charts.repetitions.sort.distanceDesc.label', descriptionKey: 'playground.charts.repetitions.sort.distanceDesc.description' },
+  { value: 'variance', labelKey: 'playground.charts.repetitions.sort.variance.label', descriptionKey: 'playground.charts.repetitions.sort.variance.description' },
+  { value: 'variance_desc', labelKey: 'playground.charts.repetitions.sort.varianceDesc.label', descriptionKey: 'playground.charts.repetitions.sort.varianceDesc.description' },
+  { value: 'color', labelKey: 'playground.charts.repetitions.sort.color.label', descriptionKey: 'playground.charts.repetitions.sort.color.description' },
+  { value: 'metadata_column', labelKey: 'playground.charts.repetitions.sort.metadataColumn.label', descriptionKey: 'playground.charts.repetitions.sort.metadataColumn.description' },
 ];
 
 export interface RepetitionsChartHeaderProps {
@@ -95,15 +96,19 @@ export function RepetitionsChartHeader({
   onConfigureRepetitions,
   onExport,
 }: RepetitionsChartHeaderProps) {
-  const selectedSortLabel = SORT_OPTIONS.find(option => option.value === sortBy)?.label;
+  const { t } = useTranslation();
+  const selectedSortLabelKey = SORT_OPTIONS.find(option => option.value === sortBy)?.labelKey;
+  const selectedSortLabel = selectedSortLabelKey ? t(selectedSortLabelKey) : undefined;
 
   return (
     <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
       <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
         <Repeat className="w-4 h-4 text-primary" />
-        Repetitions
+        {t('playground.charts.repetitions.title')}
         <Badge variant="secondary" className="text-[10px] font-normal">
-          {hasRepetitions ? `${bioSampleCount} bio samples` : `${groupCount} groups`}
+          {hasRepetitions
+            ? t('playground.charts.repetitions.bioSamples', { count: bioSampleCount })
+            : t('playground.charts.repetitions.groups', { count: groupCount })}
         </Badge>
         {!hasRepetitions && onConfigureRepetitions && (
           <Button
@@ -113,11 +118,11 @@ export function RepetitionsChartHeader({
             onClick={onConfigureRepetitions}
           >
             <Settings2 className="w-3 h-3 mr-1" />
-            Configure
+            {t('playground.charts.repetitions.configure')}
           </Button>
         )}
         {isBusy && (
-          <span className="text-[10px] text-muted-foreground animate-pulse">Computing...</span>
+          <span className="text-[10px] text-muted-foreground animate-pulse">{t('playground.charts.repetitions.computing')}</span>
         )}
       </h3>
 
@@ -145,6 +150,7 @@ export function RepetitionsChartHeader({
                     variant={sortBy !== 'index' ? 'secondary' : 'ghost'}
                     size="sm"
                     className="h-7 px-2 text-xs gap-1"
+                    aria-label={t('playground.charts.repetitions.sortSamplesBy')}
                   >
                     <ArrowUpDown className="w-3 h-3" />
                     {!compact && selectedSortLabel}
@@ -152,13 +158,13 @@ export function RepetitionsChartHeader({
                 </DropdownMenuTrigger>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">Sort samples by</p>
+                <p className="text-xs">{t('playground.charts.repetitions.sortSamplesBy')}</p>
               </TooltipContent>
             </TooltipUI>
           </TooltipProvider>
           <DropdownMenuContent side="bottom" align="start" className="w-48">
             <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-              Sort Samples By
+              {t('playground.charts.repetitions.sortSamplesByLabel')}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuRadioGroup
@@ -174,8 +180,8 @@ export function RepetitionsChartHeader({
                     className="text-xs"
                   >
                     <div className="flex flex-col">
-                      <span>{option.label}</span>
-                      <span className="text-[10px] text-muted-foreground">{option.description}</span>
+                      <span>{t(option.labelKey)}</span>
+                      <span className="text-[10px] text-muted-foreground">{t(option.descriptionKey)}</span>
                     </div>
                   </DropdownMenuRadioItem>
                 );
@@ -188,12 +194,12 @@ export function RepetitionsChartHeader({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="secondary" size="sm" className="h-7 px-2 text-xs gap-1">
-                {metadataSortColumn ?? 'Column…'}
+                {metadataSortColumn ?? t('playground.charts.repetitions.columnPlaceholder')}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="bottom" align="start" className="w-48 max-h-72 overflow-y-auto">
               <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                Group / sort by column
+                {t('playground.charts.repetitions.groupSortByColumn')}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuRadioGroup
@@ -219,12 +225,13 @@ export function RepetitionsChartHeader({
                   size="sm"
                   className="h-7 w-7 p-0 rounded-r-none border-r"
                   onClick={() => onRendererTypeChange('recharts')}
+                  aria-label={t('playground.charts.repetitions.rendererSvg')}
                 >
                   <Monitor className="w-3.5 h-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">SVG renderer (Recharts)</p>
+                <p className="text-xs">{t('playground.charts.repetitions.rendererSvg')}</p>
               </TooltipContent>
             </TooltipUI>
 
@@ -235,12 +242,13 @@ export function RepetitionsChartHeader({
                   size="sm"
                   className="h-7 w-7 p-0 rounded-l-none border-l"
                   onClick={() => onRendererTypeChange('webgl')}
+                  aria-label={t('playground.charts.repetitions.rendererWebgl')}
                 >
                   <Zap className={`w-3.5 h-3.5 ${rendererType === 'webgl' ? 'text-yellow-500' : ''}`} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">WebGL (GPU accelerated)</p>
+                <p className="text-xs">{t('playground.charts.repetitions.rendererWebgl')}</p>
               </TooltipContent>
             </TooltipUI>
           </div>
@@ -254,12 +262,13 @@ export function RepetitionsChartHeader({
                 size="sm"
                 className="h-7 px-2"
                 onClick={() => onEnableHoverChange(!enableHover)}
+                aria-label={enableHover ? t('playground.charts.repetitions.hoverEnabled') : t('playground.charts.repetitions.hoverDisabled')}
               >
                 <MousePointer2 className={cn('w-3.5 h-3.5', enableHover && 'text-primary')} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p className="text-xs">{enableHover ? 'Hover enabled' : 'Hover disabled'}</p>
+              <p className="text-xs">{enableHover ? t('playground.charts.repetitions.hoverEnabled') : t('playground.charts.repetitions.hoverDisabled')}</p>
             </TooltipContent>
           </TooltipUI>
         </TooltipProvider>
@@ -274,8 +283,8 @@ export function RepetitionsChartHeader({
                 </Badge>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">Showing {zoomInfo.visible} of {zoomInfo.total} samples ({zoomInfo.level}%)</p>
-                <p className="text-[10px] text-muted-foreground">Double-click to reset zoom</p>
+                <p className="text-xs">{t('playground.charts.repetitions.zoomShowing', { visible: zoomInfo.visible, total: zoomInfo.total, level: zoomInfo.level })}</p>
+                <p className="text-[10px] text-muted-foreground">{t('playground.charts.repetitions.zoomReset')}</p>
               </TooltipContent>
             </TooltipUI>
           </TooltipProvider>
@@ -292,12 +301,13 @@ export function RepetitionsChartHeader({
                   size="sm"
                   className="h-7 px-2"
                   onClick={onConfigureRepetitions}
+                  aria-label={t('playground.charts.repetitions.configureDetection')}
                 >
                   <Settings2 className="w-3 h-3" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">Configure repetition detection</p>
+                <p className="text-xs">{t('playground.charts.repetitions.configureDetection')}</p>
               </TooltipContent>
             </TooltipUI>
           </TooltipProvider>
@@ -306,12 +316,12 @@ export function RepetitionsChartHeader({
         <TooltipProvider delayDuration={200}>
           <TooltipUI>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onExport}>
+              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onExport} aria-label={t('playground.charts.repetitions.exportData')}>
                 <Download className="w-3 h-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p className="text-xs">Export data</p>
+              <p className="text-xs">{t('playground.charts.repetitions.exportData')}</p>
             </TooltipContent>
           </TooltipUI>
         </TooltipProvider>

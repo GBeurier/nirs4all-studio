@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,7 @@ export function ImportPipelineModal({
   onOpenChange,
   onImport,
 }: ImportPipelineModalProps) {
+  const { t } = useTranslation();
   const [jsonContent, setJsonContent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,18 +61,18 @@ export function ImportPipelineModal({
       try {
         JSON.parse(content);
       } catch {
-        setError("Invalid JSON format");
+        setError(t("pipelines.modals.import.invalidJson"));
       }
     };
     reader.onerror = () => {
-      setError("Failed to read file");
+      setError(t("pipelines.modals.import.readFailed"));
     };
     reader.readAsText(file);
-  }, []);
+  }, [t]);
 
   const handleImport = async () => {
     if (!jsonContent.trim()) {
-      setError("Please provide pipeline JSON content");
+      setError(t("pipelines.modals.import.emptyContent"));
       return;
     }
 
@@ -83,10 +85,10 @@ export function ImportPipelineModal({
         setJsonContent("");
         onOpenChange(false);
       } else {
-        setError("Failed to import pipeline");
+        setError(t("pipelines.modals.import.failed"));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
+      setError(err instanceof Error ? err.message : t("pipelines.modals.import.importFailed"));
     } finally {
       setLoading(false);
     }
@@ -104,17 +106,17 @@ export function ImportPipelineModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5 text-primary" />
-            Import Pipeline
+            {t("pipelines.importPipeline")}
           </DialogTitle>
           <DialogDescription>
-            Import a pipeline from a JSON file. The pipeline will be added to your library.
+            {t("pipelines.modals.import.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           {/* File upload */}
           <div className="space-y-2">
-            <Label htmlFor="pipeline-file">Upload JSON file</Label>
+            <Label htmlFor="pipeline-file">{t("pipelines.modals.import.uploadLabel")}</Label>
             <Input
               id="pipeline-file"
               type="file"
@@ -126,7 +128,7 @@ export function ImportPipelineModal({
 
           {/* Or paste JSON */}
           <div className="space-y-2">
-            <Label htmlFor="pipeline-json">Or paste JSON content</Label>
+            <Label htmlFor="pipeline-json">{t("pipelines.modals.import.pasteLabel")}</Label>
             <textarea
               id="pipeline-json"
               value={jsonContent}
@@ -156,9 +158,12 @@ export function ImportPipelineModal({
                   {(() => {
                     try {
                       const data = JSON.parse(jsonContent);
-                      return `Pipeline: ${data.name || "Unnamed"} (${data.steps?.length || 0} steps)`;
+                      return t("pipelines.modals.import.preview", {
+                        name: data.name || t("pipelines.modals.import.unnamed"),
+                        count: data.steps?.length || 0,
+                      });
                     } catch {
-                      return "Invalid JSON";
+                      return t("pipelines.modals.import.invalidPreview");
                     }
                   })()}
                 </span>
@@ -169,10 +174,10 @@ export function ImportPipelineModal({
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleImport} disabled={loading || !jsonContent.trim()}>
-            {loading ? "Importing..." : "Import Pipeline"}
+            {loading ? t("pipelines.modals.import.importing") : t("pipelines.importPipeline")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -195,6 +200,7 @@ export function DeletePipelineDialog({
   pipeline,
   onConfirm,
 }: DeletePipelineDialogProps) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
 
   const handleConfirm = async () => {
@@ -215,24 +221,24 @@ export function DeletePipelineDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
-            Delete Pipeline
+            {t("pipelines.modals.delete.title")}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete{" "}
-            <span className="font-semibold text-foreground">
-              {pipeline?.name || "this pipeline"}
-            </span>
-            ? This action cannot be undone.
+            <Trans
+              i18nKey="pipelines.modals.delete.description"
+              values={{ name: pipeline?.name || t("pipelines.modals.delete.thisPipeline") }}
+              components={{ strong: <span className="font-semibold text-foreground" /> }}
+            />
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={loading}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            {loading ? "Deleting..." : "Delete"}
+            {loading ? t("pipelines.modals.delete.deleting") : t("common.delete")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -255,6 +261,7 @@ export function ExportPipelineDialog({
   pipeline,
   jsonContent,
 }: ExportPipelineDialogProps) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -294,23 +301,24 @@ export function ExportPipelineDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5 text-primary" />
-            Export Pipeline
+            {t("pipelines.modals.export.title")}
           </DialogTitle>
           <DialogDescription>
-            Export "{pipeline?.name}" as a JSON file for backup or sharing.
+            {t("pipelines.modals.export.description", { name: pipeline?.name })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="py-4">
           <div className="relative">
             <pre className="p-4 rounded-lg bg-muted/50 border border-border/50 text-xs font-mono overflow-auto max-h-80">
-              {jsonContent || "Loading..."}
+              {jsonContent || t("pipelines.modals.export.loading")}
             </pre>
             <Button
               variant="ghost"
               size="sm"
               className="absolute top-2 right-2"
               onClick={handleCopy}
+              aria-label={t("pipelines.modals.export.copy")}
             >
               {copied ? (
                 <Check className="h-4 w-4 text-success" />
@@ -323,11 +331,11 @@ export function ExportPipelineDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
-            Close
+            {t("common.close")}
           </Button>
           <Button onClick={handleDownload} className="gap-2">
             <Download className="h-4 w-4" />
-            Download JSON
+            {t("pipelines.modals.export.download")}
           </Button>
         </DialogFooter>
       </DialogContent>

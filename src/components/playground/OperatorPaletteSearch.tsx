@@ -20,6 +20,7 @@ import {
   type PlaygroundTabType,
 } from '@/lib/playground/operatorPaletteData';
 import { OperatorPaletteCategoryIcon } from './OperatorPaletteCategorySection';
+import { useTranslation } from 'react-i18next';
 
 interface OperatorPaletteSearchProps {
   open: boolean;
@@ -31,12 +32,7 @@ interface OperatorPaletteSearchProps {
   showSplitterReplacementHint: boolean;
 }
 
-const SEARCH_GROUPS: Array<{ type: PlaygroundTabType; heading: string }> = [
-  { type: 'preprocessing', heading: 'Preprocessing' },
-  { type: 'augmentation', heading: 'Augmentation' },
-  { type: 'splitting', heading: 'Splitting' },
-  { type: 'filter', heading: 'Filtering' },
-];
+const SEARCH_GROUPS: PlaygroundTabType[] = ['preprocessing', 'augmentation', 'splitting', 'filter'];
 
 export function OperatorPaletteSearch({
   open,
@@ -47,6 +43,7 @@ export function OperatorPaletteSearch({
   onSelect,
   showSplitterReplacementHint,
 }: OperatorPaletteSearchProps) {
+  const { t } = useTranslation();
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -56,25 +53,25 @@ export function OperatorPaletteSearch({
           className="w-full justify-start text-muted-foreground gap-2 h-8"
         >
           <Search className="w-3.5 h-3.5" />
-          <span className="text-xs">Search operators...</span>
+          <span className="text-xs">{t('playground.operators.searchPlaceholder')}</span>
           <kbd className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded">⌘K</kbd>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="start" side="right">
         <Command>
           <CommandInput
-            placeholder="Search operators..."
+            placeholder={t('playground.operators.searchPlaceholder')}
             value={searchQuery}
             onValueChange={onSearchQueryChange}
           />
           <CommandList className="max-h-80">
-            <CommandEmpty>No operators found.</CommandEmpty>
+            <CommandEmpty>{t('playground.operators.noResults')}</CommandEmpty>
 
-            {SEARCH_GROUPS.map(({ type, heading }) => (
+            {SEARCH_GROUPS.map((type) => (
               <OperatorSearchGroup
                 key={type}
                 type={type}
-                heading={heading}
+                heading={t(`playground.operators.searchGroups.${type}`)}
                 operators={filteredOperators[type]}
                 onSelect={onSelect}
                 showSplitterReplacementHint={type === 'splitting' && showSplitterReplacementHint}
@@ -102,6 +99,7 @@ function OperatorSearchGroup({
   onSelect,
   showSplitterReplacementHint,
 }: OperatorSearchGroupProps) {
+  const { t } = useTranslation();
   if (operators.length === 0) {
     return null;
   }
@@ -121,7 +119,7 @@ function OperatorSearchGroup({
               <div className="text-sm font-medium">
                 {op.display_name}
                 {showSplitterReplacementHint && (
-                  <span className="ml-2 text-[10px] text-orange-500">(replaces)</span>
+                  <span className="ml-2 text-[10px] text-orange-500">{t('playground.operators.replaces')}</span>
                 )}
               </div>
               <div className="text-xs text-muted-foreground truncate">

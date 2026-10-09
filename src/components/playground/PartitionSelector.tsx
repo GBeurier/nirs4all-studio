@@ -13,6 +13,8 @@
  */
 
 import { useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
   Select,
   SelectContent,
@@ -49,6 +51,29 @@ export interface PartitionSelectorProps {
   className?: string;
 }
 
+// ============= Labels =============
+
+function getTriggerLabel(value: PartitionFilter, t: TFunction): string {
+  switch (value) {
+    case 'all':
+      return t('playground.partition.all');
+    case 'train':
+      return t('playground.partition.train');
+    case 'test':
+      return t('playground.partition.test');
+    case 'train-test':
+      return t('playground.partition.trainTest');
+    case 'oof':
+      return t('playground.partition.oof');
+    default: {
+      const match = value.match(/^fold-(\d+)$/);
+      return match
+        ? t('playground.partition.fold', { n: parseInt(match[1], 10) + 1 })
+        : t('playground.partition.all');
+    }
+  }
+}
+
 // ============= Component =============
 
 export function PartitionSelector({
@@ -60,6 +85,7 @@ export function PartitionSelector({
   disabled = false,
   className,
 }: PartitionSelectorProps) {
+  const { t } = useTranslation();
   const selectorData = useMemo(
     () => buildPartitionSelectorData({
       value,
@@ -81,7 +107,7 @@ export function PartitionSelector({
       <div className={cn('flex items-center gap-1', className)}>
         <Layers className="w-3 h-3 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">
-          {selectorData.emptyLabel}
+          {compact ? t('playground.partition.all') : t('playground.partition.allSamples')}
         </span>
         <Badge variant="secondary" className="h-4 px-1 text-[9px]">
           {selectorData.counts.all}
@@ -107,8 +133,8 @@ export function PartitionSelector({
             compact ? 'h-6 w-16 px-1' : 'h-7 w-24 px-2'
           )}
         >
-          <SelectValue placeholder="Select partition">
-            {selectorData.triggerLabel}
+          <SelectValue placeholder={t('playground.partition.placeholder')}>
+            {getTriggerLabel(value, t)}
           </SelectValue>
         </SelectTrigger>
 
@@ -117,7 +143,7 @@ export function PartitionSelector({
           {selectorData.basicOptions.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               <div className="flex items-center justify-between w-full gap-4">
-                <span>{option.label}</span>
+                <span>{t(`playground.partition.${option.value === 'all' ? 'allSamples' : option.value}`)}</span>
                 <Badge variant="outline" className="h-4 px-1 text-[9px]">
                   {option.count}
                 </Badge>
@@ -133,7 +159,7 @@ export function PartitionSelector({
               {selectorData.oofOption && (
                 <SelectItem value={selectorData.oofOption.value}>
                   <div className="flex items-center justify-between w-full gap-4">
-                    <span>{selectorData.oofOption.label}</span>
+                    <span>{t('playground.partition.oofAllTest')}</span>
                     <Badge variant="outline" className="h-4 px-1 text-[9px]">
                       {selectorData.oofOption.count}
                     </Badge>
@@ -144,11 +170,11 @@ export function PartitionSelector({
               <SelectSeparator />
 
               <SelectGroup>
-                <SelectLabel className="text-[10px]">Individual Folds</SelectLabel>
+                <SelectLabel className="text-[10px]">{t('playground.partition.individualFolds')}</SelectLabel>
                 {selectorData.foldOptions.map((fold) => (
                   <SelectItem key={fold.foldIndex} value={fold.value}>
                     <div className="flex items-center justify-between w-full gap-4">
-                      <span>{fold.label}</span>
+                      <span>{t('playground.partition.fold', { n: fold.foldIndex + 1 })}</span>
                       <div className="flex items-center gap-1">
                         <Badge variant="outline" className="h-4 px-1 text-[9px]" style={{ backgroundColor: 'hsla(217, 70%, 50%, 0.1)' }}>
                           {fold.trainCount}

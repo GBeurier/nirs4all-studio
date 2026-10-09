@@ -6,6 +6,7 @@
  */
 
 import { Copy, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
 interface NodeActionsProps {
@@ -18,6 +19,7 @@ interface NodeActionsProps {
  * Quick action buttons that appear on node hover
  */
 export function NodeActions({ onDuplicate, onRemove, visible = true }: NodeActionsProps) {
+  const { t } = useTranslation();
   if (!visible) return null;
 
   return (
@@ -26,6 +28,7 @@ export function NodeActions({ onDuplicate, onRemove, visible = true }: NodeActio
         variant="ghost"
         size="icon"
         className="h-6 w-6"
+        aria-label={t("pipelineEditor.tree.duplicate")}
         onClick={(e) => {
           e.stopPropagation();
           onDuplicate();
@@ -37,6 +40,7 @@ export function NodeActions({ onDuplicate, onRemove, visible = true }: NodeActio
         variant="ghost"
         size="icon"
         className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+        aria-label={t("common.delete")}
         onClick={(e) => {
           e.stopPropagation();
           onRemove();

@@ -12,6 +12,7 @@ import { buildPlaygroundDataView } from '@/lib/playground/dataView';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
 import type { PartitionKey } from '@/types/datasets';
 import type { OperatorDefinition } from '@/types/playground';
+import { useTranslation } from 'react-i18next';
 
 type ChartVisibility = {
   spectra: boolean;
@@ -354,6 +355,7 @@ export function PlaygroundContent({
   selectedSample,
   setSelectedSample,
 }: PlaygroundContentProps) {
+  const { t } = useTranslation();
   // View context is needed to sync keyboard shortcut chart toggles with view state.
   const viewContext = usePlaygroundView();
 
@@ -408,16 +410,16 @@ export function PlaygroundContent({
   // Handle mark as outliers (Ctrl+O)
   const handleMarkAsOutliers = useCallback((indices: number[]) => {
     toggleOutliers(indices);
-    toast.success(`Toggled ${indices.length} sample${indices.length !== 1 ? 's' : ''} as outliers`);
-  }, [toggleOutliers]);
+    toast.success(t('playground.page.outliersToggled', { count: indices.length }));
+  }, [toggleOutliers, t]);
 
   // Handle reset playground
   const handleResetPlayground = useCallback(() => {
     resetPlayground();
-    toast.success('Playground reset', {
-      description: 'All selections, filters, and settings have been cleared',
+    toast.success(t('playground.page.resetDone'), {
+      description: t('playground.page.resetDoneDetail'),
     });
-  }, [resetPlayground]);
+  }, [resetPlayground, t]);
 
   // Use the centralized keyboard shortcuts hook (now inside SelectionProvider)
   const { shortcutsByCategory } = usePlaygroundShortcuts({
@@ -426,15 +428,15 @@ export function PlaygroundContent({
     onRedo: redo,
     onClearPipeline: () => {
       if (operators.length > 0) {
-        toast.warning(`Clear all ${operators.length} operators?`, {
-          action: { label: 'Clear', onClick: clearPipeline },
+        toast.warning(t('playground.page.clearOperators', { count: operators.length }), {
+          action: { label: t('playground.page.clearAction'), onClick: clearPipeline },
           duration: 5000,
         });
       }
     },
-    onSaveSelection: () => toast.info('Save Selection: Use toolbar button'),
-    onExportPng: () => toast.info('Export PNG: Use Export menu'),
-    onExportData: () => toast.info('Export Data: Use Export menu'),
+    onSaveSelection: () => toast.info(t('playground.page.saveSelectionHint')),
+    onExportPng: () => toast.info(t('playground.page.exportPngHint')),
+    onExportData: () => toast.info(t('playground.page.exportDataHint')),
     onToggleChart: (index: number) => {
       const charts = ['spectra', 'histogram', 'pca', 'folds', 'repetitions'] as const;
       if (index >= 0 && index < charts.length) {

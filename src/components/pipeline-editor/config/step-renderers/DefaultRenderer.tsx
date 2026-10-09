@@ -11,6 +11,7 @@
  * @see docs/_internals/implementation_roadmap.md
  */
 
+import { useTranslation } from "react-i18next";
 import { Info, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -48,6 +49,7 @@ export function DefaultRenderer({
   handleResetParams,
   currentOption,
 }: ParameterRendererProps) {
+  const { t } = useTranslation();
   return (
     <>
       <ScrollArea className="flex-1">
@@ -56,7 +58,7 @@ export function DefaultRenderer({
           {Object.keys(step.params).length > 0 ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Parameters</Label>
+                <Label className="text-sm font-medium">{t("pipelineEditor.config.default.parameters")}</Label>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -64,7 +66,7 @@ export function DefaultRenderer({
                   onClick={handleResetParams}
                 >
                   <RotateCcw className="h-3 w-3 mr-1" />
-                  Reset
+                  {t("pipelineEditor.config.default.reset")}
                 </Button>
               </div>
               {Object.entries(step.params).map(([key, value]) =>
@@ -77,10 +79,10 @@ export function DefaultRenderer({
                 <Info className="h-5 w-5 text-muted-foreground" />
               </div>
               <p className="text-sm text-muted-foreground">
-                No configurable parameters
+                {t("pipelineEditor.config.default.noParams")}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                This step uses default settings
+                {t("pipelineEditor.config.default.usesDefaults")}
               </p>
             </div>
           )}

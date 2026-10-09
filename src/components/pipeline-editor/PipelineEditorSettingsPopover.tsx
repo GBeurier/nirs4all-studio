@@ -1,4 +1,5 @@
 import { Settings } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,7 @@ export function PipelineEditorSettingsPopover({
   pipelineConfig,
   onPipelineConfigChange,
 }: PipelineEditorSettingsPopoverProps) {
+  const { t } = useTranslation();
   return (
     <Popover>
       <Tooltip>
@@ -27,27 +29,28 @@ export function PipelineEditorSettingsPopover({
             <Button
               variant="ghost"
               size="icon"
+              aria-label={t("pipelineEditor.shell.settings.title")}
               className={pipelineConfig.seed !== undefined ? "text-primary" : ""}
             >
               <Settings className="h-4 w-4" />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Pipeline Settings</TooltipContent>
+        <TooltipContent side="bottom">{t("pipelineEditor.shell.settings.title")}</TooltipContent>
       </Tooltip>
       <PopoverContent align="end" className="w-72 bg-popover">
         <div className="space-y-4">
-          <h4 className="text-sm font-medium">Pipeline Settings</h4>
+          <h4 className="text-sm font-medium">{t("pipelineEditor.shell.settings.title")}</h4>
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="global-seed" className="text-xs text-muted-foreground">
-                Global Seed
+                {t("pipelineEditor.shell.settings.globalSeed")}
               </Label>
               <div className="flex gap-2">
                 <Input
                   id="global-seed"
                   type="number"
-                  placeholder="Random"
+                  placeholder={t("pipelineEditor.shell.settings.random")}
                   value={pipelineConfig.seed ?? ""}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -69,11 +72,11 @@ export function PipelineEditorSettingsPopover({
                   }}
                   className="h-8 px-2"
                 >
-                  Generate
+                  {t("pipelineEditor.shell.settings.generate")}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Set a seed for reproducible results across all splits and operations.
+                {t("pipelineEditor.shell.settings.seedHint")}
               </p>
             </div>
           </div>

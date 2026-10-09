@@ -12,6 +12,7 @@
  */
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   GitBranch,
   ChevronDown,
@@ -112,6 +113,7 @@ export function EnhancedBranchHeader({
   onMoveDown,
   className,
 }: EnhancedBranchHeaderProps) {
+  const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -173,9 +175,12 @@ export function EnhancedBranchHeader({
     >
       {/* Collapse toggle */}
       <button
+        type="button"
         onClick={onToggleCollapse}
+        aria-label={isCollapsed ? t("pipelineEditor.branch.header.expand") : t("pipelineEditor.branch.header.collapse")}
+        aria-expanded={!isCollapsed}
         className={cn(
-          "p-0.5 rounded hover:bg-muted/50 transition-colors",
+          "p-0.5 rounded hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           iconColor
         )}
       >
@@ -198,6 +203,7 @@ export function EnhancedBranchHeader({
             onChange={(e) => setEditValue(e.target.value)}
             onKeyDown={handleKeyDown}
             onBlur={handleSave}
+            aria-label={t("pipelineEditor.branch.header.nameInput")}
             className="h-5 px-1 py-0 text-xs font-medium bg-background"
           />
           <Button
@@ -205,6 +211,7 @@ export function EnhancedBranchHeader({
             size="icon"
             className="h-5 w-5 text-muted-foreground hover:text-primary"
             onClick={handleSave}
+            aria-label={t("pipelineEditor.branch.header.confirmRename")}
           >
             <Check className="h-3 w-3" />
           </Button>
@@ -213,6 +220,7 @@ export function EnhancedBranchHeader({
             size="icon"
             className="h-5 w-5 text-muted-foreground hover:text-destructive"
             onClick={handleCancel}
+            aria-label={t("pipelineEditor.branch.header.cancelRename")}
           >
             <X className="h-3 w-3" />
           </Button>
@@ -233,11 +241,11 @@ export function EnhancedBranchHeader({
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge variant="secondary" className="text-[10px] px-1 h-4 tabular-nums">
-              {stepCount} {stepCount === 1 ? "step" : "steps"}
+              {t("pipelineEditor.branch.header.stepCount", { count: stepCount })}
             </Badge>
           </TooltipTrigger>
           <TooltipContent side="top">
-            <span>Steps in this branch</span>
+            <span>{t("pipelineEditor.branch.header.stepsTooltip")}</span>
           </TooltipContent>
         </Tooltip>
 
@@ -251,7 +259,7 @@ export function EnhancedBranchHeader({
               </Badge>
             </TooltipTrigger>
             <TooltipContent side="top">
-              <span>Variants in this branch</span>
+              <span>{t("pipelineEditor.branch.header.variantsTooltip")}</span>
             </TooltipContent>
           </Tooltip>
         )}
@@ -263,7 +271,8 @@ export function EnhancedBranchHeader({
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="h-5 w-5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+            aria-label={t("pipelineEditor.branch.header.actions")}
           >
             <MoreHorizontal className="h-3 w-3" />
           </Button>
@@ -271,25 +280,25 @@ export function EnhancedBranchHeader({
         <DropdownMenuContent align="end" className="w-40">
           <DropdownMenuItem onClick={handleStartEdit}>
             <Edit2 className="h-3.5 w-3.5 mr-2" />
-            Rename
+            {t("pipelineEditor.branch.header.rename")}
           </DropdownMenuItem>
           {onDuplicate && (
             <DropdownMenuItem onClick={onDuplicate}>
               <Copy className="h-3.5 w-3.5 mr-2" />
-              Duplicate
+              {t("pipelineEditor.branch.header.duplicate")}
             </DropdownMenuItem>
           )}
           {(onMoveUp || onMoveDown) && <DropdownMenuSeparator />}
           {onMoveUp && (
             <DropdownMenuItem onClick={onMoveUp}>
               <Move className="h-3.5 w-3.5 mr-2 rotate-90" />
-              Move Up
+              {t("pipelineEditor.branch.header.moveUp")}
             </DropdownMenuItem>
           )}
           {onMoveDown && (
             <DropdownMenuItem onClick={onMoveDown}>
               <Move className="h-3.5 w-3.5 mr-2 -rotate-90" />
-              Move Down
+              {t("pipelineEditor.branch.header.moveDown")}
             </DropdownMenuItem>
           )}
           {canRemove && (
@@ -297,7 +306,7 @@ export function EnhancedBranchHeader({
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onRemove} className="text-destructive focus:text-destructive">
                 <Trash2 className="h-3.5 w-3.5 mr-2" />
-                Delete
+                {t("common.delete")}
               </DropdownMenuItem>
             </>
           )}
@@ -323,11 +332,12 @@ export function BranchSummary({
   generatorKind,
   className,
 }: BranchSummaryProps) {
+  const { t } = useTranslation();
   const stats = useMemo(() => {
     return calculateBranchSummaryStats(branches);
   }, [branches]);
 
-  const label = getBranchSummaryLabel(isGenerator, generatorKind);
+  const label = getBranchSummaryLabel(isGenerator, generatorKind, stats.branchCount);
 
   return (
     <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", className)}>
@@ -344,14 +354,14 @@ export function BranchSummary({
 
       <span className="text-muted-foreground/50">•</span>
 
-      <span>{stats.totalSteps} total steps</span>
+      <span>{t("pipelineEditor.branch.summary.totalSteps", { count: stats.totalSteps })}</span>
 
       {stats.modelCount > 0 && (
         <>
           <span className="text-muted-foreground/50">•</span>
           <div className="flex items-center gap-1">
             <Target className="h-3 w-3 text-emerald-500" />
-            <span>{stats.modelCount} models</span>
+            <span>{t("pipelineEditor.branch.summary.models", { count: stats.modelCount })}</span>
           </div>
         </>
       )}
@@ -370,11 +380,11 @@ export function BranchSummary({
         <Tooltip>
           <TooltipTrigger>
             <Badge variant="outline" className="text-[10px] px-1 h-4 border-yellow-500/50 text-yellow-500">
-              {stats.emptyBranches} empty
+              {t("pipelineEditor.branch.summary.empty", { count: stats.emptyBranches })}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            {stats.emptyBranches} {stats.emptyBranches === 1 ? "branch is" : "branches are"} empty
+            {t("pipelineEditor.branch.summary.emptyTooltip", { count: stats.emptyBranches })}
           </TooltipContent>
         </Tooltip>
       )}
@@ -536,6 +546,7 @@ export function CollapseAllButton({
   onToggleAll,
   className,
 }: CollapseAllButtonProps) {
+  const { t } = useTranslation();
   return (
     <Button
       variant="ghost"
@@ -546,12 +557,12 @@ export function CollapseAllButton({
       {isAllCollapsed ? (
         <>
           <Eye className="h-3 w-3 mr-1" />
-          Expand All
+          {t("pipelineEditor.branch.expandAll")}
         </>
       ) : (
         <>
           <EyeOff className="h-3 w-3 mr-1" />
-          Collapse All
+          {t("pipelineEditor.branch.collapseAll")}
         </>
       )}
     </Button>

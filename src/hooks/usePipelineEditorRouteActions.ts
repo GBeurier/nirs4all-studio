@@ -83,7 +83,7 @@ export function usePipelineEditorRouteActions({
       });
     },
     onSuccess: (result) => {
-      toast.success(`"${pipelineName}" saved`);
+      toast.success(t("pipelineEditor.hooks.saved", { name: pipelineName }));
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
       if (isNew && result?.pipeline?.id) {
         clearPersistedState(pipelineId);
@@ -103,27 +103,27 @@ export function usePipelineEditorRouteActions({
     if (isNew && isDirty) {
       const stashId = `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
       migrateDraftKey(pipelineId, stashId);
-      toast.success("Current draft stashed", {
-        description: "Find it under Drafts on the Pipelines page.",
+      toast.success(t("pipelineEditor.hooks.draftStashed"), {
+        description: t("pipelineEditor.hooks.draftStashedHint"),
       });
     }
     navigate("/pipelines/new");
-  }, [isDirty, isNew, navigate, pipelineId]);
+  }, [isDirty, isNew, navigate, pipelineId, t]);
 
   const handleToggleFavorite = useCallback(() => {
     setIsFavorite(!isFavorite);
     toast.success(
       isFavorite
-        ? `"${pipelineName}" removed from favorites`
-        : `"${pipelineName}" added to favorites`,
+        ? t("pipelineEditor.hooks.removedFromFavorites", { name: pipelineName })
+        : t("pipelineEditor.hooks.addedToFavorites", { name: pipelineName }),
     );
-  }, [isFavorite, pipelineName, setIsFavorite]);
+  }, [isFavorite, pipelineName, setIsFavorite, t]);
 
   const handleExportJson = useCallback(() => {
     const pipeline = exportPipeline();
     downloadPipelineTextExport(buildEditorPipelineExport(pipelineName, pipeline));
-    toast.success("Pipeline exported as JSON");
-  }, [exportPipeline, pipelineName]);
+    toast.success(t("pipelineEditor.hooks.exportedJson"));
+  }, [exportPipeline, pipelineName, t]);
 
   const handleExportCanonical = useCallback(
     async (format: CanonicalPipelineExportFormat) => {
@@ -139,7 +139,7 @@ export function usePipelineEditorRouteActions({
             format,
           }),
         );
-        toast.success(`Pipeline exported as ${format.toUpperCase()}`);
+        toast.success(t("pipelineEditor.hooks.exportedAs", { format: format.toUpperCase() }));
       } catch (error) {
         console.error("Canonical export error:", error);
         notifyApiError(error, t("errors.action.exportPipeline", { format: format.toUpperCase() }));
@@ -161,7 +161,7 @@ export function usePipelineEditorRouteActions({
       try {
         const content = e.target?.result as string;
         const imported = await importIntoEditor(buildPipelineFileImportDraft(file.name, content));
-        toast.success(`Pipeline "${imported.name}" imported successfully`);
+        toast.success(t("pipelineEditor.hooks.importedOk", { name: imported.name }));
       } catch (err) {
         console.error("Import error:", err);
         notifyApiError(err, t("errors.action.importPipeline"));
@@ -175,8 +175,8 @@ export function usePipelineEditorRouteActions({
   const handleClearPipeline = useCallback(() => {
     clearPipeline();
     closeClearDialog();
-    toast.success("Pipeline cleared");
-  }, [clearPipeline, closeClearDialog]);
+    toast.success(t("pipelineEditor.hooks.cleared"));
+  }, [clearPipeline, closeClearDialog, t]);
 
   const handleUseInExperiment = useCallback(() => {
     const pipelineData = exportPipeline();

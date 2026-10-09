@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeAll } from "vitest";
 import {
   buildPaletteAvailabilityNode,
   filterPaletteOptions,
@@ -19,6 +19,11 @@ import type {
   StepOption,
   StepType,
 } from "../types";
+import i18n from "i18next";
+import en from "@/locales/en";
+beforeAll(async () => {
+  await i18n.init({ lng: "en", resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
+});
 
 function makeOption(overrides: Partial<StepOption> & Pick<StepOption, "name">): StepOption {
   return {

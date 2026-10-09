@@ -6,6 +6,7 @@ import { ChartSkeleton, YHistogram } from './visualizations';
 import type { CanvasChartRenderState } from '@/lib/playground/canvasLayout';
 import type { ColorContext, GlobalColorConfig } from '@/lib/playground/colorConfig';
 import type { HistogramChartDataInput } from '@/lib/playground/chartInputs';
+import { useTranslation } from 'react-i18next';
 
 export interface MainCanvasHistogramPanelProps {
   renderState: CanvasChartRenderState;
@@ -38,6 +39,7 @@ export const MainCanvasHistogramPanel = forwardRef<HTMLDivElement, MainCanvasHis
     },
     ref
   ) {
+    const { t } = useTranslation();
     if (!renderState.shouldRender) {
       return null;
     }
@@ -71,7 +73,7 @@ export const MainCanvasHistogramPanel = forwardRef<HTMLDivElement, MainCanvasHis
           </MainCanvasStaleChartContent>
         ) : (
           <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-            No Y values available
+            {t('playground.canvas.noYValues')}
           </div>
         )}
       </ChartPanel>

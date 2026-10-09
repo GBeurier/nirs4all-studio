@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ArrowRight,
   Info,
@@ -54,6 +55,7 @@ interface RangeValueInputProps {
 }
 
 function RangeValueInput({ value, onChange, maxValue, label, rangeLabel }: RangeValueInputProps) {
+  const { t } = useTranslation();
   const isRangeMode = isRange(value);
   const singleValue = isRangeMode ? undefined : (value ?? 1);
   const rangeFrom = isRangeMode ? value[0] : 1;
@@ -72,10 +74,11 @@ function RangeValueInput({ value, onChange, maxValue, label, rangeLabel }: Range
       <div className="flex items-center justify-between">
         <Label className="text-xs text-muted-foreground">{label}</Label>
         <div className="flex items-center gap-2">
-          <Label className="text-xs text-muted-foreground">Range</Label>
+          <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.generator.range")}</Label>
           <Switch
             checked={isRangeMode}
             onCheckedChange={handleToggleRange}
+            aria-label={t("pipelineEditor.config.generator.range")}
             className="scale-75"
           />
         </div>
@@ -94,7 +97,7 @@ function RangeValueInput({ value, onChange, maxValue, label, rangeLabel }: Range
             }}
             className="w-16 h-8 text-center"
           />
-          <span className="text-sm text-muted-foreground">to</span>
+          <span className="text-sm text-muted-foreground">{t("pipelineEditor.config.generator.rangeTo")}</span>
           <Input
             type="number"
             min={rangeFrom}
@@ -107,7 +110,7 @@ function RangeValueInput({ value, onChange, maxValue, label, rangeLabel }: Range
             className="w-16 h-8 text-center"
           />
           <span className="text-xs text-muted-foreground">
-            {rangeLabel || `(all from ${rangeFrom} to ${rangeTo})`}
+            {rangeLabel || t("pipelineEditor.config.generator.rangeAll", { from: rangeFrom, to: rangeTo })}
           </span>
         </div>
       ) : (
@@ -122,7 +125,7 @@ function RangeValueInput({ value, onChange, maxValue, label, rangeLabel }: Range
             }}
             className="w-16 h-8 text-center"
           />
-          <span className="text-sm text-muted-foreground">of {maxValue}</span>
+          <span className="text-sm text-muted-foreground">{t("pipelineEditor.config.generator.ofMax", { max: maxValue })}</span>
         </div>
       )}
     </div>
@@ -136,6 +139,7 @@ interface GeneratorHeaderProps {
 }
 
 export function GeneratorHeader({ meta, optionCount, variantCount }: GeneratorHeaderProps) {
+  const { t } = useTranslation();
   const Icon = meta.icon;
 
   return (
@@ -143,17 +147,17 @@ export function GeneratorHeader({ meta, optionCount, variantCount }: GeneratorHe
       <Icon className="h-5 w-5 text-orange-500 flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm">{meta.label}</span>
+          <span className="font-medium text-sm">{t(meta.labelKey)}</span>
           <Badge variant="outline" className="text-xs font-mono border-orange-500/50 text-orange-600">
             {meta.keyword}
           </Badge>
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {meta.description}
+          {t(meta.descriptionKey)}
         </p>
         {optionCount > 0 && (
           <p className="text-xs text-muted-foreground mt-0.5">
-            {optionCount} {meta.branchLabel}{optionCount !== 1 ? "s" : ""} {" \u2192 "} {variantCount} {meta.variantLabel}{variantCount !== 1 ? "s" : ""}
+            {t(`pipelineEditor.config.generator.unit.${meta.branchUnit}`, { count: optionCount })} {" \u2192 "} {t(`pipelineEditor.config.generator.unit.${meta.variantUnit}`, { count: variantCount })}
           </p>
         )}
       </div>
@@ -182,10 +186,11 @@ export function ScalarParametersSection({
   onDraftChange,
   onValuesBlur,
 }: ScalarParametersSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Scalar Parameters</Label>
+        <Label className="text-sm font-medium">{t("pipelineEditor.config.generator.scalar.title")}</Label>
         <Button
           variant="outline"
           size="sm"
@@ -193,7 +198,7 @@ export function ScalarParametersSection({
           onClick={onAddEntry}
         >
           <Plus className="mr-1 h-3 w-3" />
-          Add Param
+          {t("pipelineEditor.config.generator.scalar.addParam")}
         </Button>
       </div>
 
@@ -202,12 +207,13 @@ export function ScalarParametersSection({
           <div key={entry.id} className="space-y-2 rounded-lg border p-3">
             <div className="flex items-center justify-between gap-2">
               <Label className="text-xs text-muted-foreground">
-                Param {index + 1}
+                {t("pipelineEditor.config.generator.scalar.paramN", { index: index + 1 })}
               </Label>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                aria-label={t("pipelineEditor.config.generator.scalar.removeParam", { index: index + 1 })}
                 onClick={() => onRemoveEntry(entry.id)}
               >
                 <Trash2 className="h-3 w-3" />
@@ -216,7 +222,7 @@ export function ScalarParametersSection({
             <Input
               value={entry.key}
               onChange={(event) => onRenameEntry(entry.id, event.target.value)}
-              placeholder="Parameter name"
+              placeholder={t("pipelineEditor.config.generator.scalar.paramName")}
             />
             <Textarea
               value={entryDrafts[entry.id] ?? stringifyJsonDraft(entry.values)}
@@ -230,7 +236,7 @@ export function ScalarParametersSection({
         ))
       ) : (
         <p className="text-sm text-muted-foreground">
-          Add parameter arrays to configure the {generatorKind} generator.
+          {t("pipelineEditor.config.generator.scalar.empty", { kind: generatorKind })}
         </p>
       )}
     </div>
@@ -252,11 +258,12 @@ export function SamplingConfigurationSection({
   onSampleChoicesDraftChange,
   onSampleChoicesBlur,
 }: SamplingConfigurationSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
-      <Label className="text-sm font-medium">Sampling Configuration</Label>
+      <Label className="text-sm font-medium">{t("pipelineEditor.config.generator.sampling.title")}</Label>
       <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Distribution</Label>
+        <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.generator.sampling.distribution")}</Label>
         <Select
           value={String(sampleConfig.distribution || "uniform")}
           onValueChange={(value) => onSampleConfigChange({ distribution: value })}
@@ -275,7 +282,7 @@ export function SamplingConfigurationSection({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Samples</Label>
+          <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.generator.sampling.samples")}</Label>
           <Input
             type="number"
             min={1}
@@ -289,7 +296,7 @@ export function SamplingConfigurationSection({
           sampleConfig.distribution === "log_uniform") && (
           <>
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">From</Label>
+              <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.generator.sampling.from")}</Label>
               <Input
                 type="number"
                 value={Number(sampleConfig.from) || 0}
@@ -297,7 +304,7 @@ export function SamplingConfigurationSection({
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">To</Label>
+              <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.generator.sampling.to")}</Label>
               <Input
                 type="number"
                 value={Number(sampleConfig.to) || 1}
@@ -309,7 +316,7 @@ export function SamplingConfigurationSection({
         {sampleConfig.distribution === "normal" && (
           <>
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Mean</Label>
+              <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.generator.sampling.mean")}</Label>
               <Input
                 type="number"
                 value={Number(sampleConfig.mean) || 0}
@@ -317,7 +324,7 @@ export function SamplingConfigurationSection({
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Std</Label>
+              <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.generator.sampling.std")}</Label>
               <Input
                 type="number"
                 value={Number(sampleConfig.std) || 1}
@@ -330,7 +337,7 @@ export function SamplingConfigurationSection({
 
       {sampleConfig.distribution === "choice" && (
         <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Choices (JSON array)</Label>
+          <Label className="text-xs text-muted-foreground">{t("pipelineEditor.config.generator.sampling.choices")}</Label>
           <Textarea
             value={sampleChoicesDraft}
             onChange={(event) => onSampleChoicesDraftChange(event.target.value)}
@@ -358,11 +365,12 @@ export function SelectionModeSection({
   onPrimaryModeChange,
   onConfigChange,
 }: SelectionModeSectionProps) {
+  const { t } = useTranslation();
   const hasPrimarySelection = config.primaryMode !== "none";
 
   return (
     <div className="space-y-3">
-      <Label className="text-sm font-medium">Selection Mode</Label>
+      <Label className="text-sm font-medium">{t("pipelineEditor.config.generator.selectionMode")}</Label>
       <Select
         value={config.primaryMode}
         onValueChange={(value) => onPrimaryModeChange(value as PrimarySelectionMode)}
@@ -373,9 +381,9 @@ export function SelectionModeSection({
         <SelectContent className="bg-popover">
           {PRIMARY_MODE_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              <span className="font-medium">{option.label}</span>
+              <span className="font-medium">{t(option.labelKey)}</span>
               <span className="text-xs text-muted-foreground ml-2">
-                {" \u2013 "}{option.description}
+                {" \u2013 "}{t(option.descriptionKey)}
               </span>
             </SelectItem>
           ))}
@@ -388,7 +396,7 @@ export function SelectionModeSection({
             value={config.primaryValue}
             onChange={(value) => onConfigChange({ primaryValue: value })}
             maxValue={Math.max(1, selectionBaseCount)}
-            label={config.primaryMode === "pick" ? "Pick" : "Arrange"}
+            label={config.primaryMode === "pick" ? t("pipelineEditor.config.generator.mode.pick.label") : t("pipelineEditor.config.generator.mode.arrange.label")}
           />
           <div className="text-xs text-muted-foreground">
             {getPrimarySelectionDescription(config, selectionBaseCount)}
@@ -412,24 +420,26 @@ export function SecondOrderSelectionSection({
   onSecondaryModeChange,
   onConfigChange,
 }: SecondOrderSelectionSectionProps) {
+  const { t } = useTranslation();
   const hasSecondarySelection = config.secondaryMode !== "none";
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Label className="text-sm font-medium">Second-Order</Label>
+          <Label className="text-sm font-medium">{t("pipelineEditor.config.generator.secondOrder")}</Label>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-48">
-              Apply a second selection (then_pick / then_arrange) on the primary results.
+              {t("pipelineEditor.config.generator.secondOrderHelp")}
             </TooltipContent>
           </Tooltip>
         </div>
         <Switch
           checked={hasSecondarySelection}
+          aria-label={t("pipelineEditor.config.generator.secondOrder")}
           onCheckedChange={(checked) =>
             onSecondaryModeChange(checked ? "then_pick" : "none")
           }
@@ -448,9 +458,9 @@ export function SecondOrderSelectionSection({
             <SelectContent className="bg-popover">
               {SECONDARY_MODE_OPTIONS.filter((option) => option.value !== "none").map((option) => (
                 <SelectItem key={option.value} value={option.value}>
-                  <span className="font-medium">{option.label}</span>
+                  <span className="font-medium">{t(option.labelKey)}</span>
                   <span className="text-xs text-muted-foreground ml-2">
-                    {" \u2013 "}{option.description}
+                    {" \u2013 "}{t(option.descriptionKey)}
                   </span>
                 </SelectItem>
               ))}
@@ -464,7 +474,7 @@ export function SecondOrderSelectionSection({
             value={config.secondaryValue}
             onChange={(value) => onConfigChange({ secondaryValue: value })}
             maxValue={Math.max(1, primarySelectionCount)}
-            label={config.secondaryMode === "then_pick" ? "Then Pick" : "Then Arrange"}
+            label={config.secondaryMode === "then_pick" ? t("pipelineEditor.config.generator.secondMode.then_pick.label") : t("pipelineEditor.config.generator.secondMode.then_arrange.label")}
           />
         </div>
       )}
@@ -483,12 +493,14 @@ export function LimitVariantsSection({
   unboundedVariantCount,
   onConfigChange,
 }: LimitVariantsSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Limit Variants</Label>
+        <Label className="text-sm font-medium">{t("pipelineEditor.config.generator.limit.title")}</Label>
         <Switch
           checked={!!config.count && config.count > 0}
+          aria-label={t("pipelineEditor.config.generator.limit.title")}
           onCheckedChange={(checked) =>
             onConfigChange({ count: checked ? Math.min(10, unboundedVariantCount) : undefined })
           }
@@ -497,7 +509,7 @@ export function LimitVariantsSection({
 
       {config.count !== undefined && config.count > 0 && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
-          <Label className="text-sm text-muted-foreground">Max</Label>
+          <Label className="text-sm text-muted-foreground">{t("pipelineEditor.config.generator.limit.max")}</Label>
           <Input
             type="number"
             min={1}
@@ -510,7 +522,7 @@ export function LimitVariantsSection({
             className="w-20 h-8"
           />
           <span className="text-sm text-muted-foreground">
-            of {unboundedVariantCount}
+            {t("pipelineEditor.config.generator.ofMax", { max: unboundedVariantCount })}
           </span>
         </div>
       )}
@@ -524,22 +536,24 @@ interface SeedSectionProps {
 }
 
 export function SeedSection({ config, onConfigChange }: SeedSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Label className="text-sm font-medium">Seed</Label>
+          <Label className="text-sm font-medium">{t("pipelineEditor.config.generator.seed.title")}</Label>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-48">
-              Set a seed for deterministic, reproducible generation.
+              {t("pipelineEditor.config.generator.seed.help")}
             </TooltipContent>
           </Tooltip>
         </div>
         <Switch
           checked={config.seed !== undefined}
+          aria-label={t("pipelineEditor.config.generator.seed.title")}
           onCheckedChange={(checked) =>
             onConfigChange({ seed: checked ? 42 : undefined })
           }
@@ -579,6 +593,7 @@ export function GeneratorSummary({
   generatorKind,
   variantCount,
 }: GeneratorSummaryProps) {
+  const { t } = useTranslation();
   const secondarySummary = getSecondarySelectionSummary(config);
 
   return (
@@ -592,7 +607,7 @@ export function GeneratorSummary({
         )}
         {!meta.supportsPickArrange && (
           <p className="font-medium">
-            {meta.description}
+            {t(meta.descriptionKey)}
           </p>
         )}
         {secondarySummary && (
@@ -601,8 +616,8 @@ export function GeneratorSummary({
           </p>
         )}
         <p className="text-xs text-orange-600 mt-1">
-          Total: {variantCount} {meta.variantLabel}{variantCount !== 1 ? "s" : ""}
-          {config.seed !== undefined && ` (seed: ${formatSelectionValue(config.seed)})`}
+          {t("pipelineEditor.config.generator.total", { variants: t(`pipelineEditor.config.generator.unit.${meta.variantUnit}`, { count: variantCount }) })}
+          {config.seed !== undefined && ` (${t("pipelineEditor.config.generator.seedValue", { seed: formatSelectionValue(config.seed) })})`}
         </p>
       </div>
     </div>

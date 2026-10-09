@@ -35,7 +35,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { PipelineStep, StepType, LegacyStepType, StepOption, DragData, DropIndicator } from "./types";
-import { getStepColor, stepColors } from "./stepPresentation";
+import { getStepColor, getStepTypeLabels, stepColors } from "./stepPresentation";
 import { getStepItemDropIndicator } from "./dnd-utils";
 import {
   PipelineDndContext,
@@ -318,7 +318,7 @@ function DragOverlayContent({ data }: { data: DragData }) {
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-medium text-sm text-foreground">{data.step.name}</p>
-          <p className="text-xs text-muted-foreground capitalize">{data.step.type}</p>
+          <p className="text-xs text-muted-foreground capitalize">{getStepTypeLabels()[data.step.type] ?? data.step.type}</p>
         </div>
       </motion.div>
     );

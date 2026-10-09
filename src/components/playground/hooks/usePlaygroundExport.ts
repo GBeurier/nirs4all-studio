@@ -23,6 +23,7 @@ import {
 } from '@/lib/playground/export';
 import type { SavedSelection } from '@/context/useSelection';
 import type { ChartType } from '../CanvasToolbar';
+import { useTranslation } from 'react-i18next';
 
 // ============= Types =============
 
@@ -74,11 +75,13 @@ export function usePlaygroundExport({
   exportData,
   visibleCharts,
 }: UsePlaygroundExportOptions): UsePlaygroundExportResult {
+  const { t } = useTranslation();
+
   // Export a single chart to PNG
   const exportChartPng = useCallback(async (chartType: ChartType) => {
     const ref = chartRefs[chartType];
     if (!ref?.current) {
-      toast.error('Chart not available');
+      toast.error(t('playground.hooks.export.chartUnavailable'));
       return;
     }
 
@@ -89,21 +92,21 @@ export function usePlaygroundExport({
       };
       const result = await exportToPng(chartData, { filename: `${chartType}-chart` });
       if (result.success) {
-        toast.success('Chart exported', { description: `${chartType}.png saved` });
+        toast.success(t('playground.hooks.export.chartExported'), { description: t('playground.hooks.export.pngSaved', { name: chartType }) });
       } else {
-        toast.error('Export failed', { description: result.error });
+        toast.error(t('playground.hooks.export.failed'), { description: result.error });
       }
     } catch (error) {
-      toast.error('Export failed', { description: (error as Error).message });
+      toast.error(t('playground.hooks.export.failed'), { description: (error as Error).message });
     }
-  }, [chartRefs]);
+  }, [chartRefs, t]);
 
   // Export spectra data to CSV (Phase 8: includes outlier column)
   const exportSpectraCsv = useCallback(async () => {
     const { spectra, wavelengths, sampleIds, outlierIndices } = exportData;
 
     if (!spectra || !wavelengths) {
-      toast.error('No spectra data to export');
+      toast.error(t('playground.hooks.export.noSpectra'));
       return;
     }
 
@@ -113,17 +116,17 @@ export function usePlaygroundExport({
         { filename: 'processed-spectra' }
       );
       if (result.success) {
-        const outlierInfo = outlierIndices?.size ? ` (${outlierIndices.size} outliers marked)` : '';
-        toast.success('Data exported', {
-          description: `${spectra.length} samples × ${wavelengths.length} wavelengths saved to CSV${outlierInfo}`,
+        const outlierInfo = outlierIndices?.size ? t('playground.hooks.export.outliersMarked', { count: outlierIndices.size }) : '';
+        toast.success(t('playground.hooks.export.dataExported'), {
+          description: t('playground.hooks.export.csvSaved', { samples: spectra.length, wavelengths: wavelengths.length, outlierInfo }),
         });
       } else {
-        toast.error('Export failed', { description: result.error });
+        toast.error(t('playground.hooks.export.failed'), { description: result.error });
       }
     } catch (error) {
-      toast.error('Export failed', { description: (error as Error).message });
+      toast.error(t('playground.hooks.export.failed'), { description: (error as Error).message });
     }
-  }, [exportData]);
+  }, [exportData, t]);
 
   // Export current selection to JSON
   const exportSelectionsJson = useCallback(async () => {
@@ -153,23 +156,23 @@ export function usePlaygroundExport({
     }
 
     if (selections.length === 0) {
-      toast.error('No selections to export');
+      toast.error(t('playground.hooks.export.noSelections'));
       return;
     }
 
     try {
       const result = exportSelectionsToJson(selections, { filename: 'playground-selections' });
       if (result.success) {
-        toast.success('Selections exported', {
-          description: `${selectedSamples.size} selected, ${pinnedSamples.size} pinned samples saved`,
+        toast.success(t('playground.hooks.export.selectionsExported'), {
+          description: t('playground.hooks.export.selectionsSaved', { selected: selectedSamples.size, pinned: pinnedSamples.size }),
         });
       } else {
-        toast.error('Export failed', { description: result.error });
+        toast.error(t('playground.hooks.export.failed'), { description: result.error });
       }
     } catch (error) {
-      toast.error('Export failed', { description: (error as Error).message });
+      toast.error(t('playground.hooks.export.failed'), { description: (error as Error).message });
     }
-  }, [exportData]);
+  }, [exportData, t]);
 
   // Batch export all visible charts
   const batchExportCharts = useCallback(async () => {
@@ -207,7 +210,7 @@ export function usePlaygroundExport({
     }
 
     if (charts.size === 0) {
-      toast.error('No charts to export');
+      toast.error(t('playground.hooks.export.noCharts'));
       return;
     }
 
@@ -218,13 +221,13 @@ export function usePlaygroundExport({
         filename: 'playground',
       });
       const successCount = results.filter(r => r.success).length;
-      toast.success('Batch export complete', {
-        description: `${successCount}/${charts.size} charts exported`,
+      toast.success(t('playground.hooks.export.batchComplete'), {
+        description: t('playground.hooks.export.batchCount', { done: successCount, total: charts.size }),
       });
     } catch (error) {
-      toast.error('Batch export failed', { description: (error as Error).message });
+      toast.error(t('playground.hooks.export.batchFailed'), { description: (error as Error).message });
     }
-  }, [chartRefs, visibleCharts]);
+  }, [chartRefs, visibleCharts, t]);
 
   // Export combined report with all charts (Phase 8)
   const exportCombinedReportPng = useCallback(async () => {
@@ -249,7 +252,7 @@ export function usePlaygroundExport({
     }
 
     if (chartElements.size === 0) {
-      toast.error('No charts to export');
+      toast.error(t('playground.hooks.export.noCharts'));
       return;
     }
 
@@ -270,16 +273,16 @@ export function usePlaygroundExport({
       });
 
       if (result.success) {
-        toast.success('Combined report exported', {
-          description: `Report with ${chartElements.size} charts saved to ${result.filename}`,
+        toast.success(t('playground.hooks.export.reportExported'), {
+          description: t('playground.hooks.export.reportSaved', { count: chartElements.size, filename: result.filename }),
         });
       } else {
-        toast.error('Export failed', { description: result.error });
+        toast.error(t('playground.hooks.export.failed'), { description: result.error });
       }
     } catch (error) {
-      toast.error('Export failed', { description: (error as Error).message });
+      toast.error(t('playground.hooks.export.failed'), { description: (error as Error).message });
     }
-  }, [chartRefs, visibleCharts, exportData]);
+  }, [chartRefs, visibleCharts, exportData, t]);
 
   return {
     exportChartPng,

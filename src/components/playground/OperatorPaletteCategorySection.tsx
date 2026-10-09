@@ -39,6 +39,7 @@ import {
   getOperatorKey,
   type PlaygroundTabType,
 } from '@/lib/playground/operatorPaletteData';
+import { useTranslation } from 'react-i18next';
 
 // Icon mapping for operator categories (case-insensitive lookup via normalized key)
 const ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
@@ -197,6 +198,7 @@ interface OperatorTooltipProps {
 }
 
 function OperatorTooltip({ operator, children }: OperatorTooltipProps) {
+  const { t } = useTranslation();
   const paramCount = Object.keys(operator.params).filter(k => !k.startsWith('_')).length;
 
   return (
@@ -220,7 +222,7 @@ function OperatorTooltip({ operator, children }: OperatorTooltipProps) {
           {paramCount > 0 && (
             <div className="pt-1 border-t border-border">
               <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                Parameters
+                {t('playground.operators.parameters')}
               </div>
               <div className="space-y-0.5">
                 {Object.entries(operator.params)
@@ -241,7 +243,7 @@ function OperatorTooltip({ operator, children }: OperatorTooltipProps) {
                   ))}
                 {paramCount > 4 && (
                   <div className="text-[10px] text-muted-foreground">
-                    +{paramCount - 4} more...
+                    {t('playground.operators.moreParams', { count: paramCount - 4 })}
                   </div>
                 )}
               </div>
@@ -251,7 +253,7 @@ function OperatorTooltip({ operator, children }: OperatorTooltipProps) {
           <div className="pt-1 border-t border-border text-[10px] text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Plus className="w-2.5 h-2.5" />
-              Click to add to pipeline
+              {t('playground.operators.clickToAdd')}
             </span>
           </div>
         </div>

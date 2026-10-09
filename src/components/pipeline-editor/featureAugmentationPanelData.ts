@@ -1,3 +1,4 @@
+import i18n from "i18next";
 import type {
   FeatureAugmentationAction,
   FeatureAugmentationConfig,
@@ -6,10 +7,14 @@ import type {
 import type { StepOption } from "./types";
 
 export interface FeatureAugmentationActionDetails {
-  label: string;
-  description: string;
-  detail: string;
-  example: string;
+  /** i18n key of the short action label. */
+  labelKey: string;
+  /** i18n key of the one-line action description. */
+  descriptionKey: string;
+  /** i18n key of the detailed action explanation. */
+  detailKey: string;
+  /** i18n key of the illustrative data-flow example. */
+  exampleKey: string;
 }
 
 export const FEATURE_AUGMENTATION_ACTION_DETAILS: Record<
@@ -17,25 +22,22 @@ export const FEATURE_AUGMENTATION_ACTION_DETAILS: Record<
   FeatureAugmentationActionDetails
 > = {
   extend: {
-    label: "Extend",
-    description: "Add each transform as an independent channel",
-    detail:
-      "Each transform creates a new feature set. Original data + N transforms = N+1 channels.",
-    example: "Input → [Original, SNV, FirstDeriv] → Model",
+    labelKey: "pipelineEditor.augmentation.actions.extend.label",
+    descriptionKey: "pipelineEditor.augmentation.actions.extend.description",
+    detailKey: "pipelineEditor.augmentation.actions.extend.detail",
+    exampleKey: "pipelineEditor.augmentation.actions.extend.example",
   },
   add: {
-    label: "Add",
-    description: "Chain transforms, keep originals",
-    detail:
-      "Apply transforms sequentially on top of existing processing, keeping original features.",
-    example: "Input → [Original, Original+SNV, Original+SNV+Deriv] → Model",
+    labelKey: "pipelineEditor.augmentation.actions.add.label",
+    descriptionKey: "pipelineEditor.augmentation.actions.add.description",
+    detailKey: "pipelineEditor.augmentation.actions.add.detail",
+    exampleKey: "pipelineEditor.augmentation.actions.add.example",
   },
   replace: {
-    label: "Replace",
-    description: "Chain transforms, discard originals",
-    detail:
-      "Apply transforms sequentially, only keeping the final processed version.",
-    example: "Input → [SNV+Deriv only] → Model",
+    labelKey: "pipelineEditor.augmentation.actions.replace.label",
+    descriptionKey: "pipelineEditor.augmentation.actions.replace.description",
+    detailKey: "pipelineEditor.augmentation.actions.replace.detail",
+    exampleKey: "pipelineEditor.augmentation.actions.replace.example",
   },
 };
 
@@ -45,15 +47,14 @@ export interface FeatureAugmentationPresetTransform {
 }
 
 export interface FeatureAugmentationPreset {
-  name: string;
-  description: string;
+  /** Stable id; the localized name and description live under `pipelineEditor.augmentation.presets.<id>`. */
+  id: string;
   transforms: readonly FeatureAugmentationPresetTransform[];
 }
 
 export const AUGMENTATION_PRESETS = [
   {
-    name: "NIRS Standard",
-    description: "SNV + First Derivative + Second Derivative",
+    id: "nirsStandard",
     transforms: [
       { name: "SNV", params: {} },
       { name: "FirstDerivative", params: {} },
@@ -61,8 +62,7 @@ export const AUGMENTATION_PRESETS = [
     ],
   },
   {
-    name: "Scatter Variants",
-    description: "Compare scatter correction methods",
+    id: "scatterVariants",
     transforms: [
       { name: "SNV", params: {} },
       { name: "MSC", params: { reference: "mean" } },
@@ -70,8 +70,7 @@ export const AUGMENTATION_PRESETS = [
     ],
   },
   {
-    name: "Derivative Comparison",
-    description: "Different derivative approaches",
+    id: "derivativeComparison",
     transforms: [
       { name: "FirstDerivative", params: {} },
       {
@@ -85,8 +84,7 @@ export const AUGMENTATION_PRESETS = [
     ],
   },
   {
-    name: "Smoothing Levels",
-    description: "Compare different smoothing intensities",
+    id: "smoothingLevels",
     transforms: [
       {
         name: "SavitzkyGolay",
@@ -236,28 +234,32 @@ export function getFeatureAugmentationOutputPreview(
 ): FeatureAugmentationOutputPreview {
   const n = transforms.length;
   if (n === 0) {
-    return { channels: 1, description: "No transforms - original only" };
+    return {
+      channels: 1,
+      description: i18n.t("pipelineEditor.augmentation.output.none"),
+    };
   }
 
   switch (action) {
     case "extend":
       return {
         channels: n + 1,
-        description: `Original + ${n} transform${
-          n !== 1 ? "s" : ""
-        } = ${n + 1} channels`,
+        description: i18n.t("pipelineEditor.augmentation.output.extend", {
+          count: n,
+          channels: n + 1,
+        }),
       };
     case "add":
       return {
         channels: n + 1,
-        description: `Cumulative: Original, +T1, +T1+T2, ... = ${
-          n + 1
-        } channels`,
+        description: i18n.t("pipelineEditor.augmentation.output.add", {
+          channels: n + 1,
+        }),
       };
     case "replace":
       return {
         channels: 1,
-        description: `Sequential processing: T1 → T2 → ... → T${n}`,
+        description: i18n.t("pipelineEditor.augmentation.output.replace", { last: n }),
       };
   }
 }

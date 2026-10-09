@@ -14,6 +14,7 @@
  */
 
 import { Suspense, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Waves,
   Shuffle,
@@ -99,6 +100,7 @@ export function StepConfigPanel({
   onAddChild,
   onRemoveChild,
 }: StepConfigPanelProps) {
+  const { t } = useTranslation();
   // All hooks must be called before any conditional early return (Rules of Hooks).
   // Use optional chaining / fallback values so hooks are safe when step is null.
 
@@ -180,10 +182,9 @@ export function StepConfigPanel({
         <div className="p-4 rounded-full bg-muted/50 mb-4">
           <GitBranch className="h-8 w-8 text-muted-foreground" />
         </div>
-        <h3 className="font-medium text-foreground mb-1">No Step Selected</h3>
+        <h3 className="font-medium text-foreground mb-1">{t("pipelineEditor.config.panel.noStepTitle")}</h3>
         <p className="text-sm text-muted-foreground max-w-[200px]">
-          Select a step from the canvas or drag one from the palette to
-          configure it
+          {t("pipelineEditor.config.panel.noStepHint")}
         </p>
       </div>
     );
@@ -234,16 +235,16 @@ export function StepConfigPanel({
               {step.name}
             </h2>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <Badge variant="secondary" className="text-xs capitalize">
-                {step.type}
+              <Badge variant="secondary" className="text-xs">
+                {t(`pipelineEditor.config.panel.stepType.${step.type}`)}
               </Badge>
               <span className="text-xs text-muted-foreground">
-                {Object.keys(stepToRender.params).length} params
+                {t("pipelineEditor.config.panel.paramCount", { count: Object.keys(stepToRender.params).length })}
               </span>
               {hasSweeps && (
                 <Badge className="text-xs bg-orange-500 hover:bg-orange-600">
                   <Repeat className="h-3 w-3 mr-1" />
-                  {totalVariants} variants
+                  {t("pipelineEditor.config.panel.variantCount", { count: totalVariants })}
                 </Badge>
               )}
               <FinetuningBadge config={step.finetuneConfig} />

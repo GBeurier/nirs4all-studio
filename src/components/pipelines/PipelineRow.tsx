@@ -3,6 +3,7 @@
  * Phase 6: Pipelines Library
  */
 
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { motion } from "@/lib/motion";
 import {
@@ -39,9 +40,9 @@ interface PipelineRowProps {
 }
 
 const categoryConfig = {
-  user: { label: "Saved", color: "text-primary bg-primary/10" },
-  preset: { label: "Template", color: "text-accent bg-accent/10" },
-  shared: { label: "Shared", color: "text-success bg-success/10" },
+  user: { color: "text-primary bg-primary/10" },
+  preset: { color: "text-accent bg-accent/10" },
+  shared: { color: "text-success bg-success/10" },
 };
 
 const statusConfig = {
@@ -58,6 +59,7 @@ export function PipelineRow({
   onDelete,
   onExport,
 }: PipelineRowProps) {
+  const { t, i18n } = useTranslation();
   const stats = computePipelineStats(pipeline.steps);
   const isPreset = pipeline.category === "preset";
   // Format relative date
@@ -67,11 +69,11 @@ export function PipelineRow({
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-    return date.toLocaleDateString();
+    if (diffDays === 0) return t("pipelines.row.today");
+    if (diffDays === 1) return t("pipelines.row.yesterday");
+    if (diffDays < 7) return t("pipelines.row.daysAgo", { count: diffDays });
+    if (diffDays < 30) return t("pipelines.row.weeksAgo", { count: Math.floor(diffDays / 7) });
+    return date.toLocaleDateString(i18n.language);
   };
 
   return (
@@ -81,7 +83,13 @@ export function PipelineRow({
       layout
     >
       {/* Favorite toggle */}
-      <button onClick={onToggleFavorite} className="p-1 shrink-0">
+      <button
+        type="button"
+        onClick={onToggleFavorite}
+        className="p-1 shrink-0"
+        aria-label={pipeline.isFavorite ? t("pipelines.editor.removeFromFavorites") : t("pipelines.editor.addToFavorites")}
+        aria-pressed={pipeline.isFavorite}
+      >
         {pipeline.isFavorite ? (
           <Star className="h-4 w-4 text-warning fill-warning" />
         ) : (
@@ -109,16 +117,19 @@ export function PipelineRow({
               categoryConfig[pipeline.category].color
             )}
           >
-            {categoryConfig[pipeline.category].label}
+            {t(`pipelines.collection.category.${pipeline.category}`)}
           </span>
         </div>
         {isPreset && pipeline.description ? (
           <p className="text-sm text-muted-foreground truncate">{pipeline.description}</p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            {stats.operators} ops · {stats.models} model{stats.models === 1 ? "" : "s"} · {stats.branches} branch
-            {stats.branches === 1 ? "" : "es"}
-            {stats.hasGenerators ? ` · ${stats.variants} variants` : ""}
+            {[
+              t("pipelines.row.opsCount", { count: stats.operators }),
+              t("pipelines.row.modelsCount", { count: stats.models }),
+              t("pipelines.row.branchesCount", { count: stats.branches }),
+              ...(stats.hasGenerators ? [t("pipelines.row.variantsCount", { count: stats.variants })] : []),
+            ].join(" · ")}
           </p>
         )}
       </div>
@@ -126,11 +137,11 @@ export function PipelineRow({
       {/* Stats */}
       <div className="hidden md:flex items-center gap-6 text-sm text-muted-foreground shrink-0">
         <span className="flex items-center gap-1">
-          <Layers className="h-4 w-4" /> {stats.operators} ops
+          <Layers className="h-4 w-4" /> {t("pipelines.row.opsCount", { count: stats.operators })}
         </span>
         {pipeline.runCount !== undefined && pipeline.runCount > 0 && (
           <span className="flex items-center gap-1 w-20">
-            <Play className="h-4 w-4" /> {pipeline.runCount} runs
+            <Play className="h-4 w-4" /> {t("pipelines.row.runsCount", { count: pipeline.runCount })}
           </span>
         )}
         <span className="flex items-center gap-1">
@@ -145,7 +156,7 @@ export function PipelineRow({
           <span className="text-xs">
             {pipeline.lastRunDate
               ? formatRelativeDate(pipeline.lastRunDate)
-              : `Updated ${formatRelativeDate(pipeline.updatedAt)}`}
+              : t("pipelines.row.updated", { when: formatRelativeDate(pipeline.updatedAt) })}
           </span>
         </span>
       </div>
@@ -165,26 +176,26 @@ export function PipelineRow({
       {/* Actions */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="p-2 rounded hover:bg-muted transition-colors shrink-0">
+          <button type="button" className="p-2 rounded hover:bg-muted transition-colors shrink-0" aria-label={t("pipelines.card.moreActions")}>
             <MoreVertical className="h-4 w-4 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem asChild>
             <Link to={`/pipelines/${pipeline.id}`}>
-              <Play className="mr-2 h-4 w-4" /> Open & Edit
+              <Play className="mr-2 h-4 w-4" /> {t("pipelines.card.openAndEdit")}
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onDuplicate}>
-            <Copy className="mr-2 h-4 w-4" /> Duplicate
+            <Copy className="mr-2 h-4 w-4" /> {t("pipelines.card.duplicate")}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onExport}>
-            <Download className="mr-2 h-4 w-4" /> Export JSON
+            <Download className="mr-2 h-4 w-4" /> {t("pipelines.card.exportJson")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           {pipeline.category === "user" && (
             <DropdownMenuItem onClick={onDelete} className="text-destructive">
-              <Trash2 className="mr-2 h-4 w-4" /> Delete
+              <Trash2 className="mr-2 h-4 w-4" /> {t("common.delete")}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
