@@ -37,34 +37,33 @@ mod document_cpython;
 mod error_logs;
 pub mod execution_job_records;
 mod general_prediction;
-mod operator_availability;
-mod workspace_views;
-mod inspector_views;
-mod prediction_export;
-mod library_analysis;
 mod http_access;
+mod inspector_views;
 pub mod job_http;
 pub mod job_lifecycle;
 pub mod legacy_conversion;
+mod library_analysis;
 mod matrix_limits;
 mod native_archive_training;
 pub mod native_updates;
+mod operator_availability;
 mod pipeline_presets;
 mod playground;
 mod playground_views;
+mod prediction_export;
 mod prediction_results;
 mod prediction_upload;
 mod python_probe_cache;
 mod recommended_config;
 mod recommended_config_http;
 mod results_summary;
+mod run_deletion;
 pub mod run_detail;
 pub mod run_detail_cpython;
 pub mod run_detail_preselection;
-mod run_deletion;
-mod run_management;
 mod run_history;
 mod run_listing;
+mod run_management;
 pub mod scientific_cpython;
 pub mod scientific_request_resolver;
 pub mod scientific_submission;
@@ -74,6 +73,7 @@ mod workspace_documents;
 mod workspace_metadata;
 pub mod workspace_store;
 mod workspace_upgrade;
+mod workspace_views;
 
 use archive_v2_prediction::{
     parse_conformal_presentation_request, parse_request as parse_archive_v2_prediction_request,
@@ -533,7 +533,10 @@ impl CapabilitiesSnapshot {
             "workspace_prediction_result_routes",
             "aggregated_prediction_result_routes",
             "playground_routes",
-            "operator_availability_route", "inspector_view_routes", "prediction_export_routes", "library_analysis_routes",
+            "operator_availability_route",
+            "inspector_view_routes",
+            "prediction_export_routes",
+            "library_analysis_routes",
         ];
         for feature in scientific_features {
             capabilities["features"][feature] = json!(false);
@@ -1001,7 +1004,12 @@ impl HttpResponse {
 
     #[must_use]
     pub fn binary(status: u16, body: Vec<u8>, content_type: &'static str) -> Self {
-        Self { status, body: String::new(), body_bytes: Some(body), headers: vec![("Content-Type", content_type.into())] }
+        Self {
+            status,
+            body: String::new(),
+            body_bytes: Some(body),
+            headers: vec![("Content-Type", content_type.into())],
+        }
     }
 
     #[must_use]
@@ -2415,7 +2423,9 @@ fn route_workspace_run_detail(state: &SidecarState, method: &str, path: &str) ->
             &state.native_jobs,
             path,
             &|operation, payload| {
-                state.scientific_host.as_deref()
+                state
+                    .scientific_host
+                    .as_deref()
                     .ok_or_else(|| "Scientific library runtime is unavailable".to_owned())?
                     .adapt_document(operation, payload)
             },
@@ -4316,10 +4326,7 @@ fn scientific_submission_runtime_response(
         }
         Err(job_http::NativeJobRuntimeError::Executor(
             job_http::JobExecutorError::PreflightBlocked { code, detail },
-        )) => HttpResponse::json(
-            400,
-            json!({"code": code, "detail": detail}).to_string(),
-        ),
+        )) => HttpResponse::json(400, json!({"code": code, "detail": detail}).to_string()),
         Err(job_http::NativeJobRuntimeError::Executor(
             job_http::JobExecutorError::InvalidCapability
             | job_http::JobExecutorError::PreflightRefused,
@@ -5088,7 +5095,9 @@ fn http_body_limit(path: &str) -> usize {
     match path {
         "/api/datasets/upload" | "/api/datasets/preview-upload" => dataset_import::MAX_UPLOAD_BYTES,
         "/api/datasets/import-multimodal" => document_cpython::MAX_DOCUMENT_BYTES,
-        "/api/playground/execute" | "/api/playground/diff/compute" | "/api/playground/diff/repetition-variance" => playground::MAX_REQUEST_BYTES,
+        "/api/playground/execute"
+        | "/api/playground/diff/compute"
+        | "/api/playground/diff/repetition-variance" => playground::MAX_REQUEST_BYTES,
         "/api/predict" | "/api/predict/file" => matrix_limits::MAX_PREDICTION_BODY_BYTES,
         ARCHIVE_V2_PREDICTION_ROUTE
         | ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE
@@ -5195,8 +5204,15 @@ fn write_response(stream: &mut TcpStream, response: &HttpResponse) -> std::io::R
         504 => "Gateway Timeout",
         _ => "Internal Server Error",
     };
-    let bytes = response.body_bytes.as_deref().unwrap_or_else(|| response.body.as_bytes());
-    let content_type = response.headers.iter().find(|(name, _)| name.eq_ignore_ascii_case("Content-Type")).map_or("application/json", |(_, value)| value.as_str());
+    let bytes = response
+        .body_bytes
+        .as_deref()
+        .unwrap_or_else(|| response.body.as_bytes());
+    let content_type = response
+        .headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("Content-Type"))
+        .map_or("application/json", |(_, value)| value.as_str());
     write!(
         stream,
         "HTTP/1.1 {} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n",
@@ -5204,7 +5220,9 @@ fn write_response(stream: &mut TcpStream, response: &HttpResponse) -> std::io::R
         bytes.len(),
     )?;
     for (name, value) in &response.headers {
-        if name.eq_ignore_ascii_case("Content-Type") { continue; }
+        if name.eq_ignore_ascii_case("Content-Type") {
+            continue;
+        }
         write!(stream, "{name}: {value}\r\n")?;
     }
     write!(stream, "\r\n")?;
@@ -8593,11 +8611,20 @@ mod tests {
     fn playground_matrix_transport_budget_matches_the_bounded_library_contract() {
         let body = serde_json::json!({"data": {"x": vec![vec![0; 700]; 60]}}).to_string();
         assert!(body.len() > MAX_REQUEST_BODY_BYTES);
-        for path in ["/api/playground/execute", "/api/playground/diff/compute", "/api/playground/diff/repetition-variance"] {
+        for path in [
+            "/api/playground/execute",
+            "/api/playground/diff/compute",
+            "/api/playground/diff/repetition-variance",
+        ] {
             assert!(body.len() < http_body_limit(path));
             assert_eq!(http_body_limit(path), playground::MAX_REQUEST_BYTES);
         }
-        for path in ["/api/playground/execute/extra", "/api/playground/validate", "/api/playground/capabilities", "/api/preferences"] {
+        for path in [
+            "/api/playground/execute/extra",
+            "/api/playground/validate",
+            "/api/playground/capabilities",
+            "/api/preferences",
+        ] {
             assert_eq!(http_body_limit(path), MAX_REQUEST_BODY_BYTES);
         }
     }

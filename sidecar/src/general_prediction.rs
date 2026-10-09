@@ -359,8 +359,10 @@ pub fn file_payload(
     }
     // Canonical Windows paths contain `?`; IO interprets that as a glob.
     // Reuse the dataset bridge's identity-checked ordinary path conversion.
-    payload["file_path"] = json!(crate::scientific_request_resolver::library_dataset_path(&path)
-        .map_err(|error| format!("Invalid uploaded prediction path: {error:?}"))?);
+    payload["file_path"] = json!(
+        crate::scientific_request_resolver::library_dataset_path(&path)
+            .map_err(|error| format!("Invalid uploaded prediction path: {error:?}"))?
+    );
     payload["params"] = params;
     payload["partition"] = json!("all");
     Ok(payload)
@@ -545,7 +547,10 @@ mod tests {
         .unwrap();
         assert_eq!(payload["data_source"], "file");
         let transmitted = payload["file_path"].as_str().unwrap();
-        assert_eq!(std::path::Path::new(transmitted).canonicalize().unwrap(), canonical_path);
+        assert_eq!(
+            std::path::Path::new(transmitted).canonicalize().unwrap(),
+            canonical_path
+        );
         #[cfg(windows)]
         assert!(!transmitted.starts_with(r"\\?\"));
         assert_eq!(payload["params"]["delimiter"], ";");
