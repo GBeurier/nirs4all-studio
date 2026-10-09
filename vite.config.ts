@@ -128,5 +128,29 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: "dist",
     sourcemap: mode === "development",
+    rollupOptions: {
+      output: {
+        // Keep heavy visualization stacks in their own cacheable chunks; they are only
+        // fetched by the lazily loaded pages that render them.
+        manualChunks(id) {
+          // Tiny helpers shared with the entry must not be absorbed by a heavy vendor chunk.
+          if (id.includes("commonjsHelpers") || id.includes("vite/preload-helper") || /node_modules\/(@babel\/runtime|tslib|use-sync-external-store|clsx)\//.test(id)) {
+            return "vendor-core";
+          }
+          if (!id.includes("node_modules")) return undefined;
+          if (/node_modules\/(three|@react-three|three-stdlib|troika-[^/]+|maath|three-mesh-bvh|meshline|camera-controls|stats\.js|its-fine|suspend-react|zustand|tunnel-rat|hls\.js|bidi-js|webgl-sdf-generator|webgl-constants)\//.test(id)) {
+            return "vendor-three";
+          }
+          if (/node_modules\/(react|react-dom|scheduler|react-is|react-router|react-router-dom|@remix-run\/router|object-assign)\//.test(id)) {
+            return "vendor-core";
+          }
+          if (/node_modules\/regl\//.test(id)) return "vendor-regl";
+          if (/node_modules\/(recharts|recharts-scale|react-smooth|d3-[^/]+|victory-vendor|decimal\.js-light|fast-equals|lodash|eventemitter3|tiny-invariant|internmap)\//.test(id)) {
+            return "vendor-recharts";
+          }
+          return undefined;
+        },
+      },
+    },
   },
 }));

@@ -6,7 +6,7 @@
  */
 
 import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
-import { useSelection } from '@/context/useSelection';
+import { useHoveredSample, useSelection } from '@/context/useSelection';
 import {
   getCategoricalColor,
   getContinuousColor,
@@ -77,7 +77,8 @@ export function useHistogramData(props: YHistogramProps) {
     ? fullSelectionCtx.selectedSamples
     : fallbackSelectedSamples;
 
-  const hoveredSample = useSelectionContextFlag ? fullSelectionCtx.hoveredSample : null;
+  const contextHoveredSample = useHoveredSample();
+  const hoveredSample = useSelectionContextFlag ? contextHoveredSample : null;
 
   // Use processed Y if available
   const displayY = processedY && processedY.length === y.length ? processedY : y;

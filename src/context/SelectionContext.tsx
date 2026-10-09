@@ -35,7 +35,9 @@ import {
   persistPlaygroundSelectionState,
 } from './selection/playgroundSelectionStorage';
 import {
+  HoveredSampleContext,
   SelectionContext,
+  SetHoveredSampleContext,
   type SavedSelection,
   type SelectionAction,
   type SelectionContextValue,
@@ -58,7 +60,6 @@ const createInitialState = (): SelectionState => ({
   historyIndex: 0,
   isSelecting: false,
   selectionMode: 'replace',
-  hoveredSample: null,
   lastSelectedIndex: null,
   selectionToolMode: 'click',
 });
@@ -370,13 +371,6 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       };
     }
 
-    case 'SET_HOVERED': {
-      return {
-        ...state,
-        hoveredSample: action.index,
-      };
-    }
-
     case 'RESTORE': {
       return {
         ...state,
@@ -440,8 +434,8 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     return initial;
   });
 
-  // Separate hover state for performance - hover changes don't trigger selection re-renders
-  const [hoveredSample, setHoveredSampleState] = useState<number | null>(null);
+  // Hover has its own contexts: hover changes must not re-render selection consumers.
+  const [hoveredSample, setHovered] = useState<number | null>(null);
 
   // Persist state changes (debounced) - 500ms to reduce GC pressure in Firefox
   useEffect(() => {
@@ -521,8 +515,6 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     (tool: SelectionToolType) => dispatch({ type: 'SET_SELECTION_TOOL', tool }),
     [],
   );
-  // setHovered uses separate state for performance — hover never re-renders selection consumers.
-  const setHovered = useCallback((index: number | null) => setHoveredSampleState(index), []);
   const intersectWithAvailable = useCallback(
     (availableIndices: number[]) => {
       dispatch({ type: 'INTERSECT_WITH_AVAILABLE', availableIndices });
@@ -541,7 +533,6 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
 
   const value = useMemo<SelectionContextValue>(() => ({
     ...state,
-    hoveredSample, // Override with separate hover state
     select,
     deselect,
     toggle,
@@ -565,7 +556,6 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     setSelecting,
     setSelectionMode,
     setSelectionToolMode,
-    setHovered,
     isSelected,
     isPinned,
     selectedCount,
@@ -574,7 +564,6 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     intersectWithAvailable,
   }), [
     state,
-    hoveredSample,
     select,
     deselect,
     toggle,
@@ -598,7 +587,6 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     setSelecting,
     setSelectionMode,
     setSelectionToolMode,
-    setHovered,
     isSelected,
     isPinned,
     selectedCount,
@@ -609,7 +597,11 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
 
   return (
     <SelectionContext.Provider value={value}>
-      {children}
+      <SetHoveredSampleContext.Provider value={setHovered}>
+        <HoveredSampleContext.Provider value={hoveredSample}>
+          {children}
+        </HoveredSampleContext.Provider>
+      </SetHoveredSampleContext.Provider>
     </SelectionContext.Provider>
   );
 }

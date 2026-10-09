@@ -20,7 +20,11 @@ const selection = vi.hoisted(() => ({
   hoveredSample: null as number | null, setHovered: vi.fn(),
 }));
 vi.mock('./ScatterPureWebGL2D.webgl', () => webgl);
-vi.mock('@/context/useSelection', () => ({ useSelection: () => selection }));
+vi.mock('@/context/useSelection', () => ({
+  useSelection: () => selection,
+  useHoveredSample: () => selection.hoveredSample,
+  useSetHoveredSample: () => selection.setHovered,
+}));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;

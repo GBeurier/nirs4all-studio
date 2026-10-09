@@ -7,7 +7,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { SelectionContextValue } from '@/context/useSelection';
+import { SetHoveredSampleContext, type SelectionContextValue } from '@/context/useSelection';
 import {
   useSpectraChartInteractions,
   type UseSpectraChartInteractionsResult,
@@ -41,7 +41,6 @@ function createSelectionContext(overrides: Partial<SelectionContextValue> = {}):
     historyIndex: 0,
     isSelecting: false,
     selectionMode: 'replace',
-    hoveredSample: null,
     lastSelectedIndex: null,
     selectionToolMode: 'click',
     select: vi.fn(),
@@ -67,7 +66,6 @@ function createSelectionContext(overrides: Partial<SelectionContextValue> = {}):
     setSelecting: vi.fn(),
     setSelectionMode: vi.fn(),
     setSelectionToolMode: vi.fn(),
-    setHovered: vi.fn(),
     isSelected: vi.fn(() => false),
     isPinned: vi.fn(() => false),
     selectedCount: 0,
@@ -203,10 +201,12 @@ describe('useSpectraChartInteractions', () => {
 
   it('updates selection hover from Recharts payload indices', async () => {
     const setHovered = vi.fn();
-    const selectionCtx = createSelectionContext({ setHovered });
+    const selectionCtx = createSelectionContext();
 
     const { root } = await render(
-      <Harness selectionCtx={selectionCtx} displayIndices={[10, 42]} />
+      <SetHoveredSampleContext.Provider value={setHovered}>
+        <Harness selectionCtx={selectionCtx} displayIndices={[10, 42]} />
+      </SetHoveredSampleContext.Provider>
     );
 
     await act(async () => {

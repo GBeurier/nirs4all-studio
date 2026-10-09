@@ -38,6 +38,11 @@ import {
   type WsMessage,
 } from "@/lib/run-progress";
 import {
+  getExecutionJobRecordRefetchInterval,
+  getRunDetailRefetchInterval,
+  WS_INVALIDATE_THROTTLE_MS,
+} from "@/lib/run-progress/polling";
+import {
   downloadTextFile,
   sanitizeFilename,
 } from "@/components/runs";
@@ -71,6 +76,9 @@ export default function RunProgress() {
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [logsError, setLogsError] = useState<string | null>(null);
   const [wsReconnecting, setWsReconnecting] = useState<{ attempt: number; max: number } | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
+  const invalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastInvalidateRef = useRef(0);
   const [currentProgress, setCurrentProgress] = useState<ProgressState | null>(null);
   const [progressState, dispatchProgress] = useReducer(runProgressReducer, initialRunProgressState);
   const { granular: granularProgress, refit: refitState } = progressState;
@@ -80,14 +88,7 @@ export default function RunProgress() {
     queryKey: ["run", runId, workspaceId],
     queryFn: async () => buildRunFromWorkspaceDetail(await getN4AWorkspaceRunDetail(workspaceId!, runId!)),
     enabled: !!runId && !!workspaceId && !executionJobId,
-    refetchInterval: (query) => {
-      const data = query.state.data as Run | undefined;
-      // Poll every 1 second for active runs (faster updates)
-      if (data?.status === "running" || data?.status === "queued") {
-        return 1000;
-      }
-      return false;
-    },
+    refetchInterval: (query) => getRunDetailRefetchInterval((query.state.data as Run | undefined)?.status, wsConnected),
   });
 
   const { data: executionJobRecord = null } = useQuery({
@@ -109,13 +110,12 @@ export default function RunProgress() {
     },
     enabled: !!runId && executionJobId,
     retry: false,
-    refetchInterval: (query) => {
-      const record = query.state.data;
-      if (!record || record.status === "running" || record.status === "pending") {
-        return 1000;
-      }
-      return false;
-    },
+    refetchInterval: (query) => getExecutionJobRecordRefetchInterval({
+      record: query.state.data,
+      queryStatus: query.state.status,
+      dataUpdateCount: query.state.dataUpdateCount,
+      wsConnected,
+    }),
   });
 
   const run = runDetail ?? (executionJobRecord
@@ -124,8 +124,22 @@ export default function RunProgress() {
   // WebSocket updates
   const handleWsUpdate = useCallback(
     (message: WsMessage) => {
-      // Invalidate query on WebSocket update to refresh data
-      queryClient.invalidateQueries({ queryKey: ["run", runId] });
+      // Refresh run data on WebSocket updates, throttled so progress bursts do not become request storms.
+      // Terminal messages refresh immediately.
+      const isTerminal = message.type === "job_completed" || message.type === "job_failed";
+      const invalidate = () => {
+        invalidateTimerRef.current = null;
+        lastInvalidateRef.current = Date.now();
+        void queryClient.invalidateQueries({ queryKey: ["run", runId] });
+      };
+      if (isTerminal) {
+        if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+        invalidate();
+      } else if (!invalidateTimerRef.current) {
+        const wait = WS_INVALIDATE_THROTTLE_MS - (Date.now() - lastInvalidateRef.current);
+        if (wait <= 0) invalidate();
+        else invalidateTimerRef.current = setTimeout(invalidate, wait);
+      }
 
       // Handle completion - show toast
       if (message.type === "job_completed") {
@@ -159,11 +173,13 @@ export default function RunProgress() {
 
   // Handle WebSocket reconnecting
   const handleReconnecting = useCallback((attempt: number, maxAttempts: number) => {
+    setWsConnected(false);
     setWsReconnecting({ attempt, max: maxAttempts });
   }, []);
 
   // Handle WebSocket connected
   const handleConnected = useCallback(() => {
+    setWsConnected(true);
     setWsReconnecting(null);
   }, []);
 
@@ -175,7 +191,14 @@ export default function RunProgress() {
     setPersistedLogs([]);
     setLogsError(null);
     setCurrentProgress(null);
+    setWsConnected(false);
     dispatchProgress({ type: "reset" });
+    return () => {
+      if (invalidateTimerRef.current) {
+        clearTimeout(invalidateTimerRef.current);
+        invalidateTimerRef.current = null;
+      }
+    };
   }, [runId]);
 
   const loadPersistedLogs = useCallback(async () => {

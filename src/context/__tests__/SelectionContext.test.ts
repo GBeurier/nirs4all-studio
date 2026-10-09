@@ -30,7 +30,6 @@ function createInitialState(): SelectionState {
     historyIndex: 0,
     isSelecting: false,
     selectionMode: 'replace',
-    hoveredSample: null,
     lastSelectedIndex: null,
     selectionToolMode: 'click',
   };
