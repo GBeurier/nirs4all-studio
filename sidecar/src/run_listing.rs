@@ -669,7 +669,10 @@ mod tests {
         let selected = HashSet::from(["running".to_owned()]);
         let filtered = compose(&stored, stats, vec![], Some(&selected), false);
         assert_eq!(filtered["total"], 0);
-        assert!(filtered["runs"].as_array().unwrap().is_empty());
+        assert_eq!(
+            filtered["runs"].as_array().unwrap().as_slice(),
+            [] as [Value; 0]
+        );
         assert_eq!(stored["runs"][0]["status"], "running");
     }
 }

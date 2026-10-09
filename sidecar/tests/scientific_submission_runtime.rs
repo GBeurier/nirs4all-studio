@@ -85,9 +85,10 @@ fn missing_dependency_returns_actionable_validation_without_creating_a_job() {
     );
     assert_eq!(runtime.published_event_count(), 0);
     assert_eq!(runtime.durable_write_count(), 0);
-    assert!(runtime
-        .training_list_at(&workspace, Instant::now())
-        .is_empty());
+    assert_eq!(
+        runtime.training_list_at(&workspace, Instant::now()),
+        [] as [Value; 0]
+    );
     assert_eq!(fs::read_dir(workspace.join("runs")).unwrap().count(), 0);
     fs::remove_dir_all(root).unwrap();
 }
