@@ -3490,7 +3490,7 @@ mod tests {
                 process_id
             );
         }
-        assert!(executor.warm_workers[1].lock().unwrap().is_none());
+        assert!(executor.warm_workers[1].lock().unwrap().is_some());
         // Simulate a crashed interpreter without changing the selected venv.
         nix::sys::signal::kill(
             nix::unistd::Pid::from_raw(i32::try_from(process_id).unwrap()),
