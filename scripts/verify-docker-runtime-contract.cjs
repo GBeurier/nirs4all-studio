@@ -74,6 +74,11 @@ requireText(
 );
 requireText(
   dockerfile,
+  "COPY --from=studio-document-adapter-sources /api/shared/system_info.py api/shared/system_info.py",
+  "Rust system-information probe compile source",
+);
+requireText(
+  dockerfile,
   "COPY recommended-config.json recommended-config.json",
   "Rust recommended profile compile source",
 );
@@ -168,6 +173,7 @@ requireText(dockerfile, '"src/data/nodes/generated/canonical-registry.json"', "c
 requireText(dockerfile, `"${adapterManifest}"`, "document adapter manifest inventory");
 requireText(dockerignore, "!recommended-config.json", "plugin build configuration inclusion");
 for (const compileSource of [
+  "api/shared/system_info.py",
   "api/synthetic_datasets.json",
   "api/presets/complex_pls.yaml",
   "api/presets/complex_trees.yaml",
