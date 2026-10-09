@@ -63,7 +63,7 @@ function campaignPreview(overrides: Partial<CampaignPlanPreview> = {}): Campaign
       strictModeRecommendation: "Ready for strict schema-bound execution with one dataset and one pipeline.",
       notice: null,
     },
-    runMatrixLabel: "1 run in explicit run matrix",
+    runMatrixLabel: "1 run selected",
     datasetPreviews: [],
     pipelinePreviews: [],
     compatibilityPreviews: [],

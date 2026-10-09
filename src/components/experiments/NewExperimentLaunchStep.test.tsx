@@ -171,7 +171,7 @@ describe("NewExperimentLaunchStep", () => {
     expect(container.textContent).toContain("1 run across 1 dataset and 1 pipeline");
     expect(container.textContent).toContain("Local Python");
     expect(container.textContent).toContain("Local analysis");
-    expect(container.textContent).toContain("1 run in explicit run matrix");
+    expect(container.textContent).toContain("1 run selected");
     expect(container.textContent).toContain("Corn");
     expect(container.textContent).toContain("Launch Experiment");
     expect(container.textContent).not.toContain("Native adapter:");

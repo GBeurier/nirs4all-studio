@@ -110,8 +110,8 @@ export function PipelineEditorHeader({
 
   return (
     <header className="border-b border-border bg-card px-4 py-3 flex-shrink-0">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex min-w-0 items-center gap-4">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -144,8 +144,8 @@ export function PipelineEditorHeader({
             </TooltipContent>
           </Tooltip>
 
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-col">
+            <div className="flex min-w-0 items-center gap-2">
               <Workflow className="h-5 w-5 text-muted-foreground" />
               <Input
                 value={pipelineName}
@@ -177,7 +177,7 @@ export function PipelineEditorHeader({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="flex items-center border-r border-border pr-2 mr-2">
             <Tooltip>
               <TooltipTrigger asChild>

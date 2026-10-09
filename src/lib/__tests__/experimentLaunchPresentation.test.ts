@@ -62,7 +62,7 @@ function campaignPreview(overrides: Partial<CampaignPlanPreview> = {}): Campaign
       strictModeRecommendation: "Ready for strict schema-bound execution with one dataset and one pipeline.",
       notice: null,
     },
-    runMatrixLabel: "1 run in explicit run matrix",
+    runMatrixLabel: "1 run selected",
     datasetPreviews: [],
     pipelinePreviews: [],
     compatibilityPreviews: [],
@@ -202,7 +202,7 @@ describe("experimentLaunchPresentation", () => {
     expect(buildExperimentLaunchBadgeLabels(preview)).toEqual([
       { id: "backend", label: "Local Python" },
       { id: "adapter", label: "Legacy local run API" },
-      { id: "run-matrix", label: "1 run in explicit run matrix" },
+      { id: "run-matrix", label: "1 run selected" },
     ]);
     expect(formatExperimentLaunchAdapterStatusLine(preview)).toBe(
       "Launches use the current local run API.",
@@ -264,7 +264,7 @@ describe("experimentLaunchPresentation", () => {
         id: "campaign-cardinality",
         label: "Planned analyses",
         value: "1 dataset x 1 pipeline · 1 run",
-        title: "1 run in explicit run matrix: 1 run planned from 1 possible pair",
+        title: "1 run selected: 1 run planned from 1 possible pair",
       },
       {
         id: "schema-binding",
@@ -300,7 +300,7 @@ describe("experimentLaunchPresentation", () => {
         id: "campaign-cardinality",
         label: "Planned analyses",
         value: "1 dataset x 1 pipeline · 1 run",
-        title: "1 run in explicit run matrix: 1 run planned from 1 possible pair",
+        title: "1 run selected: 1 run planned from 1 possible pair",
       },
       {
         id: "schema-binding",
@@ -359,7 +359,7 @@ describe("experimentLaunchPresentation", () => {
       id: "campaign-cardinality",
       label: "Planned analyses",
       value: "1 dataset x 1 pipeline · 1 run",
-      title: "1 run in explicit run matrix: 1 run planned from 1 possible pair",
+      title: "1 run selected: 1 run planned from 1 possible pair",
     });
     expect(partialNativeDetails).toContainEqual({
       id: "schema-binding",
