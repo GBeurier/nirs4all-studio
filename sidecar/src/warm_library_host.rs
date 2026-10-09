@@ -770,7 +770,10 @@ impl CpythonScientificJobExecutor {
             .or_else(|| request.get("job_id"))
             .and_then(Value::as_str)
             .ok_or(ScientificCpythonUnavailable::InvalidRequest)?;
-        let start = Instant::now();
+        // Waiting for a free worker is bounded separately from execution: time
+        // spent queued behind another request must not shrink this request's
+        // own execution budget.
+        let admission_started = Instant::now();
         let _admission = runtime
             .and_then(|runtime| runtime.changes.as_ref())
             .map(|changes| changes.foreground_prediction_read(&request, timeout))
@@ -779,6 +782,7 @@ impl CpythonScientificJobExecutor {
         loop {
             for slot in &self.warm_workers {
                 if let Ok(mut slot) = slot.try_lock() {
+                    let start = Instant::now();
                     let result = (|| {
                         let generation = self.interactive_generation(host, callable, runtime)?;
                         let expired = match slot.as_mut() {
@@ -841,14 +845,44 @@ impl CpythonScientificJobExecutor {
                             );
                         }
                         slot.take();
+                    } else {
+                        self.start_spare_worker(host, callable, runtime);
                     }
                     return result;
                 }
             }
-            if start.elapsed() >= timeout {
+            if admission_started.elapsed() >= timeout {
                 return Err(ScientificCpythonUnavailable::TimedOut);
             }
             std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// Start the other interactive worker once a request has succeeded, so the
+    /// first concurrent request does not pay a cold interpreter start. Spawning
+    /// a process is quick; the child imports the library on its own while this
+    /// request's response is returned. The pool stays at two workers, and a slot
+    /// that is busy or already populated is left alone.
+    fn start_spare_worker(
+        &self,
+        host: &HostIdentity,
+        callable: &HostIdentity,
+        runtime: Option<&PackagedRuntimeIdentity>,
+    ) {
+        for spare in &self.warm_workers {
+            let Ok(mut spare) = spare.try_lock() else {
+                continue;
+            };
+            if spare.is_some() {
+                continue;
+            }
+            let Ok(generation) = self.interactive_generation(host, callable, runtime) else {
+                return;
+            };
+            if let Ok(mut worker) = Worker::spawn(host, callable, runtime) {
+                worker.generation = generation;
+                *spare = Some(worker);
+            }
         }
     }
 }
@@ -944,6 +978,122 @@ mod tests {
             Err(ScientificCpythonUnavailable::MalformedResponse)
         );
         assert_eq!(std::fs::read_to_string(marker).unwrap(), "executed\n");
+        assert!(executor.warm_workers[0].lock().unwrap().is_none());
+        assert!(executor.warm_workers[1].lock().unwrap().is_none());
+    }
+
+    fn selected_executor(
+        root: &tempfile::TempDir,
+    ) -> (CpythonScientificJobExecutor, HostIdentity, HostIdentity) {
+        let site = root.path().join("site-packages");
+        std::fs::create_dir_all(site.join("nirs4all")).unwrap();
+        std::fs::create_dir_all(site.join("nirs4all-1.4.7.dist-info")).unwrap();
+        let callable_path = site.join("nirs4all/source.py");
+        std::fs::write(&callable_path, b"source").unwrap();
+        std::fs::write(site.join("nirs4all-1.4.7.dist-info/RECORD"), b"record").unwrap();
+        let host = super::super::host_identity_with_limit(
+            Path::new("/usr/bin/python3"),
+            super::super::MAX_SCIENTIFIC_CPYTHON_HOST_BYTES,
+        )
+        .unwrap();
+        let callable = super::super::host_identity(&callable_path).unwrap();
+        let mut executor = CpythonScientificJobExecutor::unavailable(
+            ScientificCpythonUnavailable::RequestResolverUnavailable,
+            root.path().join("config"),
+        );
+        executor.selected_library = Some(
+            super::super::selected_library_identity::SelectedLibraryIdentity::capture(&host, &site)
+                .unwrap(),
+        );
+        (executor, host, callable)
+    }
+
+    const DOCUMENT_REQUEST: &str = r#"{"schema":"nirs4all.studio-document-request.v1","job_id":"document-translation","operation":"dataset.preview","payload":{}}"#;
+
+    #[test]
+    fn queue_wait_does_not_consume_the_execution_budget() {
+        let root = tempfile::tempdir().unwrap();
+        let (executor, host, callable) = selected_executor(&root);
+        let reply = r#"{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":{},"error":null}"#;
+        let script = format!("import sys,time\nfor line in sys.stdin.buffer:\n time.sleep(0.4)\n v={reply:?}.encode()\n sys.stdout.buffer.write(len(v).to_bytes(4,'little')+v)\n sys.stdout.buffer.flush()\n");
+        *executor.warm_workers[0].lock().unwrap() = Some(worker(&script));
+        // Both slots are busy for 600 ms; the request then needs 400 ms of
+        // execution. With a 700 ms budget it only succeeds if queueing is free.
+        let executor = Arc::new(executor);
+        let second = executor.warm_workers[1].lock().unwrap();
+        let first = executor.warm_workers[0].lock().unwrap();
+        let task = {
+            let executor = Arc::clone(&executor);
+            std::thread::spawn(move || {
+                executor.run_interactive_request(
+                    &host,
+                    &callable,
+                    None,
+                    DOCUMENT_REQUEST.as_bytes(),
+                    Duration::from_millis(700),
+                )
+            })
+        };
+        std::thread::sleep(Duration::from_millis(600));
+        drop(first);
+        drop(second);
+        let response = task.join().unwrap().unwrap();
+        assert_eq!(response["success"], true);
+    }
+
+    #[test]
+    fn queue_wait_is_still_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        let (executor, host, callable) = selected_executor(&root);
+        let _first = executor.warm_workers[0].lock().unwrap();
+        let _second = executor.warm_workers[1].lock().unwrap();
+        let started = Instant::now();
+        assert_eq!(
+            executor.run_interactive_request(
+                &host,
+                &callable,
+                None,
+                DOCUMENT_REQUEST.as_bytes(),
+                Duration::from_millis(100),
+            ),
+            Err(ScientificCpythonUnavailable::TimedOut)
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn spare_worker_starts_after_a_successful_request_but_not_after_a_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let (executor, host, callable) = selected_executor(&root);
+        let reply = r#"{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":{},"error":null}"#;
+        let script = format!("import sys\nfor line in sys.stdin.buffer:\n v={reply:?}.encode()\n sys.stdout.buffer.write(len(v).to_bytes(4,'little')+v)\n sys.stdout.buffer.flush()\n");
+        *executor.warm_workers[0].lock().unwrap() = Some(worker(&script));
+        executor
+            .run_interactive_request(
+                &host,
+                &callable,
+                None,
+                DOCUMENT_REQUEST.as_bytes(),
+                Duration::from_secs(2),
+            )
+            .unwrap();
+        assert!(executor.warm_workers[0].lock().unwrap().is_some());
+        assert!(executor.warm_workers[1].lock().unwrap().is_some());
+
+        let failing = tempfile::tempdir().unwrap();
+        let (executor, host, callable) = selected_executor(&failing);
+        *executor.warm_workers[0].lock().unwrap() = Some(worker(
+            "import sys\nsys.stdin.buffer.readline()\nraise SystemExit(1)",
+        ));
+        assert!(executor
+            .run_interactive_request(
+                &host,
+                &callable,
+                None,
+                DOCUMENT_REQUEST.as_bytes(),
+                Duration::from_secs(2)
+            )
+            .is_err());
         assert!(executor.warm_workers[0].lock().unwrap().is_none());
         assert!(executor.warm_workers[1].lock().unwrap().is_none());
     }
