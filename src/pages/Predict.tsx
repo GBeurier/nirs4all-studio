@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import { AlertCircle, Zap } from "lucide-react";
 import { toast } from "sonner";
+import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 
 import {
   getPersistedArchiveV2ConformalPresentation,
@@ -53,6 +54,7 @@ export default function Predict() {
 
 function NativePredictionPanel() {
   const { t } = useTranslation();
+  const notifyApiError = useApiErrorToast();
   const [selectedModel, setSelectedModel] =
     useState<PersistedArchiveV2Selection | null>(null);
   const [result, setResult] =
@@ -114,8 +116,8 @@ function NativePredictionPanel() {
         `Predicted ${data.prediction.sample_ids.length} samples with ${data.prediction.archive_id}.`,
       );
     },
-    onError: (error: Error) => {
-      toast.error(error.message || t("predict.errors.predictionFailed"));
+    onError: (error) => {
+      notifyApiError(error, t("predict.errors.predictionFailed"));
     },
   });
 

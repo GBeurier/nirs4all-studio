@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { useApiErrorToast } from "@/hooks/useApiErrorToast";
 import { getApiErrorMessage } from "@/api/transport";
 import {
   Sheet,
@@ -45,6 +47,8 @@ export function RunDetailSheet({
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const notifyApiError = useApiErrorToast();
 
   const datasets = useMemo(
     () => (run ? filterParasiticDatasets(run.datasets) : []),
@@ -91,7 +95,7 @@ export function RunDetailSheet({
       navigate(`/runs/${encodeURIComponent(response.run.id)}`);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to relaunch run");
+      notifyApiError(error, t("errors.action.relaunchRun"));
     },
   });
 

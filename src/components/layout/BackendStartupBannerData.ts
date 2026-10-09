@@ -102,7 +102,7 @@ function getStartupTitle({
   if (!coreReady) {
     return {
       key: "layout.backendStartup.connectingTitle",
-      defaultValue: "Connecting to control plane...",
+      defaultValue: "Connecting to the analysis engine...",
     };
   }
   if (mlError) {
@@ -177,7 +177,7 @@ function getStartupSteps(
     {
       label: {
         key: "layout.backendStartup.apiLabel",
-        defaultValue: "Control plane",
+        defaultValue: "Studio service",
       },
       detail: state.coreReady
         ? {

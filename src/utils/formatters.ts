@@ -4,6 +4,8 @@
  * Provides common date/time formatting functions used across the application.
  */
 
+import { getActiveLocale } from "@/lib/activeLocale";
+
 /**
  * Format a date string to a human-readable relative time string
  *
@@ -63,7 +65,7 @@ export function formatBytes(bytes: number): string {
  */
 export function formatShortDate(dateString: string): string {
   const date = new Date(dateString);
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString(getActiveLocale(), {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -78,7 +80,7 @@ export function formatShortDate(dateString: string): string {
  */
 export function formatDateTime(dateString: string): string {
   const date = new Date(dateString);
-  return date.toLocaleString(undefined, {
+  return date.toLocaleString(getActiveLocale(), {
     month: "short",
     day: "numeric",
     year: "numeric",

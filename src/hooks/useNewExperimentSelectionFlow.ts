@@ -49,6 +49,7 @@ export function useNewExperimentSelectionFlow({
   const [pipelineFilter, setPipelineFilter] = useState<PipelineFilterMode>("all");
   const [currentEditedPipeline, setCurrentEditedPipeline] = useState<CurrentEditedPipeline | null>(null);
   const handledRouteSelectionRef = useRef<string | null>(null);
+  const handledDatasetRouteRef = useRef<string | null>(null);
 
   const allPipelineOptions = useMemo(
     () => buildAllPipelineOptions(currentEditedPipeline, savedPipelineOptions),
@@ -93,6 +94,23 @@ export function useNewExperimentSelectionFlow({
     }
     onEditorRedirect();
   }, [onEditorRedirect, rawPipelines, searchParams, selectedPipelineIds]);
+
+  // `?dataset=<id>` (e.g. from a dataset detail page) preselects that dataset.
+  useEffect(() => {
+    const datasetId = searchParams.get("dataset");
+    if (!datasetId) {
+      handledDatasetRouteRef.current = null;
+      return;
+    }
+    if (handledDatasetRouteRef.current === datasetId) return;
+    handledDatasetRouteRef.current = datasetId;
+    setSelectedDatasetIds([datasetId]);
+    setSplitGroupByByDataset({ [datasetId]: null });
+    // A pipeline/editor selection clears the URL once it has been applied.
+    if (!searchParams.has("pipeline") && searchParams.get("source") !== "editor") {
+      onEditorRedirect();
+    }
+  }, [onEditorRedirect, searchParams]);
 
   const toggleDataset = useCallback((id: string) => {
     setSelectedDatasetIds((current) => {

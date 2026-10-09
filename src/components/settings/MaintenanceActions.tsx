@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Loader2, Wrench, Trash2, Filter } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import { describeApiError } from "@/lib/userFacingError";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +28,7 @@ interface MaintenanceActionsProps {
 }
 
 export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
+  const { t } = useTranslation();
   const [running, setRunning] = useState<string | null>(null);
   const [cleanOpen, setCleanOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -49,7 +52,7 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
       toast.success(`Compaction completed. Rows removed: ${rowsRemoved.toLocaleString()}`);
       onChanged?.();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Compaction failed";
+      const message = describeApiError(error, t, "Compaction failed").message;
       toast.error(message);
     } finally {
       setRunning(null);
@@ -63,7 +66,7 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
       setCleanPreview(preview);
       toast.info("Cleanup dry run completed");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Cleanup preview failed";
+      const message = describeApiError(error, t, "Cleanup preview failed").message;
       toast.error(message);
     } finally {
       setRunning(null);
@@ -81,7 +84,7 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
       onChanged?.();
       setCleanOpen(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Cleanup failed";
+      const message = describeApiError(error, t, "Cleanup failed").message;
       toast.error(message);
     } finally {
       setRunning(null);
@@ -101,7 +104,7 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
       setRemovePreview(preview);
       toast.info("Remove-bottom dry run completed");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Remove-bottom preview failed";
+      const message = describeApiError(error, t, "Remove-bottom preview failed").message;
       toast.error(message);
     } finally {
       setRunning(null);
@@ -123,7 +126,7 @@ export function MaintenanceActions({ onChanged }: MaintenanceActionsProps) {
       onChanged?.();
       setRemoveOpen(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Remove-bottom failed";
+      const message = describeApiError(error, t, "Remove-bottom failed").message;
       toast.error(message);
     } finally {
       setRunning(null);

@@ -32,7 +32,7 @@ describe("BackendStartupBannerData", () => {
       canSettle: false,
       title: {
         key: "layout.backendStartup.connectingTitle",
-        defaultValue: "Connecting to control plane...",
+        defaultValue: "Connecting to the analysis engine...",
       },
       description: {
         key: "layout.backendStartup.connectingDescription",
@@ -48,7 +48,7 @@ describe("BackendStartupBannerData", () => {
       },
     });
     expect(model.steps.map((step) => [step.label.defaultValue, step.state])).toEqual([
-      ["Control plane", "loading"],
+      ["Studio service", "loading"],
       ["ML Engine", "waiting"],
       ["Workspace", "waiting"],
     ]);
