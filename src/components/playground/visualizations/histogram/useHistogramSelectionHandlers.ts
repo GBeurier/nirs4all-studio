@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { SelectionContextValue } from '@/context/useSelection';
+import { useSetHoveredSample, type SelectionContextValue } from '@/context/useSelection';
 import {
   computeSelectionAction,
   computeStackedBarAction,
@@ -20,6 +20,7 @@ export function useHistogramSelectionHandlers({
 }: UseHistogramSelectionHandlersInput) {
   const [rangeSelection, setRangeSelection] = useState<RangeSelection>(RANGE_SELECTION_INITIAL);
   const lastMouseEventRef = useRef<MouseEvent | null>(null);
+  const setHovered = useSetHoveredSample();
 
   useEffect(() => {
     const handleNativeMouseUp = (e: MouseEvent) => {
@@ -57,9 +58,9 @@ export function useHistogramSelectionHandlers({
       setRangeSelection(RANGE_SELECTION_INITIAL);
     }
     if (selectionCtx) {
-      selectionCtx.setHovered(null);
+      setHovered(null);
     }
-  }, [rangeSelection.isSelecting, selectionCtx]);
+  }, [rangeSelection.isSelecting, selectionCtx, setHovered]);
 
   const handleBarSelection = useCallback((
     samples: number[],

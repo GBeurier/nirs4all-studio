@@ -81,7 +81,7 @@ export default function Runs() {
     refetchInterval: 30000,
   });
 
-  const { data: activeRunsData } = useQuery({
+  const { data: runsData } = useQuery({
     queryKey: ["runs"],
     queryFn: listRuns,
     staleTime: 5000,
@@ -101,7 +101,10 @@ export default function Runs() {
     queryFn: () => listRunExecutionJobRecords({ include_orphaned: true }),
     enabled: !!activeWorkspaceId,
     staleTime: 5000,
-    refetchInterval: 10000,
+    // The list is unpaginated and read from disk: poll fast only while a job can still change.
+    refetchInterval: (query) => query.state.data?.records.some(record => isActiveExecutionStatus(record.status))
+      ? 10000
+      : 30000,
   });
 
   const {
@@ -117,8 +120,8 @@ export default function Runs() {
   });
 
   const runs = useMemo(
-    () => buildRunsPageItems(enrichedData?.runs, activeRunsData?.runs),
-    [enrichedData, activeRunsData],
+    () => buildRunsPageItems(enrichedData?.runs, runsData?.runs),
+    [enrichedData, runsData],
   );
 
   const executionJobIndicators = useMemo(() => {
@@ -146,8 +149,8 @@ export default function Runs() {
   };
 
   const runPageIdLookup = useMemo(
-    () => buildRunPageIdLookup(activeRunsData?.runs),
-    [activeRunsData],
+    () => buildRunPageIdLookup(runsData?.runs),
+    [runsData],
   );
 
   const isLoading = isLoadingEnriched;
@@ -157,6 +160,7 @@ export default function Runs() {
   const refreshRunExecutionData = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["runs"] }),
+      queryClient.invalidateQueries({ queryKey: ["activeRuns"] }),
       queryClient.invalidateQueries({ queryKey: ["enriched-runs"] }),
     ]);
   };

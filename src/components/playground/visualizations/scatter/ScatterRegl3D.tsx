@@ -12,7 +12,7 @@
 import { useRef, useEffect, useCallback, useMemo, useState, forwardRef, useImperativeHandle } from 'react';
 import createRegl from 'regl';
 import { cn } from '@/lib/utils';
-import { useSelection } from '@/context/useSelection';
+import { useHoveredSample, useSelection, useSetHoveredSample } from '@/context/useSelection';
 import { RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ScatterRendererProps } from './types';
@@ -32,6 +32,7 @@ import {
   type Regl3DPoint,
 } from './utils/scatterRegl3DData';
 import { OrbitControls } from './utils/orbitControls';
+import { useRenderScheduler } from './utils/useRenderScheduler';
 import { createRegl3DDrawCommands } from './ScatterRegl3DCommands';
 
 // ============= Component =============
@@ -66,6 +67,7 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
   clearOnBackgroundClick = true,
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { requestRender, setRender } = useRenderScheduler(canvasRef);
   const reglRef = useRef<createRegl.Regl | null>(null);
   const drawPointsRef = useRef<createRegl.DrawCommand | null>(null);
   const drawPickingRef = useRef<createRegl.DrawCommand | null>(null);
@@ -73,14 +75,14 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
   const pickFboRef = useRef<createRegl.Framebuffer2D | null>(null);
   const pickFboSizeRef = useRef<{ width: number; height: number }>({ width: 1, height: 1 });
   const orbitControlsRef = useRef<OrbitControls | null>(null);
-  const animationFrameRef = useRef<number>(0);
   const gridDataRef = useRef<Regl3DGridGeometry | null>(null);
 
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [, forceUpdate] = useState({});
 
   // Selection context
   const selectionCtx = useSelection();
+  const setHovered = useSetHoveredSample();
+  const hoveredFromContext = useHoveredSample();
   const manualSelectedSamples = useMemo(
     () => new Set(manualSelectedIndices ?? []),
     [manualSelectedIndices]
@@ -95,7 +97,7 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
   const pinnedSamples = useSelectionContext
     ? selectionCtx.pinnedSamples
     : manualPinnedSamples;
-  const contextHovered = useSelectionContext ? selectionCtx.hoveredSample : null;
+  const contextHovered = useSelectionContext ? hoveredFromContext : null;
   const effectiveHovered = useSelectionContext ? contextHovered : hoveredIndex;
 
   // Expose method for getting points within a screen rectangle (for box/lasso selection)
@@ -187,16 +189,15 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
       initialDistance: 5,
       initialTheta: Math.PI / 4,
       initialPhi: Math.PI / 3,
-      onChange: () => forceUpdate({}),
+      onChange: requestRender,
     });
 
     // Cleanup
     return () => {
-      cancelAnimationFrame(animationFrameRef.current);
       orbitControlsRef.current?.dispose();
       regl.destroy();
     };
-  }, []);
+  }, [requestRender]);
 
   // Prepare buffer data
   const bufferData = useMemo(() => {
@@ -292,23 +293,8 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
     }
   }, [bufferData, selectionData, selectedSamples, showGrid, showAxes]);
 
-  // Animation loop
-  useEffect(() => {
-    let running = true;
-
-    const loop = () => {
-      if (!running) return;
-      render();
-      animationFrameRef.current = requestAnimationFrame(loop);
-    };
-
-    loop();
-
-    return () => {
-      running = false;
-      cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, [render]);
+  // Draw on demand: once per change of the draw inputs (data, selection, hover, view options).
+  useEffect(() => setRender(render), [render, setRender]);
 
   // Read picked index
   const readPickedIndex = useCallback((x: number, y: number): number | null => {
@@ -348,25 +334,25 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
 
       if (index !== effectiveHovered) {
         if (useSelectionContext) {
-          selectionCtx.setHovered(index);
+          setHovered(index);
         } else {
           setHoveredIndex(index);
         }
         onHover?.(index);
       }
     },
-    [effectiveHovered, useSelectionContext, selectionCtx, onHover, readPickedIndex]
+    [effectiveHovered, useSelectionContext, setHovered, onHover, readPickedIndex]
   );
 
   // Mouse leave handler
   const handleMouseLeave = useCallback(() => {
     if (useSelectionContext) {
-      selectionCtx.setHovered(null);
+      setHovered(null);
     } else {
       setHoveredIndex(null);
     }
     onHover?.(null);
-  }, [useSelectionContext, selectionCtx, onHover]);
+  }, [useSelectionContext, setHovered, onHover]);
 
   // Click handler
   const handleClick = useCallback(

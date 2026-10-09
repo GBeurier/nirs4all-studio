@@ -29,8 +29,6 @@ export interface SelectionState {
   isSelecting: boolean;
   /** Current selection mode */
   selectionMode: SelectionMode;
-  /** Hover state for cross-chart highlighting */
-  hoveredSample: number | null;
   /** Last selected sample index for range selection (Shift+Click) */
   lastSelectedIndex: number | null;
   /** Current selection tool type (click, box, lasso) */
@@ -58,7 +56,6 @@ export type SelectionAction =
   | { type: 'SET_SELECTING'; isSelecting: boolean }
   | { type: 'SET_SELECTION_MODE'; mode: SelectionMode }
   | { type: 'SET_SELECTION_TOOL'; tool: SelectionToolType }
-  | { type: 'SET_HOVERED'; index: number | null }
   | { type: 'RESTORE'; state: Partial<SelectionState> }
   | { type: 'INTERSECT_WITH_AVAILABLE'; availableIndices: number[] };
 
@@ -97,7 +94,6 @@ export interface SelectionContextValue extends SelectionState {
   setSelecting: (isSelecting: boolean) => void;
   setSelectionMode: (mode: SelectionMode) => void;
   setSelectionToolMode: (tool: SelectionToolType) => void;
-  setHovered: (index: number | null) => void;
 
   // Utilities
   isSelected: (index: number) => boolean;
@@ -111,6 +107,25 @@ export interface SelectionContextValue extends SelectionState {
 }
 
 export const SelectionContext = createContext<SelectionContextValue | undefined>(undefined);
+
+/**
+ * Hover state lives in its own contexts so pointer movement over a chart only
+ * re-renders components that actually render the hovered sample (see `useHoveredSample`),
+ * never the ~40 selection consumers. Outside a provider the hovered sample is `null`
+ * and the setter is a no-op, which suits charts that optionally use the shared selection.
+ */
+export const HoveredSampleContext = createContext<number | null>(null);
+export const SetHoveredSampleContext = createContext<(index: number | null) => void>(() => {});
+
+/** Sample currently hovered for cross-chart highlighting. Re-renders on every hover change. */
+export function useHoveredSample(): number | null {
+  return useContext(HoveredSampleContext);
+}
+
+/** Stable setter for the hovered sample; subscribing to it never re-renders on hover. */
+export function useSetHoveredSample(): (index: number | null) => void {
+  return useContext(SetHoveredSampleContext);
+}
 
 export function useSelection(): SelectionContextValue {
   const context = useContext(SelectionContext);

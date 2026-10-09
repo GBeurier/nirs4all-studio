@@ -15,7 +15,7 @@
 import { useRef, useMemo, useCallback, useEffect, useState, memo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { cn } from '@/lib/utils';
-import { useSelection } from '@/context/useSelection';
+import { useHoveredSample, useSelection, useSetHoveredSample } from '@/context/useSelection';
 import { detectDeviceCapabilities } from '@/lib/playground/renderOptimizer';
 import { SELECTION_COLORS } from './chartConfig';
 import { SpectraWebGLHoverTooltip } from './SpectraWebGLHoverTooltip';
@@ -23,10 +23,7 @@ import { SpectraWebGLQualityControl } from './SpectraWebGLQualityControl';
 import { SpectraWebGLScene } from './SpectraWebGLScene';
 import { SpectraWebGLStatusOverlays } from './SpectraWebGLStatusOverlays';
 import { SpectraWebGLUnsupportedFallback } from './SpectraWebGLUnsupportedFallback';
-import {
-  computeSpectraDecimation,
-  type SpectraDecimationResult,
-} from './spectraWebGLGeometry';
+import { useSpectraDecimation } from './useSpectraDecimation';
 import { buildSpectraWebGLLines } from './spectraWebGLLines';
 import { SPECTRA_WEBGL_CAMERA_BOUNDS } from './spectraWebGLHitTesting';
 import {
@@ -185,23 +182,24 @@ function SpectraWebGLInner({
 
   // Selection context - get full context for hover/click dispatching
   const selectionCtx = useSelection();
-  const { selectedSamples: contextSelectedSamples, pinnedSamples: contextPinnedSamples, hoveredSample: contextHoveredSample } = selectionCtx;
+  const { selectedSamples: contextSelectedSamples, pinnedSamples: contextPinnedSamples } = selectionCtx;
+  const setHovered = useSetHoveredSample();
 
   // Local hovered state is synced to context
-  const hoveredSampleIdx = contextHoveredSample;
+  const hoveredSampleIdx = useHoveredSample();
 
   // Handle hover - dispatch to SelectionContext and callback (only if hover is enabled)
   const handleHover = useCallback((index: number | null, event?: MouseEvent) => {
     if (!enableHover) {
       // Clear any existing hover when disabled
-      if (useSelectionContext && selectionCtx.hoveredSample !== null) {
-        selectionCtx.setHovered(null);
+      if (useSelectionContext) {
+        setHovered(null);
       }
       setMousePosition(null);
       return;
     }
     if (useSelectionContext) {
-      selectionCtx.setHovered(index);
+      setHovered(index);
     }
     // Track mouse position for tooltip
     if (index !== null && event && containerRef.current) {
@@ -211,7 +209,7 @@ function SpectraWebGLInner({
       setMousePosition(null);
     }
     onHover?.(index);
-  }, [useSelectionContext, selectionCtx, onHover, enableHover]);
+  }, [useSelectionContext, setHovered, onHover, enableHover]);
 
   // Handle click - dispatch to SelectionContext or use callback
   const handleClick = useCallback((index: number, event: MouseEvent) => {
@@ -318,13 +316,16 @@ function SpectraWebGLInner({
   // Target range for coloring
   const { yMin: yTargetMin, yMax: yTargetMax } = useMemo(() => computeSpectraTargetValueRange(y), [y]);
 
-  // ============= Decimation computation (synchronous) =============
-  // LTTB decimation runs on the main thread via useMemo.
-  const decimation = useMemo<SpectraDecimationResult>(() =>
-    computeSpectraDecimation(spectra, originalSpectra ?? null, wavelengths,
-      effectiveVisibleIndices, xViewRange, yRange, qualityConfig.maxPointsPerSpectrum),
-    [spectra, originalSpectra, wavelengths, effectiveVisibleIndices, xViewRange, yRange, qualityConfig.maxPointsPerSpectrum]
-  );
+  // LTTB decimation runs in a Web Worker (synchronous fallback where workers are unavailable).
+  const decimation = useSpectraDecimation({
+    spectra,
+    originalSpectra: originalSpectra ?? null,
+    wavelengths,
+    visibleIndices: effectiveVisibleIndices,
+    xViewRange,
+    yRange,
+    targetPoints: qualityConfig.maxPointsPerSpectrum,
+  });
 
   // Build LineData from decimation result + color assignments (cheap, runs on main thread)
   // IMPORTANT: Selection state (selectedIndicesSet, pinnedIndicesSet) is NOT in deps —

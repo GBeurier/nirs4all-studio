@@ -9,9 +9,11 @@ import type { CapabilityLevel } from "@/lib/operatorCapability";
  * absent in a pure-sklearn ("lite") build: deep-learning pipeline nodes
  * (PyTorch / TensorFlow / JAX) and the SHAP explainability UI. The endpoint
  * is fetched at most once per session and the result is shared across
- * callers. Every capability defaults to `true` until known (and on any probe
- * failure) so nothing is hidden prematurely or when the backend is
- * unreachable — only an explicit "not installed" answer hides a feature.
+ * callers. Every capability defaults to `true` while the probe is in flight so
+ * nothing is hidden prematurely. When the probe fails or times out the optional
+ * heavy capabilities are reported unavailable (a deep-learning node offered on
+ * a backend without PyTorch cannot run), and the failure is not cached so the
+ * next caller probes again.
  *
  * Note: `/system/operator-availability` is NOT a usable signal here — it
  * treats operators whose optional dependency is missing as
@@ -70,18 +72,10 @@ function probeCapabilities(): Promise<CapabilityFlags> {
       return cached;
     })
     .catch(() => {
-      // Backend unreachable / probe failed — assume available so nothing is hidden.
-      cached = {
-        deepLearning: true,
-        report: [
-          buildBackendCapabilityStatus("torch", true),
-          buildBackendCapabilityStatus("tensorflow", true),
-          buildBackendCapabilityStatus("jax", true),
-          buildBackendCapabilityStatus("shap", true),
-        ],
-        shap: true,
-      };
-      return cached;
+      // Backend unreachable / probe failed: optional heavy capabilities are unproven, so
+      // report them unavailable, but leave the cache empty so a later caller can retry.
+      inflight = null;
+      return buildCapabilityFlags({});
     });
   return inflight;
 }

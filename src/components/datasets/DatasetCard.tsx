@@ -1,5 +1,4 @@
 import { Link } from "react-router-dom";
-import { motion } from "@/lib/motion";
 import {
   FileSpreadsheet,
   MoreVertical,
@@ -118,7 +117,7 @@ export function DatasetCard({
   });
 
   return (
-    <motion.div
+    <div
       className={`
         group relative flex items-stretch gap-4 pl-4 pr-3 py-3 rounded-xl border bg-card cursor-pointer
         transition-all duration-200 ease-out
@@ -490,6 +489,6 @@ export function DatasetCard({
           </Tooltip>
         </TooltipProvider>
       )}
-    </motion.div>
+    </div>
   );
 }

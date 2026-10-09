@@ -28,7 +28,7 @@ import {
   useSpectraChartConfig,
   type UseSpectraChartConfigResult,
 } from '@/lib/playground/useSpectraChartConfig';
-import { SelectionContext } from '@/context/useSelection';
+import { SelectionContext, useHoveredSample } from '@/context/useSelection';
 import {
   buildSpectraRechartsPlotProps,
   buildSpectraWebGLBranchProps,
@@ -146,7 +146,8 @@ export function SpectraChart({
   // Determine effective selection state
   const selectedSamples = selectionCtx?.selectedSamples ?? EMPTY_SELECTED_SAMPLES;
 
-  const hoveredSample = selectionCtx?.hoveredSample ?? null;
+  const contextHoveredSample = useHoveredSample();
+  const hoveredSample = selectionCtx ? contextHoveredSample : null;
   const pinnedSamples = selectionCtx?.pinnedSamples ?? EMPTY_PINNED_SAMPLES;
 
   useEffect(() => {

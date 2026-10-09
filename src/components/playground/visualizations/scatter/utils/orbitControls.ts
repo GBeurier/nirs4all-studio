@@ -54,6 +54,9 @@ const DEFAULT_OPTIONS: Required<OrbitControlsOptions> = {
   onChange: () => {},
 };
 
+/** Angular velocity (rad/frame) below which damping is considered settled. */
+const DAMPING_EPSILON = 0.0001;
+
 export class OrbitControls {
   private canvas: HTMLCanvasElement;
   private state: OrbitState;
@@ -150,6 +153,7 @@ export class OrbitControls {
   private handleMouseUp(): void {
     this.isDragging = false;
     this.isPanning = false;
+    this.resumeDamping();
   }
 
   private handleWheel(e: WheelEvent): void {
@@ -200,6 +204,14 @@ export class OrbitControls {
     if (e.touches.length === 0) {
       this.isDragging = false;
       this.isPanning = false;
+      this.resumeDamping();
+    }
+  }
+
+  /** Releasing the pointer with residual velocity must schedule the frames that play the damping out. */
+  private resumeDamping(): void {
+    if (this.options.enableDamping && (Math.abs(this.velocityTheta) > DAMPING_EPSILON || Math.abs(this.velocityPhi) > DAMPING_EPSILON)) {
+      this.options.onChange(this.state);
     }
   }
 
@@ -244,7 +256,7 @@ export class OrbitControls {
    */
   update(): Float32Array {
     if (this.options.enableDamping && !this.isDragging) {
-      if (Math.abs(this.velocityTheta) > 0.0001 || Math.abs(this.velocityPhi) > 0.0001) {
+      if (Math.abs(this.velocityTheta) > DAMPING_EPSILON || Math.abs(this.velocityPhi) > DAMPING_EPSILON) {
         this.state.theta += this.velocityTheta;
         this.state.phi = Math.max(
           this.options.minPhi,

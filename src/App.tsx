@@ -1,31 +1,34 @@
-import { useState, useEffect, useRef } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { lazy, Suspense, useState, useEffect, useRef } from "react";
+import { Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { NirsSplashLoader } from "@/components/layout/NirsSplashLoader";
 import { useMlReadiness } from "@/context/useMlReadiness";
-import Datasets from "@/pages/Datasets";
-import DatasetDetail from "@/pages/DatasetDetail";
-import Pipelines from "@/pages/Pipelines";
-import PipelineEditor from "@/pages/PipelineEditor";
-import NewExperiment from "@/pages/NewExperiment";
-import Playground from "@/pages/Playground";
-import Inspector from "@/pages/Inspector";
-import Runs from "@/pages/Runs";
-import RunProgress from "@/pages/RunProgress";
-import Results from "@/pages/Results";
-import AggregatedResults from "@/pages/AggregatedResults";
-import Predict from "@/pages/Predict";
-import Predictions from "@/pages/Predictions";
-import Lab from "@/pages/Lab";
-import SpectraSynthesis from "@/pages/SpectraSynthesis";
-import TransferAnalysis from "@/pages/TransferAnalysis";
-import VariableImportance from "@/pages/VariableImportance";
-import Settings from "@/pages/Settings";
-import SetupWizard from "@/pages/SetupWizard";
-import NotFound from "@/pages/NotFound";
 import { TelemetryConsentDialog } from "@/components/privacy/TelemetryConsentDialog";
 import { TRANSFER_ENABLED } from "@/lib/featureFlags";
 import { useShapAvailable } from "@/hooks/useBackendCapabilities";
+import { LoadingState } from "@/components/ui/state-display";
+
+// Every page is split per route so the entry chunk only carries the shell.
+const Datasets = lazy(() => import("@/pages/Datasets"));
+const DatasetDetail = lazy(() => import("@/pages/DatasetDetail"));
+const Pipelines = lazy(() => import("@/pages/Pipelines"));
+const PipelineEditor = lazy(() => import("@/pages/PipelineEditor"));
+const NewExperiment = lazy(() => import("@/pages/NewExperiment"));
+const Playground = lazy(() => import("@/pages/Playground"));
+const Inspector = lazy(() => import("@/pages/Inspector"));
+const Runs = lazy(() => import("@/pages/Runs"));
+const RunProgress = lazy(() => import("@/pages/RunProgress"));
+const Results = lazy(() => import("@/pages/Results"));
+const AggregatedResults = lazy(() => import("@/pages/AggregatedResults"));
+const Predict = lazy(() => import("@/pages/Predict"));
+const Predictions = lazy(() => import("@/pages/Predictions"));
+const Lab = lazy(() => import("@/pages/Lab"));
+const SpectraSynthesis = lazy(() => import("@/pages/SpectraSynthesis"));
+const TransferAnalysis = lazy(() => import("@/pages/TransferAnalysis"));
+const VariableImportance = lazy(() => import("@/pages/VariableImportance"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const SetupWizard = lazy(() => import("@/pages/SetupWizard"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const electronApi = (window as unknown as {
   electronApi?: {
@@ -112,6 +115,15 @@ function ShapleyRoute() {
   return shapAvailable ? <VariableImportance /> : <Navigate to="/lab" replace />;
 }
 
+/** Keeps the sidebar/layout mounted while a lazily loaded page chunk is fetched. */
+function PageSuspense() {
+  return (
+    <Suspense fallback={<LoadingState className="border-0 shadow-none" />}>
+      <Outlet />
+    </Suspense>
+  );
+}
+
 function App() {
   const { controlReady } = useMlReadiness();
   const isElectron = !!electronApi?.isElectron;
@@ -140,30 +152,32 @@ function App() {
     <>
       <Routes>
         <Route element={<AppLayout />}>
-          <Route index element={<Navigate to="/datasets" replace />} />
-          <Route path="datasets" element={<Datasets />} />
-          <Route path="datasets/:id" element={<DatasetDetail />} />
-          <Route path="pipelines" element={<Pipelines />} />
-          <Route path="pipelines/:id" element={<PipelineEditor />} />
-          <Route path="pipelines/new" element={<PipelineEditor />} />
-          <Route path="editor" element={<NewExperiment />} />
-          <Route path="playground" element={<Playground />} />
-          <Route path="inspector" element={<Inspector />} />
-          <Route path="runs" element={<Runs />} />
-          <Route path="runs/:id" element={<RunProgress />} />
-          <Route path="results" element={<Results />} />
-          <Route path="results/aggregated" element={<AggregatedResults />} />
-          <Route path="predict" element={<Predict />} />
-          <Route path="predictions" element={<Predictions />} />
-          <Route path="lab" element={<Lab />}>
-            <Route index element={<Navigate to="/lab/synthesis" replace />} />
-            <Route path="synthesis" element={<SpectraSynthesis />} />
-            <Route path="transfer" element={TRANSFER_ENABLED ? <TransferAnalysis /> : <Navigate to="/lab" replace />} />
-            <Route path="shapley" element={<ShapleyRoute />} />
+          <Route element={<PageSuspense />}>
+            <Route index element={<Navigate to="/datasets" replace />} />
+            <Route path="datasets" element={<Datasets />} />
+            <Route path="datasets/:id" element={<DatasetDetail />} />
+            <Route path="pipelines" element={<Pipelines />} />
+            <Route path="pipelines/:id" element={<PipelineEditor />} />
+            <Route path="pipelines/new" element={<PipelineEditor />} />
+            <Route path="editor" element={<NewExperiment />} />
+            <Route path="playground" element={<Playground />} />
+            <Route path="inspector" element={<Inspector />} />
+            <Route path="runs" element={<Runs />} />
+            <Route path="runs/:id" element={<RunProgress />} />
+            <Route path="results" element={<Results />} />
+            <Route path="results/aggregated" element={<AggregatedResults />} />
+            <Route path="predict" element={<Predict />} />
+            <Route path="predictions" element={<Predictions />} />
+            <Route path="lab" element={<Lab />}>
+              <Route index element={<Navigate to="/lab/synthesis" replace />} />
+              <Route path="synthesis" element={<SpectraSynthesis />} />
+              <Route path="transfer" element={TRANSFER_ENABLED ? <TransferAnalysis /> : <Navigate to="/lab" replace />} />
+              <Route path="shapley" element={<ShapleyRoute />} />
+            </Route>
+            <Route path="settings" element={<Settings />} />
+            <Route path="setup" element={<SetupWizard />} />
+            <Route path="*" element={<NotFound />} />
           </Route>
-          <Route path="settings" element={<Settings />} />
-          <Route path="setup" element={<SetupWizard />} />
-          <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
       <TelemetryConsentDialog />

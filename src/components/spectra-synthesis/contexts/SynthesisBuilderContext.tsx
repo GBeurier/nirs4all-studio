@@ -13,7 +13,6 @@ import {
   useReducer,
   useCallback,
   useMemo,
-  useEffect,
   type ReactNode,
 } from "react";
 
@@ -23,6 +22,7 @@ import {
   removeClientStorageItem,
   writeClientStorageJson,
 } from "@/lib/clientStorage";
+import { useDebouncedWrite } from "@/hooks/useDebouncedWrite";
 
 // Simple ID generator using built-in crypto API
 function generateId(): string {
@@ -395,18 +395,18 @@ export function SynthesisBuilderProvider({
     return initial;
   });
 
-  // Persist to client storage
-  useEffect(() => {
-    if (persistKey && state.isDirty) {
-      const toSave: PersistedSynthesisBuilderState = {
-        name: state.name,
-        n_samples: state.n_samples,
-        random_state: state.random_state,
-        steps: state.steps,
-      };
-      writeClientStorageJson(synthesisBuilderStorageKey(persistKey), toSave);
-    }
+  // Persist to client storage (debounced; a pending write is flushed on unmount/unload)
+  const persistDraft = useMemo(() => {
+    if (!persistKey || !state.isDirty) return null;
+    const toSave: PersistedSynthesisBuilderState = {
+      name: state.name,
+      n_samples: state.n_samples,
+      random_state: state.random_state,
+      steps: state.steps,
+    };
+    return () => writeClientStorageJson(synthesisBuilderStorageKey(persistKey), toSave);
   }, [state, persistKey]);
+  const { cancel: cancelPersistDraft } = useDebouncedWrite(persistDraft, { scopeKey: persistKey });
 
   // Actions
   const setName = useCallback((name: string) => {
@@ -469,9 +469,10 @@ export function SynthesisBuilderProvider({
   const reset = useCallback(() => {
     dispatch({ type: "RESET" });
     if (persistKey) {
+      cancelPersistDraft();
       removeClientStorageItem(synthesisBuilderStorageKey(persistKey));
     }
-  }, [persistKey]);
+  }, [persistKey, cancelPersistDraft]);
 
   // Helpers
   const getSelectedStep = useCallback(() => {

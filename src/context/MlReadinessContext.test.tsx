@@ -7,6 +7,9 @@ import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+/** Heartbeat period once the runtime is ready (MlReadinessContext polls every 10th tick). */
+const SETTLED_POLL_MS = 10_000;
+
 const mocks = vi.hoisted(() => ({
   apiGet: vi.fn(),
   prefetchDatasetsList: vi.fn(),
@@ -281,7 +284,7 @@ describe("MlReadinessProvider", () => {
       .mockReturnValueOnce(oldPoll.promise)
       .mockResolvedValue({ ml_ready: true, workspace_ready: true });
     const view = await renderProvider(createElectronApiMock());
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(SETTLED_POLL_MS); });
     await act(async () => { window.dispatchEvent(new CustomEvent("backend-restarted")); });
     await act(async () => {
       oldPoll.resolve({ core_ready: true, ml_ready: true, ml_loading: false, ml_error: null });
@@ -331,7 +334,7 @@ describe("MlReadinessProvider", () => {
     const referenceKey = ["reference-playground", "snapshot"];
     const documentKey = ["datasets", "preview", "dataset", 100];
     for (const key of [playgroundKey, referenceKey, documentKey]) view.client.setQueryData(key, { value: 1 });
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(SETTLED_POLL_MS); });
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     expect(view.client.getQueryState(playgroundKey)?.isInvalidated).toBe(true);
     expect(view.client.getQueryState(referenceKey)?.isInvalidated).toBe(true);
@@ -371,7 +374,7 @@ describe("MlReadinessProvider", () => {
     refuse(new Error("store unavailable"));
     await rejection;
     expect(activity.hasScientificRequestInFlight()).toBe(false);
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(SETTLED_POLL_MS); });
     expect(mocks.apiGet).toHaveBeenCalledTimes(2);
     expect(view.result.current?.mlReady).toBe(false);
     await view.unmount();
@@ -389,7 +392,7 @@ describe("MlReadinessProvider", () => {
     expect(view.result.current?.mlReady).toBe(true);
     finish();
     await pending;
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(SETTLED_POLL_MS); });
     expect(mocks.apiGet).toHaveBeenCalledTimes(2);
     expect(view.result.current?.mlReady).toBe(false);
     await view.unmount();
@@ -417,7 +420,8 @@ describe("MlReadinessProvider", () => {
     const readyState = view.result.current;
     const renders = view.result.renders;
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
-    expect(mocks.apiGet).toHaveBeenCalledTimes(31);
+    // The ready heartbeat slows to one poll every SETTLED_POLL_MS.
+    expect(mocks.apiGet).toHaveBeenCalledTimes(1 + 30_000 / SETTLED_POLL_MS);
     expect(view.result.current).toBe(readyState);
     expect(view.result.renders).toBe(renders);
     await view.unmount();
@@ -584,10 +588,10 @@ describe("MlReadinessProvider", () => {
     expect(view.result.current?.workspaceReady).toBe(true);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(SETTLED_POLL_MS);
     });
 
-    expect(mocks.apiGet).toHaveBeenCalledTimes(6);
+    expect(mocks.apiGet).toHaveBeenCalledTimes(2);
     expect(view.result.current?.coreReady).toBe(true);
     expect(view.result.current?.mlReady).toBe(true);
     expect(view.result.current?.workspaceReady).toBe(true);
