@@ -18,14 +18,14 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) => {
+    t: (key: string) => {
       const readable: Record<string, string> = {
         "runs.jobRecord.title": "Execution details",
         "runs.jobRecord.titleDeveloper": "Execution job record",
         "runs.jobRecord.actions": "Actions",
         "runs.jobRecord.controlReadiness": "Control readiness",
       };
-      return readable[key] ?? options?.defaultValue ?? key;
+      return readable[key] ?? key;
     },
   }),
 }));
