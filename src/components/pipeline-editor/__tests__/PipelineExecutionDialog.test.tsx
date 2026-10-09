@@ -271,7 +271,7 @@ describe("PipelineExecutionDialog", () => {
 
     expect(view.container.textContent).toContain("Run Name");
     expect(view.container.textContent).toContain("Dataset");
-    expect(view.container.textContent).toContain("Native assurance contract");
+    expect(view.container.textContent).toContain("Analysis Requirements");
     expect(view.container.textContent).toContain("Robustness scenario draft");
     expect(view.container.textContent).toContain("Attach this draft to launch metadata");
     expect(getButton(view.container, "Execute Here").disabled).toBe(true);
@@ -280,16 +280,16 @@ describe("PipelineExecutionDialog", () => {
       getButton(view.container, "Sample Dataset").click();
     });
 
-    expect(view.container.textContent).toContain("Runtime Grouping");
+    expect(view.container.textContent).toContain("Sample Grouping");
     expect(view.container.textContent).toContain("Required");
-    expect(view.container.textContent).toContain("At least one selected pipeline requires an effective group");
+    expect(view.container.textContent).toContain("A selected pipeline requires sample groups");
     expect(getButton(view.container, "Execute Here").disabled).toBe(true);
 
     await act(async () => {
       getButton(view.container, "batch").click();
     });
 
-    expect(view.container.textContent).not.toContain("At least one selected pipeline requires an effective group");
+    expect(view.container.textContent).not.toContain("A selected pipeline requires sample groups");
     expect(getButton(view.container, "Execute Here").disabled).toBe(false);
 
     await view.unmount();
