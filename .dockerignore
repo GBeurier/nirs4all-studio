@@ -15,6 +15,11 @@ api/
 !api/
 api/*
 !api/library_documents.py
+!api/library_operator_availability.py
+!api/library_inspector.py
+!api/library_prediction_export.py
+!api/library_analysis.py
+!api/robustness_contract.py
 !api/library_dataset_inspection.py
 !api/library_predictions.py
 !api/library_prediction_results.py
