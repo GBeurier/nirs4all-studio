@@ -75,7 +75,7 @@ describe("NewExperimentCampaignDatasetInputsSection", () => {
       />,
     );
 
-    expect(container.textContent).toContain("group_by: batch");
+    expect(container.textContent).toContain("Sample groups: batch");
   });
 });
 

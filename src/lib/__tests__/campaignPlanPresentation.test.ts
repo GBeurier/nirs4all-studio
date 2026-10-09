@@ -40,11 +40,11 @@ function campaignPreview(overrides: Partial<CampaignPlanPreview> = {}): Campaign
       matrixCoverageLabel: "1 run planned from 1 possible pair",
       launchSummary: "1 run across 1 dataset and 1 pipeline",
     },
-    modeLabel: "Legacy cartesian",
+    modeLabel: "All combinations",
     pairingMode: {
       kind: "single_pair",
       label: "One dataset / one pipeline",
-      strictPairingLabel: "Strict one-pair ready",
+      strictPairingLabel: "One analysis ready",
       isStrictPairingReady: true,
     },
     executionBackendLabel: "Local Python",
@@ -91,11 +91,11 @@ describe("campaignPlanPresentation", () => {
     const preview = campaignPreview();
 
     expect(buildCampaignSummaryFields(preview)).toEqual([
-      { id: "mode", label: "Mode", value: "Legacy cartesian" },
+      { id: "mode", label: "Mode", value: "All combinations" },
       {
         id: "pairing",
         label: "Pairing",
-        value: "One dataset / one pipeline (Strict one-pair ready)",
+        value: "One dataset / one pipeline (One analysis ready)",
       },
       { id: "backend", label: "Backend", value: "Local Python" },
       { id: "adapter", label: "Adapter", value: "Native" },
@@ -107,10 +107,10 @@ describe("campaignPlanPresentation", () => {
       "Legacy local run adapter: Uses the current local run API.",
     );
     expect(formatCampaignSchemaConstraintLine(preview)).toBe(
-      "Single dataset/pipeline binding (Single explicit pair): One dataset is paired with one pipeline, the simplest schema-bound campaign shape. Ready for strict schema-bound execution with one dataset and one pipeline.",
+      "One dataset is paired with one pipeline, the simplest schema-bound campaign shape.",
     );
     expect(formatCampaignPairingModeLine(preview.pairingMode)).toBe(
-      "One dataset / one pipeline (Strict one-pair ready)",
+      "One dataset / one pipeline (One analysis ready)",
     );
     expect(formatCampaignPairingModeLine(
       {
@@ -145,7 +145,7 @@ describe("campaignPlanPresentation", () => {
     expect(getCampaignSinglePairSplitTagLabel()).toBe("one dataset / one pipeline");
     expect(formatHiddenCampaignPreviewCount(3, "more planned runs")).toBe("+ 3 more planned runs");
     expect(formatHiddenCampaignPreviewCount(0, "more planned runs")).toBeNull();
-    expect(formatCampaignGroupByTag("batch")).toBe("group_by: batch");
+    expect(formatCampaignGroupByTag("batch")).toBe("Sample groups: batch");
     expect(formatCampaignGroupByTag(null)).toBeNull();
     expect(formatCampaignPairLabel("Corn", "PLS")).toBe("Corn -> PLS");
     expect(getCampaignCapabilityBadgeVariant("blocking")).toBe("destructive");

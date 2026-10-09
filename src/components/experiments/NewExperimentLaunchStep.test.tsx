@@ -170,15 +170,15 @@ describe("NewExperimentLaunchStep", () => {
     expect(container.textContent).toContain("Baseline");
     expect(container.textContent).toContain("1 run across 1 dataset and 1 pipeline");
     expect(container.textContent).toContain("Local Python");
-    expect(container.textContent).toContain("Legacy local run API");
+    expect(container.textContent).toContain("Local analysis");
     expect(container.textContent).toContain("1 run in explicit run matrix");
     expect(container.textContent).toContain("Corn");
     expect(container.textContent).toContain("Launch Experiment");
     expect(container.textContent).not.toContain("Native adapter:");
     expect(container.textContent).not.toContain("Execution environment");
     expect(container.textContent).not.toContain("cluster, wasm-local");
-    expect(container.textContent).not.toContain("Submission: Legacy config");
-    expect(container.textContent).not.toContain("Legacy config submission");
+    expect(container.textContent).not.toContain("Analysis: Local analysis");
+    expect(container.textContent).not.toContain("Local experiment");
     expect(container.textContent).not.toContain("studio.native-launch-payload.v1");
     expect(getButton(container).disabled).toBe(false);
 
@@ -232,12 +232,12 @@ describe("NewExperimentLaunchStep", () => {
     );
 
     expect(container.textContent).toContain("Cluster");
-    expect(container.textContent).toContain("Cluster execution adapter");
-    expect(container.textContent).toContain("Submit to Cluster");
+    expect(container.textContent).toContain("Compute server");
+    expect(container.textContent).toContain("Launch on Compute Server");
     expect(container.textContent).not.toContain("Native adapter:");
-    expect(container.textContent).not.toContain("Configured native");
-    expect(container.textContent).not.toContain("Submitters");
-    expect(container.textContent).not.toContain("Submission target");
+    expect(container.textContent).not.toContain("Ready to use");
+    expect(container.textContent).not.toContain("Calculation options");
+    expect(container.textContent).not.toContain("Calculate with");
     expect(getButton(container).disabled).toBe(false);
 
     await act(async () => {
@@ -288,11 +288,11 @@ describe("NewExperimentLaunchStep", () => {
       />,
     );
 
-    expect(container.textContent).toContain("Native payload not ready");
+    expect(container.textContent).toContain("Experiment not ready");
     expect(container.textContent).toContain("Strict campaign payload is unavailable for this launch.");
-    expect(container.textContent).toContain("Resolve Payload Issues");
-    expect(container.textContent).not.toContain("Payload readiness");
-    expect(container.textContent).not.toContain("Blocked for native submission");
+    expect(container.textContent).toContain("Review Experiment Settings");
+    expect(container.textContent).not.toContain("Preparation status");
+    expect(container.textContent).not.toContain("Settings need review");
     expect(getButton(container).disabled).toBe(true);
 
     await act(async () => {
@@ -333,7 +333,7 @@ describe("NewExperimentLaunchStep", () => {
     );
 
     expect(container.textContent).toContain("Cluster");
-    expect(container.textContent).toContain("Resolve Plan Issues");
+    expect(container.textContent).toContain("Review Experiment Settings");
     expect(container.textContent).not.toContain("Cluster execution is typed but no native submitter is configured.");
     expect(container.textContent).not.toContain("Legacy fallback");
     expect(getButton(container).disabled).toBe(true);
@@ -374,7 +374,7 @@ describe("NewExperimentLaunchStep", () => {
 
     expect(container.textContent).toContain("No dataset selected");
     expect(container.textContent).toContain("No pipeline selected");
-    expect(container.textContent).toContain("Resolve Plan Issues");
+    expect(container.textContent).toContain("Review Experiment Settings");
     expect(getButton(container).disabled).toBe(true);
 
     await act(async () => {

@@ -41,10 +41,10 @@ describe("NewExperimentStepProgress", () => {
 
     expect(container.textContent).toContain("Select Pipelines");
     expect(container.textContent).toContain("Select Datasets");
-    expect(container.textContent).toContain("Runtime Grouping");
+    expect(container.textContent).toContain("Sample Grouping");
     expect(container.textContent).toContain("Review");
     expect(container.textContent).toContain("Launch");
-    expect(container.querySelector("[aria-current='step']")?.textContent).toContain("Runtime Grouping");
+    expect(container.querySelector("[aria-current='step']")?.textContent).toContain("Sample Grouping");
 
     await act(async () => {
       root.unmount();

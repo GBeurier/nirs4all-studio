@@ -145,7 +145,7 @@ describe("useNewExperimentPlanFlow", () => {
 
     expect(mounted.result.current!.campaignPreview.executionAdapter).toEqual({
       id: "legacy-local",
-      label: "Legacy local run API",
+      label: "Local analysis",
       statusLabel: "Legacy fallback",
       message: "Cluster execution is typed but no native submitter is configured.",
     });
@@ -166,23 +166,23 @@ describe("useNewExperimentPlanFlow", () => {
     expect(mounted.result.current!.campaignPreview.executionBackendLabel).toBe("Cluster");
     expect(mounted.result.current!.campaignPreview.executionAdapter).toEqual({
       id: "cluster",
-      label: "Cluster execution adapter",
+      label: "Compute server",
       statusLabel: "Native adapter",
-      message: "Cluster execution adapter is selected for this campaign backend.",
+      message: "The experiment will use Compute server.",
     });
     expect(mounted.result.current!.campaignPreview.capabilityChecks).toContainEqual({
       id: "execution-backend-capabilities",
       status: "not_evaluated",
       statusLabel: "Not evaluated",
       title: "Execution backend capabilities",
-      message: "Cluster execution adapter is selected for this backend; backend-specific method and compute-option checks are not evaluated yet.",
+      message: "Compute server is selected for this backend; backend-specific method and compute-option checks are not evaluated yet.",
     });
     expect(mounted.result.current!.executionAdapterResolution).toMatchObject({
       adapter: CLUSTER_EXPERIMENT_EXECUTION_ADAPTER,
       requestedBackend: "cluster",
       isNativeForBackend: true,
       statusLabel: "Native adapter",
-      message: "Cluster execution adapter is selected for this campaign backend.",
+      message: "The experiment will use Compute server.",
     });
 
     await mounted.unmount();

@@ -82,8 +82,8 @@ describe("campaignPlanSummary", () => {
   });
 
   it("labels known plan modes and passes through future mode ids", () => {
-    expect(getCampaignPlanModeLabel("legacy_cartesian")).toBe("Legacy cartesian");
-    expect(getCampaignPlanModeLabel("paired_by_index")).toBe("Paired by index");
+    expect(getCampaignPlanModeLabel("legacy_cartesian")).toBe("All combinations");
+    expect(getCampaignPlanModeLabel("paired_by_index")).toBe("Selected combinations");
     expect(getCampaignPlanModeLabel("campaign_batch" as CampaignPlanMode)).toBe("campaign_batch");
   });
 
@@ -104,7 +104,7 @@ describe("campaignPlanSummary", () => {
     }))).toEqual({
       kind: "single_pair",
       label: "One dataset / one pipeline",
-      strictPairingLabel: "Strict one-pair ready",
+      strictPairingLabel: "One analysis ready",
       isStrictPairingReady: true,
     });
 
@@ -146,7 +146,7 @@ describe("campaignPlanSummary", () => {
     }))).toMatchObject({
       kind: "cartesian_matrix",
       label: "All dataset/pipeline pairs",
-      strictPairingLabel: "Implicit all-pairs",
+      strictPairingLabel: "All combinations",
       isStrictPairingReady: false,
     });
 
@@ -166,8 +166,8 @@ describe("campaignPlanSummary", () => {
       ],
     }))).toMatchObject({
       kind: "explicit_matrix",
-      label: "Explicit run matrix",
-      strictPairingLabel: "Needs strict pair previews",
+      label: "Selected analyses",
+      strictPairingLabel: "Review each combination",
       isStrictPairingReady: false,
     });
   });
@@ -183,7 +183,7 @@ describe("campaignPlanSummary", () => {
 
     expect(getCampaignStrictOnePairReadinessReadModel(singlePairMode)).toEqual({
       status: "ready",
-      label: "Strict one-pair ready",
+      label: "One analysis ready",
       isReady: true,
     });
 
@@ -206,7 +206,7 @@ describe("campaignPlanSummary", () => {
     expect(strictPairsMode.isStrictPairingReady).toBe(true);
     expect(getCampaignStrictOnePairReadinessReadModel(strictPairsMode)).toEqual({
       status: "not_ready",
-      label: "Multiple strict pairs",
+      label: "Several selected analyses",
       isReady: false,
     });
   });
