@@ -4232,10 +4232,20 @@ done"#,
         verify_packaged_runtime_identity(packaged).unwrap();
         assert_eq!(packaged.full_hash_scans.load(Ordering::Relaxed), 3);
         fs::write(&closure, "tampered-closure").unwrap();
-        assert_eq!(
-            acquired.unavailable_reason(),
-            "python_runtime_contract_tampered"
-        );
+        // Filesystem notifications invalidate the readiness cache asynchronously.
+        // Keep the exact refusal assertion, allowing bounded event delivery.
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let reason = acquired.unavailable_reason();
+            if reason == "python_runtime_contract_tampered" {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "runtime notification did not invalidate the modified closure: {reason}"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
 
         let absent = CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
             &host,
