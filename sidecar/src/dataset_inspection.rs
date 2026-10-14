@@ -148,6 +148,20 @@ impl DatasetInspection {
         let loading = inspection_loading_params(&detected)?;
         let frame = read_table_with_limits(path, &loading, self.limits)
             .map_err(|error| error.to_string())?;
+        let missing_count: usize = frame
+            .columns
+            .iter()
+            .map(|column| {
+                column
+                    .values
+                    .iter()
+                    .filter(|cell| {
+                        matches!(cell, Cell::Na)
+                            || matches!(cell, Cell::Float(value) if !value.is_finite())
+                    })
+                    .count()
+            })
+            .sum();
         let samples = sample_rows.min(frame.n_rows);
         let slots = frame
             .columns
@@ -190,7 +204,7 @@ impl DatasetInspection {
             "headers":frame.column_names(),"header_unit":frame.header_unit,
             "has_header":loading.has_header,"detected_delimiter":loading.delimiter,
             "detected_decimal":loading.decimal_separator,"parsing_options":detected,"confidence":confidence,
-            "sample_data":sample_data,"sheet_names":null,"column_info":null,
+            "sample_data":sample_data,"sheet_names":null,"column_info":null,"missing_count":missing_count,
             "reader":{"backend":"nirs4all-io.native","native_load_limits_applied":true,
                 "load_limits":self.limits}}),
         )
@@ -329,7 +343,7 @@ impl DatasetInspection {
             if file_format(path) == "unknown" {
                 continue;
             }
-            let params = if role == "metadata" {
+            let params = if matches!(role, "metadata" | "Y") {
                 json!({"na_policy":"ignore"})
             } else {
                 json!({})
@@ -349,8 +363,8 @@ impl DatasetInspection {
                 }
             }
             let mut overrides = info["parsing_options"].clone();
-            if role == "metadata" {
-                // Missing metadata is allowed for inspection, but this is a
+            if matches!(role, "metadata" | "Y") {
+                // Missing targets/metadata is allowed for inspection, but this is a
                 // role default, not a user-selected per-file policy.
                 if let Some(options) = overrides.as_object_mut() {
                     options.remove("na_policy");

@@ -2,13 +2,16 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { autoDetectFile, detectFormat, previewDataset, validateFiles } from "@/api/datasets";
+import { autoDetectFile, detectFormat, detectUnified, previewDataset, validateFiles } from "@/api/datasets";
+import { selectFolder } from "@/utils/fileDialogs";
 import { getDataLoadingDefaults } from "@/api/workspace";
 import { WizardProvider } from "./WizardContext";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Dialog } from "@/components/ui/dialog";
 import { DEFAULT_PARSING, useWizard, type WizardContextType, type WizardInitialState } from "./useWizard";
 import { PreviewStep } from "./PreviewStep";
 import { ParsingStep } from "./ParsingStep";
+import { SourceStep } from "./SourceStep";
 import { DataStats, WizardContent } from "./WizardContent";
 import type { DetectedFile, PreviewDataResponse } from "@/types/datasets";
 
@@ -17,6 +20,7 @@ vi.mock("@/api/datasets", () => ({
   previewDataset: vi.fn(), previewDatasetWithUploads: vi.fn(), validateFiles: vi.fn(),
 }));
 vi.mock("@/api/workspace", () => ({ getDataLoadingDefaults: vi.fn() }));
+vi.mock("@/utils/fileDialogs", () => ({ selectFolder: vi.fn(), selectFile: vi.fn(), isDesktop: () => true }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("../charts", () => ({ SpectraChart: () => null, TargetHistogram: () => null }));
 
@@ -47,7 +51,7 @@ async function mount(children: ReactNode, initial: Partial<WizardInitialState> =
   await act(async () => {
     root.render(
       <WizardProvider initialState={{ sourceType: "folder", basePath: "/data", files: [xFile], skipToStep: "preview", ...initial }}>
-        <Capture>{children}</Capture>
+        <TooltipProvider><Capture>{children}</Capture></TooltipProvider>
       </WizardProvider>,
     );
   });
@@ -68,6 +72,58 @@ afterEach(async () => {
 });
 
 describe("Dataset wizard regressions", () => {
+  it("shows the chosen folder and its files before advancing to mapping", async () => {
+    vi.mocked(selectFolder).mockResolvedValue("/data/corn");
+    vi.mocked(detectUnified).mockResolvedValue({ files: [xFile] } as Awaited<ReturnType<typeof detectUnified>>);
+    await mount(<SourceStep />, { skipToStep: "source", files: [], basePath: "" });
+    const select = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes("datasets.wizard.source.selectFolder.title"))!;
+    await act(async () => select.click());
+    expect(container.textContent).toContain("/data/corn");
+    expect(container.querySelector("ul")?.textContent).toContain("Xcal.csv");
+    expect(wizard.state.step).toBe("source");
+    expect(wizard.canProceed()).toBe(true);
+  });
+
+  it("detects several target columns with the same permissive policy used by preview", async () => {
+    vi.mocked(detectFormat).mockResolvedValue({ format: "csv", column_names: ["protein", "fat"], sample_data: [["1.5", "10"], ["nan", "20"]] });
+    vi.mocked(validateFiles).mockResolvedValue({ success: true, shapes: {} });
+    await mount(<Dialog open><WizardContent onAdd={async () => {}} onClose={() => {}} /></Dialog>, {
+      files: [xFile, { ...xFile, path: "Ycal.csv", type: "Y" }], skipToStep: "targets",
+      parsing: { ...DEFAULT_PARSING, has_header: false },
+    });
+    expect(detectFormat).toHaveBeenCalledWith(expect.objectContaining({ na_policy: "ignore", has_header: false }));
+    expect(wizard.state.targets.map(target => target.column)).toEqual(["protein", "fat"]);
+  });
+
+  it("shows structured API errors when adding a dataset fails", async () => {
+    vi.useFakeTimers();
+    vi.mocked(validateFiles).mockResolvedValue({ success: true, shapes: {} });
+    const onClose = vi.fn();
+    const onAdd = vi.fn().mockRejectedValue({ status: 400, detail: "Target rows do not match the training cohort" });
+    await mount(<Dialog open><WizardContent onAdd={onAdd} onClose={onClose} /></Dialog>);
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    const add = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "datasets.addDataset")!;
+    await act(async () => add.click());
+    expect(onAdd).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("Target rows do not match the training cohort");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("opens the multi-target selector without an empty Radix option and reports missing values", async () => {
+    vi.mocked(previewDataset).mockResolvedValue({ ...success,
+      target_distribution: { type: "regression", min: 1, max: 3, mean: 2, std: 1, missing_count: 1 },
+      target_distributions: { target_0: { type: "regression", mean: 2 }, target_1: { type: "regression", mean: 15 } },
+    });
+    await mount(<PreviewStep />);
+    expect(container.textContent).toContain("datasets.wizard.preview.displayedTarget");
+    expect(container.textContent).toContain("datasets.wizard.preview.missingTargets");
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+    const selector = container.querySelector('[role="combobox"]')!;
+    await act(async () => selector.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(document.body.textContent).toContain("target_1");
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+  });
+
   it("validates only the file whose effective parsing changed and retains other shapes", async () => {
     vi.useFakeTimers();
     vi.mocked(validateFiles).mockImplementation(async (_path, files) => ({

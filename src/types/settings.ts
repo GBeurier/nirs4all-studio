@@ -344,6 +344,7 @@ export interface PackageVersions {
  * System information response from /system/info
  */
 export interface SystemInfoResponse {
+  python_available?: boolean;
   python: PythonInfo;
   system: SystemDetails;
   nirs4all_version: string;

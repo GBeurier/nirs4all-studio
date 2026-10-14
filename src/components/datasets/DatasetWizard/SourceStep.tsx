@@ -12,6 +12,7 @@ import { Folder, File, FolderSearch, Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getDetectedFileOverrides, useWizard } from "./useWizard";
 import { selectFolder, selectFile, isDesktop } from "@/utils/fileDialogs";
+import { getApiErrorMessage } from "@/api/transport";
 import { detectUnified, detectFilesList } from "@/api/datasets";
 import type { WizardSourceType } from "@/types/datasets";
 import {
@@ -110,6 +111,7 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
       const folderPath = await selectFolder();
 
       if (folderPath && typeof folderPath === "string") {
+        dispatch({ type: "SET_ERROR", payload: { key: "source", message: "" } });
         dispatch({ type: "SET_SOURCE_TYPE", payload: "folder" });
         dispatch({ type: "SET_BASE_PATH", payload: folderPath });
 
@@ -133,12 +135,11 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
             },
           });
         } catch (e) {
-          // If detection fails, continue with empty files (manual mapping)
+          // Keep the failure visible at source selection.
           console.warn("Auto-detection failed, manual mapping required:", e);
           dispatch({ type: "SET_FILES", payload: [] });
+          dispatch({ type: "SET_ERROR", payload: { key: "source", message: getApiErrorMessage(e) ?? t("datasets.wizard.validateFailed") } });
         }
-
-        nextStep();
       }
     } catch (error) {
       console.error("Failed to select folder:", error);
@@ -251,6 +252,15 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
           />
         )}
       </div>
+
+      {state.sourceType === "folder" && state.basePath && (
+        <div className="mt-4 space-y-2">
+          <p className="text-sm break-all">{state.basePath}</p>
+          <ul aria-label={t("datasets.wizard.steps.files.title")} className="max-h-48 overflow-y-auto rounded-lg border p-3 text-sm">
+            {state.files.map(file => <li key={file.path} className="break-all">{file.filename}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* Hidden file input for web mode */}
       <input

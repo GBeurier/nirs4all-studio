@@ -58,3 +58,25 @@ def test_multimodal_inspection_restores_real_typed_cohort():
     assert result["summary"]["num_samples"] == 2
     assert result["summary"]["train_samples"] == 1
     assert result["summary"]["test_samples"] == 1
+
+
+def test_wizard_import_preserves_sparse_multitarget_rows_and_metadata(tmp_path):
+    """Exercise the actual IO owner after the wizard supplies role NA defaults."""
+    from api.library_documents import configure_dataset
+
+    (tmp_path / "Xcal.csv").write_text("1000;1001\n1;2\n3;4\n5;6\n")
+    (tmp_path / "Ycal.csv").write_text("protein;fat\n1.5;10\n;20\n3.5;\n")
+    (tmp_path / "Mcal.csv").write_text("subject;batch\na;A\nb;\nc;C\n")
+    config = {"name": "sparse targets", "task_type": "regression", "global_params": {"delimiter": ";", "has_header": True, "na_policy": "auto"},
+              "files": [{"path": str(tmp_path / filename), "type": role, "split": "train",
+                         "overrides": {"delimiter": ";", "has_header": True, "na_policy": "auto" if role == "X" else "ignore"}}
+                        for filename, role in [("Xcal.csv", "X"), ("Ycal.csv", "Y"), ("Mcal.csv", "metadata")]]}
+    configured = configure_dataset({"record": {"path": str(tmp_path), "config": config}})
+    result = inspect_dataset_document("dataset.preview", {"config": configured, "max_samples": 3})
+    assert result["success"] is True
+    assert result["summary"]["num_samples"] == 3
+    assert result["summary"]["metadata_columns"] == ["subject", "batch"]
+    assert len(result["target_distributions"]) == 2
+    assert result["target_distribution"]["missing_count"] == 1
+    assert result["target_distribution"]["mean"] == 2.5
+    assert result["target_distributions"]["target_1"]["mean"] == 15

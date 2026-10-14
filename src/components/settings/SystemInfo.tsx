@@ -11,7 +11,8 @@
  * Phase 5: System Information & Diagnostics
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { getApiErrorMessage } from "@/api/transport";
 import { useTranslation } from "react-i18next";
 import {
   Monitor,
@@ -80,28 +81,28 @@ export function SystemInfo({ compact = false }: SystemInfoProps) {
   const [copied, setCopied] = useState(false);
   const [packagesOpen, setPackagesOpen] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const [infoResponse, capabilitiesResponse, runtimeResponse] = await Promise.all([
-        getSystemInfo(),
-        getSystemCapabilities(),
-        getRuntimeSummary(),
+      const infoResponse = await getSystemInfo();
+      const [capabilitiesResponse, runtimeResponse] = infoResponse.python_available === false ? [null, null] : await Promise.all([
+        getSystemCapabilities().catch(() => null),
+        getRuntimeSummary().catch(() => null),
       ]);
       setSystemInfo(infoResponse);
-      setCapabilities(capabilitiesResponse.capabilities);
+      setCapabilities(capabilitiesResponse?.capabilities ?? null);
       setRuntimeSummary(runtimeResponse);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("settings.systemInfo.loadFailed"));
+      setError(getApiErrorMessage(err) ?? t("settings.systemInfo.loadFailed"));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    void loadData();
+  }, [loadData]);
 
   useEffect(() => {
     const handler = () => {
@@ -109,10 +110,10 @@ export function SystemInfo({ compact = false }: SystemInfoProps) {
     };
     window.addEventListener("backend-restarted", handler);
     return () => window.removeEventListener("backend-restarted", handler);
-  }, []);
+  }, [loadData]);
 
   const copyToClipboard = async () => {
-    if (!systemInfo || !capabilities) return;
+    if (!systemInfo) return;
 
     const text = `
 System Information
@@ -124,17 +125,17 @@ Runtime Kind: ${runtimeSummary?.runtime_kind ?? "unknown"}
 Configured Matches Running: ${runtimeSummary?.configured_matches_running ? "yes" : "no"}
 OS: ${systemInfo.system.os} ${systemInfo.system.release}
 Architecture: ${systemInfo.system.machine}
-nirs4all Version: ${systemInfo.nirs4all_version}
+nirs4all Version: ${systemInfo.nirs4all_version || t("common.unknown")}
 
 Capabilities
 ============
-nirs4all: ${capabilities.nirs4all ? "✓" : "✗"}
-TensorFlow: ${capabilities.tensorflow ? "✓" : "✗"}
-PyTorch: ${capabilities.pytorch ? "✓" : "✗"}
-GPU (CUDA): ${capabilities.gpu_cuda ? "✓" : "✗"}
-GPU (MPS): ${capabilities.gpu_mps ? "✓" : "✗"}
-Visualization: ${capabilities.visualization ? "✓" : "✗"}
-Excel Export: ${capabilities.export_excel ? "✓" : "✗"}
+nirs4all: ${capabilities ? (capabilities.nirs4all ? "✓" : "✗") : "?"}
+TensorFlow: ${capabilities ? (capabilities.tensorflow ? "✓" : "✗") : "?"}
+PyTorch: ${capabilities ? (capabilities.pytorch ? "✓" : "✗") : "?"}
+GPU (CUDA): ${capabilities ? (capabilities.gpu_cuda ? "✓" : "✗") : "?"}
+GPU (MPS): ${capabilities ? (capabilities.gpu_mps ? "✓" : "✗") : "?"}
+Visualization: ${capabilities ? (capabilities.visualization ? "✓" : "✗") : "?"}
+Excel Export: ${capabilities ? (capabilities.export_excel ? "✓" : "✗") : "?"}
 
 Packages
 ========
@@ -186,7 +187,10 @@ ${Object.entries(systemInfo.packages)
             {error}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-wrap gap-2">
+          {window.electronApi?.isElectron && <Button variant="outline" size="sm" onClick={() => window.dispatchEvent(new CustomEvent("choose-python-environment"))}>
+            {t("errors.api.openPythonSettings")}
+          </Button>}
           <Button variant="outline" size="sm" onClick={loadData}>
             <RefreshCw className="mr-2 h-4 w-4" />
             {t("common.retry")}
@@ -196,7 +200,7 @@ ${Object.entries(systemInfo.packages)
     );
   }
 
-  if (!systemInfo || !capabilities) {
+  if (!systemInfo) {
     return null;
   }
 
@@ -204,7 +208,7 @@ ${Object.entries(systemInfo.packages)
   const pythonVersionMatch = (runtimeSummary?.runtime.version ?? systemInfo.python.version).match(/^(\d+\.\d+\.\d+)/);
   const pythonVersion = pythonVersionMatch
     ? pythonVersionMatch[1]
-    : (runtimeSummary?.runtime.version ?? systemInfo.python.version);
+    : (runtimeSummary?.runtime.version ?? systemInfo.python.version) || t("settings.systemInfo.pythonUnavailable");
   const configuredPython = runtimeSummary?.configured_python ?? systemInfo.python.executable;
   const runningPython = runtimeSummary?.running_python ?? systemInfo.python.executable;
 
@@ -337,15 +341,15 @@ ${Object.entries(systemInfo.packages)
             <Package className="h-4 w-4 text-primary" />
             <span className="font-medium">nirs4all</span>
           </div>
-          <Badge variant={capabilities.nirs4all ? "default" : "outline"}>
-            {systemInfo.nirs4all_version}
+          <Badge variant={capabilities?.nirs4all ? "default" : "outline"}>
+            {systemInfo.nirs4all_version || t("common.unknown")}
           </Badge>
         </div>
 
         {/* Capabilities */}
         <div className="space-y-2">
           <h4 className="text-sm font-medium">{t("settings.advanced.system.capabilities")}</h4>
-          <div className="grid grid-cols-2 gap-2 text-sm">
+          {capabilities ? <div className="grid grid-cols-2 gap-2 text-sm">
             <CapabilityItem
               name="nirs4all"
               label="nirs4all"
@@ -381,7 +385,7 @@ ${Object.entries(systemInfo.packages)
               label={t("settings.systemInfo.excelExport")}
               available={capabilities.export_excel}
             />
-          </div>
+          </div> : <p className="text-sm text-muted-foreground">{t("settings.systemInfo.capabilitiesUnavailable")}</p>}
         </div>
 
         {/* Key Packages */}

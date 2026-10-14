@@ -48,13 +48,45 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
                 .map_err(|error| error.as_str().to_owned())
         },
         &|operation, payload| {
-            scientific
-                .as_ref()
-                .ok_or("No attested runtime is configured")?
-                .adapt_document(operation, payload)
+            if request.path == "/api/config/complete-setup"
+                && scientific
+                    .as_ref()
+                    .is_none_or(|host| !host.library_facades_available())
+            {
+                return Err("The scientific runtime is not ready. Prepare the Python environment before completing setup.".into());
+            }
+            let host = host.as_deref().ok_or("No Python runtime is configured")?;
+            inspect_runtime_configuration(host, operation, payload)
         },
         reused_runtime,
     ))
+}
+
+// Package metadata remains inspectable before the scientific plugin is ready.
+// This bounded probe embeds Studio's adapter and never imports nirs4all or pip.
+fn inspect_runtime_configuration(
+    host: &std::path::Path,
+    operation: &str,
+    payload: &Value,
+) -> Result<Value, String> {
+    let function = match operation {
+        "config.dependencies" => "dependency_inventory",
+        "config.compare" => "compare_configuration",
+        _ => return Err("Unknown runtime configuration operation".into()),
+    };
+    let document = serde_json::to_string(payload).map_err(|error| error.to_string())?;
+    let literal = serde_json::to_string(&document).map_err(|error| error.to_string())?;
+    let script = format!(
+        "{}\nimport json\nprint(json.dumps({function}(json.loads({literal})), allow_nan=False))",
+        include_str!("../../api/library_runtime_config.py")
+    );
+    crate::run_python_plugin_json_with_limit(
+        host,
+        &script,
+        crate::PYTHON_PLUGIN_CAPABILITIES_TIMEOUT,
+        crate::document_cpython::MAX_DOCUMENT_BYTES,
+    )
+    .map_err(|error| format!("Python package inventory unavailable: {}", error.as_str()))
 }
 
 #[cfg(test)]
@@ -226,6 +258,45 @@ fn setup_profile(config: &Value, bytes: &[u8]) -> Result<String, (u16, String)> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn metadata_diagnostics_do_not_qualify_an_unready_scientific_runtime_for_setup() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path());
+        let state = Arc::new(Mutex::new(SidecarState {
+            app_settings: settings.clone(),
+            ..SidecarState::default()
+        }));
+        let mut request = HttpRequest {
+            method: "POST".into(),
+            path: "/api/config/complete-setup".into(),
+            query: None,
+            headers: BTreeMap::new(),
+            body: br#"{"profile":"cpu"}"#.to_vec(),
+        };
+        assert_eq!(route(&state, &request).unwrap().status, 503);
+        assert_eq!(settings.setup_status().unwrap()["setup_completed"], false);
+        request.body = br#"{"profile":"unknown"}"#.to_vec();
+        assert_eq!(route(&state, &request).unwrap().status, 400);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn metadata_inventory_uses_its_document_budget_without_a_scientific_host() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let host = root.path().join("python");
+        let inventory = json!({"read_only":true,"runtime_valid":false,"categories":[],
+            "description":"x".repeat(crate::MAX_PYTHON_PLUGIN_OUTPUT_BYTES + 1)});
+        std::fs::write(&host, format!("#!/bin/sh\n[ \"$1\" = '-I' ] && [ \"$2\" = '-B' ] && [ \"$3\" = '-c' ] || exit 1\nprintf '%s' '{inventory}'\n")).unwrap();
+        std::fs::set_permissions(&host, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            inspect_runtime_configuration(&host, "config.dependencies", &json!({"config":{}}))
+                .unwrap(),
+            inventory
+        );
+        assert!(inspect_runtime_configuration(&host, "pip.install", &json!({})).is_err());
+    }
 
     #[test]
     fn inventory_and_refresh_use_read_only_adapter_and_validate_queries() {

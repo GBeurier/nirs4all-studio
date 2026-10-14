@@ -33,7 +33,9 @@ fn validation_params(
             params[key] = value.clone();
         }
     }
-    if file["type"] == "metadata" && matches!(params["na_policy"].as_str(), None | Some("auto")) {
+    if matches!(file["type"].as_str(), Some("metadata" | "Y"))
+        && matches!(params["na_policy"].as_str(), None | Some("auto"))
+    {
         params["na_policy"] = json!("ignore");
     }
     Ok(params)
@@ -260,6 +262,7 @@ fn format_response(
             "decimal_separator",
             "has_header",
             "attempt_load",
+            "na_policy",
         ],
     )?;
     if body
@@ -271,7 +274,7 @@ fn format_response(
     let path = Path::new(text(body, "path")?);
     let service = inspector(&file_root(path)?)?;
     let mut params = json!({});
-    for key in ["delimiter", "decimal_separator", "has_header"] {
+    for key in ["delimiter", "decimal_separator", "has_header", "na_policy"] {
         if let Some(value) = body.get(key) {
             params[key] = value.clone();
         }
@@ -385,7 +388,7 @@ fn handle(
                     let params = validation_params(&parsing, file, &overrides, path)?;
                     shapes[path] = match service.inspect_file(Path::new(path), &params, 0, adapt) {
                         Ok(info) => {
-                            json!({"path":path,"num_rows":info["num_rows"],"num_columns":info["num_columns"],"column_names":info["column_names"]})
+                            json!({"path":path,"num_rows":info["num_rows"],"num_columns":info["num_columns"],"column_names":info["column_names"],"missing_count":info["missing_count"]})
                         }
                         Err(error) => json!({"path":path,"error":error}),
                     };
@@ -466,6 +469,52 @@ mod tests {
         assert_eq!(response.status, 200);
         let body: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(body["shapes"]["Ycal.csv"]["num_rows"], 3);
+    }
+
+    #[test]
+    fn missing_multitarget_values_keep_rows_and_explicit_abort_is_respected() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path().join("config"));
+        let path = root.path().join("Ycal.csv");
+        std::fs::write(&path, "protein;fat\n1.5;10\n;20\n3.5;\n").unwrap();
+        let no_python = |_: &str, _: &Value| panic!("Native CSV inspection only");
+        let format = handle(
+            &settings,
+            &request(
+                "detect-format",
+                &json!({
+                    "path":path,"has_header":true,"na_policy":"ignore"
+                }),
+            ),
+            &no_python,
+        );
+        assert_eq!(format.status, 200);
+        let body: Value = serde_json::from_str(&format.body).unwrap();
+        assert_eq!(body["num_rows"], 3);
+        assert_eq!(body["column_names"], json!(["protein", "fat"]));
+        assert_eq!(body["missing_count"], 2);
+        for policy in ["auto", "abort"] {
+            let response = handle(
+                &settings,
+                &request(
+                    "validate-files",
+                    &json!({
+                        "path":root.path(),"files":[{"path":"Ycal.csv","type":"Y"}],
+                        "parsing":{"has_header":true,"na_policy":policy}
+                    }),
+                ),
+                &no_python,
+            );
+            assert_eq!(response.status, 200);
+            let body: Value = serde_json::from_str(&response.body).unwrap();
+            let shape = &body["shapes"]["Ycal.csv"];
+            if policy == "auto" {
+                assert_eq!(shape["num_rows"], 3);
+                assert_eq!(shape["missing_count"], 2);
+            } else {
+                assert!(shape["error"].is_string());
+            }
+        }
     }
     #[test]
     fn metadata_validation_allows_missing_cells_by_default_and_returns_columns() {

@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useWizard } from "./useWizard";
+import { getApiErrorMessage } from "@/api/transport";
 import { previewDataset, previewDatasetWithUploads } from "@/api/datasets";
 import { PartitionToggle } from "../PartitionToggle";
 import { SpectraChart, TargetHistogram } from "../charts";
@@ -129,7 +130,7 @@ export function PreviewStep() {
       }
     } catch (e) {
       if (revision !== requestRevision.current) return;
-      const message = e instanceof Error ? e.message : i18n.t("datasets.wizard.preview.loadFailed");
+      const message = getApiErrorMessage(e) ?? i18n.t("datasets.wizard.preview.loadFailed");
       setError(message);
       dispatch({ type: "SET_PREVIEW", payload: null });
     } finally {
@@ -196,7 +197,7 @@ export function PreviewStep() {
 
       {/* Preview content */}
       {preview && preview.summary && !loading && !error && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
           {/* Dataset Summary */}
           <Card>
             <CardHeader className="pb-2">
@@ -206,11 +207,11 @@ export function PreviewStep() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-muted-foreground">{t("datasets.wizard.preview.name")}</span>
                 <span className="font-medium">{state.datasetName}</span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-muted-foreground flex items-center gap-1">
                   <Layers className="h-3 w-3" /> {t("datasets.wizard.preview.samples")}
                 </span>
@@ -218,7 +219,7 @@ export function PreviewStep() {
                   {preview.summary.num_samples.toLocaleString(getActiveLocale())}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-muted-foreground flex items-center gap-1">
                   <Hash className="h-3 w-3" /> {t("datasets.wizard.preview.features")}
                 </span>
@@ -226,17 +227,17 @@ export function PreviewStep() {
                   {preview.summary.num_features.toLocaleString(getActiveLocale())}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-muted-foreground">{t("datasets.wizard.preview.sources")}</span>
                 <span className="font-medium">{preview.summary.n_sources}</span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-muted-foreground">{t("datasets.wizard.preview.trainTest")}</span>
                 <span className="font-medium">
                   {preview.summary.train_samples} / {preview.summary.test_samples}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-muted-foreground flex items-center gap-1">
                   <Target className="h-3 w-3" /> {t("datasets.wizard.preview.targets")}
                 </span>
@@ -246,7 +247,7 @@ export function PreviewStep() {
                     : t("common.none")}
                 </Badge>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-muted-foreground">{t("datasets.wizard.parsing.form.signalType")}</span>
                 <Badge variant="outline">
                   {preview.summary.signal_type || "auto"}
@@ -258,12 +259,12 @@ export function PreviewStep() {
           {/* Spectra Preview */}
           <Card>
             <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <BarChart3 className="h-4 w-4" />
                   {t("datasets.wizard.preview.spectraPreview")}
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {preview.summary.n_sources > 1 && preview.spectra_per_source && (
                     <Select
                       value={String(selectedSource)}
@@ -330,32 +331,33 @@ export function PreviewStep() {
 
           {/* Target Distribution */}
           {preview.target_distribution && (
-            <Card className="col-span-2">
+            <Card className="sm:col-span-2 min-w-0">
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Target className="h-4 w-4" />
                     {t("datasets.wizard.preview.targetDistribution")}
                   </CardTitle>
-                  <div className="flex items-center gap-2">
-                    <PartitionToggle
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!selectedTarget && <PartitionToggle
                       value={effectivePartition}
                       onChange={setSelectedPartition}
                       hasTest={hasTest}
                       trainCount={trainCount}
                       testCount={testCount}
                       size="xs"
-                    />
+                    />}
+                    {selectedTarget && <Badge variant="secondary">{t(hasTest ? "datasets.partition.both" : "datasets.partition.train")}</Badge>}
                     {preview.target_distributions && Object.keys(preview.target_distributions).length > 1 && (
                       <Select
-                        value={selectedTarget || ""}
-                        onValueChange={(v) => setSelectedTarget(v || null)}
+                        value={selectedTarget || "__default__"}
+                        onValueChange={(v) => setSelectedTarget(v === "__default__" ? null : v)}
                       >
                         <SelectTrigger className="w-[160px] h-8">
                           <SelectValue placeholder={t("datasets.wizard.preview.selectTarget")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">{t("datasets.wizard.preview.allDefault")}</SelectItem>
+                          <SelectItem value="__default__">{t("datasets.wizard.preview.allDefault")}</SelectItem>
                           {Object.keys(preview.target_distributions).map((targetName) => (
                             <SelectItem key={targetName} value={targetName}>
                               {targetName}
@@ -380,6 +382,9 @@ export function PreviewStep() {
                 </div>
               </CardHeader>
               <CardContent>
+                <p className="text-sm text-muted-foreground mb-2">
+                  {t("datasets.wizard.preview.displayedTarget", { target: selectedTarget ?? preview.summary.target_columns?.[0] ?? Object.keys(preview.target_distributions ?? {})[0] ?? "target_0" })}
+                </p>
                 {(() => {
                   // Use selected target data if available, otherwise fall back to global
                   const targetDist = selectedTarget && preview.target_distributions?.[selectedTarget]
@@ -391,7 +396,10 @@ export function PreviewStep() {
                   if (!targetDist) return null;
 
                   return (
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
+                      {!!targetDist.missing_count && <p role="status" className="sm:col-span-2 text-sm text-amber-700 dark:text-amber-400">
+                        {t("datasets.wizard.preview.missingTargets", { count: targetDist.missing_count })}
+                      </p>}
                       {targetDist.histogram && (
                         <Histogram
                           data={targetDist.histogram}
@@ -449,7 +457,7 @@ export function PreviewStep() {
           )}
 
           {/* Validation Status */}
-          <Card className="col-span-2">
+          <Card className="sm:col-span-2 min-w-0">
             <CardContent className="pt-4">
               <div className="flex items-center gap-3">
                 {preview.success ? (

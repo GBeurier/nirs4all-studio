@@ -973,6 +973,8 @@ notFound: {
       description: "Studio uses this engine to run experiments and pipelines.",
     },
     systemInfo: {
+      pythonUnavailable: "Python environment unavailable",
+      capabilitiesUnavailable: "Analysis capabilities could not be checked. System and package information is still available.",
       description: "Python environment and available features",
       loadFailed: "Failed to load system info",
       version: "Version:",
@@ -2229,6 +2231,8 @@ notFound: {
         },
       },
       parsing: {
+        autoNaPolicy: "Auto (check X, preserve Y and metadata)",
+        autoNaHint: "Missing targets and metadata are preserved with a report. Choose their treatment explicitly before training; no rows are removed by default.",
         delimiters: {
           semicolon: "Semicolon (;)",
           comma: "Comma (,)",
@@ -2333,6 +2337,7 @@ notFound: {
         },
       },
       stats: {
+        missingCells: "{{file}}: {{count}} missing values preserved. X, Y and metadata keep their row alignment.",
         detectingFiles: "Detecting files...",
         loadingFiles: "Loading files...",
         noXFiles: "No X files mapped - select file roles below",
@@ -2416,6 +2421,8 @@ notFound: {
         },
       },
       preview: {
+        displayedTarget: "Displayed target: {{target}}",
+        missingTargets: "{{count}} missing target values are preserved and excluded from this histogram. Choose how to handle them before training.",
         loading: "Loading dataset preview...",
         loadFailed: "Failed to load preview",
         copyError: "Copy error to clipboard",
@@ -2433,7 +2440,7 @@ notFound: {
         noSpectra: "No spectra data available",
         targetDistribution: "Target Distribution",
         selectTarget: "Select target",
-        allDefault: "All (default)",
+        allDefault: "First target",
         typeRegression: "regression",
         typeClassification: "classification",
         typeUnknown: "unknown",

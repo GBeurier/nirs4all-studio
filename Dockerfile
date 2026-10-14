@@ -36,6 +36,7 @@ COPY sidecar/ sidecar/
 COPY --from=studio-document-adapter-sources /api/synthetic_datasets.json api/synthetic_datasets.json
 COPY --from=studio-document-adapter-sources /api/presets/ api/presets/
 COPY --from=studio-document-adapter-sources /api/shared/system_info.py api/shared/system_info.py
+COPY --from=studio-document-adapter-sources /api/library_runtime_config.py api/library_runtime_config.py
 COPY recommended-config.json recommended-config.json
 RUN cargo build --locked --release --manifest-path sidecar/Cargo.toml \
     && strip sidecar/target/release/studio-sidecar \

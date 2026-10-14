@@ -93,7 +93,7 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
 
 const pythonHostRoutes = new Map<string, NativeSurface>([
   ["GET /system/capabilities", { name: "system-capabilities", capability: "system_capabilities_route", requiresPythonHost: true }],
-  ["GET /system/info", { name: "system-info", capability: "system_info_route", requiresPythonHost: true }],
+  ["GET /system/info", { name: "system-info", capability: "system_info_route" }],
   ["GET /system/build", { name: "system-build", capability: "system_build_route", requiresPythonHost: true }],
   ["GET /system/env-coherence", { name: "system-env-coherence", capability: "system_env_coherence_route", requiresPythonHost: true }],
   ["GET /updates/version", { name: "updates-version", capability: "updates_version_route", requiresPythonHost: true }],

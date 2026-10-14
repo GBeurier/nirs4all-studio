@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useCallback, type ReactNode } from "react";
 import i18n from "i18next";
 import { useTranslation } from "react-i18next";
+import { getApiErrorMessage } from "@/api/transport";
 import { detectUnified, validateFiles, type FileShapeInfo } from "@/api/datasets";
 import {
   DialogHeader,
@@ -286,14 +287,14 @@ export function DataStats() {
             <span>
               <span className="text-primary">Y</span>
               <span className="text-muted-foreground">=</span>
-              {formatShape(yTrainShape, yTrainFiles, xTrainShape.rows)}
+              {formatShape(yTrainShape, yTrainFiles)}
             </span>
           )}
           {metadataTrainFiles.length > 0 && (
             <span>
               <span className="text-purple-500">{t("datasets.wizard.stats.meta")}</span>
               <span className="text-muted-foreground">=</span>
-              {formatShape(metaTrainShape, metadataTrainFiles, xTrainShape.rows)}
+              {formatShape(metaTrainShape, metadataTrainFiles)}
             </span>
           )}
         </div>
@@ -313,14 +314,14 @@ export function DataStats() {
             <span>
               <span className="text-primary">Y</span>
               <span className="text-muted-foreground">=</span>
-              {formatShape(yTestShape, yTestFiles, xTestShape.rows)}
+              {formatShape(yTestShape, yTestFiles)}
             </span>
           )}
           {metadataTestFiles.length > 0 && (
             <span>
               <span className="text-purple-500">{t("datasets.wizard.stats.meta")}</span>
               <span className="text-muted-foreground">=</span>
-              {formatShape(metaTestShape, metadataTestFiles, xTestShape.rows)}
+              {formatShape(metaTestShape, metadataTestFiles)}
             </span>
           )}
         </div>
@@ -333,6 +334,12 @@ export function DataStats() {
           {metadataFiles.length > 0 && `, ${t("datasets.wizard.stats.metaFiles", { count: metadataFiles.length })}`}
         </span>
       )}
+
+      {state.files.filter(file => (state.validatedShapes[file.path]?.missing_count ?? 0) > 0).map(file => (
+        <span key={file.path} role="status" className="w-full text-amber-700 dark:text-amber-400 font-sans">
+          {t("datasets.wizard.stats.missingCells", { file: file.filename, count: state.validatedShapes[file.path].missing_count })}
+        </span>
+      ))}
 
       {state.parsing.signal_type && state.parsing.signal_type !== "auto" && (
         <>
@@ -491,7 +498,7 @@ export function WizardContent({ onAdd, onClose, onScanFolder, submitLabel, submi
         type: "SET_ERROR",
         payload: {
           key: "submit",
-          message: error instanceof Error ? error.message : (submitErrorMessage ?? t("datasets.wizard.submitFailed")),
+          message: getApiErrorMessage(error) ?? (submitErrorMessage ?? t("datasets.wizard.submitFailed")),
         },
       });
     } finally {
@@ -529,7 +536,7 @@ export function WizardContent({ onAdd, onClose, onScanFolder, submitLabel, submi
       <StepIndicator />
       <DataStats />
 
-      <div className="flex-1 overflow-y-auto flex flex-col min-h-[400px]">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col min-h-0">
         {renderStep()}
       </div>
 

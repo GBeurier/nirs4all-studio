@@ -49,6 +49,17 @@ function createWizardState(overrides: Partial<WizardState> = {}): WizardState {
 }
 
 describe("DatasetWizardConfig", () => {
+  it("preserves missing targets and metadata on import while honoring explicit NA policies", () => {
+    const state = createWizardState({ files: ["X", "Y", "metadata"].map(type => ({
+      path: `${type}.csv`, type, split: "train",
+    })) as WizardState["files"] });
+    expect(buildDatasetWizardFiles(state).map(file => file.overrides?.na_policy)).toEqual(["auto", "ignore", "ignore"]);
+    state.perFileOverrides["Y.csv"] = { na_policy: "abort" };
+    expect(buildDatasetWizardConfig(state).files?.[1].overrides?.na_policy).toBe("abort");
+    state.parsing.na_policy = "remove_sample";
+    expect(buildDatasetWizardFiles(state).map(file => file.overrides?.na_policy)).toEqual(["remove_sample", "abort", "remove_sample"]);
+  });
+
   it("hydrates detected non-spectral overrides for preview and persistence", () => {
     expect(getDetectedFileOverrides([
       {

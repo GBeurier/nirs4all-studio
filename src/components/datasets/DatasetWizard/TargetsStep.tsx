@@ -33,6 +33,8 @@ import {
 import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
 import { useWizard } from "./useWizard";
 import { TargetColumnsSection } from "./TargetsStepTargetColumns";
+import { getApiErrorMessage } from "@/api/transport";
+import { effectiveFileParsing } from "./ParsingStepLogic";
 import { detectFormat } from "@/api/datasets";
 import type { TaskType, FoldSource } from "@/types/datasets";
 import {
@@ -91,7 +93,7 @@ export function TargetsStep() {
       const yFile = yFiles[0];
 
       // Get effective parsing for Y file (wizard params merged with per-file overrides)
-      const yOverrides = state.perFileOverrides[yFile.path] || {};
+      const yOverrides = effectiveFileParsing("Y", state.parsing, state.perFileOverrides[yFile.path]);
       const effectiveDelimiter = yOverrides.delimiter || state.parsing?.delimiter || ";";
       const effectiveDecimalSep = yOverrides.decimal_separator || state.parsing?.decimal_separator || ".";
 
@@ -105,8 +107,9 @@ export function TargetsStep() {
             const rows = lines.slice(0, 101).map((line) => line.split(effectiveDelimiter));
 
             if (rows.length > 1) {
-              const headerRow = rows[0];
-              const dataRows = rows.slice(1);
+              const hasHeader = yOverrides.has_header !== false;
+              const headerRow = hasHeader ? rows[0] : rows[0].map((_, index) => `column_${index}`);
+              const dataRows = hasHeader ? rows.slice(1) : rows;
               publishColumns(parseColumnsFromData(headerRow, dataRows, effectiveDecimalSep));
               return;
             }
@@ -117,7 +120,7 @@ export function TargetsStep() {
       }
 
       // Desktop mode: use backend API with effective parsing params
-      const result = await detectFormat({ path: yFile.path, sample_rows: 100, delimiter: effectiveDelimiter, decimal_separator: effectiveDecimalSep });
+      const result = await detectFormat({ path: yFile.path, sample_rows: 100, delimiter: effectiveDelimiter, decimal_separator: effectiveDecimalSep, has_header: yOverrides.has_header, na_policy: yOverrides.na_policy });
 
       // Prefer column_info from backend (uses nirs4all's detect_task_type)
       if (result.column_info && result.column_info.length > 0) {
@@ -141,7 +144,7 @@ export function TargetsStep() {
         publishColumns([]);
       }
     } catch (e) {
-      if (revision === requestRevision.current) setError(e instanceof Error ? e.message : i18n.t("datasets.wizard.targets.detectFailed"));
+      if (revision === requestRevision.current) setError(getApiErrorMessage(e) ?? i18n.t("datasets.wizard.targets.detectFailed"));
     } finally {
       if (revision === requestRevision.current) setLoading(false);
       finishInspection();

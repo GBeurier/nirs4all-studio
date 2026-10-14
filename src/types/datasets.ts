@@ -530,6 +530,8 @@ export interface AutoDetectResponse {
  * Format detection request
  */
 export interface DetectFormatRequest {
+  has_header?: boolean;
+  na_policy?: NaPolicy;
   path: string;
   sample_rows?: number;
   /** Override delimiter instead of auto-detecting */
@@ -623,6 +625,7 @@ export interface SpectraPreview {
 
 /** Target distribution produced by the backend. */
 export interface TargetDistribution {
+  missing_count?: number;
   type: "regression" | "classification";
   n_samples?: number;
   values?: number[];
@@ -682,7 +685,7 @@ export interface WizardState {
 
   // Validated shapes from actual file loading
   /** Validated shapes from loading files (path -> {num_rows, num_columns, error}) */
-  validatedShapes: Record<string, { num_rows?: number; num_columns?: number; error?: string }>;
+  validatedShapes: Record<string, { num_rows?: number; num_columns?: number; missing_count?: number; error?: string }>;
   /** Whether validation is in progress */
   isValidating: boolean;
   /** Global validation error */
