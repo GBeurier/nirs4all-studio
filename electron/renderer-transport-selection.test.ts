@@ -35,6 +35,14 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 }
 
 describe("renderer transport preselection", () => {
+  it("allows native OS diagnostics before any Python host is configured", async () => {
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/system/info" },
+      () => ({ ...running(), pythonPluginHostConfigured: false }),
+      async () => capabilityResponse({ system_info_route: true }),
+    )).resolves.toMatchObject({ target: "native-sidecar", status: 200 });
+  });
+
   it("qualifies variant counting with a bounded host and rejects method/query drift", async () => {
     const request = async () => capabilityResponse({ pipeline_library_routes: true, python_plugin_preflight: true });
     await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/pipelines/count-variants" }, running, request))

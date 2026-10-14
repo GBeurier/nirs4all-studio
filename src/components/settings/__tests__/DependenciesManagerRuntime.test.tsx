@@ -53,4 +53,21 @@ describe("DependenciesManager runtime inventory", () => {
     expect(container.textContent).toContain("shap");
     expect(container.textContent).not.toContain("Runtime stopped");
   });
+
+  it("shows a structured refusal and opens Python selection after deferred setup", async () => {
+    mocks.inventory.mockRejectedValue({ status: 503, detail: "No Python runtime is configured" });
+    Object.defineProperty(window, "electronApi", { configurable: true, value: { isElectron: true } });
+    const choose = vi.fn();
+    window.addEventListener("choose-python-environment", choose);
+    try {
+      await mount();
+      expect(container.textContent).toContain("No Python runtime is configured");
+      const configure = [...container.querySelectorAll("button")].find(button => button.textContent === "errors.api.openPythonSettings")!;
+      await act(async () => configure.click());
+      expect(choose).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("choose-python-environment", choose);
+      Reflect.deleteProperty(window, "electronApi");
+    }
+  });
 });

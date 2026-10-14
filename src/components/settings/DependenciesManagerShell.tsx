@@ -78,7 +78,10 @@ export function DependenciesErrorCard({
         </CardTitle>
         <CardDescription className="text-destructive">{error}</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-wrap gap-2">
+        {window.electronApi?.isElectron && <Button variant="outline" size="sm" onClick={() => window.dispatchEvent(new CustomEvent("choose-python-environment"))}>
+          {t("errors.api.openPythonSettings")}
+        </Button>}
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RefreshCw className="mr-2 h-4 w-4" />
           {t("common.retry")}

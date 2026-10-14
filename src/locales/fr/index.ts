@@ -11,7 +11,7 @@ const fr = {
     "settingsHint": "Vous pourrez faire le même choix dans Paramètres → Avancé → Environnement Python.",
     "checking": "Vérification du moteur d’analyse…",
     "ready": "Votre environnement est prêt pour les analyses.",
-    "prepare": "Utilisez Modifier… pour sélectionner et préparer un environnement. Une ancienne version de nirs4all peut être mise à jour sur place.",
+    "prepare": "Utilisez Changer… pour sélectionner et préparer un environnement. Une ancienne version de nirs4all peut être mise à jour sur place.",
     "later": "Configurer plus tard",
     "open": "Ouvrir Studio"
 },
@@ -973,6 +973,8 @@ notFound: {
       description: "Studio utilise ce moteur pour exécuter les expériences et les pipelines.",
     },
     systemInfo: {
+      pythonUnavailable: "Environnement Python indisponible",
+      capabilitiesUnavailable: "Les capacités d’analyse n’ont pas pu être vérifiées. Les informations système et les paquets restent disponibles.",
       description: "Environnement Python et fonctionnalités disponibles",
       loadFailed: "Échec du chargement des informations système",
       version: "Version :",
@@ -2229,6 +2231,8 @@ notFound: {
         },
       },
       parsing: {
+        autoNaPolicy: "Auto (vérifier X, conserver Y et les métadonnées)",
+        autoNaHint: "Les cibles et métadonnées manquantes sont conservées et signalées. Choisissez leur traitement avant l’entraînement ; aucune ligne n’est supprimée par défaut.",
         delimiters: {
           semicolon: "Point-virgule (;)",
           comma: "Virgule (,)",
@@ -2333,6 +2337,7 @@ notFound: {
         },
       },
       stats: {
+        missingCells: "{{file}} : {{count}} valeurs manquantes conservées. X, Y et les métadonnées restent alignés.",
         detectingFiles: "Détection des fichiers…",
         loadingFiles: "Chargement des fichiers…",
         noXFiles: "Aucun fichier X associé - sélectionnez les rôles des fichiers ci-dessous",
@@ -2416,6 +2421,8 @@ notFound: {
         },
       },
       preview: {
+        displayedTarget: "Cible affichée : {{target}}",
+        missingTargets: "{{count}} valeurs cibles manquantes sont conservées et exclues de cet histogramme. Choisissez leur traitement avant l’entraînement.",
         loading: "Chargement de l'aperçu du jeu de données…",
         loadFailed: "Échec du chargement de l'aperçu",
         copyError: "Copier l'erreur dans le presse-papiers",
@@ -2433,7 +2440,7 @@ notFound: {
         noSpectra: "Aucune donnée spectrale disponible",
         targetDistribution: "Distribution de la variable cible",
         selectTarget: "Choisir une cible",
-        allDefault: "Toutes (par défaut)",
+        allDefault: "Première cible",
         typeRegression: "régression",
         typeClassification: "classification",
         typeUnknown: "inconnu",

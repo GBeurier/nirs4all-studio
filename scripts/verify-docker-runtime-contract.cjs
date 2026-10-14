@@ -79,6 +79,11 @@ requireText(
 );
 requireText(
   dockerfile,
+  "COPY --from=studio-document-adapter-sources /api/library_runtime_config.py api/library_runtime_config.py",
+  "Rust runtime package inventory probe compile source",
+);
+requireText(
+  dockerfile,
   "COPY recommended-config.json recommended-config.json",
   "Rust recommended profile compile source",
 );
@@ -174,6 +179,7 @@ requireText(dockerfile, `"${adapterManifest}"`, "document adapter manifest inven
 requireText(dockerignore, "!recommended-config.json", "plugin build configuration inclusion");
 for (const compileSource of [
   "api/shared/system_info.py",
+  "api/library_runtime_config.py",
   "api/synthetic_datasets.json",
   "api/presets/complex_pls.yaml",
   "api/presets/complex_trees.yaml",

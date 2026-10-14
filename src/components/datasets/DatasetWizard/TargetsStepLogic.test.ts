@@ -17,6 +17,14 @@ const detectedColumn = (column: Partial<DetectedColumn> & Pick<DetectedColumn, "
 });
 
 describe("TargetsStepLogic column parsing", () => {
+  it("ignores missing markers when inferring sparse numeric and categorical targets", () => {
+    const columns = parseColumnsFromData(["protein", "class"], [
+      ["1.5", "pass"], ["NA", "N/A"], ["nan", "null"], ["", "None"], ["3.5", "fail"],
+    ]);
+    expect(columns[0]).toMatchObject({ type: "numeric", min: 1.5, max: 3.5, inferred_task_type: "regression" });
+    expect(columns[1]).toMatchObject({ type: "categorical", classes: ["pass", "fail"], inferred_task_type: "binary_classification" });
+  });
+
   it("parses decimal comma values for numeric target projection", () => {
     expect(parseTargetNumber("1,25", ",")).toBe(1.25);
 

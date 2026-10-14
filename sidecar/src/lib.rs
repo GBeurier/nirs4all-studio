@@ -3245,24 +3245,33 @@ fn python_system_info_response_for_host(
     probes: &PythonProbeCache,
 ) -> HttpResponse {
     let Some(python_plugin_host) = host else {
-        return error_response(
-            503,
-            ErrorCode::PythonPluginUnavailable,
-            "No Python plugin host is configured for this native sidecar",
-            BTreeMap::from([("reason".into(), "not_configured".into())]),
-        );
+        return system_info_without_python("No Python runtime is configured");
     };
     match probes.get_or_probe(ProbeKind::SystemInfo, python_plugin_host, || {
         read_python_system_info(python_plugin_host)
     }) {
         Ok(body) => HttpResponse::json(200, body.to_string()),
-        Err(reason) => error_response(
-            503,
-            ErrorCode::PythonPluginPreflightFailed,
-            "The configured Python plugin host could not report system information",
-            BTreeMap::from([("reason".into(), reason.as_str().into())]),
-        ),
+        Err(reason) => system_info_without_python(reason.as_str()),
     }
+}
+
+fn system_info_without_python(reason: &str) -> HttpResponse {
+    let os = match std::env::consts::OS {
+        "windows" => "Windows",
+        "macos" => "macOS",
+        "linux" => "Linux",
+        other => other,
+    };
+    HttpResponse::json(
+        200,
+        json!({
+            "python_available":false,"python_error":reason,
+            "python":{"version":"","platform":"","executable":""},
+            "system":{"os":os,"release":"","machine":std::env::consts::ARCH,"processor":""},
+            "nirs4all_version":"","packages":{}
+        })
+        .to_string(),
+    )
 }
 
 /// Return product version inventory from Rust-owned launch metadata and a
@@ -6386,7 +6395,12 @@ mod tests {
         );
 
         let unavailable_info = route_request(&mut unconfigured, "GET", "/api/system/info");
-        assert_eq!(unavailable_info.status, 503);
+        assert_eq!(unavailable_info.status, 200);
+        let info: Value = serde_json::from_str(&unavailable_info.body).unwrap();
+        assert_eq!(info["python_available"], false);
+        assert!(info["system"]["os"].is_string());
+        assert_eq!(info["system"]["machine"], std::env::consts::ARCH);
+        assert_eq!(info["packages"], json!({}));
 
         let unavailable_build = route_request(&mut unconfigured, "GET", "/api/system/build");
         assert_eq!(unavailable_build.status, 503);
@@ -6503,7 +6517,14 @@ mod tests {
             "/api/updates/runtime/status",
         ] {
             // A slow failed probe must not delay the independent health route.
-            assert_python_probe_releases_route_mutex(route, 503);
+            assert_python_probe_releases_route_mutex(
+                route,
+                if route == "/api/system/info" {
+                    200
+                } else {
+                    503
+                },
+            );
         }
     }
 

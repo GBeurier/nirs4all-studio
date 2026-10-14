@@ -207,11 +207,12 @@ export function ParsingForm({ options, onChange, compact = false, confidence }: 
             <SelectContent>
               {NA_POLICY_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {t(opt.labelKey)}
+                  {t(opt.value === "auto" ? "datasets.wizard.parsing.autoNaPolicy" : opt.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {currentNaPolicy === "auto" && <p className="mt-2 text-xs text-muted-foreground">{t("datasets.wizard.parsing.autoNaHint")}</p>}
         </div>
       </div>
 

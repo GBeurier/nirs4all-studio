@@ -210,7 +210,7 @@ export function getAggregationMethodAdjustment(
 function getColumnSampleValues(sampleData: string[][] = [], columnIndex: number): string[] {
   return sampleData
     .map((row) => row?.[columnIndex])
-    .filter((value): value is string => value !== null && value !== undefined && value !== "");
+    .filter((value): value is string => value !== null && value !== undefined && !["", "na", "nan", "n/a", "null", "none"].includes(String(value).trim().toLowerCase()));
 }
 
 function inferTargetTaskType(

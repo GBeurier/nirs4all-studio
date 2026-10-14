@@ -68,7 +68,7 @@ export function effectiveFileParsing(
   overrides: Partial<ParsingOptions> = {},
 ): Partial<ParsingOptions> {
   const effective = { ...global, ...overrides };
-  if (role === "metadata" && (!effective.na_policy || effective.na_policy === "auto")) {
+  if ((role === "metadata" || role === "Y") && (!effective.na_policy || effective.na_policy === "auto")) {
     effective.na_policy = "ignore";
   }
   return effective;

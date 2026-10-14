@@ -28,6 +28,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getWorkspace } from "@/api/workspace";
 import { requestRestart } from "@/api/updates";
+import { useBackendDisplayUrl } from "@/hooks/useBackendDisplayUrl";
 import { resetBackendUrl } from "@/api/transport";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import { disableSentry, initSentry } from "@/lib/sentry";
@@ -72,7 +73,7 @@ export default function Settings() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
-  const [backendUrl, setBackendUrl] = useState<string>("...");
+  const backendUrl = useBackendDisplayUrl(t("common.unknown"));
   const [isRestarting, setIsRestarting] = useState(false);
   const [telemetryConsent, setTelemetryConsent] = useState<TelemetryConsentStatus>("unset");
   const [isSavingTelemetryConsent, setIsSavingTelemetryConsent] = useState(false);
@@ -110,16 +111,6 @@ export default function Settings() {
       cancelled = true;
       window.removeEventListener(TELEMETRY_CONSENT_UPDATED_EVENT, handleConsentUpdated);
     };
-  }, []);
-
-  // Resolve actual backend URL (dynamic port in Electron mode)
-  useEffect(() => {
-    const electronApi = (window as unknown as { electronApi?: { getBackendUrl?: () => Promise<string> } }).electronApi;
-    if (electronApi?.getBackendUrl) {
-      electronApi.getBackendUrl().then((url) => setBackendUrl(url)).catch(() => setBackendUrl(window.location.origin));
-    } else {
-      setBackendUrl(window.location.origin);
-    }
   }, []);
 
   const loadWorkspace = async () => {
@@ -184,7 +175,6 @@ export default function Settings() {
         const result = await electronApi.restartBackend();
         if (result.success) {
           resetBackendUrl();
-          if (result.port) setBackendUrl(`http://127.0.0.1:${result.port}`);
           dispatchOperatorAvailabilityInvalidated();
           window.dispatchEvent(new CustomEvent("backend-restarted"));
         }

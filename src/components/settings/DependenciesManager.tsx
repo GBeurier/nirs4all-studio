@@ -16,7 +16,7 @@ import {
   revertDependency,
 } from "@/api/dependencies";
 import { requestRestart } from "@/api/updates";
-import { resetBackendUrl } from "@/api/transport";
+import { getApiErrorMessage, resetBackendUrl } from "@/api/transport";
 import { getRuntimeSummary } from "@/api/system";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import { getPythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
@@ -61,7 +61,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       setDependencies(data);
       setRuntimeSummary(summary);
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t("settings.dependencies.loadFailed"));
+      setError(getApiErrorMessage(err) ?? i18n.t("settings.dependencies.loadFailed"));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -74,7 +74,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       await refreshDependencies();
       await loadDependencies(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : i18n.t("settings.dependencies.refreshFailed"));
+      setError(getApiErrorMessage(err) ?? i18n.t("settings.dependencies.refreshFailed"));
     } finally {
       setIsRefreshing(false);
     }

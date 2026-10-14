@@ -206,6 +206,7 @@ export async function autoDetectFile(
  * without computing full preview data (spectra charts, etc.).
  */
 export interface FileShapeInfo {
+  missing_count?: number;
   column_names?: string[];
   path: string;
   num_rows?: number;
