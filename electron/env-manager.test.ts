@@ -344,7 +344,7 @@ describe("EnvManager", () => {
     const installArgs = childProcessMocks.spawn.mock.calls
       .filter(([, args]) => Array.isArray(args) && args.includes("install"))
       .flatMap(([, args]) => args as string[]);
-    expect(installArgs).toContain("nirs4all==1.4.9");
+    expect(installArgs).toContain("nirs4all==1.4.10");
     expect(installArgs).toContain("only-if-needed");
     expect(installArgs.some((arg) => arg.startsWith("shap") || arg.startsWith("matplotlib"))).toBe(false);
     expect(installArgs.join(" ").toLowerCase()).not.toMatch(
@@ -419,8 +419,8 @@ describe("EnvManager", () => {
         installed: inspectCalls === 1
           ? { nirs4all: "0.9.3" }
           : {
-              nirs4all: "1.4.9",
-              "nirs4all-io": "0.2.9",
+              nirs4all: "1.4.10",
+              "nirs4all-io": "0.2.10",
               "nirs4all-formats": "0.2.11",
               duckdb: "1.5.5",
               pyarrow: "25.0.1",
@@ -504,8 +504,8 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.8",
           installed: {
-            nirs4all: "1.4.9",
-              "nirs4all-io": "0.2.9",
+            nirs4all: "1.4.10",
+              "nirs4all-io": "0.2.10",
             "nirs4all-formats": "0.2.11",
             duckdb: "1.5.5",
             pyarrow: "25.0.1",
@@ -572,8 +572,8 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.7",
           installed: {
-            nirs4all: "1.4.9",
-              "nirs4all-io": "0.2.9",
+            nirs4all: "1.4.10",
+              "nirs4all-io": "0.2.10",
             "nirs4all-formats": "0.2.11",
             duckdb: "1.5.5",
             pyarrow: "25.0.1",

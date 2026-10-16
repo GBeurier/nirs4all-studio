@@ -55,12 +55,12 @@ async function main() {
     assert(response.ok, `${endpoint}: HTTP ${response.status}: ${JSON.stringify(data)}`);
     return data;
   };
-  const checkPreview = (name, preview) => {
+  const checkPreview = (name, preview, expected = null) => {
     assert.equal(preview.success, true, `${name}: ${preview.error}`);
-    assert.equal(preview.summary.num_samples, 48, name);
-    assert.equal(preview.summary.train_samples, 36, name);
-    assert.equal(preview.summary.test_samples, 12, name);
-    if (name !== "clean") assert.equal(preview.target_distribution.missing_count, 5, name);
+    assert.equal(preview.summary.num_samples, expected ? expected.train + expected.test : 48, name);
+    assert.equal(preview.summary.train_samples, expected ? expected.train : 36, name);
+    assert.equal(preview.summary.test_samples, expected ? expected.test : 12, name);
+    if (expected || name !== "clean") assert.equal(preview.target_distribution.missing_count, expected ? 0 : 5, name);
     if (name === "sparse-classes") assert.equal(preview.target_distribution.classes.length, 2, name);
   };
   const checkSelection = async page => {
@@ -117,12 +117,32 @@ async function main() {
           assert.equal(saved.success, true, JSON.stringify(saved));
           linked.push({ name, id: saved.dataset.id });
           reports.push({ case: name, samples: preview.summary.num_samples, missing: preview.target_distribution.missing_count });
+          const dropRoot = path.join(sandbox, "removal-fixtures", name);
+          fs.mkdirSync(dropRoot, { recursive: true });
+          const dropFiles = files.map(file => {
+            const destination = path.join(dropRoot, path.basename(file.path));
+            fs.copyFileSync(file.path, destination);
+            return { ...file, path: destination,
+              ...((file.type === "Y" || (name === "missing-spectra" && file.type === "X"))
+                ? { overrides: { na_policy: "remove_sample" } } : {}) };
+          });
+          const keptKey = name === "missing-spectra" ? "keptSamplesXY" : "keptSamplesY";
+          const expected = { train: expectedCases[`${name}/cal`][keptKey].length,
+            test: expectedCases[`${name}/val`][keptKey].length };
+          const dropPreview = await request(env, "/datasets/preview", { path: dropRoot, files: dropFiles, parsing, max_samples: 48 });
+          checkPreview(name, dropPreview, expected);
+          const dropSaved = await request(env, "/datasets/link", { path: dropRoot,
+            config: { files: dropFiles, global_params: parsing, task_type: name === "sparse-classes" ? "binary_classification" : "regression" } });
+          assert.equal(dropSaved.success, true, JSON.stringify(dropSaved));
+          linked.push({ name, id: dropSaved.dataset.id, expected });
+          reports.push({ case: `${name}/remove-sample`, samples: dropPreview.summary.num_samples,
+            train: expected.train, test: expected.test, missing: dropPreview.target_distribution.missing_count });
         }
       },
       journeys: async ({ page, env }) => {
         await checkSelection(page);
         for (const dataset of linked) checkPreview(dataset.name,
-          await request(env, `/datasets/${encodeURIComponent(dataset.id)}/preview`));
+          await request(env, `/datasets/${encodeURIComponent(dataset.id)}/preview`), dataset.expected);
         console.log(`Recovery cycle ${cycle + 1}: same Python, unchanged SDK, ${linked.length} reopened datasets`);
       },
     });

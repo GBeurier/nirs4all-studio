@@ -16,13 +16,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "sidecar/src/scientific_cpython.rs").read_text(encoding="utf-8")
 PROBE = re.search(r'const PREFLIGHT_SCRIPT: &str = r#"(.*?)"#;', SOURCE, re.DOTALL)[1]
-METADATA = "nirs4all-1.4.9.dist-info"
+METADATA = "nirs4all-1.4.10.dist-info"
 
 
 def _installation(root: Path, extra: str | None = None) -> None:
     payloads = {
         "nirs4all/__init__.py": b"def studio_scientific_job_v1(request): return None\n",
-        f"{METADATA}/METADATA": b"Name: nirs4all\nVersion: 1.4.9\n",
+        f"{METADATA}/METADATA": b"Name: nirs4all\nVersion: 1.4.10\n",
     }
     if extra:
         payloads[extra] = b"{}\n"

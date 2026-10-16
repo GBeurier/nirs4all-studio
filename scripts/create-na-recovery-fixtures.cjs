@@ -20,7 +20,7 @@ function createFixtures(destination) {
       [...(spec.headerless ? [] : [header]), ...rows].map(row => row.join(';')).join('\r\n') + '\r\n');
     const number = value => value.toFixed(5).replace('.', spec.decimal ?? '.');
     for (const [partition, start, length] of [['cal', 0, 36], ['val', 36, 12]]) {
-      const x = [], y = [], metadata = [];
+      const x = [], y = [], metadata = [], keptSamplesY = [], keptSamplesXY = [];
       let missingY = 0, missingM = 0, missingX = 0;
       for (let row = 0; row < length; row++) {
         const index = start + row;
@@ -31,6 +31,10 @@ function createFixtures(destination) {
         if (spec.sparse && row % 7 === 2) { targets[0] = ['', 'NA', 'NaN', 'N/A', 'null'][Math.floor(row / 7) % 5]; missingY++; }
         if (spec.sparse && !spec.classification && row % 11 === 3) { targets[1] = ''; missingY++; }
         y.push(targets);
+        if (!targets.some(value => ['', 'NA', 'NaN', 'N/A', 'null'].includes(value))) {
+          keptSamplesY.push(index);
+          if (!(spec.missingX && row === 5)) keptSamplesXY.push(index);
+        }
         const meta = [`sample-${String(index).padStart(3, '0')}`, `batch-${index % 3}`];
         if (spec.sparse && row % 9 === 4) { meta[1] = ''; missingM++; }
         metadata.push(meta);
@@ -38,7 +42,8 @@ function createFixtures(destination) {
       write(`X${partition}.csv`, Array.from({ length: 16 }, (_, col) => String(1000 + col * 10)), x);
       write(`Y${partition}.csv`, spec.classification ? ['class'] : ['protein', 'fat'], y);
       write(`M${partition}.csv`, ['sample_id', 'batch'], metadata);
-      expected[`${spec.name}/${partition}`] = { rows: length, features: 16, targets: spec.classification ? 1 : 2, missingY, missingM, missingX };
+      expected[`${spec.name}/${partition}`] = { rows: length, features: 16, targets: spec.classification ? 1 : 2,
+        missingY, missingM, missingX, keptSamplesY, keptSamplesXY };
     }
   }
   fs.writeFileSync(path.join(destination, 'expected.json'), JSON.stringify(expected, null, 2));
