@@ -61,12 +61,16 @@ Validation réalisée
   sélection d’un venv uv existant, sauvegarde des préférences, réouverture
   de 12 datasets avec conservation ou suppression des NA. Trois cycles / six
   lancements finaux passent avec le même Python et le RECORD du SDK inchangé.
-  Une simulation de passage depuis 0.15.3 ne relance pas l’assistant.
+  Une simulation de passage depuis 0.15.3 ne relance pas l’assistant. Les trois
+  cycles sont répétés avec les wheels publics et une demande explicite de
+  préparation : aucun changement du SDK ni réinstallation de l’environnement.
 
 Versions et publication
 
-IO 0.2.10 et le SDK 1.4.10 sont publiés sur les registres Python. La
-publication Docker du SDK reste surveillée. Source SDK :
+IO 0.2.10 et le SDK 1.4.10 sont publiés. Leurs chaînes de publication sont
+vertes, y compris Docker et le smoke après publication du SDK. Le wheel
+public du SDK possède la même empreinte normalisée que les builds locaux.
+Source SDK :
 cf0385173b481e1950b2be893172c8bd4b0640be ; preuve locale
 51ddccd5891c138a7c162198d8298f1152c649a9.
 L’agrégat natif utilise Core 0.4.6 compilé depuis le commit immuable
@@ -74,7 +78,7 @@ da216323d0976108ceacdb427964a5baf57528e7 (CI verte). Ce n’est pas une release
 registry Core 0.4.6. Le paquet Python Core reste la version publique 0.4.5.
 
 La recette manuelle Windows reste bloquée : Computer Use renvoie GetCursorPos
-/ Accès refusé, y compris lors du nouvel essai sur le paquet final. Le
+/ Accès refusé, y compris lors du nouvel essai sur le candidat. Le
 déverrouillage de la session a été demandé. Les parcours
 automatisés du paquet ne sont pas présentés comme une recette manuelle.
 Studio 0.15.4 ne doit être publié qu’après cette recette demandée.
