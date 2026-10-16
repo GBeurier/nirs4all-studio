@@ -128,8 +128,9 @@ async function main(options = {}) {
     app = await electron.launch({
       executablePath: layout.executablePath,
       args: [...(config.platform === "linux" ? ["--no-sandbox"] : []),
-        ...(!(config.platform === "win32" && options.existingProfile && options.envOverrides)
-          ? [`--user-data-dir=${path.join(sandbox, "electron-user-data")}`] : [])],
+        ...(options.userDataDir ? [`--user-data-dir=${path.resolve(options.userDataDir)}`]
+          : !(config.platform === "win32" && options.existingProfile && options.envOverrides)
+            ? [`--user-data-dir=${path.join(sandbox, "electron-user-data")}`] : [])],
       cwd: layout.appRoot,
       env,
       timeout: config.timeoutMs,
@@ -218,7 +219,7 @@ async function main(options = {}) {
     await page.reload();
     const reloadedToggle = await openAdvanced(page);
     await expect(reloadedToggle).toHaveAttribute("aria-checked", "true", { timeout: config.timeoutMs });
-    console.log("Developer mode saved without a workspace and survived renderer reload.");
+    console.log("Developer mode saved and survived renderer reload.");
 
     await closeApplication(app);
     app = undefined;

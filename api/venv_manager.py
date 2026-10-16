@@ -88,6 +88,7 @@ _INSTALLED_PACKAGES_CACHE_TTL_SECONDS = 30.0
 _installed_packages_cache: dict[str, tuple[float, list["PackageInfo"]]] = {}
 _OUTDATED_PACKAGES_CACHE_TTL_SECONDS = 15 * 60.0
 _outdated_packages_cache: dict[str, tuple[float, list[dict[str, str]]]] = {}
+_runtime_size_cache: dict[str, tuple[float, int]] = {}
 
 
 def _installed_packages_fingerprint(python_exe: Path) -> str | None:
@@ -265,14 +266,31 @@ class VenvManager:
             logger.warning("Could not save venv metadata: %s", e)
 
     def _get_directory_size(self, path: Path) -> int:
-        """Calculate total size of a directory in bytes."""
+        """Bound optional size diagnostics so they cannot stall runtime recovery."""
+        key = str(path)
+        now = time.monotonic()
+        cached = _runtime_size_cache.get(key)
+        if cached and now - cached[0] < 60:
+            return cached[1]
+        deadline = now + 0.25
         total = 0
+        pending = [path]
         try:
-            for entry in path.rglob("*"):
-                if entry.is_file():
-                    total += entry.stat().st_size
-        except Exception:
-            pass
+            while pending:
+                with os.scandir(pending.pop()) as entries:
+                    for entry in entries:
+                        if time.monotonic() >= deadline:
+                            # Zero means unavailable; never report a partial
+                            # scan as the size of the complete environment.
+                            _runtime_size_cache[key] = (now, 0)
+                            return 0
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append(Path(entry.path))
+                        elif entry.is_file(follow_symlinks=False):
+                            total += entry.stat(follow_symlinks=False).st_size
+        except OSError:
+            return 0
+        _runtime_size_cache[key] = (now, total)
         return total
 
     def _should_compute_runtime_size(self) -> bool:

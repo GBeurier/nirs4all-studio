@@ -91,6 +91,6 @@ def test_manifests_validate_against_dagml_schema():
 
     import jsonschema
 
-    schema = json.loads(schema_path.read_text())
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
     for manifest in manifests:
         jsonschema.validate(manifest, schema)

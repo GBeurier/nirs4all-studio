@@ -1,0 +1,73 @@
+NA import and Python environment recovery — 16 October 2026
+
+Scope
+Studio 0.15.4 candidate, Windows x64. Product routes, state and jobs remain
+owned by Rust; scientific dataset operations use the bounded CPython host.
+SDK 1.4.9 and IO 0.2.9 are published. The native aggregate uses the immutable
+Core source 1978036acf437e0d1d3f52b450e6477c86699abd (0.4.6), whose complete
+hosted CI passed; the packaged Python Core remains the released 0.4.5.
+
+Defects corrected
+* Missing Y and metadata values use the same preserving defaults for new
+  imports and saved configurations. Explicit abort/drop/replace policies stay
+  explicit. Legacy policy spellings are normalized at the library boundary.
+* IO preserves physically blank single-column records under preserving NA
+  policies. Categorical missing targets remain missing instead of becoming
+  an extra category. SDK target distributions exclude missing class labels.
+* Python selection is saved atomically with recovery from the previous valid
+  settings file. A failed save or activation retains the previous selection.
+* Cold inventory probes retry once after a timeout. Detection caches include
+  the selection context. An unavailable health request does not imply that an
+  environment needs to be installed.
+* Reused environments report installed/required versions separately from
+  absent packages. Updates prepare the selected environment in place. An
+  existing managed venv is never erased by the create-environment action.
+* A Studio version change alone does not restart onboarding for a verified
+  environment whose setup was already completed.
+* uv's installer-owned dist-info/uv_cache.json no longer produces a false SDK
+  tampering error. Package code and similarly named files inside the SDK
+  remain attested. Deliberately changed code is still refused.
+* Optional environment-size diagnostics have a time budget and a short cache.
+
+Evidence completed
+* Frontend: 639 files, 4,488 tests passed, 8 existing skips.
+* Python: 2,659 tests passed, 46 platform/integration skips. Four focused tests
+  exercise the real selected-Python preflight with uv metadata and tampering.
+* Rust Studio: 444 tests passed across unit/integration binaries; the real
+  Archive V2 witness also passed. The native CSV test retains a blank target
+  record without a Python parsing fallback. Core's local Rust suite: 149 passed.
+* IO: 779 Python tests, binding tests and Rust checks passed. All 17 hosted
+  workflows for 0.2.9 completed successfully, including every publication.
+* SDK: 12 fresh installed-wheel qualification gates passed on Windows and
+  Ubuntu 22.04/WSL, including 45 provider/HPO combinations on each host,
+  quickstart, fresh replay, Studio integration and pip check. Publication CI
+  and post-publication smoke passed.
+* SDK wheel rebuilt independently on Windows and Linux: identical normalized
+  SHA-256 b5e6b7a3be3eb848e7f38a69e12d9d04c6f452f15cb01334004c767013b14ffc.
+  The public PyPI wheel normalizes to the same bytes and 676 attested entries.
+* Six artificial datasets cover complete data, sparse numeric targets,
+  missing spectra, missing text classes, decimal commas, and absent headers.
+  Each has 36 training and 12 test rows, 16 spectral features, metadata, and
+  explicit empty/NA/NaN/N/A/null markers. Native shape validation, library
+  previews, explicit strict-policy refusal, saving and reopening were exercised
+  through the packaged application. Initial uv selection and restart passed.
+* Packaged first launch, setup, Settings persistence, renderer reload and app
+  restart passed offline. Further repeated-cycle/upgrade qualification is run
+  by scripts/qualify-na-env-recovery.cjs and records its own result JSON.
+* Lint passed (23 existing ESLint warnings, no errors).
+
+Manual and release status
+Hands-on Windows desktop testing is pending: the Computer Use helper returned
+GetCursorPos / Access denied. A request to unlock the interactive session was
+sent. Headless product UI automation is not recorded as manual testing.
+Studio 0.15.4 must not be published until that requested manual pass is complete.
+Generated datasets, application builds, profiles and logs stay outside Git at
+D:/tmp_wk/studio-na-recovery-20261016. No production dataset was imported or
+modified as a test fixture.
+
+Repeatable entry points
+node scripts/create-na-recovery-fixtures.cjs <owned-fixture-directory>
+python scripts/verify-na-recovery-fixtures.py <owned-fixture-directory>
+node scripts/qualify-na-env-recovery.cjs --extracted-root <packaged-app>
+  --fixtures-root <generated-fixtures> --python <existing-python-executable>
+  --sandbox-root <fresh-owned-profile>

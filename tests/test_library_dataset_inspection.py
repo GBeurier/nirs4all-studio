@@ -80,3 +80,33 @@ def test_wizard_import_preserves_sparse_multitarget_rows_and_metadata(tmp_path):
     assert result["target_distribution"]["missing_count"] == 1
     assert result["target_distribution"]["mean"] == 2.5
     assert result["target_distributions"]["target_1"]["mean"] == 15
+
+
+@pytest.mark.parametrize("stored_shape", ["files", "library"])
+@pytest.mark.parametrize("policy", ["auto", "ignore", "abort"])
+def test_reopened_dataset_retains_sparse_rows_or_reports_explicit_abort(tmp_path, stored_shape, policy):
+    """Existing records must behave like a fresh wizard import, for both splits."""
+    from api.library_documents import configure_dataset
+    files = []
+    library = {"global_params": {"delimiter": ";", "has_header": True, "na_policy": policy}, "task_type": "regression"}
+    for split, suffix in [("train", "cal"), ("test", "val")]:
+        for role, header, rows in [
+            ("X", "1000;1001", "1;2\n3;4\n5;6"),
+            ("Y", "protein;fat", "1.5;10\nNA;20\n3.5;"),
+            ("metadata", "sample_id;batch", "a;A\nb;\nc;C"),
+        ]:
+            filename = f"{'M' if role == 'metadata' else role}{suffix}.csv"
+            (tmp_path / filename).write_text(f"{header}\n{rows}\n")
+            files.append({"path": str(tmp_path / filename), "type": role, "split": split})
+            library[f"{split}_{'group' if role == 'metadata' else role.lower()}"] = str(tmp_path / filename)
+    config = {**library, "files": files} if stored_shape == "files" else library
+    configured = configure_dataset({"record": {"path": str(tmp_path), "config": config}})
+    if policy == "abort":
+        with pytest.raises(ValueError, match="NA"):
+            inspect_dataset_document("dataset.preview", {"config": configured})
+    else:
+        result = inspect_dataset_document("dataset.preview", {"config": configured})
+        assert result["summary"]["num_samples"] == 6
+        assert result["summary"]["train_samples"] == result["summary"]["test_samples"] == 3
+        assert result["target_distribution"]["missing_count"] == 1
+        assert result["target_distribution"]["mean"] == 2.5

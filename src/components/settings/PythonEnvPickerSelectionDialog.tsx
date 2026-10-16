@@ -107,6 +107,7 @@ export function PythonEnvSelectionDialog({
           {inspection ? (
             <PythonEnvInspectionCard
               inspection={inspection}
+              showRepair={Boolean(error)}
               busy={isSwitching}
               busyTitle={switchProgressState?.title}
               busyDetail={switchProgressState?.detail}

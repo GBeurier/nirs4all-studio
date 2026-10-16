@@ -64,6 +64,7 @@ export interface DetectedEnv {
 
 export interface InspectedEnv extends DetectedEnv {
   missingCorePackages: string[];
+  corePackageIssues?: Array<{ name: string; installedVersion: string | null; requiredVersion: string | null }>;
   missingOptionalPackages: string[];
   profileAlignmentGuess: ProfileAlignmentGuess | null;
 }
@@ -90,14 +91,18 @@ export function getManagedCorePackageNames(): string[] {
 }
 
 export function getMissingCorePackages(installedPackages: ReadonlyMap<string, string>): string[] {
-  return pythonRuntimeConfig.REUSABLE_RUNTIME_PACKAGES.filter((packageSpec) => {
+  return getCorePackageIssues(installedPackages).map((issue) => issue.name);
+}
+
+export function getCorePackageIssues(installedPackages: ReadonlyMap<string, string>): NonNullable<InspectedEnv["corePackageIssues"]> {
+  return pythonRuntimeConfig.REUSABLE_RUNTIME_PACKAGES.flatMap((packageSpec) => {
     const packageName = packageSpec.split(/[<>=!~ []/)[0];
     const installedVersion = installedPackages.get(normalizePackageName(packageName));
-    if (!installedVersion) return true;
-
     const exactVersion = packageSpec.match(/==\s*([^;\s]+)/)?.[1];
-    return Boolean(exactVersion && installedVersion !== exactVersion);
-  }).map((packageSpec) => packageSpec.split(/[<>=!~ []/)[0]);
+    return !installedVersion || (exactVersion && installedVersion !== exactVersion)
+      ? [{ name: packageName, installedVersion: installedVersion ?? null, requiredVersion: exactVersion ?? null }]
+      : [];
+  });
 }
 
 export function getMissingOptionalPackages(installedPackages: Set<string>): string[] {
@@ -142,7 +147,8 @@ export function guessProfileAlignment(installedPackages: Set<string>): ProfileAl
  * than Python 3.11.
  */
 export function inspectPythonPackages(pythonPath: string): Promise<InspectPythonData | null> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const inspect = (timeout: number, retry: boolean) => {
     execFile(
       pythonPath,
       [
@@ -155,17 +161,20 @@ export function inspectPythonPackages(pythonPath: string): Promise<InspectPython
         + "    if name:\n"
         + "        key = re.sub(r'[-_.]+', '_', name).lower()\n"
         + "        if key not in installed:\n"
-        + "            installed[key] = importlib_metadata.version(name)\n"
+        + "            installed[key] = dist.version\n"
         + "payload = {\n"
         + "    'version': f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}',\n"
         + "    'installed': installed,\n"
         + "}\n"
         + "print(json.dumps(payload))",
       ],
-      { timeout: 10_000 },
+      { timeout, windowsHide: process.platform === "win32" },
       (error, stdout) => {
         if (error) {
-          resolve(null);
+          if (error.killed && retry) { inspect(45_000, false); return; }
+          reject(new Error(error.killed
+            ? "Python inspection timed out. The environment has been retained. Retry when the disk is less busy or select the interpreter directly."
+            : `Could not inspect this Python environment: ${error.message}. Its packages have not been changed.`));
           return;
         }
 
@@ -193,9 +202,11 @@ export function inspectPythonPackages(pythonPath: string): Promise<InspectPython
 
           resolve({ version, installedPackages });
         } catch {
-          resolve(null);
+          reject(new Error("Python returned an unreadable package inventory. The environment has been retained; check its startup scripts and retry."));
         }
       },
     );
+    };
+    inspect(15_000, true);
   });
 }
