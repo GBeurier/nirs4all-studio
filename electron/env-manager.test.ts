@@ -130,6 +130,25 @@ describe("EnvManager", () => {
     expect(childProcessMocks.spawn).not.toHaveBeenCalled();
   });
 
+  it("reuses a complete environment offline even when package preparation was requested", async () => {
+    const dir = makeUserDataDir();
+    const selected = path.join(dir, "existing", "python.exe");
+    fs.mkdirSync(path.dirname(selected), { recursive: true });
+    fs.writeFileSync(selected, "");
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+    vi.spyOn(manager, "inspectExistingPython").mockResolvedValue({ success: true, message: "ready", info: {
+      path: path.dirname(selected), pythonPath: selected, pythonVersion: "3.11.13", hasNirs4all: true, hasCorePackages: true,
+      missingCorePackages: [], missingOptionalPackages: [], profileAlignmentGuess: null, envKind: "venv", writable: true,
+    } });
+    const network = await import("./env/network-probe");
+    const online = vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(false);
+    await expect(manager.applyExistingPython(selected, { installCorePackages: true })).resolves.toMatchObject({ success: true });
+    expect(manager.getConfiguredPythonPath()).toBe(selected);
+    expect(online).not.toHaveBeenCalled();
+    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  });
+
   it("revalidates a matching cache and clears it when a required module is missing", async () => {
     const userDataDir = makeUserDataDir();
     const root = path.join(userDataDir, "runtime");

@@ -698,7 +698,7 @@ export class EnvManager {
 
     let info = inspection.info;
     const bundledSelection = this.isBundledPythonPath(pythonPath);
-    const shouldInstallCorePackages = options?.installCorePackages === true && !bundledSelection;
+    const shouldInstallCorePackages = !info.hasCorePackages && options?.installCorePackages === true && !bundledSelection;
 
     if (!info.hasCorePackages && !shouldInstallCorePackages) {
       return {
