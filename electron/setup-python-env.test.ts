@@ -117,12 +117,12 @@ describe("setup-python-env", () => {
       "utf8",
     );
     expect(setupSource).toContain(
-      'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.9-py3-none-any.whl";',
+      'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.10-py3-none-any.whl";',
     );
     expect(setupSource).toContain(
-      'const PLUGIN_SOURCE_COMMIT = "02e393cfeca9033f91c26b402583006914dcd7ed";',
+      'const PLUGIN_SOURCE_COMMIT = "cf0385173b481e1950b2be893172c8bd4b0640be";',
     );
-    expect(setupSource).toContain('const PLUGIN_SOURCE_EPOCH = "1792155501";');
+    expect(setupSource).toContain('const PLUGIN_SOURCE_EPOCH = "1792163083";');
     expect(setupSource).toContain("await buildPinnedPluginWheel(runtimePython, selectedPluginWheel)");
     expect(setupSource).toContain("normalize-plugin-wheel.py");
     expect(setupSource).not.toContain("PLUGIN_WHEEL_URL");

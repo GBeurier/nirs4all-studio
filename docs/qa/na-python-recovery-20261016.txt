@@ -1,75 +1,84 @@
-NA import and Python environment recovery — 16 October 2026
+Audit et validation NA / reprise Python — 16 octobre 2026
 
-Scope
-Studio 0.15.4 candidate, Windows x64. Product routes, state and jobs remain
-owned by Rust; scientific dataset operations use the bounded CPython host.
-SDK 1.4.9 and IO 0.2.9 are published. The native aggregate uses the immutable
-Core source 1978036acf437e0d1d3f52b450e6477c86699abd (0.4.6), whose complete
-hosted CI passed; the packaged Python Core remains the released 0.4.5.
+Périmètre : candidat Studio 0.15.4, Windows x64. Rust conserve les routes,
+les jobs et l’état produit ; IO et le SDK restent propriétaires des calculs.
 
-Defects corrected
-* Missing Y and metadata values use the same preserving defaults for new
-  imports and saved configurations. Explicit abort/drop/replace policies stay
-  explicit. Legacy policy spellings are normalized at the library boundary.
-* IO preserves physically blank single-column records under preserving NA
-  policies. Categorical missing targets remain missing instead of becoming
-  an extra category. SDK target distributions exclude missing class labels.
-* Python selection is saved atomically with recovery from the previous valid
-  settings file. A failed save or activation retains the previous selection.
-* Cold inventory probes retry once after a timeout. Detection caches include
-  the selection context. An unavailable health request does not imply that an
-  environment needs to be installed.
-* Reused environments report installed/required versions separately from
-  absent packages. Updates prepare the selected environment in place. An
-  existing managed venv is never erased by the create-environment action.
-* A Studio version change alone does not restart onboarding for a verified
-  environment whose setup was already completed.
-* uv's installer-owned dist-info/uv_cache.json no longer produces a false SDK
-  tampering error. Package code and similarly named files inside the SDK
-  remain attested. Deliberately changed code is still refused.
-* Optional environment-size diagnostics have a time budget and a short cache.
+Défauts constatés et corrigés
 
-Evidence completed
-* Frontend: 639 files, 4,488 tests passed, 8 existing skips.
-* Python: 2,659 tests passed, 46 platform/integration skips. Four focused tests
-  exercise the real selected-Python preflight with uv metadata and tampering.
-* Rust Studio: 444 tests passed across unit/integration binaries; the real
-  Archive V2 witness also passed. The native CSV test retains a blank target
-  record without a Python parsing fallback. Core's local Rust suite: 149 passed.
-* IO: 779 Python tests, binding tests and Rust checks passed. All 17 hosted
-  workflows for 0.2.9 completed successfully, including every publication.
-* SDK: 12 fresh installed-wheel qualification gates passed on Windows and
-  Ubuntu 22.04/WSL, including 45 provider/HPO combinations on each host,
-  quickstart, fresh replay, Studio integration and pip check. Publication CI
-  and post-publication smoke passed.
-* SDK wheel rebuilt independently on Windows and Linux: identical normalized
-  SHA-256 b5e6b7a3be3eb848e7f38a69e12d9d04c6f452f15cb01334004c767013b14ffc.
-  The public PyPI wheel normalizes to the same bytes and 676 attested entries.
-* Six artificial datasets cover complete data, sparse numeric targets,
-  missing spectra, missing text classes, decimal commas, and absent headers.
-  Each has 36 training and 12 test rows, 16 spectral features, metadata, and
-  explicit empty/NA/NaN/N/A/null markers. Native shape validation, library
-  previews, explicit strict-policy refusal, saving and reopening were exercised
-  through the packaged application. Initial uv selection and restart passed.
-* Packaged first launch, setup, Settings persistence, renderer reload and app
-  restart passed offline. Three complete qualification cycles (six launches)
-  retained the same uv Python, unchanged SDK RECORD, all six saved datasets,
-  and the expected NA cell counts. A simulated Studio version change did not
-  restart onboarding. The qualification command records its own result JSON.
-* Lint passed (23 existing ESLint warnings, no errors).
+Les valeurs Y et métadonnées manquantes recevaient des politiques différentes
+selon le chemin d’import ou de réouverture. Des lignes CSV physiquement vides
+disparaissaient et des catégories manquantes devenaient une classe « nan ».
+Les NA sont maintenant conservés par défaut pour Y et les métadonnées, sans
+modifier les choix explicites de refus, remplacement ou suppression. Les
+distributions de classes excluent les étiquettes absentes.
 
-Manual and release status
-Hands-on Windows desktop testing is pending: the Computer Use helper returned
-GetCursorPos / Access denied. A request to unlock the interactive session was
-sent. Headless product UI automation is not recorded as manual testing.
-Studio 0.15.4 must not be published until that requested manual pass is complete.
-Generated datasets, application builds, profiles and logs stay outside Git at
-D:/tmp_wk/studio-na-recovery-20261016. No production dataset was imported or
-modified as a test fixture.
+Un test supplémentaire a révélé que remove_sample supprimait les lignes de
+chaque source séparément : X et Y devenaient incompatibles. IO 0.2.10 applique
+un masque commun après alignement. Les métadonnées, poids, autres sources et
+variantes suivent les mêmes échantillons, y compris après jointure par ID.
 
-Repeatable entry points
-node scripts/create-na-recovery-fixtures.cjs <owned-fixture-directory>
-python scripts/verify-na-recovery-fixtures.py <owned-fixture-directory>
-node scripts/qualify-na-env-recovery.cjs --extracted-root <packaged-app>
-  --fixtures-root <generated-fixtures> --python <existing-python-executable>
-  --sandbox-root <fresh-owned-profile>
+L’entraînement Studio passait encore par un ancien chargeur qui refusait les
+options NA canoniques acceptées par l’aperçu. Le SDK 1.4.10 charge ces fichiers
+par IO avant le pipeline. De vrais jobs Studio depuis les CSV vérifient ce
+chemin, avec enregistrement durable des résultats.
+
+La sélection Python est enregistrée atomiquement avec sauvegarde valide et
+retour à l’ancien choix en cas d’échec. Les inventaires à froid peuvent
+réessayer après expiration du délai ; les caches suivent le contexte choisi.
+Une erreur temporaire de santé ne remet plus l’environnement en installation.
+Les paquets absents sont distingués des versions à mettre à jour. La création
+refuse d’écraser un venv existant. Une mise à jour de Studio seule ne relance
+plus l’assistant si l’environnement est déjà vérifié.
+
+uv ajoutait dist-info/uv_cache.json au RECORD et produisait un faux signal de
+SDK altéré. Seules les métadonnées appartenant à l’installateur sont exclues ;
+du code modifié, même avec taille/date conservées, reste refusé. Les
+diagnostics facultatifs de taille ont un budget de temps.
+
+Validation réalisée
+
+* Studio : 639 fichiers / 4 489 tests frontend réussis ; 2 659 tests Python
+  réussis (46 exclusions de plateforme/intégration) ; 444 tests Rust réussis.
+  Le témoin réel Archive V2 a aussi été validé. Lint : aucune erreur,
+  23 avertissements ESLint préexistants.
+* IO : 792 tests Python, 71 tests du binding Windows, suites Rust et Clippy.
+  Les 17 workflows du commit 1f41fb9 sont verts, publications comprises.
+* SDK : 1 039 tests d’API ; 12 contrôles locaux frais Windows/Linux, dont
+  45 combinaisons provider/HPO par OS, quickstart, relecture fraîche
+  d’archive, dépendances et intégration Studio installée. Les wheels bâtis
+  sur les deux OS ont la même empreinte normalisée :
+  edbc3bccfcce44df114dfd704c547d5be1b0e5e73ffad65250901c4f09698eed.
+* Six datasets artificiels : données complètes, Y numériques incomplets,
+  spectres incomplets, classes texte, virgules décimales, absence d’en-tête.
+  Chacun comporte 36 lignes train et 12 test, 16 variables et des métadonnées.
+  Les marqueurs vide / NA / NaN / N/A / null et les identifiants conservés
+  sont contrôlés. Six vrais jobs Studio entraînent et enregistrent leurs
+  résultats ; six contrôles fit/predict indépendants passent également.
+* Une matrice de 60 scénarios couvre cinq politiques NA, des cibles texte
+  ou numériques, des NA dès la première ligne, avec/sans en-tête et LF/CRLF/CR.
+* Le paquet final est testé hors données utilisateur : premier démarrage,
+  sélection d’un venv uv existant, sauvegarde des préférences, réouverture
+  de 12 datasets avec conservation ou suppression des NA. Trois cycles / six
+  lancements finaux passent avec le même Python et le RECORD du SDK inchangé.
+  Une simulation de passage depuis 0.15.3 ne relance pas l’assistant.
+
+Versions et publication
+
+IO 0.2.10 est publié. Le SDK 1.4.10 est en publication surveillée, source
+cf0385173b481e1950b2be893172c8bd4b0640be ; preuve locale
+51ddccd5891c138a7c162198d8298f1152c649a9.
+L’agrégat natif utilise Core 0.4.6 compilé depuis le commit immuable
+da216323d0976108ceacdb427964a5baf57528e7 (CI verte). Ce n’est pas une release
+registry Core 0.4.6. Le paquet Python Core reste la version publique 0.4.5.
+
+La recette manuelle Windows reste bloquée : Computer Use renvoie GetCursorPos
+/ Accès refusé, y compris lors du nouvel essai sur le paquet final. Le
+déverrouillage de la session a été demandé. Les parcours
+automatisés du paquet ne sont pas présentés comme une recette manuelle.
+Studio 0.15.4 ne doit être publié qu’après cette recette demandée.
+
+Les données, profils, paquets et journaux restent hors Git sous
+D:/tmp_wk/studio-na-recovery-20261016. Aucun dataset utilisateur n’a servi de
+fixture. Entrées reproductibles : scripts/create-na-recovery-fixtures.cjs,
+scripts/verify-na-recovery-fixtures.py, scripts/qualify-na-policy-matrix.py,
+scripts/qualify-na-pipelines.py et scripts/qualify-na-env-recovery.cjs.
