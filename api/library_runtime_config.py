@@ -23,7 +23,7 @@ def _installed_versions() -> dict[str, str]:
     for distribution in importlib.metadata.distributions():
         name = distribution.metadata.get("Name")
         if name:
-            installed.setdefault(canonicalize_name(name), importlib.metadata.version(name))
+            installed.setdefault(canonicalize_name(name), distribution.version)
     return installed
 
 

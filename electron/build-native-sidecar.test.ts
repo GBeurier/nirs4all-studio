@@ -121,9 +121,9 @@ describe("build-native-sidecar", () => {
   it("places the host-native binary in the packaged backend resource tree", () => {
     const paths = buildNativeSidecar.getNativeSidecarPaths("/workspace/studio", "linux");
 
-    expect(paths.manifestPath).toBe("/workspace/studio/sidecar/Cargo.toml");
-    expect(paths.builtBinaryPath).toBe("/workspace/studio/sidecar/target/release/studio-sidecar");
-    expect(paths.packagedBinaryPath).toBe("/workspace/studio/backend-dist/native/studio-sidecar");
+    expect(paths.manifestPath).toBe(path.join("/workspace/studio", "sidecar", "Cargo.toml"));
+    expect(paths.builtBinaryPath).toBe(path.join("/workspace/studio", "sidecar", "target", "release", "studio-sidecar"));
+    expect(paths.packagedBinaryPath).toBe(path.join("/workspace/studio", "backend-dist", "native", "studio-sidecar"));
   });
 
   it("uses the Windows executable extension throughout the packaging contract", () => {
@@ -155,7 +155,7 @@ describe("build-native-sidecar", () => {
       "/tmp/n4a-cargo-target",
     );
     expect(paths.builtBinaryPath).toBe(
-      "/tmp/n4a-cargo-target/x86_64-unknown-linux-gnu/release/studio-sidecar",
+      path.resolve("/tmp/n4a-cargo-target", "x86_64-unknown-linux-gnu", "release", "studio-sidecar"),
     );
   });
 

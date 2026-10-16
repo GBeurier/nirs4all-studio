@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tEn } from "@/lib/__tests__/support/enTranslator";
+import { getActiveLocale } from "@/lib/activeLocale";
 import {
   deriveQuickViewLoadState,
   formatNumber,
@@ -28,8 +29,8 @@ describe("formatNumber", () => {
   it("renders -- for nullish and a locale string otherwise", () => {
     expect(formatNumber(null)).toBe("--");
     expect(formatNumber(undefined)).toBe("--");
-    expect(formatNumber(1234)).toBe((1234).toLocaleString());
-    expect(formatNumber(0)).toBe((0).toLocaleString());
+    expect(formatNumber(1234)).toBe((1234).toLocaleString(getActiveLocale()));
+    expect(formatNumber(0)).toBe((0).toLocaleString(getActiveLocale()));
   });
 });
 

@@ -62,12 +62,12 @@ export function checkPythonEnv(envDir: string, pythonPath: string): Promise<Dete
         + "for dist in importlib_metadata.distributions():\n"
         + "    name = dist.metadata.get('Name')\n"
         + "    if name:\n"
-        + "        installed.setdefault(normalize(name), importlib_metadata.version(name))\n"
+        + "        installed.setdefault(normalize(name), dist.version)\n"
         + `core = ${corePackageSpecs}\n`
         + "print('nirs4all' in installed)\n"
         + "print(all(normalize(spec.split('==')[0]) in installed and ('==' not in spec or installed[normalize(spec.split('==')[0])] == spec.split('==')[1]) for spec in core))",
       ],
-      { timeout: 5000, windowsHide: isWindows },
+      { timeout: 15_000, windowsHide: isWindows },
       (error, stdout) => {
         if (error) { resolve(null); return; }
         const lines = stdout.trim().split("\n");
@@ -111,6 +111,8 @@ export async function detectExistingEnvs(ctx: DetectEnvsContext): Promise<Detect
     .update(process.env.CONDA_EXE || "")
     .update("\u0000")
     .update(process.env.PYENV_ROOT || "")
+    .update("\u0000")
+    .update(JSON.stringify(ctx))
     .digest("hex");
   const now = Date.now();
   if (detectEnvsCache && detectEnvsCache.key === cacheKey && detectEnvsCache.expiresAt > now) {

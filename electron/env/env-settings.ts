@@ -8,6 +8,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 export const SETTINGS_FILE = "env-settings.json";
 
@@ -21,24 +22,49 @@ export interface EnvSettings {
 
 /** Read and parse the settings file, or null when it is absent or unreadable. */
 export function readEnvSettings(settingsPath: string): Record<string, unknown> | null {
-  try {
-    if (!fs.existsSync(settingsPath)) return null;
-    return JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
-  } catch (error) {
-    console.warn(`[EnvManager] Failed to load settings: ${error}`);
-    return null;
+  for (const candidate of [settingsPath, `${settingsPath}.bak`]) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      const data: unknown = JSON.parse(fs.readFileSync(candidate, "utf-8"));
+      if (!isEnvSettings(data)) throw new Error("Invalid Python environment settings");
+      return data as Record<string, unknown>;
+    } catch (error) {
+      console.warn(`[EnvManager] Failed to load ${candidate}: ${error}`);
+    }
   }
+  return null;
 }
 
-/** Persist the settings file, creating the parent directory as needed. */
+function isEnvSettings(data: unknown): data is EnvSettings {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const value = data as Record<string, unknown>;
+  return (value.pythonPath === undefined || (typeof value.pythonPath === "string" && value.pythonPath.length > 0))
+    && (value.appVersion === undefined || typeof value.appVersion === "string")
+    && (value.skipWizardOnLaunch === undefined || typeof value.skipWizardOnLaunch === "boolean");
+}
+
+/** Commit a complete file atomically; keep the last valid selection for recovery. */
 export function writeEnvSettings(settingsPath: string, data: EnvSettings): void {
+  const temporary = `${settingsPath}.${randomUUID()}.tmp`;
   try {
-    const dir = path.dirname(settingsPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    const descriptor = fs.openSync(temporary, "wx");
+    try {
+      fs.writeFileSync(descriptor, JSON.stringify(data, null, 2));
+      fs.fsyncSync(descriptor);
+    } finally {
+      fs.closeSync(descriptor);
     }
-    fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2));
+    if (fs.existsSync(settingsPath)) {
+      let previous: unknown;
+      try { previous = JSON.parse(fs.readFileSync(settingsPath, "utf-8")); }
+      catch { /* Preserve the valid backup when recovering a truncated file. */ }
+      if (isEnvSettings(previous)) fs.copyFileSync(settingsPath, `${settingsPath}.bak`);
+    }
+    fs.renameSync(temporary, settingsPath);
   } catch (error) {
-    console.error(`[EnvManager] Failed to save settings: ${error}`);
+    throw new Error("Could not save the Python environment selection. Check write access to Studio's settings folder and retry. Your previous selection is retained.", { cause: error });
+  } finally {
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
   }
 }

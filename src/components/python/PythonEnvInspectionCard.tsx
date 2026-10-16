@@ -24,6 +24,7 @@ interface PythonEnvInspectionCardProps {
   onBack: () => void;
   onUseAsIs: () => void;
   onInstallCoreAndSwitch: () => void;
+  showRepair?: boolean;
 }
 
 export function PythonEnvInspectionCard({
@@ -35,6 +36,7 @@ export function PythonEnvInspectionCard({
   onBack,
   onUseAsIs,
   onInstallCoreAndSwitch,
+  showRepair = false,
 }: PythonEnvInspectionCardProps) {
   const { t } = useTranslation();
   const coreReady = inspection.missingCorePackages.length === 0;
@@ -98,7 +100,8 @@ export function PythonEnvInspectionCard({
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              {t("common.pythonEnv.inspection.installNote", { packages: inspection.missingCorePackages.join(", ") })}
+              {t("common.pythonEnv.inspection.installNote", { packages: inspection.corePackageIssues?.map(issue => issue.installedVersion && issue.requiredVersion
+                ? `${issue.name} ${issue.installedVersion} → ${issue.requiredVersion}` : issue.name).join(", ") ?? inspection.missingCorePackages.join(", ") })}
             </AlertDescription>
           </Alert>
         )}
@@ -122,17 +125,17 @@ export function PythonEnvInspectionCard({
         </Button>
         {coreReady ? (
           <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" onClick={onInstallCoreAndSwitch} disabled={busy}>
-            {t("common.pythonEnv.inspection.updateAndUse")}
-          </Button>
-          <Button onClick={onUseAsIs} disabled={busy}>
-            {busy ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-            )}
-            {busy ? t("common.pythonEnv.inspection.applying") : t("common.pythonEnv.inspection.useThis")}
-          </Button>
+            {showRepair && <Button variant="outline" onClick={onInstallCoreAndSwitch} disabled={busy}>
+              {t("common.pythonEnv.inspection.updateAndUse")}
+            </Button>}
+            <Button onClick={onUseAsIs} disabled={busy}>
+              {busy ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+              )}
+              {busy ? t("common.pythonEnv.inspection.applying") : t("common.pythonEnv.inspection.useThis")}
+            </Button>
           </div>
         ) : (
           <Button onClick={onInstallCoreAndSwitch} disabled={busy}>

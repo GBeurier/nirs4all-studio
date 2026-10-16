@@ -91,7 +91,7 @@ def test_linux_release_gates_run_clean_qualification_before_publication():
     import yaml
 
     root = SCRIPT.parents[1]
-    release = yaml.safe_load((root / ".github/workflows/release-unified.yml").read_text())
+    release = yaml.safe_load((root / ".github/workflows/release-unified.yml").read_text(encoding="utf-8"))
     assert not any(name.startswith("archive-") for name in release["jobs"])
     for job_name in ["installer-linux"]:
         steps = release["jobs"][job_name]["steps"]
@@ -112,7 +112,7 @@ def test_linux_release_gates_run_clean_qualification_before_publication():
         assert proof["with"]["path"] == "${{ runner.temp }}/linux-" + kind + "-cpu-closure.json"
         assert proof["with"]["if-no-files-found"] == "error"
         assert proof["with"]["retention-days"] == 14
-    appimage = yaml.safe_load((root / ".github/workflows/qualify-appimage-hotfix.yml").read_text())
+    appimage = yaml.safe_load((root / ".github/workflows/qualify-appimage-hotfix.yml").read_text(encoding="utf-8"))
     steps = appimage["jobs"]["appimage"]["steps"]
     commands = "\n".join(step.get("run", "") for step in steps)
     assert "libtbb12" not in commands and "libgomp1" not in commands
