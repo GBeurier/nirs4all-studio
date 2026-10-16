@@ -52,8 +52,10 @@ Evidence completed
   previews, explicit strict-policy refusal, saving and reopening were exercised
   through the packaged application. Initial uv selection and restart passed.
 * Packaged first launch, setup, Settings persistence, renderer reload and app
-  restart passed offline. Further repeated-cycle/upgrade qualification is run
-  by scripts/qualify-na-env-recovery.cjs and records its own result JSON.
+  restart passed offline. Three complete qualification cycles (six launches)
+  retained the same uv Python, unchanged SDK RECORD, all six saved datasets,
+  and the expected NA cell counts. A simulated Studio version change did not
+  restart onboarding. The qualification command records its own result JSON.
 * Lint passed (23 existing ESLint warnings, no errors).
 
 Manual and release status
