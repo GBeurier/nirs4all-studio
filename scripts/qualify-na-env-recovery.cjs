@@ -82,6 +82,8 @@ async function main() {
         assert.equal(inspection.info.hasCorePackages, true, JSON.stringify(inspection.info.corePackageIssues));
         const selected = await page.evaluate(p => window.electronApi.applyExistingPython(p, { installCorePackages: false }), python);
         assert.equal(selected.success, true, selected.message);
+        const idempotent = await page.evaluate(p => window.electronApi.applyExistingPython(p, { installCorePackages: true }), python);
+        assert.equal(idempotent.success, true, idempotent.message);
         await checkSelection(page);
         const workspace = path.join(sandbox, "workspace");
         await request(env, "/workspace/create", { path: workspace, name: "NA recovery qualification", create_dir: true });

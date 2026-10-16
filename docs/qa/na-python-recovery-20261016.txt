@@ -28,7 +28,8 @@ réessayer après expiration du délai ; les caches suivent le contexte choisi.
 Une erreur temporaire de santé ne remet plus l’environnement en installation.
 Les paquets absents sont distingués des versions à mettre à jour. La création
 refuse d’écraser un venv existant. Une mise à jour de Studio seule ne relance
-plus l’assistant si l’environnement est déjà vérifié.
+plus l’assistant si l’environnement est déjà vérifié. Même une demande de
+préparation des paquets ne lance ni réseau ni installation s’ils sont complets.
 
 uv ajoutait dist-info/uv_cache.json au RECORD et produisait un faux signal de
 SDK altéré. Seules les métadonnées appartenant à l’installateur sont exclues ;
@@ -37,7 +38,7 @@ diagnostics facultatifs de taille ont un budget de temps.
 
 Validation réalisée
 
-* Studio : 639 fichiers / 4 489 tests frontend réussis ; 2 659 tests Python
+* Studio : 639 fichiers / 4 490 tests frontend réussis ; 2 659 tests Python
   réussis (46 exclusions de plateforme/intégration) ; 444 tests Rust réussis.
   Le témoin réel Archive V2 a aussi été validé. Lint : aucune erreur,
   23 avertissements ESLint préexistants.
@@ -64,7 +65,8 @@ Validation réalisée
 
 Versions et publication
 
-IO 0.2.10 est publié. Le SDK 1.4.10 est en publication surveillée, source
+IO 0.2.10 et le SDK 1.4.10 sont publiés sur les registres Python. La
+publication Docker du SDK reste surveillée. Source SDK :
 cf0385173b481e1950b2be893172c8bd4b0640be ; preuve locale
 51ddccd5891c138a7c162198d8298f1152c649a9.
 L’agrégat natif utilise Core 0.4.6 compilé depuis le commit immuable
