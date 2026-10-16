@@ -249,7 +249,7 @@ def test_directory_mode_apply_removes_files_missing_from_staging(tmp_path, monke
     assert marker.exists(), "the updated app was not relaunched"
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the chmod that makes the tree unmovable")
+@pytest.mark.skipif(getattr(os, "geteuid", lambda: -1)() == 0, reason="root ignores the chmod that makes the tree unmovable")
 def test_directory_mode_apply_does_not_overlay_on_failure(tmp_path, monkeypatch):
     """A failed atomic replace must NOT leave a half-applied / overlaid install.
 
@@ -311,7 +311,7 @@ def test_directory_mode_apply_does_not_overlay_on_failure(tmp_path, monkeypatch)
                 os.chmod(os.path.join(root, name), 0o755)
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the chmod that makes the backup copy fail")
+@pytest.mark.skipif(getattr(os, "geteuid", lambda: -1)() == 0, reason="root ignores the chmod that makes the backup copy fail")
 def test_bundle_mode_does_not_delete_app_when_backup_fails(tmp_path, monkeypatch):
     """macOS bundle mode must NOT delete the live .app when the backup copy fails.
 

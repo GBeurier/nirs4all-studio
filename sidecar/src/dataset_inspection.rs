@@ -542,6 +542,26 @@ mod tests {
     }
 
     #[test]
+    fn missing_target_inspection_preserves_blank_records_without_python_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("Ycal.csv");
+        fs::write(&path, "target\n1\n\nNA\n3\n").unwrap();
+        let inspector = DatasetInspection::new(dir.path(), LoadLimits::default()).unwrap();
+        let result = inspector
+            .inspect_file(
+                &path,
+                &json!({"delimiter":";","has_header":true,"na_policy":"ignore"}),
+                10,
+                &no_python,
+            )
+            .unwrap();
+        assert_eq!(result["num_rows"], 4);
+        assert_eq!(result["missing_count"], 2);
+        assert_eq!(result["sample_data"].as_array().unwrap().len(), 4);
+        assert_eq!(result["reader"]["backend"], "nirs4all-io.native");
+    }
+
+    #[test]
     fn real_csv_beyond_portable_caps_keeps_rows_and_header_axis() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("Xcal.csv");

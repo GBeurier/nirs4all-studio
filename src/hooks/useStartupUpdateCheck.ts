@@ -47,10 +47,14 @@ export function useStartupUpdateCheck() {
     ]).then(([environment, readiness]) => {
       if (cancelled) return;
       hasCheckedSetup.current = true;
-      if (!cancelled && !environment.setupDeferred && (!setupStatus.setup_completed || readiness?.ml_ready !== true)) {
+      // A failed health request is not evidence that an existing environment
+      // needs installation. Keep the workspace and its recovery banner usable.
+      if (!environment.setupDeferred && (!setupStatus.setup_completed || readiness?.ml_ready === false)) {
         navigate("/setup", { replace: true });
       }
-    }).catch(() => { if (!cancelled) navigate("/setup", { replace: true }); });
+    }).catch(() => {
+      if (!cancelled) hasCheckedSetup.current = true;
+    });
     return () => { cancelled = true; };
   }, [setupStatus, navigate]);
 

@@ -116,7 +116,7 @@ describe("native Methods product build", () => {
           root,
           methodsBuild.targetConfig("linux", "x64"),
         ),
-      ).toMatchObject({ libraryPath: realLibrary, size: 8 });
+      ).toMatchObject({ libraryPath: fs.realpathSync.native(realLibrary), size: 8 });
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -148,10 +148,10 @@ describe("native Methods product build", () => {
 
   it("wires the attested Methods library into every native Rust integration test", () => {
     const projectRoot = path.resolve(import.meta.dirname, "..");
-    const workflow = fs.readFileSync(
+      const workflow = fs.readFileSync(
       path.join(projectRoot, ".github", "workflows", "ci.yml"),
-      "utf8",
-    );
+        "utf8",
+      ).replace(/\r\n/g, "\n");
 
     expect(workflow).toContain(
       'N4M_LIBRARY_PATH="$NIRS4ALL_BUILD_METHODS_LIBRARY" cargo test --manifest-path sidecar/Cargo.toml',

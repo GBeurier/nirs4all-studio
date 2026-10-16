@@ -43,6 +43,9 @@ def _with_library_na_params(params: dict[str, Any]) -> dict[str, Any]:
             result.setdefault("na_policy", native_na["policy"])
         if native_na.get("fill") is not None:
             result.setdefault("na_fill_config", native_na["fill"])
+    if isinstance(result.get("na_policy"), str):
+        policy = result["na_policy"].strip().lower()
+        result["na_policy"] = {"drop": "remove_sample", "keep": "ignore"}.get(policy, policy)
     if "na_policy" in result or "na_fill_config" in result:
         native = {"policy": result.get("na_policy") or "auto"}
         if result.get("na_fill_config"):
@@ -53,7 +56,11 @@ def _with_library_na_params(params: dict[str, Any]) -> dict[str, Any]:
 
 def _na_policy(params: dict[str, Any], default: str | None = "auto") -> str | None:
     native_na = params.get("na", {})
-    return params.get("na_policy", native_na.get("policy", default) if isinstance(native_na, dict) else default)
+    policy = params.get("na_policy", native_na.get("policy", default) if isinstance(native_na, dict) else default)
+    if isinstance(policy, str):
+        policy = policy.strip().lower()
+        return {"drop": "remove_sample", "keep": "ignore"}.get(policy, policy)
+    return policy
 
 
 def for_dataset_configs(config: dict[str, Any]) -> dict[str, Any]:
@@ -85,18 +92,19 @@ def _normalize_library_loading_params(config: dict[str, Any]) -> dict[str, Any]:
         if key.endswith("_params") and isinstance(value, dict):
             result[key] = _with_library_na_params(value)
     for split in ("train", "test"):
-        if not result.get(f"{split}_group"):
-            continue
-        effective_policy = "auto"
-        for key in ("global_params", "group_params", f"{split}_params", f"{split}_group_params"):
-            params = result.get(key, {})
-            if isinstance(params, dict):
-                policy = _na_policy(params, None)
-                if policy is not None:
-                    effective_policy = policy
-        if effective_policy == "auto":
-            key = f"{split}_group_params"
-            result[key] = _with_library_na_params({**result.get(key, {}), "na_policy": "ignore"})
+        for role in ("y", "group"):
+            if not result.get(f"{split}_{role}"):
+                continue
+            effective_policy = "auto"
+            for key in ("global_params", f"{role}_params", f"{split}_params", f"{split}_{role}_params"):
+                params = result.get(key, {})
+                if isinstance(params, dict):
+                    policy = _na_policy(params, None)
+                    if policy is not None:
+                        effective_policy = policy
+            if effective_policy == "auto":
+                key = f"{split}_{role}_params"
+                result[key] = _with_library_na_params({**result.get(key, {}), "na_policy": "ignore"})
     return result
 
 
@@ -206,7 +214,7 @@ def build_nirs4all_config(
                 config[params_key] = {**x_specific_params, **overrides}
             else:
                 config[params_key] = x_specific_params.copy()
-        elif norm_type == "metadata":
+        elif norm_type in ("metadata", "Y"):
             params = dict(overrides or {})
             if _na_policy(params, _na_policy(parsing)) in (None, "auto"):
                 params["na_policy"] = "ignore"

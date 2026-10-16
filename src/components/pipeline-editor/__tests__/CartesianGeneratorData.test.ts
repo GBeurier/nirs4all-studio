@@ -53,7 +53,7 @@ describe("pluralizeLocale", () => {
   it("formats large counts with locale separators", () => {
     expect(pluralizeLocale(1, "baseCombination")).toBe("1 base combination");
     expect(pluralizeLocale(1234, "baseCombination")).toBe(
-      `${(1234).toLocaleString()} base combinations`,
+      `${(1234).toLocaleString("en")} base combinations`,
     );
   });
 });

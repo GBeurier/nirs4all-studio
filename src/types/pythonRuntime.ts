@@ -26,6 +26,7 @@ export interface DesktopDetectedEnv {
 
 export interface DesktopInspectedEnv extends DesktopDetectedEnv {
   missingCorePackages: string[];
+  corePackageIssues?: Array<{ name: string; installedVersion: string | null; requiredVersion: string | null }>;
   missingOptionalPackages: string[];
   profileAlignmentGuess: DesktopProfileAlignmentGuess | null;
 }
