@@ -36,9 +36,14 @@ SDK altéré. Seules les métadonnées appartenant à l’installateur sont excl
 du code modifié, même avec taille/date conservées, reste refusé. Les
 diagnostics facultatifs de taille ont un budget de temps.
 
+Une dépendance native pouvait aussi dériver vers Methods 1.3.6 / ABI 2.19,
+alors que le runtime qualifié attend 1.3.4 / ABI 2.17. La préparation du venv
+réutilisé fixe ce paquet et vérifie réellement l’ABI avant activation. Un
+essai avec les vrais binaires valide le refus puis la réparation en place.
+
 Validation réalisée
 
-* Studio : 639 fichiers / 4 490 tests frontend réussis ; 2 659 tests Python
+* Studio : 639 fichiers / 4 494 tests frontend réussis ; 2 659 tests Python
   réussis (46 exclusions de plateforme/intégration) ; 444 tests Rust réussis.
   Le témoin réel Archive V2 a aussi été validé. Lint : aucune erreur,
   23 avertissements ESLint préexistants.

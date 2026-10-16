@@ -440,6 +440,7 @@ describe("EnvManager", () => {
           : {
               nirs4all: "1.4.10",
               "nirs4all-io": "0.2.10",
+              "nirs4all-methods": "1.3.4",
               "nirs4all-formats": "0.2.11",
               duckdb: "1.5.5",
               pyarrow: "25.0.1",
@@ -525,6 +526,7 @@ describe("EnvManager", () => {
           installed: {
             nirs4all: "1.4.10",
               "nirs4all-io": "0.2.10",
+              "nirs4all-methods": "1.3.4",
             "nirs4all-formats": "0.2.11",
             duckdb: "1.5.5",
             pyarrow: "25.0.1",
@@ -593,6 +595,7 @@ describe("EnvManager", () => {
           installed: {
             nirs4all: "1.4.10",
               "nirs4all-io": "0.2.10",
+              "nirs4all-methods": "1.3.4",
             "nirs4all-formats": "0.2.11",
             duckdb: "1.5.5",
             pyarrow: "25.0.1",

@@ -9,6 +9,7 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
   MANAGED_RUNTIME_PACKAGES: string[];
   PLUGIN_DISTRIBUTION_VERSION: string;
   PLUGIN_HOST_PACKAGES: string[];
+  REUSABLE_RUNTIME_PACKAGES: string[];
   PRODUCT_PROFILES: Record<string, { extraPackageNames: string[] }>;
   STANDALONE_V1_PROFILE: string;
   getArchiveFilename(platform: string, arch: string): string;
@@ -22,6 +23,9 @@ const transitionalHttpConfig = require("../scripts/python-http-runtime-config.cj
 };
 
 describe("python-runtime-config", () => {
+  it("prepares a compatible native Methods binding when reusing Python", () => {
+    expect(runtimeConfig.REUSABLE_RUNTIME_PACKAGES).toContain("nirs4all-methods==1.3.4");
+  });
   it("keeps transitional HTTP dependencies out of the packaged plugin-host config", () => {
     expect(transitionalHttpConfig.BACKEND_TRANSITION_TOOL_PACKAGES).toEqual([
       "nirs4all-tools>=0.0.8",
