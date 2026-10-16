@@ -10,10 +10,13 @@ assert sys.version_info >= (3, 11), "Studio requires Python 3.11 or newer"
 os.environ.setdefault("MPLBACKEND", "Agg")
 for name in json.loads(sys.argv[1]):
     importlib.metadata.version(name)
-    importlib.import_module(name.replace("-", "_"))
+    importlib.import_module("n4m" if name == "nirs4all-methods" else name.replace("-", "_"))
 assert importlib.metadata.version("nirs4all") == sys.argv[2], "Unsupported nirs4all plugin version"
 from nirs4all import studio_scientific_job_v1, studio_scientific_job_v2
 assert callable(studio_scientific_job_v1) and callable(studio_scientific_job_v2), "Scientific plugin entrypoint unavailable"
+from n4m import abi_version
+methods_abi = abi_version()
+assert methods_abi[:2] == (2, 17), f"Unsupported Methods ABI {methods_abi}: Studio requires ABI 2.17 (nirs4all-methods==1.3.4). Prepare the required package in this environment."
 `;
 
 interface RuntimeValidationOptions {

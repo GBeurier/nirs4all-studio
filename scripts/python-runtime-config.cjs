@@ -39,6 +39,7 @@ const PLUGIN_HOST_PACKAGES = Object.freeze([
 const REUSABLE_RUNTIME_PACKAGES = Object.freeze([
   `nirs4all==${PLUGIN_DISTRIBUTION_VERSION}`,
   "nirs4all-io==0.2.10",
+  "nirs4all-methods==1.3.4",
   "nirs4all-formats",
   "duckdb",
 ]);
