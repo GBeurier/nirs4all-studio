@@ -16,8 +16,8 @@
     },
     {
       "path": "api/library_aggregated_results.py",
-      "size": 9202,
-      "sha256": "c3b652cbdfae52720e35d91ec0f5893721033ecb26b220308ece30b498caf4fb"
+      "size": 9051,
+      "sha256": "a5376ab6cb063d97be3c7ecb3cdbe95a8ea1a89315c9283df6d4943a1f783b39"
     },
     {
       "path": "api/library_aggregated_steps.py",
@@ -46,8 +46,8 @@
     },
     {
       "path": "api/library_operator_availability.py",
-      "size": 1858,
-      "sha256": "740d2abbdda5f3f5984059c960d9a42b4cbb21a716a0615c2fa8eb2092198601"
+      "size": 1823,
+      "sha256": "dd57745df10a5ce556ae7d1db75d166530e0296b209b051f129e49287de738cd"
     },
     {
       "path": "api/library_playground_views.py",
