@@ -76,6 +76,79 @@ afterEach(() => {
 });
 
 describe("EnvManager", () => {
+  it("does not recreate an existing managed environment when automatic setup is selected", async () => {
+    const dir = makeUserDataDir();
+    const venv = path.join(dir, "python-env", "venv");
+    fs.mkdirSync(venv, { recursive: true });
+    const sentinel = path.join(venv, "user-package.txt");
+    fs.writeFileSync(sentinel, "keep this package");
+    const { EnvManager } = await import("./env-manager");
+    await expect(new EnvManager().setup()).rejects.toThrow("already exists");
+    expect(fs.readFileSync(sentinel, "utf8")).toBe("keep this package");
+    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  });
+  it("reuses the saved interpreter across two launches and an app upgrade without installing", async () => {
+    const dir = makeUserDataDir();
+    const pythonPath = path.join(dir, "Données", "python.exe");
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.mkdirSync(path.join(path.dirname(pythonPath), "Lib", "site-packages"), { recursive: true });
+    fs.writeFileSync(pythonPath, "");
+    fs.writeFileSync(path.join(dir, "env-settings.json"), JSON.stringify({ pythonPath, appVersion: "0.15.3" }));
+    const { EnvManager } = await import("./env-manager");
+    for (const version of ["0.15.3", "0.15.4", "0.15.4"]) {
+      fakeApp.getVersion.mockReturnValue(version);
+      const manager = new EnvManager();
+      expect(manager.getConfiguredPythonPath()).toBe(pythonPath);
+      await expect(manager.ensureBackendPackages()).resolves.toBe(false);
+      expect(manager.getConfiguredPythonPath()).toBe(pythonPath);
+      expect(manager.shouldShowWizard()).toBe(false);
+    }
+    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  });
+
+  it("keeps the previous selection in memory and on disk when persistence fails", async () => {
+    const dir = makeUserDataDir();
+    const previous = path.join(dir, "previous", "python.exe");
+    const selected = path.join(dir, "selected", "python.exe");
+    for (const file of [previous, selected]) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, "");
+    }
+    fs.writeFileSync(path.join(dir, "env-settings.json"), JSON.stringify({ pythonPath: previous }));
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+    vi.spyOn(manager, "inspectExistingPython").mockResolvedValue({ success: true, message: "ready", info: {
+      path: path.dirname(selected), pythonPath: selected, pythonVersion: "3.11.13", hasNirs4all: true, hasCorePackages: true,
+      missingCorePackages: [], missingOptionalPackages: [], profileAlignmentGuess: null, envKind: "venv", writable: true,
+    } });
+    const rename = vi.spyOn(fs, "renameSync").mockImplementation(() => { throw new Error("EACCES"); });
+    try {
+      await expect(manager.applyExistingPython(selected)).resolves.toMatchObject({ success: false, message: expect.stringContaining("Could not save") });
+      expect(manager.getConfiguredPythonPath()).toBe(previous);
+      expect(JSON.parse(fs.readFileSync(path.join(dir, "env-settings.json"), "utf8")).pythonPath).toBe(previous);
+    } finally { rename.mockRestore(); }
+    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  });
+
+  it("reuses a complete environment offline even when package preparation was requested", async () => {
+    const dir = makeUserDataDir();
+    const selected = path.join(dir, "existing", "python.exe");
+    fs.mkdirSync(path.dirname(selected), { recursive: true });
+    fs.writeFileSync(selected, "");
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+    vi.spyOn(manager, "inspectExistingPython").mockResolvedValue({ success: true, message: "ready", info: {
+      path: path.dirname(selected), pythonPath: selected, pythonVersion: "3.11.13", hasNirs4all: true, hasCorePackages: true,
+      missingCorePackages: [], missingOptionalPackages: [], profileAlignmentGuess: null, envKind: "venv", writable: true,
+    } });
+    const network = await import("./env/network-probe");
+    const online = vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(false);
+    await expect(manager.applyExistingPython(selected, { installCorePackages: true })).resolves.toMatchObject({ success: true });
+    expect(manager.getConfiguredPythonPath()).toBe(selected);
+    expect(online).not.toHaveBeenCalled();
+    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  });
+
   it("revalidates a matching cache and clears it when a required module is missing", async () => {
     const userDataDir = makeUserDataDir();
     const root = path.join(userDataDir, "runtime");
@@ -290,7 +363,7 @@ describe("EnvManager", () => {
     const installArgs = childProcessMocks.spawn.mock.calls
       .filter(([, args]) => Array.isArray(args) && args.includes("install"))
       .flatMap(([, args]) => args as string[]);
-    expect(installArgs).toContain("nirs4all==1.4.8");
+    expect(installArgs).toContain("nirs4all==1.4.10");
     expect(installArgs).toContain("only-if-needed");
     expect(installArgs.some((arg) => arg.startsWith("shap") || arg.startsWith("matplotlib"))).toBe(false);
     expect(installArgs.join(" ").toLowerCase()).not.toMatch(
@@ -365,7 +438,9 @@ describe("EnvManager", () => {
         installed: inspectCalls === 1
           ? { nirs4all: "0.9.3" }
           : {
-              nirs4all: "1.4.8",
+              nirs4all: "1.4.10",
+              "nirs4all-io": "0.2.10",
+              "nirs4all-methods": "1.3.4",
               "nirs4all-formats": "0.2.11",
               duckdb: "1.5.5",
               pyarrow: "25.0.1",
@@ -449,7 +524,9 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.8",
           installed: {
-            nirs4all: "1.4.8",
+            nirs4all: "1.4.10",
+              "nirs4all-io": "0.2.10",
+              "nirs4all-methods": "1.3.4",
             "nirs4all-formats": "0.2.11",
             duckdb: "1.5.5",
             pyarrow: "25.0.1",
@@ -516,7 +593,9 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.7",
           installed: {
-            nirs4all: "1.4.8",
+            nirs4all: "1.4.10",
+              "nirs4all-io": "0.2.10",
+              "nirs4all-methods": "1.3.4",
             "nirs4all-formats": "0.2.11",
             duckdb: "1.5.5",
             pyarrow: "25.0.1",

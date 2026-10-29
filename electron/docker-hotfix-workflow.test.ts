@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const workflow = readFileSync(new URL('../.github/workflows/publish-qualified-docker-hotfix.yml', import.meta.url), 'utf8');
+const workflow = readFileSync(new URL('../.github/workflows/publish-qualified-docker-hotfix.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const step = (name: string) => {
   const start = workflow.indexOf(`      - name: ${name}\n`);
   expect(start, `Missing step: ${name}`).toBeGreaterThanOrEqual(0);
@@ -20,7 +20,8 @@ describe('independent Docker 0.11.5 hotfix qualification and publication', () =>
     const qualify = parsed.jobs.docker.steps.find((entry: { name?: string }) => entry.name === 'Verify image identity and qualify actual container and Chromium access');
     const cwd = mkdtempSync(path.join(tmpdir(), 'studio-docker-gate-'));
     try {
-      const result = spawnSync('bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', [
+      const bash = process.platform === 'win32' ? path.join(process.env.ProgramFiles ?? 'C:/Program Files', 'Git/bin/bash.exe') : 'bash';
+      const result = spawnSync(bash, ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', [
         'docker() { echo "{}"; }',
         'node() { if [[ "$*" == *"--browser"* ]]; then touch browser-ran; fi; }',
         'bash() { return 17; }',

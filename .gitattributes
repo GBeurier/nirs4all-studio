@@ -13,3 +13,7 @@ build/constraints/*.txt text eol=lf
 
 # Vendored upstream/package payloads are byte-exact and must not be normalized.
 sidecar/vendor/** -text -eol -whitespace
+
+# Content-addressed native contract witnesses keep canonical bytes on Windows.
+sidecar/contracts/*.json text eol=lf
+sidecar/tests/fixtures/*.json text eol=lf
