@@ -13,7 +13,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   YProcessingPanel,
 } from "../../YProcessingPanel";
-import { defaultYProcessingConfig } from "../../yProcessingConfig";
+import { getClassPath } from "@/utils/pipelineClassPathResolver";
+import { hydrateYProcessingParams } from "@/utils/pipelineYProcessing";
 import { StepActions } from "./StepActions";
 import type { StepRendererProps } from "./types";
 
@@ -27,15 +28,27 @@ export function YProcessingRenderer({
   onDuplicate,
 }: StepRendererProps) {
   // Initialize config if not present
-  const config = step.yProcessingConfig ?? defaultYProcessingConfig();
+  const source = step.yProcessingConfig ?? {
+    enabled: step.enabled !== false,
+    scaler: step.name,
+    params: step.params,
+  };
+  const config = { ...source, params: hydrateYProcessingParams(source.scaler, source.params) };
 
   const handleConfigChange = useCallback(
     (newConfig: typeof config) => {
       onUpdate(step.id, {
-        yProcessingConfig: newConfig,
+        name: newConfig.scaler,
+        classPath: getClassPath("y_processing", newConfig.scaler),
+        params: newConfig.params,
+        enabled: newConfig.enabled,
+        yProcessingConfig: undefined,
+        rawNirs4all: undefined,
+        hydratedDefaultParams: undefined,
+        ...(newConfig.scaler !== step.name ? { paramSweeps: undefined, stepGenerator: undefined } : {}),
       });
     },
-    [onUpdate, step.id]
+    [onUpdate, step.id, step.name]
   );
 
   return (

@@ -2,7 +2,7 @@
 name = "studio-sidecar"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "R1 native sidecar skeleton for nirs4all Studio"
 license = "(CECILL-2.1 OR AGPL-3.0-or-later)"
 publish = false
@@ -23,8 +23,8 @@ nursery = "warn"
 atomicwrites = "0.4.4"
 base64 = "0.22"
 cap-std = "3"
-nirs4all = { git = "https://github.com/GBeurier/nirs4all-core.git", rev = "da216323d0976108ceacdb427964a5baf57528e7", version = "=0.4.6" }
-nirs4all-io = "=0.2.10"
+nirs4all = { git = "https://github.com/GBeurier/nirs4all-core.git", rev = "cee4119337e8c02679a4b918578a20743046ae31", version = "=0.4.6" }
+nirs4all-io = "=0.2.11"
 percent-encoding = "2.3"
 notify = "8.2"
 flate2 = "1.1"
@@ -34,13 +34,13 @@ same-file = "1"
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = "0.9"
+serde_yaml = { package = "yaml_serde", version = "0.10.7" }
 sha2 = "0.10.9"
 tar = "0.4"
 tempfile = "3"
 tungstenite = { version = "0.26.2", default-features = false, features = ["handshake"] }
 url = "2.5.4"
-zip = { version = "2.4", default-features = false, features = ["deflate"] }
+zip = { version = "9.1", default-features = false, features = ["deflate"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["process", "signal"] }

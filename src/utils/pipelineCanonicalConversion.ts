@@ -222,7 +222,8 @@ export function exportToNirs4all(steps: EditorPipelineStep[], options?: {
   description?: string;
   includeWrapper?: boolean;
 }): Nirs4allPipeline | Nirs4allStep[] {
-  const nirs4allSteps = steps.map(step => convertEditorStepToNirs4all(step));
+  const nirs4allSteps = enabledEditorSteps(steps)
+    .map(step => convertEditorStepToNirs4all(step));
 
   if (options?.includeWrapper) {
     return {
@@ -235,7 +236,23 @@ export function exportToNirs4all(steps: EditorPipelineStep[], options?: {
   return nirs4allSteps;
 }
 
+function enabledEditorSteps(steps: EditorPipelineStep[]): EditorPipelineStep[] {
+  return steps.filter(step => step.enabled !== false &&
+    !(step.type === "y_processing" && step.yProcessingConfig?.enabled === false))
+    .map(step => ({
+      ...step,
+      ...(step.children ? { children: enabledEditorSteps(step.children) } : {}),
+      ...(step.branches ? { branches: step.branches.map(enabledEditorSteps) } : {}),
+    }));
+}
+
 function convertEditorStepToNirs4all(step: EditorPipelineStep): Nirs4allStep {
+  if (step.type === "y_processing" && step.yProcessingConfig) {
+    const config = step.yProcessingConfig;
+    step = { ...step, name: config.scaler, classPath: getClassPath("y_processing", config.scaler),
+      params: config.params, enabled: config.enabled, rawNirs4all: undefined, hydratedDefaultParams: undefined };
+  }
+  if (step.enabled === false) return null;
   if (step.rawNirs4all !== undefined) {
     return step.rawNirs4all as Nirs4allStep;
   }
@@ -265,7 +282,7 @@ function convertEditorStepToNirs4all(step: EditorPipelineStep): Nirs4allStep {
           getExportableStepParams
         );
       case "sequential":
-        if (step.children?.length) {
+        if (step.children) {
           return step.children.map(child => convertEditorStepToNirs4all(child)) as unknown as Nirs4allStep;
         }
         return buildClassStep(step, classPath);

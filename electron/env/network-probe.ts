@@ -8,6 +8,7 @@
  */
 
 import https from "node:https";
+import { loadNetworkTrust } from "./external-config";
 
 const NETWORK_PROBE_URLS = [
   "https://www.cloudflare.com",
@@ -39,7 +40,7 @@ function probeOne(url: string, timeoutMs: number): Promise<boolean> {
     try {
       const req = https.request(
         url,
-        { method: "HEAD", timeout: timeoutMs },
+        { ...loadNetworkTrust().tlsRequestOptions(), method: "HEAD", timeout: timeoutMs },
         (res) => {
           // Any HTTP response (incl. 4xx redirect) means we reached the server.
           done((res.statusCode ?? 0) < 600);

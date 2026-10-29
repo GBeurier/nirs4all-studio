@@ -89,9 +89,10 @@ describe("EnvManager", () => {
   });
   it("reuses the saved interpreter across two launches and an app upgrade without installing", async () => {
     const dir = makeUserDataDir();
-    const pythonPath = path.join(dir, "Données", "python.exe");
+    const environmentRoot = path.join(dir, "Données");
+    const pythonPath = path.join(environmentRoot, process.platform === "win32" ? "python.exe" : "bin/python");
     fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.mkdirSync(path.join(path.dirname(pythonPath), "Lib", "site-packages"), { recursive: true });
+    fs.mkdirSync(path.join(environmentRoot, process.platform === "win32" ? "Lib/site-packages" : "lib/python3.11/site-packages"), { recursive: true });
     fs.writeFileSync(pythonPath, "");
     fs.writeFileSync(path.join(dir, "env-settings.json"), JSON.stringify({ pythonPath, appVersion: "0.15.3" }));
     const { EnvManager } = await import("./env-manager");
@@ -363,7 +364,7 @@ describe("EnvManager", () => {
     const installArgs = childProcessMocks.spawn.mock.calls
       .filter(([, args]) => Array.isArray(args) && args.includes("install"))
       .flatMap(([, args]) => args as string[]);
-    expect(installArgs).toContain("nirs4all==1.4.10");
+    expect(installArgs).toContain("nirs4all==1.4.11");
     expect(installArgs).toContain("only-if-needed");
     expect(installArgs.some((arg) => arg.startsWith("shap") || arg.startsWith("matplotlib"))).toBe(false);
     expect(installArgs.join(" ").toLowerCase()).not.toMatch(
@@ -438,10 +439,10 @@ describe("EnvManager", () => {
         installed: inspectCalls === 1
           ? { nirs4all: "0.9.3" }
           : {
-              nirs4all: "1.4.10",
-              "nirs4all-io": "0.2.10",
-              "nirs4all-methods": "1.3.4",
-              "nirs4all-formats": "0.2.11",
+              nirs4all: "1.4.11",
+              "nirs4all-io": "0.2.11",
+              "nirs4all-methods": "1.3.9",
+              "nirs4all-formats": "0.2.13",
               duckdb: "1.5.5",
               pyarrow: "25.0.1",
               shap: "0.47.1",
@@ -524,10 +525,10 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.8",
           installed: {
-            nirs4all: "1.4.10",
-              "nirs4all-io": "0.2.10",
-              "nirs4all-methods": "1.3.4",
-            "nirs4all-formats": "0.2.11",
+            nirs4all: "1.4.11",
+              "nirs4all-io": "0.2.11",
+              "nirs4all-methods": "1.3.9",
+            "nirs4all-formats": "0.2.13",
             duckdb: "1.5.5",
             pyarrow: "25.0.1",
             shap: "0.47.1",
@@ -593,10 +594,10 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.7",
           installed: {
-            nirs4all: "1.4.10",
-              "nirs4all-io": "0.2.10",
-              "nirs4all-methods": "1.3.4",
-            "nirs4all-formats": "0.2.11",
+            nirs4all: "1.4.11",
+              "nirs4all-io": "0.2.11",
+              "nirs4all-methods": "1.3.9",
+            "nirs4all-formats": "0.2.13",
             duckdb: "1.5.5",
             pyarrow: "25.0.1",
             shap: "0.47.1",

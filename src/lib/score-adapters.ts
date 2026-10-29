@@ -114,7 +114,7 @@ function buildCrossvalRow(
     preprocessings: chain.preprocessings || null,
     bestParams: displayParams(chain),
     cardType: trainingOnly ? "train" : "crossval",
-    foldId: trainingOnly ? "" : foldVariantId("avg", variant),
+    foldId: trainingOnly ? "" : foldVariantId(chain.cv_summary_fold_id === "macro" ? "macro" : "avg", variant),
     partition: trainingOnly ? "train" : undefined,
     foldCount: chain.fold_count,
     metric,
@@ -285,7 +285,7 @@ export function buildFoldTrainCards(
   const foldMap = new Map<string, PartitionPrediction[]>();
   for (const p of predictions) {
     const baseFoldId = foldIdBase(p.fold_id);
-    if (baseFoldId === "final" || baseFoldId === "avg" || baseFoldId === "w_avg") continue;
+    if (baseFoldId === "final" || baseFoldId === "macro" || baseFoldId === "avg" || baseFoldId === "w_avg") continue;
     if (!predictionMatchesVariant(p, variant)) continue;
     const group = foldMap.get(p.fold_id) || [];
     group.push(p);
@@ -354,6 +354,22 @@ export function enrichCrossvalRow(
   predictions: PartitionPrediction[],
 ): ScoreCardRow {
   const variant: FoldVariant = row.foldId?.endsWith("_agg") ? "aggregated" : "raw";
+  const macro = findFoldPrediction(predictions, "macro", "val");
+  if (row.foldId === "macro" || macro) {
+    const scores = macro ? extractPredictionScoreMap(macro) : row.valScores;
+    return {
+      ...row,
+      foldId: "macro",
+      valScores: scores,
+      avgValScores: scores,
+      testScores: {}, trainScores: {}, avgTestScores: {},
+      wAvgTestScores: undefined, meanValScores: undefined, meanTestScores: undefined,
+      minValScores: undefined, maxValScores: undefined,
+      minTestScores: undefined, maxTestScores: undefined,
+      primaryValScore: safeNumber(macro?.val_score) ?? row.primaryValScore,
+      primaryTestScore: null, primaryTrainScore: null,
+    };
+  }
   const avgValPred = findFoldPrediction(predictions, foldVariantId("avg", variant), "val");
   const avgTestPred = findFoldPrediction(predictions, foldVariantId("avg", variant), "test");
   const avgTrainPred = findFoldPrediction(predictions, foldVariantId("avg", variant), "train");

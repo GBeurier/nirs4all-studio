@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -16,6 +18,21 @@ _SENSITIVE_KEY_PARTS = (
     "file",
     "path",
 )
+
+
+def is_test_runtime() -> bool:
+    """Keep test runners silent even when a parent process enables telemetry."""
+    return "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
+
+
+def _is_test_command(value: Any) -> bool:
+    if not isinstance(value, (tuple, list)):
+        return False
+    return any(
+        isinstance(argument, str)
+        and (argument == "pytest" or argument.replace("\\", "/").endswith(("/pytest", "/pytest/__main__.py")))
+        for argument in value
+    )
 
 
 def _exception_types(event: dict[str, Any]) -> set[str]:
@@ -140,6 +157,9 @@ def backend_before_send(
     hint: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     """Drop test traffic and benign events before they reach Sentry."""
+    extra = event.get("extra")
+    if isinstance(extra, dict) and _is_test_command(extra.get("sys.argv")):
+        return None
     request = event.get("request")
     url = request.get("url") if isinstance(request, dict) else None
     if isinstance(url, str):

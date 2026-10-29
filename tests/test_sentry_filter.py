@@ -4,11 +4,30 @@ import os
 
 import pytest
 
-from api.shared.sentry import backend_before_send
+from api.shared.sentry import backend_before_send, is_test_runtime
 
 
 def test_pytest_disables_backend_sentry():
     assert os.environ["SENTRY_DSN"] == ""
+
+
+def test_test_runtime_remains_disabled_with_inherited_telemetry(monkeypatch):
+    monkeypatch.setenv("SENTRY_DSN", "https://public@example.invalid/1")
+    assert is_test_runtime()
+
+
+@pytest.mark.parametrize("command", [
+    ["/usr/local/lib/python3.11/dist-packages/pytest/__main__.py", "tests/test_updates_profile_managed_deps.py"],
+    ["/usr/bin/pytest", "tests/test_updates.py"],
+    ["C:\\env\\Scripts\\python.exe", "-m", "pytest", "tests/test_updates.py"],
+])
+def test_backend_before_send_drops_test_logs_without_request(command):
+    assert backend_before_send({"logger": "api.updates", "extra": {"sys.argv": command}}, {}) is None
+
+
+def test_backend_before_send_keeps_production_logs():
+    event = {"logger": "api.updates", "extra": {"sys.argv": ["main.py"]}, "message": "install failed"}
+    assert backend_before_send(event, {}) == event
 
 
 @pytest.mark.parametrize("url", ["http://testserver/api/runs", "http://testserver:8000/api/updates/dependencies/install", "https://TESTSERVER/api/datasets"])

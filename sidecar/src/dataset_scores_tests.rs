@@ -41,6 +41,7 @@ fn source(
         final_agg_train_score: None,
         final_agg_scores: json!({}),
         best_params: None,
+        target_domain_context: None,
     }
 }
 

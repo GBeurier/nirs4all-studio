@@ -2092,7 +2092,7 @@ def _execute_pipeline_training(
 
         for key, entries in fold_groups.items():
             fold_id = key[0] if isinstance(key, tuple) else key
-            if not fold_id or str(fold_id).lower() in ("avg", "wavg", "ensemble"):
+            if not fold_id or str(fold_id).lower() in ("macro", "avg", "w_avg", "wavg", "ensemble"):
                 continue
             entry = entries[0] if entries else None
             if not entry:

@@ -11,6 +11,7 @@ files:
   - dist-electron/**/*
   # dist-electron/main.cjs loads the shared Python runtime config at startup.
   - scripts/python-runtime-config.cjs
+  - scripts/tls-trust.cjs
   - scripts/studio-document-adapters.cjs
   - sidecar/contracts/studio_document_adapters_v1.json
   - recommended-config.json

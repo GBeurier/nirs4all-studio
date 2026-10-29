@@ -2707,6 +2707,13 @@ fn execution_job_record_read_error_response(error: &ExecutionJobRecordReadError)
 
 fn workspace_store_read_error_response(error: &WorkspaceStoreReadError) -> HttpResponse {
     match error {
+        WorkspaceStoreReadError::IncompatibleEvaluationContext => HttpResponse::json(
+            409,
+            json!({
+                "detail": "Scores use missing or incompatible target-domain evaluation contexts; select comparable runs",
+                "code": "incompatible_target_domain_context",
+            }).to_string(),
+        ),
         WorkspaceStoreReadError::StoreNotFound => HttpResponse::json(
             409,
             json!({
@@ -7617,6 +7624,39 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires STUDIO_TARGET_DOMAIN_WORKSPACE produced by the installed candidate SDK"]
+    fn actual_sdk_macro_store_reaches_the_product_results_summary_route() {
+        let workspace = PathBuf::from(env::var_os("STUDIO_TARGET_DOMAIN_WORKSPACE").unwrap())
+            .canonicalize()
+            .unwrap();
+        let directory = test_directory("actual-sdk-target-domain-summary");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("app_settings.json"), json!({"linked_workspaces":[linked_workspace_record("domain-qa", &workspace, true, 1)]}).to_string()).unwrap();
+        let before = fs::read(workspace.join("store.sqlite")).unwrap();
+        let mut state = SidecarState::with_app_settings_dir(&directory);
+        let response = route_request(
+            &mut state,
+            "GET",
+            "/api/workspaces/domain-qa/results/summary",
+        );
+        assert_eq!(response.status, 200, "{}", response.body);
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        let dataset = &body["datasets"][0];
+        assert_eq!(dataset["metric"], "balanced_accuracy");
+        let chain = &dataset["top_chains"][0];
+        assert_eq!(chain["fold_count"], 3);
+        assert_eq!(chain["cv_summary_fold_id"], "macro");
+        assert!(chain["target_domain_context"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
+        assert!((chain["avg_val_score"].as_f64().unwrap() - 0.807_407_407_407_407_4).abs() < 1e-15);
+        assert_eq!(chain["avg_train_score"], Value::Null);
+        assert_eq!(chain["avg_test_score"], Value::Null);
+        assert_eq!(fs::read(workspace.join("store.sqlite")).unwrap(), before);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn results_summary_route_matches_the_python_oracle_and_fails_closed() {
         let directory = test_directory("workspace-results-summary-route");
         let settings_directory = directory.join("config");
@@ -8953,7 +8993,7 @@ mod tests {
     fn assert_native_saved_dataset_train_predict(feature_count: usize) {
         let library = PathBuf::from(
             env::var_os("N4M_LIBRARY_PATH")
-                .expect("N4M_LIBRARY_PATH must name the final ABI 2.17 libn4m"),
+                .expect("N4M_LIBRARY_PATH must name the final ABI 2.20 libn4m"),
         );
         let library_bytes = fs::read(&library).unwrap();
         let methods = archive_v2_prediction::PackagedMethodsLibraryIdentity {
@@ -8961,7 +9001,7 @@ mod tests {
             size: u64::try_from(library_bytes.len()).unwrap(),
             sha256: format!("{:x}", Sha256::digest(&library_bytes)),
             abi_major: 2,
-            abi_minor: 17,
+            abi_minor: 20,
         };
         let predictor = Arc::new(
             archive_v2_prediction::CoreArchiveV2PredictionExecutor::acquire(methods.clone())
@@ -9369,7 +9409,7 @@ mod tests {
                 size: methods_size,
                 sha256: methods_sha256,
                 abi_major: 2,
-                abi_minor: 17,
+                abi_minor: 20,
             },
         )
         .unwrap();
@@ -9502,10 +9542,10 @@ mod tests {
                 size: methods_size,
                 sha256: methods_sha256.clone(),
                 abi_major: 2,
-                abi_minor: 17,
+                abi_minor: 20,
             },
         )
-        .expect("the exact ABI 2.17 libn4m witness must preflight");
+        .expect("the exact ABI 2.20 libn4m witness must preflight");
         let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
             Arc::new(executor),
             &config,
@@ -9543,7 +9583,7 @@ mod tests {
         assert_eq!(readiness["ml_ready"], false);
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.4.4+libn4m-abi-2.17:{methods_sha256}")
+            format!("nirs4all-core@0.4.4+libn4m-abi-2.20:{methods_sha256}")
         );
         let expected = [
             [1.636_363_636_363_636_5, 13.272_727_272_727_273],

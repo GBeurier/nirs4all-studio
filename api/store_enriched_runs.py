@@ -168,7 +168,7 @@ class EnrichedRunsBuilder:
                 "SELECT pl.run_id AS run_id, COUNT(DISTINCT p.fold_id) as cnt FROM predictions p "
                 "JOIN pipelines pl ON p.pipeline_id = pl.pipeline_id "
                 f"WHERE pl.run_id IN ({ph}) AND p.refit_context IS NULL "
-                "AND p.fold_id NOT IN ('avg', 'w_avg') AND p.fold_id NOT LIKE '%_agg' "
+                "AND p.fold_id NOT IN ('macro', 'avg', 'w_avg') AND p.fold_id NOT LIKE '%_agg' "
                 "GROUP BY pl.run_id",
                 run_ids,
             )
@@ -182,7 +182,7 @@ class EnrichedRunsBuilder:
                 "SELECT pl.run_id AS run_id, COUNT(*) as cnt FROM predictions p "
                 "JOIN pipelines pl ON p.pipeline_id = pl.pipeline_id "
                 f"WHERE pl.run_id IN ({ph}) AND p.partition = 'val' AND p.refit_context IS NULL "
-                "AND p.fold_id NOT IN ('avg', 'w_avg') AND p.fold_id NOT LIKE '%_agg' "
+                "AND p.fold_id NOT IN ('macro', 'avg', 'w_avg') AND p.fold_id NOT LIKE '%_agg' "
                 "GROUP BY pl.run_id",
                 run_ids,
             )
@@ -225,7 +225,7 @@ class EnrichedRunsBuilder:
                 "FIRST(p.metric) as metric FROM predictions p "
                 "JOIN pipelines pl ON p.pipeline_id = pl.pipeline_id "
                 f"WHERE pl.run_id IN ({ph}) AND p.refit_context IS NULL "
-                "AND p.fold_id NOT IN ('avg', 'w_avg') AND p.fold_id NOT LIKE '%_agg' "
+                "AND p.fold_id NOT IN ('macro', 'avg', 'w_avg') AND p.fold_id NOT LIKE '%_agg' "
                 "GROUP BY pl.run_id",
                 run_ids,
             )

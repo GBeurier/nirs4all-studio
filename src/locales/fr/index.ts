@@ -203,6 +203,8 @@ const fr = {
       enterSavePath: "Saisissez le chemin d'enregistrement :",
     },
     fold: {
+      macro: "Moyenne des scores CV",
+      macroShort: "Moy. CV",
       final: "Final (réajusté)",
       avg: "Moyenne",
       wAvg: "Moy. pondérée",
