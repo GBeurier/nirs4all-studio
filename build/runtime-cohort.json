@@ -1,13 +1,14 @@
 {
   "schema": "nirs4all.studio.runtime-cohort.v1",
   "sdk": {
-    "version": "1.4.11",
-    "source_sha": "bf913415b704362145912b944d483f4541eba369",
-    "wheel_sha256": "2c8ad159c072073f0962bf138e966ed3b7a788463518d7eff2fbd0936685197c",
+    "version": "1.4.12",
+    "source_sha": "34e9dd59e8c7f58756edd61291d99d2c041b65f5",
+    "wheel_sha256": "fdf1aa206acf972de8b43c357c020740ba4effc4c7d63d968e8e4ccf7bcbada0",
     "qualification_oracle_sha256": "3a497b5715280a99378f490d8e312e740dd9f489b77f1d57b855519bf5e0d315",
-    "raw_public_wheel_sha256": "24a62ab698b26e1a39f18b6699854253df43d813e54a7e00bd00b218cef762a5",
-    "installed_manifest_sha256": "7efd97ef255bc86b7da4dcbf965c8e0c6ae615312a766b5afd8bdcb4f752747a",
-    "source_date_epoch": 1793293816
+    "raw_public_wheel_sha256": "fa193603b7e817a2f5fb9d0b9c5952d9c190701416aae6dcbb02b6a9a14bc749",
+    "installed_manifest_sha256": "62608e02652781ae809430a782d060db4ccc58624b1c071c6ac32708dd337957",
+    "source_date_epoch": 1793301310,
+    "source_tree": "94b6fe78fbfef42901b3b8c82b78b6d22de9edbf"
   },
   "dag": {
     "version": "0.3.43",
