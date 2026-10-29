@@ -24,7 +24,7 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
 const PLUGIN_DISTRIBUTION_VERSION = recommendedConfig.nirs4all;
 const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
   "nirs4all-core==0.4.6",
-  "dag-ml==0.3.42",
+  "dag-ml==0.3.43",
   "dag-ml-data==0.2.13",
   "nirs4all-io==0.2.11",
   "nirs4all-methods==1.3.9",

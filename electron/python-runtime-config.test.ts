@@ -33,7 +33,7 @@ describe("python-runtime-config", () => {
     expect(transitionalHttpConfig.BACKEND_COMMON_PACKAGES).toContain("fastapi>=0.115.0");
     expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("1.4.11");
     expect(runtimeConfig.PLUGIN_HOST_PACKAGES).toEqual([
-      "nirs4all==1.4.11", "nirs4all-core==0.4.6", "dag-ml==0.3.42", "dag-ml-data==0.2.13", "nirs4all-io==0.2.11", "nirs4all-methods==1.3.9", "nirs4all-formats==0.2.13", "duckdb==1.5.5", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
+      "nirs4all==1.4.11", "nirs4all-core==0.4.6", "dag-ml==0.3.43", "dag-ml-data==0.2.13", "nirs4all-io==0.2.11", "nirs4all-methods==1.3.9", "nirs4all-formats==0.2.13", "duckdb==1.5.5", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
     ]);
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toEqual(runtimeConfig.PLUGIN_HOST_PACKAGES);
 

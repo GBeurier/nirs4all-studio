@@ -69,20 +69,21 @@ const PRUNED_LAUNCHER_RECORD_PREFIXES = Object.freeze([
   "../../../Scripts/",
 ]);
 const PRUNED_LAUNCHER_RECORD_FILES = Object.freeze(["../../Scripts/nirs4all.exe"]);
-const PLUGIN_SOURCE_COMMIT = "d7adb3f8ecd5f29af7522f3093701e87c2e8f031";
+const PLUGIN_SOURCE_COMMIT = "bf913415b704362145912b944d483f4541eba369";
 const PLUGIN_SOURCE_REPOSITORY = "https://github.com/GBeurier/nirs4all.git";
-const PLUGIN_SOURCE_EPOCH = "1793281114";
+const PLUGIN_SOURCE_EPOCH = "1793293816";
 const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.11-py3-none-any.whl";
-const PLUGIN_WHEEL_SHA256 = "8cbb98bf873f5573797a2f269b3594f47c9fde9b5d32b1f856985be58f86395d";
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "e9a7fe36dd3a657543f6343980bac17959d14be3afa38473896afacd7dd5a989";
+const PLUGIN_WHEEL_SHA256 = "2c8ad159c072073f0962bf138e966ed3b7a788463518d7eff2fbd0936685197c";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "7efd97ef255bc86b7da4dcbf965c8e0c6ae615312a766b5afd8bdcb4f752747a";
 const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
 const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";
 const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
 const TOOLS_WHEEL_URL = "https://files.pythonhosted.org/packages/10/19/68649801e059cf243393585e75a7ca125cddde202d12f555eed1baeb159a/nirs4all_tools-0.0.8-py3-none-any.whl";
 const WHEEL_BUILD_TOOLCHAIN = Object.freeze([
   "pip==26.2.1",
-  "setuptools==84.0.0",
-  "wheel==0.48.0",
+  "build==1.6.1",
+  "setuptools==84.2.1",
+  "wheel==0.47.0",
   "packaging==26.3",
 ]);
 const PLUGIN_PIP_NETWORK_ARGS = Object.freeze(["--timeout", "60", "--retries", "3"]);
@@ -388,8 +389,8 @@ async function buildPinnedPluginWheel(runtimePython, destination) {
     if (identity !== `${PLUGIN_SOURCE_COMMIT}\n${PLUGIN_SOURCE_EPOCH}`) {
       throw new Error("Plugin source commit or epoch differs from the qualified recipe");
     }
-    await runCommandWithRetries(buildExecutable, ["-I", "-m", "pip", "wheel", "--no-build-isolation", "--no-deps",
-      "--wheel-dir", rawWheelDir, source], { env }, { retries: 1, label: "build immutable plugin wheel" });
+    await runCommandWithRetries(buildExecutable, ["-I", "-m", "build", "--wheel", "--no-isolation",
+      "--outdir", rawWheelDir, source], { env }, { retries: 1, label: "build immutable plugin wheel" });
     await runCommand(buildExecutable, ["-I", path.join(projectRoot, "scripts", "normalize-plugin-wheel.py"),
       "--input", path.join(rawWheelDir, PLUGIN_WHEEL_FILENAME), "--output", destination,
       "--epoch", PLUGIN_SOURCE_EPOCH, "--expected-manifest", PLUGIN_INSTALLED_MANIFEST_SHA256]);

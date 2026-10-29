@@ -23,7 +23,7 @@ nursery = "warn"
 atomicwrites = "0.4.4"
 base64 = "0.22"
 cap-std = "3"
-nirs4all = { git = "https://github.com/GBeurier/nirs4all-core.git", rev = "cee4119337e8c02679a4b918578a20743046ae31", version = "=0.4.6" }
+nirs4all = "=0.4.6"
 nirs4all-io = "=0.2.11"
 percent-encoding = "2.3"
 notify = "8.2"

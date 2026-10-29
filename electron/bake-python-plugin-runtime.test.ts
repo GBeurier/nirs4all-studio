@@ -145,15 +145,15 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "d7adb3f8ecd5f29af7522f3093701e87c2e8f031",
+      source_commit: "bf913415b704362145912b944d483f4541eba369",
       wheel_sha256:
-        "8cbb98bf873f5573797a2f269b3594f47c9fde9b5d32b1f856985be58f86395d",
+        "2c8ad159c072073f0962bf138e966ed3b7a788463518d7eff2fbd0936685197c",
       distribution_version: "1.4.11",
       installed_manifest_sha256:
-        "e9a7fe36dd3a657543f6343980bac17959d14be3afa38473896afacd7dd5a989",
+        "7efd97ef255bc86b7da4dcbf965c8e0c6ae615312a766b5afd8bdcb4f752747a",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "181c83a26e6a0da60d77f9079c98f8619c55bd86afd5c91befdd8682fd708b49",
+        sha256: "703d308698e07e6bb4ff0a58058f22c61224145410c87b41ce867c888b145fbb",
       },
       platform: "linux",
       arch: "x64",
@@ -183,7 +183,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "181c83a26e6a0da60d77f9079c98f8619c55bd86afd5c91befdd8682fd708b49",
+      "703d308698e07e6bb4ff0a58058f22c61224145410c87b41ce867c888b145fbb",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -206,7 +206,7 @@ describe("plugin-only CPython runtime", () => {
     expect(linux.get("nirs4all-core")).toBe("0.4.6");
     for (const target of [linux, linuxArm, macArm, macIntel, windows]) {
       for (const [name, version] of Object.entries({
-        "nirs4all": "1.4.11", "dag-ml": "0.3.42", "dag-ml-data": "0.2.13",
+        "nirs4all": "1.4.11", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13",
         "nirs4all-core": "0.4.6", "nirs4all-io": "0.2.11", "nirs4all-formats": "0.2.13",
         "nirs4all-methods": "1.3.9", "pls4all": "1.3.9",
       })) {
