@@ -24,19 +24,19 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_sidecar_resolves_selected_native_releases() -> None:
     manifest = tomllib.loads((ROOT / "sidecar" / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
-    assert dependencies["nirs4all"] == {"git": "https://github.com/GBeurier/nirs4all-core.git", "rev": "cee4119337e8c02679a4b918578a20743046ae31", "version": "=0.4.6"}
+    assert dependencies["nirs4all"] == "=0.4.6"
     assert dependencies["nirs4all-io"] == "=0.2.11"
-    # Native consumers use the immutable Core 0.4.6 source and its public reexports and its selected DAG 0.3.42.
+    # Native consumers use published Core 0.4.6 and its selected DAG 0.3.43.
     assert "dag-ml-core" not in manifest.get("dev-dependencies", {})
 
 
-def test_lock_attests_the_explicit_local_source_candidate_cohort() -> None:
+def test_lock_attests_the_published_registry_cohort_without_source_overrides() -> None:
     locked = tomllib.loads((ROOT / "sidecar" / "Cargo.lock").read_text(encoding="utf-8"))
     cohort = json.loads((ROOT / "sidecar/contracts/studio_native_source_cohort_v1.json").read_text())
     assert cohort["schema_version"] == 1
-    assert cohort["publication_status"] == "local-source-candidate"
-    assert cohort["public_registry_verified"] is False
-    assert cohort["requires_explicit_local_cargo_config"] is True
+    assert cohort["publication_status"] == "published-registry"
+    assert cohort["public_registry_verified"] is True
+    assert cohort["requires_explicit_local_cargo_config"] is False
     selected = cohort["packages"]
     assert {"nirs4all", "nirs4all-io", "nirs4all-formats", "dag-ml", "dag-ml-data", "n4m"} <= set(selected)
     for name, source in selected.items():
@@ -45,7 +45,9 @@ def test_lock_attests_the_explicit_local_source_candidate_cohort() -> None:
         assert matching[0]["version"] == source["version"]
         assert re.fullmatch(r"[0-9a-f]{40}", source["source_commit"])
         assert source["repository"].startswith("https://github.com/")
-        assert "source" not in matching[0], "this receipt is explicitly for local owner sources"
+        assert matching[0]["source"].startswith("registry+")
+        assert re.fullmatch(r"[0-9a-f]{64}", matching[0]["checksum"])
+        assert matching[0]["checksum"] == source["registry_checksum_sha256"]
     for package in locked["package"]:
         if package["name"] in selected or package["name"] in {"studio-sidecar", "studio-windows-job"}:
             continue
@@ -65,7 +67,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert ref is not None
     assert source is not None
-    assert ref.group(1) == source.group(1) == "d7adb3f8ecd5f29af7522f3093701e87c2e8f031"
+    assert ref.group(1) == source.group(1) == "bf913415b704362145912b944d483f4541eba369"
     parsed = yaml.safe_load(workflow)
     contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
     assert parsed["env"]["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
@@ -75,7 +77,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     assert environment["NIRS4ALL_PUBLICATION_STATUS"] == contract["publication_status"] == "source-built"
     assert contract["public_registry_verified"] is False
     assert environment["NIRS4ALL_WHEEL_URL"] == contract["selected_wheel_url"] == ""
-    assert environment["NIRS4ALL_SOURCE_EPOCH"] == "1793281114"
+    assert environment["NIRS4ALL_SOURCE_EPOCH"] == "1793293816"
     bash = str(Path(shutil.which("git")).parents[1] / "bin/bash.exe") if sys.platform == "win32" else "bash"
     result = subprocess.run([bash, "-c", validation], env=environment, cwd=ROOT, capture_output=True)
     assert result.returncode == 0, result.stderr.decode()
@@ -89,7 +91,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     dag_source = re.search(r"^  DAG_ML_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert dag_ref is not None
     assert dag_source is not None
-    assert dag_ref.group(1) == dag_source.group(1) == "7b989caa7bc403c9036c0a97ac6b1c29d35446f2"
+    assert dag_ref.group(1) == dag_source.group(1) == "747cb9c54271e32cc213b880928a983562bb1b20"
 
     data_ref = re.search(r"^  DAG_ML_DATA_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     data_source = re.search(
@@ -99,7 +101,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     )
     assert data_ref is not None
     assert data_source is not None
-    assert data_ref.group(1) == data_source.group(1) == "737cb572dd4e016178dabc2449f8287b11190e1e"
+    assert data_ref.group(1) == data_source.group(1) == "78719b68c8e9ffd4c2035792574b8da33387d237"
 
     tools_ref = re.search(r"^  NIRS4ALL_TOOLS_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     tools_source = re.search(
@@ -262,8 +264,8 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
     assert "dag-ml-data==0.2.13" in constraints
     assert "nirs4all-methods==1.3.9" in constraints
     assert "pls4all==1.3.9" in constraints
-    # Python and Rust DAG consume the same selected candidate 0.3.42 cohort.
-    assert "dag-ml==0.3.42" in constraints
+    # Python and Rust DAG consume the same published 0.3.43 cohort.
+    assert "dag-ml==0.3.43" in constraints
     assert "nirs4all-formats==0.2.13" in constraints
     assert "nirs4all-tools==0.0.8" in constraints
     assert "scikit-learn==1.9.0" in constraints

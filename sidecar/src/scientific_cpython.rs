@@ -99,10 +99,10 @@ pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
 pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.11";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
-    "e9a7fe36dd3a657543f6343980bac17959d14be3afa38473896afacd7dd5a989";
+    "7efd97ef255bc86b7da4dcbf965c8e0c6ae615312a766b5afd8bdcb4f752747a";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
-    "8cbb98bf873f5573797a2f269b3594f47c9fde9b5d32b1f856985be58f86395d";
-pub const SCIENTIFIC_SOURCE_COMMIT: &str = "d7adb3f8ecd5f29af7522f3093701e87c2e8f031";
+    "2c8ad159c072073f0962bf138e966ed3b7a788463518d7eff2fbd0936685197c";
+pub const SCIENTIFIC_SOURCE_COMMIT: &str = "bf913415b704362145912b944d483f4541eba369";
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
 
@@ -169,7 +169,7 @@ except Exception as error:
     distribution_record_sha256=None
     distribution_files_verified=False
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"8cbb98bf873f5573797a2f269b3594f47c9fde9b5d32b1f856985be58f86395d","source_commit":"d7adb3f8ecd5f29af7522f3093701e87c2e8f031"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"2c8ad159c072073f0962bf138e966ed3b7a788463518d7eff2fbd0936685197c","source_commit":"bf913415b704362145912b944d483f4541eba369"},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
@@ -214,7 +214,7 @@ metadata_root=str(record_entry).rsplit("/",1)[0]+"/"
 installer_members={metadata_root+name for name in ("INSTALLER","REQUESTED","direct_url.json","uv_cache.json")}
 record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0] not in installer_members))
 manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-if hashlib.sha256(manifest_bytes).hexdigest() != "e9a7fe36dd3a657543f6343980bac17959d14be3afa38473896afacd7dd5a989":
+if hashlib.sha256(manifest_bytes).hexdigest() != "7efd97ef255bc86b7da4dcbf965c8e0c6ae615312a766b5afd8bdcb4f752747a":
     raise RuntimeError("scientific distribution identity changed")
 for relative,encoded,size in record_rows:
     if "=" not in encoded or (size and not size.isdigit()):
