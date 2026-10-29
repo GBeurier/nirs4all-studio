@@ -69,12 +69,12 @@ const PRUNED_LAUNCHER_RECORD_PREFIXES = Object.freeze([
   "../../../Scripts/",
 ]);
 const PRUNED_LAUNCHER_RECORD_FILES = Object.freeze(["../../Scripts/nirs4all.exe"]);
-const PLUGIN_SOURCE_COMMIT = "bf913415b704362145912b944d483f4541eba369";
+const PLUGIN_SOURCE_COMMIT = "34e9dd59e8c7f58756edd61291d99d2c041b65f5";
 const PLUGIN_SOURCE_REPOSITORY = "https://github.com/GBeurier/nirs4all.git";
-const PLUGIN_SOURCE_EPOCH = "1793293816";
-const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.11-py3-none-any.whl";
-const PLUGIN_WHEEL_SHA256 = "2c8ad159c072073f0962bf138e966ed3b7a788463518d7eff2fbd0936685197c";
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "7efd97ef255bc86b7da4dcbf965c8e0c6ae615312a766b5afd8bdcb4f752747a";
+const PLUGIN_SOURCE_EPOCH = "1793301310";
+const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.12-py3-none-any.whl";
+const PLUGIN_WHEEL_SHA256 = "fdf1aa206acf972de8b43c357c020740ba4effc4c7d63d968e8e4ccf7bcbada0";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "62608e02652781ae809430a782d060db4ccc58624b1c071c6ac32708dd337957";
 const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
 const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";
 const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
@@ -1158,7 +1158,7 @@ async function main() {
     );
     if (pluginOnly) {
       await removePrunedLauncherRecordRows(runtimePython, backendDist);
-      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.4.11");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.4.12");
       await restorePinnedWheelRecord(runtimePython, backendDist, selectedToolsWheel, "nirs4all_tools", "0.0.8");
       console.log("  Restored both exact pinned wheel RECORDs after isolated installation");
     }
