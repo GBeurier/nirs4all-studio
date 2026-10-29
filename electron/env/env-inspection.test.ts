@@ -23,7 +23,7 @@ describe("existing Python inventory", () => {
   });
   it("distinguishes absent dependencies from an installed SDK requiring an in-place update", () => {
     expect(getCorePackageIssues(new Map([["nirs4all", "1.4.7"], ["duckdb", "1.5.5"]]))).toEqual([
-      { name: "nirs4all", installedVersion: "1.4.7", requiredVersion: "1.4.12" },
+      { name: "nirs4all", installedVersion: "1.4.7", requiredVersion: "1.4.13" },
       { name: "nirs4all-io", installedVersion: null, requiredVersion: "0.2.11" },
       { name: "nirs4all-methods", installedVersion: null, requiredVersion: "1.3.9" },
       { name: "nirs4all-formats", installedVersion: null, requiredVersion: null },
