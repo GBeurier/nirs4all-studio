@@ -1,8 +1,8 @@
 {
   "schema_version": "1.2",
   "app_version": "0.15.4",
-  "nirs4all": "1.4.12",
-  "_note": "cpu-lite ships a slim install \u2014 its exclude_optionals + the xgboost->xgboost-cpu package_renames keep torch/tensorflow/jax/autogluon/tabpfn/umap-learn and CUDA wheels out (enforced at build and in the interactive installer). Requires nirs4all >= 1.4.12 (fold-local categorical target domains and prediction scoring), whose slim core does not bundle matplotlib/shap/umap; the full profiles install shap+matplotlib explicitly so SHAP keeps working.",
+  "nirs4all": "1.4.13",
+  "_note": "cpu-lite ships a slim install \u2014 its exclude_optionals + the xgboost->xgboost-cpu package_renames keep torch/tensorflow/jax/autogluon/tabpfn/umap-learn and CUDA wheels out (enforced at build and in the interactive installer). Requires nirs4all >= 1.4.13 (fold-local categorical target domains and prediction scoring), whose slim core does not bundle matplotlib/shap/umap; the full profiles install shap+matplotlib explicitly so SHAP keeps working.",
   "profiles": {
     "cpu": {
       "label": "CPU Only",
@@ -14,8 +14,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": ">=1.4.12",
-          "recommended": "1.4.12"
+          "min": ">=1.4.13",
+          "recommended": "1.4.13"
         },
         "torch": {
           "min": ">=2.1.0",
@@ -45,8 +45,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": ">=1.4.12",
-          "recommended": "1.4.12"
+          "min": ">=1.4.13",
+          "recommended": "1.4.13"
         }
       },
       "exclude_optionals": [
@@ -74,8 +74,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": ">=1.4.12",
-          "recommended": "1.4.12"
+          "min": ">=1.4.13",
+          "recommended": "1.4.13"
         },
         "torch": {
           "min": ">=2.1.0",
@@ -103,8 +103,8 @@
       ],
       "packages": {
         "nirs4all": {
-          "min": ">=1.4.12",
-          "recommended": "1.4.12"
+          "min": ">=1.4.13",
+          "recommended": "1.4.13"
         },
         "torch": {
           "min": ">=2.1.0",
