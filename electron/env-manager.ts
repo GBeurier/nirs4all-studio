@@ -30,6 +30,7 @@ import {
 } from "./env/python-discovery";
 import {
   getMissingCorePackages,
+  getCorePackageIssues,
   getMissingOptionalPackages,
   guessProfileAlignment,
   inspectPythonPackages,
@@ -289,6 +290,7 @@ export class EnvManager {
       envKind: getEnvKind(this.envDir, envRoot, pythonPath),
       writable: isLikelyWritable(envRoot, pythonPath),
       missingCorePackages,
+      corePackageIssues: getCorePackageIssues(data.installedPackages),
       missingOptionalPackages: getMissingOptionalPackages(installedPackageNames),
       profileAlignmentGuess,
     };
@@ -365,18 +367,10 @@ export class EnvManager {
   /**
    * Single decision point for whether the setup wizard should be shown.
    *
-   * Rules:
-   * - Env not configured / broken → always show.
-   * - Wizard never completed before → show (savedAppVersion is null on a
-   *   fresh install or after `validateConfiguredState` cleared a stale path).
-   * - Wizard completed for the current app version → skip silently. This is
-   *   the common case, including portable mode: once a portable user has
-   *   gone through the wizard once on a given .exe + version, we don't nag
-   *   them again. Moving the .exe to a different folder is handled by
-   *   `validateConfiguredState`, which clears `savedAppVersion` if the saved
-   *   custom python path no longer exists.
-   * - App version bump → show once, unless `savedSkipWizard` was set via the
-   *   "Don't ask again" checkbox in the wizard's final step.
+   * Missing or broken runtimes require recovery. A valid environment whose
+   * setup was completed stays usable across Studio updates; an application
+   * version change alone must not restart Python onboarding. Actual package
+   * compatibility is checked independently during runtime verification.
    */
   shouldShowWizard(): boolean {
     this.validateConfiguredState();
@@ -394,24 +388,7 @@ export class EnvManager {
     // Env not configured at all → must show wizard
     if (!this.isReady()) return true;
 
-    const currentVersion = app.getVersion();
-
-    // Env ready and the wizard was already completed for this version → skip.
-    if (this.savedAppVersion === currentVersion) {
-      return false;
-    }
-
-    // Env ready but version bumped (or this is the first run after a manual
-    // settings file). The "Don't ask again" opt-out from a previous run still
-    // applies — refresh the saved version so we stop asking on subsequent
-    // launches.
-    if (this.savedAppVersion && this.savedSkipWizard) {
-      this.savedAppVersion = currentVersion;
-      this.saveSettings();
-      return false;
-    }
-
-    return true;
+    return this.savedAppVersion === null;
   }
 
   /**
@@ -419,9 +396,16 @@ export class EnvManager {
    * Saves the current app version and the "don't ask again" preference.
    */
   markWizardComplete(skipNextTime: boolean): void {
+    const previousVersion = this.savedAppVersion;
+    const previousSkip = this.savedSkipWizard;
     this.savedAppVersion = app.getVersion();
     this.savedSkipWizard = skipNextTime;
-    this.saveSettings();
+    try { this.saveSettings(); }
+    catch (error) {
+      this.savedAppVersion = previousVersion;
+      this.savedSkipWizard = previousSkip;
+      throw error;
+    }
   }
 
   /**
@@ -669,7 +653,9 @@ export class EnvManager {
       return { success: false, message: "Python executable not found at the selected path" };
     }
 
-    const data = await inspectPythonPackages(pythonPath);
+    let data: InspectPythonData | null;
+    try { data = await inspectPythonPackages(pythonPath); }
+    catch (error) { return { success: false, message: error instanceof Error ? error.message : "Python inspection failed. Retry without reinstalling the environment." }; }
     if (!data) {
       return { success: false, message: "Python 3.11 or later is required (or the selected file is not a valid Python executable)" };
     }
@@ -677,7 +663,7 @@ export class EnvManager {
     const info = this.buildInspectedEnv(pythonPath, data);
     const message = info.hasCorePackages
       ? `Python ${info.pythonVersion} is ready to use`
-      : `Python ${info.pythonVersion} is missing ${info.missingCorePackages.length} core package${info.missingCorePackages.length === 1 ? "" : "s"}`;
+      : `Python ${info.pythonVersion} can be reused after preparing ${info.missingCorePackages.length} required package${info.missingCorePackages.length === 1 ? "" : "s"} in place`;
 
     return { success: true, message, info };
   }
@@ -712,12 +698,12 @@ export class EnvManager {
 
     let info = inspection.info;
     const bundledSelection = this.isBundledPythonPath(pythonPath);
-    const shouldInstallCorePackages = options?.installCorePackages === true && !bundledSelection;
+    const shouldInstallCorePackages = !info.hasCorePackages && options?.installCorePackages === true && !bundledSelection;
 
     if (!info.hasCorePackages && !shouldInstallCorePackages) {
       return {
         success: false,
-        message: `Python ${info.pythonVersion} is missing the required plugin-host package (${info.missingCorePackages.join(", ")}). Choose an explicit install action before switching.`,
+        message: `Reuse Python ${info.pythonVersion} by preparing the required packages in this environment (${info.missingCorePackages.join(", ")}). A new environment is not required.`,
         info,
       };
     }
@@ -760,9 +746,10 @@ export class EnvManager {
       }
     }
 
+    let preparedSitePackages: string | null;
     try {
       await validatePythonRuntime(pythonPath, { reused: !bundledSelection, checkDependencies: false });
-      this.preparedSitePackages = bundledSelection ? null : await prepareRuntimeAdapters(pythonPath);
+      preparedSitePackages = bundledSelection ? null : await prepareRuntimeAdapters(pythonPath);
     } catch (error) {
       return {
         success: false,
@@ -771,8 +758,14 @@ export class EnvManager {
       };
     }
 
+    const previousPythonPath = this.pythonPath;
     this.pythonPath = pythonPath;
-    this.saveSettings();
+    try { this.saveSettings(); }
+    catch (error) {
+      this.pythonPath = previousPythonPath;
+      return { success: false, message: error instanceof Error ? error.message : "Could not save the environment selection", info };
+    }
+    this.preparedSitePackages = preparedSitePackages;
     this.status = "ready";
     this.lastError = null;
 

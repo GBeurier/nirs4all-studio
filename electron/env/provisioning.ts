@@ -104,6 +104,9 @@ export async function provisionManagedRuntime(
   const baseDir = targetDir || ctx.envDir;
 
   try {
+    if (fs.existsSync(path.join(baseDir, "venv"))) {
+      throw new Error("A Python environment already exists in this folder. Reuse it through Change → Browse for Python, or choose an empty folder. Its files have been preserved.");
+    }
     ctx.setStatus("downloading");
     ctx.setLastError(null);
 

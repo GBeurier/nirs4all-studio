@@ -3,6 +3,22 @@ import subprocess
 from pathlib import Path
 
 
+def test_runtime_size_diagnostic_stops_at_its_budget_and_reuses_the_result(monkeypatch, tmp_path):
+    from api import venv_manager as vm
+    (tmp_path / "package.py").write_text("payload")
+    ticks = iter([0.0, 1.0, 2.0])
+    monkeypatch.setattr(vm.time, "monotonic", lambda: next(ticks))
+    manager = vm.VenvManager()
+    assert manager._get_directory_size(tmp_path) == 0
+    assert manager._get_directory_size(tmp_path) == 0
+
+
+def test_runtime_size_diagnostic_counts_small_environments(tmp_path):
+    from api import venv_manager as vm
+    (tmp_path / "package.py").write_bytes(b"payload")
+    assert vm.VenvManager()._get_directory_size(tmp_path) == 7
+
+
 def _fake_version_run(cmd, **_kwargs):
     class Result:
         returncode = 0
@@ -35,7 +51,7 @@ def test_get_venv_info_skips_size_for_system_runtime(monkeypatch):
 
     info = manager.get_venv_info()
 
-    assert info.path == "/usr"
+    assert info.path == str(Path("/usr"))
     assert info.size_bytes == 0
 
 

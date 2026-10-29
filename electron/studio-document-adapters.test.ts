@@ -23,6 +23,13 @@ afterEach(() => {
 });
 
 describe("pure document adapter closure", () => {
+  it("refuses checkout-dependent source bytes before generating an attestation", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-adapter-source-"));
+    temporary.push(directory);
+    fs.mkdirSync(path.join(directory, "api"));
+    fs.writeFileSync(path.join(directory, "api/library_documents.py"), "pass\r\n");
+    expect(() => adapters.buildManifest(directory)).toThrow("must use LF line endings");
+  });
   it("packages only explicit pure modules and registry JSON, with inert initializers", () => {
     const directory = installed();
     expect(adapters.verifyAdapters(root, directory)).toEqual(adapters.buildManifest(root));

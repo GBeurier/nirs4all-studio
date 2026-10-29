@@ -18,7 +18,7 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
   let executable: string;
   let sitePackages: string;
   const versions: Record<string, string> = {
-    nirs4all: "1.4.8", "nirs4all-formats": "0.2.11", duckdb: "1.5.5", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1", lightgbm: "4.6.0",
+    nirs4all: "1.4.10", "nirs4all-io": "0.2.10", "nirs4all-formats": "0.2.11", "nirs4all-methods": "1.3.4", duckdb: "1.5.5", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1", lightgbm: "4.6.0",
   };
   const metadata = (name: string, extra = "") => `Metadata-Version: 2.1\nName: ${name}\nVersion: ${versions[name]}\n${extra}`;
   const metadataPath = (name: string) => path.join(sitePackages, `${name.replaceAll("-", "_")}-${versions[name]}.dist-info`, "METADATA");
@@ -34,8 +34,10 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
     for (const name of Object.keys(versions)) {
       fs.mkdirSync(path.dirname(metadataPath(name)), { recursive: true });
       fs.writeFileSync(metadataPath(name), metadata(name));
-      fs.writeFileSync(path.join(sitePackages, `${name.replaceAll("-", "_")}.py`), name === "nirs4all"
-        ? "def studio_scientific_job_v1(): pass\ndef studio_scientific_job_v2(): pass\n" : "");
+      const module = name === "nirs4all-methods" ? "n4m" : name.replaceAll("-", "_");
+      fs.writeFileSync(path.join(sitePackages, `${module}.py`), name === "nirs4all"
+        ? "def studio_scientific_job_v1(): pass\ndef studio_scientific_job_v2(): pass\n"
+        : name === "nirs4all-methods" ? "def abi_version(): return (2, 17, 0)\n" : "");
     }
   });
 
@@ -43,6 +45,9 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
 
   it("accepts importable packages with coherent installed dependencies", async () => {
     await expect(validatePythonRuntime(executable)).resolves.toBeUndefined();
+  });
+  it("accepts the published Methods distribution through its n4m import in a reused environment", async () => {
+    await expect(validatePythonRuntime(executable, { reused: true })).resolves.toBeUndefined();
   });
 
   it("refuses Formats with missing distribution metadata even when its code remains", async () => {
@@ -73,5 +78,10 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
   it("refuses a missing scientific entrypoint", async () => {
     fs.writeFileSync(path.join(sitePackages, "nirs4all.py"), "def studio_scientific_job_v1(): pass\n");
     await expect(validatePythonRuntime(executable)).rejects.toThrow("studio_scientific_job_v2");
+  });
+
+  it("refuses incompatible native Methods even when installed metadata looks complete", async () => {
+    fs.writeFileSync(path.join(sitePackages, "n4m.py"), "def abi_version(): return (2, 19, 0)\n");
+    await expect(validatePythonRuntime(executable)).rejects.toThrow("Unsupported Methods ABI");
   });
 });

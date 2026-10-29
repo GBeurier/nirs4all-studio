@@ -59,6 +59,26 @@ class TestNormalizeFileType:
 class TestBuildNirs4allConfig:
     """Tests for the canonical translator function."""
 
+    @pytest.mark.parametrize("role,suffix", [("Y", "y"), ("metadata", "group")])
+    @pytest.mark.parametrize("split", ["train", "test"])
+    def test_existing_wizard_records_keep_sparse_targets_and_metadata(self, role, suffix, split):
+        record = {"path": "/data", "config": {"na_policy": "auto", "files": [
+            {"path": "data.csv", "type": role, "split": split, "overrides": {"na_policy": "auto"}}
+        ]}}
+        result = build_nirs4all_config_from_stored(record)
+        assert result[f"{split}_{suffix}_params"]["na"] == {"policy": "ignore"}
+        assert record["config"]["files"][0]["overrides"]["na_policy"] == "auto"
+
+    @pytest.mark.parametrize("policy", ["auto", "abort", "replace", "remove_sample", "ignore"])
+    @pytest.mark.parametrize("split", ["train", "test"])
+    def test_existing_library_records_use_role_defaults_but_keep_explicit_policies(self, policy, split):
+        record = {"path": "/data", "config": {f"{split}_y": "Y.csv", f"{split}_group": "M.csv",
+                  "global_params": {"na": {"policy": policy}}}}
+        result = build_nirs4all_config_from_stored(record)
+        for role in ("y", "group"):
+            effective = result.get(f"{split}_{role}_params", result["global_params"])
+            assert effective["na"]["policy"] == ("ignore" if policy == "auto" else policy)
+
     @pytest.mark.parametrize("global_policy", [None, "auto"])
     def test_metadata_allows_missing_values_by_default(self, global_policy):
         files = [
@@ -609,6 +629,13 @@ class TestNaPolicyPassThrough:
 
     def _files(self):
         return [{"path": "spectra.csv", "type": "X", "split": "train"}]
+
+    @pytest.mark.parametrize("legacy,canonical", [(" Drop ", "remove_sample"), ("KEEP", "ignore"), ("AUTO", "auto")])
+    def test_native_stored_records_normalize_legacy_policies_without_fastapi_migration(self, legacy, canonical):
+        result = build_nirs4all_config_from_stored({"path": "/data", "config": {
+            "train_x": "Xcal.csv", "global_params": {"na_policy": legacy}}})
+        assert result["global_params"]["na_policy"] == canonical
+        assert result["global_params"]["na"] == {"policy": canonical}
 
     def test_valid_policies_pass_through(self):
         for policy in self.VALID:

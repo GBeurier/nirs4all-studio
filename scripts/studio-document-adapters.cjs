@@ -73,7 +73,13 @@ function sourcePayloads(root) {
     ...registryFiles(root, "src/data/nodes/definitions"),
     "src/data/nodes/generated/canonical-registry.json",
   ];
-  for (const file of files) payloads.set(file, regularFile(root, file));
+  for (const file of files) {
+    const bytes = regularFile(root, file);
+    if (bytes.includes(Buffer.from("\r\n"))) {
+      throw new Error(`Document adapter source must use LF line endings: ${file}`);
+    }
+    payloads.set(file, bytes);
+  }
   return payloads;
 }
 
