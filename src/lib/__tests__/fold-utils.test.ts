@@ -9,11 +9,14 @@ import i18n from "@/lib/i18n";
 import {
   chainHasAnyArtifact,
   chainHasRefitArtifact,
+  buildFoldTree,
   foldArtifactKey,
   foldIdBase,
   foldLabel,
   hasArtifactForFold,
   scoreCardTypeForFoldId,
+  isNumberedFold,
+  predictionScores,
 } from "../fold-utils";
 
 afterEach(async () => {
@@ -21,6 +24,25 @@ afterEach(async () => {
 });
 
 describe("fold-utils", () => {
+  it("does not display a classification score under a regression metric label", () => {
+    const prediction = { val_score: 0.8, partition: "val" } as Parameters<typeof predictionScores>[0];
+    expect(predictionScores(prediction, ["rmse", "balanced_accuracy"], "balanced_accuracy"))
+      .toEqual({ rmse: null, balanced_accuracy: 0.8 });
+  });
+
+  it("labels native macro scores as CV summaries without a pooled predictor", async () => {
+    expect(foldLabel("macro")).toBe("Mean CV score");
+    expect(scoreCardTypeForFoldId("macro")).toBe("crossval");
+    expect(isNumberedFold("macro")).toBe(false);
+    expect(hasArtifactForFold("macro", { fold_0: "a", fold_1: "b", fold_macro: "invalid" })).toBe(false);
+    const predictions = ["0", "macro", "1"].map(fold_id => ({ fold_id, partition: "val" } as Parameters<typeof buildFoldTree>[0][number]));
+    const tree = buildFoldTree(predictions);
+    expect(tree?.prediction.fold_id).toBe("macro");
+    expect(tree?.children.map(child => child.prediction.fold_id)).toEqual(["0", "1"]);
+    await i18n.changeLanguage("fr");
+    expect(foldLabel("macro")).toBe("Moyenne des scores CV");
+  });
+
   it("localises fold labels in French", async () => {
     await i18n.changeLanguage("fr");
     expect(foldLabel("3")).toBe("Pli 3");

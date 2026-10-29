@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "publication_status": "local-source-candidate",
+  "public_registry_verified": false,
+  "requires_explicit_local_cargo_config": true,
+  "packages": {
+    "nirs4all": {
+      "version": "0.4.6",
+      "repository": "https://github.com/GBeurier/nirs4all-core.git",
+      "source_commit": "cee4119337e8c02679a4b918578a20743046ae31"
+    },
+    "nirs4all-io": {
+      "version": "0.2.11",
+      "repository": "https://github.com/GBeurier/nirs4all-io.git",
+      "source_commit": "1c452eefbea3f81b22392bbf6e68a8c6f70772b3"
+    },
+    "nirs4all-io-core": {
+      "version": "0.2.11",
+      "repository": "https://github.com/GBeurier/nirs4all-io.git",
+      "source_commit": "1c452eefbea3f81b22392bbf6e68a8c6f70772b3"
+    },
+    "nirs4all-io-dagml": {
+      "version": "0.2.11",
+      "repository": "https://github.com/GBeurier/nirs4all-io.git",
+      "source_commit": "1c452eefbea3f81b22392bbf6e68a8c6f70772b3"
+    },
+    "nirs4all-formats": {
+      "version": "0.2.13",
+      "repository": "https://github.com/GBeurier/nirs4all-formats.git",
+      "source_commit": "ca66d54034b90ead27dd758a768115bb879ae9d5"
+    },
+    "nirs4all-formats-core": {
+      "version": "0.2.13",
+      "repository": "https://github.com/GBeurier/nirs4all-formats.git",
+      "source_commit": "ca66d54034b90ead27dd758a768115bb879ae9d5"
+    },
+    "dag-ml": {
+      "version": "0.3.42",
+      "repository": "https://github.com/GBeurier/dag-ml.git",
+      "source_commit": "7b989caa7bc403c9036c0a97ac6b1c29d35446f2"
+    },
+    "dag-ml-core": {
+      "version": "0.3.42",
+      "repository": "https://github.com/GBeurier/dag-ml.git",
+      "source_commit": "7b989caa7bc403c9036c0a97ac6b1c29d35446f2"
+    },
+    "dag-ml-results": {
+      "version": "0.3.42",
+      "repository": "https://github.com/GBeurier/dag-ml.git",
+      "source_commit": "7b989caa7bc403c9036c0a97ac6b1c29d35446f2"
+    },
+    "dag-ml-data": {
+      "version": "0.2.13",
+      "repository": "https://github.com/GBeurier/dag-ml-data.git",
+      "source_commit": "737cb572dd4e016178dabc2449f8287b11190e1e"
+    },
+    "dag-ml-data-core": {
+      "version": "0.2.13",
+      "repository": "https://github.com/GBeurier/dag-ml-data.git",
+      "source_commit": "737cb572dd4e016178dabc2449f8287b11190e1e"
+    },
+    "dag-ml-data-provider": {
+      "version": "0.2.13",
+      "repository": "https://github.com/GBeurier/dag-ml-data.git",
+      "source_commit": "737cb572dd4e016178dabc2449f8287b11190e1e"
+    },
+    "n4m": {
+      "version": "0.4.1",
+      "repository": "https://github.com/GBeurier/nirs4all-methods.git",
+      "source_commit": "a286ec65631203e7bab459f1080260eb51116671"
+    }
+  },
+  "notes": [
+    "Cargo.lock records a local source qualification, not public registry availability.",
+    "Use explicit Cargo source overrides for these immutable owner commits; no override is enabled by default.",
+    "Before release, publish owner packages, regenerate the ordinary registry lock, and verify registry checksums and native ABI again.",
+    "The normal release workflow remains dependent on publication of these source commits and versions."
+  ]
+}

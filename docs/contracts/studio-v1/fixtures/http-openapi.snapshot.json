@@ -1323,6 +1323,17 @@
                 ],
                 "title": "Cv Source Chain Id"
               },
+              "cv_summary_fold_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cv Summary Fold Id"
+              },
               "cv_test_score": {
                 "anyOf": [
                   {
@@ -1544,6 +1555,17 @@
                 "default": false,
                 "title": "Synthetic Refit",
                 "type": "boolean"
+              },
+              "target_domain_context": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Target Domain Context"
               },
               "task_type": {
                 "anyOf": [
@@ -28191,6 +28213,17 @@
                 ],
                 "title": "Cv Source Chain Id"
               },
+              "cv_summary_fold_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cv Summary Fold Id"
+              },
               "cv_test_score": {
                 "anyOf": [
                   {
@@ -28412,6 +28445,17 @@
                 "default": false,
                 "title": "Synthetic Refit",
                 "type": "boolean"
+              },
+              "target_domain_context": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Target Domain Context"
               },
               "task_type": {
                 "anyOf": [

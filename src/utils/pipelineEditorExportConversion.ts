@@ -7,6 +7,7 @@ import type {
   Nirs4allStep,
 } from "./nirs4allPipelineTypes";
 import { castParamRecord } from "./pipelineValueUtils";
+import { normalizeYProcessingParams } from "./pipelineYProcessing";
 
 type EditorToNirs4allStepConverter = (step: EditorPipelineStep) => Nirs4allStep;
 
@@ -162,7 +163,7 @@ export function convertEditorYProcessingToNirs4all(
   step: EditorPipelineStep,
   classPath: string
 ): Nirs4allStep {
-  const yProcessingDef = buildClassStep(step, classPath);
+  const yProcessingDef = buildClassStep({ ...step, params: normalizeYProcessingParams(step.name, getExportableStepParams(step)) }, classPath);
 
   return {
     y_processing: yProcessingDef as string | Nirs4allClassStep,

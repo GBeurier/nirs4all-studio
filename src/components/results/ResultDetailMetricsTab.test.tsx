@@ -260,7 +260,7 @@ function nativePipeline(): PipelineRun {
 describe("ResultDetailMetricsTab", () => {
   it("renders native tuning, conformal, and robustness artifacts together", async () => {
     const { container, root } = await render(
-      <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <MemoryRouter>
         <Tabs value="results">
           <ResultDetailMetricsTab pipeline={nativePipeline()} datasetName="Maize" hasMetrics />
         </Tabs>

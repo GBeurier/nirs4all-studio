@@ -28,6 +28,7 @@ from .pipeline_canonical_generators import (
     _create_no_op_editor_step,
     _sequence_child_from_steps,
 )
+from .pipeline_y_processing import normalize_y_processing_params
 
 SEPARATION_BRANCH_KEYS = branch_merge_editor.SEPARATION_BRANCH_KEYS
 FLOW_SUBTYPES = {
@@ -1425,11 +1426,30 @@ def _component_payload_from_editor(step: dict[str, Any], class_path: str) -> Any
 def _serialize_editor_steps(steps: list[dict[str, Any]]) -> list[Any]:
     result: list[Any] = []
     for step in steps:
+        target_config = step.get("yProcessingConfig") if step.get("type") == "y_processing" else None
+        if step.get("enabled") is False or (isinstance(target_config, dict) and target_config.get("enabled") is False):
+            continue
         converted = _convert_editor_step_to_canonical(step)
         if isinstance(converted, list):
             result.extend(converted)
         else:
             result.append(converted)
+    return result
+
+
+def _enabled_editor_steps(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove disabled nodes recursively, preserving explicit no-op alternatives."""
+    result = []
+    for step in steps:
+        config = step.get("yProcessingConfig") if step.get("type") == "y_processing" else None
+        if step.get("enabled") is False or (isinstance(config, dict) and config.get("enabled") is False):
+            continue
+        node = dict(step)
+        if isinstance(step.get("children"), list):
+            node["children"] = _enabled_editor_steps(step["children"])
+        if isinstance(step.get("branches"), list):
+            node["branches"] = [_enabled_editor_steps(branch) for branch in step["branches"]]
+        result.append(node)
     return result
 
 
@@ -1549,7 +1569,8 @@ def _convert_editor_y_processing_to_canonical(step: dict[str, Any]) -> dict[str,
         str(step.get("name") or "StandardScaler"),
         step.get("classPath"),
     )
-    payload = _component_payload_from_editor(step, class_path)
+    normalized_step = {**step, "params": normalize_y_processing_params(str(step.get("name")), _get_exportable_step_params(step))}
+    payload = _component_payload_from_editor(normalized_step, class_path)
     return {"y_processing": payload}
 
 
@@ -1733,6 +1754,10 @@ def _convert_editor_generator_to_canonical(step: dict[str, Any]) -> dict[str, An
 
 
 def _convert_editor_step_to_canonical(step: dict[str, Any]) -> Any:
+    target_config = step.get("yProcessingConfig") if step.get("type") == "y_processing" else None
+    if isinstance(target_config, dict):
+        step = {**step, "name": target_config["scaler"], "classPath": None, "params": target_config.get("params", {}), "hydratedDefaultParams": []}
+        step.pop("rawNirs4all", None)
     if "rawNirs4all" in step:
         return clone_value(step["rawNirs4all"])
 
@@ -1805,7 +1830,7 @@ def editor_to_canonical(
     include_wrapper: bool = False,
 ) -> list[Any] | dict[str, Any]:
     """Convert editor steps back into canonical nirs4all JSON/YAML format."""
-    canonical_steps = _serialize_editor_steps(hydrate_editor_steps(steps))
+    canonical_steps = _serialize_editor_steps(_enabled_editor_steps(hydrate_editor_steps(steps)))
     if include_wrapper:
         return {
             "name": name or "pipeline",

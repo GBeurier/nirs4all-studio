@@ -14,6 +14,7 @@ const SOURCE_ENTRYPOINTS = Object.freeze([
 ]);
 const DYNAMIC_PACKAGED_FILES = Object.freeze([
   "scripts/python-runtime-config.cjs",
+  "scripts/tls-trust.cjs",
 ]);
 const DIST_ENTRYPOINTS = Object.freeze([
   "dist-electron/main.cjs",

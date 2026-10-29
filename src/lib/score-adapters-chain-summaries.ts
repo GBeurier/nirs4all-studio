@@ -80,7 +80,7 @@ export function chainSummaryToRow(summary: ChainSummary): ScoreCardRow {
     preprocessings: summary.preprocessings || null,
     bestParams: (summary.best_params as Record<string, unknown>) ?? null,
     cardType: trainingOnly ? "train" : "crossval",
-    foldId: trainingOnly ? "" : undefined,
+    foldId: trainingOnly ? "" : (summary.cv_summary_fold_id === "macro" ? "macro" : undefined),
     partition: trainingOnly ? "train" : undefined,
     foldCount: summary.cv_fold_count,
     metric: summary.metric,

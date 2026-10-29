@@ -16,7 +16,7 @@ from nirs4all import studio_scientific_job_v1, studio_scientific_job_v2
 assert callable(studio_scientific_job_v1) and callable(studio_scientific_job_v2), "Scientific plugin entrypoint unavailable"
 from n4m import abi_version
 methods_abi = abi_version()
-assert methods_abi[:2] == (2, 17), f"Unsupported Methods ABI {methods_abi}: Studio requires ABI 2.17 (nirs4all-methods==1.3.4). Prepare the required package in this environment."
+assert methods_abi[:2] == (2, 20), f"Unsupported Methods ABI {methods_abi}: Studio requires ABI 2.20 (nirs4all-methods==1.3.9). Prepare the required package in this environment."
 `;
 
 interface RuntimeValidationOptions {

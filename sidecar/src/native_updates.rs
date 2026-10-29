@@ -1600,7 +1600,10 @@ fn preflight_zip(archive: &Path) -> Result<(), String> {
         let mut entry = archive
             .by_index(index)
             .map_err(|error| format!("Invalid ZIP entry: {error}"))?;
-        let relative = safe_relative_path(Path::new(entry.name()))?;
+        let name = entry
+            .name()
+            .map_err(|error| format!("Invalid ZIP entry name: {error}"))?;
+        let relative = safe_relative_path(Path::new(name.as_ref()))?;
         let portable_key = portable_zip_path_key(&relative)?;
         if !paths.insert(portable_key.clone()) {
             return Err("ZIP update contains duplicate or case-colliding paths".into());
@@ -1679,7 +1682,10 @@ fn extract_zip(archive: &Path, destination: &Path) -> Result<(), String> {
             let mut entry = archive
                 .by_index(index)
                 .map_err(|error| format!("Invalid ZIP entry: {error}"))?;
-            let relative = safe_relative_path(Path::new(entry.name()))?;
+            let name = entry
+                .name()
+                .map_err(|error| format!("Invalid ZIP entry name: {error}"))?;
+            let relative = safe_relative_path(Path::new(name.as_ref()))?;
             let target = destination.join(&relative);
             ensure_no_symlink_parent(destination, &target)?;
             let mode = entry.unix_mode().unwrap_or(0);
@@ -2499,6 +2505,33 @@ mod tests {
         let error = preflight_zip(&archive).unwrap_err();
 
         assert!(error.contains("below a symlink"), "{error}");
+    }
+
+    #[test]
+    fn zip_preflight_rejects_invalid_utf8_member_names_before_extraction() {
+        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+        writer
+            .start_file("bad.txt", SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"payload").unwrap();
+        let mut bytes = writer.finish().unwrap().into_inner();
+        let central = bytes
+            .windows(4)
+            .position(|value| value == b"PK\x01\x02")
+            .unwrap();
+        // Declare UTF-8 in both headers, then supply an invalid name byte.
+        bytes[7] |= 0x08;
+        bytes[central + 9] |= 0x08;
+        bytes[30] = 0xff;
+        bytes[central + 46] = 0xff;
+        let temp = TempDir::new().unwrap();
+        let archive = temp.path().join("malformed.zip");
+        fs::write(&archive, bytes).unwrap();
+        let error = preflight_zip(&archive).unwrap_err();
+        // ZIP may expose a decoded replacement character; confinement must still
+        // refuse the malformed member instead of creating a lossy path.
+        assert!(error.contains("printable ASCII"), "{error}");
+        assert!(!temp.path().join("bad.txt").exists());
     }
 
     #[test]

@@ -376,12 +376,13 @@ pub struct WorkspaceStoreRankedChain {
     final_agg_train_score: Option<f64>,
     final_agg_scores: Value,
     best_params: Option<Value>,
+    target_domain_context: Option<String>,
 }
 
 impl WorkspaceStoreRankedChain {
     #[must_use]
     pub fn response(&self) -> Value {
-        json!({
+        let mut response = json!({
             "chain_id": self.chain_id,
             "pipeline_id": self.pipeline_id,
             "run_id": self.run_id,
@@ -404,7 +405,12 @@ impl WorkspaceStoreRankedChain {
             "final_agg_train_score": self.final_agg_train_score,
             "final_agg_scores": self.final_agg_scores,
             "best_params": self.best_params,
-        })
+        });
+        if let Some(context) = &self.target_domain_context {
+            response["cv_summary_fold_id"] = json!("macro");
+            response["target_domain_context"] = json!(context);
+        }
+        response
     }
 }
 
@@ -444,6 +450,7 @@ pub(crate) struct WorkspaceStoreResultsSummarySourceRow {
     pub final_agg_train_score: Option<f64>,
     pub final_agg_scores: Value,
     pub best_params: Option<Value>,
+    pub target_domain_context: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -463,6 +470,7 @@ pub enum WorkspaceStoreReadError {
         table: &'static str,
         columns: Vec<String>,
     },
+    IncompatibleEvaluationContext,
     InvalidRunId,
     LimitOutOfRange(u16),
     RankedChainLimitOutOfRange(u16),
@@ -475,6 +483,7 @@ pub enum WorkspaceStoreReadError {
 impl fmt::Display for WorkspaceStoreReadError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::IncompatibleEvaluationContext => write!(formatter, "target-domain evaluation contexts are missing, corrupt or incomparable"),
             Self::Contract(detail) => write!(formatter, "invalid WorkspaceStore read contract: {detail}"),
             Self::StoreNotFound => write!(formatter, "WorkspaceStore store.sqlite was not found"),
             Self::NotARegularFile(path) => write!(formatter, "WorkspaceStore path is not a regular file: {}", path.display()),
@@ -881,7 +890,7 @@ pub(crate) fn read_results_summary_source_from_connection(
 
 pub(crate) fn visit_results_summary_source_from_connection(
     connection: &Connection,
-    consume: impl FnMut(WorkspaceStoreResultsSummarySourceRow),
+    mut consume: impl FnMut(WorkspaceStoreResultsSummarySourceRow),
 ) -> Result<(), WorkspaceStoreReadError> {
     validate_contract()?;
     validate_results_summary_contract()?;
@@ -889,7 +898,11 @@ pub(crate) fn visit_results_summary_source_from_connection(
     validate_table_columns(connection, "chains", &RESULTS_SUMMARY_CHAIN_COLUMNS)?;
     validate_table_columns(connection, "pipelines", &RESULTS_SUMMARY_PIPELINE_COLUMNS)?;
     validate_table_columns(connection, "predictions", &PREDICTION_RANKING_COLUMNS)?;
-    visit_results_summary_source_rows(connection, consume)
+    let contexts = validate_chain_evaluation_contexts(connection, None, None)?;
+    visit_results_summary_source_rows(connection, |mut row| {
+        row.target_domain_context = contexts.get(&row.chain_id).cloned();
+        consume(row);
+    })
 }
 
 fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
@@ -2105,6 +2118,85 @@ fn query_pipeline_summaries(
     Ok(WorkspaceStorePipelineSummaryPage { results, total })
 }
 
+/// Compare only opaque owner contexts, before ranking or pagination. Scores and
+/// target transforms remain owned by the SDK/native report.
+fn validate_chain_evaluation_contexts(
+    connection: &Connection,
+    dataset_name: Option<&str>,
+    metric: Option<&str>,
+) -> Result<std::collections::BTreeMap<String, String>, WorkspaceStoreReadError> {
+    let query = "SELECT c.chain_id, c.dataset_name, c.metric, p.run_id,         EXISTS(SELECT 1 FROM predictions pr WHERE pr.chain_id=c.chain_id AND pr.fold_id='macro' AND pr.refit_context IS NULL),         EXISTS(SELECT 1 FROM predictions pr WHERE pr.chain_id=c.chain_id AND pr.fold_id IN ('avg','w_avg','fold_avg','fold_w_avg') AND pr.refit_context IS NULL)         FROM chains c JOIN pipelines p ON p.pipeline_id=c.pipeline_id         WHERE (?1 IS NULL OR c.dataset_name=?1) AND (?2 IS NULL OR c.metric=?2)         AND EXISTS(SELECT 1 FROM predictions pr WHERE pr.chain_id=c.chain_id)";
+    let mut statement = connection
+        .prepare(query)
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let rows = statement
+        .query_map(params![dataset_name, metric], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, bool>(4)?,
+                row.get::<_, bool>(5)?,
+            ))
+        })
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let mut contexts = std::collections::BTreeMap::new();
+    let mut groups = std::collections::BTreeMap::new();
+    let mut summaries = std::collections::BTreeMap::new();
+    for row in rows {
+        let (chain, dataset, metric, run_id, is_macro, has_pooled) =
+            row.map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+        // A parent run can contain many chains. Read and parse its owner
+        // metadata once, avoiding a repeated large summary per candidate.
+        if !summaries.contains_key(&run_id) {
+            let text = connection
+                .query_row(
+                    "SELECT summary FROM runs WHERE run_id=?1",
+                    params![run_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()
+                .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?
+                .flatten();
+            let summary: Value = text
+                .and_then(|text| serde_json::from_str(&text).ok())
+                .unwrap_or(Value::Null);
+            summaries.insert(run_id.clone(), summary);
+        }
+        let domain = &summaries[&run_id]["dagml_target_domain_summaries"];
+        let entry = &domain["chains"][&chain];
+        let context = if is_macro {
+            if has_pooled
+                || domain["schema_version"].as_u64() != Some(1)
+                || entry["cv_summary_fold_id"].as_str() != Some("macro")
+            {
+                return Err(WorkspaceStoreReadError::IncompatibleEvaluationContext);
+            }
+            let value = entry["target_domain_context"]
+                .as_str()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or(WorkspaceStoreReadError::IncompatibleEvaluationContext)?;
+            contexts.insert(chain, value.to_owned());
+            Some(value.to_owned())
+        } else {
+            if !entry.is_null() {
+                return Err(WorkspaceStoreReadError::IncompatibleEvaluationContext);
+            }
+            None
+        };
+        let key = (dataset, metric);
+        if let Some(existing) = groups.get(&key) {
+            if existing != &context {
+                return Err(WorkspaceStoreReadError::IncompatibleEvaluationContext);
+            }
+        } else {
+            groups.insert(key, context);
+        }
+    }
+    Ok(contexts)
+}
+
 fn query_ranked_chains(
     connection: &Connection,
     dataset_name: &str,
@@ -2113,6 +2205,8 @@ fn query_ranked_chains(
     limit: i64,
     offset: i64,
 ) -> Result<WorkspaceStoreRankedChainPage, WorkspaceStoreReadError> {
+    let contexts =
+        validate_chain_evaluation_contexts(connection, Some(dataset_name), Some(metric))?;
     let total = connection
         .query_row(
             RANKED_CHAIN_COUNT_QUERY,
@@ -2136,9 +2230,12 @@ fn query_ranked_chains(
             row_to_ranked_chain,
         )
         .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
-    let results = rows
+    let mut results = rows
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    for row in &mut results {
+        row.target_domain_context = contexts.get(&row.chain_id).cloned();
+    }
     Ok(WorkspaceStoreRankedChainPage { results, total })
 }
 
@@ -2238,6 +2335,7 @@ fn row_to_ranked_chain(row: &Row<'_>) -> rusqlite::Result<WorkspaceStoreRankedCh
         final_agg_train_score: optional_finite_f64(row, 19, "final_agg_train_score")?,
         final_agg_scores: json_object_or_default(optional_text(row, 20)?),
         best_params: nonempty_json_object(optional_text(row, 21)?),
+        target_domain_context: None,
     })
 }
 
@@ -2269,6 +2367,7 @@ fn row_to_results_summary_source(
         final_agg_train_score: optional_finite_or_null_f64(row, 21)?,
         final_agg_scores: json_object_or_default(optional_text(row, 22)?),
         best_params: nonempty_json_object(optional_text(row, 23)?),
+        target_domain_context: None,
     })
 }
 
@@ -2737,6 +2836,80 @@ mod tests {
                     params![format!("prediction-{chain_id}"), pipeline_id, chain_id],
                 )
                 .unwrap();
+        }
+    }
+
+    #[test]
+    fn macro_ranking_requires_owner_context_before_pagination_and_summary() {
+        for case in [
+            "same",
+            "missing",
+            "different",
+            "pooled",
+            "pooled-alias",
+            "legacy",
+        ] {
+            let workspace = fixture_workspace(&format!("macro-domain-{case}"));
+            populate_ranked_chains(&workspace);
+            let connection = Connection::open(workspace.join("store.sqlite")).unwrap();
+            connection.execute("UPDATE predictions SET fold_id='macro' WHERE chain_id IN ('chain-a','chain-b','chain-c','chain-z')", []).unwrap();
+            let mut entries = serde_json::Map::new();
+            for chain in ["chain-a", "chain-b", "chain-c", "chain-z"] {
+                entries.insert(chain.into(), json!({"cv_summary_fold_id":"macro", "target_domain_context":"opaque exact owner context"}));
+            }
+            if case == "different" {
+                entries["chain-z"]["target_domain_context"] = json!("another fitted domain");
+            }
+            if case == "legacy" {
+                connection
+                    .execute(
+                        "UPDATE predictions SET fold_id='fold_0' WHERE chain_id='chain-z'",
+                        [],
+                    )
+                    .unwrap();
+                entries.remove("chain-z");
+            }
+            if case == "pooled" || case == "pooled-alias" {
+                connection.execute("INSERT INTO predictions(prediction_id,pipeline_id,chain_id,dataset_name,model_name,model_class,fold_id,partition,metric,task_type) SELECT 'pooled-tamper',pipeline_id,chain_id,dataset_name,model_name,model_class,'avg',partition,metric,task_type FROM predictions WHERE chain_id='chain-z' LIMIT 1", []).unwrap();
+            }
+            if case == "pooled-alias" {
+                connection.execute("UPDATE predictions SET fold_id='fold_avg' WHERE prediction_id='pooled-tamper'", []).unwrap();
+            }
+            if case != "missing" {
+                connection.execute("UPDATE runs SET summary=?1", params![json!({"dagml_target_domain_summaries":{"schema_version":1,"chains":entries}}).to_string()]).unwrap();
+            }
+            drop(connection);
+            // Even limit=1 cannot hide an incomparable candidate on a later page.
+            let ranked = read_ranked_chains(
+                &workspace,
+                "corn",
+                "rmse",
+                ChainScoreDirection::Ascending,
+                1,
+                0,
+            );
+            let summary = read_results_summary_source(&workspace);
+            if case == "same" {
+                let page = ranked.unwrap();
+                assert_eq!(page.total, 4);
+                let row = page.results[0].response();
+                assert_eq!(row["chain_id"], "chain-b");
+                assert_eq!(row["cv_summary_fold_id"], "macro");
+                assert_eq!(row["target_domain_context"], "opaque exact owner context");
+                assert!(summary.is_ok());
+            } else {
+                assert_eq!(
+                    ranked.unwrap_err(),
+                    WorkspaceStoreReadError::IncompatibleEvaluationContext,
+                    "{case}"
+                );
+                assert_eq!(
+                    summary.unwrap_err(),
+                    WorkspaceStoreReadError::IncompatibleEvaluationContext,
+                    "{case}"
+                );
+            }
+            fs::remove_dir_all(workspace).unwrap();
         }
     }
 

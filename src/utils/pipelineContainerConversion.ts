@@ -198,7 +198,7 @@ export function convertEditorSampleAugmentationToNirs4all(
   step: EditorPipelineStep,
   convertEditorStepToNirs4all: EditorToNirs4allStepConverter
 ): Nirs4allStep {
-  if (step.children && step.children.length > 0) {
+  if (step.children && (step.children.length > 0 || Object.keys(step.params).length > 0)) {
     const transformers = step.children.map(child =>
       convertEditorStepToNirs4all(child)
     ) as Array<string | Nirs4allClassStep>;
@@ -226,7 +226,7 @@ export function convertEditorFeatureAugmentationToNirs4all(
   step: EditorPipelineStep,
   convertEditorStepToNirs4all: EditorToNirs4allStepConverter
 ): Nirs4allStep {
-  if (step.children && step.children.length > 0) {
+  if (step.children) {
     const isGeneratorMode = step.generatorKind === "or";
 
     if (isGeneratorMode) {

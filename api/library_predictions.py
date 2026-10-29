@@ -161,6 +161,20 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
     else:
         raise ValueError("Unknown general prediction model source")
     metadata = result.metadata
+    captured_task_type = None
+    if targets is not None:
+        scoring_targets = getattr(result, "scoring_targets", None)
+        scoring = scoring_targets(targets, validity_mask=target_mask) if callable(scoring_targets) else None
+        if scoring is not None:
+            if scoring.get("schema_version") != 1 or not isinstance(scoring.get("task_type"), str):
+                raise ValueError("Unsupported captured target-scoring contract")
+            # The library applies the already fitted reference; Studio only
+            # projects its values and mask alongside the prediction identities.
+            targets = np.asarray(scoring["values"])
+            target_mask = np.asarray(scoring["validity_mask"], dtype=bool)
+            if targets.shape != target_mask.shape:
+                raise ValueError("Captured target values and validity mask differ")
+            captured_task_type = scoring["task_type"]
     ids = metadata["sample_ids"]
     if multimodal and list(ids) != list(data.sample_ids):
         raise ValueError("Prediction rows do not match the multimodal cohort identities")
@@ -192,7 +206,7 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
             actual = target_matrix[:, output_index]
             observed = target_mask is None or np.asarray(target_mask).reshape(len(values), -1)[:, output_index].all()
             if observed and _valid_prediction_values(actual):
-                task_type = detect_task_type(actual).value
+                task_type = captured_task_type or detect_task_type(actual).value
                 metrics = eval_multi(actual, predictions, task_type)
             elif not observed:
                 actual = None

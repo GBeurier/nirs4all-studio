@@ -40,6 +40,7 @@ const https = require("https");
 const http = require("http");
 const { pipeline } = require("node:stream/promises");
 const { randomUUID } = require("node:crypto");
+const { tlsRequestOptions, explainNetworkError } = require("./tls-trust.cjs");
 const {
   assertProfileSupportedOnPlatform,
   PYTHON_VERSION,
@@ -68,12 +69,12 @@ const PRUNED_LAUNCHER_RECORD_PREFIXES = Object.freeze([
   "../../../Scripts/",
 ]);
 const PRUNED_LAUNCHER_RECORD_FILES = Object.freeze(["../../Scripts/nirs4all.exe"]);
-const PLUGIN_SOURCE_COMMIT = "cf0385173b481e1950b2be893172c8bd4b0640be";
+const PLUGIN_SOURCE_COMMIT = "d7adb3f8ecd5f29af7522f3093701e87c2e8f031";
 const PLUGIN_SOURCE_REPOSITORY = "https://github.com/GBeurier/nirs4all.git";
-const PLUGIN_SOURCE_EPOCH = "1792163083";
-const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.10-py3-none-any.whl";
-const PLUGIN_WHEEL_SHA256 = "edbc3bccfcce44df114dfd704c547d5be1b0e5e73ffad65250901c4f09698eed";
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "7f7f88e696172ed0c43e41b78cc54e509b7ed53959c378d4d520ad1e87b2821e";
+const PLUGIN_SOURCE_EPOCH = "1793281114";
+const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.11-py3-none-any.whl";
+const PLUGIN_WHEEL_SHA256 = "8cbb98bf873f5573797a2f269b3594f47c9fde9b5d32b1f856985be58f86395d";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "e9a7fe36dd3a657543f6343980bac17959d14be3afa38473896afacd7dd5a989";
 const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
 const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";
 const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
@@ -727,7 +728,8 @@ async function downloadFile(url, destPath, options = {}) {
         if (!["http:", "https:"].includes(currentUrl.protocol)) throw new Error("Unsupported download URL protocol");
         const protocol = currentUrl.protocol === "https:" ? https : http;
         response = await new Promise((resolve, reject) => {
-          const request = protocol.get(currentUrl, { signal: controller.signal }, resolve);
+          const trust = currentUrl.protocol === "https:" ? tlsRequestOptions() : {};
+          const request = protocol.get(currentUrl, { ...trust, signal: controller.signal }, resolve);
           request.setTimeout(timeoutMs, () => request.destroy(new Error("Download timed out waiting for data")));
           request.once("error", reject);
         });
@@ -762,7 +764,7 @@ async function downloadFile(url, destPath, options = {}) {
     } catch (error) {
       response?.destroy();
       await fs.promises.rm(partial, { force: true });
-      if (attempt >= retries) throw error;
+      if (attempt >= retries) throw explainNetworkError(error);
     } finally {
       clearTimeout(deadline);
       controller.abort();
@@ -1155,7 +1157,7 @@ async function main() {
     );
     if (pluginOnly) {
       await removePrunedLauncherRecordRows(runtimePython, backendDist);
-      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.4.10");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.4.11");
       await restorePinnedWheelRecord(runtimePython, backendDist, selectedToolsWheel, "nirs4all_tools", "0.0.8");
       console.log("  Restored both exact pinned wheel RECORDs after isolated installation");
     }

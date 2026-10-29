@@ -45,3 +45,11 @@ export function loadPythonRuntimeConfig<T>(): T {
 export function loadRecommendedConfig<T>(): T {
   return requireExternal<T>("recommended-config.json");
 }
+
+export function loadNetworkTrust() {
+  return requireExternal<{
+    configureSystemTrust(): void;
+    tlsRequestOptions(): import("node:https").RequestOptions;
+    explainNetworkError(error: unknown): Error;
+  }>(path.join("scripts", "tls-trust.cjs"));
+}

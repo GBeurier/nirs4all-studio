@@ -15,7 +15,7 @@ import type { ScoreCardType } from "@/types/score-cards";
 // ============================================================================
 
 /** Sort priority for special fold IDs (lower = first). */
-export const FOLD_ORDER: Record<string, number> = { final: 0, avg: 1, w_avg: 2 };
+export const FOLD_ORDER: Record<string, number> = { final: 0, macro: 1, avg: 2, w_avg: 3 };
 
 /** Sort PartitionPrediction rows: final → avg → w_avg → numbered folds, then by partition. */
 export function foldSort(a: PartitionPrediction, b: PartitionPrediction): number {
@@ -40,6 +40,7 @@ export function foldLabel(foldId: string): string {
   const suffix = foldId.endsWith("_agg") ? ` (${i18n.t("common.fold.agg")})` : "";
   const base = foldIdBase(foldId);
   if (base === "final") return `${i18n.t("common.fold.final")}${suffix}`;
+  if (base === "macro") return `${i18n.t("common.fold.macro")}${suffix}`;
   if (base === "avg") return `${i18n.t("common.fold.avg")}${suffix}`;
   if (base === "w_avg") return `${i18n.t("common.fold.wAvg")}${suffix}`;
   return `${i18n.t("common.fold.numbered", { id: base })}${suffix}`;
@@ -50,6 +51,7 @@ export function foldLabelShort(foldId: string): string {
   const suffix = foldId.endsWith("_agg") ? `·${i18n.t("common.fold.aggShort")}` : "";
   const base = foldIdBase(foldId);
   if (base === "final") return `${i18n.t("common.fold.finalShort")}${suffix}`;
+  if (base === "macro") return `${i18n.t("common.fold.macroShort")}${suffix}`;
   if (base === "avg") return `${i18n.t("common.fold.avgShort")}${suffix}`;
   if (base === "w_avg") return `${i18n.t("common.fold.wAvgShort")}${suffix}`;
   return `${i18n.t("common.fold.numberedShort", { id: base })}${suffix}`;
@@ -59,7 +61,7 @@ export function foldLabelShort(foldId: string): string {
 export function foldColorClass(foldId: string): string {
   if (isRepAggFold(foldId)) return "text-purple-500";
   if (foldId === "final") return "text-emerald-500";
-  if (foldId === "avg" || foldId === "w_avg") return "text-chart-1";
+  if (foldId === "macro" || foldId === "avg" || foldId === "w_avg") return "text-chart-1";
   return "text-foreground/70";
 }
 
@@ -67,7 +69,7 @@ export function foldColorClass(foldId: string): string {
 export function foldBadgeClasses(foldId: string): string {
   if (isRepAggFold(foldId)) return "border-purple-500/30 text-purple-500";
   if (foldId === "final") return "border-emerald-500/30 text-emerald-500";
-  if (foldId === "avg") return "border-chart-1/30 text-chart-1";
+  if (foldId === "macro" || foldId === "avg") return "border-chart-1/30 text-chart-1";
   if (foldId === "w_avg") return "border-indigo-500/30 text-indigo-500";
   return "";
 }
@@ -86,7 +88,7 @@ export function isFinalFold(foldId: string): boolean {
 }
 
 export function isAggFold(foldId: string): boolean {
-  return foldId === "avg" || foldId === "w_avg";
+  return foldId === "macro" || foldId === "avg" || foldId === "w_avg";
 }
 
 export function isNumberedFold(foldId: string): boolean {
@@ -96,7 +98,7 @@ export function isNumberedFold(foldId: string): boolean {
 export function scoreCardTypeForFoldId(foldId: string | null | undefined): ScoreCardType {
   const baseFoldId = foldId ? foldIdBase(foldId) : "";
   if (baseFoldId === "final") return "refit";
-  if (baseFoldId === "avg" || baseFoldId === "w_avg") return "crossval";
+  if (baseFoldId === "macro" || baseFoldId === "avg" || baseFoldId === "w_avg") return "crossval";
   return "train";
 }
 
@@ -120,7 +122,7 @@ export function hasArtifactForFold(
   foldId: string,
   foldArtifacts: Record<string, string> | null | undefined,
 ): boolean {
-  if (!foldArtifacts) return false;
+  if (!foldArtifacts || foldIdBase(foldId) === "macro") return false;
   if (foldId === "final") {
     return !!(foldArtifacts["fold_final"] || foldArtifacts["final"]);
   }
@@ -192,7 +194,7 @@ export function predictionScores(
       }
     }
     // 3. Scalar fallback for primary metric
-    if (val == null && (kl === pm || kl === "rmse")) {
+    if (val == null && kl === pm) {
       val = safeNumber(pred.val_score) ?? safeNumber(pred.test_score) ?? safeNumber(pred.train_score);
     }
     result[k] = val;
@@ -232,7 +234,7 @@ export function buildFoldTree(predictions: PartitionPrediction[]): FoldTreeNode 
   }
 
   const hasFinal = foldMap.has("final");
-  const rootFoldId = hasFinal ? "final" : (foldMap.has("avg") ? "avg" : sorted[0]?.fold_id);
+  const rootFoldId = hasFinal ? "final" : (foldMap.has("macro") ? "macro" : (foldMap.has("avg") ? "avg" : sorted[0]?.fold_id));
 
   if (!rootFoldId) return null;
 
@@ -240,7 +242,7 @@ export function buildFoldTree(predictions: PartitionPrediction[]): FoldTreeNode 
   const children: FoldTreeNode[] = [];
 
   // Child ordering: avg, w_avg, then numbered folds
-  const childOrder = ["avg", "w_avg"];
+  const childOrder = ["macro", "avg", "w_avg"];
   for (const fid of childOrder) {
     if (fid !== rootFoldId && foldMap.has(fid)) {
       children.push({ prediction: foldMap.get(fid)!, isRoot: false, children: [] });
