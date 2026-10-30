@@ -90,8 +90,9 @@ describe("setup-python-env", () => {
       "--retries",
       "3",
       "pip==26.2.1",
-      "setuptools==84.0.0",
-      "wheel==0.48.0",
+      "build==1.6.1",
+      "setuptools==84.2.1",
+      "wheel==0.47.0",
       "packaging==26.3",
     ]);
   });
@@ -117,12 +118,12 @@ describe("setup-python-env", () => {
       "utf8",
     );
     expect(setupSource).toContain(
-      'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.10-py3-none-any.whl";',
+      'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.13-py3-none-any.whl";',
     );
     expect(setupSource).toContain(
-      'const PLUGIN_SOURCE_COMMIT = "cf0385173b481e1950b2be893172c8bd4b0640be";',
+      'const PLUGIN_SOURCE_COMMIT = "1b97a3039446dcd1752f0c460b0eddeda3860b0b";',
     );
-    expect(setupSource).toContain('const PLUGIN_SOURCE_EPOCH = "1792163083";');
+    expect(setupSource).toContain('const PLUGIN_SOURCE_EPOCH = "1793315517";');
     expect(setupSource).toContain("await buildPinnedPluginWheel(runtimePython, selectedPluginWheel)");
     expect(setupSource).toContain("normalize-plugin-wheel.py");
     expect(setupSource).not.toContain("PLUGIN_WHEEL_URL");
@@ -175,7 +176,7 @@ describe("setup-python-env", () => {
     const args = setupPythonEnvModule.buildPluginRuntimeInstallArgs(PLUGIN_SUPPORT_PACKAGES, {
       constraintsFile: "build/constraints/plugin-runtime-cpython311.txt",
     });
-    expect(args).toContain("nirs4all-formats==0.2.11");
+    expect(args).toContain("nirs4all-formats==0.2.13");
     expect(args).toContain("build/constraints/plugin-runtime-cpython311.txt");
   });
 

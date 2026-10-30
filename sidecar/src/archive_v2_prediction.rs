@@ -56,10 +56,10 @@ const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
 const CORE_PROJECT_VERSION: &str = "0.4.4";
 const METHODS_ABI_MAJOR: u32 = 2;
-const METHODS_ABI_MINOR: u32 = 17;
-const METHODS_SOURCE_COMMIT: &str = "19432db0739048d6c9f5dd9ab56caba26dc2b562";
-const METHODS_SOURCE_TREE: &str = "d559edb28cf6dd4510d6e6402c374cb4572170a8";
-const METHODS_PROJECT_VERSION: &str = "1.3.4";
+const METHODS_ABI_MINOR: u32 = 20;
+const METHODS_SOURCE_COMMIT: &str = "b246b5029cc62cf0cc369df2611069498f2da183";
+const METHODS_SOURCE_TREE: &str = "8c4b525882dc454d7a4dd1a805fb916b0d22e250";
+const METHODS_PROJECT_VERSION: &str = "1.3.9";
 const WINDOWS_NATIVE_LINKAGE_PROFILE: &str = "studio-msvc-static-crt-v1";
 const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
 
@@ -141,7 +141,7 @@ pub struct CoreArchiveV2PredictionExecutor {
 
 impl CoreArchiveV2PredictionExecutor {
     /// Acquire one exact packaged libn4m identity before advertising the
-    /// capability. The packaged contract fixes ABI 2.17 and this preflight
+    /// capability. The packaged contract fixes ABI 2.20 and this preflight
     /// attests its exact bytes. Core snapshots and re-attests those bytes, then
     /// the n4m binding performs the ABI compatibility call during execution.
     pub fn acquire(
@@ -1834,11 +1834,11 @@ mod tests {
             size: 1,
             sha256: "b".repeat(64),
             abi_major: 2,
-            abi_minor: 17,
+            abi_minor: 20,
         };
         assert_eq!(
             core_methods_executor_identity(&methods),
-            format!("nirs4all-core@0.4.4+libn4m-abi-2.17:{}", "b".repeat(64))
+            format!("nirs4all-core@0.4.4+libn4m-abi-2.20:{}", "b".repeat(64))
         );
     }
 

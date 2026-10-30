@@ -204,6 +204,8 @@ const en = {
       enterSavePath: "Enter save path:",
     },
     fold: {
+      macro: "Mean CV score",
+      macroShort: "CV mean",
       final: "Final (refit)",
       avg: "Average",
       wAvg: "Weighted Avg",

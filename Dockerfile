@@ -12,7 +12,7 @@ ARG NGINX_IMAGE=nginx:1.27.5-bookworm
 FROM scratch AS studio-document-adapter-sources
 COPY ["api/shared/system_info.py", "/api/shared/"]
 COPY ["api/library_operator_availability.py", "api/library_inspector.py", "api/library_prediction_export.py", "api/library_analysis.py", "api/robustness_contract.py", "/api/"]
-COPY ["api/library_documents.py", "api/library_dataset_inspection.py", "api/library_predictions.py", "api/library_prediction_results.py", "api/library_aggregated_results.py", "api/library_aggregated_steps.py", "api/library_playground_views.py", "api/store_adapter.py", "api/library_runtime_config.py", "api/pipeline_canonical.py", "api/pipeline_canonical_branch_merge.py", "api/pipeline_canonical_generators.py", "api/pipeline_canonical_finetune.py", "api/node_registry_loader.py", "/api/"]
+COPY ["api/library_documents.py", "api/library_dataset_inspection.py", "api/library_predictions.py", "api/library_prediction_results.py", "api/library_aggregated_results.py", "api/library_aggregated_steps.py", "api/library_playground_views.py", "api/store_adapter.py", "api/library_runtime_config.py", "api/pipeline_canonical.py", "api/pipeline_canonical_branch_merge.py", "api/pipeline_canonical_generators.py", "api/pipeline_canonical_finetune.py", "api/pipeline_y_processing.py", "api/node_registry_loader.py", "/api/"]
 COPY ["api/shared/json_safe.py", "api/shared/dataset_config.py", "api/shared/operator_catalogue.py", "api/shared/filter_catalogue.py", "api/shared/decimation.py", "/api/shared/"]
 COPY ["api/synthetic_datasets.json", "/api/synthetic_datasets.json"]
 COPY ["api/presets/complex_pls.yaml", "api/presets/complex_trees.yaml", "api/presets/deep_nonlinear_exploration.yaml", "api/presets/fast_result.yaml", "api/presets/nonlinear_exploration.yaml", "api/presets/simple_pls.yaml", "api/presets/simple_trees_boosting.yaml", "api/presets/ultra_pls.yaml", "api/presets/ultra_slow.yaml", "api/presets/ultra_trees.yaml", "/api/presets/"]
@@ -49,7 +49,7 @@ RUN apt-get update \
 WORKDIR /build
 COPY recommended-config.json ./
 COPY --from=studio-document-adapter-sources / /build/
-COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/
+COPY scripts/setup-python-env.cjs scripts/tls-trust.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/
 COPY scripts/normalize-plugin-wheel.py scripts/
 COPY build/constraints/plugin-runtime-cpython311.txt build/constraints/plugin-runtime-cpython311.txt
 RUN --mount=type=cache,target=/python-cache \
@@ -64,7 +64,7 @@ RUN test -n "${NIRS4ALL_METHODS_SHA256}" \
     && mkdir -p backend/native /contract-scripts
 COPY --from=python-plugin-runtime /product/backend/ backend/
 COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/studio-sidecar
-COPY --from=methods-runtime /libn4m.so.2.17.0 backend/native/libn4m.so
+COPY --from=methods-runtime /libn4m.so.2.20.0 backend/native/libn4m.so
 COPY --from=studio-document-adapter-sources / /
 COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/python-runtime-config.cjs /contract-scripts/
 COPY recommended-config.json /recommended-config.json

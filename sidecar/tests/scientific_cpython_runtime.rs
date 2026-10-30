@@ -2,6 +2,8 @@
 
 use std::{
     fs,
+    io::Read,
+    net::{TcpListener, TcpStream},
     os::unix::fs::{symlink, PermissionsExt},
     path::{Path, PathBuf},
     sync::{mpsc, Arc, Mutex},
@@ -12,20 +14,119 @@ use serde_json::{json, Value};
 use studio_sidecar::{
     execution_job_records::read_execution_job_record,
     job_http::{
-        NativeJobRuntime, NativeJobRuntimeError, ScientificExecutionRequest, ScientificJobExecutor,
-        ScientificJobTerminal,
+        JobExecutorError, NativeJobRuntime, NativeJobRuntimeError, ScientificExecutionRequest,
+        ScientificExecutorSelection, ScientificJobExecutor, ScientificJobTerminal,
+        ScientificSubmissionPreflight,
     },
     route_request_with_body,
     scientific_cpython::{
         CpythonScientificJobExecutor, SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT,
         SCIENTIFIC_CPYTHON_HOST_CONTRACT, SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
     },
+    websocket_transport::{
+        handle_websocket_connection, LegacyWebSocketEndpoint, WebSocketConnectionManager,
+    },
     SidecarState,
+};
+use tungstenite::{
+    protocol::{Role, WebSocket},
+    Message,
 };
 
 #[derive(Debug)]
 struct ChannelTerminal {
     sender: Mutex<mpsc::SyncSender<Result<Value, String>>>,
+}
+
+/// Subscribe before registration/start while still delegating to real `CPython`.
+#[derive(Debug)]
+struct ObservedScientificExecutor {
+    inner: Arc<dyn ScientificJobExecutor>,
+    manager: Mutex<Option<Arc<WebSocketConnectionManager>>>,
+    connection: Mutex<Option<ObservedJobEvents>>,
+}
+
+#[derive(Debug)]
+struct ObservedJobEvents {
+    socket: WebSocket<TcpStream>,
+    server: std::thread::JoinHandle<()>,
+}
+
+impl ScientificJobExecutor for ObservedScientificExecutor {
+    fn is_selected(&self) -> bool {
+        self.inner.is_selected()
+    }
+
+    fn unavailability_reason(&self) -> &'static str {
+        self.inner.unavailability_reason()
+    }
+
+    fn preflight_submission(
+        &self,
+        request: &ScientificSubmissionPreflight,
+    ) -> Result<ScientificExecutorSelection, JobExecutorError> {
+        let selection = self.inner.preflight_submission(request)?;
+        let manager = self.manager.lock().unwrap().as_ref().unwrap().clone();
+        let endpoint = LegacyWebSocketEndpoint::Job {
+            job_id: request.job_id.clone(),
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            handle_websocket_connection(stream, "dGhlIHNhbXBsZSBub25jZQ==", &endpoint, &manager)
+                .unwrap();
+        });
+        let mut stream = TcpStream::connect(address).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(120)))
+            .unwrap();
+        // This transport seam starts after the HTTP request was validated.
+        let mut header = Vec::new();
+        while !header.ends_with(b"\r\n\r\n") {
+            let mut byte = [0];
+            stream.read_exact(&mut byte).unwrap();
+            header.push(byte[0]);
+            assert!(header.len() <= 4096);
+        }
+        assert!(header.starts_with(b"HTTP/1.1 101 "));
+        let mut socket = WebSocket::from_raw_socket(stream, Role::Client, None);
+        for expected in ["connected", "subscribed"] {
+            let message = read_event_text(&mut socket);
+            let event: Value = serde_json::from_str(&message).unwrap();
+            assert_eq!(event["type"], expected);
+        }
+        // Receiving subscribed guarantees the observer is ready before start.
+        assert!(self
+            .connection
+            .lock()
+            .unwrap()
+            .replace(ObservedJobEvents { socket, server })
+            .is_none());
+        Ok(selection)
+    }
+
+    fn submit_scientific(
+        &self,
+        request: &ScientificExecutionRequest,
+        terminal: Arc<dyn ScientificJobTerminal>,
+    ) -> Result<(), JobExecutorError> {
+        self.inner.submit_scientific(request, terminal)
+    }
+
+    fn request_cooperative_cancel(&self, job_id: &str) -> Result<(), JobExecutorError> {
+        self.inner.request_cooperative_cancel(job_id)
+    }
+}
+
+fn read_event_text(socket: &mut WebSocket<TcpStream>) -> String {
+    loop {
+        match socket.read().unwrap() {
+            Message::Text(message) => return message.to_string(),
+            Message::Ping(_) | Message::Pong(_) => socket.flush().unwrap(),
+            unexpected => panic!("unexpected lifecycle frame: {unexpected:?}"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -516,7 +617,13 @@ fn selected_wheel_resolves_saved_route_and_persists_only_the_original_request() 
     let executor =
         CpythonScientificJobExecutor::acquire_existing_with_config_dir(&python, site, &config);
     assert!(executor.is_selected(), "{}", executor.unavailable_reason());
-    let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(executor)));
+    let observed_executor = Arc::new(ObservedScientificExecutor {
+        inner: Arc::new(executor),
+        manager: Mutex::new(None),
+        connection: Mutex::new(None),
+    });
+    let runtime = Arc::new(NativeJobRuntime::with_executor(observed_executor.clone()));
+    *observed_executor.manager.lock().unwrap() = Some(runtime.websocket_manager());
     let mut state =
         SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
     let original_request = json!({
@@ -596,7 +703,74 @@ fn selected_wheel_resolves_saved_route_and_persists_only_the_original_request() 
     assert_eq!(record["request"], original_request);
     assert!(!record["request"].to_string().contains("\"X\""));
     assert!(!record["request"].to_string().contains("\"y\""));
-    assert_eq!(runtime.published_event_count(), 2);
-    assert_eq!(runtime.durable_write_count(), 2);
+    let ObservedJobEvents { mut socket, server } =
+        observed_executor.connection.lock().unwrap().take().unwrap();
+    let mut events = Vec::new();
+    loop {
+        let message = read_event_text(&mut socket);
+        let event: Value = serde_json::from_str(&message).unwrap();
+        assert_eq!(event["channel"], format!("job:{job_id}"));
+        let completed = event["type"] == "job_completed";
+        events.push(event);
+        if completed {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "missing terminal event"
+        );
+    }
+    assert_eq!(events.first().unwrap()["type"], "job_started");
+    assert_eq!(events[0]["data"]["id"], job_id);
+    assert_eq!(events[0]["data"]["status"], "running");
+    let terminal = events.last().unwrap();
+    assert_eq!(terminal["data"]["job_id"], job_id);
+    assert_eq!(
+        runtime
+            .get_at(job_id, std::time::Instant::now())
+            .unwrap()
+            .result
+            .as_ref(),
+        Some(&terminal["data"]["result"])
+    );
+    for event in &events[1..events.len() - 1] {
+        assert_eq!(event["type"], "job_progress");
+        assert_eq!(event["data"]["job_id"], job_id);
+        assert_eq!(event["data"]["progress"].as_f64(), Some(0.0));
+        assert_eq!(event["data"]["metrics"], json!({}));
+        let elapsed = event["data"]["message"]
+            .as_str()
+            .unwrap()
+            .strip_prefix("Scientific computation running · ")
+            .unwrap()
+            .strip_suffix("s elapsed. Fit progress is unavailable.")
+            .unwrap();
+        assert!(elapsed.parse::<u64>().is_ok());
+    }
+    let progress_count = u64::try_from(events.len() - 2).unwrap();
+    // One start, truthful activity, one completion.
+    let expected = 2 + progress_count;
+    // Completed state is committed before its event is published: wait for the
+    // observed terminal publication instead of racing the relaxed counter.
+    while runtime.published_event_count() < expected {
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(runtime.published_event_count(), expected);
+    assert_eq!(runtime.durable_write_count(), expected);
+    socket.close(None).unwrap();
+    loop {
+        match socket.read() {
+            Ok(Message::Text(message)) => panic!("event after terminal: {message}"),
+            Ok(Message::Close(_))
+            | Err(tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed) => {
+                break
+            }
+            Ok(Message::Ping(_) | Message::Pong(_)) => socket.flush().unwrap(),
+            Ok(unexpected) => panic!("unexpected closing frame: {unexpected:?}"),
+            Err(error) => panic!("websocket close failed: {error}"),
+        }
+    }
+    server.join().unwrap();
     fs::remove_dir_all(root).unwrap();
 }

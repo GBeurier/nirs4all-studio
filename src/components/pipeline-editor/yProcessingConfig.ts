@@ -74,9 +74,9 @@ export const Y_PROCESSING_OPTIONS = [
     name: "RangeDiscretizer",
     descriptionKey: "pipelineEditor.yProcessing.options.RangeDiscretizer.description",
     category: "Discretization",
-    defaultParams: { ranges: "0,10,20,30" },
+    defaultParams: { bins: "0,10,20,30" },
     paramDescriptionKeys: {
-      ranges: "pipelineEditor.yProcessing.paramDescription.ranges",
+      bins: "pipelineEditor.yProcessing.paramDescription.ranges",
     },
     recommendationKeys: ["pipelineEditor.yProcessing.recommendation.domainThresholds", "pipelineEditor.yProcessing.recommendation.customClasses"],
     icon: "🎯",

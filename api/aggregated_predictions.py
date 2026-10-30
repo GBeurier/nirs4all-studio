@@ -115,6 +115,8 @@ class ChainSummary(BaseModel):
     cv_train_score: float | None = None
     cv_fold_count: int = 0
     cv_scores: Any | None = None
+    cv_summary_fold_id: str | None = None
+    target_domain_context: str | None = None
     score_maps: Any | None = None
     cv_source_chain_id: str | None = None
     # Final/refit scores
@@ -1435,6 +1437,15 @@ async def get_top_aggregated_predictions(
                 "score_column": score_column,
                 "generated_at": datetime.now(UTC).isoformat(),
             }
+        except ValueError as exc:
+            # Keep the native reader (and polars) optional at API import time.
+            from nirs4all.pipeline.storage.target_domain_summary import TargetDomainComparisonError
+
+            from .native_results_adapter import NativeTargetDomainComparisonError
+
+            if isinstance(exc, (NativeTargetDomainComparisonError, TargetDomainComparisonError)):
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            raise
         finally:
             store.close()
 

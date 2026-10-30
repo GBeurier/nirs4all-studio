@@ -411,6 +411,10 @@ fn serialize_chain(row: &SummaryRow, is_refit_only: bool) -> Value {
         "variant_params": variant_params,
         "synthetic_refit": row.synthetic_refit,
     });
+    if let Some(context) = &row.source.target_domain_context {
+        payload["cv_summary_fold_id"] = json!("macro");
+        payload["target_domain_context"] = json!(context);
+    }
     if is_refit_only {
         payload
             .as_object_mut()
@@ -759,6 +763,7 @@ mod tests {
             final_agg_train_score: None,
             final_agg_scores: json!({}),
             best_params: None,
+            target_domain_context: None,
         };
 
         let summary = build_results_summary(vec![source], "workspace", &[]);

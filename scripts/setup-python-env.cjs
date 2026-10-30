@@ -40,6 +40,7 @@ const https = require("https");
 const http = require("http");
 const { pipeline } = require("node:stream/promises");
 const { randomUUID } = require("node:crypto");
+const { tlsRequestOptions, explainNetworkError } = require("./tls-trust.cjs");
 const {
   assertProfileSupportedOnPlatform,
   PYTHON_VERSION,
@@ -68,20 +69,21 @@ const PRUNED_LAUNCHER_RECORD_PREFIXES = Object.freeze([
   "../../../Scripts/",
 ]);
 const PRUNED_LAUNCHER_RECORD_FILES = Object.freeze(["../../Scripts/nirs4all.exe"]);
-const PLUGIN_SOURCE_COMMIT = "cf0385173b481e1950b2be893172c8bd4b0640be";
+const PLUGIN_SOURCE_COMMIT = "1b97a3039446dcd1752f0c460b0eddeda3860b0b";
 const PLUGIN_SOURCE_REPOSITORY = "https://github.com/GBeurier/nirs4all.git";
-const PLUGIN_SOURCE_EPOCH = "1792163083";
-const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.10-py3-none-any.whl";
-const PLUGIN_WHEEL_SHA256 = "edbc3bccfcce44df114dfd704c547d5be1b0e5e73ffad65250901c4f09698eed";
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "7f7f88e696172ed0c43e41b78cc54e509b7ed53959c378d4d520ad1e87b2821e";
+const PLUGIN_SOURCE_EPOCH = "1793315517";
+const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.13-py3-none-any.whl";
+const PLUGIN_WHEEL_SHA256 = "70da0407048e60b834c5c0fc3d49296ef3e75e2adf93736d07ccf5f2b0fad7c9";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "119db086fe897841db36490f802a3082ab811db9bc115a7c5a3760ad7feaeee3";
 const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
 const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";
 const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
 const TOOLS_WHEEL_URL = "https://files.pythonhosted.org/packages/10/19/68649801e059cf243393585e75a7ca125cddde202d12f555eed1baeb159a/nirs4all_tools-0.0.8-py3-none-any.whl";
 const WHEEL_BUILD_TOOLCHAIN = Object.freeze([
   "pip==26.2.1",
-  "setuptools==84.0.0",
-  "wheel==0.48.0",
+  "build==1.6.1",
+  "setuptools==84.2.1",
+  "wheel==0.47.0",
   "packaging==26.3",
 ]);
 const PLUGIN_PIP_NETWORK_ARGS = Object.freeze(["--timeout", "60", "--retries", "3"]);
@@ -387,8 +389,8 @@ async function buildPinnedPluginWheel(runtimePython, destination) {
     if (identity !== `${PLUGIN_SOURCE_COMMIT}\n${PLUGIN_SOURCE_EPOCH}`) {
       throw new Error("Plugin source commit or epoch differs from the qualified recipe");
     }
-    await runCommandWithRetries(buildExecutable, ["-I", "-m", "pip", "wheel", "--no-build-isolation", "--no-deps",
-      "--wheel-dir", rawWheelDir, source], { env }, { retries: 1, label: "build immutable plugin wheel" });
+    await runCommandWithRetries(buildExecutable, ["-I", "-m", "build", "--wheel", "--no-isolation",
+      "--outdir", rawWheelDir, source], { env }, { retries: 1, label: "build immutable plugin wheel" });
     await runCommand(buildExecutable, ["-I", path.join(projectRoot, "scripts", "normalize-plugin-wheel.py"),
       "--input", path.join(rawWheelDir, PLUGIN_WHEEL_FILENAME), "--output", destination,
       "--epoch", PLUGIN_SOURCE_EPOCH, "--expected-manifest", PLUGIN_INSTALLED_MANIFEST_SHA256]);
@@ -727,7 +729,8 @@ async function downloadFile(url, destPath, options = {}) {
         if (!["http:", "https:"].includes(currentUrl.protocol)) throw new Error("Unsupported download URL protocol");
         const protocol = currentUrl.protocol === "https:" ? https : http;
         response = await new Promise((resolve, reject) => {
-          const request = protocol.get(currentUrl, { signal: controller.signal }, resolve);
+          const trust = currentUrl.protocol === "https:" ? tlsRequestOptions() : {};
+          const request = protocol.get(currentUrl, { ...trust, signal: controller.signal }, resolve);
           request.setTimeout(timeoutMs, () => request.destroy(new Error("Download timed out waiting for data")));
           request.once("error", reject);
         });
@@ -762,7 +765,7 @@ async function downloadFile(url, destPath, options = {}) {
     } catch (error) {
       response?.destroy();
       await fs.promises.rm(partial, { force: true });
-      if (attempt >= retries) throw error;
+      if (attempt >= retries) throw explainNetworkError(error);
     } finally {
       clearTimeout(deadline);
       controller.abort();
@@ -1155,7 +1158,7 @@ async function main() {
     );
     if (pluginOnly) {
       await removePrunedLauncherRecordRows(runtimePython, backendDist);
-      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.4.10");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.4.13");
       await restorePinnedWheelRecord(runtimePython, backendDist, selectedToolsWheel, "nirs4all_tools", "0.0.8");
       console.log("  Restored both exact pinned wheel RECORDs after isolated installation");
     }

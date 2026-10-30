@@ -31,6 +31,8 @@ export interface ChainSummary {
   cv_scores: Record<string, Record<string, number>> | null;
   score_maps?: unknown | null;
   cv_source_chain_id?: string | null;
+  cv_summary_fold_id?: "macro" | null;
+  target_domain_context?: string | null;
   // Final/refit scores
   final_test_score: number | null;
   final_train_score: number | null;

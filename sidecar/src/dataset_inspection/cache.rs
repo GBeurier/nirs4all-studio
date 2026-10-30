@@ -89,7 +89,7 @@ fn stamp(path: &Path, hash_budget: &mut u64) -> Option<FileStamp> {
             .ok()?
             .take(before.size.checked_add(1)?);
         let mut digest = Sha256::new();
-        let mut buffer = [0_u8; 65536];
+        let mut buffer = vec![0_u8; 64 * 1024];
         let mut read = 0_u64;
         loop {
             let count = file.read(&mut buffer).ok()?;

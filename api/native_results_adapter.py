@@ -70,7 +70,7 @@ import polars as pl
 # cross-fold AGGREGATE rows (the OOF summary), not real folds — used for the CV summary score but
 # excluded from the real-fold count.
 _REFIT_CONFIG_SUFFIX = "_refit"
-_AGGREGATE_FOLD_IDS = frozenset({"avg", "w_avg"})
+_AGGREGATE_FOLD_IDS = frozenset({"macro", "avg", "w_avg"})
 
 # The legacy ``v_chain_summary`` VIEW columns plus native-only additive fields, WITH their polars dtypes,
 # in order. The chain-summary endpoints build ``ChainSummary`` rows from these keys; we emit a typed
@@ -97,6 +97,8 @@ _CHAIN_SUMMARY_SCHEMA: dict[str, pl.DataType] = {
     "cv_train_score": pl.Float64,
     "cv_fold_count": pl.Int64,
     "cv_scores": pl.Object,
+    "cv_summary_fold_id": pl.Utf8,
+    "target_domain_context": pl.Utf8,
     "score_maps": pl.Object,
     "final_test_score": pl.Float64,
     "final_train_score": pl.Float64,
@@ -112,6 +114,41 @@ _CHAIN_SUMMARY_SCHEMA: dict[str, pl.DataType] = {
     "pipeline_status": pl.Utf8,
 }
 _CHAIN_SUMMARY_COLUMNS: tuple[str, ...] = tuple(_CHAIN_SUMMARY_SCHEMA)
+
+
+class NativeTargetDomainComparisonError(ValueError):
+    """Native scores do not share a comparable captured target protocol."""
+
+
+def _variant_target_domain_context(rows: list[dict[str, Any]], *, macro: bool) -> str | None:
+    """Retain the SDK's opaque context identity; never reconstruct its hash."""
+    contexts: list[Any] = []
+    for row in rows:
+        metadata = row.get("result_metadata")
+        projection = metadata.get("dagml_projection") if isinstance(metadata, dict) else None
+        contexts.append(projection.get("target_domain_context") if isinstance(projection, dict) else None)
+    if not macro and all(context is None for context in contexts):
+        return None
+    if (not contexts or any(not isinstance(context, str) or not context for context in contexts)
+            or len(set(contexts)) != 1):
+        raise NativeTargetDomainComparisonError(
+            "Native target-domain rows lack one consistent captured SDK context; inspect the original run."
+        )
+    return contexts[0]
+
+
+def _validate_ranked_target_contexts(rows: list[dict[str, Any]]) -> None:
+    """Permit rankings only inside the exact SDK-attested target context."""
+    if not any(row.get("cv_summary_fold_id") == "macro" or row.get("target_domain_context") is not None for row in rows):
+        return
+    contexts = [row.get("target_domain_context") for row in rows]
+    if (any(not isinstance(context, str) or not context for context in contexts)
+            or len(set(contexts)) != 1
+            or any(row.get("cv_summary_fold_id") != "macro" for row in rows)):
+        raise NativeTargetDomainComparisonError(
+            "Cannot rank results across different native target-domain protocols (macrofold, pooled OOF, "
+            "or different bin recipes/partitions). Inspect individual runs or select an explicit source."
+        )
 
 # Legacy ``score_column`` validation + alias mapping, matching
 # nirs4all.pipeline.storage.store_queries.build_top_chains_query so query_top_chains accepts the SAME
@@ -687,9 +724,10 @@ class NativeResultsAdapter:
         """One chain-summary dict per variant in a native run, from the library-projected rows.
 
         Rows are grouped by BASE variant (the ``"{base}_refit"`` config folds into ``base``). The
-        cross-fold AGGREGATE CV row (``fold_id == "avg"``) supplies ``cv_val_score`` / ``cv_test_score``
-        / ``cv_train_score`` (the library's own OOF summary; no re-averaging here); the real-fold count
-        excludes the ``avg`` / ``w_avg`` aggregate rows. The refit/final rows
+        native scalar CV summary supplies ``cv_val_score`` / ``cv_test_score`` / ``cv_train_score``.
+        ``macro`` is the mean of fold scores; ``avg`` is an OOF prediction summary. Both are read
+        verbatim from the library, without re-averaging here. The real-fold count
+        excludes the score-only ``macro`` and ``avg`` / ``w_avg`` aggregate rows. The refit/final rows
         (``refit_context`` set / ``fold_id == "final"``) supply ``final_test_score`` /
         ``final_train_score``. All scores come straight from the row scalars the library projected from
         the ScoreSet.
@@ -715,9 +753,13 @@ class NativeResultsAdapter:
             cv_rows = [r for r in variant_rows if not self._is_refit_row(r)]
             refit_rows = [r for r in variant_rows if self._is_refit_row(r)]
 
-            # CV summary: prefer the cross-fold AGGREGATE row (fold_id == "avg") the library emits as the
-            # OOF summary; that is exactly the ScoreSet's (variant, "validation", "avg") report.
+            # Read the library's selected CV protocol directly: macro fold score
+            # or pooled OOF score. They are distinct protocols, never recomputed here.
             cv_summary = self._aggregate_cv_row(cv_rows)
+            cv_summary_fold_id = str(cv_summary.get("fold_id") or "") if cv_summary else None
+            target_domain_context = _variant_target_domain_context(
+                variant_rows, macro=cv_summary_fold_id == "macro",
+            )
             cv_val = _finite(cv_summary.get("val_score")) if cv_summary else None
             cv_test = _finite(cv_summary.get("test_score")) if cv_summary else None
             cv_train = _finite(cv_summary.get("train_score")) if cv_summary else None
@@ -769,6 +811,8 @@ class NativeResultsAdapter:
                     "cv_train_score": cv_train,
                     "cv_fold_count": cv_fold_count,
                     "cv_scores": cv_scores,
+                    "cv_summary_fold_id": cv_summary_fold_id,
+                    "target_domain_context": target_domain_context,
                     "score_maps": score_maps,
                     "final_test_score": final_test,
                     "final_train_score": final_train,
@@ -795,7 +839,7 @@ class NativeResultsAdapter:
 
     @staticmethod
     def _aggregate_cv_row(cv_rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-        """The cross-fold OOF summary row (``fold_id == "avg"``), else any CV row (else ``None``).
+        """The native scalar CV summary (``macro`` or ``avg``), else a real CV row.
 
         The library projects an ``avg`` aggregate row carrying the variant's OOF summary scores — the
         same numbers as the ScoreSet's ``(variant, "validation", "avg")`` report — so we read that
@@ -803,9 +847,16 @@ class NativeResultsAdapter:
         """
         if not cv_rows:
             return None
-        for row in cv_rows:
-            if str(row.get("fold_id") or "") == "avg":
-                return row
+        fold_ids = {str(row.get("fold_id") or "") for row in cv_rows}
+        if "macro" in fold_ids and fold_ids.intersection({"avg", "w_avg"}):
+            raise NativeTargetDomainComparisonError(
+                "Native CV rows mix macrofold and pooled OOF summaries in one variant; inspect the original run."
+            )
+        # A macro row is the native mean of fold scores, with no pooled arrays.
+        for summary_id in ("macro", "avg"):
+            for row in cv_rows:
+                if str(row.get("fold_id") or "") == summary_id:
+                    return row
         return cv_rows[0]
 
     def _all_summaries(self) -> list[dict[str, Any]]:
@@ -903,6 +954,7 @@ class NativeResultsAdapter:
             and (metric is None or self._matches(row.get("metric"), metric))
         ]
         ranked = [row for row in rows if _finite(row.get(resolved_column)) is not None]
+        _validate_ranked_target_contexts(ranked)
         ranked.sort(key=lambda row: _finite(row.get(resolved_column)), reverse=not ascending)
         page = ranked[offset : offset + n]
         return self._summaries_df(page)

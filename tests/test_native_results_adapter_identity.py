@@ -22,6 +22,28 @@ class _FakePredictions:
         return [dict(row) for row in self._rows]
 
 
+def test_macro_summary_uses_native_scalar_without_counting_an_extra_fold() -> None:
+    rows = [
+        {"config_name": "classes", "fold_id": "0", "val_score": 0.9},
+        {"config_name": "classes", "fold_id": "1", "val_score": 0.3},
+        {"config_name": "classes", "fold_id": "macro", "val_score": 0.6,
+         "scores": {"val": {"balanced_accuracy": 0.6}}, "y_true": None, "y_pred": None},
+    ]
+    for row in rows:
+        row["result_metadata"] = {"dagml_projection": {"target_domain_context": "tcv1:classes"}}
+    adapter = NativeResultsAdapter.__new__(NativeResultsAdapter)
+    summary = adapter._variant_summaries("run-macro", {
+        "manifest": {"metric": "balanced_accuracy", "task_type": "classification"},
+        "predictions": _FakePredictions(rows),
+    })[0]
+    assert summary["cv_val_score"] == 0.6
+    assert summary["cv_fold_count"] == 2
+    assert summary["cv_scores"] == {"val": {"balanced_accuracy": 0.6}}
+    assert summary["cv_summary_fold_id"] == "macro"
+    assert summary["target_domain_context"] == "tcv1:classes"
+    assert rows[2]["y_true"] is None and rows[2]["y_pred"] is None
+
+
 def test_native_base_config_strips_refit_suffix() -> None:
     assert _native_base_config("foo_refit") == "foo"
     assert _native_base_config("foo") == "foo"

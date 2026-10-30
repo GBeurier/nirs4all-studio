@@ -276,7 +276,10 @@ class TestStoreAdapter:
         count_df = MagicMock()
         count_df.__len__ = lambda self: 1
         count_df.row = MagicMock(return_value={"cnt": 3})
-        mock_store._fetch_pl.side_effect = [count_df, mock_polars_df([
+        domain_df = MagicMock()
+        domain_df.__len__ = lambda self: 1
+        domain_df.row.return_value = {"count": 0}
+        mock_store._fetch_pl.side_effect = [domain_df, count_df, mock_polars_df([
             {"name": "PLSRegression", "count": 2, "avg_val_score": 0.2},
             {"name": "RandomForestRegressor", "count": 1, "avg_val_score": 0.3},
         ])]

@@ -884,7 +884,7 @@ def test_align_config_package_install_failure_does_not_log_error(monkeypatch, ca
     monkeypatch.setattr(
         rc.venv_manager,
         "install_package",
-        lambda package, **kwargs: (False, "pip install failed", ["pip install failed"]),
+        lambda package, **kwargs: (False, "pip install failed with code 1:\nERROR: No matching distribution found for nirs4all", ["ERROR: No matching distribution found for nirs4all"]),
     )
 
     with caplog.at_level("WARNING", logger="api.recommended_config"):
@@ -1085,3 +1085,24 @@ def test_compare_config_does_not_duplicate_visible_profile_managed_optional(monk
     result = asyncio.run(rc.compare_config(profile="cpu", include_optional=True))
 
     assert [pkg.name for pkg in result.packages].count("tabicl") == 1
+
+
+def test_align_config_unexpected_manager_failure_logs_exception(monkeypatch, caplog):
+    from api import recommended_config as rc
+
+    monkeypatch.setattr(rc.sys, "platform", "linux")
+    monkeypatch.setattr(rc, "_load_active_raw_config", _lite_raw_config)
+    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {})
+    monkeypatch.setattr(rc, "_detect_gpu", _no_gpu)
+    monkeypatch.setattr(rc._config_cache, "set_setup_status", lambda profile: None)
+
+    def broken_manager(*args, **kwargs):
+        raise RuntimeError("unexpected manager defect")
+
+    monkeypatch.setattr(rc.venv_manager, "install_package", broken_manager)
+    with caplog.at_level("WARNING", logger="api.recommended_config"):
+        result = asyncio.run(rc.align_config(rc.AlignConfigRequest(profile="cpu-lite")))
+
+    assert result.success is False
+    assert "unexpected manager defect" in result.failures[0].error
+    assert any(record.levelname == "ERROR" and record.exc_info for record in caplog.records)

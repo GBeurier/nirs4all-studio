@@ -32,7 +32,7 @@ from fastapi.staticfiles import StaticFiles
 _t1 = time.perf_counter()
 
 from api.shared.logger import get_logger, setup_logging
-from api.shared.sentry import backend_before_send
+from api.shared.sentry import backend_before_send, is_test_runtime
 
 setup_logging()
 logger = get_logger(__name__)
@@ -43,7 +43,7 @@ logger.info("STARTUP TIMING: FastAPI/uvicorn imports: %.2fs, logger setup: %.2fs
 # Initialize Sentry crash reporting only when explicitly enabled by the
 # Electron shell or deployment environment. Set SENTRY_DSN="" to disable.
 _sentry_dsn = os.environ.get("SENTRY_DSN")
-if _sentry_dsn:
+if _sentry_dsn and not is_test_runtime():
     try:
         import sentry_sdk
         _app_version = os.environ.get("NIRS4ALL_APP_VERSION")

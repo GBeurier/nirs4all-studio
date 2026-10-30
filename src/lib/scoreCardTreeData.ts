@@ -92,6 +92,7 @@ export function selectPreferredScoreCardPrediction(
 ): PartitionPrediction | undefined {
   if (!predictions || predictions.length === 0) return undefined;
   return predictions.find((prediction) => prediction.fold_id === 'final')
+    ?? predictions.find((prediction) => prediction.fold_id === 'macro')
     ?? predictions.find((prediction) => prediction.fold_id === 'avg')
     ?? predictions.find((prediction) => prediction.fold_id === 'w_avg')
     ?? predictions.find((prediction) => prediction.partition === 'test')

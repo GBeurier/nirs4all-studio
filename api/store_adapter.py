@@ -1313,6 +1313,16 @@ class StoreAdapter:
         Returns:
             Dict with total count, top predictions, model breakdown, and stats.
         """
+        # Fold-local class domains have no common prediction/label space.
+        # This legacy dashboard aggregates prediction rows, rather than native
+        # macro chain scores, and cannot assign a comparable average to them.
+        domain_where = " AND dataset_name LIKE $1" if dataset_name is not None else ""
+        domain_rows = self._store._fetch_pl(
+            "SELECT COUNT(*) AS count FROM predictions WHERE fold_id = 'macro'" + domain_where,
+            [dataset_name] if dataset_name is not None else [],
+        )
+        if len(domain_rows) and domain_rows.row(0, named=True).get("count", 0):
+            raise ValueError("Prediction-row rankings are unavailable for fold-local target domains; use chain macro scores")
         # Aggregate in SQL: summary cost must not materialize every prediction.
         total = self._count_predictions(dataset_name=dataset_name)
 
