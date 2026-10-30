@@ -1143,7 +1143,7 @@ async def align_config(request: AlignConfigRequest):
                 force_reinstall=install_spec.force_reinstall,
             )
             if not success:
-                log_failure = logger.warning if is_missing_distribution_refusal(output) else logger.error
+                log_failure = logger.warning if is_missing_distribution_refusal(message, output) else logger.error
                 log_failure("Failed to install %s: %s", install_spec.display_spec, message)
                 failed_pkgs.append(install_spec.display_spec)
                 failure_details.append(PackageFailure(

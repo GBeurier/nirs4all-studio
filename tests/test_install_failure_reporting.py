@@ -101,10 +101,11 @@ def test_unexpected_install_manager_failure_remains_reportable(monkeypatch, sent
 
 
 @pytest.mark.parametrize("failure", [RuntimeError("unexpected manager defect"), PermissionError("Permission denied"), subprocess.TimeoutExpired("pip", 600)])
-def test_operational_install_failure_keeps_traceback_and_500(monkeypatch, sentry_events, failure):
+@pytest.mark.parametrize("partial_output", ["", "ERROR: No matching distribution found for numpy\n"])
+def test_operational_install_failure_keeps_traceback_and_500(monkeypatch, sentry_events, failure, partial_output):
     class BrokenPip:
         returncode = None
-        stdout = io.StringIO("")
+        stdout = io.StringIO(partial_output)
 
         def wait(self, **kwargs):
             if self.returncode is None:
@@ -125,10 +126,16 @@ def test_operational_install_failure_keeps_traceback_and_500(monkeypatch, sentry
     )
 
 
-def test_tls_failure_ending_in_missing_distribution_remains_reportable(monkeypatch, sentry_events):
+@pytest.mark.parametrize("diagnostic", [
+    "WARNING: Retrying after SSLError: certificate verify failed",
+    "Could not fetch URL https://example.invalid/simple/numpy/: SSLError: certificate verify failed - skipping",
+    "Retrying after connection failure",
+    "OSError: Permission denied",
+])
+def test_operational_diagnostic_ending_in_missing_distribution_remains_reportable(monkeypatch, sentry_events, diagnostic):
     class RefusedPip:
         stdout = io.StringIO(
-            "WARNING: Retrying after SSLError: certificate verify failed\n"
+            diagnostic + "\n" +
             "ERROR: Could not find a version that satisfies the requirement numpy\n"
             "ERROR: No matching distribution found for numpy\n"
         )
