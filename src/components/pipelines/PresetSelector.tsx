@@ -2,6 +2,8 @@
  * PresetSelector component for pipeline presets
  */
 
+import { PipelinePresetCard } from "nirs4all-ui/components";
+import "nirs4all-ui/assets/pipeline-presets.css";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import {
@@ -29,7 +31,6 @@ import {
 import { cn } from "@/lib/utils";
 import type { PipelinePreset, PipelinePresetVariantId } from "@/types/pipelines";
 import {
-  buildPresetCardModel,
   clampPresetComplexity,
   getPresetComplexityMeta,
   getPresetTaskColorKey,
@@ -144,32 +145,6 @@ function PresetComplexityBadge({
   );
 }
 
-function StatCell({
-  label,
-  value,
-  emphasize = false,
-}: {
-  label: string;
-  value: string | number;
-  emphasize?: boolean;
-}) {
-  return (
-    <div className="flex flex-col">
-      <span
-        className={cn(
-          "font-semibold tabular-nums leading-none",
-          emphasize ? "text-base text-primary" : "text-sm text-foreground"
-        )}
-      >
-        {value}
-      </span>
-      <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
-    </div>
-  );
-}
-
 export function PresetSelector({
   presets,
   onSelect,
@@ -272,102 +247,38 @@ export function PresetSelector({
       >
         {presets.map((preset) => {
           const Icon = presetIcons[preset.id] || presetIcons.default;
-          const card = buildPresetCardModel(preset);
-          const { variants, stats, preview, complexity, complexityMeta } = card;
+          const complexityMeta = getPresetComplexityMeta(preset.complexity);
           const ComplexityIcon = complexityIcons[complexityMeta.key];
-
           return (
             <motion.div key={preset.id} variants={itemVariants}>
-              <div className="step-card group flex h-full flex-col">
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 rounded bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-                    <Icon className="h-3 w-3" />
-                    {t("pipelines.presetSelector.template")}
-                  </div>
-                  <PresetComplexityBadge complexity={complexity} />
-                </div>
-
-                <h3 className="truncate text-base font-semibold text-foreground">
-                  {preset.name}
-                </h3>
-                {preset.description && (
-                  <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
-                    {preset.description}
-                  </p>
+              <PipelinePresetCard
+                preset={preset}
+                templateIcon={<Icon />}
+                labels={{
+                  template: t("pipelines.presetSelector.template"),
+                  ops: t("pipelines.collection.stats.ops"),
+                  models: t("pipelines.collection.stats.models"),
+                  branches: t("pipelines.collection.stats.branches"),
+                  variants: t("pipelines.collection.stats.variants"),
+                }}
+                complexityBadge={<PresetComplexityBadge complexity={preset.complexity} />}
+                complexityHint={<><ComplexityIcon className={complexityMeta.iconClass} />{t(`pipelines.presetSelector.complexity.${complexityMeta.key}.hint`)}</>}
+                previewIcons={{
+                  branch: <GitBranch className="text-accent" />,
+                  model: <Cpu className="text-primary" />,
+                  step: <Boxes className="text-muted-foreground/70" />,
+                  generator: <Sparkles className="text-amber-500" />,
+                }}
+                moreSteps={(count) => t("pipelines.collection.moreSteps", { count })}
+                renderVariant={(variantId) => (
+                  <Button size="sm" variant="outline"
+                    onClick={() => onSelect(preset.id, variantId)}
+                    className={cn(fullVariantButtonClass, "w-full", variantButtonToneStyles[variantId])}
+                  >
+                    {t(`pipelines.presetSelector.variants.${variantId}`)}
+                  </Button>
                 )}
-
-                <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <ComplexityIcon className={cn("h-3.5 w-3.5", complexityMeta.iconClass)} />
-                  <span>{t(`pipelines.presetSelector.complexity.${complexityMeta.key}.hint`)}</span>
-                </div>
-
-                <div className="mt-3 grid grid-cols-4 gap-2 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
-                  <StatCell
-                    label={t("pipelines.collection.stats.ops")}
-                    value={card.operatorCount}
-                  />
-                  <StatCell label={t("pipelines.collection.stats.models")} value={stats.models} />
-                  <StatCell label={t("pipelines.collection.stats.branches")} value={stats.branches} />
-                  <StatCell
-                    label={t("pipelines.collection.stats.variants")}
-                    value={card.variantCount}
-                    emphasize={stats.hasGenerators}
-                  />
-                </div>
-
-                {preview.nodes.length > 0 && (
-                  <ul className="mt-3 space-y-1 text-xs">
-                    {preview.nodes.map((node) => (
-                      <li
-                        key={node.id}
-                        className="flex items-center gap-2 text-muted-foreground"
-                        style={{ paddingLeft: `${node.depth * 12}px` }}
-                      >
-                        {node.kind === "branch" ? (
-                          <GitBranch className="h-3 w-3 text-accent" />
-                        ) : node.kind === "model" ? (
-                          <Cpu className="h-3 w-3 text-primary" />
-                        ) : (
-                          <Boxes className="h-3 w-3 text-muted-foreground/70" />
-                        )}
-                        <span className="truncate text-foreground/80">{node.label}</span>
-                        {node.hasGenerator && (
-                          <Sparkles className="h-3 w-3 flex-shrink-0 text-amber-500" />
-                        )}
-                      </li>
-                    ))}
-                    {preview.truncated && (
-                      <li className="pl-0.5 text-[11px] italic text-muted-foreground/70">
-                        {t("pipelines.collection.moreSteps", { count: preview.totalSteps - preview.nodes.length })}
-                      </li>
-                    )}
-                  </ul>
-                )}
-
-                <div
-                  className={cn(
-                    "mt-auto pt-3",
-                    variants.length > 1 ? "grid grid-cols-2 gap-2" : "flex"
-                  )}
-                >
-                  {variants.map((variantId) => (
-                    <Button
-                      key={variantId}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onSelect(preset.id, variantId)}
-                      className={cn(
-                        fullVariantButtonClass,
-                        "w-full",
-                        variants.length === 1 && "flex-1",
-                        variantButtonToneStyles[variantId]
-                      )}
-                    >
-                      {t(`pipelines.presetSelector.variants.${variantId}`)}
-                    </Button>
-                  ))}
-                </div>
-              </div>
+              />
             </motion.div>
           );
         })}

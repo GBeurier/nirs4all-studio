@@ -517,3 +517,12 @@ html.zoom-150 { zoom: 1.50 !important; }
     overflow-x: hidden;
   }
 }
+
+/* Shared preset cards follow the active Studio theme. */
+.n4-preset-card {
+  --n4-color-text: hsl(var(--foreground));
+  --n4-color-muted: hsl(var(--muted-foreground));
+  --n4-color-border: hsl(var(--border));
+  --n4-color-surface: hsl(var(--card));
+  --n4-color-primary: hsl(var(--primary));
+}
