@@ -4342,7 +4342,7 @@ done"#,
         .unwrap();
         verify_packaged_runtime_identity(&identity).unwrap();
         assert_eq!(identity.full_hash_scans.load(Ordering::Relaxed), 0);
-        assert!(identity.snapshot.lock().unwrap().files.is_empty());
+        assert_eq!(identity.snapshot.lock().unwrap().files, []);
         fs::write(&closure, "changed manifest").unwrap();
         assert_eq!(
             verify_packaged_runtime_identity(&identity),

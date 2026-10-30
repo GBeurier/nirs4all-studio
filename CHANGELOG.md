@@ -10,7 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [0.15.6] — 2026-10-30
+## [0.15.7] — 2026-10-30
 
 ### Changed
 
@@ -36,9 +36,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.15.6] — Not released
+
+- Superseded by 0.15.7 after Clippy 1.99 rejected an assertion style in a
+  regression test. No installer was published.
+
+---
+
 ## [0.15.5] — Not released
 
-- Superseded by 0.15.6 after the release gate detected inconsistent application
+- Superseded after the release gate detected inconsistent application
   version metadata. No installer was published.
 
 ---
