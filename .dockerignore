@@ -31,6 +31,7 @@ api/*
 !api/pipeline_canonical_branch_merge.py
 !api/pipeline_canonical_generators.py
 !api/pipeline_canonical_finetune.py
+!api/pipeline_y_processing.py
 !api/node_registry_loader.py
 !api/shared/
 api/shared/*
