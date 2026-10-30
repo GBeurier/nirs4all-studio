@@ -57,6 +57,7 @@ import { checkPythonEnv, detectExistingEnvs } from "./env/env-detection";
 import { clearVerifyCache, computeEnvFingerprint, readVerifyCache, writeVerifyCache } from "./env/verify-cache";
 import { validatePythonRuntime } from "./env/runtime-validation";
 import { prepareRuntimeAdapters } from "./env/runtime-adapters";
+import { checkRuntimePackageVersions } from "./env/runtime-version-check";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
@@ -255,6 +256,22 @@ export class EnvManager {
   async prepareSelectedRuntimeAdapters(): Promise<void> {
     const pythonPath = this.getConfiguredPythonPath();
     if (pythonPath && !this.isBundled()) this.preparedSitePackages = await prepareRuntimeAdapters(pythonPath);
+  }
+
+  /** Check package versions on first launch, app update, or explicit env change. */
+  async checkPackageVersions(force = false): Promise<boolean> {
+    const pythonPath = this.getConfiguredPythonPath();
+    if (!pythonPath) return false;
+    const error = await checkRuntimePackageVersions({
+      pythonPath,
+      appVersion: app.getVersion(),
+      userDataDir: app.getPath("userData"),
+      reused: !this.isBundled(),
+      force,
+    });
+    this.lastError = error;
+    this.status = error ? "error" : "ready";
+    return error === null;
   }
 
   /** Get the site-packages path */
@@ -748,7 +765,14 @@ export class EnvManager {
 
     let preparedSitePackages: string | null;
     try {
-      await validatePythonRuntime(pythonPath, { reused: !bundledSelection, checkDependencies: false });
+      const versionError = await checkRuntimePackageVersions({
+        pythonPath,
+        appVersion: app.getVersion(),
+        userDataDir: app.getPath("userData"),
+        reused: !bundledSelection,
+        force: true,
+      });
+      if (versionError) throw new Error(versionError);
       preparedSitePackages = bundledSelection ? null : await prepareRuntimeAdapters(pythonPath);
     } catch (error) {
       return {

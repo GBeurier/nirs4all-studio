@@ -498,6 +498,16 @@ describe('playground chart input builders', () => {
     });
   });
 
+  it('omits an error-only reference PCA without breaking valid processed coordinates', () => {
+    const input = buildDimensionReductionChartInput({
+      result: { pca: { coordinates: [[1, 2]], n_components: 2 } } as PlaygroundResult,
+      rawData: null, yValues: [], effectiveFolds: null,
+      referencePca: { error: 'PCA cannot process missing values' } as NonNullable<PlaygroundResult['pca']>,
+    });
+    expect(input?.pca.coordinates).toEqual([[1, 2]]);
+    expect(input?.referencePca).toBeNull();
+  });
+
   it('lets histogram chart input availability come from the chart input read model', () => {
     const rawData: SpectralData = {
       spectra: [[1, 2]],
@@ -578,6 +588,26 @@ describe('playground chart input builders', () => {
       spectraData: undefined,
       hasRepetitionData: false,
     });
+  });
+
+  it('keeps spectra available and displays a PCA error without building an invalid embedding', () => {
+    const result = createResult({
+      pca: { error: 'PCA cannot process missing values. Add an imputer to the pipeline.' } as PlaygroundResult['pca'],
+    });
+    const readModel = buildPlaygroundChartInputReadModel({ rawData: null, result });
+    expect(readModel.dataAvailability.hasDimensionReductionData).toBe(false);
+    const input = buildDimensionReductionChartInput({
+      result, rawData: null, yValues: [], effectiveFolds: null, readModel,
+    });
+    expect(input?.pca).toMatchObject({ error: result.pca?.error, coordinates: [], explained_variance_ratio: [], n_components: 0 });
+    expect(buildEmbeddingOverlayInput({ result, yValues: [], totalSamples: 2 })).toBeNull();
+    expect(buildSpectraChartInput({ result, rawData: null, yValues: [], effectiveFolds: null })?.processed.spectra).toEqual(result.processed.spectra);
+  });
+
+  it('ignores incomplete PCA responses without coordinates', () => {
+    const result = createResult({ pca: {} as PlaygroundResult['pca'] });
+    expect(buildDimensionReductionChartInput({ result, rawData: null, yValues: [], effectiveFolds: null })).toBeNull();
+    expect(buildEmbeddingOverlayInput({ result, yValues: [], totalSamples: 2 })).toBeNull();
   });
 
   it('builds embedding overlay partitions and export data from aligned processed data', () => {

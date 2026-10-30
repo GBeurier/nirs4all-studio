@@ -182,6 +182,7 @@ function makeResources(): {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) fs.rmSync(dir, { recursive: true, force: true });
@@ -350,7 +351,7 @@ describe("packaged runtime contract", () => {
     });
   });
 
-  it("disables a changed or extended Python closure before sidecar spawn", () => {
+  it("leaves full package content and inventory validation to build qualification", () => {
     const changed = makeResources();
     fs.appendFileSync(
       path.join(changed.sitePackagesPath, "nirs4all.py"),
@@ -363,8 +364,8 @@ describe("packaged runtime contract", () => {
       }),
     ).toMatchObject({
       sidecarPath: changed.sidecarPath,
-      pythonPluginHostPath: null,
-      pythonPluginHostError: expect.stringContaining("closure mismatch"),
+      pythonPluginHostPath: changed.pythonPath,
+      pythonPluginHostError: null,
     });
 
     const extended = makeResources();
@@ -375,27 +376,43 @@ describe("packaged runtime contract", () => {
         platform: "linux",
       }),
     ).toMatchObject({
-      pythonPluginHostPath: null,
-      pythonPluginHostError: expect.stringContaining("inventory mismatch"),
+      pythonPluginHostPath: extended.pythonPath,
+      pythonPluginHostError: null,
     });
   });
 
-  it("refuses symlink and parent-path substitution inside the Python closure", () => {
-    if (process.platform === "win32") return;
-    const leaf = makeResources();
-    const outside = path.join(leaf.resourcesPath, "outside.py");
-    fs.writeFileSync(outside, "outside\n");
-    fs.symlinkSync(outside, path.join(leaf.sitePackagesPath, "injected.py"));
-    expect(
-      verifyPackagedRuntimeContract({
-        resourcesPath: leaf.resourcesPath,
-        platform: "linux",
-      }),
-    ).toMatchObject({
-      pythonPluginHostPath: null,
-      pythonPluginHostError: expect.stringContaining("must not contain symlinks"),
+  it("starts without walking or reading the Python package tree", () => {
+    const fixture = makeResources();
+    const scan = vi.spyOn(fs, "readdirSync").mockImplementation(() => {
+      throw new Error("Electron must not scan the runtime tree at startup");
     });
+    const open = vi.spyOn(fs, "openSync");
+    expect(verifyPackagedRuntimeContract({
+      resourcesPath: fixture.resourcesPath,
+      platform: "linux",
+    })).toMatchObject({
+      pythonPluginHostPath: fixture.pythonPath,
+      pythonPluginHostError: null,
+    });
+    expect(scan).not.toHaveBeenCalled();
+    expect(open.mock.calls.some(([file]) => String(file).startsWith(fixture.sitePackagesPath + path.sep))).toBe(false);
+  });
 
+  it("disables Python when its closure manifest anchor is altered", () => {
+    const fixture = makeResources();
+    fs.appendFileSync(path.join(fixture.resourcesPath, "backend", "python-runtime", "PYTHON_PLUGIN_CLOSURE.json"), " ");
+    expect(verifyPackagedRuntimeContract({
+      resourcesPath: fixture.resourcesPath,
+      platform: "linux",
+    })).toMatchObject({
+      sidecarPath: fixture.sidecarPath,
+      pythonPluginHostPath: null,
+      pythonPluginHostError: expect.stringContaining("closure manifest integrity mismatch"),
+    });
+  });
+
+  it("refuses parent-path substitution of the selected site-packages", () => {
+    if (process.platform === "win32") return;
     const parent = makeResources();
     const original = path.join(
       parent.resourcesPath,
@@ -415,7 +432,7 @@ describe("packaged runtime contract", () => {
     ).toMatchObject({
       pythonPluginHostPath: null,
       pythonPluginHostError: expect.stringContaining(
-        "must not contain symlinks",
+        "canonical non-symlink directory",
       ),
     });
   });

@@ -131,7 +131,7 @@ const nativeSidecarManager = new NativeSidecarManager();
 let nativePythonPluginHostStale = false;
 console.log("Rust-only renderer transport; Python is restricted to bounded stdio plugins");
 
-function nativeSidecarStartOptions() {
+function nativeSidecarStartOptions(pythonPackagesCompatible = true) {
   const configuredRuntime = envManager.getConfiguredRuntimeMode();
   const runtimeMode = configuredRuntime === "bundled"
     ? "bundled"
@@ -151,8 +151,8 @@ function nativeSidecarStartOptions() {
 
   return {
     allowPackagedResource: app.isPackaged,
-    pythonPluginHost: envManager.getConfiguredPythonPath(),
-    pythonPluginSitePackages: envManager.getSitePackages(),
+    pythonPluginHost: pythonPackagesCompatible ? envManager.getConfiguredPythonPath() : null,
+    pythonPluginSitePackages: pythonPackagesCompatible ? envManager.getSitePackages() : null,
     runtimeMode,
     runtimeKind,
     buildInfoPath: buildInfoCandidates.find((candidate) => fs.existsSync(candidate)) ?? null,
@@ -160,10 +160,11 @@ function nativeSidecarStartOptions() {
   };
 }
 
-async function startNativeSidecar(): Promise<void> {
-  try { await envManager.prepareSelectedRuntimeAdapters(); }
+async function startNativeSidecar(forceVersionCheck = false): Promise<void> {
+  const compatible = await envManager.checkPackageVersions(forceVersionCheck);
+  try { if (compatible) await envManager.prepareSelectedRuntimeAdapters(); }
   catch (error) { console.warn("Selected environment needs Studio adapter preparation:", error); }
-  const info = await nativeSidecarManager.start(nativeSidecarStartOptions());
+  const info = await nativeSidecarManager.start(nativeSidecarStartOptions(compatible));
   if (info.status === "running") {
     if (info.url) {
       await ensureDesktopWorkspace(info.url, resolveDocumentsDirectory(name => app.getPath(name)), nativeSidecarManager.authenticatedFetch);
@@ -578,7 +579,7 @@ ipcMain.handle("control:getInfo", () => {
 async function restartNativeBackend() {
   try {
     await nativeSidecarManager.stop();
-    await startNativeSidecar();
+    await startNativeSidecar(true);
     const info = getNativeSidecarInfo();
     return { success: true, port: info.port ?? undefined };
   } catch (error) {
