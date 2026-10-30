@@ -95,6 +95,7 @@ export interface EnvInfo {
   sitePackages: string | null;
   pythonVersion: string | null;
   isCustom: boolean;
+  canInstallRequiredVersions?: boolean;
   setupDeferred?: boolean;
   error?: string;
 }
@@ -328,6 +329,7 @@ export class EnvManager {
       sitePackages: this.getSitePackages(),
       pythonVersion,
       isCustom: this.getConfiguredRuntimeMode() === "custom",
+      canInstallRequiredVersions: this.status === "error" && Boolean(this.lastError && pythonPath) && !this.isBundled(),
       setupDeferred: this.savedSkipWizard,
       error: this.lastError ?? undefined,
     };

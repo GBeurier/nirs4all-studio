@@ -229,6 +229,7 @@ for relative,encoded,size in record_rows:
 # Build qualification verifies the full packaged closure. Runtime acquisition
 # verifies the scientific RECORD members once; subsequent workers verify its
 # identity and the selected callable without repeating whole-package hashing.
+# Reused environments hash their scientific RECORD on each fresh worker.
 import nirs4all
 target=getattr(nirs4all,"studio_scientific_job_v1",None)
 if not callable(target):
@@ -1215,7 +1216,7 @@ fn packaged_runtime_identity_with_policy(
         return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
     }
     let (directories, files) = parse_runtime_closure(&closure, &runtime_root, &site_packages)?;
-    // Package versions are checked once by Electron on first launch/update.
+    // Bundled package versions are pinned during installer qualification.
     // Exhaustive installation scans belong to qualification, not app startup
     // or readiness polling. Retain bounded checks of the selected entry points.
     let changes = full_inventory_check

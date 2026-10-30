@@ -248,15 +248,10 @@ describe("PythonEnvPicker", () => {
     const pythonPath = "C:\\envs\\configured\\python.exe";
     electronApi.getEnvInfo.mockResolvedValue({
       status: "error", envDir: "C:\\envs\\configured", pythonPath,
-      sitePackages: null, pythonVersion: "3.11.9", isCustom: true,
+      sitePackages: null, pythonVersion: "3.11.9", isCustom: true, canInstallRequiredVersions: true,
       error: "This Python environment needs an update: nirs4all 1.0.3 is installed; 1.4.13 is required.",
     });
-    mocks.getRuntimeSummary.mockResolvedValue({
-      coherent: false, core_ready: false, running_python: pythonPath,
-      runtime_kind: "custom", is_bundled_default: false, bundled_runtime_available: true,
-      missing_core_packages: ["nirs4all"], missing_optional_packages: [],
-      runtime: { python: pythonPath, prefix: "C:\\envs\\configured", version: "3.11.9" },
-    });
+    mocks.getRuntimeSummary.mockRejectedValue(new Error("native_python_host_unavailable"));
     electronApi.applyExistingPython.mockResolvedValue({ success: false, message: "Update requires network access" });
     const view = await renderComponent(electronApi, startup);
     await waitFor(() => expect(view.container.textContent).toContain("1.0.3 is installed; 1.4.13 is required"));
