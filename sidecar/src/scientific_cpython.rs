@@ -1343,7 +1343,7 @@ fn parse_hex_digest(digest: &str) -> Result<[u8; 32], ScientificCpythonUnavailab
         return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
     }
     let mut decoded = [0_u8; 32];
-    for (index, chunk) in digest.as_bytes().chunks_exact(2).enumerate() {
+    for (index, chunk) in digest.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         decoded[index] = (hex_nibble(chunk[0])? << 4) | hex_nibble(chunk[1])?;
     }
     Ok(decoded)
