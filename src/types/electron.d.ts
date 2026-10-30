@@ -215,6 +215,7 @@ interface ElectronApi {
     sitePackages: string | null;
     pythonVersion: string | null;
     isCustom: boolean;
+    canInstallRequiredVersions?: boolean;
     error?: string;
   }>;
   detectExistingEnvs(): Promise<DesktopDetectedEnv[]>;

@@ -155,7 +155,7 @@ export function PythonEnvPicker() {
                 onClick={controller.handleUpdateEnvironment}
                 disabled={isSettingUp || isSwitching}
               >
-                Install required versions
+                {t("settings.pythonEnvPicker.installRequiredVersions")}
               </Button>
             )}
             {isSwitching && !dialogOpen && switchProgressState && (

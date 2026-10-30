@@ -614,7 +614,7 @@ export function usePythonEnvPickerController() {
     selectedReviewProfile,
     runtimeView,
     environmentError: envInfo?.error,
-    canUpdateEnvironment: Boolean(envInfo?.error && envInfo.pythonPath && runtimeSummary && !runtimeView.runtimeDisplay.isReadOnly),
+    canUpdateEnvironment: Boolean(envInfo?.error && envInfo.pythonPath && envInfo.canInstallRequiredVersions),
     handleUpdateEnvironment,
     loadEnvInfo,
     handleOpenDialog,

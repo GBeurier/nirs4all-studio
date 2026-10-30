@@ -180,6 +180,7 @@ const electronApi = {
     sitePackages: string | null;
     pythonVersion: string | null;
     isCustom: boolean;
+    canInstallRequiredVersions?: boolean;
     error?: string;
   }> => ipcRenderer.invoke("env:getInfo"),
 

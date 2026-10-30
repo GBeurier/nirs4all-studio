@@ -903,6 +903,7 @@ notFound: {
       },
     },
     pythonEnvPicker: {
+      installRequiredVersions: "Install required versions",
       unknown: "Inconnue",
       reviewPackages: "Examiner les paquets",
       reviewPackagesHint: "Voir les paquets installés et les fonctionnalités optionnelles disponibles",
