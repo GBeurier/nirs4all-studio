@@ -75,196 +75,6 @@ impl Default for RuntimeAdmission {
     }
 }
 
-#[cfg(test)]
-mod admission_tests {
-    use super::*;
-
-    #[test]
-    fn only_existing_prediction_reads_defer_availability_scans() {
-        for operation in [
-            "results.chains",
-            "results.chain",
-            "results.arrays",
-            "results.page",
-        ] {
-            assert!(is_foreground_prediction_read(&serde_json::json!({
-                "schema": crate::document_cpython::REQUEST_SCHEMA, "operation": operation
-            })));
-        }
-        for operation in [
-            "predictions.run",
-            "workspace.upgrade",
-            "documents.batch",
-            "dataset.preview",
-        ] {
-            assert!(!is_foreground_prediction_read(&serde_json::json!({
-                "schema": crate::document_cpython::REQUEST_SCHEMA, "operation": operation
-            })));
-        }
-        assert!(!is_foreground_prediction_read(&serde_json::json!({
-            "schema": "nirs4all.studio-playground-job.v1", "operation": "results.page"
-        })));
-    }
-
-    #[test]
-    fn background_waits_for_all_foreground_boundaries_and_resumes_after_release() {
-        let admission = Arc::new(RuntimeAdmission::default());
-        let first = admission.foreground(Duration::from_secs(1)).unwrap();
-        let second = admission.foreground(Duration::from_secs(1)).unwrap();
-        let (entered, receive) = mpsc::channel();
-        let pending = Arc::clone(&admission);
-        let task = std::thread::spawn(move || {
-            let _background = pending.background(Duration::from_secs(2)).unwrap();
-            entered.send(()).unwrap();
-        });
-        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
-        drop(first);
-        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
-        drop(second);
-        receive.recv_timeout(Duration::from_secs(2)).unwrap();
-        task.join().unwrap();
-        assert!(admission.foreground(Duration::from_secs(1)).is_ok());
-    }
-
-    #[test]
-    fn admission_is_bounded_and_does_not_leave_failed_background_waiters() {
-        let admission = RuntimeAdmission::default();
-        let foreground = admission.foreground(Duration::from_secs(1)).unwrap();
-        assert!(matches!(
-            admission.background(Duration::ZERO),
-            Err(ScientificCpythonUnavailable::TimedOut)
-        ));
-        drop(foreground);
-        let background = admission.background(Duration::from_secs(1)).unwrap();
-        assert!(matches!(
-            admission.foreground(Duration::ZERO),
-            Err(ScientificCpythonUnavailable::TimedOut)
-        ));
-        drop(background);
-        assert!(admission.foreground(Duration::from_secs(1)).is_ok());
-    }
-
-    #[test]
-    fn poisoned_admission_refuses_both_paths_instead_of_skipping_validation() {
-        let admission = Arc::new(RuntimeAdmission::default());
-        let poison = Arc::clone(&admission);
-        assert!(std::thread::spawn(move || {
-            let _held = poison.background(Duration::from_secs(1)).unwrap();
-            panic!("test admission panic");
-        })
-        .join()
-        .is_err());
-        assert!(matches!(
-            admission.foreground(Duration::from_secs(1)),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        ));
-        assert!(matches!(
-            admission.background(Duration::from_secs(1)),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        ));
-    }
-
-    #[test]
-    fn cold_background_validation_has_no_quiet_delay() {
-        let admission = RuntimeAdmission::default();
-        let _validation = admission.background(Duration::ZERO).unwrap();
-    }
-
-    #[test]
-    fn read_activity_covers_post_exchange_work_without_a_second_readlock() {
-        let admission = Arc::new(RuntimeAdmission {
-            quiet_period: Duration::from_millis(40),
-            ..RuntimeAdmission::default()
-        });
-        let activity = admission.read_activity().unwrap();
-        let exchange = admission.foreground(Duration::ZERO).unwrap();
-        let (entered, receive) = mpsc::channel();
-        let pending = Arc::clone(&admission);
-        let background = std::thread::spawn(move || {
-            let _validation = pending.background(Duration::from_secs(2)).unwrap();
-            entered.send(()).unwrap();
-        });
-        drop(exchange);
-        // Adapter post-verification and response serialization are still active.
-        assert!(receive.recv_timeout(Duration::from_millis(60)).is_err());
-        // A next foreground exchange must not deadlock on a queued writer.
-        drop(admission.foreground(Duration::ZERO).unwrap());
-        drop(activity);
-        assert!(receive.recv_timeout(Duration::from_millis(10)).is_err());
-        receive.recv_timeout(Duration::from_secs(2)).unwrap();
-        background.join().unwrap();
-    }
-
-    #[test]
-    fn background_waits_for_complete_read_burst_and_overlapping_responses() {
-        let admission = Arc::new(RuntimeAdmission {
-            quiet_period: Duration::from_millis(60),
-            ..RuntimeAdmission::default()
-        });
-        let first = admission.read_activity().unwrap();
-        let second = admission.read_activity().unwrap();
-        let (entered, receive) = mpsc::channel();
-        let pending = Arc::clone(&admission);
-        let background = std::thread::spawn(move || {
-            let _validation = pending.background(Duration::from_secs(2)).unwrap();
-            entered.send(()).unwrap();
-        });
-        drop(first);
-        assert!(receive.recv_timeout(Duration::from_millis(80)).is_err());
-        drop(second);
-        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
-        // The client submits another read during the ordinary polling interval.
-        let third = admission.read_activity().unwrap();
-        assert!(receive.recv_timeout(Duration::from_millis(80)).is_err());
-        drop(third);
-        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
-        receive.recv_timeout(Duration::from_secs(2)).unwrap();
-        background.join().unwrap();
-    }
-
-    #[test]
-    fn failed_read_releases_activity_but_does_not_bypass_background_validation() {
-        let admission = RuntimeAdmission {
-            quiet_period: Duration::from_millis(10),
-            ..RuntimeAdmission::default()
-        };
-        let failed_read = || -> Result<(), &'static str> {
-            let _activity = admission.read_activity().unwrap();
-            Err("response construction failed")
-        };
-        assert!(failed_read().is_err());
-        assert!(matches!(
-            admission.background(Duration::ZERO),
-            Err(ScientificCpythonUnavailable::TimedOut)
-        ));
-        let _validation = admission.background(Duration::from_secs(1)).unwrap();
-    }
-
-    #[test]
-    fn poisoned_read_activity_refuses_foreground_and_background_admission() {
-        let admission = Arc::new(RuntimeAdmission::default());
-        let poison = Arc::clone(&admission);
-        assert!(std::thread::spawn(move || {
-            let _state = poison.reads.lock().unwrap();
-            panic!("test activity panic");
-        })
-        .join()
-        .is_err());
-        assert!(matches!(
-            admission.read_activity(),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        ));
-        assert!(matches!(
-            admission.foreground(Duration::ZERO),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        ));
-        assert!(matches!(
-            admission.background(Duration::ZERO),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        ));
-    }
-}
-
 impl RuntimeAdmission {
     fn read_activity(&self) -> Result<PredictionReadActivity, ScientificCpythonUnavailable> {
         let mut state = self
@@ -520,7 +330,7 @@ impl Drop for Worker {
 }
 
 impl Worker {
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(super) fn process_id(&self) -> u32 {
         self.child.id()
     }
@@ -1150,5 +960,195 @@ mod tests {
                 Duration::from_secs(2),
             )
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+
+    #[test]
+    fn only_existing_prediction_reads_defer_availability_scans() {
+        for operation in [
+            "results.chains",
+            "results.chain",
+            "results.arrays",
+            "results.page",
+        ] {
+            assert!(is_foreground_prediction_read(&serde_json::json!({
+                "schema": crate::document_cpython::REQUEST_SCHEMA, "operation": operation
+            })));
+        }
+        for operation in [
+            "predictions.run",
+            "workspace.upgrade",
+            "documents.batch",
+            "dataset.preview",
+        ] {
+            assert!(!is_foreground_prediction_read(&serde_json::json!({
+                "schema": crate::document_cpython::REQUEST_SCHEMA, "operation": operation
+            })));
+        }
+        assert!(!is_foreground_prediction_read(&serde_json::json!({
+            "schema": "nirs4all.studio-playground-job.v1", "operation": "results.page"
+        })));
+    }
+
+    #[test]
+    fn background_waits_for_all_foreground_boundaries_and_resumes_after_release() {
+        let admission = Arc::new(RuntimeAdmission::default());
+        let first = admission.foreground(Duration::from_secs(1)).unwrap();
+        let second = admission.foreground(Duration::from_secs(1)).unwrap();
+        let (entered, receive) = mpsc::channel();
+        let pending = Arc::clone(&admission);
+        let task = std::thread::spawn(move || {
+            let _background = pending.background(Duration::from_secs(2)).unwrap();
+            entered.send(()).unwrap();
+        });
+        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
+        drop(first);
+        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
+        drop(second);
+        receive.recv_timeout(Duration::from_secs(2)).unwrap();
+        task.join().unwrap();
+        assert!(admission.foreground(Duration::from_secs(1)).is_ok());
+    }
+
+    #[test]
+    fn admission_is_bounded_and_does_not_leave_failed_background_waiters() {
+        let admission = RuntimeAdmission::default();
+        let foreground = admission.foreground(Duration::from_secs(1)).unwrap();
+        assert!(matches!(
+            admission.background(Duration::ZERO),
+            Err(ScientificCpythonUnavailable::TimedOut)
+        ));
+        drop(foreground);
+        let background = admission.background(Duration::from_secs(1)).unwrap();
+        assert!(matches!(
+            admission.foreground(Duration::ZERO),
+            Err(ScientificCpythonUnavailable::TimedOut)
+        ));
+        drop(background);
+        assert!(admission.foreground(Duration::from_secs(1)).is_ok());
+    }
+
+    #[test]
+    fn poisoned_admission_refuses_both_paths_instead_of_skipping_validation() {
+        let admission = Arc::new(RuntimeAdmission::default());
+        let poison = Arc::clone(&admission);
+        assert!(std::thread::spawn(move || {
+            let _held = poison.background(Duration::from_secs(1)).unwrap();
+            panic!("test admission panic");
+        })
+        .join()
+        .is_err());
+        assert!(matches!(
+            admission.foreground(Duration::from_secs(1)),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        ));
+        assert!(matches!(
+            admission.background(Duration::from_secs(1)),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        ));
+    }
+
+    #[test]
+    fn cold_background_validation_has_no_quiet_delay() {
+        let admission = RuntimeAdmission::default();
+        let _validation = admission.background(Duration::ZERO).unwrap();
+    }
+
+    #[test]
+    fn read_activity_covers_post_exchange_work_without_a_second_readlock() {
+        let admission = Arc::new(RuntimeAdmission {
+            quiet_period: Duration::from_millis(40),
+            ..RuntimeAdmission::default()
+        });
+        let activity = admission.read_activity().unwrap();
+        let exchange = admission.foreground(Duration::ZERO).unwrap();
+        let (entered, receive) = mpsc::channel();
+        let pending = Arc::clone(&admission);
+        let background = std::thread::spawn(move || {
+            let _validation = pending.background(Duration::from_secs(2)).unwrap();
+            entered.send(()).unwrap();
+        });
+        drop(exchange);
+        // Adapter post-verification and response serialization are still active.
+        assert!(receive.recv_timeout(Duration::from_millis(60)).is_err());
+        // A next foreground exchange must not deadlock on a queued writer.
+        drop(admission.foreground(Duration::ZERO).unwrap());
+        drop(activity);
+        assert!(receive.recv_timeout(Duration::from_millis(10)).is_err());
+        receive.recv_timeout(Duration::from_secs(2)).unwrap();
+        background.join().unwrap();
+    }
+
+    #[test]
+    fn background_waits_for_complete_read_burst_and_overlapping_responses() {
+        let admission = Arc::new(RuntimeAdmission {
+            quiet_period: Duration::from_millis(60),
+            ..RuntimeAdmission::default()
+        });
+        let first = admission.read_activity().unwrap();
+        let second = admission.read_activity().unwrap();
+        let (entered, receive) = mpsc::channel();
+        let pending = Arc::clone(&admission);
+        let background = std::thread::spawn(move || {
+            let _validation = pending.background(Duration::from_secs(2)).unwrap();
+            entered.send(()).unwrap();
+        });
+        drop(first);
+        assert!(receive.recv_timeout(Duration::from_millis(80)).is_err());
+        drop(second);
+        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
+        // The client submits another read during the ordinary polling interval.
+        let third = admission.read_activity().unwrap();
+        assert!(receive.recv_timeout(Duration::from_millis(80)).is_err());
+        drop(third);
+        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
+        receive.recv_timeout(Duration::from_secs(2)).unwrap();
+        background.join().unwrap();
+    }
+
+    #[test]
+    fn failed_read_releases_activity_but_does_not_bypass_background_validation() {
+        let admission = RuntimeAdmission {
+            quiet_period: Duration::from_millis(10),
+            ..RuntimeAdmission::default()
+        };
+        let failed_read = || -> Result<(), &'static str> {
+            let _activity = admission.read_activity().unwrap();
+            Err("response construction failed")
+        };
+        assert!(failed_read().is_err());
+        assert!(matches!(
+            admission.background(Duration::ZERO),
+            Err(ScientificCpythonUnavailable::TimedOut)
+        ));
+        let _validation = admission.background(Duration::from_secs(1)).unwrap();
+    }
+
+    #[test]
+    fn poisoned_read_activity_refuses_foreground_and_background_admission() {
+        let admission = Arc::new(RuntimeAdmission::default());
+        let poison = Arc::clone(&admission);
+        assert!(std::thread::spawn(move || {
+            let _state = poison.reads.lock().unwrap();
+            panic!("test activity panic");
+        })
+        .join()
+        .is_err());
+        assert!(matches!(
+            admission.read_activity(),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        ));
+        assert!(matches!(
+            admission.foreground(Duration::ZERO),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        ));
+        assert!(matches!(
+            admission.background(Duration::ZERO),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        ));
     }
 }
