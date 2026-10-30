@@ -884,7 +884,7 @@ def test_align_config_package_install_failure_does_not_log_error(monkeypatch, ca
     monkeypatch.setattr(
         rc.venv_manager,
         "install_package",
-        lambda package, **kwargs: (False, "No matching distribution", ["ERROR: No matching distribution found for nirs4all"]),
+        lambda package, **kwargs: (False, "pip install failed with code 1:\nERROR: No matching distribution found for nirs4all", ["ERROR: No matching distribution found for nirs4all"]),
     )
 
     with caplog.at_level("WARNING", logger="api.recommended_config"):

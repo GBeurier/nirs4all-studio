@@ -328,7 +328,7 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
                     "jax/jaxlib/flax on native Windows is not supported by upstream. "
                     "Use WSL2, or skip the JAX backend (PyTorch and TensorFlow work natively)."
                 )
-        if is_missing_distribution_refusal(output):
+        if is_missing_distribution_refusal(message, output):
             logger.warning("Install of %s refused: %s", request.package, detail)
             raise HTTPException(status_code=400, detail=detail)
         logger.error("Install of %s failed: %s", request.package, detail)

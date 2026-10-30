@@ -8,6 +8,7 @@ the webapp always operates on the environment it was launched with.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -125,20 +126,27 @@ def invalidate_installed_packages_cache() -> None:
     _outdated_packages_cache.clear()
 
 
-def is_missing_distribution_refusal(output: list[str]) -> bool:
-    """Recognize a package/version lookup refusal, preserving operational failures.
+def is_missing_distribution_refusal(message: str, output: list[str]) -> bool:
+    """Recognize only a normal pip exit with an unambiguous lookup refusal.
 
-    pip may end a network/TLS failure with "No matching distribution" too.
-    Treat warnings, tracebacks, and any other ERROR as a reportable failure.
+    A manager exception can occur after pip already emitted lookup errors, and
+    pip may end network/TLS failures with "No matching distribution" too. Require
+    the normal nonzero-exit result and reject every unknown diagnostic line.
     """
-    lines = [line.strip() for line in output]
-    if any(line.startswith(("WARNING:", "Traceback ")) for line in lines):
+    header, separator, tail = message.partition("\n")
+    if not separator or not re.fullmatch(r"pip install failed with code [1-9][0-9]*:", header):
         return False
-    errors = [line for line in lines if line.startswith("ERROR:")]
-    return bool(errors) and all(line.startswith((
+    if tail != "\n".join(output[-15:]):
+        return False
+    refusal_prefixes = (
         "ERROR: Could not find a version that satisfies the requirement ",
         "ERROR: No matching distribution found for ",
-    )) for line in errors)
+    )
+    lines = [line.strip() for line in output if line.strip()]
+    return any(line.startswith(refusal_prefixes) for line in lines) and all(
+        line.startswith((*refusal_prefixes, "Looking in indexes:", "Looking in links:", "[notice]"))
+        for line in lines
+    )
 
 
 class VenvManager:
