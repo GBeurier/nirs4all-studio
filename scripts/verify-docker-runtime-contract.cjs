@@ -3,6 +3,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { assertDockerCjsModuleGraph } = require("./docker-cjs-module-graph.cjs");
 const {
   MANIFEST: adapterManifest,
   SOURCE_FILES: adapterSourceFiles,
@@ -47,11 +48,16 @@ requireText(
   "COPY --from=studio-document-adapter-sources / /",
   "document adapter sources in native contract verifier",
 );
-requireText(
-  dockerfile,
-  "COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/",
-  "complete plugin builder module graph",
-);
+try {
+  assertDockerCjsModuleGraph({
+    projectRoot: root,
+    dockerfile,
+    stageName: "python-plugin-runtime",
+    entrypoints: ["scripts/bake-python-plugin-runtime.cjs", "scripts/setup-python-env.cjs"],
+  });
+} catch (error) {
+  errors.push(error.message);
+}
 requireText(
   dockerfile,
   "COPY scripts/normalize-plugin-wheel.py scripts/",
