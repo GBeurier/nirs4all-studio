@@ -267,24 +267,32 @@ export function buildDimensionReductionChartInput({
   dataView?: PlaygroundDataViewProjection | null;
   readModel?: PlaygroundChartInputReadModel | null;
 }): DimensionReductionChartDataInput | null {
-  if (readModel?.dataAvailability.hasDimensionReductionData === false) {
-    return null;
-  }
   if (!result?.pca) {
     return null;
   }
 
-  const expectedSampleCount = result.pca.coordinates.length
+  // A failed PCA is returned as { error }, without coordinates or variances.
+  // Keep that error visible while the other dataset views remain usable.
+  const pca = Array.isArray(result.pca.coordinates)
+    ? result.pca
+    : result.pca.error
+      ? { ...result.pca, coordinates: [], explained_variance_ratio: [], explained_variance: [], n_components: 0 }
+      : null;
+  if (!pca || (!pca.error && readModel?.dataAvailability.hasDimensionReductionData === false)) {
+    return null;
+  }
+
+  const expectedSampleCount = pca.coordinates.length
     || resolvePlaygroundSampleCount({ result, rawData, dataView });
 
   return {
-    pca: result.pca,
+    pca,
     umap: result.umap,
     y: yValues,
     folds: effectiveFolds,
     sampleIds: getPlaygroundSampleIds({ result, rawData, expectedLength: expectedSampleCount }),
     metadata: columnMetadata,
-    referencePca,
+    referencePca: Array.isArray(referencePca?.coordinates) && !referencePca.error ? referencePca : null,
     referenceLabel,
   };
 }
@@ -304,7 +312,7 @@ export function buildEmbeddingOverlayInput({
   totalSamples: number;
   sampleIds?: string[];
 }): EmbeddingOverlayInput | null {
-  if (!result?.pca) {
+  if (result?.pca?.error || !Array.isArray(result?.pca?.coordinates) || result.pca.coordinates.length === 0) {
     return null;
   }
 

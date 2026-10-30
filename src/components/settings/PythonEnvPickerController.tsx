@@ -336,8 +336,8 @@ export function usePythonEnvPickerController() {
     }
   }, [beginSwitchProgress, electronApi, finishSwitchProgress, handleInspectResult, t]);
 
-  const handleApplyInspection = useCallback(async (installCorePackages: boolean) => {
-    if (!electronApi || !inspection) {
+  const handleApplyInspection = useCallback(async (installCorePackages: boolean, pythonPath = inspection?.pythonPath) => {
+    if (!electronApi || !pythonPath) {
       return;
     }
 
@@ -353,7 +353,7 @@ export function usePythonEnvPickerController() {
       setSwitchResult(null);
       setReviewError(null);
 
-      const result = await electronApi.applyExistingPython(inspection.pythonPath, {
+      const result = await electronApi.applyExistingPython(pythonPath, {
         installCorePackages,
       });
       if (!result.success) {
@@ -580,6 +580,10 @@ export function usePythonEnvPickerController() {
     void handleApplyInspection(true);
   }, [handleApplyInspection]);
 
+  const handleUpdateEnvironment = useCallback(() => {
+    void handleApplyInspection(true, envInfo?.pythonPath ?? undefined);
+  }, [envInfo?.pythonPath, handleApplyInspection]);
+
   return {
     electronApi,
     isLoading,
@@ -610,6 +614,8 @@ export function usePythonEnvPickerController() {
     selectedReviewProfile,
     runtimeView,
     environmentError: envInfo?.error,
+    canUpdateEnvironment: Boolean(envInfo?.error && envInfo.pythonPath && envInfo.canInstallRequiredVersions),
+    handleUpdateEnvironment,
     loadEnvInfo,
     handleOpenDialog,
     handleSelectDetectedEnv,

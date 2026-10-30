@@ -67,6 +67,11 @@ vi.mock("@/lib/pythonRuntimeSwitch", () => ({
   restartBackendForRuntimeSwitch: mocks.restartBackendForRuntimeSwitch,
 }));
 
+vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
+vi.mock("@/hooks/useRecommendedConfig", () => ({
+  useCompleteSetup: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+import SetupWizard from "@/pages/SetupWizard";
 import { PythonEnvPicker } from "../PythonEnvPicker";
 
 (
@@ -210,7 +215,7 @@ async function waitFor(
   }
 }
 
-async function renderComponent(electronApi: ElectronApiMock) {
+async function renderComponent(electronApi: ElectronApiMock, startup = false) {
   window.electronApi = electronApi;
 
   const container = document.createElement("div");
@@ -218,7 +223,7 @@ async function renderComponent(electronApi: ElectronApiMock) {
   const root = createRoot(container);
 
   await act(async () => {
-    root.render(<PythonEnvPicker />);
+    root.render(startup ? <SetupWizard /> : <PythonEnvPicker />);
   });
 
   return {
@@ -238,6 +243,28 @@ afterEach(() => {
 });
 
 describe("PythonEnvPicker", () => {
+  it.each([false, true])("offers an explicit selected-environment repair (startup: %s)", async startup => {
+    const electronApi = createElectronApi();
+    const pythonPath = "C:\\envs\\configured\\python.exe";
+    electronApi.getEnvInfo.mockResolvedValue({
+      status: "error", envDir: "C:\\envs\\configured", pythonPath,
+      sitePackages: null, pythonVersion: "3.11.9", isCustom: true, canInstallRequiredVersions: true,
+      error: "This Python environment needs an update: nirs4all 1.0.3 is installed; 1.4.13 is required.",
+    });
+    mocks.getRuntimeSummary.mockRejectedValue(new Error("native_python_host_unavailable"));
+    electronApi.applyExistingPython.mockResolvedValue({ success: false, message: "Update requires network access" });
+    const view = await renderComponent(electronApi, startup);
+    await waitFor(() => expect(view.container.textContent).toContain("1.0.3 is installed; 1.4.13 is required"));
+    expect(electronApi.applyExistingPython).not.toHaveBeenCalled();
+    const update = Array.from(view.container.querySelectorAll("button")).find(button => button.textContent === "Install required versions");
+    expect(update).toBeDefined();
+    await act(async () => update!.click());
+    expect(electronApi.applyExistingPython).toHaveBeenCalledWith(pythonPath, { installCorePackages: true });
+    expect(electronApi.startEnvSetup).not.toHaveBeenCalled();
+    await waitFor(() => expect(view.container.textContent).toContain("Update requires network access"));
+    await view.unmount();
+  });
+
   it("shows only the running Python path in the settings summary", async () => {
     mocks.getRuntimeSummary.mockResolvedValue({
       coherent: false,

@@ -7,6 +7,7 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -149,6 +150,17 @@ export function PythonEnvPicker() {
             )}
 
             <SetupErrorAlert error={setupError || controller.environmentError || null} isSettingUp={isSettingUp} />
+            {controller.canUpdateEnvironment && (
+              <Button
+                onClick={controller.handleUpdateEnvironment}
+                disabled={isSettingUp || isSwitching}
+              >
+                {t("settings.pythonEnvPicker.installRequiredVersions")}
+              </Button>
+            )}
+            {isSwitching && !dialogOpen && switchProgressState && (
+              <p role="status" className="text-sm text-muted-foreground">{switchProgressState.detail}</p>
+            )}
             <RuntimeModeAlerts runtimeDisplay={runtimeDisplay} />
             <SwitchResultAlert result={switchResult} success={false} />
           </>
