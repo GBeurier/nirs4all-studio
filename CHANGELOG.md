@@ -10,7 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [0.15.5] — 2026-10-30
+## [0.15.6] — 2026-10-30
 
 ### Changed
 
@@ -33,6 +33,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
   DAG-ML 0.3.43, DAG-ML Data 0.2.13, Core 0.4.6, IO 0.2.11, Formats 0.2.13,
   and Methods/PLS4all 1.3.9. The upstream audit found no prerequisite
   scientific-library release for these Studio fixes.
+
+---
+
+## [0.15.5] — Not released
+
+- Superseded by 0.15.6 after the release gate detected inconsistent application
+  version metadata. No installer was published.
 
 ---
 
