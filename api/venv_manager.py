@@ -125,6 +125,22 @@ def invalidate_installed_packages_cache() -> None:
     _outdated_packages_cache.clear()
 
 
+def is_missing_distribution_refusal(output: list[str]) -> bool:
+    """Recognize a package/version lookup refusal, preserving operational failures.
+
+    pip may end a network/TLS failure with "No matching distribution" too.
+    Treat warnings, tracebacks, and any other ERROR as a reportable failure.
+    """
+    lines = [line.strip() for line in output]
+    if any(line.startswith(("WARNING:", "Traceback ")) for line in lines):
+        return False
+    errors = [line for line in lines if line.startswith("ERROR:")]
+    return bool(errors) and all(line.startswith((
+        "ERROR: Could not find a version that satisfies the requirement ",
+        "ERROR: No matching distribution found for ",
+    )) for line in errors)
+
+
 class VenvManager:
     """
     Manages the Python environment for nirs4all dependencies.
@@ -402,10 +418,12 @@ class VenvManager:
                 )
 
         except subprocess.TimeoutExpired:
+            logger.exception("Package installation timed out for %s", pkg_spec)
             process.kill()
             process.wait(timeout=10)
             return False, "Installation timed out after 600 seconds", output_lines
         except Exception as e:
+            logger.exception("Unexpected package installation failure for %s", pkg_spec)
             return False, f"Installation failed: {e}", output_lines
 
         # Update metadata

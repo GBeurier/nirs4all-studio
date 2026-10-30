@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from .shared.gpu_detection import detect_gpu_hardware
 from .shared.logger import get_logger
-from .venv_manager import _user_data_dir, venv_manager
+from .venv_manager import _user_data_dir, is_missing_distribution_refusal, venv_manager
 
 logger = get_logger(__name__)
 
@@ -1143,7 +1143,8 @@ async def align_config(request: AlignConfigRequest):
                 force_reinstall=install_spec.force_reinstall,
             )
             if not success:
-                logger.warning("Failed to install %s: %s", install_spec.display_spec, message)
+                log_failure = logger.warning if is_missing_distribution_refusal(output) else logger.error
+                log_failure("Failed to install %s: %s", install_spec.display_spec, message)
                 failed_pkgs.append(install_spec.display_spec)
                 failure_details.append(PackageFailure(
                     package=install_spec.display_spec,
@@ -1157,7 +1158,7 @@ async def align_config(request: AlignConfigRequest):
             else:
                 installed_pkgs.append(install_spec.display_spec)
         except Exception as e:
-            logger.warning("Failed to install %s: %s", install_spec.display_spec, e)
+            logger.exception("Unexpected installation failure for %s", install_spec.display_spec)
             failed_pkgs.append(install_spec.display_spec)
             failure_details.append(PackageFailure(
                 package=install_spec.display_spec,
