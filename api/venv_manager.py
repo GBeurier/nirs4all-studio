@@ -8,6 +8,7 @@ the webapp always operates on the environment it was launched with.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -123,6 +124,29 @@ def invalidate_installed_packages_cache() -> None:
     """
     _installed_packages_cache.clear()
     _outdated_packages_cache.clear()
+
+
+def is_missing_distribution_refusal(message: str, output: list[str]) -> bool:
+    """Recognize only a normal pip exit with an unambiguous lookup refusal.
+
+    A manager exception can occur after pip already emitted lookup errors, and
+    pip may end network/TLS failures with "No matching distribution" too. Require
+    the normal nonzero-exit result and reject every unknown diagnostic line.
+    """
+    header, separator, tail = message.partition("\n")
+    if not separator or not re.fullmatch(r"pip install failed with code [1-9][0-9]*:", header):
+        return False
+    if tail != "\n".join(output[-15:]):
+        return False
+    refusal_prefixes = (
+        "ERROR: Could not find a version that satisfies the requirement ",
+        "ERROR: No matching distribution found for ",
+    )
+    lines = [line.strip() for line in output if line.strip()]
+    return any(line.startswith(refusal_prefixes) for line in lines) and all(
+        line.startswith((*refusal_prefixes, "Looking in indexes:", "Looking in links:", "[notice]"))
+        for line in lines
+    )
 
 
 class VenvManager:
@@ -402,10 +426,12 @@ class VenvManager:
                 )
 
         except subprocess.TimeoutExpired:
+            logger.exception("Package installation timed out for %s", pkg_spec)
             process.kill()
             process.wait(timeout=10)
             return False, "Installation timed out after 600 seconds", output_lines
         except Exception as e:
+            logger.exception("Unexpected package installation failure for %s", pkg_spec)
             return False, f"Installation failed: {e}", output_lines
 
         # Update metadata

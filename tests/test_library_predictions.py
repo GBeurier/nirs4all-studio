@@ -11,9 +11,48 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.model_selection import KFold
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import KBinsDiscretizer, StandardScaler
 
 from api.library_predictions import available_models, run_prediction
+
+
+@pytest.mark.parametrize("source", ["chain", "bundle"])
+def test_captured_binned_classifier_scores_frozen_classes_instead_of_raw_y(tmp_path, monkeypatch, source):
+    import nirs4all
+    from nirs4all.operators.transforms.targets import IntegerKBinsDiscretizer
+    from sklearn.metrics import balanced_accuracy_score
+
+    X = np.random.default_rng(29).normal(size=(48, 6)).astype(np.float32)
+    y = (3 * X[:, 0] + .1 * X[:, 1]).astype(np.float32)
+    reference = KBinsDiscretizer(n_bins=3, strategy="quantile", encode="ordinal").fit(y[:36, None])
+    expected_actual = reference.transform(y[36:, None]).ravel()
+    result = nirs4all.run(
+        [{"y_processing": IntegerKBinsDiscretizer(n_bins=3)}, KFold(3, shuffle=True, random_state=7), LogisticRegression()],
+        {"x_train": X[:36], "y_train": y[:36], "x_test": X[36:], "y_test": y[36:]},
+        workspace_path=tmp_path, engine="dag-ml", save_charts=False, verbose=0,
+    )
+    try:
+        payload = {"workspace_path": str(tmp_path), "model_id": result.best["chain_id"], "model_source": source,
+                   "data_source": "dataset", "partition": "test"}
+        if source == "bundle":
+            path = result.export(tmp_path / "exports" / "classes.n4a")
+            payload.update(bundle_path=str(path), archive_fingerprint="sha256:" + hashlib.sha256(path.read_bytes()).hexdigest())
+        config = {}
+        for name, values in {"train_x": X[:36], "test_x": X[36:], "train_y": y[:36], "test_y": y[36:]}.items():
+            path = tmp_path / f"{name}.csv"
+            np.savetxt(path, values, delimiter=";")
+            config[name] = str(path)
+            config[f"{name}_params"] = {"has_header": False}
+        payload["config"] = config
+        monkeypatch.setattr(KBinsDiscretizer, "fit", lambda *args, **kwargs: pytest.fail("prediction refitted target bins"))
+        monkeypatch.setattr(LogisticRegression, "fit", lambda *args, **kwargs: pytest.fail("prediction retrained classifier"))
+        response = run_prediction(payload)
+        np.testing.assert_array_equal(response["actual_values"], expected_actual)
+        assert response["metrics"]["balanced_accuracy"] == balanced_accuracy_score(expected_actual, response["predictions"])
+        assert "rmse" not in response["metrics"]
+        assert response["runtime"]["runtime_manifest"]["training_performed"] is False
+    finally:
+        result.close()
 
 
 def test_text_class_prediction_reopens_model_and_preserves_labels_and_metrics(tmp_path, monkeypatch):

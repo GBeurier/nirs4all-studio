@@ -55,7 +55,7 @@ export function buildFoldGroups(rows: PartitionPrediction[]): FoldGroup[] {
   return [...grouped.entries()]
     .map(([foldId, groupRows]) => {
       const baseFoldId = foldIdBase(foldId);
-      const kind: FoldGroup["kind"] = baseFoldId === "final" || baseFoldId === "avg" || baseFoldId === "w_avg"
+      const kind: FoldGroup["kind"] = baseFoldId === "final" || baseFoldId === "macro" || baseFoldId === "avg" || baseFoldId === "w_avg"
         ? (baseFoldId === "final" ? "refit" : "cv")
         : "fold";
       return {
@@ -94,8 +94,9 @@ export function resolveInitialFoldId(
     const finalRow = rows.find((row) => foldIdBase(row.fold_id) === "final");
     if (finalRow) return finalRow.fold_id;
   }
-  const avgRow = rows.find((row) => foldIdBase(row.fold_id) === "avg");
-  return avgRow?.fold_id ?? rows[0].fold_id;
+  const summaryRow = rows.find((row) => foldIdBase(row.fold_id) === "macro")
+    ?? rows.find((row) => foldIdBase(row.fold_id) === "avg");
+  return summaryRow?.fold_id ?? rows[0].fold_id;
 }
 
 export function summarize(values: number[]): { min: number; max: number; mean: number } | null {
@@ -257,8 +258,9 @@ function sortRows(rows: PartitionPrediction[]): PartitionPrediction[] {
 function foldSortValue(foldId: string): number {
   const base = foldIdBase(foldId);
   if (base === "final") return 0;
-  if (base === "avg") return 1;
-  if (base === "w_avg") return 2;
+  if (base === "macro") return 1;
+  if (base === "avg") return 2;
+  if (base === "w_avg") return 3;
   const parsed = Number.parseInt(base, 10);
   return Number.isFinite(parsed) ? 100 + parsed : 1000;
 }

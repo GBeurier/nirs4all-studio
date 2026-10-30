@@ -4,6 +4,39 @@
 separate Cargo package, not a Tauri application and not an Electron switch.
 The only executable is `studio-sidecar`.
 
+## Local candidate qualification (2026-10-29)
+
+The selected corrective cohort is source-built and unpublished. Its immutable
+owner commits are recorded in `contracts/studio_native_source_cohort_v1.json`.
+The current `Cargo.lock` records the explicitly patched local source cohort;
+it does not attest registry publication. Local builds require an explicit Cargo
+configuration mapping those candidate packages to their verified owner checkouts.
+No absolute local override is enabled by this repository.
+
+Qualify with `cargo --config /path/to/candidate-sources.toml test
+--manifest-path sidecar/Cargo.toml --all-targets`. Set `N4M_LIBRARY_PATH` to the
+regular (non-symlink) ABI 2.20 library file and `STUDIO_GENERAL_TEST_PYTHON` to the
+installed candidate SDK environment for the optional real scientific-host test.
+The local qualification receipt must retain the configuration hash, source
+commits, resolved lock and artifact hashes. Before a release, publish the owner
+packages, regenerate the ordinary registry lock, and qualify the exact installed
+cohort again. The historical public lock is not evidence for this candidate.
+
+## Fold-local target score projection
+
+The SDK persists its opaque evaluation context in
+`runs.summary.dagml_target_domain_summaries` (schema version 1, entries by exact
+chain ID). A macro entry carries `cv_summary_fold_id: "macro"` and the exact
+`target_domain_context` string supplied by its owner. Chain scores and the real
+fold count come from the native report. Studio does not average prediction rows
+or reconstruct a fitted target transform for this mode.
+
+Ranked chain and results-summary reads validate these contexts before sorting or
+pagination. Mixed protocols/domains, macro plus pooled rows, and older macro
+results with missing provenance are refused explicitly. Individual prediction
+pages remain available. The legacy prediction-row dashboard refuses this mode;
+its averages cannot represent chain macro scores.
+
 ## Status and boundary
 
 R1 provides a small local HTTP control surface, a bounded native WebSocket

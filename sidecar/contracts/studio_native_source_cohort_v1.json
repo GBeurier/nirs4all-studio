@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "publication_status": "published-registry",
+  "public_registry_verified": true,
+  "requires_explicit_local_cargo_config": false,
+  "packages": {
+    "nirs4all": {
+      "version": "0.4.6",
+      "repository": "https://github.com/GBeurier/nirs4all-core.git",
+      "source_commit": "3d4d8ef497adbc44763c04499f703d98e53b4ad4",
+      "registry_checksum_sha256": "2c3b74b00041bda2e1707fc048dd37b9e8f67b9cf3d07597146bdf6bb0d9b5b1"
+    },
+    "nirs4all-io": {
+      "version": "0.2.11",
+      "repository": "https://github.com/GBeurier/nirs4all-io.git",
+      "source_commit": "6fd4ed8140fd3a105c8ba506e36151937a46848b",
+      "registry_checksum_sha256": "cc4fb28139c509acde40b89ea42115236dea83b02de3fcab816b5ee15227075f"
+    },
+    "nirs4all-io-core": {
+      "version": "0.2.11",
+      "repository": "https://github.com/GBeurier/nirs4all-io.git",
+      "source_commit": "6fd4ed8140fd3a105c8ba506e36151937a46848b",
+      "registry_checksum_sha256": "d7674ad6138ce2f621a0b1a5d26daec26a8f538d6a5f3ce685e2318f1dd80423"
+    },
+    "nirs4all-io-dagml": {
+      "version": "0.2.11",
+      "repository": "https://github.com/GBeurier/nirs4all-io.git",
+      "source_commit": "6fd4ed8140fd3a105c8ba506e36151937a46848b",
+      "registry_checksum_sha256": "c22eeb5543f303d2d5c168fcb9c78151a573ae49772773785ab5b4284abbff51"
+    },
+    "nirs4all-formats": {
+      "version": "0.2.13",
+      "repository": "https://github.com/GBeurier/nirs4all-formats.git",
+      "source_commit": "7333f35c79364cecd95d94cd18678c53286a78b0",
+      "registry_checksum_sha256": "662a598c2580ce75e027d1a6179de2f42a1a1e2a22ff6802d6674f803ea63d19"
+    },
+    "nirs4all-formats-core": {
+      "version": "0.2.13",
+      "repository": "https://github.com/GBeurier/nirs4all-formats.git",
+      "source_commit": "7333f35c79364cecd95d94cd18678c53286a78b0",
+      "registry_checksum_sha256": "26b37f7540f019a607824481b2716077186a4e8b726ee1c47d05599f29837fc6"
+    },
+    "dag-ml": {
+      "version": "0.3.43",
+      "repository": "https://github.com/GBeurier/dag-ml.git",
+      "source_commit": "747cb9c54271e32cc213b880928a983562bb1b20",
+      "registry_checksum_sha256": "f1c43af1fccd1d599880c9cb994a241269386eb1083510299b52c4a5aecfbffd"
+    },
+    "dag-ml-core": {
+      "version": "0.3.43",
+      "repository": "https://github.com/GBeurier/dag-ml.git",
+      "source_commit": "747cb9c54271e32cc213b880928a983562bb1b20",
+      "registry_checksum_sha256": "0b91f6b70a59b2e34218fa1cc47ec4c0ef72da72fe7a53436d3fda230731af46"
+    },
+    "dag-ml-results": {
+      "version": "0.3.43",
+      "repository": "https://github.com/GBeurier/dag-ml.git",
+      "source_commit": "747cb9c54271e32cc213b880928a983562bb1b20",
+      "registry_checksum_sha256": "d9968a4e92147a272324ae73d2e38d479f1590da55055238c5f58e17d2f3e413"
+    },
+    "dag-ml-data": {
+      "version": "0.2.13",
+      "repository": "https://github.com/GBeurier/dag-ml-data.git",
+      "source_commit": "78719b68c8e9ffd4c2035792574b8da33387d237",
+      "registry_checksum_sha256": "0c8ad3e06a04a707c377baf742e0e113c39c7641fddf47d1585ab68444e41215"
+    },
+    "dag-ml-data-core": {
+      "version": "0.2.13",
+      "repository": "https://github.com/GBeurier/dag-ml-data.git",
+      "source_commit": "78719b68c8e9ffd4c2035792574b8da33387d237",
+      "registry_checksum_sha256": "5799bef4f26ea1c9de2df7e4a0ce4cf09b0f5140dc6c604402a98ef3ca1a1b12"
+    },
+    "dag-ml-data-provider": {
+      "version": "0.2.13",
+      "repository": "https://github.com/GBeurier/dag-ml-data.git",
+      "source_commit": "78719b68c8e9ffd4c2035792574b8da33387d237",
+      "registry_checksum_sha256": "3e30aef23b9a8defc36051ad38e61f02782d72d624501f686d9c985aa0469a2d"
+    },
+    "n4m": {
+      "version": "0.4.1",
+      "repository": "https://github.com/GBeurier/nirs4all-methods.git",
+      "source_commit": "b246b5029cc62cf0cc369df2611069498f2da183",
+      "registry_checksum_sha256": "4d036a20611f734738741f0b70e8e0393a7fbf6dcf06bb41051a4eeae6d880b8"
+    }
+  },
+  "notes": [
+    "Cargo.lock selects published registry artifacts with their real checksums; no local source override is active.",
+    "The SDK and native Methods remain on the explicitly qualified 1.3.9 cohort.",
+    "Studio 0.15.4 is held for local manual testing and NA review; this manifest does not authorize publication."
+  ]
+}

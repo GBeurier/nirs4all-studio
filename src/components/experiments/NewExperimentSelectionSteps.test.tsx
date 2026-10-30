@@ -51,7 +51,7 @@ function changeInputValue(input: HTMLInputElement, value: string) {
 
 function renderWithRouter(element: ReactNode) {
   return render(
-    <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+    <MemoryRouter>
       {element}
     </MemoryRouter>,
   );

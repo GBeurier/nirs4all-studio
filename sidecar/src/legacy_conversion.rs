@@ -92,10 +92,12 @@ const TOOLS_VERSION: &str = "0.0.8";
 const TOOLS_MANIFEST_SHA256: &str =
     "92069ded823ffd1e291b4c8272b46e8b247ed5b619734e1ebf5ad3f612774ac8";
 pub const WINDOWS_JOB_LAUNCHER_ARGUMENT: &str = "--internal-legacy-converter-job";
-const TOOLS_PREFLIGHT: &str = r#"import base64,csv,hashlib,importlib.metadata,io,json,os,socket,subprocess,sys
+const TOOLS_PREFLIGHT: &str = r#"import base64,csv,hashlib,importlib.metadata,io,json,os,platform,socket,subprocess,sys
 def deny(event,args):
  if event == "socket.bind": raise RuntimeError("listener denied")
  if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}: raise RuntimeError("spawn denied")
+if sys.platform == "win32":
+ platform.machine()
 sys.addaudithook(deny)
 d=importlib.metadata.distribution("nirs4all-tools")
 r=next(x for x in d.files or [] if str(x).endswith(".dist-info/RECORD"))
@@ -1791,6 +1793,29 @@ mod tests {
             Err("output_path must be disjoint from the active workspace")
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn windows_platform_probe_precedes_the_legacy_subprocess_deny_hook() {
+        let platform_guard = TOOLS_PREFLIGHT
+            .find("if sys.platform == \"win32\":\n platform.machine()")
+            .expect("Windows platform preheat must remain explicit");
+        let audit_hook = TOOLS_PREFLIGHT
+            .find("sys.addaudithook(deny)")
+            .expect("the subprocess-denying audit hook must remain installed");
+        assert!(platform_guard < audit_hook);
+        assert!(TOOLS_PREFLIGHT.contains("raise RuntimeError(\"spawn denied\")"));
+        assert!(TOOLS_PREFLIGHT.contains("raise RuntimeError(\"listener denied\")"));
+        // Execution embeds this same preflight before invoking the converter.
+        let bootstrap = tools_converter_bootstrap();
+        assert!(
+            bootstrap.find("platform.machine()").unwrap()
+                < bootstrap.find("sys.addaudithook(deny)").unwrap()
+        );
+        assert!(
+            bootstrap.find("sys.addaudithook(deny)").unwrap()
+                < bootstrap.find("runpy.run_module").unwrap()
+        );
     }
 
     #[test]

@@ -121,7 +121,7 @@ describe("electron-builder config", () => {
   });
 
   it("packages the shared Python runtime config required by the Electron main process", () => {
-    const expectedFiles = ["scripts/python-runtime-config.cjs", "recommended-config.json"];
+    const expectedFiles = ["scripts/python-runtime-config.cjs", "scripts/tls-trust.cjs", "recommended-config.json"];
 
     expect(configNames).toEqual(["electron-builder.archive.yml", "electron-builder.installer.yml"]);
     for (const configName of configNames) {

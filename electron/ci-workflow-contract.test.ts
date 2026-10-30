@@ -38,6 +38,29 @@ function releaseGate(job: string, results: Record<string, string> = {}, flags: R
 afterEach(() => { directories.splice(0).forEach((directory) => fs.rmSync(directory, { recursive: true, force: true })); });
 
 describe("CI release protection graph", () => {
+  it("checks out the exact Methods source required by the product runtime contract", () => {
+    const contract = require("../scripts/native-runtime-contract.cjs") as {
+      METHODS_SOURCE_COMMIT: string;
+      METHODS_ABI_MAJOR: number;
+      METHODS_ABI_MINOR: number;
+    };
+    const action = yaml.load(fs.readFileSync(
+      path.resolve(import.meta.dirname, "../.github/actions/build-native-methods/action.yml"),
+      "utf8",
+    )) as unknown as {
+      description: string;
+      runs: { steps: Array<{ with?: { repository?: string; ref?: string } }> };
+    };
+    const checkouts = action.runs.steps.filter(
+      step => step.with?.repository === "GBeurier/nirs4all-methods",
+    );
+    expect(checkouts).toHaveLength(1);
+    expect(checkouts[0].with?.ref).toBe(contract.METHODS_SOURCE_COMMIT);
+    expect(action.description).toContain(
+      `ABI ${contract.METHODS_ABI_MAJOR}.${contract.METHODS_ABI_MINOR}`,
+    );
+  });
+
   it("anchors every local gate to existing runtime paths and the actual compiler configuration", () => {
     const policy = JSON.parse(fs.readFileSync("qualification/policy.json", "utf8")) as {
       gates: Array<{ id: string; input_paths: string[] }>;

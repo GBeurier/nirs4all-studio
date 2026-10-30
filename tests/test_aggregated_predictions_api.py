@@ -593,6 +593,29 @@ class TestGetTopAggregatedPredictions:
         assert "metric" in data
         assert data["metric"] == "rmse"
 
+    def test_incomparable_target_domains_return_conflict(self, client, patched_endpoints):
+        from api.native_results_adapter import NativeTargetDomainComparisonError
+
+        patched_endpoints.query_top_chains.side_effect = NativeTargetDomainComparisonError(
+            "Cannot rank results across different native target-domain protocols"
+        )
+        response = client.get("/api/aggregated-predictions/top?metric=balanced_accuracy")
+        assert response.status_code == 409
+        assert "different native target-domain protocols" in response.json()["detail"]
+        patched_endpoints.close.assert_called_once()
+
+    def test_summary_response_keeps_exact_sdk_target_context(
+        self, client, patched_endpoints, mock_polars_df, sample_aggregated_rows,
+    ):
+        context = "a" * 64
+        rows = [{**sample_aggregated_rows[0], "cv_summary_fold_id": "macro", "target_domain_context": context}]
+        patched_endpoints.query_chain_summaries.return_value = mock_polars_df(rows)
+        response = client.get("/api/aggregated-predictions")
+        assert response.status_code == 200
+        summary = response.json()["predictions"][0]
+        assert summary["target_domain_context"] == context
+        assert summary["cv_summary_fold_id"] == "macro"
+
     def test_top_with_n(self, client, patched_endpoints):
         resp = client.get("/api/aggregated-predictions/top?metric=rmse&n=5")
         assert resp.status_code == 200

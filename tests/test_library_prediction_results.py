@@ -162,3 +162,17 @@ def test_dag_chain_and_authoring_pipeline_reload_keep_the_editor_response_contra
     monkeypatch.setattr(snapshot_module, "workspace_chain_snapshot", lambda *args: None)
     with pytest.raises(ValueError, match="not_found: Chain snapshot"):
         adapt_document("results.chain_steps", {**document, "chain_id": chain})
+
+
+def test_prediction_dashboard_refuses_macro_row_averaging_but_keeps_individual_rows(tmp_path: Path):
+    with WorkspaceStore(tmp_path) as writer:
+        run = writer.begin_run("macro dashboard", config={}, datasets=[{"name": "wheat"}])
+        pipeline = writer.begin_pipeline(run, "Classifier", expanded_config=[], generator_choices=[], dataset_name="wheat", dataset_hash="hash")
+        chain = writer.save_chain(pipeline, steps=[], model_step_idx=0, model_class="LogisticRegression", preprocessings="", fold_strategy="per_fold", fold_artifacts={}, shared_artifacts={})
+        writer.save_prediction(pipeline, chain, "wheat", "Classifier", "LogisticRegression", "macro", "val", 0.8, None, None, "balanced_accuracy", "classification", 9, 20, {"val": {"balanced_accuracy": 0.8}}, {}, None, None, 0, 0.0)
+        with pytest.raises(ValueError, match="fold-local target domains"):
+            read_prediction_results("results.summary", {"workspace_path": str(tmp_path)})
+        page = read_prediction_results("results.page", {"workspace_path": str(tmp_path), "limit": 10, "offset": 0})
+        assert page["total"] == 1 and page["records"][0]["fold_id"] == "macro"
+        # A filtered unrelated dataset remains a valid empty dashboard.
+        assert read_prediction_results("results.summary", {"workspace_path": str(tmp_path), "dataset": "other"})["total_predictions"] == 0

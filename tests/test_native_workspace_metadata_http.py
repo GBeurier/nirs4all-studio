@@ -116,7 +116,7 @@ def test_preferences_and_recent_are_live_http_documents(native_workspace, tmp_pa
     status, recent = request("GET", "/workspace/recent?limit=1")
     assert status == 200
     assert recent["total"] == 1
-    assert recent["workspaces"][0]["path"] == str(workspace.resolve())
+    assert Path(recent["workspaces"][0]["path"]).samefile(workspace)
     assert recent["workspaces"][0]["num_datasets"] == 0
     assert request("GET", "/workspace/recent?limit=1&limit=2")[0] == 400
     assert request("POST", "/workspace/groups", {"name": "HTTP group"})[0] == 200

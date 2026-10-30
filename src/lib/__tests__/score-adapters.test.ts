@@ -8,6 +8,7 @@ import {
   datasetChainsToRows,
   enrichCrossvalRow,
   predictionRecordToRow,
+  topChainToRows,
 } from "../score-adapters";
 import type { TopChainResult } from "@/types/enriched-runs";
 import type { ChainSummary, PartitionPrediction } from "@/types/aggregated-predictions";
@@ -723,5 +724,28 @@ describe("aggregated crossval drill-down", () => {
     const aggregatedFolds = buildFoldTrainCards(predictions, undefined, "aggregated");
     expect(aggregatedFolds).toHaveLength(2);
     expect(aggregatedFolds.map(row => row.foldId)).toEqual(["0_agg", "1_agg"]);
+  });
+});
+
+
+describe("native macro score projection", () => {
+  it("preserves the native macro identity from both chain response shapes", () => {
+    const top = { ...makeChain({ avg_val_score: 0.8, fold_count: 3 }), cv_summary_fold_id: "macro" as const };
+    expect(topChainToRows(top, "balanced_accuracy", "classification")[0].foldId).toBe("macro");
+    const chain = { ...makeChainSummary({ cv_val_score: 0.8, cv_fold_count: 3 }), cv_summary_fold_id: "macro" as const };
+    expect(chainSummaryToRow(chain).foldId).toBe("macro");
+  });
+  it("keeps the reported score and excludes macro from real fold cards without averaging folds", () => {
+    const row = topChainToRows({ ...makeChain({ avg_val_score: 0.8, fold_count: 3 }), cv_summary_fold_id: "macro" }, "balanced_accuracy", "classification")[0];
+    const predictions = [
+      makePartitionPrediction({ fold_id: "macro", partition: "val", val_score: 0.8, scores: {val: {balanced_accuracy: 0.8}} }),
+      ...[0,1,2].map(fold => makePartitionPrediction({ fold_id: String(fold), partition: "val", val_score: 0.1, scores: {val: {balanced_accuracy: 0.1}} })),
+    ];
+    const projected = enrichCrossvalRow(row, predictions);
+    expect(projected.primaryValScore).toBe(0.8);
+    expect(projected.foldCount).toBe(3);
+    expect(projected.meanValScores).toBeUndefined();
+    expect(projected.testScores).toEqual({});
+    expect(buildFoldTrainCards(predictions).map(child => child.foldId)).toEqual(["0","1","2"]);
   });
 });

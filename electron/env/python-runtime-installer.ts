@@ -16,6 +16,7 @@ import { pipeline } from "node:stream/promises";
 import { randomUUID } from "node:crypto";
 
 import { runCommand } from "./process-utils";
+import { loadNetworkTrust } from "./external-config";
 
 const isWindows = process.platform === "win32";
 
@@ -60,7 +61,8 @@ export async function downloadFile(url: string, destPath: string, onProgress?: (
         if (!["http:", "https:"].includes(currentUrl.protocol)) throw new Error("Unsupported download URL protocol");
         const protocol = currentUrl.protocol === "https:" ? https : http;
         response = await new Promise<http.IncomingMessage>((resolve, reject) => {
-          const request = protocol.get(currentUrl, { signal: controller.signal }, resolve);
+          const trust = currentUrl.protocol === "https:" ? loadNetworkTrust().tlsRequestOptions() : {};
+          const request = protocol.get(currentUrl, { ...trust, signal: controller.signal }, resolve);
           request.setTimeout(timeoutMs, () => request.destroy(new Error("Download timed out waiting for data")));
           request.once("error", reject);
         });
@@ -95,7 +97,7 @@ export async function downloadFile(url: string, destPath: string, onProgress?: (
     } catch (error) {
       response?.destroy();
       await fs.promises.rm(partial, { force: true });
-      if (attempt >= retries) throw error;
+      if (attempt >= retries) throw loadNetworkTrust().explainNetworkError(error);
     } finally {
       clearTimeout(deadline);
       controller.abort();

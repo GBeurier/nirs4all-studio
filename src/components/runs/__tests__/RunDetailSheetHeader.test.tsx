@@ -81,7 +81,7 @@ describe("RunDetailSheetHeader", () => {
     } as EnrichedRun & Record<string, unknown>;
 
     const { container, root } = await render(
-      <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <MemoryRouter>
         <Sheet open>
           <SheetContent>
             <RunDetailSheetHeader
