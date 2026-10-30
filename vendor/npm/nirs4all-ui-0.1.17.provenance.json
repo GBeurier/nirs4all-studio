@@ -1,0 +1,29 @@
+{
+  "schema_version": "nirs4all.vendored-npm/v1",
+  "package": {
+    "name": "nirs4all-ui",
+    "version": "0.1.17"
+  },
+  "source": {
+    "commit_sha": "dfc729781a94c8e138f1e576a70f0e2c7815bcd8",
+    "tree_sha": "e76db3bb4ddfab58f79ef73688e7ec0b8be31422",
+    "working_tree": false
+  },
+  "artifact": {
+    "filename": "nirs4all-ui-0.1.17.tgz",
+    "size": 3549480,
+    "sha256": "448d9df3b554e77d0d2f30377b69b79bf455a207c706621be941280a16a80eae",
+    "npm_integrity": "sha512-hnn/djj2Vp0a5Ss847xVYkNUqGo6WG2Oc9KxPPuJdgrNYXuuVnA7vB6Kug3Ir2UHjNTvslKcw8gMLdq8PqBvmQ=="
+  },
+  "license_files": [
+    "LICENSE",
+    "LICENSING.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "release_manifest": "nirs4all-ui-0.1.17.release-manifest.json",
+  "publication": {
+    "registry_url": "https://registry.npmjs.org/nirs4all-ui/-/nirs4all-ui-0.1.17.tgz",
+    "sha1": "3cd7125ca3e796ed42c86cb3e05379c369fdfc77",
+    "workflow_run": "https://github.com/GBeurier/nirs4all-ui/actions/runs/41070823671"
+  }
+}
