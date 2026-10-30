@@ -122,10 +122,6 @@ function hashFile(filePath: string): string {
   return hash.digest("hex");
 }
 
-function compareUtf8Paths(left: string, right: string): number {
-  return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
-}
-
 function validateCanonicalDirectory(
   directoryPath: string,
   label: string,
@@ -146,74 +142,6 @@ function validateCanonicalDirectory(
   ) {
     throw new Error(`${label} must be a canonical non-symlink directory`);
   }
-}
-
-interface ClosureFile {
-  path: string;
-  size: number;
-  sha256: string;
-}
-
-function collectRuntimeClosure(runtimeRoot: string): {
-  files: ClosureFile[];
-  directories: string[];
-} {
-  validateCanonicalDirectory(runtimeRoot, "Bundled Python runtime root");
-  const files: ClosureFile[] = [];
-  const directories: string[] = [];
-  const pending = [runtimeRoot];
-  while (pending.length > 0) {
-    const directory = pending.pop();
-    if (!directory) break;
-    validateCanonicalDirectory(
-      directory,
-      "Bundled Python runtime directory",
-      runtimeRoot,
-    );
-    if (directories.length >= MAX_PYTHON_CLOSURE_DIRECTORIES) {
-      throw new Error(
-        "Bundled Python runtime exceeds the 100000-directory closure limit",
-      );
-    }
-    directories.push(
-      path.relative(runtimeRoot, directory).split(path.sep).join("/"),
-    );
-    const entries = fs
-      .readdirSync(directory, { withFileTypes: true })
-      .sort((left, right) => compareUtf8Paths(left.name, right.name));
-    for (const entry of entries) {
-      const entryPath = path.join(directory, entry.name);
-      const stat = fs.lstatSync(entryPath);
-      if (stat.isSymbolicLink()) {
-        throw new Error(
-          `Bundled Python runtime must not contain symlinks: ${entryPath}`,
-        );
-      }
-      if (stat.isDirectory()) {
-        pending.push(entryPath);
-        continue;
-      }
-      if (!stat.isFile()) {
-        throw new Error(
-          `Bundled Python runtime contains a special file: ${entryPath}`,
-        );
-      }
-      if (files.length >= MAX_PYTHON_CLOSURE_FILES) {
-        throw new Error(
-          "Bundled Python runtime exceeds the 100000-file closure limit",
-        );
-      }
-      files.push({
-        path: path.relative(runtimeRoot, entryPath).split(path.sep).join("/"),
-        size: stat.size,
-        sha256: hashFile(entryPath),
-      });
-    }
-  }
-  return {
-    files: files.sort((left, right) => compareUtf8Paths(left.path, right.path)),
-    directories: directories.sort(compareUtf8Paths),
-  };
 }
 
 function validateMember(
@@ -323,35 +251,10 @@ function verifyPythonRuntimeClosure(
     backendRoot,
     ...plugin.runtime_root.split("/"),
   );
-  const actualClosure = collectRuntimeClosure(runtimeRoot);
-  const actualDirectories = actualClosure.directories;
-  const expectedDirectories = closure.directories as string[];
-  if (
-    actualDirectories.length !== expectedDirectories.length ||
-    actualDirectories.some(
-      (directory, index) => directory !== expectedDirectories[index],
-    )
-  ) {
-    throw new Error(
-      "Bundled Python runtime closure directory inventory mismatch",
-    );
-  }
-  const actual = actualClosure.files;
-  const expected = closure.files as ClosureFile[];
-  if (actual.length !== expected.length) {
-    throw new Error("Bundled Python runtime closure inventory mismatch");
-  }
-  for (let index = 0; index < actual.length; index += 1) {
-    if (
-      expected[index]?.path !== actual[index].path ||
-      expected[index]?.size !== actual[index].size ||
-      expected[index]?.sha256 !== actual[index].sha256
-    ) {
-      throw new Error(
-        `Bundled Python runtime closure mismatch: ${actual[index].path}`,
-      );
-    }
-  }
+  // Build qualification verifies the complete closure with
+  // scripts/native-runtime-contract.cjs against the packaged artifact.
+  // Startup checks only manifest anchors and selected runtime entry points.
+  validateCanonicalDirectory(runtimeRoot, "Bundled Python runtime root");
   const sitePackagesPath = path.join(
     backendRoot,
     ...plugin.site_packages.split("/"),

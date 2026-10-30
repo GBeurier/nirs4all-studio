@@ -13,6 +13,9 @@ const childProcessMocks = vi.hoisted(() => ({
 vi.mock("./env/runtime-adapters", () => ({
   prepareRuntimeAdapters: vi.fn(async (pythonPath: string) => path.join(path.dirname(pythonPath), "site-packages")),
 }));
+vi.mock("./env/runtime-version-check", () => ({
+  checkRuntimePackageVersions: vi.fn(async () => null),
+}));
 
 const fakeApp = {
   getPath: vi.fn(),
