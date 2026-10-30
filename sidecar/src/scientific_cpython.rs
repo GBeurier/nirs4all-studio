@@ -80,7 +80,7 @@ pub const WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT: &str = "--internal-scientifi
 /// One-time cold-start budget for the immutable packaged scientific runtime.
 ///
 /// The preflight imports the full nirs4all stack and verifies every RECORD
-/// member after Rust has attested the closure. Intel macOS runners have shown
+/// member after checking the packaged anchors. Intel macOS runners have shown
 /// valid cold starts exceeding 15 seconds under load, so keep this below the
 /// 75-second HTTP preflight budget while allowing a measured 3x margin.
 pub const SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(45);
@@ -226,10 +226,10 @@ for relative,encoded,size in record_rows:
         actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
         if actual != expected or (size and len(payload) != int(size)):
             raise RuntimeError("scientific distribution member changed")
-# Rust cryptographically verifies every closure member at acquisition, then
-# checks path/inode/size/mtime/ctime snapshots around this fresh worker. The
-# worker verifies the immutable RECORD identity without redundantly hashing
-# the full distribution on every document operation.
+# Build qualification verifies the full packaged closure. Runtime acquisition
+# verifies the scientific RECORD members once; subsequent workers verify its
+# identity and the selected callable without repeating whole-package hashing.
+# Reused environments hash their scientific RECORD on each fresh worker.
 import nirs4all
 target=getattr(nirs4all,"studio_scientific_job_v1",None)
 if not callable(target):
@@ -392,6 +392,7 @@ struct PackagedRuntimeIdentity {
     snapshot: Arc<Mutex<RuntimeSnapshot>>,
     full_hash_scans: Arc<AtomicUsize>,
     changes: Option<Arc<warm_library_host::RuntimeChanges>>,
+    full_inventory_check: bool,
 }
 
 /// Sticky acquisition record for an explicitly selected `CPython` stdio host.
@@ -435,8 +436,8 @@ impl CpythonScientificJobExecutor {
             .lock()
             .map_err(|_| "Adapter verification lock failed")?;
         if self.packaged_runtime.is_some() && verified.is_some() {
-            // The enclosing immutable closure is checked around every exchange.
-            // It already covers these exact adapter files and their inventory.
+            // Bundled adapters are qualified with the installation. Verify them
+            // once per host instead of rescanning them on every exchange.
             return Ok(());
         }
         let root = site_packages.join("studio_document_adapters");
@@ -701,11 +702,12 @@ impl CpythonScientificJobExecutor {
         site_packages: impl AsRef<Path>,
         config_dir: impl Into<PathBuf>,
     ) -> Self {
-        let packaged_runtime = packaged_runtime_identity(
+        let packaged_runtime = packaged_runtime_identity_with_policy(
             path.as_ref(),
             closure.as_ref(),
             runtime_root.as_ref(),
             site_packages.as_ref(),
+            false,
         );
         match packaged_runtime {
             Ok(identity) => {
@@ -896,8 +898,8 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
             return Err(JobExecutorError::PreflightRefused);
         }
         // The mandatory batch worker below revalidates the selected executable,
-        // callable and full runtime before/after execution, and every installed
-        // distribution member before importing. Do not run a second cold
+        // callable and manifest anchors, and the scientific distribution before
+        // importing. Do not run a second cold
         // import/attestation subprocess for the same admission boundary.
         let payload = self
             .resolver
@@ -1149,11 +1151,22 @@ fn host_identity(path: &Path) -> Result<HostIdentity, ScientificCpythonUnavailab
     host_identity_with_limit(path, MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)
 }
 
+#[cfg(test)]
 fn packaged_runtime_identity(
     host: &Path,
     closure: &Path,
     runtime_root: &Path,
     site_packages: &Path,
+) -> Result<PackagedRuntimeIdentity, ScientificCpythonUnavailable> {
+    packaged_runtime_identity_with_policy(host, closure, runtime_root, site_packages, true)
+}
+
+fn packaged_runtime_identity_with_policy(
+    host: &Path,
+    closure: &Path,
+    runtime_root: &Path,
+    site_packages: &Path,
+    full_inventory_check: bool,
 ) -> Result<PackagedRuntimeIdentity, ScientificCpythonUnavailable> {
     let runtime_root_path = absolute_path(runtime_root)?;
     let package_root = runtime_root_path
@@ -1203,9 +1216,20 @@ fn packaged_runtime_identity(
         return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
     }
     let (directories, files) = parse_runtime_closure(&closure, &runtime_root, &site_packages)?;
-    // Subscribe before validation so a mutation during acquisition is observed.
-    let changes = warm_library_host::RuntimeChanges::watch(&runtime_root);
-    let snapshot = collect_runtime_snapshot(&runtime_root)?;
+    // Bundled package versions are pinned during installer qualification.
+    // Exhaustive installation scans belong to qualification, not app startup
+    // or readiness polling. Retain bounded checks of the selected entry points.
+    let changes = full_inventory_check
+        .then(|| warm_library_host::RuntimeChanges::watch(&runtime_root))
+        .flatten();
+    let snapshot = if full_inventory_check {
+        collect_runtime_snapshot(&runtime_root)?
+    } else {
+        RuntimeSnapshot {
+            directories: Vec::new(),
+            files: Vec::new(),
+        }
+    };
     let identity = PackagedRuntimeIdentity {
         runtime_root,
         site_packages,
@@ -1215,8 +1239,13 @@ fn packaged_runtime_identity(
         snapshot: Arc::new(Mutex::new(snapshot.clone())),
         full_hash_scans: Arc::new(AtomicUsize::new(0)),
         changes,
+        full_inventory_check,
     };
-    verify_packaged_runtime_full(&identity, &snapshot)?;
+    if full_inventory_check {
+        verify_packaged_runtime_full(&identity, &snapshot)?;
+    } else {
+        verify_packaged_runtime_anchor(&identity)?;
+    }
     Ok(identity)
 }
 
@@ -1438,6 +1467,9 @@ fn verify_packaged_runtime_identity(
     identity: &PackagedRuntimeIdentity,
 ) -> Result<(), ScientificCpythonUnavailable> {
     verify_packaged_runtime_anchor(identity)?;
+    if !identity.full_inventory_check {
+        return Ok(());
+    }
     let current = collect_runtime_snapshot(&identity.runtime_root)?;
     let mut baseline = identity
         .snapshot
@@ -4198,11 +4230,12 @@ done"#,
         fs::write(&package_member, "ATTESTED = True\n").unwrap();
         let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
         write_runtime_closure(&python_root, &site_packages, &closure);
-        let acquired = CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
+        let identity =
+            packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap();
+        let acquired = CpythonScientificJobExecutor::acquire_inner(
             &host,
-            &closure,
-            &python_root,
-            &site_packages,
+            Some(identity),
+            None,
             root.join("config"),
         );
         assert_eq!(
@@ -4279,6 +4312,42 @@ done"#,
             "python_runtime_contract_tampered"
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn product_runtime_selection_does_not_scan_installed_packages() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = root.path().join("python-runtime");
+        let python_root = runtime.join("python");
+        let site_packages = python_root.join("Lib/site-packages");
+        fs::create_dir_all(&site_packages).unwrap();
+        let host = python_root.join("python.exe");
+        fs::write(&host, "selected interpreter").unwrap();
+        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
+        write_runtime_closure(&python_root, &site_packages, &closure);
+        // Package contents are qualified at build time; product startup must
+        // not repeat that recursive inventory or hash every installed file.
+        fs::write(
+            site_packages.join("installed-package.txt"),
+            "package contents",
+        )
+        .unwrap();
+        let identity = packaged_runtime_identity_with_policy(
+            &host,
+            &closure,
+            &python_root,
+            &site_packages,
+            false,
+        )
+        .unwrap();
+        verify_packaged_runtime_identity(&identity).unwrap();
+        assert_eq!(identity.full_hash_scans.load(Ordering::Relaxed), 0);
+        assert!(identity.snapshot.lock().unwrap().files.is_empty());
+        fs::write(&closure, "changed manifest").unwrap();
+        assert_eq!(
+            verify_packaged_runtime_identity(&identity),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
     }
 
     #[cfg(unix)]

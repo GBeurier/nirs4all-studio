@@ -40,6 +40,7 @@ export interface EnvInfo {
   sitePackages: string | null;
   pythonVersion: string | null;
   isCustom: boolean;
+  canInstallRequiredVersions?: boolean;
   setupDeferred?: boolean;
   error?: string;
 }

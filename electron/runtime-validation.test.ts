@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { validatePythonRuntime } from "./env/runtime-validation";
+import { checkRuntimePackageVersions } from "./env/runtime-version-check";
 
 const python = [process.env.PYTHON, "python3.11", "python3", "python"].filter(Boolean).find((candidate) => (
   spawnSync(candidate!, ["-I", "-c", "import ensurepip, sys; assert sys.version_info >= (3, 11)"], {
@@ -45,6 +46,17 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
 
   it("accepts importable packages with coherent installed dependencies", async () => {
     await expect(validatePythonRuntime(executable)).resolves.toBeUndefined();
+  });
+  it("checks startup versions without importing scientific packages", async () => {
+    fs.writeFileSync(path.join(sitePackages, "nirs4all.py"), "raise RuntimeError('startup must only read metadata')\n");
+    fs.writeFileSync(path.join(sitePackages, "n4m.py"), "raise RuntimeError('startup must only read metadata')\n");
+    await expect(checkRuntimePackageVersions({
+      pythonPath: executable, appVersion: "0.15.4", userDataDir: path.join(root, "version-cache"), reused: true, force: true,
+    })).resolves.toBeNull();
+    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.13", "Version: 1.0.3"));
+    expect(await checkRuntimePackageVersions({
+      pythonPath: executable, appVersion: "0.15.4", userDataDir: path.join(root, "version-cache"), reused: true, force: true,
+    })).toContain("nirs4all 1.0.3 is installed; 1.4.13 is required");
   });
   it("accepts the published Methods distribution through its n4m import in a reused environment", async () => {
     await expect(validatePythonRuntime(executable, { reused: true })).resolves.toBeUndefined();

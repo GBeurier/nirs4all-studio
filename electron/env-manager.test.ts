@@ -13,6 +13,9 @@ const childProcessMocks = vi.hoisted(() => ({
 vi.mock("./env/runtime-adapters", () => ({
   prepareRuntimeAdapters: vi.fn(async (pythonPath: string) => path.join(path.dirname(pythonPath), "site-packages")),
 }));
+vi.mock("./env/runtime-version-check", () => ({
+  checkRuntimePackageVersions: vi.fn(async () => null),
+}));
 
 const fakeApp = {
   getPath: vi.fn(),
@@ -76,6 +79,26 @@ afterEach(() => {
 });
 
 describe("EnvManager", () => {
+  it("reports repair availability through Electron without a running Python host", async () => {
+    const dir = makeUserDataDir();
+    const pythonPath = path.join(dir, "selected", "python.exe");
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.writeFileSync(pythonPath, "");
+    fs.writeFileSync(path.join(dir, "env-settings.json"), JSON.stringify({ pythonPath }));
+    const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+    vi.mocked(checkRuntimePackageVersions).mockResolvedValueOnce("nirs4all 1.0.3 installed; 1.4.13 required");
+    await expect(manager.checkPackageVersions()).resolves.toBe(false);
+    await expect(manager.getInfo()).resolves.toMatchObject({
+      pythonPath, status: "error", canInstallRequiredVersions: true,
+    });
+    await expect(manager.checkPackageVersions(true)).resolves.toBe(true);
+    await expect(manager.getInfo()).resolves.toMatchObject({
+      status: "ready", canInstallRequiredVersions: false,
+    });
+    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  });
   it("does not recreate an existing managed environment when automatic setup is selected", async () => {
     const dir = makeUserDataDir();
     const venv = path.join(dir, "python-env", "venv");
