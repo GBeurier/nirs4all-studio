@@ -31,7 +31,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
   scientific job preflight fails, instead of a generic message.
 - Keep the per-file NA policy when a run is launched, so a target column no
   longer inherits the global `abort` rule. Edited datasets refresh their shape.
-- Load Excel and other non-CSV matrices again after the NA policy change.
+- Exclude samples whose target is missing only when training a single target,
+  instead of failing on NaN targets. Imports, previews and other analyses keep
+  those samples unless the user asks to remove them.
 - Preserve incoming metadata named `row_id`; rows stay positional and ID
   alignment is never forced.
 - Expand model parameter sweeps before repetition and repetition-fusion runs.
