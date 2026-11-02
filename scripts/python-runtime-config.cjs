@@ -29,7 +29,6 @@ const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
   "nirs4all-io==0.2.11",
   "nirs4all-methods==1.3.9",
   "nirs4all-formats==0.2.13",
-  "duckdb==1.5.5",
   "pyarrow==25.0.1",
   "shap==0.47.1",
   "matplotlib==3.10.1",
@@ -39,15 +38,27 @@ const PLUGIN_HOST_PACKAGES = Object.freeze([
   `nirs4all==${PLUGIN_DISTRIBUTION_VERSION}`,
   ...PLUGIN_SUPPORT_PACKAGES,
 ]);
-// Reused environments keep their own compatible dependencies. pip resolves
-// nirs4all's declared minimum requirements without pinning optional libraries.
+// Custom and managed environments accept version ranges; only the bundled
+// runtime is pinned (and attested) exactly. Studio talks to nirs4all through
+// named, schema-versioned callables (studio_scientific_job_v1/v2 and the
+// studio-* request schemas) that stay stable within a minor release, so any
+// nirs4all patch release from the required one up to the next minor works.
+// The Rust sidecar enforces the same range (scientific_cpython.rs).
+const [PLUGIN_DISTRIBUTION_MAJOR, PLUGIN_DISTRIBUTION_MINOR] = PLUGIN_DISTRIBUTION_VERSION.split(".").map(Number);
+const PLUGIN_DISTRIBUTION_REQUIREMENT =
+  `>=${PLUGIN_DISTRIBUTION_VERSION},<${PLUGIN_DISTRIBUTION_MAJOR}.${PLUGIN_DISTRIBUTION_MINOR + 1}`;
+// nirs4all-io and nirs4all-methods follow nirs4all's own declared ranges; the
+// native Methods ABI is checked separately when an environment is validated.
+// The same specs drive the compatibility check and "Install required versions",
+// where pip resolves io/methods within these ranges.
 const REUSABLE_RUNTIME_PACKAGES = Object.freeze([
-  `nirs4all==${PLUGIN_DISTRIBUTION_VERSION}`,
-  "nirs4all-io==0.2.11",
-  "nirs4all-methods==1.3.9",
+  `nirs4all${PLUGIN_DISTRIBUTION_REQUIREMENT}`,
+  "nirs4all-io>=0.2.11,<0.3",
+  "nirs4all-methods>=1.3.9,<2",
   "nirs4all-formats",
-  "duckdb",
 ]);
+// Native ABI exposed by nirs4all-methods (n4m.abi_version()[:2]).
+const REQUIRED_METHODS_ABI = Object.freeze([2, 20]);
 
 const LEGACY_FLAVOR_TO_PROFILE = Object.freeze({
   cpu: "cpu",
@@ -339,8 +350,10 @@ module.exports = {
   PYTHON_BUILD_STANDALONE_ARCHIVES,
   PYTHON_VERSION,
   PYTHON_VERSION_MM,
+  PLUGIN_DISTRIBUTION_REQUIREMENT,
   PLUGIN_DISTRIBUTION_VERSION,
   PLUGIN_HOST_PACKAGES,
+  REQUIRED_METHODS_ABI,
   PLUGIN_SUPPORT_PACKAGES,
   STANDALONE_V1_PROFILE,
   getArchiveFilename,

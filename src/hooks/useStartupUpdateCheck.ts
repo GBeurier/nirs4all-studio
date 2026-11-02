@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import i18n from "i18next";
 import { useUpdateStatus, useUpdateSettings } from "./useUpdates";
 import { useSetupStatus, useIsConfigAligned } from "./useRecommendedConfig";
-import { api } from "@/api/transport";
+import { waitForScientificReadiness } from "@/lib/scientificReadiness";
 import { getElectronApi } from "@/components/settings/PythonEnvPickerRuntime";
 import { useNetworkState } from "./useNetworkState";
 
@@ -43,7 +43,8 @@ export function useStartupUpdateCheck() {
     let cancelled = false;
     void Promise.all([
       desktop.getEnvInfo(),
-      api.get<{ ml_ready?: boolean }>("/system/readiness").catch(() => null),
+      // A starting engine is not a broken one: wait for its acquisition to end.
+      waitForScientificReadiness().catch(() => null),
     ]).then(([environment, readiness]) => {
       if (cancelled) return;
       hasCheckedSetup.current = true;

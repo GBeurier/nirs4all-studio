@@ -2,21 +2,38 @@
 import { execFile } from "node:child_process";
 import { getManagedCorePackageNames } from "./env-inspection";
 import { loadPythonRuntimeConfig } from "./external-config";
+import { parseRequirement, PYTHON_REQUIREMENT_HELPERS } from "./requirement-specs";
 
-const { PLUGIN_DISTRIBUTION_VERSION, REUSABLE_RUNTIME_PACKAGES } = loadPythonRuntimeConfig<{ PLUGIN_DISTRIBUTION_VERSION: string; REUSABLE_RUNTIME_PACKAGES: string[] }>();
+const { REQUIRED_METHODS_ABI, REUSABLE_RUNTIME_PACKAGES } = loadPythonRuntimeConfig<{
+  REQUIRED_METHODS_ABI: [number, number];
+  REUSABLE_RUNTIME_PACKAGES: string[];
+}>();
 
+/**
+ * Import every required distribution, check the required version ranges, the
+ * scientific entrypoints and the native Methods ABI.
+ * argv: [distribution names to import, version requirements, required ABI].
+ */
 export const REQUIRED_RUNTIME_IMPORT_PROBE = `import importlib, importlib.metadata, json, os, sys
+${PYTHON_REQUIREMENT_HELPERS}
 assert sys.version_info >= (3, 11), "Studio requires Python 3.11 or newer"
 os.environ.setdefault("MPLBACKEND", "Agg")
 for name in json.loads(sys.argv[1]):
     importlib.metadata.version(name)
     importlib.import_module("n4m" if name == "nirs4all-methods" else name.replace("-", "_"))
-assert importlib.metadata.version("nirs4all") == sys.argv[2], "Unsupported nirs4all plugin version"
+for spec in json.loads(sys.argv[2]):
+    try:
+        installed = importlib.metadata.version(requirement_name(spec))
+    except importlib.metadata.PackageNotFoundError:
+        installed = None
+    issue = requirement_issue(spec, installed)
+    assert issue is None, "Unsupported package version: " + str(issue)
 from nirs4all import studio_scientific_job_v1, studio_scientific_job_v2
 assert callable(studio_scientific_job_v1) and callable(studio_scientific_job_v2), "Scientific plugin entrypoint unavailable"
 from n4m import abi_version
 methods_abi = abi_version()
-assert methods_abi[:2] == (2, 20), f"Unsupported Methods ABI {methods_abi}: Studio requires ABI 2.20 (nirs4all-methods==1.3.9). Prepare the required package in this environment."
+required_abi = tuple(json.loads(sys.argv[3]))
+assert tuple(methods_abi[:2]) == required_abi, f"Unsupported Methods ABI {methods_abi}: Studio requires ABI {required_abi[0]}.{required_abi[1]}. Install a nirs4all-methods release that provides it in this environment."
 `;
 
 interface RuntimeValidationOptions {
@@ -41,7 +58,8 @@ export async function validatePythonRuntime(pythonPath: string, options: Runtime
   const timeoutMs = options.timeoutMs ?? 30_000;
   await verifyCommand(pythonPath, [
     ...(options.reused ? [] : ["-I"]), "-B", "-c", REQUIRED_RUNTIME_IMPORT_PROBE,
-    JSON.stringify(options.reused ? REUSABLE_RUNTIME_PACKAGES.map((name) => name.split(/[<>=!~ []/)[0]) : getManagedCorePackageNames()), PLUGIN_DISTRIBUTION_VERSION,
+    JSON.stringify(options.reused ? REUSABLE_RUNTIME_PACKAGES.map((spec) => parseRequirement(spec).name) : getManagedCorePackageNames()),
+    JSON.stringify(REUSABLE_RUNTIME_PACKAGES), JSON.stringify(REQUIRED_METHODS_ABI),
   ], timeoutMs);
   if (options.checkDependencies !== false) {
     await verifyCommand(pythonPath, ["-I", "-B", "-m", "pip", "check"], timeoutMs);

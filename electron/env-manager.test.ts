@@ -13,8 +13,9 @@ const childProcessMocks = vi.hoisted(() => ({
 vi.mock("./env/runtime-adapters", () => ({
   prepareRuntimeAdapters: vi.fn(async (pythonPath: string) => path.join(path.dirname(pythonPath), "site-packages")),
 }));
-vi.mock("./env/runtime-version-check", () => ({
-  checkRuntimePackageVersions: vi.fn(async () => null),
+vi.mock("./env/runtime-version-check", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./env/runtime-version-check")>()),
+  checkRuntimePackageVersions: vi.fn(async () => ({ issues: [] as string[], versions: {} as Record<string, string | null> })),
 }));
 
 const fakeApp = {
@@ -88,7 +89,7 @@ describe("EnvManager", () => {
     const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
     const { EnvManager } = await import("./env-manager");
     const manager = new EnvManager();
-    vi.mocked(checkRuntimePackageVersions).mockResolvedValueOnce("nirs4all 1.0.3 installed; 1.4.13 required");
+    vi.mocked(checkRuntimePackageVersions).mockResolvedValueOnce({ issues: ["nirs4all 1.0.3 installed; 1.4.14 required"], versions: { nirs4all: "1.0.3" } });
     await expect(manager.checkPackageVersions()).resolves.toBe(false);
     await expect(manager.getInfo()).resolves.toMatchObject({
       pythonPath, status: "error", canInstallRequiredVersions: true,
@@ -387,8 +388,11 @@ describe("EnvManager", () => {
     const installArgs = childProcessMocks.spawn.mock.calls
       .filter(([, args]) => Array.isArray(args) && args.includes("install"))
       .flatMap(([, args]) => args as string[]);
-    expect(installArgs).toContain("nirs4all==1.4.13");
-    expect(installArgs).toContain("only-if-needed");
+    // The required nirs4all range; pip resolves io/methods within nirs4all's own ranges.
+    expect(installArgs).toEqual(expect.arrayContaining([
+      "nirs4all>=1.4.14,<1.5", "nirs4all-io>=0.2.11,<0.3", "nirs4all-methods>=1.3.9,<2", "only-if-needed",
+    ]));
+    expect(installArgs.some((arg) => arg.startsWith("nirs4all") && arg.includes("=="))).toBe(false);
     expect(installArgs.some((arg) => arg.startsWith("shap") || arg.startsWith("matplotlib"))).toBe(false);
     expect(installArgs.join(" ").toLowerCase()).not.toMatch(
       /fastapi|uvicorn|python-multipart|sentry-sdk/,
@@ -462,11 +466,10 @@ describe("EnvManager", () => {
         installed: inspectCalls === 1
           ? { nirs4all: "0.9.3" }
           : {
-              nirs4all: "1.4.13",
+              nirs4all: "1.4.14",
               "nirs4all-io": "0.2.11",
               "nirs4all-methods": "1.3.9",
               "nirs4all-formats": "0.2.13",
-              duckdb: "1.5.5",
               pyarrow: "25.0.1",
               shap: "0.47.1",
               matplotlib: "3.10.1",
@@ -548,11 +551,10 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.8",
           installed: {
-            nirs4all: "1.4.13",
+            nirs4all: "1.4.14",
               "nirs4all-io": "0.2.11",
               "nirs4all-methods": "1.3.9",
             "nirs4all-formats": "0.2.13",
-            duckdb: "1.5.5",
             pyarrow: "25.0.1",
             shap: "0.47.1",
             matplotlib: "3.10.1",
@@ -617,11 +619,10 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.7",
           installed: {
-            nirs4all: "1.4.13",
+            nirs4all: "1.4.14",
               "nirs4all-io": "0.2.11",
               "nirs4all-methods": "1.3.9",
             "nirs4all-formats": "0.2.13",
-            duckdb: "1.5.5",
             pyarrow: "25.0.1",
             shap: "0.47.1",
             matplotlib: "3.10.1",
@@ -1269,5 +1270,136 @@ describe("EnvManager", () => {
         ([command, args]) => command === "py" && Array.isArray(args) && args[0] === "-0p",
       ),
     ).toBe(true);
+  });
+});
+
+describe("EnvManager included-runtime fallback", () => {
+  function makeBundledRuntime(): string {
+    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-bundled-"));
+    tempDirs.push(resourcesDir);
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
+    const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
+    const bundledPython = process.platform === "win32"
+      ? path.join(runtimeDir, "python", "python.exe")
+      : path.join(runtimeDir, "python", "bin", "python3");
+    fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
+    fs.mkdirSync(process.platform === "win32"
+      ? path.join(runtimeDir, "python", "Lib", "site-packages")
+      : path.join(runtimeDir, "python", "lib", "python3.11", "site-packages"), { recursive: true });
+    fs.writeFileSync(path.join(runtimeDir, "PLUGIN_RUNTIME_READY.json"), "{}");
+    fs.writeFileSync(bundledPython, "");
+    return bundledPython;
+  }
+
+  function selectCustomPython(userDataDir: string, create = true): string {
+    const customPython = path.join(userDataDir, "custom-env", "python.exe");
+    if (create) {
+      fs.mkdirSync(path.dirname(customPython), { recursive: true });
+      fs.writeFileSync(customPython, "");
+    }
+    fs.writeFileSync(path.join(userDataDir, "env-settings.json"), JSON.stringify({ pythonPath: customPython, appVersion: "0.3.1" }));
+    return customPython;
+  }
+
+  it("runs the included runtime for the session when the selected environment needs other versions", async () => {
+    const userDataDir = makeUserDataDir();
+    const customPython = selectCustomPython(userDataDir);
+    const bundledPython = makeBundledRuntime();
+    const issues = ["nirs4all 1.4.13 is installed; nirs4all>=1.4.14,<1.5 is required"];
+    const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
+    vi.mocked(checkRuntimePackageVersions).mockResolvedValue({ issues, versions: { nirs4all: "1.4.13", "nirs4all-io": null } });
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await expect(manager.checkPackageVersions(false, true)).resolves.toBe(true);
+
+    // One INFO line records the selection, versions found, compatibility and fallback.
+    const decisions = log.mock.calls.map(([line]) => String(line)).filter((line) => line.startsWith("[EnvManager] Python environment:"));
+    expect(decisions).toEqual([
+      `[EnvManager] Python environment: selected=custom | path=${customPython} | versions=nirs4all 1.4.13, nirs4all-io missing | compatible=false | issues=${issues[0]} | fallback=included runtime (selected environment is incompatible) | running=${bundledPython}`,
+    ]);
+    log.mockRestore();
+
+    expect(manager.getConfiguredRuntimeMode()).toBe("bundled");
+    expect(manager.getConfiguredPythonPath()).toBe(bundledPython);
+    await expect(manager.getInfo()).resolves.toMatchObject({
+      status: "ready",
+      pythonPath: bundledPython,
+      canInstallRequiredVersions: false,
+      runtimeFallback: { reason: "incompatible", selectedPythonPath: customPython, issues },
+    });
+    expect(manager.shouldShowWizard()).toBe(false);
+    // The selection is kept so the user can install the required versions into it.
+    expect(JSON.parse(fs.readFileSync(path.join(userDataDir, "env-settings.json"), "utf8")).pythonPath).toBe(customPython);
+  });
+
+  it("explains a missing selected environment and keeps it selected", async () => {
+    const userDataDir = makeUserDataDir();
+    const customPython = selectCustomPython(userDataDir, false);
+    const bundledPython = makeBundledRuntime();
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+    manager.validateConfiguredState();
+
+    await expect(manager.checkPackageVersions(false, true)).resolves.toBe(true);
+
+    const info = await manager.getInfo();
+    expect(info.pythonPath).toBe(bundledPython);
+    expect(info.error).toBeUndefined();
+    expect(info.runtimeFallback).toEqual({ reason: "missing", selectedPythonPath: customPython, issues: [] });
+  });
+
+  it("validates an explicit environment change without falling back", async () => {
+    const userDataDir = makeUserDataDir();
+    const customPython = selectCustomPython(userDataDir);
+    makeBundledRuntime();
+    const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
+    vi.mocked(checkRuntimePackageVersions).mockResolvedValue({ issues: ["nirs4all 1.0.3 is installed; 1.4.14 is required"], versions: { nirs4all: "1.0.3" } });
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+
+    await expect(manager.checkPackageVersions(false, false)).resolves.toBe(false);
+
+    expect(manager.getConfiguredPythonPath()).toBe(customPython);
+    const info = await manager.getInfo();
+    expect(info.runtimeFallback).toBeUndefined();
+    expect(info.error).toContain("1.0.3 is installed");
+  });
+
+  it("restores a fallback session when an environment change is rolled back", async () => {
+    const userDataDir = makeUserDataDir();
+    selectCustomPython(userDataDir, false);
+    const bundledPython = makeBundledRuntime();
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+    await manager.checkPackageVersions(false, true);
+    const snapshot = manager.snapshotSelection();
+
+    await manager.checkPackageVersions(false, false);
+    expect(manager.getConfiguredPythonPath()).toBeNull();
+    manager.restoreSelection(snapshot);
+
+    expect(manager.getConfiguredPythonPath()).toBe(bundledPython);
+    expect((await manager.getInfo()).runtimeFallback?.reason).toBe("missing");
+  });
+
+  it("persists the included runtime as a marker and migrates a stale absolute path", async () => {
+    const userDataDir = makeUserDataDir();
+    const settingsPath = path.join(userDataDir, "env-settings.json");
+    const previousInstall = path.join(userDataDir, "Old Install", "resources", "backend", "python-runtime", "python", "python.exe");
+    fs.writeFileSync(settingsPath, JSON.stringify({ pythonPath: previousInstall, appVersion: "0.3.0" }));
+    fs.mkdirSync(path.dirname(path.join(userDataDir, "python-env", "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python")), { recursive: true });
+    fs.writeFileSync(path.join(userDataDir, "python-env", "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python"), "");
+    const bundledPython = makeBundledRuntime();
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+
+    // The managed environment must not take over the migrated included-runtime selection.
+    expect(manager.getConfiguredRuntimeMode()).toBe("bundled");
+    expect(manager.getConfiguredPythonPath()).toBe(bundledPython);
+    manager.markWizardComplete(false);
+    expect(JSON.parse(fs.readFileSync(settingsPath, "utf8"))).toEqual({ runtime: "bundled", appVersion: "0.3.1" });
+    expect(new EnvManager().getConfiguredPythonPath()).toBe(bundledPython);
   });
 });

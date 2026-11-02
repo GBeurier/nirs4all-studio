@@ -17,6 +17,7 @@ import {
 import type {
   DesktopDetectedEnv,
   DesktopEnvActionResult,
+  DesktopEnvInfo,
 } from "@/types/pythonRuntime";
 import type { RuntimeSummaryResponse } from "@/types/settings";
 
@@ -33,17 +34,7 @@ export {
   restartBackendForRuntimeSwitch,
 };
 
-export interface EnvInfo {
-  status: string;
-  envDir: string;
-  pythonPath: string | null;
-  sitePackages: string | null;
-  pythonVersion: string | null;
-  isCustom: boolean;
-  canInstallRequiredVersions?: boolean;
-  setupDeferred?: boolean;
-  error?: string;
-}
+export type EnvInfo = DesktopEnvInfo;
 
 export interface SetupProgress {
   percent: number;

@@ -6,7 +6,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [Unreleased]
+## [0.15.8] — 2026-11-02
+
+### Changed
+
+- Accept custom and managed Python environments whose packages fall within the
+  nirs4all release ranges (`nirs4all>=1.4.14,<1.5`, `nirs4all-io>=0.2.11,<0.3`,
+  `nirs4all-methods>=1.3.9,<2`) and match the native Methods ABI. Exact package
+  identity and file verification remain required for the included runtime.
+- Start the Studio service before the Python check completes, cache a verified
+  included runtime between launches, allow a longer first launch after an update,
+  and retry a timed-out Python check without restarting.
+- Show actual cross-validation progress: variant, fold, model and fit counts,
+  including pipelines with several models, with a heartbeat during long fits.
+- Package nirs4all 1.4.14 in the included runtime.
+
+### Fixed
+
+- Fall back to the included runtime, with a persistent explanation and repair
+  actions, when the selected environment is missing or incompatible, instead of
+  starting without a Python host. Keep the included-runtime choice valid when the
+  installation folder changes.
+- Show the actual reason when the Python environment, capability check or
+  scientific job preflight fails, instead of a generic message.
+- Keep the per-file NA policy when a run is launched, so a target column no
+  longer inherits the global `abort` rule. Edited datasets refresh their shape.
+- Exclude samples whose target is missing only when training a single target,
+  instead of failing on NaN targets. Imports, previews and other analyses keep
+  those samples unless the user asks to remove them.
+- Preserve incoming metadata named `row_id`; rows stay positional and ID
+  alignment is never forced.
+- Expand model parameter sweeps before repetition and repetition-fusion runs.
+- Open run tracking at launch, allow stopping a run before its first fit, show
+  cancelled runs as cancelled, and clear finished runs from the floating widget.
+- Never leave a job running forever when its result is large or a cancellation
+  is refused; later runs are no longer blocked.
+- Advertise the native run-management routes requested by the renderer.
+
+### Removed
+
+- DuckDB and the legacy workspace conversion. Studio opens current SQLite
+  workspaces only; a DuckDB workspace shows a one-time notice pointing to the
+  dedicated `nirs4all-tools` converter. DuckDB and nirs4all-tools are no longer
+  installed in the included runtime nor required in selected environments.
 
 ---
 

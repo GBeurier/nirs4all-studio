@@ -155,6 +155,19 @@ pub trait ScientificJobExecutor: Debug + Send + Sync {
 /// WebSocket publication, cancellation acknowledgement, and durable storage
 /// remain owned by [`NativeJobRuntime`].
 pub trait ScientificJobTerminal: Debug + Send + Sync {
+    /// Publish observed scientific work; None means no measured denominator.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the progress update cannot be published.
+    fn progress(
+        &self,
+        job_id: &str,
+        _progress: Option<f64>,
+        message: &str,
+    ) -> Result<(), NativeJobRuntimeError> {
+        self.activity(job_id, message)
+    }
     /// Publish truthful worker activity without inventing a completed-fit count.
     ///
     /// # Errors
@@ -163,11 +176,13 @@ pub trait ScientificJobTerminal: Debug + Send + Sync {
     fn activity(&self, _job_id: &str, _message: &str) -> Result<(), NativeJobRuntimeError> {
         Ok(())
     }
-    /// Publish and persist a validated scientific result as completed.
+    /// Publish and persist a validated scientific result as completed, or as
+    /// an explicit failure when the result itself cannot be recorded.
     ///
     /// # Errors
     ///
-    /// Returns a Rust lifecycle, event, or durable-write failure.
+    /// Returns a Rust lifecycle, event, or durable-write failure which also
+    /// prevented recording that explicit failure.
     fn complete(&self, job_id: &str, result: Value) -> Result<(), NativeJobRuntimeError>;
 
     /// Publish and persist a bounded worker failure.
@@ -241,8 +256,15 @@ pub struct ScientificSubmissionReceipt {
 pub enum JobExecutorError {
     Unselected,
     InvalidCapability,
-    PreflightRefused,
-    PreflightBlocked { code: String, detail: String },
+    /// Preflight refused for a concrete, stable reason shown to the user.
+    PreflightRefused {
+        code: &'static str,
+        detail: &'static str,
+    },
+    PreflightBlocked {
+        code: String,
+        detail: String,
+    },
     SubmissionRefused,
     CancellationRefused,
 }
@@ -276,6 +298,7 @@ pub struct NativeJobRuntime {
 
 #[derive(Clone, Debug)]
 struct DurableScientificJob {
+    progress_known: bool,
     workspace_path: PathBuf,
     requested_backend: String,
     execution_backend: String,
@@ -302,6 +325,16 @@ impl NativeJobRuntime {
             next_submission_id: Arc::new(AtomicU64::new(1)),
             published_events: Arc::new(AtomicU64::new(0)),
             durable_writes: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// The same registry, events and durable jobs, submitting new jobs to
+    /// `executor` (a scientific host acquired after startup).
+    #[must_use]
+    pub(crate) fn with_replaced_executor(&self, executor: Arc<dyn ScientificJobExecutor>) -> Self {
+        Self {
+            executor,
+            ..self.clone()
         }
     }
 
@@ -452,6 +485,7 @@ impl NativeJobRuntime {
             .insert(
                 job_id.clone(),
                 DurableScientificJob {
+                    progress_known: false,
                     workspace_path: workspace_path.clone(),
                     requested_backend: requested_backend.into(),
                     execution_backend: selection.execution_backend.clone(),
@@ -642,7 +676,7 @@ impl NativeJobRuntime {
                 }
                 let mut public = job.public_json();
                 public["progress_unavailable"] =
-                    json!(job.progress == 0.0 && matches!(job.status, JobStatus::Running));
+                    json!(!context.progress_known && matches!(job.status, JobStatus::Running));
                 Some(json!({"job":public, "legacyConfig":context.request["legacyConfig"]}))
             })
             .collect()
@@ -724,9 +758,12 @@ impl NativeJobRuntime {
 
     /// Complete a job, honoring cooperative cancellation, and publish once.
     ///
+    /// The job snapshot keeps the full result. A result too large for one
+    /// WebSocket frame is published as `null`; clients read it from HTTP state.
+    ///
     /// # Errors
     ///
-    /// Returns lifecycle validation or event-projection failures.
+    /// Returns lifecycle validation, durable-write or event-publication failures.
     pub fn complete_at(
         &self,
         id: &str,
@@ -734,8 +771,13 @@ impl NativeJobRuntime {
         timestamp: &str,
         now: Instant,
     ) -> Result<JobSnapshot, NativeJobRuntimeError> {
-        ensure_event_data_bounded(&json!({"job_id": id, "result": result}))?;
-        self.mutate_terminal(|registry| registry.complete_at(id, result, timestamp, now))
+        self.mutate_terminal(|registry| {
+            let mut mutation = registry.complete_at(id, result, timestamp, now)?;
+            if let Some(event) = mutation.event.as_mut() {
+                event.omit_result_beyond(MAX_JOB_EVENT_DATA_BYTES);
+            }
+            Ok(mutation)
+        })
     }
 
     /// Fail a job and publish the exact legacy failure event.
@@ -784,6 +826,7 @@ impl NativeJobRuntime {
             // A fresh process may observe its kill token immediately and call
             // back from another thread; the acknowledgement must never race
             // ahead of the authoritative lifecycle flag.
+            let already_requested = snapshot.cancellation_requested();
             let mutation = registry.request_cancel_at(id, timestamp, now)?;
             drop(registry);
             let executor = self
@@ -795,9 +838,19 @@ impl NativeJobRuntime {
                     || Arc::clone(&self.executor),
                     |job| Arc::clone(&job.executor),
                 );
-            executor
-                .request_cooperative_cancel(id)
-                .map_err(NativeJobRuntimeError::Executor)?;
+            if let Err(error) = executor.request_cooperative_cancel(id) {
+                // The worker never received this request: do not let a later
+                // completion be recorded as a cancellation. A job which became
+                // terminal meanwhile has nothing left to withdraw.
+                if !already_requested {
+                    let _ = self
+                        .registry
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .withdraw_cancel_request(id);
+                }
+                return Err(NativeJobRuntimeError::Executor(error));
+            }
             return self.publish(mutation);
         }
         let mutation = registry.request_cancel_at(id, timestamp, now)?;
@@ -907,12 +960,54 @@ impl NativeJobRuntime {
 }
 
 impl ScientificJobTerminal for NativeJobRuntime {
+    fn progress(
+        &self,
+        job_id: &str,
+        progress: Option<f64>,
+        message: &str,
+    ) -> Result<(), NativeJobRuntimeError> {
+        let previous = self.get_at(job_id, Instant::now());
+        let previous_progress = previous.as_ref().map_or(0.0, |job| job.progress);
+        if previous
+            .as_ref()
+            .is_some_and(|job| !matches!(job.status, JobStatus::Running))
+        {
+            return Ok(());
+        }
+        if let Some(context) = self
+            .durable_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_mut(job_id)
+        {
+            context.progress_known |= progress.is_some();
+        }
+        self.progress_at(
+            job_id,
+            progress.unwrap_or(previous_progress).max(previous_progress),
+            message,
+            &rfc3339_now(),
+            Instant::now(),
+        )?;
+        Ok(())
+    }
     fn activity(&self, job_id: &str, message: &str) -> Result<(), NativeJobRuntimeError> {
         self.progress_at(job_id, 0.0, message, &rfc3339_now(), Instant::now())?;
         Ok(())
     }
     fn complete(&self, job_id: &str, result: Value) -> Result<(), NativeJobRuntimeError> {
-        self.complete_at(job_id, result, &rfc3339_now(), Instant::now())?;
+        if let Err(error) = self.complete_at(job_id, result, &rfc3339_now(), Instant::now()) {
+            // A result the lifecycle refuses must not leave the job running:
+            // record an explicit failure. Only an unrecordable failure is
+            // reported back to the executor as a systemic fault.
+            self.fail_at(
+                job_id,
+                format!("The scientific result could not be recorded: {error:?}"),
+                None,
+                &rfc3339_now(),
+                Instant::now(),
+            )?;
+        }
         Ok(())
     }
 
@@ -959,7 +1054,7 @@ fn durable_record(snapshot: &JobSnapshot, context: &DurableScientificJob) -> Val
         "status": snapshot.status.as_str(),
         "progress": snapshot.progress,
         "progress_message": snapshot.progress_message,
-        "progress_unavailable": snapshot.progress == 0.0 && matches!(snapshot.status, JobStatus::Running),
+        "progress_unavailable": !context.progress_known && matches!(snapshot.status, JobStatus::Running),
         "created_at": snapshot.created_at,
         "started_at": snapshot.started_at,
         "completed_at": snapshot.completed_at,
@@ -1302,7 +1397,7 @@ fn cancellation_failure(job_id: &str, error: &NativeJobRuntimeError) -> HttpResp
         ),
         NativeJobRuntimeError::Executor(
             JobExecutorError::InvalidCapability
-            | JobExecutorError::PreflightRefused
+            | JobExecutorError::PreflightRefused { .. }
             | JobExecutorError::PreflightBlocked { .. }
             | JobExecutorError::SubmissionRefused,
         ) => legacy_detail(503, "Scientific job executor is unavailable"),

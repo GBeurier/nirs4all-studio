@@ -173,6 +173,11 @@ export const clientStorageKeys = {
     scope: "session",
     description: "Workspace and job identities dismissed from the execution tasks panel in this session.",
   }),
+  dismissedLegacyWorkspaceNotices: defineClientStorageKey<string[]>("nirs4all-dismissed-legacy-workspace-notices", {
+    area: "local",
+    scope: "user",
+    description: "Workspace paths whose one-time legacy DuckDB conversion notice was dismissed.",
+  }),
   playgroundSessionState: defineClientStorageKey<unknown>("playground-session-state", {
     area: "session",
     scope: "session",

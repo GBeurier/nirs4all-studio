@@ -548,6 +548,7 @@ export function PipelineExecutionDialog({
             <ExecutionPlanPreview preview={selectedExecutionPlanPreview} />
 
             <ExecutionFeedback
+              jobId={jobId}
               error={error}
               progress={progress}
               progressMessage={progressMessage}

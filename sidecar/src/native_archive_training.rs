@@ -50,6 +50,10 @@ const MAX_SAMPLES: usize = 100_000;
 const MAX_FEATURES: usize = crate::matrix_limits::MAX_SPECTRAL_FEATURES;
 const MAX_CELLS: usize = 20_000_000;
 const MAX_TARGETS: usize = 64;
+const PREFLIGHT_REFUSED: JobExecutorError = JobExecutorError::PreflightRefused {
+    code: "native_archive_training_request_invalid",
+    detail: "the Archive V2 training request, workspace or linked dataset is not valid",
+};
 const MAX_FOLDS: usize = 50;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -105,38 +109,34 @@ impl NativeArchiveTrainingExecutor {
         request: &ScientificSubmissionPreflight,
     ) -> Result<PreparedNativeArchiveTraining, JobExecutorError> {
         if request.requested_backend != NATIVE_ARCHIVE_TRAINING_BACKEND {
-            return Err(JobExecutorError::PreflightRefused);
+            return Err(PREFLIGHT_REFUSED);
         }
-        let parsed = parse_request_value(&request.payload)
-            .map_err(|_| JobExecutorError::PreflightRefused)?;
+        let parsed = parse_request_value(&request.payload).map_err(|_| PREFLIGHT_REFUSED)?;
         if parsed.workspace_id != request.workspace_id {
-            return Err(JobExecutorError::PreflightRefused);
+            return Err(PREFLIGHT_REFUSED);
         }
         let workspace = request
             .workspace_path
             .canonicalize()
-            .map_err(|_| JobExecutorError::PreflightRefused)?;
+            .map_err(|_| PREFLIGHT_REFUSED)?;
         if workspace != request.workspace_path || !workspace.is_dir() {
-            return Err(JobExecutorError::PreflightRefused);
+            return Err(PREFLIGHT_REFUSED);
         }
         let dataset = AppSettingsStore::new(&self.config_dir)
             .dataset_links()
-            .map_err(|_| JobExecutorError::PreflightRefused)?
+            .map_err(|_| PREFLIGHT_REFUSED)?
             .into_iter()
             .find(|dataset| dataset.id == parsed.dataset_id && !dataset.path.is_empty())
-            .ok_or(JobExecutorError::PreflightRefused)?;
+            .ok_or(PREFLIGHT_REFUSED)?;
         let configured = PathBuf::from(dataset.path);
-        let metadata =
-            fs::symlink_metadata(&configured).map_err(|_| JobExecutorError::PreflightRefused)?;
-        let dataset_path = configured
-            .canonicalize()
-            .map_err(|_| JobExecutorError::PreflightRefused)?;
+        let metadata = fs::symlink_metadata(&configured).map_err(|_| PREFLIGHT_REFUSED)?;
+        let dataset_path = configured.canonicalize().map_err(|_| PREFLIGHT_REFUSED)?;
         if metadata.file_type().is_symlink()
             || (!metadata.is_file() && !metadata.is_dir())
             || metadata.len() > MAX_DATASET_BYTES
             || dataset_path != configured
         {
-            return Err(JobExecutorError::PreflightRefused);
+            return Err(PREFLIGHT_REFUSED);
         }
         Ok(PreparedNativeArchiveTraining {
             workspace_id: parsed.workspace_id,

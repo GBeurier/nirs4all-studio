@@ -15,6 +15,22 @@ function createDataset(overrides: Partial<Dataset> = {}): Dataset {
 }
 
 describe("buildInitialState", () => {
+  it("restores global parsing while retaining distinct per-file NA policies", () => {
+    const config = { global_params: { delimiter: ",", na_policy: "auto" },
+      files: [{ path: "X.csv", type: "X", split: "train", overrides: { delimiter: ",", na_policy: "auto" } },
+        { path: "Y.csv", type: "Y", split: "train", overrides: { delimiter: ",", na_policy: "ignore" } }] };
+    const state = buildInitialState(createDataset({ config: config as DatasetConfig }));
+    expect(state.parsing?.delimiter).toBe(",");
+    expect(state.perFileOverrides?.["X.csv"]).toEqual({});
+    expect(state.perFileOverrides?.["Y.csv"]).toEqual({ na_policy: "ignore" });
+  });
+
+  it("preserves legacy header units and nested global NA policies", () => {
+    const config = { header_type: "nm", global_params: { na: { policy: "abort" } } };
+    const state = buildInitialState(createDataset({ config: config as unknown as DatasetConfig }));
+    expect(state.parsing?.header_unit).toBe("nm");
+    expect(state.parsing?.na_policy).toBe("abort");
+  });
   it("hydrates metadata columns for the edit wizard", () => {
     const state = buildInitialState(
       createDataset({

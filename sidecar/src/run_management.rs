@@ -845,12 +845,29 @@ pub fn record_run_projection(
         ids
     };
     for id in ids {
-        let run = connection.map_or_else(
+        let run = match connection.map_or_else(
             || crate::workspace_store::read_run_detail_projection(workspace, &id),
             |connection| {
                 crate::workspace_store::read_run_detail_projection_from_connection(connection, &id)
             },
-        )?;
+        ) {
+            // A durable job exists before the scientific library creates its
+            // store, including failures and cancellations before the first fit.
+            Err(crate::workspace_store::WorkspaceStoreReadError::StoreNotFound) => return Ok(None),
+            // A first run briefly exposes SQLite before its schema is created.
+            // Keep serving its durable progress while initialization is active.
+            Err(crate::workspace_store::WorkspaceStoreReadError::SchemaVersion {
+                actual: 0,
+                ..
+            }) if matches!(
+                record["status"].as_str(),
+                Some("pending" | "running" | "cancelling")
+            ) =>
+            {
+                return Ok(None)
+            }
+            result => result?,
+        };
         if run.is_some() {
             return Ok(run);
         }
@@ -862,6 +879,36 @@ pub fn record_run_projection(
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+    #[test]
+    fn running_job_remains_readable_during_initial_store_creation() {
+        let workspace = tempfile::tempdir().unwrap();
+        let store = rusqlite::Connection::open(workspace.path().join("store.sqlite")).unwrap();
+        for status in ["pending", "running", "cancelling"] {
+            let record = json!({"status":status,"driver":{}});
+            assert_eq!(
+                record_run_projection(workspace.path(), Some(&store), "initializing", &record)
+                    .unwrap(),
+                None
+            );
+        }
+        let completed = json!({"status":"completed","driver":{}});
+        assert!(
+            record_run_projection(workspace.path(), Some(&store), "initializing", &completed)
+                .is_err()
+        );
+    }
+    #[test]
+    fn job_projection_does_not_require_a_scientific_store_to_exist() {
+        let workspace = tempfile::tempdir().unwrap();
+        let record = json!({"driver":{}});
+        assert_eq!(
+            record_run_projection(workspace.path(), None, "job-before-fit", &record).unwrap(),
+            None
+        );
+        // Existing invalid storage must retain its explicit diagnostic.
+        std::fs::write(workspace.path().join("store.sqlite"), b"invalid database").unwrap();
+        assert!(record_run_projection(workspace.path(), None, "job-before-fit", &record).is_err());
+    }
     #[test]
     fn execution_backend_discovery_does_not_claim_an_unconfigured_runtime_is_ready() {
         let state = Arc::new(Mutex::new(SidecarState::default()));

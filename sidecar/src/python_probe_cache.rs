@@ -9,13 +9,20 @@
 //! distribution changes that directory, and selecting another interpreter
 //! changes the path; both miss the cache. When no `site-packages` can be located
 //! the probe is never cached, so a stale answer is impossible.
+//!
+//! A failure (for example a cold-start timeout) is remembered for a short
+//! window so clients polling an endpoint do not respawn the interpreter on
+//! every request; the first request after the window probes again.
 
 use std::{
     fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
-    time::SystemTime,
+    time::{Duration, Instant, SystemTime},
 };
+
+/// How long a failed probe answers repeated requests before it is retried.
+const FAILURE_RETRY_AFTER: Duration = Duration::from_secs(30);
 
 use serde_json::Value;
 
@@ -102,25 +109,57 @@ fn package_dirs(host: &Path) -> Vec<PathBuf> {
 }
 
 #[derive(Debug)]
-struct CachedProbe {
+enum ProbeOutcome<E> {
+    Ready(Value),
+    Failed { error: E, at: Instant },
+}
+
+#[derive(Debug)]
+struct CachedProbe<E> {
     fingerprint: RuntimeFingerprint,
-    value: Value,
+    outcome: ProbeOutcome<E>,
 }
 
 /// One slot per probe kind. A slot stays locked while its probe runs, so
 /// concurrent requests for the same kind share a single interpreter spawn.
-#[derive(Clone, Debug, Default)]
-pub struct PythonProbeCache {
-    slots: Arc<[Mutex<Option<CachedProbe>>; PROBE_KINDS]>,
+#[derive(Debug)]
+pub struct PythonProbeCache<E> {
+    slots: Arc<[Mutex<Option<CachedProbe<E>>>; PROBE_KINDS]>,
 }
 
-impl PythonProbeCache {
+impl<E> Clone for PythonProbeCache<E> {
+    fn clone(&self) -> Self {
+        Self {
+            slots: Arc::clone(&self.slots),
+        }
+    }
+}
+
+impl<E> Default for PythonProbeCache<E> {
+    fn default() -> Self {
+        Self {
+            slots: Arc::new(std::array::from_fn(|_| Mutex::new(None))),
+        }
+    }
+}
+
+impl<E: Clone> PythonProbeCache<E> {
     /// Return the cached probe for `host` or run `read` and remember its
-    /// success. Failures (timeouts, malformed output) are never cached.
-    pub fn get_or_probe<E>(
+    /// outcome. A failure is replayed until `FAILURE_RETRY_AFTER` elapses.
+    pub fn get_or_probe(
         &self,
         kind: ProbeKind,
         host: &Path,
+        read: impl FnOnce() -> Result<Value, E>,
+    ) -> Result<Value, E> {
+        self.get_or_probe_retrying_after(kind, host, FAILURE_RETRY_AFTER, read)
+    }
+
+    fn get_or_probe_retrying_after(
+        &self,
+        kind: ProbeKind,
+        host: &Path,
+        retry_after: Duration,
         read: impl FnOnce() -> Result<Value, E>,
     ) -> Result<Value, E> {
         let Some(fingerprint) = RuntimeFingerprint::of(host) else {
@@ -130,15 +169,27 @@ impl PythonProbeCache {
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         if let Some(cached) = slot.as_ref().filter(|c| c.fingerprint == fingerprint) {
-            return Ok(cached.value.clone());
+            match &cached.outcome {
+                ProbeOutcome::Ready(value) => return Ok(value.clone()),
+                ProbeOutcome::Failed { error, at } if at.elapsed() < retry_after => {
+                    return Err(error.clone());
+                }
+                ProbeOutcome::Failed { .. } => {}
+            }
         }
-        let value = read()?;
+        let result = read();
         *slot = Some(CachedProbe {
             fingerprint,
-            value: value.clone(),
+            outcome: match &result {
+                Ok(value) => ProbeOutcome::Ready(value.clone()),
+                Err(error) => ProbeOutcome::Failed {
+                    error: error.clone(),
+                    at: Instant::now(),
+                },
+            },
         });
         drop(slot);
-        Ok(value)
+        result
     }
 }
 
@@ -180,7 +231,7 @@ mod tests {
     }
 
     fn probe(
-        cache: &PythonProbeCache,
+        cache: &PythonProbeCache<&'static str>,
         kind: ProbeKind,
         host: &Path,
         runs: &Cell<u32>,
@@ -251,20 +302,49 @@ mod tests {
     }
 
     #[test]
-    fn failures_and_unlocatable_environments_are_never_cached() {
+    fn polling_replays_a_recent_failure_without_respawning_python() {
         let env = environment("venv");
         let cache = PythonProbeCache::default();
         let attempts = Cell::new(0);
-        let failing = |attempts: &Cell<u32>| {
-            cache.get_or_probe(ProbeKind::RuntimeStatus, &env.python, || {
+        let failing = || {
+            cache.get_or_probe(ProbeKind::Capabilities, &env.python, || {
                 attempts.set(attempts.get() + 1);
                 Err::<Value, _>("timed_out")
             })
         };
-        assert_eq!(failing(&attempts), Err("timed_out"));
-        assert_eq!(failing(&attempts), Err("timed_out"));
-        assert_eq!(attempts.get(), 2);
+        assert_eq!(failing(), Err("timed_out"));
+        assert_eq!(failing(), Err("timed_out"));
+        assert_eq!(attempts.get(), 1);
+    }
 
+    #[test]
+    fn failures_are_retried_after_the_window_and_successes_replace_them() {
+        let env = environment("venv");
+        let cache = PythonProbeCache::default();
+        let attempts = Cell::new(0);
+        let outcome = |result: Result<Value, &'static str>| {
+            cache.get_or_probe_retrying_after(
+                ProbeKind::RuntimeStatus,
+                &env.python,
+                Duration::ZERO,
+                || {
+                    attempts.set(attempts.get() + 1);
+                    result
+                },
+            )
+        };
+        assert_eq!(outcome(Err("timed_out")), Err("timed_out"));
+        assert_eq!(
+            outcome(Ok(json!({"ready": true}))),
+            Ok(json!({"ready": true}))
+        );
+        assert_eq!(outcome(Err("timed_out")), Ok(json!({"ready": true})));
+        assert_eq!(attempts.get(), 2);
+    }
+
+    #[test]
+    fn unlocatable_environments_are_never_cached() {
+        let cache = PythonProbeCache::default();
         let bare = tempfile::tempdir().unwrap();
         let python = bare.path().join("python");
         fs::write(&python, b"interpreter").unwrap();

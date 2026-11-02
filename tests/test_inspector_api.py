@@ -126,7 +126,7 @@ class StoreWithoutArrayGetter:
 def mock_workspace(tmp_path):
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
-    (workspace_dir / "store.duckdb").touch()
+    (workspace_dir / "store.sqlite").touch()
 
     class Workspace:
         path = str(workspace_dir)

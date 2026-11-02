@@ -12,6 +12,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 
 import { REUSABLE_RUNTIME_PACKAGES } from "./env-inspection";
+import { PYTHON_REQUIREMENT_HELPERS } from "./requirement-specs";
 import type { DetectedEnv } from "./env-inspection";
 import {
   gatherPythonCandidates,
@@ -46,6 +47,8 @@ export interface DetectEnvsContext {
   configuredPythonPath: string | null;
 }
 
+const CHECK_PYTHON_ENV_TIMEOUT_MS = 30_000;
+
 /** Check a Python executable and return info if it's 3.11+. */
 export function checkPythonEnv(envDir: string, pythonPath: string): Promise<DetectedEnv | null> {
   const corePackageSpecs = JSON.stringify(REUSABLE_RUNTIME_PACKAGES);
@@ -56,6 +59,7 @@ export function checkPythonEnv(envDir: string, pythonPath: string): Promise<Dete
         "-c",
         "import sys\n"
         + "from importlib import metadata as importlib_metadata\n"
+        + PYTHON_REQUIREMENT_HELPERS
         + "print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')\n"
         + "installed = {}\n"
         + "normalize = lambda name: name.replace('-', '_').replace('.', '_').lower()\n"
@@ -65,11 +69,18 @@ export function checkPythonEnv(envDir: string, pythonPath: string): Promise<Dete
         + "        installed.setdefault(normalize(name), dist.version)\n"
         + `core = ${corePackageSpecs}\n`
         + "print('nirs4all' in installed)\n"
-        + "print(all(normalize(spec.split('==')[0]) in installed and ('==' not in spec or installed[normalize(spec.split('==')[0])] == spec.split('==')[1]) for spec in core))",
+        + "print(all(requirement_issue(spec, installed.get(normalize(requirement_name(spec)))) is None for spec in core))",
       ],
-      { timeout: 15_000, windowsHide: isWindows },
+      // Cold interpreters (antivirus scans after an update) can need more than 15 s.
+      { timeout: CHECK_PYTHON_ENV_TIMEOUT_MS, windowsHide: isWindows },
       (error, stdout) => {
-        if (error) { resolve(null); return; }
+        if (error) {
+          if ((error as { killed?: boolean }).killed) {
+            console.warn(`[EnvManager] ${pythonPath} did not answer within ${CHECK_PYTHON_ENV_TIMEOUT_MS / 1000} s and is not listed`);
+          }
+          resolve(null);
+          return;
+        }
         const lines = stdout.trim().split("\n");
         if (lines.length < 3) { resolve(null); return; }
         const version = lines[0].trim();

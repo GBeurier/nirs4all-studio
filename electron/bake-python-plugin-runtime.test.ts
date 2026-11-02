@@ -145,34 +145,21 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "1b97a3039446dcd1752f0c460b0eddeda3860b0b",
+      source_commit: "563220eb2becc6a1340431d588315f0793664fe4",
       wheel_sha256:
-        "70da0407048e60b834c5c0fc3d49296ef3e75e2adf93736d07ccf5f2b0fad7c9",
-      distribution_version: "1.4.13",
+        "6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe",
+      distribution_version: "1.4.14",
       installed_manifest_sha256:
-        "119db086fe897841db36490f802a3082ab811db9bc115a7c5a3760ad7feaeee3",
+        "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "58b22aa854f9c49ff458fbed6e8130920e12a2760691ef82af264da440017aaa",
+        sha256: "fe4e6eac136fbd1dfc0d5465aa65f7e79d045b976c10e4ac5c7e461bb58951e3",
       },
       platform: "linux",
       arch: "x64",
-      conversion_tools: {
-        source_commit: "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
-        wheel_sha256:
-          "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310",
-        distribution: "nirs4all-tools",
-        distribution_version: "0.0.8",
-        module: "nirs4all_tools",
-        readers: { duckdb: "1.5.5", pyarrow: "25.0.1" },
-        functional_probes: {
-          duckdb: "in-memory-select-40-plus-2",
-          pyarrow_parquet: "in-memory-round-trip",
-        },
-      },
     });
     expect(marker).not.toHaveProperty("distribution_record_sha256");
-    expect(marker.conversion_tools).not.toHaveProperty("distribution_record_sha256");
+    expect(marker).not.toHaveProperty("conversion_tools");
     expect(pluginRuntime.FORBIDDEN_DISTRIBUTIONS).toEqual(
       expect.arrayContaining(["fastapi", "starlette", "uvicorn", "sentry-sdk"]),
     );
@@ -183,7 +170,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "58b22aa854f9c49ff458fbed6e8130920e12a2760691ef82af264da440017aaa",
+      "fe4e6eac136fbd1dfc0d5465aa65f7e79d045b976c10e4ac5c7e461bb58951e3",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -202,11 +189,11 @@ describe("plugin-only CPython runtime", () => {
         expect(target.get(name), `${name} must be installed in every packaged host`).toBe(version);
       }
     }
-    expect(linux.get("nirs4all")).toBe("1.4.13");
+    expect(linux.get("nirs4all")).toBe("1.4.14");
     expect(linux.get("nirs4all-core")).toBe("0.4.6");
     for (const target of [linux, linuxArm, macArm, macIntel, windows]) {
       for (const [name, version] of Object.entries({
-        "nirs4all": "1.4.13", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13",
+        "nirs4all": "1.4.14", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13",
         "nirs4all-core": "0.4.6", "nirs4all-io": "0.2.11", "nirs4all-formats": "0.2.13",
         "nirs4all-methods": "1.3.9", "pls4all": "1.3.9",
       })) {
@@ -256,15 +243,12 @@ describe("plugin-only CPython runtime", () => {
       "stage/backend",
       "--plugin-wheel",
       "stage/nirs4all.whl",
-      "--tools-wheel",
-      "stage/nirs4all_tools.whl",
       "--verify-only",
     ]);
     expect(parsed).toMatchObject({
       backendRoot: path.resolve("stage/backend"),
       constraints: pluginRuntime.PLUGIN_CONSTRAINTS_PATH,
       pluginWheel: path.resolve("stage/nirs4all.whl"),
-      toolsWheel: path.resolve("stage/nirs4all_tools.whl"),
       verifyOnly: true,
     });
   });

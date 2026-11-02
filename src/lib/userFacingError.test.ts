@@ -6,6 +6,14 @@ import { describeApiError } from "./userFacingError";
 const t = ((key: string) => key) as unknown as TFunction;
 
 describe("describeApiError", () => {
+  it("explains a Python capability timeout and links to the selected environment", () => {
+    expect(describeApiError({ detail: "Capability check failed", status: 503,
+      code: "python_plugin_preflight_failed", reason: "timed_out" }, t)).toEqual({
+      message: "errors.api.pythonCheckTimedOut",
+      action: { label: "errors.api.openPythonSettings", href: "/settings?tab=advanced" },
+    });
+  });
+
   it("explains a missing Python host and links to the Python settings", () => {
     const result = describeApiError(
       { detail: "Renderer transport preselection rejected the request: native_python_host_unavailable", status: 503, code: "STUDIO_NATIVE_ROUTE_UNAVAILABLE", reason: "native_python_host_unavailable" },

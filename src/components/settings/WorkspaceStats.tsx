@@ -49,15 +49,12 @@ import {
   FolderOpen,
   FileBox,
   AlertCircle,
-  AlertTriangle,
   CheckCircle2,
   Loader2,
 } from "lucide-react";
 import {
   getWorkspaceStats,
   cleanWorkspaceCache,
-  getWorkspaceTransitionStatus,
-  convertLegacyWorkspace,
 } from "@/api/workspace";
 import {
   getCleanCacheSuccessMessage,
@@ -73,7 +70,6 @@ import type {
   WorkspaceStatsResponse,
   CleanCacheRequest,
 } from "@/types/settings";
-import type { WorkspaceTransitionStatusResponse } from "@/types/storage";
 
 /**
  * Get icon for a space usage category
@@ -283,8 +279,6 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
   const [stats, setStats] = useState<WorkspaceStatsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
-  const [transitionStatus, setTransitionStatus] =
-    useState<WorkspaceTransitionStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<WorkspaceActionState | null>(
     null,
@@ -294,12 +288,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
     try {
       setIsLoading(true);
       setError(null);
-      const [data, transition] = await Promise.all([
-        getWorkspaceStats(),
-        getWorkspaceTransitionStatus().catch(() => null),
-      ]);
-      setStats(data);
-      setTransitionStatus(transition);
+      setStats(await getWorkspaceStats());
     } catch (err) {
       setError(
         err instanceof Error
@@ -338,33 +327,6 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
       type: "backup",
       message: t("settings.workspaceStats.backupSoon"),
     });
-  };
-
-  const handleLegacyConversion = async () => {
-    try {
-      setIsActionLoading(true);
-      const result = await convertLegacyWorkspace({
-        output_path: transitionStatus?.default_output_path ?? undefined,
-        verify: true,
-        link_converted_workspace: true,
-      });
-      setLastAction({
-        type: "conversion",
-        message: result.job_id
-          ? t("settings.workspaceStats.conversionStarted", { jobId: result.job_id })
-          : result.best_effort
-            ? t("settings.workspaceStats.conversionWarnings", { path: result.output_path })
-            : result.link_error
-              ? t("settings.workspaceStats.conversionLinkError", { path: result.output_path, error: result.link_error })
-              : t("settings.workspaceStats.conversionDone", { path: result.output_path }),
-      });
-      await loadStats();
-      onStatsChange?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("settings.workspaceStats.conversionFailed"));
-    } finally {
-      setIsActionLoading(false);
-    }
   };
 
   if (isLoading) {
@@ -435,43 +397,6 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {transitionStatus?.conversion_required && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-              <div className="min-w-0 flex-1 space-y-2">
-                <div className="font-medium">{t("settings.workspaceStats.legacyTitle")}</div>
-                <p>{transitionStatus.message}</p>
-                {transitionStatus.conversion_command && (
-                  <code className="block overflow-x-auto rounded bg-background/70 px-2 py-1 text-xs">
-                    {transitionStatus.conversion_command}
-                  </code>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleLegacyConversion}
-                    disabled={isActionLoading || !transitionStatus.converter_available}
-                  >
-                    {isActionLoading ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Database className="mr-2 h-4 w-4" />
-                    )}
-                    {t("settings.workspaceStats.convert")}
-                  </Button>
-                  {!transitionStatus.converter_available && (
-                    <span className="self-center text-xs">
-                      {t("settings.workspaceStats.needTools")}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Workspace-scoped counts (read from the active store via the
             scanner — these are what nirs4all itself sees in this workspace). */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

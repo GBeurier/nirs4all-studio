@@ -6,6 +6,7 @@
 import type {
   DesktopDetectedEnv,
   DesktopEnvActionResult,
+  DesktopEnvInfo,
 } from "@/types/pythonRuntime";
 
 interface BackendRestartResult {
@@ -208,16 +209,7 @@ interface ElectronApi {
   getInstallLog?(): Promise<import("./installLog").InstallLogSnapshot>;
   onInstallLog?(callback: (snapshot: import("./installLog").InstallLogSnapshot) => void): () => void;
   isEnvReady(): Promise<boolean>;
-  getEnvInfo(): Promise<{
-    status: string;
-    envDir: string;
-    pythonPath: string | null;
-    sitePackages: string | null;
-    pythonVersion: string | null;
-    isCustom: boolean;
-    canInstallRequiredVersions?: boolean;
-    error?: string;
-  }>;
+  getEnvInfo(): Promise<DesktopEnvInfo>;
   detectExistingEnvs(): Promise<DesktopDetectedEnv[]>;
   inspectExistingEnv(envPath: string): Promise<DesktopEnvActionResult>;
   useExistingEnv(envPath: string): Promise<DesktopEnvActionResult>;

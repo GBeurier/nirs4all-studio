@@ -42,10 +42,11 @@ function getInitialAlignStatus(t: TFunction): Pick<BusyProgressState, "title" | 
   };
 }
 
-export function usePythonEnvPickerController() {
+export function usePythonEnvPickerController({ showEnvironments = false } = {}) {
   const { t } = useTranslation();
   const [electronApi] = useState(getElectronApi);
   const [envInfo, setEnvInfo] = useState<EnvInfo | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [runtimeSummary, setRuntimeSummary] = useState<RuntimeSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -78,12 +79,13 @@ export function usePythonEnvPickerController() {
       const snapshot = await loadRuntimeSnapshot(electronApi);
       setEnvInfo(snapshot.envInfo);
       setRuntimeSummary(snapshot.runtimeSummary);
-    } catch {
-      // Silently fail - component shows fallback.
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(getErrorMessage(err, t("settings.pythonEnvPicker.loadFailed")));
     } finally {
       setIsLoading(false);
     }
-  }, [electronApi]);
+  }, [electronApi, t]);
 
   const loadReviewDetails = useCallback(async (profileId: string) => {
     try {
@@ -271,6 +273,10 @@ export function usePythonEnvPickerController() {
       setIsScanning(false);
     }
   }, [electronApi]);
+
+  useEffect(() => {
+    if (showEnvironments) void handleOpenDialog();
+  }, [showEnvironments, handleOpenDialog]);
 
   useEffect(() => {
     const choose = () => { void handleOpenDialog(); };
@@ -584,6 +590,15 @@ export function usePythonEnvPickerController() {
     void handleApplyInspection(true, envInfo?.pythonPath ?? undefined);
   }, [envInfo?.pythonPath, handleApplyInspection]);
 
+  // During a fallback session envInfo.pythonPath is the included runtime.
+  const handleInstallIntoSelected = useCallback(() => {
+    void handleApplyInspection(true, envInfo?.runtimeFallback?.selectedPythonPath);
+  }, [envInfo?.runtimeFallback?.selectedPythonPath, handleApplyInspection]);
+
+  const handleKeepIncluded = useCallback(() => {
+    void handleApplyInspection(false, envInfo?.pythonPath ?? undefined);
+  }, [envInfo?.pythonPath, handleApplyInspection]);
+
   return {
     electronApi,
     isLoading,
@@ -613,9 +628,12 @@ export function usePythonEnvPickerController() {
     compatibleProfiles,
     selectedReviewProfile,
     runtimeView,
-    environmentError: envInfo?.error,
+    environmentError: loadError ?? envInfo?.error ?? envInfo?.pythonHostError,
     canUpdateEnvironment: Boolean(envInfo?.error && envInfo.pythonPath && envInfo.canInstallRequiredVersions),
     handleUpdateEnvironment,
+    runtimeFallback: envInfo?.runtimeFallback,
+    handleInstallIntoSelected,
+    handleKeepIncluded,
     loadEnvInfo,
     handleOpenDialog,
     handleSelectDetectedEnv,

@@ -118,8 +118,12 @@ impl ScientificJobExecutor for AnalysisExecutor {
         &self,
         request: &ScientificSubmissionPreflight,
     ) -> Result<ScientificExecutorSelection, JobExecutorError> {
-        result_dir(&request.workspace_path, true)
-            .map_err(|_| JobExecutorError::PreflightRefused)?;
+        result_dir(&request.workspace_path, true).map_err(|_| {
+            JobExecutorError::PreflightRefused {
+                code: "analysis_result_directory_unavailable",
+                detail: "the workspace analysis result directory cannot be prepared",
+            }
+        })?;
         Ok(ScientificExecutorSelection {
             execution_backend: "local-python".into(),
             execution_mode: Some("shap-analysis".into()),

@@ -1,12 +1,11 @@
 import { getConfiguredRepetitionColumn, getInitialAggregationConfig } from "@/lib/datasetConfig";
+import { effectiveFileParsing } from "./DatasetWizard/ParsingStepLogic";
 import type {
   Dataset,
   DatasetConfig,
   DatasetFile,
   DetectedFile,
-  HeaderUnit,
   ParsingOptions,
-  SignalType,
   TaskType,
 } from "@/types/datasets";
 
@@ -91,12 +90,15 @@ function buildDetectedFiles(config: Partial<DatasetConfig>): DetectedFile[] {
   });
 }
 
-function buildPerFileOverrides(config: Partial<DatasetConfig>): Record<string, Partial<ParsingOptions>> {
+function buildPerFileOverrides(config: Partial<DatasetConfig>, parsing: Partial<ParsingOptions>): Record<string, Partial<ParsingOptions>> {
   const overrides: Record<string, Partial<ParsingOptions>> = {};
 
   config.files?.forEach((file) => {
     if (file.overrides && Object.keys(file.overrides).length > 0) {
-      overrides[file.path] = file.overrides;
+      const inherited = effectiveFileParsing(file.type, parsing);
+      overrides[file.path] = Object.fromEntries(Object.entries(file.overrides)
+        .filter(([key, value]) => (key === "na_policy" && value !== parsing.na_policy)
+          || JSON.stringify(value) !== JSON.stringify(inherited[key as keyof ParsingOptions])));
     }
   });
 
@@ -149,6 +151,11 @@ function buildInitialMetadataColumns(
 
 export function buildInitialState(dataset: Dataset): WizardInitialState {
   const config = (dataset.config || {}) as Partial<DatasetConfig>;
+  const parsing = { ...DEFAULT_PARSING, ...config.global_params,
+    ...Object.fromEntries(Object.entries(config).filter(([key, value]) => key in DEFAULT_PARSING && value != null)) } as ParsingOptions;
+  parsing.header_unit = config.header_unit ?? config.header_type ?? parsing.header_unit;
+  const globalNa = (config.global_params as Record<string, unknown> | undefined)?.na as { policy?: ParsingOptions["na_policy"] } | undefined;
+  if (!config.na_policy && !config.global_params?.na_policy && globalNa?.policy) parsing.na_policy = globalNa.policy;
 
   return {
     sourceType: "folder",
@@ -156,15 +163,8 @@ export function buildInitialState(dataset: Dataset): WizardInitialState {
     datasetName: dataset.name,
     files: buildDetectedFiles(config),
     skipToStep: "files",
-    parsing: {
-      delimiter: config.delimiter ?? DEFAULT_PARSING.delimiter,
-      decimal_separator: config.decimal_separator ?? DEFAULT_PARSING.decimal_separator,
-      has_header: config.has_header ?? DEFAULT_PARSING.has_header,
-      header_unit: (config.header_unit ?? config.header_type ?? DEFAULT_PARSING.header_unit) as HeaderUnit,
-      signal_type: (config.signal_type ?? DEFAULT_PARSING.signal_type) as SignalType,
-      na_policy: config.na_policy ?? DEFAULT_PARSING.na_policy,
-    },
-    perFileOverrides: buildPerFileOverrides(config),
+    parsing,
+    perFileOverrides: buildPerFileOverrides(config, parsing),
     targets: config.targets ?? dataset.targets ?? [],
     defaultTarget: dataset.default_target ?? config.default_target ?? "",
     taskType: coerceTaskType(dataset.task_type) ?? config.task_type ?? "auto",

@@ -9,6 +9,7 @@
 
 import { execFile } from "node:child_process";
 import { loadPythonRuntimeConfig, loadRecommendedConfig } from "./external-config";
+import { parseRequirement, versionSatisfies } from "./requirement-specs";
 
 interface PythonRuntimeConfigModule {
   MANAGED_RUNTIME_PACKAGES: readonly string[];
@@ -64,6 +65,7 @@ export interface DetectedEnv {
 
 export interface InspectedEnv extends DetectedEnv {
   missingCorePackages: string[];
+  /** `requiredVersion` is the version specifier Studio requires, e.g. `>=1.4.14,<1.5`. */
   corePackageIssues?: Array<{ name: string; installedVersion: string | null; requiredVersion: string | null }>;
   missingOptionalPackages: string[];
   profileAlignmentGuess: ProfileAlignmentGuess | null;
@@ -96,11 +98,10 @@ export function getMissingCorePackages(installedPackages: ReadonlyMap<string, st
 
 export function getCorePackageIssues(installedPackages: ReadonlyMap<string, string>): NonNullable<InspectedEnv["corePackageIssues"]> {
   return pythonRuntimeConfig.REUSABLE_RUNTIME_PACKAGES.flatMap((packageSpec) => {
-    const packageName = packageSpec.split(/[<>=!~ []/)[0];
-    const installedVersion = installedPackages.get(normalizePackageName(packageName));
-    const exactVersion = packageSpec.match(/==\s*([^;\s]+)/)?.[1];
-    return !installedVersion || (exactVersion && installedVersion !== exactVersion)
-      ? [{ name: packageName, installedVersion: installedVersion ?? null, requiredVersion: exactVersion ?? null }]
+    const { name, specifier } = parseRequirement(packageSpec);
+    const installedVersion = installedPackages.get(normalizePackageName(name));
+    return !installedVersion || (specifier && !versionSatisfies(installedVersion, specifier))
+      ? [{ name, installedVersion: installedVersion ?? null, requiredVersion: specifier || null }]
       : [];
   });
 }

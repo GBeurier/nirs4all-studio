@@ -444,6 +444,7 @@ async function waitForReady(port, timeoutMs, child, outputBuffer, sessionToken) 
   const deadline = Date.now() + timeoutMs;
   const healthUrl = `http://127.0.0.1:${port}/sidecar/v1/health`;
   const capabilitiesUrl = `http://127.0.0.1:${port}/sidecar/v1/capabilities`;
+  const readinessUrl = `http://127.0.0.1:${port}/api/system/readiness`;
   const pluginPreflightUrl = `http://127.0.0.1:${port}/sidecar/v1/python/preflight`;
   const headers = { "X-Nirs4all-Session": sessionToken };
   let lastFailure = "no response";
@@ -461,6 +462,17 @@ async function waitForReady(port, timeoutMs, child, outputBuffer, sessionToken) 
       if (healthResponse.ok) {
         const healthPayload = await healthResponse.json();
         if (healthPayload.sidecar_ready === true) {
+          // The scientific host is acquired after the sidecar is ready.
+          const readinessResponse = await fetch(readinessUrl, {
+            headers,
+            signal: AbortSignal.timeout(3000),
+          });
+          const readinessPayload = readinessResponse.ok ? await readinessResponse.json() : null;
+          if (readinessPayload?.ml_loading !== false) {
+            lastFailure = `scientific host still loading: ${JSON.stringify(readinessPayload)}`;
+            await delay(DEFAULT_POLL_INTERVAL_MS);
+            continue;
+          }
           const capabilitiesResponse = await fetch(capabilitiesUrl, {
             headers,
             signal: AbortSignal.timeout(3000),

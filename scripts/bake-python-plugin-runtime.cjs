@@ -11,19 +11,13 @@ const projectRoot = path.join(__dirname, "..");
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
 const PLUGIN_MARKER_SCHEMA = "nirs4all.studio-python-plugin-runtime.v1";
 const PLUGIN_ROLE = "library-plugin-host-only";
-const PLUGIN_SOURCE_COMMIT = "1b97a3039446dcd1752f0c460b0eddeda3860b0b";
-const PLUGIN_WHEEL_SHA256 = "70da0407048e60b834c5c0fc3d49296ef3e75e2adf93736d07ccf5f2b0fad7c9";
+const PLUGIN_SOURCE_COMMIT = "563220eb2becc6a1340431d588315f0793664fe4";
+const PLUGIN_WHEEL_SHA256 = "6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe";
 const { PLUGIN_DISTRIBUTION_VERSION } = require("./python-runtime-config.cjs");
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "119db086fe897841db36490f802a3082ab811db9bc115a7c5a3760ad7feaeee3";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c";
 const PLUGIN_CONSTRAINTS_RELATIVE_PATH = "build/constraints/plugin-runtime-cpython311.txt";
 const PLUGIN_CONSTRAINTS_PATH = path.join(projectRoot, ...PLUGIN_CONSTRAINTS_RELATIVE_PATH.split("/"));
-const PLUGIN_CONSTRAINTS_SHA256 = "58b22aa854f9c49ff458fbed6e8130920e12a2760691ef82af264da440017aaa";
-const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
-const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
-const TOOLS_DISTRIBUTION_VERSION = "0.0.8";
-const TOOLS_INSTALLED_MANIFEST_SHA256 = "92069ded823ffd1e291b4c8272b46e8b247ed5b619734e1ebf5ad3f612774ac8";
-const DUCKDB_VERSION = "1.5.5";
-const PYARROW_VERSION = "25.0.1";
+const PLUGIN_CONSTRAINTS_SHA256 = "fe4e6eac136fbd1dfc0d5465aa65f7e79d045b976c10e4ac5c7e461bb58951e3";
 const WINDOWS_CONSTRAINT_MARKER = 'sys_platform == "win32"';
 const MAC_INTEL_CONSTRAINT_MARKER = 'sys_platform == "darwin" and platform_machine == "x86_64"';
 const NON_MAC_INTEL_CONSTRAINT_MARKER = 'sys_platform != "darwin" or platform_machine != "x86_64"';
@@ -74,7 +68,7 @@ if os.name == "posix":
     try: os.spawnv(os.P_WAIT,"/bin/true",["true"])
     except PermissionError: spawnv_denied=True
 else: spawnv_denied=True
-import nirs4all,nirs4all_tools,duckdb,pyarrow,pyarrow.parquet as parquet
+import nirs4all
 import numpy as np, shap
 from sklearn.linear_model import LinearRegression
 from matplotlib.figure import Figure
@@ -104,17 +98,7 @@ verified=True
 for relative,encoded,size in rows:
     algorithm,expected=encoded.split("=",1); payload=open(d.locate_file(relative),"rb").read(); actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
     if actual != expected or (size and len(payload) != int(size)): verified=False; break
-td=importlib.metadata.distribution("nirs4all-tools")
-tr=next(x for x in td.files or [] if str(x).endswith(".dist-info/RECORD")); trb=open(td.locate_file(tr),"rb").read()
-trows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(trb.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
-tm="".join(",".join(row)+"\n" for row in trows).encode("utf-8")
-tverified=True
-for relative,encoded,size in trows:
-    algorithm,expected=encoded.split("=",1); payload=open(td.locate_file(relative),"rb").read(); actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
-    if actual != expected or (size and len(payload) != int(size)): tverified=False; break
-dc=duckdb.connect(":memory:"); duckdb_functional=dc.execute("SELECT 40 + 2").fetchone()==(42,); dc.close()
-table=pyarrow.table({"value":[1,2,3]}); sink=pyarrow.BufferOutputStream(); parquet.write_table(table,sink); payload=sink.getvalue(); restored=parquet.read_table(pyarrow.BufferReader(payload)); pyarrow_functional=restored.equals(table)
-print(json.dumps({"bind_denied":bind_denied,"spawn_denied":spawn_denied,"spawnv_denied":spawnv_denied,"implementation":sys.implementation.name,"isolated":bool(sys.flags.isolated),"no_site":bool(sys.flags.no_site),"dont_write_bytecode":bool(sys.dont_write_bytecode),"version":d.version,"record":hashlib.sha256(record_bytes).hexdigest(),"manifest":hashlib.sha256(m).hexdigest(),"verified":verified,"callable":callable(getattr(nirs4all,"studio_scientific_job_v1",None)),"tools_version":td.version,"tools_record":hashlib.sha256(trb).hexdigest(),"tools_manifest":hashlib.sha256(tm).hexdigest(),"tools_verified":tverified,"tools_module":getattr(nirs4all_tools,"__name__",None),"duckdb_version":duckdb.__version__,"pyarrow_version":pyarrow.__version__,"duckdb_functional":duckdb_functional,"pyarrow_parquet_functional":pyarrow_functional},sort_keys=True,separators=(",",":")))`;
+print(json.dumps({"bind_denied":bind_denied,"spawn_denied":spawn_denied,"spawnv_denied":spawnv_denied,"implementation":sys.implementation.name,"isolated":bool(sys.flags.isolated),"no_site":bool(sys.flags.no_site),"dont_write_bytecode":bool(sys.dont_write_bytecode),"version":d.version,"record":hashlib.sha256(record_bytes).hexdigest(),"manifest":hashlib.sha256(m).hexdigest(),"verified":verified,"callable":callable(getattr(nirs4all,"studio_scientific_job_v1",None))},sort_keys=True,separators=(",",":")))`;
 
 function normalizeDistribution(name) {
   return name.trim().toLowerCase().replace(/[_.]+/g, "-");
@@ -411,15 +395,6 @@ function runPreflight(runtimeRoot, sitePackages, platform = process.platform) {
     response.manifest !== PLUGIN_INSTALLED_MANIFEST_SHA256 ||
     response.verified !== true ||
     response.callable !== true
-    || response.tools_version !== TOOLS_DISTRIBUTION_VERSION
-    || !isLowerSha256(response.tools_record)
-    || response.tools_manifest !== TOOLS_INSTALLED_MANIFEST_SHA256
-    || response.tools_verified !== true
-    || response.tools_module !== "nirs4all_tools"
-    || response.duckdb_version !== DUCKDB_VERSION
-    || response.pyarrow_version !== PYARROW_VERSION
-    || response.duckdb_functional !== true
-    || response.pyarrow_parquet_functional !== true
   ) {
     throw new Error(`Plugin runtime preflight identity mismatch: ${result.stdout.trim()}`);
   }
@@ -449,20 +424,6 @@ function expectedMarker(platform = process.platform, arch = process.arch) {
     platform,
     arch,
     forbidden_distributions: [...FORBIDDEN_DISTRIBUTIONS],
-    conversion_tools: {
-      source_commit: TOOLS_SOURCE_COMMIT,
-      wheel_sha256: TOOLS_WHEEL_SHA256,
-      distribution: "nirs4all-tools",
-      distribution_version: TOOLS_DISTRIBUTION_VERSION,
-      installed_manifest_sha256: TOOLS_INSTALLED_MANIFEST_SHA256,
-      module: "nirs4all_tools",
-      cli: "python -I -B -m nirs4all_tools",
-      readers: { duckdb: DUCKDB_VERSION, pyarrow: PYARROW_VERSION },
-      functional_probes: {
-        duckdb: "in-memory-select-40-plus-2",
-        pyarrow_parquet: "in-memory-round-trip",
-      },
-    },
   };
 }
 
@@ -515,7 +476,6 @@ function parseArgs(argv = process.argv.slice(2)) {
     pluginWheel: "",
     dagWheel: "",
     ioWheel: "",
-    toolsWheel: "",
     verifyOnly: false,
     finalizeExisting: false,
   };
@@ -527,7 +487,6 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--plugin-wheel") options.pluginWheel = path.resolve(argv[++index]);
     else if (arg === "--dag-wheel") options.dagWheel = path.resolve(argv[++index]);
     else if (arg === "--io-wheel") options.ioWheel = path.resolve(argv[++index]);
-    else if (arg === "--tools-wheel") options.toolsWheel = path.resolve(argv[++index]);
     else if (arg === "--verify-only") options.verifyOnly = true;
     else if (arg === "--finalize-existing") options.finalizeExisting = true;
     else throw new Error(`Unknown argument: ${arg}`);
@@ -550,7 +509,6 @@ function runSetup(options) {
   if (options.pluginWheel) args.push("--plugin-wheel", options.pluginWheel);
   if (options.dagWheel) args.push("--dag-wheel", options.dagWheel);
   if (options.ioWheel) args.push("--io-wheel", options.ioWheel);
-  if (options.toolsWheel) args.push("--tools-wheel", options.toolsWheel);
   const result = spawnSync(process.execPath, args, { stdio: "inherit", windowsHide: true });
   if (result.status !== 0) throw new Error(`Plugin runtime setup failed with code ${result.status}`);
 }

@@ -23,7 +23,6 @@
  *   --build-python <path>        Python 3.11 executable for --build-plugin-wheel
  *   --dag-wheel <path>           Exact local DAG-ML wheel for a plugin-runtime candidate
  *   --io-wheel <path>            Exact local nirs4all-io wheel for a plugin-runtime candidate
- *   --tools-wheel <path>         Exact pinned nirs4all-tools wheel for the stdio converter
  *   --local-nirs4all             Install nirs4all from local source instead of PyPI
  *   --local-nirs4all-path <path> Local nirs4all source path (default: ../nirs4all, then ./nirs4all-lib)
  *   --local-dag-ml-path <path>   Optional local dag-ml Python package path
@@ -69,16 +68,12 @@ const PRUNED_LAUNCHER_RECORD_PREFIXES = Object.freeze([
   "../../../Scripts/",
 ]);
 const PRUNED_LAUNCHER_RECORD_FILES = Object.freeze(["../../Scripts/nirs4all.exe"]);
-const PLUGIN_SOURCE_COMMIT = "1b97a3039446dcd1752f0c460b0eddeda3860b0b";
+const PLUGIN_SOURCE_COMMIT = "563220eb2becc6a1340431d588315f0793664fe4";
 const PLUGIN_SOURCE_REPOSITORY = "https://github.com/GBeurier/nirs4all.git";
-const PLUGIN_SOURCE_EPOCH = "1793315517";
-const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.13-py3-none-any.whl";
-const PLUGIN_WHEEL_SHA256 = "70da0407048e60b834c5c0fc3d49296ef3e75e2adf93736d07ccf5f2b0fad7c9";
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "119db086fe897841db36490f802a3082ab811db9bc115a7c5a3760ad7feaeee3";
-const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
-const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";
-const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
-const TOOLS_WHEEL_URL = "https://files.pythonhosted.org/packages/10/19/68649801e059cf243393585e75a7ca125cddde202d12f555eed1baeb159a/nirs4all_tools-0.0.8-py3-none-any.whl";
+const PLUGIN_SOURCE_EPOCH = "1793630954";
+const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.14-py3-none-any.whl";
+const PLUGIN_WHEEL_SHA256 = "6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c";
 const WHEEL_BUILD_TOOLCHAIN = Object.freeze([
   "pip==26.2.1",
   "build==1.6.1",
@@ -117,7 +112,6 @@ let localDagMlDataPath = "";
 let pluginWheel = "";
 let dagWheel = "";
 let ioWheel = "";
-let toolsWheel = "";
 let buildPluginWheelOutput = "";
 let buildPython = "python";
 
@@ -156,8 +150,6 @@ for (let i = 0; i < args.length; i++) {
     dagWheel = path.resolve(args[++i]);
   } else if (args[i] === "--io-wheel" && args[i + 1]) {
     ioWheel = path.resolve(args[++i]);
-  } else if (args[i] === "--tools-wheel" && args[i + 1]) {
-    toolsWheel = path.resolve(args[++i]);
   }
 }
 
@@ -208,9 +200,6 @@ try {
         throw new Error(`Exact candidate wheel is missing or misnamed: ${wheel}`);
       }
     }
-  }
-  if (toolsWheel && !fs.existsSync(toolsWheel)) {
-    throw new Error(`Tools wheel not found: ${toolsWheel}`);
   }
 } catch (error) {
   console.error(`Error: ${error.message}`);
@@ -999,7 +988,6 @@ async function main() {
 
   const resolvedLocalNirs4allPath = pluginOnly ? null : resolveLocalNirs4allPath();
   let selectedPluginWheel = null;
-  let selectedToolsWheel = null;
   if (pluginOnly) {
     const wheelDir = path.join(cacheDir, "studio-python-plugin-wheel");
     fs.mkdirSync(wheelDir, { recursive: true });
@@ -1039,30 +1027,7 @@ async function main() {
       upgrade: true,
     }), {}, {
       retries: isWindows ? 3 : 1,
-      label: "install exact converter, explainability and plotting packages",
-    });
-    const toolsWheelDir = path.join(cacheDir, "studio-python-tools-wheel");
-    fs.mkdirSync(toolsWheelDir, { recursive: true });
-    if (toolsWheel) {
-      selectedToolsWheel = toolsWheel;
-    } else {
-      selectedToolsWheel = path.join(toolsWheelDir, TOOLS_WHEEL_FILENAME);
-      await downloadFile(TOOLS_WHEEL_URL, selectedToolsWheel);
-    }
-    const actualToolsWheelSha256 = sha256File(selectedToolsWheel);
-    if (actualToolsWheelSha256 !== TOOLS_WHEEL_SHA256) {
-      throw new Error(
-        `Pinned tools wheel identity mismatch: expected ${TOOLS_WHEEL_SHA256}, got ${actualToolsWheelSha256}`,
-      );
-    }
-    await runCommandWithRetries(runtimePython, buildPipInstallArgs([selectedToolsWheel], {
-      constraintsFile,
-      isolated: true,
-      noCompile: true,
-      extraPipArgs: ["--no-deps"],
-    }), {}, {
-      retries: isWindows ? 3 : 1,
-      label: "install pinned nirs4all-tools wheel",
+      label: "install exact explainability and plotting packages",
     });
   } else if (localNirs4all && resolvedLocalNirs4allPath) {
     // A distributable bundle must NOT install nirs4all editable: an editable
@@ -1107,7 +1072,7 @@ async function main() {
   console.log("");
 
   // A successful resolver exit does not guarantee consistency across install
-  // phases (including the tools wheel installed with --no-deps). Verify before
+  // phases. Verify before
   // pruning pip so an incomplete environment can never receive a ready marker.
   console.log("=== Verify installed dependency compatibility ===");
   await verifyInstalledDependencies(runtimePython, pluginOnly);
@@ -1158,9 +1123,8 @@ async function main() {
     );
     if (pluginOnly) {
       await removePrunedLauncherRecordRows(runtimePython, backendDist);
-      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.4.13");
-      await restorePinnedWheelRecord(runtimePython, backendDist, selectedToolsWheel, "nirs4all_tools", "0.0.8");
-      console.log("  Restored both exact pinned wheel RECORDs after isolated installation");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.4.14");
+      console.log("  Restored the exact pinned wheel RECORD after isolated installation");
     }
     console.log("");
   }
@@ -1217,9 +1181,6 @@ async function main() {
     selected_wheel_sha256: pluginOnly ? PLUGIN_WHEEL_SHA256 : null,
     selected_wheel_filename: selectedPluginWheel ? path.basename(selectedPluginWheel) : null,
     constraints_file: constraintsFile ? path.relative(projectRoot, constraintsFile).split(path.sep).join("/") : null,
-    conversion_tools_source_commit: pluginOnly ? TOOLS_SOURCE_COMMIT : null,
-    conversion_tools_wheel_sha256: pluginOnly ? TOOLS_WHEEL_SHA256 : null,
-    conversion_tools_wheel_filename: selectedToolsWheel ? path.basename(selectedToolsWheel) : null,
   };
   const buildInfoPath = path.join(backendDist, "build_info.json");
   fs.writeFileSync(buildInfoPath, JSON.stringify(buildInfo, null, 2));

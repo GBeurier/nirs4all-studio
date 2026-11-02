@@ -297,14 +297,7 @@ def _do_load_ml_deps():
         _cache["Predictions"] = Predictions
         _yield_gil()
 
-        # 14. Migration (optional)
-        try:
-            from nirs4all.pipeline.storage.migration import migrate_arrays_to_parquet
-            _cache["migrate_arrays_to_parquet"] = migrate_arrays_to_parquet
-        except ImportError:
-            pass
-
-        # 15. Synthesis
+        # 14. Synthesis
         try:
             from nirs4all.synthesis import (
                 SyntheticDatasetBuilder,
@@ -320,7 +313,7 @@ def _do_load_ml_deps():
             logger.debug("nirs4all synthesis not available")
         _yield_gil()
 
-        # 16. Analysis / transfer / SHAP
+        # 15. Analysis / transfer / SHAP
         try:
             from nirs4all.analysis.presets import PRESETS, list_presets
             from nirs4all.analysis.transfer_utils import get_base_preprocessings
@@ -342,7 +335,7 @@ def _do_load_ml_deps():
             logger.debug("nirs4all SHAP not available")
         _yield_gil()
 
-        # 17. sklearn imports used directly by routers
+        # 16. sklearn imports used directly by routers
         try:
             from sklearn.base import TransformerMixin
             from sklearn.decomposition import PCA
@@ -359,7 +352,7 @@ def _do_load_ml_deps():
         except ImportError:
             logger.debug("sklearn not available")
 
-        # 18. scipy
+        # 17. scipy
         try:
             from scipy import stats
             from scipy.signal import find_peaks
@@ -368,7 +361,7 @@ def _do_load_ml_deps():
         except ImportError:
             logger.debug("scipy not available")
 
-        # 19. joblib
+        # 18. joblib
         try:
             import joblib
             _cache["joblib"] = joblib

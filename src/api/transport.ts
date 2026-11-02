@@ -389,10 +389,15 @@ function apiErrorFromBody(body: unknown, status: number): ApiError {
         ? record.code
         : undefined;
   const message = typeof envelope?.message === "string" ? envelope.message : undefined;
+  const details = envelope?.details;
+  const reason = details && typeof details === "object" && "reason" in details
+    && typeof details.reason === "string" ? details.reason
+    : typeof record.reason === "string" ? record.reason : undefined;
   return {
     detail: formatApiErrorDetail(message ?? record.detail ?? body, status),
     status,
     ...(code ? { code } : {}),
+    ...(reason ? { reason } : {}),
   };
 }
 

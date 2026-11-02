@@ -95,25 +95,11 @@ function writePackagedContract(
     product_backend: "rust-sidecar",
     transport: "bounded-cpython-stdio-v1",
     http_listener: "forbidden",
-    source_commit: "1b97a3039446dcd1752f0c460b0eddeda3860b0b",
-    wheel_sha256: "70da0407048e60b834c5c0fc3d49296ef3e75e2adf93736d07ccf5f2b0fad7c9",
+    source_commit: "563220eb2becc6a1340431d588315f0793664fe4",
+    wheel_sha256: "6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe",
     distribution: "nirs4all",
-    distribution_version: "1.4.13",
-    installed_manifest_sha256: "119db086fe897841db36490f802a3082ab811db9bc115a7c5a3760ad7feaeee3",
-    conversion_tools: {
-      source_commit: "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
-      wheel_sha256: "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310",
-      distribution: "nirs4all-tools",
-      distribution_version: "0.0.8",
-      installed_manifest_sha256: "92069ded823ffd1e291b4c8272b46e8b247ed5b619734e1ebf5ad3f612774ac8",
-      module: "nirs4all_tools",
-      cli: "python -I -B -m nirs4all_tools",
-      readers: { duckdb: "1.5.5", pyarrow: "25.0.1" },
-      functional_probes: {
-        duckdb: "in-memory-select-40-plus-2",
-        pyarrow_parquet: "in-memory-round-trip",
-      },
-    },
+    distribution_version: "1.4.14",
+    installed_manifest_sha256: "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c",
     platform: fixturePlatform,
     arch: process.arch,
     forbidden_distributions: [
@@ -599,5 +585,36 @@ describe("NativeSidecarManager", () => {
       status: "stopped",
       url: "http://127.0.0.1:43123",
     });
+  });
+
+  it("logs sidecar timing diagnostics at debug and the host acquisition at info", async () => {
+    const { logSidecarStderr, sidecarStderrLevel } = await import("./native-sidecar-manager");
+    expect(sidecarStderrLevel("Studio boundary timing phase=readiness_route elapsed_us=12")).toBe("debug");
+    expect(sidecarStderrLevel("Studio performance worker_started pid=4")).toBe("debug");
+    expect(sidecarStderrLevel("Studio scientific host packaged ready nirs4all=1.4.14 elapsed_ms=812")).toBe("info");
+    expect(sidecarStderrLevel("studio-sidecar connection error: os error 10053")).toBe("error");
+
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      // Chunks split lines arbitrarily; only complete lines are classified.
+      let tail = logSidecarStderr("", "Studio boundary timing phase=a elapsed_us=1\nStudio boundary ti");
+      tail = logSidecarStderr(tail, "ming phase=b elapsed_us=2\r\nStudio scientific host selected unavailable reason=python_host_timed_out elapsed_ms=180000\npanic: boom");
+      expect(tail).toBe("panic: boom");
+      expect(logSidecarStderr(tail, "\n")).toBe("");
+      expect(debug.mock.calls.map(([line]) => line)).toEqual([
+        "[Native sidecar] Studio boundary timing phase=a elapsed_us=1",
+        "[Native sidecar] Studio boundary timing phase=b elapsed_us=2",
+      ]);
+      expect(log.mock.calls.map(([line]) => line)).toEqual([
+        "[Native sidecar] Studio scientific host selected unavailable reason=python_host_timed_out elapsed_ms=180000",
+      ]);
+      expect(error.mock.calls.map(([line]) => line)).toEqual(["[Native sidecar] panic: boom"]);
+    } finally {
+      debug.mockRestore();
+      log.mockRestore();
+      error.mockRestore();
+    }
   });
 });

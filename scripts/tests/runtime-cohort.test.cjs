@@ -6,8 +6,7 @@ const path = require('node:path');
 const { verifyRuntimeCohort, verifyInstalledCohort } = require('../verify-runtime-cohort.cjs');
 const cohort = require('../../build/runtime-cohort.json');
 const env = { NIRS4ALL_LIBRARY_REF: cohort.sdk.source_sha, DAG_ML_REF: cohort.dag.source_sha,
-  DAG_ML_DATA_REF: cohort.dag_data.source_sha, NIRS4ALL_TOOLS_REF: cohort.tools.source_sha,
-  NIRS4ALL_WHEEL_SHA256: cohort.sdk.wheel_sha256 };
+  DAG_ML_DATA_REF: cohort.dag_data.source_sha, NIRS4ALL_WHEEL_SHA256: cohort.sdk.wheel_sha256 };
 test('actual pinned build environment agrees with the fingerprinted constraints and cohort', () => {
   assert.deepEqual(verifyRuntimeCohort(env), cohort);
 });
@@ -18,7 +17,7 @@ test('moving, stale-source and stale-wheel environments fail before a build', ()
 test('embedded dependency versions are read from actual metadata; a stale Core is refused', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-cohort-unit-'));
   try {
-    const rows = { sdk: 'nirs4all', dag: 'dag-ml', dag_data: 'dag-ml-data', core: 'nirs4all-core', tools: 'nirs4all-tools' };
+    const rows = { sdk: 'nirs4all', dag: 'dag-ml', dag_data: 'dag-ml-data', core: 'nirs4all-core' };
     for (const [key, name] of Object.entries(rows)) {
       const dir = path.join(root, `${name}.dist-info`); fs.mkdirSync(dir);
       fs.writeFileSync(path.join(dir, 'METADATA'), `Name: ${name}\nVersion: ${cohort[key].version}\n`);

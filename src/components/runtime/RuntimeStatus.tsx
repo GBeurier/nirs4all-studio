@@ -75,6 +75,14 @@ export function RuntimeStatusBadge({
   variant?: RuntimeResultBadgeVariant;
 }) {
   const { t } = useTranslation();
+  if (status === "cancelled") {
+    return (
+      <Badge variant={variant ?? "secondary"} className={cn("gap-1.5 text-muted-foreground", className)}>
+        {showIcon && <CircleDashed className={cn("h-3.5 w-3.5", iconClassName)} />}
+        {t("runs.status.cancelled")}
+      </Badge>
+    );
+  }
   const display = getRuntimeResultStatusDisplay(status);
   const Icon = runtimeStatusIcons[display.icon];
 

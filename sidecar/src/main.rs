@@ -26,16 +26,15 @@ fn maybe_run_internal_windows_job_launcher() {
     if !matches!(
         launcher_argument.as_deref(),
         Some(argument)
-            if argument == OsStr::new(studio_sidecar::legacy_conversion::WINDOWS_JOB_LAUNCHER_ARGUMENT)
-                || argument == OsStr::new(studio_sidecar::scientific_cpython::WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT)
+            if argument == OsStr::new(studio_sidecar::scientific_cpython::WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT)
     ) {
         return;
     }
     let Some(executable) = arguments.next() else {
-        eprintln!("studio-sidecar: internal converter Job launcher is missing its executable");
+        eprintln!("studio-sidecar: internal Job launcher is missing its executable");
         process::exit(70);
     };
-    match studio_sidecar::legacy_conversion::run_windows_job_launcher(&executable, arguments) {
+    match studio_sidecar::scientific_cpython::run_windows_job_launcher(&executable, arguments) {
         Ok(never) => match never {},
         Err(error) => {
             eprintln!("studio-sidecar: {error}");

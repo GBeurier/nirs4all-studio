@@ -182,7 +182,6 @@ function createElectronApiMock(
 
 function mockRequiresPythonHost(path: string): boolean {
   return [
-    "/workspace/legacy-convert",
     "/system/capabilities",
     "/system/info",
     "/system/build",
@@ -199,8 +198,7 @@ function mockNativeCandidate(path: string, method: string): boolean {
     "/app/favorites",
     "/app/config-path",
     "/workspaces",
-    "/workspace/transition-status",
-    "/workspace/legacy-convert",
+    "/workspace/format-status",
     "/system/status",
     "/system/network",
     "/updates/settings",
@@ -315,6 +313,19 @@ describe("formatApiErrorDetail", () => {
 });
 
 describe("API client request handling", () => {
+  it("preserves the native preflight refusal reason for actionable UI errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      error: { code: "python_plugin_preflight_failed", message: "The configured Python plugin host could not report capabilities", details: { reason: "timed_out" } },
+    }, 503)));
+    delete window.electronApi;
+    await expect(api.get("/system/capabilities")).rejects.toEqual({
+      detail: "The configured Python plugin host could not report capabilities",
+      status: 503,
+      code: "python_plugin_preflight_failed",
+      reason: "timed_out",
+    });
+  });
+
   it("keeps the code and message of a sidecar error envelope instead of serializing it", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
       error: { code: "python_plugin_unavailable", message: "Python plugin is not configured", retryable: false, details: {} },
