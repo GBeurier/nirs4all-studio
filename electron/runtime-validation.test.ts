@@ -19,7 +19,7 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
   let executable: string;
   let sitePackages: string;
   const versions: Record<string, string> = {
-    nirs4all: "1.4.13", "nirs4all-core": "0.4.6", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13", "nirs4all-io": "0.2.11", "nirs4all-formats": "0.2.13", "nirs4all-methods": "1.3.9", duckdb: "1.5.5", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1", lightgbm: "4.6.0",
+    nirs4all: "1.4.14", "nirs4all-core": "0.4.6", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13", "nirs4all-io": "0.2.11", "nirs4all-formats": "0.2.13", "nirs4all-methods": "1.3.9", duckdb: "1.5.5", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1", lightgbm: "4.6.0",
   };
   const metadata = (name: string, extra = "") => `Metadata-Version: 2.1\nName: ${name}\nVersion: ${versions[name]}\n${extra}`;
   const metadataPath = (name: string) => path.join(sitePackages, `${name.replaceAll("-", "_")}-${versions[name]}.dist-info`, "METADATA");
@@ -53,10 +53,10 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
     await expect(checkRuntimePackageVersions({
       pythonPath: executable, appVersion: "0.15.4", userDataDir: path.join(root, "version-cache"), reused: true, force: true,
     })).resolves.toBeNull();
-    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.13", "Version: 1.0.3"));
+    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.14", "Version: 1.0.3"));
     expect(await checkRuntimePackageVersions({
       pythonPath: executable, appVersion: "0.15.4", userDataDir: path.join(root, "version-cache"), reused: true, force: true,
-    })).toContain("nirs4all 1.0.3 is installed; 1.4.13 is required");
+    })).toContain("nirs4all 1.0.3 is installed; 1.4.14 is required");
   });
   it("accepts the published Methods distribution through its n4m import in a reused environment", async () => {
     await expect(validatePythonRuntime(executable, { reused: true })).resolves.toBeUndefined();

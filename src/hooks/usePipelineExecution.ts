@@ -10,7 +10,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useJobUpdates } from "./useWebSocket";
-import { api } from "@/api/transport";
+import { api, getApiErrorMessage } from "@/api/transport";
 import { listDatasets } from "@/api/datasets";
 import type { Dataset as DatasetInfo } from "@/types/datasets";
 import {
@@ -114,7 +114,7 @@ export function usePipelineExecution() {
           throw new Error(response.message || "Execution failed to start");
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
+        const message = getApiErrorMessage(err) ?? "Execution failed to start";
         setError(message);
         setStatus("failed");
         return null;

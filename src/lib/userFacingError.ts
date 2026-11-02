@@ -63,6 +63,12 @@ export function describeApiError(error: unknown, t: TFunction, fallback?: string
   const { code, reason, status } = readStructuredFields(error);
   const identifiers = [reason, code].filter((value): value is string => Boolean(value));
 
+  if (code === "python_plugin_preflight_failed" && reason === "timed_out") {
+    return {
+      message: t("errors.api.pythonCheckTimedOut"),
+      action: { label: t("errors.api.openPythonSettings"), href: PYTHON_SETTINGS_HREF },
+    };
+  }
   if (identifiers.some((id) => ENGINE_UNAVAILABLE.has(id))) {
     return {
       message: t("errors.api.engineUnavailable"),

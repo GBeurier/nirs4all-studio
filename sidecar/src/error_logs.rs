@@ -27,7 +27,10 @@ impl ErrorLogs {
             return;
         }
         let payload: Value = serde_json::from_str(&response.body).unwrap_or(Value::Null);
-        let detail = payload.get("detail").or_else(|| payload.get("message"));
+        let detail = payload
+            .get("detail")
+            .or_else(|| payload.get("message"))
+            .or_else(|| payload.get("error").and_then(|error| error.get("message")));
         let message = detail
             .and_then(Value::as_str)
             .map_or_else(|| format!("HTTP {}", response.status), str::to_owned);
@@ -106,6 +109,26 @@ impl ErrorLogs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn journal_preserves_native_error_envelope_message_and_diagnostics() {
+        let logs = ErrorLogs::default();
+        let payload = json!({"error":{"code":"python_plugin_preflight_failed",
+            "message":"Python environment capability check timed out",
+            "details":{"reason":"timed_out"}}})
+        .to_string();
+        logs.record(
+            "/api/system/capabilities",
+            &HttpResponse::json(503, payload.clone()),
+        );
+        let response = logs.route("GET", "/api/system/errors", None).unwrap();
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(
+            body["errors"][0]["message"],
+            "Python environment capability check timed out"
+        );
+        assert_eq!(body["errors"][0]["details"], payload);
+    }
 
     #[test]
     fn journal_is_bounded_newest_first_and_clearable() {

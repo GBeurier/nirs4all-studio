@@ -10078,6 +10078,7 @@ transferAnalysis: {
       exportCsv: "Échec de l'export CSV",
     },
     api: {
+      pythonCheckTimedOut: "The Python environment check exceeded its time limit. Open Python Environment settings to check the selected interpreter and required package versions, then retry.",
       engineUnavailable: "Cette fonction nécessite le moteur d'analyse (Python), qui n'est pas encore disponible.",
       openPythonSettings: "Ouvrir les paramètres Python",
       notAvailableYet: "Cette fonction n'est pas encore disponible dans l'application de bureau.",
