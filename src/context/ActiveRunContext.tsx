@@ -34,6 +34,8 @@ import {
 import { getWebSocketBaseUrl } from "@/lib/websocket";
 import { invalidatePredictionRelatedQueries } from "@/lib/prediction-deletion";
 
+const TERMINAL_RUN_DISPLAY_MS = 5000;
+
 // WebSocket message types
 interface WsMessage {
   type: string;
@@ -245,24 +247,29 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
 
       }
 
-      // Update status and remove completed/failed runs
-      for (const [runId, state] of updated) {
-        if (!activeRunIds.has(runId)) {
-          // Run is no longer in active list - it has completed or failed
-          // Remove from map after 5 seconds (allow brief display of completion)
-          const elapsed = Date.now() - state.updatedAt;
-          if (elapsed > 5000 && state.status !== "running" && state.status !== "queued") {
-            updated.delete(runId);
-
-          }
-        }
-      }
-
       return updated.size === prev.size
         && Array.from(updated).every(([id, state]) => prev.get(id) === state)
         ? prev : updated;
     });
   }, [activeRunsData, connectToRun, disconnectFromRun]);
+
+  // Terminal runs stay visible briefly, then leave the widget even when the
+  // polled active-run list no longer changes.
+  useEffect(() => {
+    const terminal = Array.from(runProgressMap.values())
+      .filter((state) => state.status !== "running" && state.status !== "queued");
+    if (terminal.length === 0) return;
+    const delay = Math.max(0, Math.min(...terminal.map((state) => state.updatedAt + TERMINAL_RUN_DISPLAY_MS - Date.now())));
+    const timer = setTimeout(() => {
+      setRunProgressMap((previous) => {
+        const now = Date.now();
+        const updated = new Map(Array.from(previous).filter(([, state]) =>
+          state.status === "running" || state.status === "queued" || now - state.updatedAt < TERMINAL_RUN_DISPLAY_MS));
+        return updated.size === previous.size ? previous : updated;
+      });
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [runProgressMap]);
 
   // An absent active run can have failed before the WebSocket subscribed.
   // Read its authoritative terminal status instead of assuming success.
