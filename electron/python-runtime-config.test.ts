@@ -21,7 +21,6 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
 };
 const transitionalHttpConfig = require("../scripts/python-http-runtime-config.cjs") as {
   BACKEND_COMMON_PACKAGES: string[];
-  BACKEND_TRANSITION_TOOL_PACKAGES: string[];
 };
 
 describe("python-runtime-config", () => {
@@ -29,18 +28,15 @@ describe("python-runtime-config", () => {
     // nirs4all: the Studio-required release up to the next minor; io/methods: nirs4all's own declared ranges.
     expect(runtimeConfig.PLUGIN_DISTRIBUTION_REQUIREMENT).toBe(">=1.4.14,<1.5");
     expect(runtimeConfig.REUSABLE_RUNTIME_PACKAGES).toEqual([
-      "nirs4all>=1.4.14,<1.5", "nirs4all-io>=0.2.11,<0.3", "nirs4all-methods>=1.3.9,<2", "nirs4all-formats", "duckdb",
+      "nirs4all>=1.4.14,<1.5", "nirs4all-io>=0.2.11,<0.3", "nirs4all-methods>=1.3.9,<2", "nirs4all-formats",
     ]);
     expect(runtimeConfig.REQUIRED_METHODS_ABI).toEqual([2, 20]);
   });
   it("keeps transitional HTTP dependencies out of the packaged plugin-host config", () => {
-    expect(transitionalHttpConfig.BACKEND_TRANSITION_TOOL_PACKAGES).toEqual([
-      "nirs4all-tools>=0.0.8",
-    ]);
     expect(transitionalHttpConfig.BACKEND_COMMON_PACKAGES).toContain("fastapi>=0.115.0");
     expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("1.4.14");
     expect(runtimeConfig.PLUGIN_HOST_PACKAGES).toEqual([
-      "nirs4all==1.4.14", "nirs4all-core==0.4.6", "dag-ml==0.3.43", "dag-ml-data==0.2.13", "nirs4all-io==0.2.11", "nirs4all-methods==1.3.9", "nirs4all-formats==0.2.13", "duckdb==1.5.5", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
+      "nirs4all==1.4.14", "nirs4all-core==0.4.6", "dag-ml==0.3.43", "dag-ml-data==0.2.13", "nirs4all-io==0.2.11", "nirs4all-methods==1.3.9", "nirs4all-formats==0.2.13", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
     ]);
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toEqual(runtimeConfig.PLUGIN_HOST_PACKAGES);
 

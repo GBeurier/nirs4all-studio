@@ -25,11 +25,6 @@
     "native_source_status": "published-registry",
     "native_source_sha": "3d4d8ef497adbc44763c04499f703d98e53b4ad4"
   },
-  "tools": {
-    "version": "0.0.8",
-    "source_sha": "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
-    "wheel_sha256": "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310"
-  },
   "io": {
     "version": "0.2.11",
     "source_sha": "6fd4ed8140fd3a105c8ba506e36151937a46848b"

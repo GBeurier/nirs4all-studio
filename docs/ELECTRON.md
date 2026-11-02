@@ -367,59 +367,17 @@ In development mode:
 - Electron starts the Rust sidecar and refuses unmigrated renderer routes
 - Electron loads from `http://localhost:5173`
 
-Workspace transition diagnosis and conversion are also native renderer routes:
-Rust owns `GET /api/workspace/transition-status` and
-`POST /api/workspace/legacy-convert`. Conversion may start the configured
-CPython executable only as a bounded stdio host for the offline
-`nirs4all_tools` module; it never acquires a second HTTP
-owner. A verified code `0` result may activate the fresh output, code `10`
-keeps the preserved output inactive, and code `20` is a visible refusal. The
-legacy source remains linked for rollback. Activation additionally requires a
-strict immutable SQLite V2 check and compare-and-swap of the active workspace
-id, so a selection changed during conversion is never stolen. Open directory
-and store handles pin the validated objects through activation; file identity
-and SHA-256 content are checked around a second final V2 validation immediately
-before the atomic settings replacement. The digest of the exact validated
-SQLite serialization is persisted. Each native Store consumer receives the
-same authenticated connection rather than reopening a path; the Python
-run-detail library host receives a private snapshot serialized from that
-connection. A substitution after final validation is never consumable. Catalogue entries
-created by older Studio versions remain compatible and continue through their
-existing per-reader format preflight.
+On Windows, the sidecar starts bounded CPython processes through an internal
+launcher rather than Python itself. The launcher creates a Job Object with
+`KILL_ON_JOB_CLOSE`, assigns itself before spawning Python, and enables no
+breakaway flag; Python and every descendant are therefore members without a
+spawn/assign race. Timeout or overflow terminates the launcher, and handle close
+lets Windows terminate the entire job. Studio no longer relies on `taskkill`.
+Windows CI executes the exit-code and escaped-child sentinel tests because
+cross-compilation cannot exercise kernel containment.
 
-The Tools capability probe is repeated at each spawn and executable, not declarative: after exact
-wheel, platform-neutral installed-manifest, and per-RECORD-member verification it runs an in-memory DuckDB query and an in-memory
-PyArrow Parquet round-trip. Conversion repeats that attestation inside the
-same interpreter immediately before `runpy` invokes the qualified module.
-Output readers report through bounded channels;
-there is no unbounded thread join. If descendant cleanup does not close the
-pipes within two seconds, the request fails and that converter instance is
-permanently disabled, limiting a hostile escaped descendant to at most the two
-already-bounded reader tasks.
-
-On Windows, the sidecar starts an internal launcher rather than Python itself.
-The launcher creates a Job Object with `KILL_ON_JOB_CLOSE`, assigns itself before
-spawning Python, and enables no breakaway flag; Python and every descendant are
-therefore members without a spawn/assign race. Timeout or overflow terminates
-the launcher, and handle close lets Windows terminate the entire job. Studio no
-longer relies on `taskkill`. Windows CI executes the exit-code and escaped-child
-sentinel tests because cross-compilation cannot exercise kernel containment.
-
-`STU-CONV-SYNC-001` is the approved, narrow parity exception: this route returns
-the bounded conversion result synchronously (maximum 1800 seconds) until Rust
-owns durable maintenance-job execution. The global route-state mutex is
-released while the process runs. `STU-CONV-UNKNOWN-001` also explicitly keeps
-the native unknown-field allowlist fail-closed even though legacy Pydantic
-ignored extra request fields. Both exceptions are frozen in
-`sidecar/contracts/studio_legacy_workspace_conversion_v1.json`.
-
-Conversion is intentionally a low-volume migration aid, not a transactional
-snapshot protocol for a workspace being modified concurrently. The qualified
-interpreter is re-attested inside the child, but the OS starts it by its
-verified path and Tools receives the legacy source by path. Stop source writers
-and keep the linked legacy workspace for rollback. Those path/concurrency limits
-are accepted residual risks; code `0` may activate, code `10` remains preserved
-and inactive, and code `20` remains an explicit refusal.
+Legacy (pre-V1, DuckDB) workspaces are not supported. Studio does not convert
+them; users convert them offline with the separate `nirs4all-tools` package.
 
 Native researcher training is a separate Rust-only route:
 `POST /api/training/native-archive-v2`. It selects one persisted IO dataset

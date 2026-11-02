@@ -3,12 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { installedDistributionVersions } = require('./bake-python-plugin-runtime.cjs');
-const distributions = { sdk: 'nirs4all', dag: 'dag-ml', dag_data: 'dag-ml-data', core: 'nirs4all-core', tools: 'nirs4all-tools' };
+const distributions = { sdk: 'nirs4all', dag: 'dag-ml', dag_data: 'dag-ml-data', core: 'nirs4all-core' };
 
 function verifyRuntimeCohort(env = process.env, root = path.resolve(__dirname, '..')) {
   const cohort = JSON.parse(fs.readFileSync(path.join(root, 'build/runtime-cohort.json'), 'utf8'));
   assert.equal(cohort.schema, 'nirs4all.studio.runtime-cohort.v1');
-  const refs = { sdk: 'NIRS4ALL_LIBRARY_REF', dag: 'DAG_ML_REF', dag_data: 'DAG_ML_DATA_REF', tools: 'NIRS4ALL_TOOLS_REF' };
+  const refs = { sdk: 'NIRS4ALL_LIBRARY_REF', dag: 'DAG_ML_REF', dag_data: 'DAG_ML_DATA_REF' };
   for (const [key, variable] of Object.entries(refs)) {
     assert(/^[0-9a-f]{40}$/.test(cohort[key].source_sha), `Invalid ${key} source identity`);
     assert.equal(env[variable], cohort[key].source_sha, `Build ${key} source differs from runtime cohort`);
