@@ -3062,8 +3062,12 @@ fn native_update_status_response(state: &SidecarState) -> HttpResponse {
         "last_updated": null,
         "size_bytes": 0,
     });
-    let nirs4all_version =
-        runtime_ready.then_some(scientific_cpython::SCIENTIFIC_DISTRIBUTION_VERSION);
+    let nirs4all_version = state
+        .scientific_host
+        .as_deref()
+        .filter(|_| runtime_ready)
+        .and_then(scientific_cpython::CpythonScientificJobExecutor::distribution_version)
+        .map(str::to_owned);
     HttpResponse::json(
         200,
         json!({

@@ -114,6 +114,25 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     assert tools_ref.group(1) == tools_source.group(1) == "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8"
 
 
+def test_reused_environment_range_is_shared_with_the_sidecar() -> None:
+    script = ("const c=require('./scripts/python-runtime-config.cjs');"
+              "console.log(JSON.stringify([c.PLUGIN_DISTRIBUTION_VERSION,c.PLUGIN_DISTRIBUTION_REQUIREMENT,c.REUSABLE_RUNTIME_PACKAGES]))")
+    result = subprocess.run(["node", "-e", script], cwd=ROOT, capture_output=True, text=True, check=True)
+    version, requirement, packages = json.loads(result.stdout)
+    source = (ROOT / "sidecar/src/scientific_cpython.rs").read_text(encoding="utf-8")
+    rust_requirement = re.search(r'pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = "([^"]+)";', source)
+    assert rust_requirement is not None
+    assert f'pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "{version}";' in source
+    # Custom/managed: the required nirs4all release up to the next minor; the
+    # bundled runtime alone keeps the exact attested identity.
+    assert requirement == rust_requirement.group(1) == ">=1.4.14,<1.5"
+    assert packages[0] == f"nirs4all{requirement}"
+    # nirs4all's own declared ranges for its native dependencies.
+    assert "nirs4all-io>=0.2.11,<0.3" in packages
+    assert "nirs4all-methods>=1.3.9,<2" in packages
+    assert not any("==" in package for package in packages)
+
+
 def test_recommended_profiles_use_single_nirs4all_version() -> None:
     config = json.loads((ROOT / "recommended-config.json").read_text(encoding="utf-8"))
     version = config["nirs4all"]
