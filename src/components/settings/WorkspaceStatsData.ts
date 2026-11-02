@@ -34,7 +34,7 @@ export interface WorkspaceStatCard {
 }
 
 export interface WorkspaceActionState {
-  type: "clean" | "backup" | "conversion";
+  type: "clean" | "backup";
   message: string;
 }
 
@@ -169,7 +169,7 @@ export function getWorkspaceStorageSummaryCards(
     {
       key: "database-parquet",
       label: t("settings.workspaceStats.cards.databaseParquet"),
-      value: `${formatBytes(stats.duckdb_size_bytes)} / ${formatBytes(stats.parquet_arrays_size_bytes)}`,
+      value: `${formatBytes(stats.store_size_bytes)} / ${formatBytes(stats.parquet_arrays_size_bytes)}`,
       valueClassName: "text-sm font-medium",
     },
   ];

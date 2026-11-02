@@ -1,5 +1,5 @@
 /**
- * Storage, migration, and maintenance types for hybrid SQLite + Parquet mode.
+ * Storage and maintenance types for the SQLite + Parquet workspace.
  */
 
 export interface StorageStatusResponse {
@@ -9,58 +9,10 @@ export interface StorageStatusResponse {
   migration_needed: boolean;
 }
 
-export interface MigrationStatusResponse {
-  migration_needed: boolean;
-  storage_mode: string;
-  legacy_row_count: number | null;
-  estimated_duration_seconds: number | null;
-}
-
-export interface MigrationReport {
-  total_rows: number;
-  rows_migrated: number;
-  datasets_migrated: string[];
-  verification_passed: boolean;
-  verification_sample_size: number;
-  verification_mismatches: number;
-  /** @deprecated Legacy field name kept for backward compat with migration reports */
-  duckdb_size_before: number;
-  /** @deprecated Legacy field name kept for backward compat with migration reports */
-  duckdb_size_after: number;
-  parquet_total_size: number;
-  duration_seconds: number;
-  errors: string[];
-}
-
-export interface MigrationJobResponse {
-  job_id: string;
-}
-
-export interface WorkspaceTransitionStatusResponse {
-  path: string;
-  format: string;
-  conversion_required: boolean;
-  message: string;
-  conversion_command: string | null;
-  default_output_path: string | null;
-  converter_available: boolean;
-}
-
-export interface LegacyWorkspaceConversionResponse {
-  job_id: string | null;
-  command: string[];
-  output_path: string;
-  dry_run: boolean;
-  return_code: number | null;
-  stdout: string;
-  stderr: string;
-  success: boolean;
-  best_effort: boolean;
-  activation_skipped: boolean;
-  link_converted_workspace: boolean;
-  linked_workspace_id: string | null;
-  active_workspace_path: string | null;
-  link_error: string | null;
+export interface WorkspaceFormatStatusResponse {
+  path: string | null;
+  /** True when the workspace holds `store.duckdb` and no `store.sqlite`. */
+  legacy_duckdb: boolean;
 }
 
 export interface DatasetStorageInfo {
@@ -71,9 +23,8 @@ export interface DatasetStorageInfo {
 
 export interface StorageHealthResponse {
   storage_mode: string;
-  migration_needed: boolean;
-  /** Size of the store database (store.sqlite or legacy store.duckdb). */
-  duckdb_size_bytes: number;
+  /** Size of the store.sqlite database. */
+  store_size_bytes: number;
   parquet_total_size_bytes: number;
   total_predictions: number;
   total_datasets: number;
