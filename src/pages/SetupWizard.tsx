@@ -50,6 +50,8 @@ import { alignConfig, getConfigDiff } from "@/api/config";
 import { getDependencies } from "@/api/dependencies";
 import { getRuntimeSummary } from "@/api/system";
 import { api, formatApiErrorDetail } from "@/api/transport";
+import { scientificRuntimeErrorMessage } from "@/lib/scientificRuntimeError";
+import { describeApiError } from "@/lib/userFacingError";
 import type { ProfileInfo, OptionalPackageInfo } from "@/api/config";
 import {
   filterOptionalPackagesForProfile,
@@ -90,16 +92,26 @@ function DesktopSetupWizard() {
   const [ready, setReady] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notReadyReason, setNotReadyReason] = useState<string | null>(null);
   const verify = useCallback(async () => {
     setChecking(true);
     try {
       const [runtime, readiness] = await Promise.all([
-        getRuntimeSummary(), api.get<{ ml_ready?: boolean }>("/system/readiness"),
+        getRuntimeSummary(), api.get<{ ml_ready?: boolean; ml_error?: string | null }>("/system/readiness"),
       ]);
-      setReady(runtime.coherent && runtime.core_ready && readiness.ml_ready === true);
-    } catch { setReady(false); }
+      const isReady = runtime.coherent && runtime.core_ready && readiness.ml_ready === true;
+      setReady(isReady);
+      // Readiness errors are machine reasons; show users the real cause in plain words.
+      const mlError = scientificRuntimeErrorMessage(readiness.ml_error);
+      setNotReadyReason(!isReady && mlError
+        ? describeApiError({ reason: mlError, detail: mlError }, t, t("pythonSetup.prepare")).message
+        : null);
+    } catch (err) {
+      setReady(false);
+      setNotReadyReason(describeApiError(err, t, t("pythonSetup.checkFailed")).message);
+    }
     finally { setChecking(false); }
-  }, []);
+  }, [t]);
   useEffect(() => {
     void verify();
     const refresh = () => { void verify(); };
@@ -128,6 +140,7 @@ function DesktopSetupWizard() {
       </div>
       <PythonEnvPicker showEnvironments />
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      {!checking && notReadyReason && <Alert><AlertCircle className="h-4 w-4" /><AlertDescription>{notReadyReason}</AlertDescription></Alert>}
       <p role="status" className="text-sm">{checking ? t("pythonSetup.checking") : ready ? t("pythonSetup.ready") : t("pythonSetup.prepare")}</p>
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={() => void defer()} disabled={completeSetup.isPending}>{t("pythonSetup.later")}</Button>

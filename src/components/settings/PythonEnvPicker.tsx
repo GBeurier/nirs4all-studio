@@ -15,6 +15,7 @@ import {
 import {
   LoadingPanel,
   PythonEnvStatusCard,
+  RuntimeFallbackAlert,
   RuntimeModeAlerts,
   SetupErrorAlert,
   SetupProgressPanel,
@@ -149,6 +150,12 @@ export function PythonEnvPicker({ showEnvironments = false }: { showEnvironments
               />
             )}
 
+            <RuntimeFallbackAlert
+              fallback={controller.runtimeFallback}
+              busy={isSettingUp || isSwitching}
+              onInstallRequired={controller.handleInstallIntoSelected}
+              onKeepIncluded={controller.handleKeepIncluded}
+            />
             <SetupErrorAlert error={setupError || controller.environmentError || null} isSettingUp={isSettingUp} />
             {controller.canUpdateEnvironment && (
               <Button
