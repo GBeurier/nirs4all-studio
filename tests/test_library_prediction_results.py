@@ -56,7 +56,7 @@ def test_prediction_page_preserves_records_filters_and_live_wal_without_writes(t
 
 def test_existing_legacy_predictions_are_not_reported_as_empty(tmp_path: Path):
     (tmp_path / "wheat.meta.parquet").write_bytes(b"legacy storage")
-    with pytest.raises(ValueError, match="migration"):
+    with pytest.raises(ValueError, match="not supported"):
         read_prediction_results("results.page", {"workspace_path": str(tmp_path), "limit": 1000, "offset": 0})
 
 

@@ -16,8 +16,8 @@
     },
     {
       "path": "api/library_aggregated_results.py",
-      "size": 9051,
-      "sha256": "a5376ab6cb063d97be3c7ecb3cdbe95a8ea1a89315c9283df6d4943a1f783b39"
+      "size": 9041,
+      "sha256": "35a2c700f0f12d1c0d49c65e2c0a6f8f25c3216afded07b638071332b33fe9a1"
     },
     {
       "path": "api/library_aggregated_steps.py",
@@ -61,8 +61,8 @@
     },
     {
       "path": "api/library_prediction_results.py",
-      "size": 1728,
-      "sha256": "015701c021ef5631c1b5ed5b0ba36297c8ada359329ec867e158872e071dedc4"
+      "size": 1690,
+      "sha256": "1ccb9787b85a362481e6e6dc73625c5a47177968f116610a62f7fc37fec6498c"
     },
     {
       "path": "api/library_predictions.py",
@@ -141,8 +141,8 @@
     },
     {
       "path": "api/store_adapter.py",
-      "size": 97192,
-      "sha256": "ad8e0d9b61a9bed69153efd1ae1f6548fa465b28ba02e7283bdabde7d149c33e"
+      "size": 96600,
+      "sha256": "7a513bc7a4c053ccc284c826a937fd718b39c4b26855583c9d572cb0703894c3"
     },
     {
       "path": "src/data/nodes/definitions/augmentation/transforms.json",

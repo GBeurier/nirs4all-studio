@@ -124,7 +124,7 @@ class WorkspaceStatsResponse(BaseModel):
     space_usage: list[SpaceUsageItem] = Field(default_factory=list, description="Breakdown by category")
     linked_datasets_count: int = Field(0, description="Number of globally linked datasets (workspace-independent)")
     linked_datasets_external_size: int = Field(0, description="Total size of external datasets")
-    duckdb_size_bytes: int = Field(0, description="Metadata store size (SQLite)")
+    store_size_bytes: int = Field(0, description="Metadata store size (SQLite)")
     parquet_arrays_size_bytes: int = Field(0, description="Total Parquet array files size")
     storage_mode: str = Field("unknown", description="Storage backend: migrated, legacy, new")
     created_at: str = Field(..., description="Workspace creation time")
@@ -142,139 +142,6 @@ class StorageStatusResponse(BaseModel):
     has_prediction_arrays_table: bool
     has_arrays_directory: bool
     migration_needed: bool
-
-
-class MigrationRequest(BaseModel):
-    """Request to migrate prediction arrays to Parquet."""
-    dry_run: bool = Field(False, description="Run migration in dry-run mode")
-    batch_size: int | None = Field(None, description="Batch size for migration")
-
-
-class MigrationJobResponse(BaseModel):
-    """Response when a migration job is enqueued."""
-    job_id: str
-
-
-class MigrationStatusResponse(BaseModel):
-    """Response for migration status."""
-    migration_needed: bool
-    storage_mode: str
-    legacy_row_count: int | None = None
-    estimated_duration_seconds: int | None = None
-
-
-class MigrationReportResponse(BaseModel):
-    """Migration report (dry run or completed)."""
-    total_rows: int = 0
-    rows_migrated: int = 0
-    datasets_migrated: list[str] = Field(default_factory=list)
-    verification_passed: bool = False
-    verification_sample_size: int = 0
-    verification_mismatches: int = 0
-    duckdb_size_before: int = 0
-    duckdb_size_after: int = 0
-    parquet_total_size: int = 0
-    duration_seconds: float = 0.0
-    errors: list[str] = Field(default_factory=list)
-
-
-class LegacyMigrationReportPreviewRequest(BaseModel):
-    """Request to preview nirs4all-tools migration contract files."""
-    report_path: str = Field(..., description="Path to migration-report.json")
-    unsupported_report_path: str | None = Field(None, description="Optional path to unsupported-report.json")
-    manifest_path: str | None = Field(None, description="Optional path to migration-manifest.json")
-
-
-class LegacyMigrationSourceSummaryResponse(BaseModel):
-    """Whitelisted source summary from a legacy migration report."""
-    kinds: list[str] = Field(default_factory=list)
-    row_counts: dict[str, int] = Field(default_factory=dict)
-    bundles: int = 0
-    artifacts: int = 0
-
-
-class LegacyMigrationTargetSummaryResponse(BaseModel):
-    """Whitelisted target summary from a legacy migration report."""
-    path: str | None = None
-
-
-class LegacyMigrationVerificationCheckResponse(BaseModel):
-    """Whitelisted verification check summary."""
-    status: str | None = None
-
-
-class LegacyMigrationVerificationSummaryResponse(BaseModel):
-    """Whitelisted verification summary from a legacy migration report."""
-    ran: bool = False
-    passed: bool | None = None
-    checks: dict[str, LegacyMigrationVerificationCheckResponse] = Field(default_factory=dict)
-    mismatches: int = 0
-
-
-class LegacyMigrationErrorResponse(BaseModel):
-    """Whitelisted error entry from a legacy migration report."""
-    code: str | None = None
-    cause: str | None = None
-    message: str | None = None
-    mitigation: str | None = None
-
-
-class LegacyMigrationReportPreviewResponse(BaseModel):
-    """Read-only summary of nirs4all-tools migration contract files."""
-    status: str
-    source_summary: LegacyMigrationSourceSummaryResponse = Field(default_factory=LegacyMigrationSourceSummaryResponse)
-    target_summary: LegacyMigrationTargetSummaryResponse = Field(default_factory=LegacyMigrationTargetSummaryResponse)
-    target_schema_version_validated: bool = False
-    migrated_counts: dict[str, int] = Field(default_factory=dict)
-    preserved_counts: dict[str, int] = Field(default_factory=dict)
-    unsupported_counts: dict[str, int] = Field(default_factory=dict)
-    verification_summary: LegacyMigrationVerificationSummaryResponse = Field(
-        default_factory=LegacyMigrationVerificationSummaryResponse
-    )
-    errors: list[LegacyMigrationErrorResponse] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    recommended_next_command: str | None = None
-
-
-class WorkspaceTransitionStatusResponse(BaseModel):
-    """Transition-release diagnosis for legacy workspace conversion."""
-    path: str
-    format: str
-    conversion_required: bool
-    message: str
-    conversion_command: str | None = None
-    default_output_path: str | None = None
-    converter_available: bool = False
-
-
-class LegacyWorkspaceConversionRequest(BaseModel):
-    """Request to convert the active legacy workspace into a fresh V1 workspace."""
-    output_path: str | None = Field(None, description="Fresh output directory. Defaults to a sibling *-workspace-v2 directory.")
-    verify: bool = Field(True, description="Verify converted output after migration")
-    dry_run: bool = Field(False, description="Run converter in dry-run mode")
-    strict: bool = Field(False, description="Abort on first unsupported legacy item")
-    link_converted_workspace: bool = Field(
-        True,
-        description="Link and activate the converted workspace after a successful conversion",
-    )
-
-
-class LegacyWorkspaceConversionResponse(BaseModel):
-    """Response for a legacy workspace conversion request."""
-    job_id: str | None = None
-    command: list[str] = Field(default_factory=list)
-    output_path: str
-    dry_run: bool = False
-    return_code: int | None = None
-    stdout: str = ""
-    stderr: str = ""
-    success: bool = True
-    best_effort: bool = False
-    activation_skipped: bool = False
-    link_converted_workspace: bool = True
-    linked_workspace_id: str | None = None
-    active_workspace_path: str | None = None
-    link_error: str | None = None
 
 
 class CompactRequest(BaseModel):
@@ -324,8 +191,7 @@ class DatasetStorageInfo(BaseModel):
 
 class StorageHealthResponse(BaseModel):
     storage_mode: str
-    migration_needed: bool
-    duckdb_size_bytes: int = 0
+    store_size_bytes: int = 0
     parquet_total_size_bytes: int = 0
     total_predictions: int = 0
     total_datasets: int = 0

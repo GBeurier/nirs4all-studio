@@ -1633,19 +1633,6 @@ class StoreAdapter:
             finally:
                 con.close()
 
-        duckdb_path = self._workspace_path / "store.duckdb"
-        if duckdb_path.exists():
-            import duckdb
-
-            con = duckdb.connect(str(duckdb_path), read_only=True)
-            try:
-                rows = con.execute(select_sql, [*params, limit, offset]).fetchall()
-                columns = [desc[0] for desc in con.description]
-                total = int(con.execute(count_sql, params).fetchone()[0])
-                return [_normalize_prediction_record(dict(zip(columns, row, strict=False))) for row in rows], total
-            finally:
-                con.close()
-
         raise RuntimeError("No store database found for prediction fallback")
 
     def get_prediction_scatter(self, prediction_id: str) -> dict[str, Any] | None:
