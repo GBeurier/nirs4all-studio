@@ -522,6 +522,7 @@ impl CapabilitiesSnapshot {
         capabilities["features"]["general_prediction_routes"] = json!(true);
         capabilities["features"]["workspace_run_history_route"] = json!(true);
         capabilities["features"]["workspace_run_listing_routes"] = json!(true);
+        capabilities["features"]["workspace_run_management_routes"] = json!(true);
         capabilities["features"]["dataset_import_routes"] = json!(true);
         capabilities["features"]["pipeline_preset_routes"] = json!(true);
         capabilities["features"]["dataset_score_routes"] = json!(true);
@@ -5571,6 +5572,11 @@ mod tests {
             ("GET", "/sidecar/v1/capabilities?capability=readiness", 200),
             (
                 "GET",
+                "/sidecar/v1/capabilities?capability=workspace_run_management_routes",
+                200,
+            ),
+            (
+                "GET",
                 "/sidecar/v1/capabilities?capability=workspace_prediction_result_routes",
                 200,
             ),
@@ -5638,6 +5644,9 @@ mod tests {
                 if path.contains('?') {
                     let selected = value["capability_projection"].as_str().unwrap();
                     assert!(value["features"][selected].is_boolean());
+                    if selected == "workspace_run_management_routes" {
+                        assert_eq!(value["features"][selected], true);
+                    }
                     assert!(value["features"].get("playground_routes").is_none());
                 } else {
                     assert!(value.get("capability_projection").is_none());
