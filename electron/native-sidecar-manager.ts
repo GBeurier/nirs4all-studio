@@ -36,6 +36,32 @@ const MAX_STARTUP_OUTPUT_BYTES = 8 * 1024;
 const electronProcess = process as NodeJS.Process & { resourcesPath?: string };
 
 /**
+ * Route sidecar stderr lines to a log level. Opt-in phase timings are
+ * diagnostics (dozens per readiness poll), the scientific host acquisition
+ * outcome is the environment decision, and anything else is an error.
+ */
+export function sidecarStderrLevel(line: string): "debug" | "info" | "error" {
+  if (/^Studio (boundary timing|performance) /.test(line)) return "debug";
+  if (line.startsWith("Studio scientific host ")) return "info";
+  return "error";
+}
+
+/** Log sidecar stderr one complete line at a time; returns the incomplete tail. */
+export function logSidecarStderr(pending: string, chunk: string): string {
+  const lines = (pending + chunk).split(/\r?\n/);
+  const tail = lines.pop() ?? "";
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const level = sidecarStderrLevel(line);
+    const message = `[Native sidecar] ${line}`;
+    if (level === "debug") console.debug(message);
+    else if (level === "info") console.log(message);
+    else console.error(message);
+  }
+  return tail;
+}
+
+/**
  * Let the external archive harness authenticate its own loopback probes without
  * weakening normal desktop sessions. The harness creates a fresh random token
  * per launch and the override is accepted only under the explicit CI boundary.
@@ -448,11 +474,13 @@ export class NativeSidecarManager {
         }
       });
 
+      let stderrTail = "";
       child.stderr?.on("data", (chunk: Buffer) => {
-        console.error(`[Native sidecar] ${chunk.toString("utf8").trim()}`);
+        stderrTail = logSidecarStderr(stderrTail, chunk.toString("utf8"));
       });
       child.once("error", (error) => finish(error));
       child.once("exit", (code, signal) => {
+        stderrTail = logSidecarStderr(stderrTail, "\n");
         if (!settled) {
           finish(
             new Error(

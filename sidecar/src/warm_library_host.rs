@@ -340,6 +340,8 @@ impl Worker {
     pub(super) fn acquire(
         host: &HostIdentity,
         runtime: Option<&PackagedRuntimeIdentity>,
+        verified_distribution_stat: Option<&str>,
+        timeout: Duration,
     ) -> Result<(Self, Vec<u8>), ScientificCpythonUnavailable> {
         let generation = runtime
             .and_then(|runtime| runtime.changes.as_ref().map(|changes| (runtime, changes)))
@@ -362,11 +364,14 @@ impl Worker {
             .env("OPENBLAS_NUM_THREADS", "1")
             .env("OMP_NUM_THREADS", "1")
             .env("MKL_NUM_THREADS", "1");
+        if let Some(digest) = verified_distribution_stat {
+            command.env(super::VERIFIED_DISTRIBUTION_STAT_ENV, digest);
+        }
         let mut worker = Self::spawn_command(command, scratch)?;
         worker.generation = generation;
         let output = worker
             .responses
-            .recv_timeout(super::SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT)
+            .recv_timeout(timeout)
             .map_err(|error| match error {
                 mpsc::RecvTimeoutError::Timeout => ScientificCpythonUnavailable::TimedOut,
                 mpsc::RecvTimeoutError::Disconnected => {

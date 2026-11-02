@@ -128,6 +128,15 @@ export function detectBundledRuntime(): BundledRuntimeInfo | null {
   return null;
 }
 
+/**
+ * Whether an interpreter path points into a Studio installation's included
+ * runtime, including one from a previous install location. Earlier releases
+ * persisted the bundled selection as such an absolute path.
+ */
+export function isBundledRuntimeLayoutPath(pythonPath: string): boolean {
+  return /[\\/]resources[\\/]backend[\\/]python-runtime[\\/]/i.test(pythonPath);
+}
+
 /** Classify an env root + interpreter into a managed/bundled/conda/venv/system kind. */
 export function getEnvKind(envDir: string, envRoot: string, pythonPath: string): EnvKind {
   const bundledRuntime = detectBundledRuntime();
@@ -172,8 +181,8 @@ export function isLikelyWritable(envRoot: string, pythonPath: string): boolean {
 }
 
 /**
- * Ordering for detected envs: the configured interpreter first, then envs that
- * already have core packages, writable envs, the kind priority, the newest
+ * Ordering for detected envs: the configured interpreter first, then the
+ * included runtime, envs that already have core packages, writable envs, the kind priority, the newest
  * Python version, and finally the path for a stable tiebreak.
  */
 export function compareDetectedEnvs(
@@ -186,6 +195,14 @@ export function compareDetectedEnvs(
   const rightIsConfigured = configuredNormalized === normalizeDetectedPath(right.pythonPath);
   if (leftIsConfigured !== rightIsConfigured) {
     return Number(rightIsConfigured) - Number(leftIsConfigured);
+  }
+
+  // The included runtime (only detected in packaged builds) is the qualified
+  // default; it is read-only by design, so it must not sink below writable envs.
+  const leftIsBundled = left.envKind === "bundled";
+  const rightIsBundled = right.envKind === "bundled";
+  if (leftIsBundled !== rightIsBundled) {
+    return Number(rightIsBundled) - Number(leftIsBundled);
   }
 
   if (left.hasCorePackages !== right.hasCorePackages) {

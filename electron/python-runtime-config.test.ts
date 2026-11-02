@@ -7,8 +7,10 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
   assertProfileSupportedOnPlatform(profileId: string, platform?: string): void;
   LITE_EXCLUDED_PACKAGE_NAMES: string[];
   MANAGED_RUNTIME_PACKAGES: string[];
+  PLUGIN_DISTRIBUTION_REQUIREMENT: string;
   PLUGIN_DISTRIBUTION_VERSION: string;
   PLUGIN_HOST_PACKAGES: string[];
+  REQUIRED_METHODS_ABI: number[];
   REUSABLE_RUNTIME_PACKAGES: string[];
   PRODUCT_PROFILES: Record<string, { extraPackageNames: string[] }>;
   STANDALONE_V1_PROFILE: string;
@@ -23,8 +25,13 @@ const transitionalHttpConfig = require("../scripts/python-http-runtime-config.cj
 };
 
 describe("python-runtime-config", () => {
-  it("prepares a compatible native Methods binding when reusing Python", () => {
-    expect(runtimeConfig.REUSABLE_RUNTIME_PACKAGES).toContain("nirs4all-methods==1.3.9");
+  it("accepts version ranges in reused environments and pins only the bundled cohort", () => {
+    // nirs4all: the Studio-required release up to the next minor; io/methods: nirs4all's own declared ranges.
+    expect(runtimeConfig.PLUGIN_DISTRIBUTION_REQUIREMENT).toBe(">=1.4.14,<1.5");
+    expect(runtimeConfig.REUSABLE_RUNTIME_PACKAGES).toEqual([
+      "nirs4all>=1.4.14,<1.5", "nirs4all-io>=0.2.11,<0.3", "nirs4all-methods>=1.3.9,<2", "nirs4all-formats", "duckdb",
+    ]);
+    expect(runtimeConfig.REQUIRED_METHODS_ABI).toEqual([2, 20]);
   });
   it("keeps transitional HTTP dependencies out of the packaged plugin-host config", () => {
     expect(transitionalHttpConfig.BACKEND_TRANSITION_TOOL_PACKAGES).toEqual([

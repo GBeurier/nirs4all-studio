@@ -328,6 +328,16 @@ impl NativeJobRuntime {
         }
     }
 
+    /// The same registry, events and durable jobs, submitting new jobs to
+    /// `executor` (a scientific host acquired after startup).
+    #[must_use]
+    pub(crate) fn with_replaced_executor(&self, executor: Arc<dyn ScientificJobExecutor>) -> Self {
+        Self {
+            executor,
+            ..self.clone()
+        }
+    }
+
     /// Shared WebSocket manager used by both upgrade and lifecycle paths.
     #[must_use]
     pub fn websocket_manager(&self) -> Arc<WebSocketConnectionManager> {

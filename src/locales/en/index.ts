@@ -13,6 +13,7 @@ const en = {
     "checking": "Checking the analysis engine…",
     "ready": "Your environment is ready for analysis.",
     "prepare": "Use Change… to select and prepare an environment. An older nirs4all version can be updated in place.",
+    "checkFailed": "Studio could not check the analysis engine.",
     "later": "Set up later",
     "open": "Open Studio"
 },
@@ -151,8 +152,16 @@ const en = {
       },
       writable: "Likely writable",
       readOnly: "Likely read-only",
+      fallback: {
+        title: "Studio is using its included Python environment",
+        missing: "The selected environment {{path}} could not be found.",
+        incompatible: "The selected environment {{path}} needs other package versions: {{issues}}.",
+        summary: "Studio started with its included environment so analyses keep working.",
+        installRequired: "Install required versions into the selected environment",
+        keepIncluded: "Keep using the included environment",
+      },
       error: {
-        versionUnsupported: "The selected Python environment has an unsupported nirs4all version. Choose Studio's included environment in Settings, or install nirs4all 1.4.8 in the selected environment.",
+        versionUnsupported: "The selected Python environment has an unsupported nirs4all version. Choose Studio's included environment in Settings, or use Install required versions in Python Environment settings to update the selected environment.",
         tampered: "The installed nirs4all package failed its integrity check. Choose Studio's included environment in Settings, or reinstall nirs4all in the selected environment.",
         notReady: "The selected Python environment is not ready for analysis. Prepare it from Python Environment settings.",
         restartFailed: "Failed to restart backend",
@@ -904,6 +913,7 @@ notFound: {
     },
     pythonEnvPicker: {
       installRequiredVersions: "Install required versions",
+      loadFailed: "Studio could not read the Python environment.",
       unknown: "Unknown",
       reviewPackages: "Review packages",
       reviewPackagesHint: "See installed packages and available optional features",
@@ -1305,6 +1315,11 @@ notFound: {
       workspaceWaiting: "Queued behind ML startup",
       loaderAlt: "Starting Studio animation",
       errorDescription: "Studio could not start.",
+    },
+    pythonRuntime: {
+      unavailableTitle: "Scientific features are unavailable",
+      unavailableReason: "The selected Python environment is not ready for analysis.",
+      review: "Review Python environment",
     },
     legacyWorkspace: {
       title: "Legacy workspace format detected",

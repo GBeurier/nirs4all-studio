@@ -278,6 +278,47 @@ describe("PythonEnvPicker", () => {
     await view.unmount();
   });
 
+  it.each([false, true])("explains an included-runtime fallback and offers both recoveries (startup: %s)", async startup => {
+    const electronApi = createElectronApi();
+    const bundledPython = "C:\\Program Files\\nirs4all Studio\\resources\\backend\\python-runtime\\python\\python.exe";
+    const selectedPython = "C:\\envs\\configured\\python.exe";
+    electronApi.getEnvInfo.mockResolvedValue({
+      status: "ready", envDir: "C:\\envs", pythonPath: bundledPython,
+      sitePackages: null, pythonVersion: "3.11.9", isCustom: false,
+      runtimeFallback: { reason: "incompatible", selectedPythonPath: selectedPython, issues: ["nirs4all 1.4.13 is installed; 1.4.14 is required"] },
+    });
+    electronApi.applyExistingPython.mockResolvedValue({ success: false, message: "Update requires network access" });
+    const view = await renderComponent(electronApi, startup);
+    await waitFor(() => expect(view.container.textContent).toContain("Studio is using its included Python environment"));
+    expect(view.container.textContent).toContain(`${selectedPython} needs other package versions: nirs4all 1.4.13 is installed; 1.4.14 is required`);
+    const button = (label: string) => Array.from(view.container.querySelectorAll("button")).find(candidate => candidate.textContent === label);
+    await act(async () => button("Install required versions into the selected environment")!.click());
+    expect(electronApi.applyExistingPython).toHaveBeenCalledWith(selectedPython, { installCorePackages: true });
+    await waitFor(() => expect(view.container.textContent).toContain("Update requires network access"));
+    await act(async () => button("Keep using the included environment")!.click());
+    expect(electronApi.applyExistingPython).toHaveBeenLastCalledWith(bundledPython, { installCorePackages: false });
+    await view.unmount();
+  });
+
+  it("tells the user why the analysis engine is not ready during setup", async () => {
+    const electronApi = createElectronApi();
+    const notReady = { ml_ready: false, ml_error: "scientific_distribution_version_unsupported" };
+    mocks.readiness.mockImplementation(async () => notReady);
+    mocks.getRuntimeSummary.mockResolvedValue({
+      coherent: true, core_ready: true, runtime_kind: "custom",
+      configured_python: "C:\\envs\\configured\\python.exe", running_python: "C:\\envs\\configured\\python.exe",
+      runtime: { python: "C:\\envs\\configured\\python.exe", prefix: "C:\\envs\\configured", version: "3.11.9" },
+      missing_core_packages: [], missing_optional_packages: [],
+    });
+    try {
+      const view = await renderComponent(electronApi, true);
+      await waitFor(() => expect(view.container.textContent).toContain("unsupported nirs4all version"));
+      await view.unmount();
+    } finally {
+      mocks.readiness.mockImplementation(async () => ({ ml_ready: true }));
+    }
+  });
+
   it("shows only the running Python path in the settings summary", async () => {
     mocks.getRuntimeSummary.mockResolvedValue({
       coherent: false,
