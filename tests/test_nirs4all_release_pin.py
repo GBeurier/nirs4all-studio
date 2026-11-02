@@ -67,7 +67,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert ref is not None
     assert source is not None
-    assert ref.group(1) == source.group(1) == "302e8e8be8d39ef25ef951104bb59cc55e561b25"
+    assert ref.group(1) == source.group(1) == "563220eb2becc6a1340431d588315f0793664fe4"
     parsed = yaml.safe_load(workflow)
     contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
     assert parsed["env"]["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
@@ -77,7 +77,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     assert environment["NIRS4ALL_PUBLICATION_STATUS"] == contract["publication_status"] == "source-built"
     assert contract["public_registry_verified"] is False
     assert environment["NIRS4ALL_WHEEL_URL"] == contract["selected_wheel_url"] == ""
-    assert environment["NIRS4ALL_SOURCE_EPOCH"] == "1793621659"
+    assert environment["NIRS4ALL_SOURCE_EPOCH"] == "1793630954"
     bash = str(Path(shutil.which("git")).parents[1] / "bin/bash.exe") if sys.platform == "win32" else "bash"
     result = subprocess.run([bash, "-c", validation], env=environment, cwd=ROOT, capture_output=True)
     assert result.returncode == 0, result.stderr.decode()
