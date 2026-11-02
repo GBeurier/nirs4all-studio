@@ -837,6 +837,15 @@ pub fn record_run_projection(
     job_id: &str,
     record: &Value,
 ) -> Result<Option<Value>, crate::workspace_store::WorkspaceStoreReadError> {
+    // The scientific library initializes SQLite at the end of the first run.
+    // Its durable control record remains authoritative while that schema is
+    // being created; reading the store then can observe user_version = 0.
+    if matches!(
+        record["status"].as_str(),
+        Some("pending" | "running" | "cancelling")
+    ) {
+        return Ok(None);
+    }
     let ids = legacy_store_run_id(workspace, job_id)
         .map_or_else(|| native_store_run_ids(record), |id| vec![id]);
     let ids = if ids.is_empty() {
@@ -867,6 +876,24 @@ pub fn record_run_projection(
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+    #[test]
+    fn running_job_remains_readable_during_initial_store_creation() {
+        let workspace = tempfile::tempdir().unwrap();
+        let store = rusqlite::Connection::open(workspace.path().join("store.sqlite")).unwrap();
+        for status in ["pending", "running", "cancelling"] {
+            let record = json!({"status":status,"driver":{}});
+            assert_eq!(
+                record_run_projection(workspace.path(), Some(&store), "initializing", &record)
+                    .unwrap(),
+                None
+            );
+        }
+        let completed = json!({"status":"completed","driver":{}});
+        assert!(
+            record_run_projection(workspace.path(), Some(&store), "initializing", &completed)
+                .is_err()
+        );
+    }
     #[test]
     fn job_projection_does_not_require_a_scientific_store_to_exist() {
         let workspace = tempfile::tempdir().unwrap();
