@@ -38,9 +38,12 @@ def _installation(root: Path, extra: str | None = None) -> None:
     (root / METADATA / "RECORD").write_text(stream.getvalue(), encoding="utf-8")
 
 
-def _probe(root: Path) -> dict:
+def _probe(root: Path, verified_stat: str | None = None) -> dict:
     env = dict(os.environ)
     env.pop("NIRS4ALL_SELECTED_SITE_PACKAGES", None)
+    env.pop("NIRS4ALL_VERIFIED_DISTRIBUTION_STAT", None)
+    if verified_stat:
+        env["NIRS4ALL_VERIFIED_DISTRIBUTION_STAT"] = verified_stat
     completed = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", PROBE, str(root)],
                                env=env, text=True, capture_output=True, check=True, timeout=30)
     return json.loads(completed.stdout)
@@ -84,3 +87,22 @@ def test_selected_environment_is_admitted_by_version_not_member_hashes(tmp_path)
     assert result["ready"]
     assert result["distribution_version"] == "1.4.13"
     assert not result["distribution_files_verified"]
+
+
+def test_recorded_stat_identity_skips_member_hashes_until_a_member_changes(tmp_path):
+    _installation(tmp_path)
+    member = tmp_path / "nirs4all/__init__.py"
+    # A member that no longer matches RECORD: hashing it fails verification.
+    member.write_text("def studio_scientific_job_v1(request): return 123\n", encoding="utf-8")
+    first = _probe(tmp_path)
+    assert not first["distribution_files_verified"]
+    digest = first["distribution_stat_sha256"]
+    assert re.fullmatch(r"[0-9a-f]{64}", digest)
+    # Rust passes the stat identity it recorded after a full verification;
+    # with unchanged stats the member hashes are skipped (proved by the mismatch above).
+    assert _probe(tmp_path, digest)["distribution_files_verified"]
+    # Any later write changes the stat identity, so the members are hashed again.
+    member.write_text("def studio_scientific_job_v1(request): return 456\n", encoding="utf-8")
+    changed = _probe(tmp_path, digest)
+    assert changed["distribution_stat_sha256"] != digest
+    assert not changed["distribution_files_verified"]

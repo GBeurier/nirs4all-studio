@@ -28,6 +28,8 @@ use crate::job_http::{
 };
 use crate::scientific_request_resolver::ScientificRequestResolver;
 
+#[path = "host_verification_cache.rs"]
+mod host_verification_cache;
 #[path = "selected_library_identity.rs"]
 mod selected_library_identity;
 #[path = "warm_library_host.rs"]
@@ -84,6 +86,15 @@ pub const WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT: &str = "--internal-scientifi
 /// valid cold starts exceeding 15 seconds under load, so keep this below the
 /// 75-second HTTP preflight budget while allowing a measured 3x margin.
 pub const SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(45);
+/// Acquisition budget when the host has no verification record.
+///
+/// This is the first launch after an install or update, when antivirus scans and a cold disk
+/// cache made a valid packaged preflight take 38 s on Windows (and minutes in
+/// field reports). Acquisition runs after the sidecar is ready, so this
+/// budget never delays the window.
+pub const SCIENTIFIC_CPYTHON_COLD_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(180);
+/// Stat identity of a packaged distribution whose members Rust saw verified.
+const VERIFIED_DISTRIBUTION_STAT_ENV: &str = "NIRS4ALL_VERIFIED_DISTRIBUTION_STAT";
 /// Document adapters import the same scientific stack in each fresh worker.
 /// Keep preview, setup and translation within the qualified cold-start budget.
 pub const SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT: Duration = SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT;
@@ -164,7 +175,17 @@ try:
     # Only the packaged runtime (argv[1]) is attested member by member.
     # Selected environments are admitted by version range and Methods ABI.
     distribution_files_verified=bool(record_rows) and bool(sys.argv[1])
+    distribution_stat_sha256=None
     if distribution_files_verified:
+        # Stat identity of RECORD and its members. Rust passes the identity it
+        # recorded after a full verification of this runtime: when nothing was
+        # written, replaced or updated since, the member hashes are skipped.
+        stat_rows=[]
+        for relative in [str(record_entry)]+[row[0] for row in record_rows]:
+            status=os.stat(distribution.locate_file(relative))
+            stat_rows.append(",".join((relative,str(status.st_size),str(status.st_mtime_ns),str(status.st_ctime_ns),str(status.st_ino),str(status.st_dev)))+"\n")
+        distribution_stat_sha256=hashlib.sha256("".join(stat_rows).encode("utf-8")).hexdigest()
+    if distribution_files_verified and os.environ.get("NIRS4ALL_VERIFIED_DISTRIBUTION_STAT") != distribution_stat_sha256:
         for relative,encoded,size in record_rows:
             algorithm,expected=encoded.split("=",1)
             member=distribution.locate_file(relative)
@@ -181,8 +202,9 @@ except Exception as error:
     distribution_manifest_sha256=None
     distribution_record_sha256=None
     distribution_files_verified=False
+    distribution_stat_sha256=None
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"dd3ec7fc3612fa5fba20f32e6f309c458f55cbb9d510b81278fdad6954d1db05","source_commit":"302e8e8be8d39ef25ef951104bb59cc55e561b25"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_stat_sha256":distribution_stat_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"dd3ec7fc3612fa5fba20f32e6f309c458f55cbb9d510b81278fdad6954d1db05","source_commit":"302e8e8be8d39ef25ef951104bb59cc55e561b25"},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
@@ -798,43 +820,22 @@ impl CpythonScientificJobExecutor {
         existing_site_packages: Option<PathBuf>,
         config_dir: PathBuf,
     ) -> Self {
+        let started = Instant::now();
+        let verification = host_verification_cache::VerificationCache::new(&config_dir);
         let resolver = ScientificRequestResolver::new(config_dir);
-        let site_packages = packaged_runtime
-            .as_ref()
-            .map(|identity| identity.site_packages.as_path());
         let acquired = packaged_runtime.as_ref().map_or_else(
             || {
                 existing_site_packages.as_deref().map_or_else(
-                    || acquire_host(path, site_packages).map(|acquired| (acquired, None, None)),
-                    |selected_site| {
-                        let mut identity =
-                            host_identity_with_limit(path, MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)?;
-                        identity.canonical_path = std::path::absolute(path)
-                            .map_err(|_| ScientificCpythonUnavailable::HostUnavailable)?;
-                        identity.selected_site_packages = Some(selected_site.to_path_buf());
-                        // Capture before the preflight so installation changes across
-                        // the initial content checks are refused too.
-                        let selected = selected_library_identity::SelectedLibraryIdentity::capture(
-                            &identity,
-                            selected_site,
-                        )?;
-                        let (worker, output) = warm_library_host::Worker::acquire(&identity, None)?;
-                        let acquired =
-                            parse_acquired_host(identity, &output, DistributionPolicy::Selected)?;
-                        verify_identity(&acquired.identity)?;
-                        selected.verify()?;
-                        Ok((acquired, Some(worker), Some(selected)))
-                    },
+                    || acquire_host(path, None).map(|acquired| (acquired, None, None)),
+                    |selected_site| acquire_selected(path, selected_site, &verification),
                 )
             },
-            |runtime| {
-                let identity = host_identity(path)?;
-                let (worker, output) =
-                    warm_library_host::Worker::acquire(&identity, Some(runtime))?;
-                let acquired =
-                    parse_acquired_host(identity, &output, DistributionPolicy::Packaged)?;
-                Ok((acquired, Some(worker), None))
-            },
+            |runtime| acquire_packaged(path, runtime, &verification),
+        );
+        log_acquisition(
+            packaged_runtime.is_some(),
+            acquired.as_ref().map(|(acquired, ..)| acquired),
+            started.elapsed(),
         );
         match acquired {
             Ok((acquired, worker, selected_library)) => {
@@ -875,6 +876,12 @@ impl CpythonScientificJobExecutor {
                 warm_workers: std::array::from_fn(|_| Mutex::new(None)),
             },
         }
+    }
+
+    /// Whether acquisition ran out of time, rather than finding an unusable host.
+    #[must_use]
+    pub fn acquisition_timed_out(&self) -> bool {
+        self.identity.is_none() && self.acquisition == ScientificCpythonUnavailable::TimedOut
     }
 
     fn unavailable(error: ScientificCpythonUnavailable, config_dir: PathBuf) -> Self {
@@ -1067,6 +1074,98 @@ const fn platform_kill_tree_qualified() -> bool {
     cfg!(any(unix, windows))
 }
 
+type AcquisitionParts = (
+    AcquiredHost,
+    Option<warm_library_host::Worker>,
+    Option<selected_library_identity::SelectedLibraryIdentity>,
+);
+
+/// Budget for an acquisition: warm when the host was acquired before.
+const fn preflight_budget(verified: Option<&host_verification_cache::VerifiedHost>) -> Duration {
+    if verified.is_some() {
+        SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT
+    } else {
+        SCIENTIFIC_CPYTHON_COLD_PREFLIGHT_TIMEOUT
+    }
+}
+
+fn acquire_selected(
+    path: &Path,
+    selected_site: &Path,
+    verification: &host_verification_cache::VerificationCache,
+) -> Result<AcquisitionParts, ScientificCpythonUnavailable> {
+    let mut identity = host_identity_with_limit(path, MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)?;
+    identity.canonical_path =
+        std::path::absolute(path).map_err(|_| ScientificCpythonUnavailable::HostUnavailable)?;
+    identity.selected_site_packages = Some(selected_site.to_path_buf());
+    // Capture before the preflight so installation changes across
+    // the initial content checks are refused too.
+    let selected =
+        selected_library_identity::SelectedLibraryIdentity::capture(&identity, selected_site)?;
+    let key = host_verification_cache::VerificationKey::new(&identity, Some(selected_site), None);
+    let budget = preflight_budget(verification.lookup(&key).as_ref());
+    let (worker, output) = warm_library_host::Worker::acquire(&identity, None, None, budget)?;
+    let acquired = parse_acquired_host(identity, &output, DistributionPolicy::Selected)?;
+    verify_identity(&acquired.identity)?;
+    selected.verify()?;
+    if acquired.callable.is_some() {
+        verification.record(&key, None);
+    }
+    Ok((acquired, Some(worker), Some(selected)))
+}
+
+fn acquire_packaged(
+    path: &Path,
+    runtime: &PackagedRuntimeIdentity,
+    verification: &host_verification_cache::VerificationCache,
+) -> Result<AcquisitionParts, ScientificCpythonUnavailable> {
+    let identity = host_identity(path)?;
+    let key = host_verification_cache::VerificationKey::new(
+        &identity,
+        Some(&runtime.site_packages),
+        Some(&runtime.closure),
+    );
+    let verified = verification.lookup(&key);
+    let (worker, output) = warm_library_host::Worker::acquire(
+        &identity,
+        Some(runtime),
+        verified
+            .as_ref()
+            .and_then(|verified| verified.distribution_stat_sha256.as_deref()),
+        preflight_budget(verified.as_ref()),
+    )?;
+    let acquired = parse_acquired_host(identity, &output, DistributionPolicy::Packaged)?;
+    if acquired.callable.is_some() {
+        verification.record(&key, acquired.distribution_stat_sha256.as_deref());
+    }
+    Ok((acquired, Some(worker), None))
+}
+
+/// One diagnostic line per acquisition; Electron records it in the main log.
+fn log_acquisition(
+    packaged: bool,
+    acquired: Result<&AcquiredHost, &ScientificCpythonUnavailable>,
+    elapsed: Duration,
+) {
+    let kind = if packaged { "packaged" } else { "selected" };
+    let outcome = match acquired {
+        Ok(acquired) if acquired.callable.is_some() => {
+            format!("ready nirs4all={}", acquired.distribution_version)
+        }
+        Ok(acquired) => format!(
+            "unavailable nirs4all={} reason={}",
+            acquired.distribution_version,
+            ScientificCpythonUnavailable::CallableUnavailable.reason()
+        ),
+        Err(error) => format!("unavailable reason={}", error.reason()),
+    };
+    let _ = writeln!(
+        std::io::stderr().lock(),
+        "Studio scientific host {kind} {outcome} elapsed_ms={}",
+        elapsed.as_millis()
+    );
+}
+
 /// Which nirs4all distribution an acquired host must expose.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DistributionPolicy {
@@ -1082,6 +1181,8 @@ struct AcquiredHost {
     identity: HostIdentity,
     callable: Option<HostIdentity>,
     distribution_version: String,
+    /// Stat identity of the verified packaged distribution members.
+    distribution_stat_sha256: Option<String>,
 }
 
 fn acquire_host(
@@ -1210,7 +1311,7 @@ fn parse_acquired_host(
     let object = response
         .as_object()
         .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-    if object.len() != 18
+    if object.len() != 19
         || object.get("schema").and_then(Value::as_str)
             != Some("nirs4all.studio-scientific-cpython-host.v1")
         || object.get("callable").and_then(Value::as_str)
@@ -1276,10 +1377,20 @@ fn parse_acquired_host(
         }
         None
     };
+    let distribution_stat_sha256 = (policy == DistributionPolicy::Packaged)
+        .then(|| {
+            object
+                .get("distribution_stat_sha256")
+                .and_then(Value::as_str)
+        })
+        .flatten()
+        .filter(|digest| valid_lower_sha256(digest))
+        .map(str::to_owned);
     Ok(AcquiredHost {
         identity,
         callable: callable_identity,
         distribution_version,
+        distribution_stat_sha256,
     })
 }
 
@@ -4124,7 +4235,7 @@ done"#,
     #[cfg(unix)]
     fn attested_unready_host_response(implementation: &str) -> String {
         format!(
-            r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_record_sha256":"0000000000000000000000000000000000000000000000000000000000000000","distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
+            r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_record_sha256":"0000000000000000000000000000000000000000000000000000000000000000","distribution_stat_sha256":null,"distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
         )
     }
 
@@ -4235,6 +4346,7 @@ done"#,
             "distribution_files_verified": false,
             "distribution_manifest_sha256": "1".repeat(64),
             "distribution_record_sha256": "2".repeat(64),
+            "distribution_stat_sha256": null,
             "distribution_version": version,
             "implementation": "cpython",
             "isolated": true,
@@ -4454,7 +4566,13 @@ done"#,
         let host = host_identity(&host).unwrap();
         eprintln!("host SHA: {:?}", started.elapsed());
         let started = Instant::now();
-        let (worker, output) = warm_library_host::Worker::acquire(&host, Some(&runtime)).unwrap();
+        let (worker, output) = warm_library_host::Worker::acquire(
+            &host,
+            Some(&runtime),
+            None,
+            SCIENTIFIC_CPYTHON_COLD_PREFLIGHT_TIMEOUT,
+        )
+        .unwrap();
         eprintln!("preflight + warm acquisition: {:?}", started.elapsed());
         parse_acquired_host(host, &output, DistributionPolicy::Packaged).unwrap();
         drop(worker);
@@ -4636,6 +4754,117 @@ done"#,
     }
 
     #[cfg(unix)]
+    fn framed_host_response(json_printf: &str) -> String {
+        format!("{json_printf} | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(4, chr(108)+chr(105)+chr(116)+chr(116)+chr(108)+chr(101))); sys.stdout.buffer.write(data)'")
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn packaged_acquisition_passes_the_recorded_stat_identity_and_cold_budget() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = root.path().join("python-runtime");
+        let python_root = runtime.join("python");
+        let site_packages = python_root.join("lib/python3.11/site-packages");
+        fs::create_dir_all(&site_packages).unwrap();
+        let observed = root.path().join("observed-stat");
+        let host = shell_host(
+            &python_root.join("bin"),
+            "python3",
+            &format!(
+                "printf '%s' \"${{{VERIFIED_DISTRIBUTION_STAT_ENV}:-none}}\" > '{}'\n{}",
+                observed.display(),
+                framed_host_response(&attested_unready_host_response("cpython"))
+            ),
+        );
+        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
+        fs::write(
+            site_packages.join("attested_plugin.py"),
+            "ATTESTED = True\n",
+        )
+        .unwrap();
+        write_runtime_closure(&python_root, &site_packages, &closure);
+        let config = root.path().join("config");
+        let acquire = || {
+            let identity =
+                packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap();
+            let key = host_verification_cache::VerificationKey::new(
+                &host_identity(&host).unwrap(),
+                Some(&identity.site_packages),
+                Some(&identity.closure),
+            );
+            let executor = CpythonScientificJobExecutor::acquire_inner(
+                &host,
+                Some(identity),
+                None,
+                config.clone(),
+            );
+            assert_eq!(
+                executor.unavailable_reason(),
+                "scientific_callable_unavailable"
+            );
+            key
+        };
+        // No record: a full verification within the cold budget.
+        let key = acquire();
+        assert_eq!(fs::read_to_string(&observed).unwrap(), "none");
+        // An unready host is never recorded as verified.
+        let cache = host_verification_cache::VerificationCache::new(&config);
+        assert_eq!(cache.lookup(&key), None);
+        assert_eq!(
+            preflight_budget(None),
+            SCIENTIFIC_CPYTHON_COLD_PREFLIGHT_TIMEOUT
+        );
+
+        let digest = "ab".repeat(32);
+        cache.record(&key, Some(&digest));
+        acquire();
+        assert_eq!(fs::read_to_string(&observed).unwrap(), digest);
+        assert_eq!(
+            preflight_budget(cache.lookup(&key).as_ref()),
+            SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn selected_acquisition_records_a_ready_host_once_admitted() {
+        let root = tempfile::tempdir().unwrap();
+        let site = root.path().join("site-packages");
+        fs::create_dir_all(site.join("nirs4all")).unwrap();
+        fs::create_dir_all(site.join("nirs4all-1.4.15.dist-info")).unwrap();
+        let callable = site.join("nirs4all/__init__.py");
+        fs::write(
+            &callable,
+            "def studio_scientific_job_v1(request): return request\n",
+        )
+        .unwrap();
+        let response = String::from_utf8(preflight_output("1.4.15", &callable)).unwrap();
+        let host = shell_host(
+            &root.path().join("bin"),
+            "python3",
+            &framed_host_response(&format!("printf '%s' '{response}'")),
+        );
+        let config = root.path().join("config");
+        let executor =
+            CpythonScientificJobExecutor::acquire_existing_with_config_dir(&host, &site, &config);
+        assert!(
+            executor.callable_identity.is_some(),
+            "{}",
+            executor.unavailable_reason()
+        );
+        assert_eq!(executor.distribution_version(), Some("1.4.15"));
+        let mut identity = host_identity(&host).unwrap();
+        identity.canonical_path = std::path::absolute(&host).unwrap();
+        let key = host_verification_cache::VerificationKey::new(&identity, Some(&site), None);
+        assert_eq!(
+            host_verification_cache::VerificationCache::new(&config)
+                .lookup(&key)
+                .map(|verified| verified.distribution_stat_sha256),
+            Some(None)
+        );
+    }
+
+    #[cfg(unix)]
     #[test]
     fn packaged_runtime_contract_is_adjacent_sticky_and_symlink_closed() {
         let root = test_directory("packaged-runtime");
@@ -4644,7 +4873,7 @@ done"#,
         let site_packages = python_root.join("lib/python3.11/site-packages");
         fs::create_dir_all(&site_packages).unwrap();
         let valid_json = attested_unready_host_response("cpython");
-        let framed = format!("{valid_json} | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(4, chr(108)+chr(105)+chr(116)+chr(116)+chr(108)+chr(101))); sys.stdout.buffer.write(data)'");
+        let framed = framed_host_response(&valid_json);
         let host = shell_host(&python_root.join("bin"), "python3", &framed);
         let package_member = site_packages.join("attested_plugin.py");
         fs::write(&package_member, "ATTESTED = True\n").unwrap();
