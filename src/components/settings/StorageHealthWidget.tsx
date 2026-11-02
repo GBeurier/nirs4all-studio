@@ -14,11 +14,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { formatBytes } from "@/utils/formatters";
 import { getStorageHealth } from "@/api/workspace";
 import type { StorageHealthResponse } from "@/types/storage";
-import { MigrationDialog } from "./MigrationDialog";
 import { MaintenanceActions } from "./MaintenanceActions";
 import { getStorageModeLabel } from "./WorkspaceStatsData";
 import { getActiveLocale } from "@/lib/activeLocale";
@@ -39,7 +37,6 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
   const [health, setHealth] = useState<StorageHealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [migrationDialogOpen, setMigrationDialogOpen] = useState(false);
 
   const loadHealth = useCallback(async () => {
     try {
@@ -111,30 +108,6 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {health.migration_needed && (
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>{t("settings.storageHealth.legacyTitle")}</AlertTitle>
-              <AlertDescription className="space-y-3">
-                <p>
-                  {t("settings.storageHealth.legacyBody")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setMigrationDialogOpen(true)}
-                  >
-                    {t("settings.storageHealth.dryRun")}
-                  </Button>
-                  <Button size="sm" onClick={() => setMigrationDialogOpen(true)}>
-                    {t("settings.storageHealth.migrateNow")}
-                  </Button>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
-
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={getStatusVariant(health.storage_mode)}>
               {t("settings.storageHealth.mode", { mode: getStorageModeLabel(health.storage_mode, t) })}
@@ -148,7 +121,7 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-md border p-3">
               <div className="text-xs text-muted-foreground">{t("settings.storageHealth.database")}</div>
-              <div className="text-sm font-medium">{formatBytes(health.duckdb_size_bytes)}</div>
+              <div className="text-sm font-medium">{formatBytes(health.store_size_bytes)}</div>
             </div>
             <div className="rounded-md border p-3">
               <div className="text-xs text-muted-foreground">{t("settings.storageHealth.parquetArrays")}</div>
@@ -193,12 +166,6 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
           <MaintenanceActions onChanged={loadHealth} />
         </CardContent>
       </Card>
-
-      <MigrationDialog
-        open={migrationDialogOpen}
-        onOpenChange={setMigrationDialogOpen}
-        onCompleted={loadHealth}
-      />
     </>
   );
 }

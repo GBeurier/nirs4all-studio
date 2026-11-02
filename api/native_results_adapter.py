@@ -2,8 +2,8 @@
 
 ADDITIVE, READ-ONLY. This adapter lets the ``/api/aggregated-predictions`` endpoints DISPLAY a
 nirs4all native results directory (the dag-ml on-disk format written by
-``nirs4all.pipeline.dagml.native_results.write_native_results``) when the legacy SQLite/DuckDB
-``WorkspaceStore`` is absent. It is a graceful FALLBACK only — when a ``store.sqlite`` / ``store.duckdb``
+``nirs4all.pipeline.dagml.native_results.write_native_results``) when the SQLite
+``WorkspaceStore`` is absent. It is a graceful FALLBACK only — when a ``store.sqlite``
 exists the endpoints keep using :class:`~nirs4all.pipeline.storage.workspace_store.WorkspaceStore`
 unchanged (see ``api/aggregated_predictions._get_store``).
 

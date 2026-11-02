@@ -3,7 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::{Instant, SystemTime, UNIX_EPOCH},
@@ -158,10 +158,10 @@ impl ScientificJobExecutor for ResolvingExecutor {
         &self,
         request: &ScientificSubmissionPreflight,
     ) -> Result<ScientificExecutorSelection, JobExecutorError> {
-        let prepared_payload = self
-            .resolver
-            .resolve(request)
-            .map_err(|_| JobExecutorError::PreflightRefused)?;
+        let prepared_payload = self.resolver.resolve(request).map_err(|error| {
+            let (code, detail) = error.refusal();
+            JobExecutorError::PreflightRefused { code, detail }
+        })?;
         Ok(ScientificExecutorSelection {
             execution_backend: "dag-ml-core".into(),
             execution_mode: Some("bounded-cpython-stdio".into()),
@@ -590,6 +590,13 @@ fn resolver_id_mismatch_is_refused_before_registry_events_or_durable_mutation() 
         &serde_json::to_vec(&payload).unwrap(),
     );
     assert_eq!(response.status, 503);
+    assert_eq!(
+        body(&response),
+        json!({
+            "code": "scientific_submission_invalid",
+            "detail": "Scientific job executor preflight failed: the submission does not match its manifest and campaign specification (scientific_submission_invalid)",
+        })
+    );
     assert_eq!(runtime.published_event_count(), 0);
     assert_eq!(runtime.durable_write_count(), 0);
     assert_eq!(fs::read_dir(workspace.join("runs")).unwrap().count(), 0);
@@ -844,5 +851,211 @@ fn workspace_symlinks_are_rejected_before_executor_preflight() {
         fs::read_dir(real_workspace.join("runs")).unwrap().count(),
         0
     );
+    fs::remove_dir_all(root).unwrap();
+}
+
+/// Mirrors the `CPython` executor: it completes from its worker and stops
+/// accepting submissions once a terminal callback has failed.
+#[derive(Debug, Default)]
+struct LargeResultExecutor {
+    callback_failed: AtomicBool,
+    submissions: AtomicUsize,
+}
+
+impl ScientificJobExecutor for LargeResultExecutor {
+    fn is_selected(&self) -> bool {
+        !self.callback_failed.load(Ordering::Acquire)
+    }
+
+    fn preflight_submission(
+        &self,
+        _request: &ScientificSubmissionPreflight,
+    ) -> Result<ScientificExecutorSelection, JobExecutorError> {
+        Ok(ScientificExecutorSelection {
+            execution_backend: "dag-ml-core".into(),
+            execution_mode: Some("bounded-cpython-stdio".into()),
+            prepared_payload: json!({}),
+        })
+    }
+
+    fn submit_scientific(
+        &self,
+        request: &ScientificExecutionRequest,
+        terminal: Arc<dyn ScientificJobTerminal>,
+    ) -> Result<(), JobExecutorError> {
+        self.submissions.fetch_add(1, Ordering::Relaxed);
+        if terminal
+            .complete(&request.job_id, large_result(&request.job_id))
+            .is_err()
+        {
+            self.callback_failed.store(true, Ordering::Release);
+        }
+        Ok(())
+    }
+
+    fn request_cooperative_cancel(&self, _job_id: &str) -> Result<(), JobExecutorError> {
+        Err(JobExecutorError::CancellationRefused)
+    }
+}
+
+/// Keeps the terminal of a worker which already left the executor, so every
+/// cancellation request is refused.
+#[derive(Debug, Default)]
+struct DetachedWorkerExecutor {
+    terminal: Mutex<Option<Arc<dyn ScientificJobTerminal>>>,
+}
+
+impl ScientificJobExecutor for DetachedWorkerExecutor {
+    fn is_selected(&self) -> bool {
+        true
+    }
+
+    fn preflight_submission(
+        &self,
+        _request: &ScientificSubmissionPreflight,
+    ) -> Result<ScientificExecutorSelection, JobExecutorError> {
+        Ok(ScientificExecutorSelection {
+            execution_backend: "dag-ml-core".into(),
+            execution_mode: Some("bounded-cpython-stdio".into()),
+            prepared_payload: json!({}),
+        })
+    }
+
+    fn submit_scientific(
+        &self,
+        _request: &ScientificExecutionRequest,
+        terminal: Arc<dyn ScientificJobTerminal>,
+    ) -> Result<(), JobExecutorError> {
+        self.terminal.lock().unwrap().replace(terminal);
+        Ok(())
+    }
+
+    fn request_cooperative_cancel(&self, _job_id: &str) -> Result<(), JobExecutorError> {
+        Err(JobExecutorError::CancellationRefused)
+    }
+}
+
+fn large_result(job_id: &str) -> Value {
+    json!({
+        "schema": "nirs4all.studio-scientific-job-result.v2",
+        "job_id": job_id,
+        "engine": "dag-ml",
+        "result": {
+            "run_ids": ["run-a"],
+            "evaluations": vec![json!({"detail": "x".repeat(1024)}); 200],
+        }
+    })
+}
+
+fn submit_detached(
+    name: &str,
+) -> (
+    PathBuf,
+    PathBuf,
+    Arc<NativeJobRuntime>,
+    SidecarState,
+    Arc<DetachedWorkerExecutor>,
+    String,
+) {
+    let root = test_directory(name);
+    let config = root.join("config");
+    let workspace = root.join("workspace");
+    configure_active_workspace(&config, &workspace);
+    let executor = Arc::new(DetachedWorkerExecutor::default());
+    let runtime = Arc::new(NativeJobRuntime::with_executor(executor.clone()));
+    let mut state =
+        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
+    let response = route_request_with_body(
+        &mut state,
+        "POST",
+        "/api/runs/run-groups",
+        &serde_json::to_vec(&valid_payload()).unwrap(),
+    );
+    assert_eq!(response.status, 202);
+    let job_id = body(&response)["job_id"].as_str().unwrap().to_owned();
+    (root, workspace, runtime, state, executor, job_id)
+}
+
+#[test]
+fn large_result_completes_stays_readable_and_keeps_the_executor_selected() {
+    let root = test_directory("large-result");
+    let config = root.join("config");
+    let workspace = root.join("workspace");
+    configure_active_workspace(&config, &workspace);
+    let executor = Arc::new(LargeResultExecutor::default());
+    let runtime = Arc::new(NativeJobRuntime::with_executor(executor.clone()));
+    let mut state =
+        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
+
+    for _ in 0..2 {
+        let response = route_request_with_body(
+            &mut state,
+            "POST",
+            "/api/runs/run-groups",
+            &serde_json::to_vec(&valid_payload()).unwrap(),
+        );
+        assert_eq!(response.status, 202, "{}", response.body);
+        let job_id = body(&response)["job_id"].as_str().unwrap().to_owned();
+        let job = runtime.get_at(&job_id, Instant::now()).unwrap();
+        assert_eq!(job.status.as_str(), "completed");
+        let result = job.result.unwrap();
+        assert!(serde_json::to_vec(&result).unwrap().len() > 200 * 1024);
+        assert_eq!(result, large_result(&job_id));
+        let record = read_execution_job_record(&workspace, &job_id).unwrap();
+        assert_eq!(record["status"], "completed");
+        assert_eq!(record["driver"]["store_run_ids"], json!(["run-a"]));
+    }
+    assert!(executor.is_selected());
+    assert_eq!(executor.submissions.load(Ordering::Relaxed), 2);
+    assert_eq!(runtime.published_event_count(), 4);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn refused_cancellation_is_withdrawn_so_a_later_result_completes_the_job() {
+    let (root, workspace, runtime, mut state, executor, job_id) = submit_detached("refused-cancel");
+
+    let cancel = route_request(&mut state, "POST", &format!("/api/runs/{job_id}/stop"));
+    assert_eq!(cancel.status, 503);
+    let job = runtime.get_at(&job_id, Instant::now()).unwrap();
+    assert_eq!(job.status.as_str(), "running");
+    assert!(!job.cancellation_requested());
+
+    let terminal = executor.terminal.lock().unwrap().clone().unwrap();
+    terminal
+        .complete(&job_id, json!({"outcome": "ok"}))
+        .unwrap();
+    assert_eq!(
+        runtime
+            .get_at(&job_id, Instant::now())
+            .unwrap()
+            .status
+            .as_str(),
+        "completed"
+    );
+    assert_eq!(
+        read_execution_job_record(&workspace, &job_id).unwrap()["status"],
+        "completed"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn known_progress_stays_known_across_message_only_frames() {
+    let (root, workspace, runtime, _state, executor, job_id) = submit_detached("progress-known");
+    let terminal = executor.terminal.lock().unwrap().clone().unwrap();
+    let progress_unavailable = || {
+        runtime.training_list_at(&workspace, Instant::now())[0]["job"]["progress_unavailable"]
+            .clone()
+    };
+    assert_eq!(progress_unavailable(), json!(true));
+    terminal
+        .progress(&job_id, Some(40.0), "fold 1 of 5")
+        .unwrap();
+    terminal.progress(&job_id, None, "still fitting").unwrap();
+    assert_eq!(progress_unavailable(), json!(false));
+    let job = runtime.get_at(&job_id, Instant::now()).unwrap();
+    assert!((job.progress - 40.0).abs() < f64::EPSILON);
+    assert_eq!(job.progress_message, "still fitting");
     fs::remove_dir_all(root).unwrap();
 }

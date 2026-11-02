@@ -176,14 +176,13 @@ class TestNativeResultsAdapter:
 
 @pytest.fixture()
 def native_workspace(tmp_path: Path, native_results_root: Path) -> MagicMock:
-    """A workspace dir holding the native results (and NO store.sqlite/store.duckdb)."""
+    """A workspace dir holding the native results (and NO store.sqlite)."""
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
     # Move the native results under the workspace at the documented location.
     target = workspace_dir / "nirs4all_results"
     native_results_root.rename(target)
     assert not (workspace_dir / "store.sqlite").exists()
-    assert not (workspace_dir / "store.duckdb").exists()
 
     ws = MagicMock()
     ws.path = str(workspace_dir)
@@ -292,7 +291,7 @@ def test_legacy_store_path_unchanged(tmp_path: Path) -> None:
 
 
 def test_native_fallback_selected_when_no_store(tmp_path: Path) -> None:
-    """No store.sqlite/duckdb but a native dir present → _get_store returns the NativeResultsAdapter."""
+    """No store.sqlite but a native dir present → _get_store returns the NativeResultsAdapter."""
     import api.aggregated_predictions as agg
 
     workspace_dir = tmp_path / "native_ws"

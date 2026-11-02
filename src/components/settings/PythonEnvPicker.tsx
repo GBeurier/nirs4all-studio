@@ -15,6 +15,7 @@ import {
 import {
   LoadingPanel,
   PythonEnvStatusCard,
+  RuntimeFallbackAlert,
   RuntimeModeAlerts,
   SetupErrorAlert,
   SetupProgressPanel,
@@ -31,9 +32,9 @@ import {
 import { PythonEnvPickerHeader } from "./PythonEnvPickerHeader";
 import { usePythonEnvPickerController } from "./PythonEnvPickerController";
 
-export function PythonEnvPicker() {
+export function PythonEnvPicker({ showEnvironments = false }: { showEnvironments?: boolean }) {
   const { t } = useTranslation();
-  const controller = usePythonEnvPickerController();
+  const controller = usePythonEnvPickerController({ showEnvironments });
 
   // Not in Electron: don't render
   if (!controller.electronApi) return null;
@@ -149,6 +150,12 @@ export function PythonEnvPicker() {
               />
             )}
 
+            <RuntimeFallbackAlert
+              fallback={controller.runtimeFallback}
+              busy={isSettingUp || isSwitching}
+              onInstallRequired={controller.handleInstallIntoSelected}
+              onKeepIncluded={controller.handleKeepIncluded}
+            />
             <SetupErrorAlert error={setupError || controller.environmentError || null} isSettingUp={isSettingUp} />
             {controller.canUpdateEnvironment && (
               <Button
@@ -167,6 +174,7 @@ export function PythonEnvPicker() {
         )}
 
         <PythonEnvSelectionDialog
+          inline={showEnvironments}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           labels={selectionLabels}

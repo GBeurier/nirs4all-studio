@@ -35,4 +35,20 @@ describe("desktop startup recovery", () => {
       else expect(mocks.navigate).not.toHaveBeenCalled();
     } finally { await act(async () => root.unmount()); }
   });
+
+  it("does not send a starting analysis engine to setup", async () => {
+    mocks.getEnvInfo.mockResolvedValue({ pythonPath: "D:/existing/python.exe", setupDeferred: false });
+    mocks.get
+      .mockResolvedValueOnce({ ml_ready: false, ml_loading: true, ml_error: null })
+      .mockResolvedValue({ ml_ready: true, ml_loading: false, ml_error: null });
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    try {
+      await act(async () => root.render(<Startup />));
+      expect(mocks.navigate).not.toHaveBeenCalled();
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1_100)); });
+      expect(mocks.get).toHaveBeenCalledTimes(2);
+      expect(mocks.navigate).not.toHaveBeenCalled();
+    } finally { await act(async () => root.unmount()); }
+  });
 });

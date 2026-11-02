@@ -7,8 +7,10 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
   assertProfileSupportedOnPlatform(profileId: string, platform?: string): void;
   LITE_EXCLUDED_PACKAGE_NAMES: string[];
   MANAGED_RUNTIME_PACKAGES: string[];
+  PLUGIN_DISTRIBUTION_REQUIREMENT: string;
   PLUGIN_DISTRIBUTION_VERSION: string;
   PLUGIN_HOST_PACKAGES: string[];
+  REQUIRED_METHODS_ABI: number[];
   REUSABLE_RUNTIME_PACKAGES: string[];
   PRODUCT_PROFILES: Record<string, { extraPackageNames: string[] }>;
   STANDALONE_V1_PROFILE: string;
@@ -19,21 +21,22 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
 };
 const transitionalHttpConfig = require("../scripts/python-http-runtime-config.cjs") as {
   BACKEND_COMMON_PACKAGES: string[];
-  BACKEND_TRANSITION_TOOL_PACKAGES: string[];
 };
 
 describe("python-runtime-config", () => {
-  it("prepares a compatible native Methods binding when reusing Python", () => {
-    expect(runtimeConfig.REUSABLE_RUNTIME_PACKAGES).toContain("nirs4all-methods==1.3.9");
+  it("accepts version ranges in reused environments and pins only the bundled cohort", () => {
+    // nirs4all: the Studio-required release up to the next minor; io/methods: nirs4all's own declared ranges.
+    expect(runtimeConfig.PLUGIN_DISTRIBUTION_REQUIREMENT).toBe(">=1.4.14,<1.5");
+    expect(runtimeConfig.REUSABLE_RUNTIME_PACKAGES).toEqual([
+      "nirs4all>=1.4.14,<1.5", "nirs4all-io>=0.2.11,<0.3", "nirs4all-methods>=1.3.9,<2", "nirs4all-formats",
+    ]);
+    expect(runtimeConfig.REQUIRED_METHODS_ABI).toEqual([2, 20]);
   });
   it("keeps transitional HTTP dependencies out of the packaged plugin-host config", () => {
-    expect(transitionalHttpConfig.BACKEND_TRANSITION_TOOL_PACKAGES).toEqual([
-      "nirs4all-tools>=0.0.8",
-    ]);
     expect(transitionalHttpConfig.BACKEND_COMMON_PACKAGES).toContain("fastapi>=0.115.0");
-    expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("1.4.13");
+    expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("1.4.14");
     expect(runtimeConfig.PLUGIN_HOST_PACKAGES).toEqual([
-      "nirs4all==1.4.13", "nirs4all-core==0.4.6", "dag-ml==0.3.43", "dag-ml-data==0.2.13", "nirs4all-io==0.2.11", "nirs4all-methods==1.3.9", "nirs4all-formats==0.2.13", "duckdb==1.5.5", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
+      "nirs4all==1.4.14", "nirs4all-core==0.4.6", "dag-ml==0.3.43", "dag-ml-data==0.2.13", "nirs4all-io==0.2.11", "nirs4all-methods==1.3.9", "nirs4all-formats==0.2.13", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
     ]);
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toEqual(runtimeConfig.PLUGIN_HOST_PACKAGES);
 
@@ -76,20 +79,20 @@ describe("python-runtime-config", () => {
       "xgboost",
     ]);
     expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "linux" })).toEqual([
-      "nirs4all>=1.4.13",
+      "nirs4all>=1.4.14",
       "pyopls>=20.0",
       "trendfitter>=0.0.6",
       "xgboost-cpu>=2.0.0",
     ]);
     expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "win32" })).toEqual([
-      "nirs4all>=1.4.13",
+      "nirs4all>=1.4.14",
       "pyopls>=20.0",
       "trendfitter>=0.0.6",
       "xgboost-cpu>=2.0.0",
     ]);
     // No macOS xgboost-cpu wheel exists — darwin keeps the regular name.
     expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "darwin" })).toEqual([
-      "nirs4all>=1.4.13",
+      "nirs4all>=1.4.14",
       "pyopls>=20.0",
       "trendfitter>=0.0.6",
       "xgboost>=2.0.0",
@@ -108,7 +111,7 @@ describe("python-runtime-config", () => {
   it("maps legacy installer flavors onto product profiles while preserving the managed runtime footprint", () => {
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "darwin")).toBe("gpu-mps");
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "win32")).toBe("gpu-cuda-torch");
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==1.4.13");
+    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==1.4.14");
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES.some((pkg) => pkg.startsWith("torch"))).toBe(false);
   });
 

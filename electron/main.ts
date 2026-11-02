@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import type { BrowserWindow as BrowserWindowInstance } from "electron";
 import type { ErrorEvent as SentryErrorEvent } from "@sentry/electron/main";
 import { EnvManager } from "./env-manager";
-import { loadNetworkTrust } from "./env/external-config";
+import { loadNetworkTrust, loadPythonRuntimeConfig } from "./env/external-config";
 import { getInstallLog, subscribeInstallLog } from "./env/install-log";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { ensureDesktopWorkspace } from "./default-workspace";
@@ -27,6 +27,8 @@ import {
 } from "./telemetry-consent";
 
 loadNetworkTrust().configureSystemTrust();
+const { PLUGIN_DISTRIBUTION_REQUIREMENT: REQUIRED_NIRS4ALL_RANGE } =
+  loadPythonRuntimeConfig<{ PLUGIN_DISTRIBUTION_REQUIREMENT: string }>();
 const portableLayout = applyPortablePathOverrides(app);
 
 const SENTRY_DSN_DEFAULT =
@@ -160,8 +162,16 @@ function nativeSidecarStartOptions(pythonPackagesCompatible = true) {
   };
 }
 
-async function startNativeSidecar(forceVersionCheck = false): Promise<void> {
-  const compatible = await envManager.checkPackageVersions(forceVersionCheck);
+/**
+ * Start the Rust sidecar on the selected Python runtime. Packaged builds run
+ * the included runtime when the selection is missing or incompatible, unless
+ * the caller is validating an explicit user change of environment.
+ */
+async function startNativeSidecar(
+  forceVersionCheck = false,
+  allowBundledFallback = app.isPackaged,
+): Promise<void> {
+  const compatible = await envManager.checkPackageVersions(forceVersionCheck, allowBundledFallback);
   try { if (compatible) await envManager.prepareSelectedRuntimeAdapters(); }
   catch (error) { console.warn("Selected environment needs Studio adapter preparation:", error); }
   const info = await nativeSidecarManager.start(nativeSidecarStartOptions(compatible));
@@ -194,6 +204,23 @@ function getNativeSidecarInfo() {
     : info;
 }
 
+/** The sidecar's cold acquisition budget (180 s) plus a margin. */
+const SCIENTIFIC_ACQUISITION_WAIT_MS = 200_000;
+
+/**
+ * Rust acquires the scientific host after it reports ready; readiness says
+ * `ml_loading` until that acquisition ends. Wait for its outcome.
+ */
+async function waitForScientificAcquisition(url: string) {
+  const deadline = Date.now() + SCIENTIFIC_ACQUISITION_WAIT_MS;
+  for (;;) {
+    const response = await nativeSidecarManager.authenticatedFetch(`${url}/api/system/readiness`);
+    const readiness = await response.json() as { ml_ready?: boolean; ml_loading?: boolean; ml_error?: string };
+    if (!response.ok || readiness.ml_loading !== true || Date.now() >= deadline) return { response, readiness };
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 async function applyPythonRuntimeChange<T extends { success: boolean }>(
   change: () => Promise<T>,
 ): Promise<T> {
@@ -203,19 +230,18 @@ async function applyPythonRuntimeChange<T extends { success: boolean }>(
     if (!result.success) return result;
     nativePythonPluginHostStale = true;
     await nativeSidecarManager.stop();
-    await startNativeSidecar();
+    await startNativeSidecar(false, false);
     const info = nativeSidecarManager.getInfo();
     if (!info.url) throw new Error("The analysis backend could not be started.");
-    const [readinessResponse, coherenceResponse] = await Promise.all([
-      nativeSidecarManager.authenticatedFetch(`${info.url}/api/system/readiness`),
+    const [{ response: readinessResponse, readiness }, coherenceResponse] = await Promise.all([
+      waitForScientificAcquisition(info.url),
       nativeSidecarManager.authenticatedFetch(`${info.url}/api/system/env-coherence`),
     ]);
-    const readiness = await readinessResponse.json() as { ml_ready?: boolean; ml_error?: string };
     const coherence = await coherenceResponse.json() as { coherent?: boolean; running_python?: string };
     if (!readinessResponse.ok || readiness.ml_ready !== true) {
       console.error("Selected scientific library could not be activated:", readiness.ml_error);
       throw new Error(readiness.ml_error === "scientific_distribution_version_unsupported"
-        ? "This environment has an unsupported nirs4all version. Choose Studio's included environment or install nirs4all 1.4.13."
+        ? `This environment has an unsupported nirs4all version. Choose Studio's included environment or install nirs4all${REQUIRED_NIRS4ALL_RANGE}.`
         : readiness.ml_error === "scientific_distribution_tampered"
         ? "The installed nirs4all package could not be verified. Reinstall nirs4all in this environment or choose another environment."
         : "Studio could not load the scientific library in this Python environment. Prepare its required packages or choose another environment.");
@@ -610,7 +636,8 @@ ipcMain.handle("env:isReady", () => {
 });
 
 ipcMain.handle("env:getInfo", async () => {
-  return envManager.getInfo();
+  const { pythonPluginHostError } = getNativeSidecarInfo();
+  return { ...await envManager.getInfo(), ...(pythonPluginHostError ? { pythonHostError: pythonPluginHostError } : {}) };
 });
 
 ipcMain.handle("env:detectExisting", async () => {

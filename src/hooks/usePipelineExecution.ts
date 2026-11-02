@@ -10,7 +10,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useJobUpdates } from "./useWebSocket";
-import { api } from "@/api/transport";
+import { api, getApiErrorMessage } from "@/api/transport";
 import { listDatasets } from "@/api/datasets";
 import type { Dataset as DatasetInfo } from "@/types/datasets";
 import {
@@ -61,6 +61,7 @@ export function usePipelineExecution() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [result, setResult] = useState<ExecutionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [polledProgress, setPolledProgress] = useState<{ progress: number; message: string } | null>(null);
 
   // Track progress via WebSocket
   const {
@@ -79,16 +80,54 @@ export function usePipelineExecution() {
       setStatus("running");
     } else if (jobStatus === "completed") {
       setStatus("completed");
+      setPolledProgress(null);
       if (jobResult) {
         setResult(normalizePipelineExecutionResult(jobResult));
       }
     } else if (jobStatus === "failed") {
-      setStatus("failed");
-      setError(jobError || "Execution failed");
+      const cancelled = jobError === "Job was cancelled" || jobError === "Cancelled";
+      setStatus(cancelled ? "cancelled" : "failed");
+      setError(cancelled ? null : jobError || "Execution failed");
     } else if (jobStatus === "cancelled") {
       setStatus("cancelled");
     }
   }, [jobStatus, jobResult, jobError]);
+
+  useEffect(() => { setPolledProgress(null); }, [progress, progressMessage]);
+
+  // A fast failure can precede the WebSocket subscription. The job snapshot
+  // remains authoritative when an event was missed or the connection drops.
+  const isActive = status === "starting" || status === "running";
+  useEffect(() => {
+    if (!jobId || !isActive) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      let terminal = false;
+      try {
+        const snapshot = await api.get<{
+          status: ExecutionStatus | "pending";
+          progress: number;
+          progress_message: string;
+          error?: string | null;
+        }>(`/training/${jobId}`);
+        if (disposed) return;
+        setPolledProgress({ progress: snapshot.progress, message: snapshot.progress_message });
+        if (["completed", "failed", "cancelled"].includes(snapshot.status)) {
+          terminal = true;
+          setStatus(snapshot.status as ExecutionStatus);
+          if (snapshot.status === "failed") setError(snapshot.error || "Execution failed");
+          else setError(null);
+        }
+      } catch {
+        // A transient polling error does not change the scientific job state.
+      } finally {
+        if (!disposed && !terminal) timer = setTimeout(() => void poll(), 1000);
+      }
+    };
+    void poll();
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [jobId, isActive]);
 
   /**
    * Execute a pipeline with the given configuration.
@@ -96,6 +135,8 @@ export function usePipelineExecution() {
   const execute = useCallback(
     async (config: ExecutionConfig): Promise<string | null> => {
       setStatus("starting");
+      setJobId(null);
+      setPolledProgress(null);
       setError(null);
       setResult(null);
 
@@ -114,7 +155,7 @@ export function usePipelineExecution() {
           throw new Error(response.message || "Execution failed to start");
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
+        const message = getApiErrorMessage(err) ?? "Execution failed to start";
         setError(message);
         setStatus("failed");
         return null;
@@ -130,10 +171,10 @@ export function usePipelineExecution() {
     if (!jobId) return;
 
     try {
+      setError(null);
       await api.post(`/training/${jobId}/stop`);
-      setStatus("cancelled");
     } catch (err) {
-      console.error("Failed to cancel execution:", err);
+      setError(getApiErrorMessage(err) ?? "Failed to cancel execution");
     }
   }, [jobId]);
 
@@ -145,14 +186,15 @@ export function usePipelineExecution() {
     setJobId(null);
     setResult(null);
     setError(null);
+    setPolledProgress(null);
   }, []);
 
   return {
     status,
     jobId,
     isConnected,
-    progress,
-    progressMessage,
+    progress: status === "completed" ? 100 : polledProgress?.progress ?? progress,
+    progressMessage: polledProgress?.message ?? progressMessage,
     metrics,
     result,
     error,

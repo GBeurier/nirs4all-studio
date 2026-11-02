@@ -7,7 +7,6 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use studio_sidecar::legacy_conversion::WINDOWS_JOB_LAUNCHER_ARGUMENT;
 use studio_sidecar::scientific_cpython::WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT;
 
 fn temporary_directory(name: &str) -> std::path::PathBuf {
@@ -39,9 +38,9 @@ fn wait_bounded(command: &mut Command) -> ExitStatus {
 }
 
 #[test]
-fn internal_job_launcher_preserves_converter_exit_code() {
+fn internal_job_launcher_preserves_worker_exit_code() {
     let status = wait_bounded(Command::new(env!("CARGO_BIN_EXE_studio-sidecar")).args([
-        WINDOWS_JOB_LAUNCHER_ARGUMENT,
+        WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT,
         "cmd.exe",
         "/D",
         "/C",
@@ -51,11 +50,11 @@ fn internal_job_launcher_preserves_converter_exit_code() {
 }
 
 #[test]
-fn kill_on_close_contains_descendant_that_outlives_converter_root() {
+fn kill_on_close_contains_descendant_that_outlives_worker_root() {
     let root = temporary_directory("descendant");
     let sentinel = root.join("escaped.txt");
     let descendant = root.join("descendant.cmd");
-    let converter = root.join("converter.cmd");
+    let worker = root.join("worker.cmd");
     fs::write(
         &descendant,
         format!(
@@ -65,7 +64,7 @@ fn kill_on_close_contains_descendant_that_outlives_converter_root() {
     )
     .unwrap();
     fs::write(
-        &converter,
+        &worker,
         format!(
             "@start \"\" /B cmd.exe /D /C call \"{}\"\r\n@exit /B 0\r\n",
             descendant.display()
@@ -75,14 +74,20 @@ fn kill_on_close_contains_descendant_that_outlives_converter_root() {
 
     let status = wait_bounded(
         Command::new(env!("CARGO_BIN_EXE_studio-sidecar"))
-            .args([WINDOWS_JOB_LAUNCHER_ARGUMENT, "cmd.exe", "/D", "/C", "call"])
-            .arg(&converter),
+            .args([
+                WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT,
+                "cmd.exe",
+                "/D",
+                "/C",
+                "call",
+            ])
+            .arg(&worker),
     );
     assert!(status.success());
     thread::sleep(Duration::from_secs(4));
     assert!(
         !sentinel.exists(),
-        "a converter descendant escaped the kill-on-close Job Object"
+        "a worker descendant escaped the kill-on-close Job Object"
     );
     fs::remove_dir_all(root).unwrap();
 }
@@ -92,7 +97,7 @@ fn terminating_scientific_launcher_contains_running_worker_and_descendants() {
     let root = temporary_directory("terminated-scientific-tree");
     let sentinel = root.join("escaped-after-termination.txt");
     let descendant = root.join("delayed-descendant.cmd");
-    let converter = root.join("long-converter.cmd");
+    let worker = root.join("long-worker.cmd");
     fs::write(
         &descendant,
         format!(
@@ -102,7 +107,7 @@ fn terminating_scientific_launcher_contains_running_worker_and_descendants() {
     )
     .unwrap();
     fs::write(
-        &converter,
+        &worker,
         format!(
             "@start \"\" /B cmd.exe /D /C call \"{}\"\r\n@ping -n 30 127.0.0.1 >NUL\r\n",
             descendant.display()
@@ -117,7 +122,7 @@ fn terminating_scientific_launcher_contains_running_worker_and_descendants() {
             "/C",
             "call",
         ])
-        .arg(&converter)
+        .arg(&worker)
         .spawn()
         .unwrap();
     thread::sleep(Duration::from_millis(300));

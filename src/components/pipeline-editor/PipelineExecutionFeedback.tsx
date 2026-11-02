@@ -1,4 +1,6 @@
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "@/lib/motion";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -139,12 +141,14 @@ export function ExecutionFeedback({
   progressMessage,
   result,
   status,
+  jobId,
 }: {
   error: string | null;
   progress: number;
   progressMessage: string;
   result: ExecutionResult | null;
   status: ExecutionStatus;
+  jobId?: string | null;
 }) {
   const { t } = useTranslation();
   return (
@@ -171,7 +175,17 @@ export function ExecutionFeedback({
         </motion.div>
       )}
 
-      {status === "failed" && error && (
+      {status === "completed" && !result && jobId && (
+        <div className="flex items-center gap-3 rounded-lg border p-4">
+          <Check className="h-5 w-5 text-emerald-500" />
+          <span>{t("runs.status.completed")}</span>
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/runs/${jobId}`}>{t("runs.notifications.viewRun")}</Link>
+          </Button>
+        </div>
+      )}
+
+      {error && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}

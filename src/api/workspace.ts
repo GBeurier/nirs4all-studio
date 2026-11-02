@@ -22,11 +22,7 @@ import type {
 } from "@/types/settings";
 import type {
   StorageStatusResponse,
-  MigrationStatusResponse,
-  MigrationReport,
-  MigrationJobResponse,
-  WorkspaceTransitionStatusResponse,
-  LegacyWorkspaceConversionResponse,
+  WorkspaceFormatStatusResponse,
   StorageHealthResponse,
   CompactReport,
   CleanDeadLinksReport,
@@ -122,40 +118,10 @@ export async function getStorageStatus(): Promise<StorageStatusResponse> {
 }
 
 /**
- * Get migration status/estimate for current workspace.
+ * Report whether the active workspace is an unconverted legacy DuckDB workspace.
  */
-export async function getMigrationStatus(): Promise<MigrationStatusResponse> {
-  return api.get("/workspace/migrate/status");
-}
-
-/**
- * Start migration (background job) or run dry run synchronously.
- */
-export async function startMigration(options?: {
-  dry_run?: boolean;
-  batch_size?: number;
-}): Promise<MigrationJobResponse | MigrationReport> {
-  return api.post("/workspace/migrate", options ?? {});
-}
-
-/**
- * Get transition status for legacy workspace formats.
- */
-export async function getWorkspaceTransitionStatus(): Promise<WorkspaceTransitionStatusResponse> {
-  return api.get("/workspace/transition-status");
-}
-
-/**
- * Convert the active legacy workspace into a fresh V1 workspace.
- */
-export async function convertLegacyWorkspace(options?: {
-  output_path?: string;
-  verify?: boolean;
-  dry_run?: boolean;
-  strict?: boolean;
-  link_converted_workspace?: boolean;
-}): Promise<LegacyWorkspaceConversionResponse> {
-  return api.post("/workspace/legacy-convert", options ?? {});
+export async function getWorkspaceFormatStatus(): Promise<WorkspaceFormatStatusResponse> {
+  return api.get("/workspace/format-status");
 }
 
 /**

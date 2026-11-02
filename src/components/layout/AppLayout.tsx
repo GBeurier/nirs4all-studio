@@ -5,6 +5,7 @@ import { BackendStartupBanner } from "./BackendStartupBanner";
 import { FloatingRunWidget } from "./FloatingRunWidget";
 import { LegacyWorkspaceBanner } from "./LegacyWorkspaceBanner";
 import { OfflineIndicator } from "./OfflineIndicator";
+import { PythonRuntimeNoticeBanner } from "./PythonRuntimeNoticeBanner";
 import { RouteErrorBoundary } from "./RouteErrorBoundary";
 import { useRunCompletionNotifications } from "@/hooks/useRunCompletionNotifications";
 import { useStartupUpdateCheck } from "@/hooks/useStartupUpdateCheck";
@@ -19,6 +20,7 @@ export function AppLayout() {
         <AppSidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
           <BackendStartupBanner />
+          <PythonRuntimeNoticeBanner />
           <LegacyWorkspaceBanner />
           <div className="fixed right-4 top-3 z-50">
             <OfflineIndicator />

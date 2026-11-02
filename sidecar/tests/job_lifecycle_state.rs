@@ -515,3 +515,60 @@ fn mutex_wrapped_registry_preserves_unique_bounded_jobs_under_concurrency() {
         16
     );
 }
+
+#[test]
+fn oversized_completion_result_is_omitted_from_the_event_but_kept_in_the_snapshot() {
+    let base = Instant::now();
+    let mut registry = JobRegistry::default();
+    for id in ["small-result", "large-result"] {
+        create_training(&mut registry, base, id);
+        registry.start_at(id, STARTED, base).unwrap();
+    }
+    let mut small = registry
+        .complete_at("small-result", json!({"outcome": "ok"}), FINISHED, base)
+        .unwrap();
+    small.event.as_mut().unwrap().omit_result_beyond(1024);
+    assert_eq!(
+        event_json(&small)["data"],
+        json!({"job_id": "small-result", "result": {"outcome": "ok"}})
+    );
+
+    let large = json!({"payload": "x".repeat(200 * 1024)});
+    let mut completed = registry
+        .complete_at("large-result", large.clone(), FINISHED, base)
+        .unwrap();
+    completed.event.as_mut().unwrap().omit_result_beyond(1024);
+    assert_eq!(
+        event_json(&completed)["data"],
+        json!({"job_id": "large-result", "result": null})
+    );
+    assert_eq!(completed.job.result.as_ref(), Some(&large));
+    assert_eq!(
+        registry.get_at("large-result", base).unwrap().result,
+        Some(large)
+    );
+}
+
+#[test]
+fn withdrawn_cancellation_lets_the_worker_complete_normally() {
+    let base = Instant::now();
+    let mut registry = JobRegistry::default();
+    create_training(&mut registry, base, "withdrawn");
+    registry.start_at("withdrawn", STARTED, base).unwrap();
+    registry
+        .request_cancel_at("withdrawn", UPDATED, base)
+        .unwrap();
+    registry.withdraw_cancel_request("withdrawn").unwrap();
+    assert!(!registry
+        .get_at("withdrawn", base)
+        .unwrap()
+        .cancellation_requested());
+    let completed = registry
+        .complete_at("withdrawn", json!({"outcome": "ok"}), FINISHED, base)
+        .unwrap();
+    assert_eq!(completed.job.status, JobStatus::Completed);
+    assert_eq!(
+        registry.withdraw_cancel_request("withdrawn"),
+        Err(JobLifecycleError::TerminalState(JobStatus::Completed))
+    );
+}

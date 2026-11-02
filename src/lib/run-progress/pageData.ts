@@ -56,7 +56,6 @@ export function buildRunFromExecutionJobRecord(record: ExecutionJobRecord): Run 
     name: typeof config.name === "string" && config.name.trim()
       ? config.name : record.run_name || record.job_id,
     status: record.status === "pending" ? "queued"
-      : record.status === "cancelled" ? "failed"
       : record.status as RunStatus,
     created_at: record.created_at,
     started_at: record.started_at ?? undefined,
@@ -70,7 +69,7 @@ export function buildRunFromExecutionJobRecord(record: ExecutionJobRecord): Run 
 /** Present a stored owner's detail through the progress page's existing view. */
 export function buildRunFromWorkspaceDetail(detail: WorkspaceRunDetail): Run {
   const status = (value: string | null): RunStatus =>
-    value === "completed" || value === "running" || value === "queued" || value === "partial"
+    value === "completed" || value === "running" || value === "queued" || value === "partial" || value === "cancelled"
       ? value : "failed";
   return {
     id: detail.run_id, name: detail.name, status: status(detail.status),
@@ -101,6 +100,7 @@ const LEGACY_RUN_STATUS_MESSAGE_KEYS: Record<RunStatus, string> = {
   running: "runs.progress.runRunning",
   completed: "runs.progress.runCompleted",
   failed: "runs.progress.runFailed",
+  cancelled: "runs.status.cancelled",
   partial: "runs.progress.runPartial",
 };
 

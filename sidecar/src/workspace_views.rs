@@ -329,13 +329,11 @@ fn scan(
         if let Some(store) = access.store() {
             read_store_cohorts(&store)?
         } else {
-            if root.join("store.duckdb").exists()
-                || all.iter().any(|(path, _)| {
-                    path.starts_with(root.join("runs"))
-                        || path.starts_with(root.join("workspace/runs"))
-                        || path.starts_with(root.join("nirs4all_results"))
-                })
-            {
+            if all.iter().any(|(path, _)| {
+                path.starts_with(root.join("runs"))
+                    || path.starts_with(root.join("workspace/runs"))
+                    || path.starts_with(root.join("nirs4all_results"))
+            }) {
                 return Err(
                     "Workspace result format requires migration before native discovery".into(),
                 );
@@ -399,7 +397,7 @@ fn scan(
         .count();
     let counts = json!({"runs_count":runs_count,"datasets_count":datasets.len(),"predictions_count":predictions_count,"exports_count":exports.len(),"templates_count":templates.len()});
     let now = crate::websocket_transport::rfc3339_now();
-    let stats = json!({"path":root,"name":record["name"],"created_at":record["linked_at"],"last_accessed":record["linked_at"],"total_size_bytes":total_size,"space_usage":usage,"linked_datasets_count":links.len(),"linked_datasets_external_size":external_size,"duckdb_size_bytes":store_size,"parquet_arrays_size_bytes":arrays_size,"storage_mode":storage_status["storage_mode"],"runs_count":runs_count,"datasets_count":datasets.len(),"predictions_count":predictions_count,"models_count":model_count});
+    let stats = json!({"path":root,"name":record["name"],"created_at":record["linked_at"],"last_accessed":record["linked_at"],"total_size_bytes":total_size,"space_usage":usage,"linked_datasets_count":links.len(),"linked_datasets_external_size":external_size,"store_size_bytes":store_size,"parquet_arrays_size_bytes":arrays_size,"storage_mode":storage_status["storage_mode"],"runs_count":runs_count,"datasets_count":datasets.len(),"predictions_count":predictions_count,"models_count":model_count});
     Ok(
         json!({"workspace_id":access.id(),"workspace_name":record["name"],"discovered":counts,"datasets":datasets,"predictions":predictions,"exports":exports,"templates":templates,"scanned_at":now,"message":"Workspace scan completed","stats":stats,"storage_status":storage_status}),
     )

@@ -145,7 +145,7 @@ export function ProgressOverviewCard({
               )}
             </div>
           </div>
-          <span className="text-sm font-medium">{progressUnavailable ? t("runs.widget.unavailable") : `${Math.round(overallProgress)}%`}</span>
+          <span className="text-sm font-medium">{progressUnavailable ? t("runs.status.running") : `${Math.round(overallProgress)}%`}</span>
         </div>
         {progressUnavailable
           ? <IndeterminateProgress className="h-3" />

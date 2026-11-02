@@ -22,13 +22,15 @@ jobs:
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
-          latest_tag="$(git tag --list '[0-9]*' --sort=-v:refname | head -n 1 || true)"
+          # GNU version sort orders "~" before a release, so map the semver
+          # prerelease separator to it: 0.15.8-rc.2 < 0.15.8.
+          latest_tag="$(git tag --list '[0-9]*' | sed 's/-/~/' | sort -V | tail -n 1 | sed 's/~/-/' || true)"
           if [[ -z "$latest_tag" ]]; then
             echo "No numeric semver tags found; package version is $version."
             exit 0
           fi
-          greatest="$(printf '%s\n%s\n' "$latest_tag" "$version" | sort -V | tail -n 1)"
-          if [[ "$greatest" != "$version" ]]; then
+          greatest="$(printf '%s\n%s\n' "${latest_tag/-/\~}" "${version/-/\~}" | sort -V | tail -n 1)"
+          if [[ "$greatest" != "${version/-/\~}" ]]; then
             echo "::error::package.json version ($version) is older than latest release tag ($latest_tag)."
             exit 1
           fi

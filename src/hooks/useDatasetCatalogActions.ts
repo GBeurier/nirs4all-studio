@@ -52,7 +52,11 @@ export function useDatasetCatalogActions(groups: DatasetGroup[]) {
   const saveDatasetConfig = useCallback(
     async (datasetId: string, updates: UpdateDatasetRequest) => {
       await updateDatasetConfig(datasetId, updates);
-      await invalidateDatasets();
+      try {
+        if (updates.config) await refreshDataset(datasetId);
+      } finally {
+        await invalidateDatasets();
+      }
     },
     [invalidateDatasets],
   );

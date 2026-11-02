@@ -5,11 +5,13 @@ import {
   Loader2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import type { PythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
+import { describeRuntimeFallback } from "@/lib/pythonRuntimeNotice";
+import type { DesktopRuntimeFallback } from "@/types/pythonRuntime";
 import {
   shortenPath,
   shortVersion,
@@ -249,6 +251,46 @@ export function SwitchResultAlert({
 interface SetupErrorAlertProps {
   error: string | null;
   isSettingUp: boolean;
+}
+
+interface RuntimeFallbackAlertProps {
+  fallback: DesktopRuntimeFallback | undefined;
+  busy: boolean;
+  onInstallRequired: () => void;
+  onKeepIncluded: () => void;
+}
+
+/** The included runtime replaced the selected environment for this session. */
+export function RuntimeFallbackAlert({
+  fallback,
+  busy,
+  onInstallRequired,
+  onKeepIncluded,
+}: RuntimeFallbackAlertProps) {
+  const { t } = useTranslation();
+  if (!fallback) {
+    return null;
+  }
+
+  return (
+    <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+      <AlertCircle className="h-4 w-4 text-amber-600" />
+      <AlertTitle>{t("common.pythonEnv.fallback.title")}</AlertTitle>
+      <AlertDescription className="space-y-3">
+        <p className="break-words">{describeRuntimeFallback(fallback, t)}</p>
+        <div className="flex flex-wrap gap-2">
+          {fallback.reason === "incompatible" && (
+            <Button size="sm" onClick={onInstallRequired} disabled={busy}>
+              {t("common.pythonEnv.fallback.installRequired")}
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={onKeepIncluded} disabled={busy}>
+            {t("common.pythonEnv.fallback.keepIncluded")}
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
+  );
 }
 
 export function SetupErrorAlert({

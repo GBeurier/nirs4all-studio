@@ -1,4 +1,4 @@
-"""Workspace statistics, storage status, migration, compaction, cleanup,
+"""Workspace statistics, storage status, compaction, cleanup,
 and workspace settings routes (Phase 5).
 """
 
@@ -11,7 +11,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from ..jobs import JobType, job_manager
 from ..lazy_imports import get_cached
 from ..shared.logger import get_logger
 from ..workspace_manager import WorkspaceScanner, workspace_manager
@@ -21,9 +20,7 @@ from ._shared import (
     _compute_directory_size,
     _get_storage_status_for_workspace,
     _has_active_non_maintenance_jobs,
-    _invalidate_results_caches,
 )
-from .legacy_migration_report_preview import LegacyMigrationPreviewError, preview_legacy_migration_report
 from .models import (
     CleanCacheRequest,
     CleanCacheResponse,
@@ -33,14 +30,6 @@ from .models import (
     CompactRequest,
     DataLoadingDefaults,
     DatasetStorageInfo,
-    LegacyMigrationReportPreviewRequest,
-    LegacyMigrationReportPreviewResponse,
-    LegacyWorkspaceConversionRequest,
-    LegacyWorkspaceConversionResponse,
-    MigrationJobResponse,
-    MigrationReportResponse,
-    MigrationRequest,
-    MigrationStatusResponse,
     RemoveBottomReport,
     RemoveBottomRequest,
     SpaceUsageItem,
@@ -48,96 +37,16 @@ from .models import (
     StorageStatusResponse,
     WorkspaceSettingsResponse,
     WorkspaceStatsResponse,
-    WorkspaceTransitionStatusResponse,
 )
 from .services import (
-    _build_legacy_conversion_command,
-    _call_migrate_arrays_to_parquet,
-    _estimate_migration_duration_seconds,
     _extract_corrupt_files,
     _extract_orphan_counts,
-    _get_legacy_arrays_row_count,
-    _inspect_legacy_workspace_transition,
     _invoke_predictions_method,
-    _run_legacy_workspace_converter,
 )
-
-# WebSocket notifications (optional). Imported as a top-level module to match
-# the original workspace.py import surface.
-try:
-    from websocket import (
-        notify_maintenance_completed,
-        notify_maintenance_failed,
-        notify_maintenance_progress,
-        notify_maintenance_started,
-    )
-    WS_AVAILABLE = True
-except Exception:
-    notify_maintenance_started = None  # type: ignore[assignment]
-    notify_maintenance_progress = None  # type: ignore[assignment]
-    notify_maintenance_completed = None  # type: ignore[assignment]
-    notify_maintenance_failed = None  # type: ignore[assignment]
-    WS_AVAILABLE = False
 
 logger = get_logger(__name__)
 
 router = APIRouter()
-
-
-def _link_converted_workspace(output_path: Path) -> dict[str, str | None]:
-    """Link and activate a successfully converted workspace."""
-    linked = workspace_manager.link_workspace_internal(
-        str(output_path.resolve()),
-        output_path.name,
-        is_new=True,
-    )
-    activated = workspace_manager.activate_workspace(linked.id) or linked
-    return {
-        "linked_workspace_id": activated.id,
-        "active_workspace_path": activated.path,
-        "link_error": None,
-    }
-
-
-def _run_async_notification(coro: Any) -> None:
-    """Run an async notification from sync code safely."""
-    if not coro:
-        return
-    try:
-        asyncio.run(coro)
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(coro)
-        finally:
-            loop.close()
-    except Exception:
-        pass
-
-
-def _emit_maintenance_started(job_id: str, operation: str, details: dict[str, Any]) -> None:
-    if WS_AVAILABLE and notify_maintenance_started is not None:
-        _run_async_notification(notify_maintenance_started(job_id, operation, details))
-
-
-def _emit_maintenance_progress(job_id: str, progress: float, message: str = "") -> None:
-    if WS_AVAILABLE and notify_maintenance_progress is not None:
-        _run_async_notification(notify_maintenance_progress(job_id, progress, message))
-
-
-def _emit_maintenance_completed(job_id: str, operation: str, report: dict[str, Any]) -> None:
-    if WS_AVAILABLE and notify_maintenance_completed is not None:
-        _run_async_notification(notify_maintenance_completed(job_id, operation, report))
-    # Maintenance jobs (migration, compaction, predictions cleanup) can mutate
-    # store contents. Conservatively drop all results caches; entries with a
-    # stale store signature would be rejected anyway, but this also clears
-    # them eagerly.
-    _invalidate_results_caches(None)
-
-
-def _emit_maintenance_failed(job_id: str, operation: str, error: str) -> None:
-    if WS_AVAILABLE and notify_maintenance_failed is not None:
-        _run_async_notification(notify_maintenance_failed(job_id, operation, error))
 
 
 def _compute_workspace_stats(workspace: Any) -> WorkspaceStatsResponse:
@@ -160,7 +69,7 @@ def _compute_workspace_stats(workspace: Any) -> WorkspaceStatsResponse:
 
     space_usage: list[SpaceUsageItem] = []
     total_workspace_size = 0
-    duckdb_size_bytes = 0
+    store_size_bytes = 0
     parquet_arrays_size_bytes = 0
 
     # Compute size for each category
@@ -181,8 +90,8 @@ def _compute_workspace_stats(workspace: Any) -> WorkspaceStatsResponse:
         if file.is_file():
             try:
                 total_workspace_size += file.stat().st_size
-                if file.name in ("store.sqlite", "store.duckdb"):
-                    duckdb_size_bytes = file.stat().st_size
+                if file.name == "store.sqlite":
+                    store_size_bytes = file.stat().st_size
             except (OSError, PermissionError):
                 pass
 
@@ -233,7 +142,7 @@ def _compute_workspace_stats(workspace: Any) -> WorkspaceStatsResponse:
         space_usage=space_usage,
         linked_datasets_count=len(workspace.datasets),
         linked_datasets_external_size=external_datasets_size,
-        duckdb_size_bytes=duckdb_size_bytes,
+        store_size_bytes=store_size_bytes,
         parquet_arrays_size_bytes=parquet_arrays_size_bytes,
         storage_mode=str(storage_status.get("storage_mode", "unknown")),
         created_at=workspace.created_at,
@@ -286,277 +195,6 @@ async def get_workspace_storage_status():
         raise HTTPException(
             status_code=500, detail=f"Failed to get storage status: {str(e)}"
         )
-
-
-@router.get("/workspace/migrate/status", response_model=MigrationStatusResponse)
-async def get_workspace_migration_status():
-    """Get migration status and rough migration estimate."""
-    try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
-        workspace_path = Path(workspace.path)
-
-        def _compute() -> MigrationStatusResponse:
-            status = _get_storage_status_for_workspace(workspace_path)
-            legacy_row_count = _get_legacy_arrays_row_count(workspace_path)
-            estimated_duration_seconds = _estimate_migration_duration_seconds(legacy_row_count)
-            return MigrationStatusResponse(
-                migration_needed=bool(status.get("migration_needed", False)),
-                storage_mode=str(status.get("storage_mode", "unknown")),
-                legacy_row_count=legacy_row_count,
-                estimated_duration_seconds=estimated_duration_seconds,
-            )
-
-        return await asyncio.to_thread(_compute)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get migration status: {str(e)}"
-        )
-
-
-@router.get("/workspace/transition-status", response_model=WorkspaceTransitionStatusResponse)
-async def get_workspace_transition_status():
-    """Detect legacy workspace formats that need transition conversion."""
-    try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
-        status = await asyncio.to_thread(
-            _inspect_legacy_workspace_transition,
-            Path(workspace.path),
-        )
-        return WorkspaceTransitionStatusResponse(**status)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get transition status: {str(e)}"
-        )
-
-
-@router.post(
-    "/workspace/legacy-convert",
-    response_model=LegacyWorkspaceConversionResponse,
-)
-async def convert_legacy_workspace(request: LegacyWorkspaceConversionRequest):
-    """Convert the active legacy workspace into a fresh V1 workspace."""
-    try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
-        workspace_path = Path(workspace.path)
-        status = await asyncio.to_thread(_inspect_legacy_workspace_transition, workspace_path)
-        if not bool(status.get("conversion_required")):
-            raise HTTPException(status_code=409, detail="Active workspace does not require legacy conversion")
-
-        output_path = Path(request.output_path) if request.output_path else Path(str(status["default_output_path"]))
-        command = _build_legacy_conversion_command(
-            workspace_path,
-            output_path,
-            verify=request.verify,
-            dry_run=request.dry_run,
-            strict=request.strict,
-        )
-
-        if request.dry_run:
-            result = await asyncio.to_thread(_run_legacy_workspace_converter, command)
-            if not result["success"]:
-                raise HTTPException(status_code=500, detail=result["stderr"] or result["stdout"] or "Legacy conversion dry-run failed")
-            return LegacyWorkspaceConversionResponse(
-                command=command,
-                output_path=str(output_path),
-                dry_run=True,
-                link_converted_workspace=False,
-                **result,
-            )
-
-        if _has_active_non_maintenance_jobs():
-            raise HTTPException(
-                status_code=409,
-                detail="Another active job is running. Stop active jobs before legacy conversion.",
-            )
-
-        job_config = {
-            "operation": "legacy_workspace_conversion",
-            "workspace_path": str(workspace_path),
-            "output_path": str(output_path),
-            "command": command,
-            "link_converted_workspace": request.link_converted_workspace,
-        }
-        job = job_manager.create_job(JobType.MAINTENANCE, job_config)
-
-        def _run_conversion_task(job_obj: Any, progress_callback: Any) -> dict[str, Any]:
-            operation = "legacy_workspace_conversion"
-
-            def _progress(value: float, message: str) -> None:
-                try:
-                    progress_callback(value, message)
-                except Exception:
-                    pass
-                _emit_maintenance_progress(job_obj.id, value, message)
-
-            _emit_maintenance_started(job_obj.id, operation, job_config)
-            _progress(5.0, "Starting legacy workspace conversion")
-            result = _run_legacy_workspace_converter(command)
-            if not result["success"]:
-                _emit_maintenance_failed(job_obj.id, operation, result["stderr"] or "Legacy conversion failed")
-                raise RuntimeError(result["stderr"] or result["stdout"] or "Legacy conversion failed")
-            best_effort = bool(result.get("best_effort"))
-            link_payload: dict[str, str | None] = {
-                "linked_workspace_id": None,
-                "active_workspace_path": None,
-                "link_error": None,
-            }
-            activation_skipped = False
-            if request.link_converted_workspace and best_effort:
-                activation_skipped = True
-                link_payload["link_error"] = "Conversion completed in best-effort mode; the converted workspace was not activated automatically."
-                _progress(92.0, "Skipping activation for best-effort conversion")
-            elif request.link_converted_workspace:
-                _progress(92.0, "Linking converted workspace")
-                try:
-                    link_payload = _link_converted_workspace(output_path)
-                except Exception as exc:
-                    link_payload["link_error"] = str(exc)
-                    logger.warning("Legacy workspace conversion succeeded, but linking the converted workspace failed: %s", exc)
-            _progress(100.0, "Legacy conversion completed")
-            payload = {
-                "operation": operation,
-                "output_path": str(output_path),
-                "command": command,
-                "link_converted_workspace": request.link_converted_workspace,
-                "activation_skipped": activation_skipped,
-                **link_payload,
-                **result,
-            }
-            _emit_maintenance_completed(job_obj.id, operation, payload)
-            return payload
-
-        job_manager.submit_job(job, _run_conversion_task)
-        return LegacyWorkspaceConversionResponse(
-            job_id=job.id,
-            command=command,
-            output_path=str(output_path),
-            dry_run=False,
-            link_converted_workspace=request.link_converted_workspace,
-            success=True,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start legacy conversion: {str(e)}"
-        )
-
-
-@router.post(
-    "/workspace/migrate",
-    response_model=MigrationJobResponse | MigrationReportResponse,
-)
-async def migrate_workspace_arrays(request: MigrationRequest):
-    """Migrate legacy prediction arrays to Parquet sidecar files."""
-    try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
-        workspace_path = Path(workspace.path)
-
-        if request.dry_run:
-            report = await asyncio.to_thread(
-                _call_migrate_arrays_to_parquet,
-                workspace_path,
-                dry_run=True,
-                batch_size=request.batch_size,
-            )
-            return MigrationReportResponse(**report)
-
-        if _has_active_non_maintenance_jobs():
-            raise HTTPException(
-                status_code=409,
-                detail="Another active job is running. Stop active jobs before migration.",
-            )
-
-        job_config = {
-            "operation": "migration",
-            "workspace_path": str(workspace_path),
-            "dry_run": False,
-            "batch_size": request.batch_size,
-        }
-        job = job_manager.create_job(JobType.MAINTENANCE, job_config)
-
-        def _run_migration_task(job_obj: Any, progress_callback: Any) -> dict[str, Any]:
-            operation = "migration"
-
-            def _progress(value: float, message: str) -> None:
-                try:
-                    progress_callback(value, message)
-                except Exception:
-                    pass
-                _emit_maintenance_progress(job_obj.id, value, message)
-
-            _emit_maintenance_started(
-                job_obj.id,
-                operation,
-                {
-                    "workspace_path": str(workspace_path),
-                    "batch_size": request.batch_size,
-                },
-            )
-            _progress(2.0, "Preparing migration")
-            try:
-                report = _call_migrate_arrays_to_parquet(
-                    workspace_path,
-                    dry_run=False,
-                    batch_size=request.batch_size,
-                )
-                _progress(100.0, "Migration completed")
-                _emit_maintenance_completed(job_obj.id, operation, report)
-                return {"operation": operation, "report": report}
-            except Exception as exc:
-                _emit_maintenance_failed(job_obj.id, operation, str(exc))
-                raise
-
-        job_manager.submit_job(job, _run_migration_task)
-        return MigrationJobResponse(job_id=job.id)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start migration: {str(e)}"
-        )
-
-
-@router.post(
-    "/workspace/migrate/report-preview",
-    response_model=LegacyMigrationReportPreviewResponse,
-)
-async def preview_legacy_migration_report_route(request: LegacyMigrationReportPreviewRequest):
-    """Preview offline nirs4all-tools migration reports without writing anything."""
-    try:
-        payload = await asyncio.to_thread(
-            preview_legacy_migration_report,
-            report_path=request.report_path,
-            unsupported_report_path=request.unsupported_report_path,
-            manifest_path=request.manifest_path,
-        )
-        return LegacyMigrationReportPreviewResponse(**payload)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except LegacyMigrationPreviewError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to preview migration report: {str(exc)}")
 
 
 @router.post("/workspace/compact", response_model=CompactReport)
@@ -656,15 +294,13 @@ def _compute_storage_health(workspace_path: Path) -> StorageHealthResponse:
     """Compute combined storage health (blocking; runs in a worker thread)."""
     status = _get_storage_status_for_workspace(workspace_path)
 
-    duckdb_size_bytes = 0
+    store_size_bytes = 0
     db_path = workspace_path / "store.sqlite"
-    if not db_path.exists():
-        db_path = workspace_path / "store.duckdb"
     if db_path.exists():
         try:
-            duckdb_size_bytes = db_path.stat().st_size
+            store_size_bytes = db_path.stat().st_size
         except Exception:
-            duckdb_size_bytes = 0
+            store_size_bytes = 0
 
     arrays_path = workspace_path / "arrays"
     parquet_total_size_bytes, _ = _compute_directory_size(arrays_path)
@@ -752,8 +388,7 @@ def _compute_storage_health(workspace_path: Path) -> StorageHealthResponse:
 
     return StorageHealthResponse(
         storage_mode=str(status.get("storage_mode", "unknown")),
-        migration_needed=bool(status.get("migration_needed", False)),
-        duckdb_size_bytes=duckdb_size_bytes,
+        store_size_bytes=store_size_bytes,
         parquet_total_size_bytes=parquet_total_size_bytes,
         total_predictions=total_predictions,
         total_datasets=len(datasets),
@@ -766,7 +401,7 @@ def _compute_storage_health(workspace_path: Path) -> StorageHealthResponse:
 
 @router.get("/workspace/storage-health", response_model=StorageHealthResponse)
 async def get_workspace_storage_health():
-    """Combined storage health: integrity check + stats + migration status."""
+    """Combined storage health: integrity check + stats."""
     try:
         workspace = workspace_manager.get_current_workspace()
         if not workspace:
