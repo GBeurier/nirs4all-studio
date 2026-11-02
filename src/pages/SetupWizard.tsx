@@ -49,8 +49,9 @@ import { getElectronApi } from "@/components/settings/PythonEnvPickerRuntime";
 import { alignConfig, getConfigDiff } from "@/api/config";
 import { getDependencies } from "@/api/dependencies";
 import { getRuntimeSummary } from "@/api/system";
-import { api, formatApiErrorDetail } from "@/api/transport";
+import { formatApiErrorDetail } from "@/api/transport";
 import { scientificRuntimeErrorMessage } from "@/lib/scientificRuntimeError";
+import { waitForScientificReadiness } from "@/lib/scientificReadiness";
 import { describeApiError } from "@/lib/userFacingError";
 import type { ProfileInfo, OptionalPackageInfo } from "@/api/config";
 import {
@@ -97,7 +98,7 @@ function DesktopSetupWizard() {
     setChecking(true);
     try {
       const [runtime, readiness] = await Promise.all([
-        getRuntimeSummary(), api.get<{ ml_ready?: boolean; ml_error?: string | null }>("/system/readiness"),
+        getRuntimeSummary(), waitForScientificReadiness(),
       ]);
       const isReady = runtime.coherent && runtime.core_ready && readiness.ml_ready === true;
       setReady(isReady);
@@ -173,7 +174,7 @@ function WebSetupWizard() {
       const [diff, runtime, readiness] = await Promise.all([
         getConfigDiff("cpu", false, false),
         getRuntimeSummary(),
-        api.get<{ ml_ready?: boolean; ml_error?: string | null }>("/system/readiness"),
+        waitForScientificReadiness(),
       ]);
       if (!inventory.runtime_valid || !runtime.core_ready || !runtime.coherent) {
         throw new Error(i18n.t("setupWizard.verify.notReady"));

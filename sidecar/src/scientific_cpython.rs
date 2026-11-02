@@ -878,6 +878,12 @@ impl CpythonScientificJobExecutor {
         }
     }
 
+    /// A host whose acquisition ran out of time, for tests of the retry path.
+    #[cfg(test)]
+    pub(crate) fn timed_out_for_test(config_dir: PathBuf) -> Self {
+        Self::unavailable(ScientificCpythonUnavailable::TimedOut, config_dir)
+    }
+
     /// Whether acquisition ran out of time, rather than finding an unusable host.
     #[must_use]
     pub fn acquisition_timed_out(&self) -> bool {

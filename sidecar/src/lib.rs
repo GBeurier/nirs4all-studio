@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
     process::{self, Command, Stdio},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -445,11 +445,120 @@ pub struct SidecarState {
     update_settings: UpdateSettingsStore,
     native_jobs: Arc<NativeJobRuntime>,
     scientific_host: Option<Arc<scientific_cpython::CpythonScientificJobExecutor>>,
+    scientific_acquisition: Arc<ScientificAcquisition>,
     native_archive_training: Option<Arc<NativeArchiveTrainingExecutor>>,
     archive_v2_prediction: ArchiveV2PredictionRuntime,
     legacy_conversion: LegacyConversionRuntime,
     native_updater: native_updates::NativeUpdater,
     python_probes: PythonProbes,
+}
+
+/// How to acquire the configured scientific host.
+#[derive(Clone, Debug)]
+struct ScientificHostPlan {
+    host: PathBuf,
+    /// A custom or managed environment rather than the packaged runtime.
+    selected: bool,
+    bundled: bool,
+    closure: PathBuf,
+    runtime_root: PathBuf,
+    site_packages: PathBuf,
+    config_dir: PathBuf,
+}
+
+impl ScientificHostPlan {
+    fn acquire(&self) -> scientific_cpython::CpythonScientificJobExecutor {
+        if self.selected {
+            return scientific_cpython::CpythonScientificJobExecutor::acquire_existing_with_config_dir(
+                &self.host,
+                self.site_packages.clone(),
+                self.config_dir.clone(),
+            );
+        }
+        // Only the packaged runtime Electron attested may be acquired here.
+        let packaged = |path: &Path| {
+            if self.bundled {
+                path.to_path_buf()
+            } else {
+                PathBuf::new()
+            }
+        };
+        scientific_cpython::CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
+            packaged(&self.host),
+            packaged(&self.closure),
+            packaged(&self.runtime_root),
+            packaged(&self.site_packages),
+            self.config_dir.clone(),
+        )
+    }
+}
+
+/// Deferred acquisition of the scientific host: readiness reports
+/// `ml_loading` while it runs, and a timed-out acquisition is retried.
+#[derive(Debug, Default)]
+struct ScientificAcquisition {
+    plan: Option<ScientificHostPlan>,
+    pending: AtomicBool,
+}
+
+impl ScientificAcquisition {
+    const fn planned(plan: Option<ScientificHostPlan>) -> Self {
+        Self {
+            pending: AtomicBool::new(plan.is_some()),
+            plan,
+        }
+    }
+
+    fn is_pending(&self) -> bool {
+        self.pending.load(Ordering::Acquire)
+    }
+}
+
+/// Acquire the planned scientific host outside the route lock, then select it
+/// for scientific routes and job submission.
+fn acquire_scientific_host(state: &Arc<Mutex<SidecarState>>) {
+    let acquisition = Arc::clone(
+        &state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .scientific_acquisition,
+    );
+    let Some(plan) = &acquisition.plan else {
+        return;
+    };
+    let host = Arc::new(plan.acquire());
+    let executor: Arc<dyn job_http::ScientificJobExecutor> = host.clone();
+    let mut state = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    state.native_jobs = Arc::new(state.native_jobs.with_replaced_executor(executor));
+    state.scientific_host = Some(host);
+    // Under the state lock: readiness never sees an idle acquisition without its host.
+    acquisition.pending.store(false, Ordering::Release);
+    drop(state);
+}
+
+/// A preflight that ran out of time (a cold disk or an antivirus scan) is
+/// retried on the next readiness poll instead of requiring an app restart.
+fn retry_timed_out_scientific_acquisition(state: &Arc<Mutex<SidecarState>>) {
+    let retry =
+        {
+            let state = state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            state.scientific_host.as_deref().is_some_and(
+                scientific_cpython::CpythonScientificJobExecutor::acquisition_timed_out,
+            ) && state.scientific_acquisition.plan.is_some()
+                && state
+                    .scientific_acquisition
+                    .pending
+                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+        };
+    if retry {
+        let state = Arc::clone(state);
+        std::thread::spawn(move || acquire_scientific_host(&state));
+    }
 }
 
 /// Clone owners while holding the route lock, then validate the same runtime
@@ -459,6 +568,7 @@ struct ReadinessSnapshot {
     app_settings: AppSettingsStore,
     native_jobs: Arc<NativeJobRuntime>,
     scientific_host: Option<Arc<scientific_cpython::CpythonScientificJobExecutor>>,
+    scientific_loading: bool,
     native_prediction_ready: bool,
     native_training_ready: bool,
 }
@@ -470,21 +580,26 @@ impl ReadinessSnapshot {
             app_settings: state.app_settings.clone(),
             native_jobs: Arc::clone(&state.native_jobs),
             scientific_host: state.scientific_host.clone(),
+            scientific_loading: state.scientific_acquisition.is_pending(),
             native_prediction_ready: state.archive_v2_prediction.is_selected(),
             native_training_ready: state.native_archive_training.is_some(),
         }
     }
 
     fn to_json(&self) -> String {
-        let ml_ready = self.scientific_host.as_deref().map_or_else(
-            || self.native_jobs.execution_selected(),
-            scientific_cpython::CpythonScientificJobExecutor::library_facades_available_background,
-        );
+        // The scientific host is acquired after the sidecar is ready: report it
+        // as loading, not failed, until that acquisition ends.
+        let ml_loading = self.scientific_loading;
+        let ml_ready = !ml_loading
+            && self.scientific_host.as_deref().map_or_else(
+                || self.native_jobs.execution_selected(),
+                scientific_cpython::CpythonScientificJobExecutor::library_facades_available_background,
+            );
         json!({
             "core_ready": true,
             "elapsed_seconds": self.started_at.elapsed().as_secs_f64(),
-            "ml_error": if ml_ready { None } else { self.native_jobs.execution_unavailability_reason() },
-            "ml_loading": false,
+            "ml_error": if ml_ready || ml_loading { None } else { self.native_jobs.execution_unavailability_reason() },
+            "ml_loading": ml_loading,
             "ml_ready": ml_ready,
             "workspace_ready": self.app_settings.workspace_catalogue_ready(),
             "native_prediction_ready": self.native_prediction_ready,
@@ -623,6 +738,7 @@ impl Default for SidecarState {
             update_settings: UpdateSettingsStore::from_environment(),
             native_jobs: Arc::new(NativeJobRuntime::default()),
             scientific_host: None,
+            scientific_acquisition: Arc::default(),
             native_archive_training: None,
             archive_v2_prediction: ArchiveV2PredictionRuntime::default(),
             legacy_conversion: LegacyConversionRuntime::default(),
@@ -698,50 +814,20 @@ impl SidecarState {
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "python_plugin_host".into());
         let app_settings = AppSettingsStore::from_environment();
-        let scientific_host = if env::var(SCIENTIFIC_EXECUTOR_ENV).as_deref()
-            == Ok(scientific_cpython::SCIENTIFIC_CPYTHON_EXECUTOR_ID)
-        {
-            let empty = Path::new("");
-            let executor = if !python_plugin_host_bundled
-                && matches!(runtime_kind.as_str(), "custom" | "managed")
-            {
-                scientific_cpython::CpythonScientificJobExecutor::acquire_existing_with_config_dir(
-                    python_plugin_host.as_deref().unwrap_or(empty),
-                    python_plugin_site_packages.unwrap_or_default(),
-                    app_settings.config_dir(),
-                )
-            } else {
-                scientific_cpython::CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
-                    python_plugin_host_bundled
-                        .then_some(python_plugin_host.as_deref())
-                        .flatten()
-                        .unwrap_or(empty),
-                    python_plugin_host_bundled
-                        .then_some(python_plugin_closure.as_deref())
-                        .flatten()
-                        .unwrap_or(empty),
-                    python_plugin_host_bundled
-                        .then_some(python_plugin_runtime_root.as_deref())
-                        .flatten()
-                        .unwrap_or(empty),
-                    python_plugin_host_bundled
-                        .then_some(python_plugin_site_packages.as_deref())
-                        .flatten()
-                        .unwrap_or(empty),
-                    app_settings.config_dir(),
-                )
-            };
-            Some(Arc::new(executor))
-        } else {
-            None
-        };
-        let native_jobs = scientific_host.as_ref().map_or_else(
-            || Arc::new(NativeJobRuntime::default()),
-            |host| {
-                let executor: Arc<dyn job_http::ScientificJobExecutor> = host.clone();
-                Arc::new(NativeJobRuntime::with_executor(executor))
-            },
-        );
+        // Acquiring the scientific host imports nirs4all and can take minutes on
+        // a cold first launch: it runs after the sidecar reports ready.
+        let plan = (env::var(SCIENTIFIC_EXECUTOR_ENV).as_deref()
+            == Ok(scientific_cpython::SCIENTIFIC_CPYTHON_EXECUTOR_ID))
+        .then(|| ScientificHostPlan {
+            host: python_plugin_host.clone().unwrap_or_default(),
+            selected: !python_plugin_host_bundled
+                && matches!(runtime_kind.as_str(), "custom" | "managed"),
+            bundled: python_plugin_host_bundled,
+            closure: python_plugin_closure.unwrap_or_default(),
+            runtime_root: python_plugin_runtime_root.unwrap_or_default(),
+            site_packages: python_plugin_site_packages.unwrap_or_default(),
+            config_dir: app_settings.config_dir().into(),
+        });
         let native_archive_training =
             NativeArchiveTrainingExecutor::acquire(app_settings.config_dir()).map(Arc::new);
         Self {
@@ -752,8 +838,7 @@ impl SidecarState {
             build_info_path: env::var_os(BUILD_INFO_PATH_ENV)
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
-            native_jobs,
-            scientific_host,
+            scientific_acquisition: Arc::new(ScientificAcquisition::planned(plan)),
             native_archive_training,
             app_settings,
             update_settings: UpdateSettingsStore::from_environment(),
@@ -4527,8 +4612,6 @@ pub fn serve(host: &str, port: u16) -> std::io::Result<()> {
         Arc::new(http_access::HttpAccessPolicy::from_environment().map_err(std::io::Error::other)?);
     let listener = TcpListener::bind((host, port))?;
     let address = listener.local_addr()?;
-    // Acquiring the packaged scientific host can take longer on a cold
-    // installation. Do not invite clients before the request loop is ready.
     let state = Arc::new(Mutex::new(SidecarState::from_environment()));
     let websocket_manager = state
         .lock()
@@ -4540,6 +4623,12 @@ pub fn serve(host: &str, port: u16) -> std::io::Result<()> {
         address.ip(),
         address.port()
     );
+    // Acquiring the scientific host can take minutes on a cold installation.
+    // Serve the product routes meanwhile; readiness reports `ml_loading`.
+    {
+        let state = Arc::clone(&state);
+        std::thread::spawn(move || acquire_scientific_host(&state));
+    }
     let limits = ServerLimits::default();
     let connections = Arc::new(ConnectionGate {
         active: AtomicUsize::new(0),
@@ -4609,6 +4698,7 @@ fn route_readiness_without_global_lock(
     if request.method != "GET" || request.path != "/api/system/readiness" {
         return None;
     }
+    retry_timed_out_scientific_acquisition(state);
     Some(HttpResponse::json(
         200,
         render_readiness_without_global_lock(state, ReadinessSnapshot::to_json),
@@ -6288,6 +6378,106 @@ mod tests {
                 "{target}",
             );
         }
+    }
+
+    fn planned_missing_host(config_dir: &Path) -> ScientificHostPlan {
+        ScientificHostPlan {
+            host: config_dir.join("missing-python"),
+            selected: false,
+            bundled: true,
+            closure: config_dir.join("PYTHON_PLUGIN_CLOSURE.json"),
+            runtime_root: config_dir.join("python"),
+            site_packages: config_dir.join("site-packages"),
+            config_dir: config_dir.to_path_buf(),
+        }
+    }
+
+    fn readiness(state: &Arc<Mutex<SidecarState>>) -> Value {
+        serde_json::from_str(&state.lock().unwrap().legacy_readiness_json()).unwrap()
+    }
+
+    #[test]
+    fn scientific_host_is_acquired_after_readiness_and_reported_as_loading() {
+        let config = tempfile::tempdir().unwrap();
+        let state = Arc::new(Mutex::new(SidecarState {
+            scientific_acquisition: Arc::new(ScientificAcquisition::planned(Some(
+                planned_missing_host(config.path()),
+            ))),
+            ..SidecarState::default()
+        }));
+        let loading = readiness(&state);
+        assert_eq!(loading["core_ready"], true);
+        assert_eq!(loading["ml_loading"], true);
+        assert_eq!(loading["ml_ready"], false);
+        assert!(loading["ml_error"].is_null());
+
+        acquire_scientific_host(&state);
+        let acquired = readiness(&state);
+        assert_eq!(acquired["ml_loading"], false);
+        assert_eq!(acquired["ml_ready"], false);
+        assert_eq!(acquired["ml_error"], "python_runtime_contract_unavailable");
+        let guard = state.lock().unwrap();
+        // Job submission reports the acquired host, not the startup placeholder.
+        assert_eq!(
+            guard.native_jobs.execution_unavailability_reason(),
+            Some("python_runtime_contract_unavailable")
+        );
+        assert!(guard.scientific_host.is_some());
+        drop(guard);
+
+        // Without a plan (no scientific executor configured) nothing is loading.
+        let idle = Arc::new(Mutex::new(SidecarState::default()));
+        acquire_scientific_host(&idle);
+        assert_eq!(readiness(&idle)["ml_loading"], false);
+    }
+
+    #[test]
+    fn a_timed_out_scientific_host_is_acquired_again_on_the_next_readiness_poll() {
+        let config = tempfile::tempdir().unwrap();
+        let state = Arc::new(Mutex::new(SidecarState {
+            scientific_host: Some(Arc::new(
+                scientific_cpython::CpythonScientificJobExecutor::timed_out_for_test(
+                    config.path().to_path_buf(),
+                ),
+            )),
+            scientific_acquisition: Arc::new(ScientificAcquisition::planned(Some(
+                planned_missing_host(config.path()),
+            ))),
+            ..SidecarState::default()
+        }));
+        state
+            .lock()
+            .unwrap()
+            .scientific_acquisition
+            .pending
+            .store(false, Ordering::Release);
+        assert_eq!(readiness(&state)["ml_error"], "executor_not_selected");
+
+        let request =
+            parse_http_request(b"GET /api/system/readiness HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                .unwrap();
+        let response = route_readiness_without_global_lock(&state, &request).unwrap();
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        // The retry starts before the response is rendered.
+        assert_eq!(body["ml_loading"], true);
+        assert!(body["ml_error"].is_null());
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while state.lock().unwrap().scientific_acquisition.is_pending() {
+            assert!(
+                Instant::now() < deadline,
+                "the retried acquisition did not finish"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        let host = state.lock().unwrap().scientific_host.clone().unwrap();
+        assert!(!host.acquisition_timed_out());
+        assert_eq!(
+            host.unavailable_reason(),
+            "python_runtime_contract_unavailable"
+        );
+        // A host that is unusable for another reason is not retried.
+        route_readiness_without_global_lock(&state, &request).unwrap();
+        assert!(!state.lock().unwrap().scientific_acquisition.is_pending());
     }
 
     #[test]
