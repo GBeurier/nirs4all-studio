@@ -258,31 +258,63 @@ with contextlib.redirect_stdout(sys.stderr):
         if not callable(general):
             raise RuntimeError("general scientific callable unavailable")
         from nirs4all.pipeline.dagml.progress import observe_progress
-        import time
-        last_progress=[0.0]
-        latest_progress=[None]
-        def publish_progress(event, force=False):
-            latest_progress[0]=event
-            now=time.monotonic()
-            if not force and now-last_progress[0]<1.0:
-                return
+        import threading,time
+        progress_lock=threading.Lock()
+        progress_state={"event":None,"received":0.0,"written":0.0,"pending":False}
+        def write_progress(event,suffix=""):
+            # Callers hold progress_lock. One bounded line per frame; never raises.
             try:
-                frame={"schema":"nirs4all.studio-progress.v1","job_id":request["job_id"],"progress":event.get("progress"),"message":str(event["message"])[:500]}
+                message=str(event["message"])[:500-len(suffix)]+suffix
+                frame={"schema":"nirs4all.studio-progress.v1","job_id":request["job_id"],"progress":event.get("progress"),"message":message}
                 encoded_event=json.dumps(frame,ensure_ascii=True,allow_nan=False,separators=(",",":"))
                 if len(encoded_event)+18>8192:
                     return
                 sys.stderr.write("NIRS4ALL_PROGRESS "+encoded_event+"\n")
                 sys.stderr.flush()
-                last_progress[0]=now
+                progress_state["written"]=time.monotonic()
             except Exception:
                 pass
+        def publish_progress(event,force=False):
+            with progress_lock:
+                now=time.monotonic()
+                progress_state["event"]=event
+                progress_state["received"]=now
+                if not force and now-progress_state["written"]<1.0:
+                    # Throttled: progress_tick delivers the newest event once the window closes.
+                    progress_state["pending"]=True
+                    return
+                progress_state["pending"]=False
+                write_progress(event)
+        def progress_tick():
+            # Trailing flush of a throttled event, then a liveness heartbeat. A heartbeat repeats the
+            # latest event with the seconds since it arrived and never invents progress.
+            with progress_lock:
+                event=progress_state["event"]
+                if event is None:
+                    return
+                now=time.monotonic()
+                if progress_state["pending"]:
+                    if now-progress_state["written"]>=1.0:
+                        progress_state["pending"]=False
+                        write_progress(event)
+                elif now-progress_state["written"]>=2.0:
+                    write_progress(event," · %ds elapsed"%int(now-progress_state["received"]))
         publish_progress({"progress":None,"message":"Loading dataset and preparing scientific execution"})
+        stop_heartbeat=threading.Event()
+        def heartbeat_loop():
+            while not stop_heartbeat.wait(0.25):
+                progress_tick()
+        heartbeat=threading.Thread(target=heartbeat_loop,name="progress-heartbeat",daemon=True)
+        heartbeat.start()
         try:
             with observe_progress(publish_progress):
                 response=general(request)
         finally:
-            if latest_progress[0] is not None:
-                publish_progress(latest_progress[0],force=True)
+            stop_heartbeat.set()
+            heartbeat.join(1.0)
+            with progress_lock:
+                if progress_state["pending"]:
+                    write_progress(progress_state["event"])
         response_limit=262144
     elif request.get("schema") in {"nirs4all.studio-synthetic-dataset-job.v1","nirs4all.studio-playground-job.v1"}:
         from nirs4all.api.studio_scientific import StudioScientificJobError
@@ -3313,6 +3345,210 @@ mod tests {
             read_bounded_tail(b"warning".as_slice(), 0).unwrap(),
             (vec![], true)
         );
+    }
+
+    use crate::job_http::NativeJobRuntimeError;
+
+    #[derive(Debug, Default)]
+    struct RecordingTerminal {
+        frames: std::sync::Mutex<Vec<(Option<f64>, String)>>,
+    }
+
+    impl ScientificJobTerminal for RecordingTerminal {
+        fn progress(
+            &self,
+            _job_id: &str,
+            progress: Option<f64>,
+            message: &str,
+        ) -> Result<(), NativeJobRuntimeError> {
+            self.frames
+                .lock()
+                .unwrap()
+                .push((progress, message.to_owned()));
+            Ok(())
+        }
+
+        fn complete(&self, _job_id: &str, _result: Value) -> Result<(), NativeJobRuntimeError> {
+            Ok(())
+        }
+
+        fn fail(&self, _job_id: &str, _reason: &str) -> Result<(), NativeJobRuntimeError> {
+            Ok(())
+        }
+
+        fn acknowledge_cancel(&self, _job_id: &str) -> Result<(), NativeJobRuntimeError> {
+            Ok(())
+        }
+    }
+
+    /// The progress publisher exactly as the worker executes it, de-indented from its dispatcher branch.
+    fn progress_publisher_source(until: &str) -> String {
+        let start = EXECUTION_SCRIPT
+            .find("        import threading,time\n")
+            .expect("progress publisher");
+        let end = start
+            + EXECUTION_SCRIPT[start..]
+                .find(until)
+                .expect("progress publisher end");
+        EXECUTION_SCRIPT[start..end]
+            .lines()
+            .map(|line| line.strip_prefix("        ").unwrap_or(line))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Run `body` after the publisher and return the frames the Rust reader would publish.
+    fn run_progress_publisher(
+        until: &str,
+        prelude: &str,
+        body: &str,
+    ) -> (Vec<(Option<f64>, String)>, Vec<u8>) {
+        let script = format!(
+            "import json,sys,time\n{prelude}\nrequest={{'job_id':'job-1'}}\n{}\n{body}\n",
+            progress_publisher_source(until)
+        );
+        let python = if cfg!(windows) { "python" } else { "python3" };
+        let output = Command::new(python)
+            .args(["-I", "-S", "-c", &script])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let terminal = RecordingTerminal::default();
+        read_training_stderr(output.stderr.as_slice(), 65_536, "job-1", Some(&terminal)).unwrap();
+        let frames = terminal.frames.lock().unwrap().clone();
+        (frames, output.stderr)
+    }
+
+    const PUBLISHER_DEFINITIONS_END: &str =
+        "        publish_progress({\"progress\":None,\"message\":\"Loading";
+
+    #[test]
+    fn progress_publisher_flushes_the_trailing_event_and_heartbeats_without_inventing_progress() {
+        let (frames, _) = run_progress_publisher(
+            PUBLISHER_DEFINITIONS_END,
+            "clock=[1000.0]\ntime.monotonic=lambda:clock[0]",
+            r#"
+def at(seconds):
+    clock[0]=1000.0+seconds
+at(0.0); publish_progress({"progress":10.0,"message":"Fold 1/3 (completed)"})
+at(0.125); publish_progress({"progress":20.0,"message":"Fold 2/3 (running)"})
+at(0.25); publish_progress({"progress":30.0,"message":"Fold 2/3 (completed)"})
+at(0.875); progress_tick()
+at(1.125); progress_tick()
+at(2.5); progress_tick()
+at(3.25); progress_tick()
+at(5.5); progress_tick()
+at(5.625); publish_progress({"progress":None,"message":"Refit (running)"})
+at(8.0); progress_tick()
+"#,
+        );
+        let expected: Vec<(Option<f64>, &str)> = vec![
+            // Leading edge, then the newest throttled event once the window closes; the superseded one is dropped.
+            (Some(10.0), "Fold 1/3 (completed)"),
+            (Some(30.0), "Fold 2/3 (completed)"),
+            // Silence of 2 s or more repeats the latest event with the age of that event, same progress.
+            (Some(30.0), "Fold 2/3 (completed) · 3s elapsed"),
+            (Some(30.0), "Fold 2/3 (completed) · 5s elapsed"),
+            // A new event with unknown progress is throttled, flushed, and keeps its unknown progress.
+            (None, "Refit (running)"),
+        ];
+        assert_eq!(
+            frames,
+            expected
+                .into_iter()
+                .map(|(progress, message)| (progress, message.to_owned()))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn progress_publisher_flushes_a_throttled_event_before_any_heartbeat() {
+        let (frames, _) = run_progress_publisher(
+            PUBLISHER_DEFINITIONS_END,
+            "clock=[1000.0]\ntime.monotonic=lambda:clock[0]",
+            r#"
+def at(seconds):
+    clock[0]=1000.0+seconds
+at(0.0); publish_progress({"progress":1.0,"message":"first"})
+at(0.5); publish_progress({"progress":2.0,"message":"burst"})
+at(1.25); progress_tick()
+at(3.5); progress_tick()
+"#,
+        );
+        assert_eq!(
+            frames,
+            vec![
+                (Some(1.0), "first".to_owned()),
+                (Some(2.0), "burst".to_owned()),
+                (Some(2.0), "burst · 3s elapsed".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn progress_frames_stay_bounded_and_ascii_whatever_the_message() {
+        let (frames, stderr) = run_progress_publisher(
+            PUBLISHER_DEFINITIONS_END,
+            "clock=[1000.0]\ntime.monotonic=lambda:clock[0]",
+            r#"
+long={"progress":50.0,"message":"é\U0001f600\"\\"*5000}
+publish_progress(long)
+clock[0]=1003.0
+progress_tick()
+publish_progress({"progress":float('nan'),"message":"rejected"})
+clock[0]=1009.0
+progress_tick()
+"#,
+        );
+        assert_eq!(frames.len(), 2, "{frames:?}");
+        for line in stderr
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+        {
+            assert!(line.len() <= 8192, "{}", line.len());
+            assert!(line.is_ascii());
+        }
+        for (_, message) in &frames {
+            assert!(
+                message.chars().count() <= 500,
+                "{}",
+                message.chars().count()
+            );
+        }
+        assert!(frames[1].1.ends_with(" · 3s elapsed"));
+        assert_eq!(frames[0].0, Some(50.0));
+    }
+
+    #[test]
+    fn progress_heartbeat_thread_republishes_during_a_long_silence_and_stops() {
+        let (frames, _) = run_progress_publisher(
+            "        try:\n            with observe_progress",
+            "",
+            "time.sleep(3.2)\nstop_heartbeat.set()\nheartbeat.join(1.0)\nassert not heartbeat.is_alive()",
+        );
+        assert_eq!(
+            frames[0],
+            (
+                None,
+                "Loading dataset and preparing scientific execution".to_owned()
+            )
+        );
+        assert!(
+            frames.len() >= 2 && frames.len() <= 3,
+            "heartbeats are rate limited: {frames:?}"
+        );
+        for (progress, message) in &frames[1..] {
+            assert_eq!(*progress, None);
+            assert!(
+                message.starts_with("Loading dataset and preparing scientific execution · "),
+                "{message}"
+            );
+            assert!(message.ends_with("s elapsed"), "{message}");
+        }
     }
     #[cfg(windows)]
     fn serial_windows_snapshot(
