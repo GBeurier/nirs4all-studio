@@ -117,19 +117,10 @@ transport, and registered read/cancel aliases for native jobs:
   `DELETE /api/workspaces/:id` (Rust-owned linked-workspace catalogue,
   activation and unlinking; no filesystem scan, dataset read, or scientific
   execution)
-- `GET /api/workspace/transition-status` performs the bounded legacy marker
-  diagnosis in Rust. It never opens a Python route or deeply parses a legacy
-  artifact; unsafe/unreadable stores are reported as requiring preflight
-  rather than being called compatible.
-- `POST /api/workspace/legacy-convert` validates the renderer request in Rust,
-  then invokes exactly `nirs4all_tools legacy migrate` through the configured
-  CPython library host as one isolated, bounded stdio process. Only a requested
-  `--verify` conversion returning code `0` may be linked and activated. Code
-  `10` is exposed as best-effort preserved output and is never activated; code
-  `20` is an explicit unsupported-input refusal. Rust rejects any output path
-  overlapping the source, and dry runs never write or link.
-  The previous workspace stays linked, so rollback means reactivating it—not a
-  destructive reverse conversion.
+- `GET /api/workspace/format-status` reports whether the active workspace is
+  an unconverted `DuckDB` workspace (`store.duckdb` without `store.sqlite`) so the
+  renderer can point the user once to the separate `nirs4all-tools` converter.
+  Studio itself neither reads nor converts such workspaces.
 - `GET /api/workspaces/:id/runs` for a linked workspace with the published
   `WorkspaceStore` v5 `store.sqlite` projection. The reader is strict,
   immutable, and read-only; it refuses active SQLite journals, other schema
@@ -204,7 +195,7 @@ it has no fallback launcher. An explicitly configured CPython may run only as a
 bounded library/plugin host for the routes above. The sidecar contains no
 scientific calculation, arbitrary file-I/O API, or reimplementation of
 nirs4all stores. Apart from the published, bounded `WorkspaceStore` v5
-projection readers and the shallow legacy-marker transition preflight, it does
+projection readers and the `store.duckdb` marker check above, it does
 not inspect dataset/workspace contents. It persists app-level preferences,
 favorite identifiers, repaired linked-workspace record IDs, and (through its
 Rust library boundary only) self-validating Core/DAG-ML conformal presentation
@@ -303,22 +294,6 @@ without launching a scientific job. `GET /api/system/network` is fully native:
 it reads only the established offline preference and the `NIRS4ALL_OFFLINE`
 process override, matching the legacy route without a network probe. All bridge
 routes are capability evidence, never transparent Python fallback.
-
-Legacy conversion uses the same configured interpreter solely as a
-`nirs4all-tools` module host. Rust retains HTTP ownership, permits one converter
-at a time, enforces a 30-minute deadline and 256 KiB bounds on each output
-stream, and classifies the stable Tools codes `0/10/20/30/40/70`. The converter
-  itself owns output freshness, source immutability, capacity, checksums, and
-  verification rules. The checked-in closed contract is
-`contracts/studio_legacy_workspace_conversion_v1.json`.
-
-This converter is a bounded migration aid, not a transactional snapshot of a
-live legacy tree. The qualified interpreter is re-attested in the child, but
-the OS still spawns it by its verified path, and the legacy workspace is passed
-to Tools by path; concurrent replacement or source writes are outside the
-supported contract. Users should stop writers and retain the linked source.
-Given the narrow migration audience, these are accepted residual risks rather
-than claims of immutable source/executable handles.
 
 Electron explicitly selects the bounded scientific-host acquisition candidate
 with `NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1` only when it also supplies

@@ -29,7 +29,7 @@ def test_workspace_content_dir_supports_parent_or_direct_workspace(tmp_path: Pat
     assert workspace_content_dir(missing_parent) == missing_parent / "workspace"
 
 
-def test_workspace_store_exists_for_sqlite_or_duckdb(tmp_path: Path):
+def test_workspace_store_exists_for_sqlite(tmp_path: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
 
@@ -40,16 +40,12 @@ def test_workspace_store_exists_for_sqlite_or_duckdb(tmp_path: Path):
     assert workspace_store_exists(workspace) is True
     assert workspace_store_root(workspace) == workspace
 
-    (workspace / "store.sqlite").unlink()
-    (workspace / "store.duckdb").touch()
-    assert workspace_store_exists(workspace) is True
-    assert workspace_store_root(workspace) == workspace
 
 
 def test_workspace_store_root_checks_nested_workspace(tmp_path: Path):
     workspace = tmp_path / "project" / "workspace"
     workspace.mkdir(parents=True)
-    (workspace / "store.duckdb").touch()
+    (workspace / "store.sqlite").touch()
 
     assert workspace_store_exists(tmp_path / "project") is True
     assert workspace_store_root(tmp_path / "project") == workspace
@@ -82,7 +78,7 @@ def test_native_results_root_checks_nested_workspace(tmp_path: Path):
 def test_resolve_results_repository_prefers_workspace_store(tmp_path: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    (workspace / "store.duckdb").touch()
+    (workspace / "store.sqlite").touch()
     native_run = workspace / "nirs4all_results" / "run-1"
     native_run.mkdir(parents=True)
     (native_run / "manifest.json").write_text("{}", encoding="utf-8")
@@ -111,7 +107,7 @@ def test_resolve_results_repository_uses_native_adapter_without_store(tmp_path: 
 def test_resolve_results_repository_uses_nested_workspace_store(tmp_path: Path):
     workspace = tmp_path / "project" / "workspace"
     workspace.mkdir(parents=True)
-    (workspace / "store.duckdb").touch()
+    (workspace / "store.sqlite").touch()
 
     repository = MagicMock(name="WorkspaceStore")
     factory = MagicMock(return_value=repository)

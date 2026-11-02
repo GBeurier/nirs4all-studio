@@ -24,7 +24,6 @@ function sha256(payload) {
 function parseArgs(argv = process.argv.slice(2)) {
   const options = {
     pluginWheel: "",
-    toolsWheel: "",
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
     evidence: "",
   };
@@ -36,18 +35,12 @@ function parseArgs(argv = process.argv.slice(2)) {
       return path.resolve(selected);
     };
     if (argument === "--plugin-wheel") options.pluginWheel = value();
-    else if (argument === "--tools-wheel") options.toolsWheel = value();
     else if (argument === "--cache-dir") options.cacheDir = value();
     else if (argument === "--evidence") options.evidence = value();
     else throw new Error(`Unknown argument: ${argument}`);
   }
-  for (const [label, filePath] of [
-    ["plugin wheel", options.pluginWheel],
-    ["tools wheel", options.toolsWheel],
-  ]) {
-    if (!filePath || !fs.existsSync(filePath) || !fs.lstatSync(filePath).isFile()) {
-      throw new Error(`${label} must be an existing regular file`);
-    }
+  if (!options.pluginWheel || !fs.existsSync(options.pluginWheel) || !fs.lstatSync(options.pluginWheel).isFile()) {
+    throw new Error("plugin wheel must be an existing regular file");
   }
   return options;
 }
@@ -58,7 +51,6 @@ function buildOnce(options, backendRoot) {
     "--backend-root", backendRoot,
     "--cache-dir", options.cacheDir,
     "--plugin-wheel", options.pluginWheel,
-    "--tools-wheel", options.toolsWheel,
   ], { cwd: projectRoot, stdio: "inherit", windowsHide: true });
   if (result.status !== 0) {
     throw new Error(`fresh plugin runtime bake failed with code ${result.status}`);

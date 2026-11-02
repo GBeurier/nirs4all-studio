@@ -45,7 +45,7 @@
     "cancellation_endpoints": [
       {
         "endpoint": "api.training.stop_training",
-        "match_ordinal": 171,
+        "match_ordinal": 166,
         "methods": [
           "POST"
         ],
@@ -53,7 +53,7 @@
       },
       {
         "endpoint": "api.automl.stop_automl",
-        "match_ordinal": 203,
+        "match_ordinal": 198,
         "methods": [
           "POST"
         ],
@@ -61,7 +61,7 @@
       },
       {
         "endpoint": "api.runs.cancel_workspace_execution_job_record",
-        "match_ordinal": 214,
+        "match_ordinal": 209,
         "methods": [
           "POST"
         ],
@@ -69,7 +69,7 @@
       },
       {
         "endpoint": "api.runs.stop_run",
-        "match_ordinal": 221,
+        "match_ordinal": 216,
         "methods": [
           "POST"
         ],
@@ -77,7 +77,7 @@
       },
       {
         "endpoint": "api.updates.app_updates.cancel_download",
-        "match_ordinal": 247,
+        "match_ordinal": 242,
         "methods": [
           "POST"
         ],

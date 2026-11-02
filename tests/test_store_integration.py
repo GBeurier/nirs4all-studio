@@ -1,8 +1,8 @@
 """
-Tests for DuckDB WorkspaceStore integration in webapp endpoints.
+Tests for WorkspaceStore integration in webapp endpoints.
 
 Verifies that the webapp correctly routes through the StoreAdapter
-and WorkspaceScanner when a DuckDB store is available.
+and WorkspaceScanner when a SQLite store is available.
 
 Run with: pytest tests/test_store_integration.py -v
 """
@@ -970,8 +970,8 @@ class TestWorkspaceResultsCaches:
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
         workspace_id = "ws_cache_test"
-        summary_key = (workspace_id, (("store.duckdb", 1, 1),), (), ("summary", 5))
-        scores_key = (workspace_id, (("store.duckdb", 1, 1),), (), ("dataset_scores",))
+        summary_key = (workspace_id, (("store.sqlite", 1, 1),), (), ("summary", 5))
+        scores_key = (workspace_id, (("store.sqlite", 1, 1),), (), ("dataset_scores",))
 
         workspace_module._RESULTS_SUMMARY_CACHE.clear()
         workspace_module._DATASET_SCORES_CACHE.clear()
@@ -994,12 +994,12 @@ class TestWorkspaceResultsCaches:
 
         workspace_dir = tmp_path / "project" / "workspace"
         workspace_dir.mkdir(parents=True)
-        store_file = workspace_dir / "store.duckdb"
+        store_file = workspace_dir / "store.sqlite"
         store_file.write_bytes(b"store")
 
         stat = store_file.stat()
         assert workspace_module._store_signature(tmp_path / "project") == (
-            ("store.duckdb", stat.st_mtime_ns, stat.st_size),
+            ("store.sqlite", stat.st_mtime_ns, stat.st_size),
         )
 
     def test_store_signature_includes_wal_sidecars(self, tmp_path):
@@ -1007,14 +1007,14 @@ class TestWorkspaceResultsCaches:
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        store_file = workspace_dir / "store.duckdb"
-        wal_file = workspace_dir / "store.duckdb.wal"
+        store_file = workspace_dir / "store.sqlite"
+        wal_file = workspace_dir / "store.sqlite-wal"
         store_file.write_bytes(b"store")
         wal_file.write_bytes(b"wal")
 
         first_signature = workspace_module._store_signature(workspace_dir)
         assert first_signature is not None
-        assert any(part[0] == "store.duckdb.wal" for part in first_signature)
+        assert any(part[0] == "store.sqlite-wal" for part in first_signature)
 
         wal_file.write_bytes(b"wal-updated")
 
@@ -1026,7 +1026,7 @@ class TestWorkspaceResultsCaches:
 
         workspace_dir = tmp_path / "project" / "workspace"
         workspace_dir.mkdir(parents=True)
-        (workspace_dir / "store.duckdb").touch()
+        (workspace_dir / "store.sqlite").touch()
         expected_status = {
             "storage_mode": "legacy",
             "has_prediction_arrays_table": True,
@@ -1233,48 +1233,8 @@ class TestWorkspaceDatasetScoresEndpoint:
         assert payload == {"workspace_id": "ws_missing", "datasets": []}
 
 
-class TestWorkspaceServicesStoreResolution:
-    def test_legacy_arrays_row_count_uses_resolved_store_root(self, tmp_path):
-        from api.workspace import services as workspace_services
-
-        class FakeFrame:
-            def __init__(self, rows):
-                self._rows = rows
-
-            def __len__(self):
-                return len(self._rows)
-
-            def row(self, index, named=False):
-                assert named is True
-                return self._rows[index]
-
-        store_paths = []
-
-        class FakeWorkspaceStore:
-            def __init__(self, path):
-                store_paths.append(path)
-
-            def _fetch_pl(self, sql, params=None):
-                if "information_schema.tables" in sql:
-                    return FakeFrame([{"cnt": 1}])
-                return FakeFrame([{"cnt": 7}])
-
-        workspace_dir = tmp_path / "project" / "workspace"
-        workspace_dir.mkdir(parents=True)
-        (workspace_dir / "store.duckdb").touch()
-
-        with (
-            patch.object(workspace_services, "STORE_AVAILABLE", True),
-            patch.object(workspace_services, "get_cached", return_value=FakeWorkspaceStore),
-        ):
-            row_count = workspace_services._get_legacy_arrays_row_count(tmp_path / "project")
-
-        assert row_count == 7
-        assert store_paths == [workspace_dir]
-
-
 # ---------------------------------------------------------------------------
-# WorkspaceScanner DuckDB path tests
+# WorkspaceScanner store path tests
 # ---------------------------------------------------------------------------
 
 
@@ -1435,13 +1395,13 @@ class TestWorkspaceScannerStore:
         repository.query_chain_summaries.assert_called_once_with(run_id="run-native")
 
     def test_discover_runs_from_store(self, tmp_path, mock_polars_df, sample_run_rows):
-        """When store.duckdb exists, discover_runs() should use the store."""
+        """When store.sqlite exists, discover_runs() should use the store."""
         from api.workspace_manager import WorkspaceScanner
 
-        # Create workspace structure with a fake store.duckdb
+        # Create workspace structure with a fake store.sqlite
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        (workspace_dir / "store.duckdb").touch()
+        (workspace_dir / "store.sqlite").touch()
 
         mock_adapter = MagicMock()
         mock_adapter.store.list_runs.return_value = mock_polars_df(sample_run_rows)
@@ -1455,26 +1415,26 @@ class TestWorkspaceScannerStore:
         assert runs[0]["format"] == "store"
 
     def test_discover_runs_fallback_filesystem(self, tmp_path):
-        """When store.duckdb doesn't exist, discover_runs() should use filesystem."""
+        """When store.sqlite doesn't exist, discover_runs() should use filesystem."""
         from api.workspace_manager import WorkspaceScanner
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
         runs_dir = workspace_dir / "runs"
         runs_dir.mkdir()
-        # No store.duckdb and no manifest files
+        # No store.sqlite and no manifest files
 
         scanner = WorkspaceScanner(tmp_path)
         runs = scanner.discover_runs()
         assert runs == []
 
     def test_discover_predictions_from_store(self, tmp_path, mock_polars_df, sample_prediction_rows):
-        """When store.duckdb exists, discover_predictions() should use the store."""
+        """When store.sqlite exists, discover_predictions() should use the store."""
         from api.workspace_manager import WorkspaceScanner
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        (workspace_dir / "store.duckdb").touch()
+        (workspace_dir / "store.sqlite").touch()
 
         mock_adapter = MagicMock()
         mock_adapter.store.query_predictions.return_value = mock_polars_df(sample_prediction_rows)
@@ -1488,12 +1448,12 @@ class TestWorkspaceScannerStore:
         assert datasets == {"dataset_a", "dataset_b"}
 
     def test_discover_results_from_store(self, tmp_path, mock_polars_df):
-        """When store.duckdb exists, discover_results() should use the store."""
+        """When store.sqlite exists, discover_results() should use the store."""
         from api.workspace_manager import WorkspaceScanner
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        (workspace_dir / "store.duckdb").touch()
+        (workspace_dir / "store.sqlite").touch()
 
         pipeline_rows = [
             {
@@ -1524,12 +1484,12 @@ class TestWorkspaceScannerStore:
         assert results[0]["format"] == "store"
 
     def test_is_valid_workspace_with_store(self, tmp_path):
-        """Workspace is valid if store.duckdb exists."""
+        """Workspace is valid if store.sqlite exists."""
         from api.workspace_manager import WorkspaceScanner
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        (workspace_dir / "store.duckdb").touch()
+        (workspace_dir / "store.sqlite").touch()
 
         mock_adapter = MagicMock()
 
@@ -1592,5 +1552,5 @@ class TestTrainingWorkspacePath:
         # workspace_path must appear in the run_kwargs dict or as a direct keyword
         assert "workspace_path" in source, (
             "nirs4all.run() in training.py must include workspace_path parameter "
-            "to ensure results are written to the DuckDB store"
+            "to ensure results are written to the workspace store"
         )

@@ -5030,426 +5030,6 @@
             "title": "LearningCurveRequest",
             "type": "object"
           },
-          "LegacyMigrationErrorResponse": {
-            "description": "Whitelisted error entry from a legacy migration report.",
-            "properties": {
-              "cause": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Cause"
-              },
-              "code": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Code"
-              },
-              "message": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Message"
-              },
-              "mitigation": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Mitigation"
-              }
-            },
-            "title": "LegacyMigrationErrorResponse",
-            "type": "object"
-          },
-          "LegacyMigrationReportPreviewRequest": {
-            "description": "Request to preview nirs4all-tools migration contract files.",
-            "properties": {
-              "manifest_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Optional path to migration-manifest.json",
-                "title": "Manifest Path"
-              },
-              "report_path": {
-                "description": "Path to migration-report.json",
-                "title": "Report Path",
-                "type": "string"
-              },
-              "unsupported_report_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Optional path to unsupported-report.json",
-                "title": "Unsupported Report Path"
-              }
-            },
-            "required": [
-              "report_path"
-            ],
-            "title": "LegacyMigrationReportPreviewRequest",
-            "type": "object"
-          },
-          "LegacyMigrationReportPreviewResponse": {
-            "description": "Read-only summary of nirs4all-tools migration contract files.",
-            "properties": {
-              "errors": {
-                "items": {
-                  "$ref": "#/components/schemas/LegacyMigrationErrorResponse"
-                },
-                "title": "Errors",
-                "type": "array"
-              },
-              "migrated_counts": {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "title": "Migrated Counts",
-                "type": "object"
-              },
-              "preserved_counts": {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "title": "Preserved Counts",
-                "type": "object"
-              },
-              "recommended_next_command": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Recommended Next Command"
-              },
-              "source_summary": {
-                "$ref": "#/components/schemas/LegacyMigrationSourceSummaryResponse"
-              },
-              "status": {
-                "title": "Status",
-                "type": "string"
-              },
-              "target_schema_version_validated": {
-                "default": false,
-                "title": "Target Schema Version Validated",
-                "type": "boolean"
-              },
-              "target_summary": {
-                "$ref": "#/components/schemas/LegacyMigrationTargetSummaryResponse"
-              },
-              "unsupported_counts": {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "title": "Unsupported Counts",
-                "type": "object"
-              },
-              "verification_summary": {
-                "$ref": "#/components/schemas/LegacyMigrationVerificationSummaryResponse"
-              },
-              "warnings": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Warnings",
-                "type": "array"
-              }
-            },
-            "required": [
-              "status"
-            ],
-            "title": "LegacyMigrationReportPreviewResponse",
-            "type": "object"
-          },
-          "LegacyMigrationSourceSummaryResponse": {
-            "description": "Whitelisted source summary from a legacy migration report.",
-            "properties": {
-              "artifacts": {
-                "default": 0,
-                "title": "Artifacts",
-                "type": "integer"
-              },
-              "bundles": {
-                "default": 0,
-                "title": "Bundles",
-                "type": "integer"
-              },
-              "kinds": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Kinds",
-                "type": "array"
-              },
-              "row_counts": {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "title": "Row Counts",
-                "type": "object"
-              }
-            },
-            "title": "LegacyMigrationSourceSummaryResponse",
-            "type": "object"
-          },
-          "LegacyMigrationTargetSummaryResponse": {
-            "description": "Whitelisted target summary from a legacy migration report.",
-            "properties": {
-              "path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Path"
-              }
-            },
-            "title": "LegacyMigrationTargetSummaryResponse",
-            "type": "object"
-          },
-          "LegacyMigrationVerificationCheckResponse": {
-            "description": "Whitelisted verification check summary.",
-            "properties": {
-              "status": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Status"
-              }
-            },
-            "title": "LegacyMigrationVerificationCheckResponse",
-            "type": "object"
-          },
-          "LegacyMigrationVerificationSummaryResponse": {
-            "description": "Whitelisted verification summary from a legacy migration report.",
-            "properties": {
-              "checks": {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/LegacyMigrationVerificationCheckResponse"
-                },
-                "title": "Checks",
-                "type": "object"
-              },
-              "mismatches": {
-                "default": 0,
-                "title": "Mismatches",
-                "type": "integer"
-              },
-              "passed": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Passed"
-              },
-              "ran": {
-                "default": false,
-                "title": "Ran",
-                "type": "boolean"
-              }
-            },
-            "title": "LegacyMigrationVerificationSummaryResponse",
-            "type": "object"
-          },
-          "LegacyWorkspaceConversionRequest": {
-            "description": "Request to convert the active legacy workspace into a fresh V1 workspace.",
-            "properties": {
-              "dry_run": {
-                "default": false,
-                "description": "Run converter in dry-run mode",
-                "title": "Dry Run",
-                "type": "boolean"
-              },
-              "link_converted_workspace": {
-                "default": true,
-                "description": "Link and activate the converted workspace after a successful conversion",
-                "title": "Link Converted Workspace",
-                "type": "boolean"
-              },
-              "output_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Fresh output directory. Defaults to a sibling *-workspace-v2 directory.",
-                "title": "Output Path"
-              },
-              "strict": {
-                "default": false,
-                "description": "Abort on first unsupported legacy item",
-                "title": "Strict",
-                "type": "boolean"
-              },
-              "verify": {
-                "default": true,
-                "description": "Verify converted output after migration",
-                "title": "Verify",
-                "type": "boolean"
-              }
-            },
-            "title": "LegacyWorkspaceConversionRequest",
-            "type": "object"
-          },
-          "LegacyWorkspaceConversionResponse": {
-            "description": "Response for a legacy workspace conversion request.",
-            "properties": {
-              "activation_skipped": {
-                "default": false,
-                "title": "Activation Skipped",
-                "type": "boolean"
-              },
-              "active_workspace_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Active Workspace Path"
-              },
-              "best_effort": {
-                "default": false,
-                "title": "Best Effort",
-                "type": "boolean"
-              },
-              "command": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Command",
-                "type": "array"
-              },
-              "dry_run": {
-                "default": false,
-                "title": "Dry Run",
-                "type": "boolean"
-              },
-              "job_id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Job Id"
-              },
-              "link_converted_workspace": {
-                "default": true,
-                "title": "Link Converted Workspace",
-                "type": "boolean"
-              },
-              "link_error": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Link Error"
-              },
-              "linked_workspace_id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Linked Workspace Id"
-              },
-              "output_path": {
-                "title": "Output Path",
-                "type": "string"
-              },
-              "return_code": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Return Code"
-              },
-              "stderr": {
-                "default": "",
-                "title": "Stderr",
-                "type": "string"
-              },
-              "stdout": {
-                "default": "",
-                "title": "Stdout",
-                "type": "string"
-              },
-              "success": {
-                "default": true,
-                "title": "Success",
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "output_path"
-            ],
-            "title": "LegacyWorkspaceConversionResponse",
-            "type": "object"
-          },
           "LinkDatasetRequest": {
             "description": "Request model for linking a dataset.",
             "properties": {
@@ -5675,152 +5255,6 @@
               }
             },
             "title": "MetricCorrelationRequest",
-            "type": "object"
-          },
-          "MigrationJobResponse": {
-            "description": "Response when a migration job is enqueued.",
-            "properties": {
-              "job_id": {
-                "title": "Job Id",
-                "type": "string"
-              }
-            },
-            "required": [
-              "job_id"
-            ],
-            "title": "MigrationJobResponse",
-            "type": "object"
-          },
-          "MigrationReportResponse": {
-            "description": "Migration report (dry run or completed).",
-            "properties": {
-              "datasets_migrated": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Datasets Migrated",
-                "type": "array"
-              },
-              "duckdb_size_after": {
-                "default": 0,
-                "title": "Duckdb Size After",
-                "type": "integer"
-              },
-              "duckdb_size_before": {
-                "default": 0,
-                "title": "Duckdb Size Before",
-                "type": "integer"
-              },
-              "duration_seconds": {
-                "default": 0.0,
-                "title": "Duration Seconds",
-                "type": "number"
-              },
-              "errors": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Errors",
-                "type": "array"
-              },
-              "parquet_total_size": {
-                "default": 0,
-                "title": "Parquet Total Size",
-                "type": "integer"
-              },
-              "rows_migrated": {
-                "default": 0,
-                "title": "Rows Migrated",
-                "type": "integer"
-              },
-              "total_rows": {
-                "default": 0,
-                "title": "Total Rows",
-                "type": "integer"
-              },
-              "verification_mismatches": {
-                "default": 0,
-                "title": "Verification Mismatches",
-                "type": "integer"
-              },
-              "verification_passed": {
-                "default": false,
-                "title": "Verification Passed",
-                "type": "boolean"
-              },
-              "verification_sample_size": {
-                "default": 0,
-                "title": "Verification Sample Size",
-                "type": "integer"
-              }
-            },
-            "title": "MigrationReportResponse",
-            "type": "object"
-          },
-          "MigrationRequest": {
-            "description": "Request to migrate prediction arrays to Parquet.",
-            "properties": {
-              "batch_size": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Batch size for migration",
-                "title": "Batch Size"
-              },
-              "dry_run": {
-                "default": false,
-                "description": "Run migration in dry-run mode",
-                "title": "Dry Run",
-                "type": "boolean"
-              }
-            },
-            "title": "MigrationRequest",
-            "type": "object"
-          },
-          "MigrationStatusResponse": {
-            "description": "Response for migration status.",
-            "properties": {
-              "estimated_duration_seconds": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Estimated Duration Seconds"
-              },
-              "legacy_row_count": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Legacy Row Count"
-              },
-              "migration_needed": {
-                "title": "Migration Needed",
-                "type": "boolean"
-              },
-              "storage_mode": {
-                "title": "Storage Mode",
-                "type": "string"
-              }
-            },
-            "required": [
-              "migration_needed",
-              "storage_mode"
-            ],
-            "title": "MigrationStatusResponse",
             "type": "object"
           },
           "ModelComparisonResult": {
@@ -11384,15 +10818,6 @@
                 "title": "Datasets",
                 "type": "array"
               },
-              "duckdb_size_bytes": {
-                "default": 0,
-                "title": "Duckdb Size Bytes",
-                "type": "integer"
-              },
-              "migration_needed": {
-                "title": "Migration Needed",
-                "type": "boolean"
-              },
               "orphan_array_count": {
                 "default": 0,
                 "title": "Orphan Array Count",
@@ -11412,6 +10837,11 @@
                 "title": "Storage Mode",
                 "type": "string"
               },
+              "store_size_bytes": {
+                "default": 0,
+                "title": "Store Size Bytes",
+                "type": "integer"
+              },
               "total_datasets": {
                 "default": 0,
                 "title": "Total Datasets",
@@ -11424,8 +10854,7 @@
               }
             },
             "required": [
-              "storage_mode",
-              "migration_needed"
+              "storage_mode"
             ],
             "title": "StorageHealthResponse",
             "type": "object"
@@ -13430,12 +12859,6 @@
                 "title": "Datasets Count",
                 "type": "integer"
               },
-              "duckdb_size_bytes": {
-                "default": 0,
-                "description": "Metadata store size (SQLite)",
-                "title": "Duckdb Size Bytes",
-                "type": "integer"
-              },
               "last_accessed": {
                 "description": "Last access time",
                 "title": "Last Accessed",
@@ -13501,6 +12924,12 @@
                 "title": "Storage Mode",
                 "type": "string"
               },
+              "store_size_bytes": {
+                "default": 0,
+                "description": "Metadata store size (SQLite)",
+                "title": "Store Size Bytes",
+                "type": "integer"
+              },
               "total_size_bytes": {
                 "default": 0,
                 "description": "Total workspace size in bytes",
@@ -13515,62 +12944,6 @@
               "last_accessed"
             ],
             "title": "WorkspaceStatsResponse",
-            "type": "object"
-          },
-          "WorkspaceTransitionStatusResponse": {
-            "description": "Transition-release diagnosis for legacy workspace conversion.",
-            "properties": {
-              "conversion_command": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Conversion Command"
-              },
-              "conversion_required": {
-                "title": "Conversion Required",
-                "type": "boolean"
-              },
-              "converter_available": {
-                "default": false,
-                "title": "Converter Available",
-                "type": "boolean"
-              },
-              "default_output_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Default Output Path"
-              },
-              "format": {
-                "title": "Format",
-                "type": "string"
-              },
-              "message": {
-                "title": "Message",
-                "type": "string"
-              },
-              "path": {
-                "title": "Path",
-                "type": "string"
-              }
-            },
-            "required": [
-              "path",
-              "format",
-              "conversion_required",
-              "message"
-            ],
-            "title": "WorkspaceTransitionStatusResponse",
             "type": "object"
           },
           "api__evaluation__ConfusionMatrixRequest": {
@@ -24663,48 +24036,6 @@
             ]
           }
         },
-        "/api/workspace/legacy-convert": {
-          "post": {
-            "description": "Convert the active legacy workspace into a fresh V1 workspace.",
-            "operationId": "convert_legacy_workspace_api_workspace_legacy_convert_post",
-            "requestBody": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/LegacyWorkspaceConversionRequest"
-                  }
-                }
-              },
-              "required": true
-            },
-            "responses": {
-              "200": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/LegacyWorkspaceConversionResponse"
-                    }
-                  }
-                },
-                "description": "Successful Response"
-              },
-              "422": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/HTTPValidationError"
-                    }
-                  }
-                },
-                "description": "Validation Error"
-              }
-            },
-            "summary": "Convert Legacy Workspace",
-            "tags": [
-              "workspace"
-            ]
-          }
-        },
         "/api/workspace/list": {
           "get": {
             "description": "List all known workspaces.\n\nReturns all workspaces that have been accessed recently or are\nregistered in the global configuration.",
@@ -24722,120 +24053,6 @@
               }
             },
             "summary": "List Workspaces",
-            "tags": [
-              "workspace"
-            ]
-          }
-        },
-        "/api/workspace/migrate": {
-          "post": {
-            "description": "Migrate legacy prediction arrays to Parquet sidecar files.",
-            "operationId": "migrate_workspace_arrays_api_workspace_migrate_post",
-            "requestBody": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/MigrationRequest"
-                  }
-                }
-              },
-              "required": true
-            },
-            "responses": {
-              "200": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "anyOf": [
-                        {
-                          "$ref": "#/components/schemas/MigrationJobResponse"
-                        },
-                        {
-                          "$ref": "#/components/schemas/MigrationReportResponse"
-                        }
-                      ],
-                      "title": "Response Migrate Workspace Arrays Api Workspace Migrate Post"
-                    }
-                  }
-                },
-                "description": "Successful Response"
-              },
-              "422": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/HTTPValidationError"
-                    }
-                  }
-                },
-                "description": "Validation Error"
-              }
-            },
-            "summary": "Migrate Workspace Arrays",
-            "tags": [
-              "workspace"
-            ]
-          }
-        },
-        "/api/workspace/migrate/report-preview": {
-          "post": {
-            "description": "Preview offline nirs4all-tools migration reports without writing anything.",
-            "operationId": "preview_legacy_migration_report_route_api_workspace_migrate_report_preview_post",
-            "requestBody": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/LegacyMigrationReportPreviewRequest"
-                  }
-                }
-              },
-              "required": true
-            },
-            "responses": {
-              "200": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/LegacyMigrationReportPreviewResponse"
-                    }
-                  }
-                },
-                "description": "Successful Response"
-              },
-              "422": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/HTTPValidationError"
-                    }
-                  }
-                },
-                "description": "Validation Error"
-              }
-            },
-            "summary": "Preview Legacy Migration Report Route",
-            "tags": [
-              "workspace"
-            ]
-          }
-        },
-        "/api/workspace/migrate/status": {
-          "get": {
-            "description": "Get migration status and rough migration estimate.",
-            "operationId": "get_workspace_migration_status_api_workspace_migrate_status_get",
-            "responses": {
-              "200": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/MigrationStatusResponse"
-                    }
-                  }
-                },
-                "description": "Successful Response"
-              }
-            },
-            "summary": "Get Workspace Migration Status",
             "tags": [
               "workspace"
             ]
@@ -25134,7 +24351,7 @@
         },
         "/api/workspace/storage-health": {
           "get": {
-            "description": "Combined storage health: integrity check + stats + migration status.",
+            "description": "Combined storage health: integrity check + stats.",
             "operationId": "get_workspace_storage_health_api_workspace_storage_health_get",
             "responses": {
               "200": {
@@ -25171,28 +24388,6 @@
               }
             },
             "summary": "Get Workspace Storage Status",
-            "tags": [
-              "workspace"
-            ]
-          }
-        },
-        "/api/workspace/transition-status": {
-          "get": {
-            "description": "Detect legacy workspace formats that need transition conversion.",
-            "operationId": "get_workspace_transition_status_api_workspace_transition_status_get",
-            "responses": {
-              "200": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/WorkspaceTransitionStatusResponse"
-                    }
-                  }
-                },
-                "description": "Successful Response"
-              }
-            },
-            "summary": "Get Workspace Transition Status",
             "tags": [
               "workspace"
             ]
@@ -31968,426 +31163,6 @@
             "title": "LearningCurveRequest",
             "type": "object"
           },
-          "LegacyMigrationErrorResponse": {
-            "description": "Whitelisted error entry from a legacy migration report.",
-            "properties": {
-              "cause": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Cause"
-              },
-              "code": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Code"
-              },
-              "message": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Message"
-              },
-              "mitigation": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Mitigation"
-              }
-            },
-            "title": "LegacyMigrationErrorResponse",
-            "type": "object"
-          },
-          "LegacyMigrationReportPreviewRequest": {
-            "description": "Request to preview nirs4all-tools migration contract files.",
-            "properties": {
-              "manifest_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Optional path to migration-manifest.json",
-                "title": "Manifest Path"
-              },
-              "report_path": {
-                "description": "Path to migration-report.json",
-                "title": "Report Path",
-                "type": "string"
-              },
-              "unsupported_report_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Optional path to unsupported-report.json",
-                "title": "Unsupported Report Path"
-              }
-            },
-            "required": [
-              "report_path"
-            ],
-            "title": "LegacyMigrationReportPreviewRequest",
-            "type": "object"
-          },
-          "LegacyMigrationReportPreviewResponse": {
-            "description": "Read-only summary of nirs4all-tools migration contract files.",
-            "properties": {
-              "errors": {
-                "items": {
-                  "$ref": "#/components/schemas/LegacyMigrationErrorResponse"
-                },
-                "title": "Errors",
-                "type": "array"
-              },
-              "migrated_counts": {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "title": "Migrated Counts",
-                "type": "object"
-              },
-              "preserved_counts": {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "title": "Preserved Counts",
-                "type": "object"
-              },
-              "recommended_next_command": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Recommended Next Command"
-              },
-              "source_summary": {
-                "$ref": "#/components/schemas/LegacyMigrationSourceSummaryResponse"
-              },
-              "status": {
-                "title": "Status",
-                "type": "string"
-              },
-              "target_schema_version_validated": {
-                "default": false,
-                "title": "Target Schema Version Validated",
-                "type": "boolean"
-              },
-              "target_summary": {
-                "$ref": "#/components/schemas/LegacyMigrationTargetSummaryResponse"
-              },
-              "unsupported_counts": {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "title": "Unsupported Counts",
-                "type": "object"
-              },
-              "verification_summary": {
-                "$ref": "#/components/schemas/LegacyMigrationVerificationSummaryResponse"
-              },
-              "warnings": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Warnings",
-                "type": "array"
-              }
-            },
-            "required": [
-              "status"
-            ],
-            "title": "LegacyMigrationReportPreviewResponse",
-            "type": "object"
-          },
-          "LegacyMigrationSourceSummaryResponse": {
-            "description": "Whitelisted source summary from a legacy migration report.",
-            "properties": {
-              "artifacts": {
-                "default": 0,
-                "title": "Artifacts",
-                "type": "integer"
-              },
-              "bundles": {
-                "default": 0,
-                "title": "Bundles",
-                "type": "integer"
-              },
-              "kinds": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Kinds",
-                "type": "array"
-              },
-              "row_counts": {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "title": "Row Counts",
-                "type": "object"
-              }
-            },
-            "title": "LegacyMigrationSourceSummaryResponse",
-            "type": "object"
-          },
-          "LegacyMigrationTargetSummaryResponse": {
-            "description": "Whitelisted target summary from a legacy migration report.",
-            "properties": {
-              "path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Path"
-              }
-            },
-            "title": "LegacyMigrationTargetSummaryResponse",
-            "type": "object"
-          },
-          "LegacyMigrationVerificationCheckResponse": {
-            "description": "Whitelisted verification check summary.",
-            "properties": {
-              "status": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Status"
-              }
-            },
-            "title": "LegacyMigrationVerificationCheckResponse",
-            "type": "object"
-          },
-          "LegacyMigrationVerificationSummaryResponse": {
-            "description": "Whitelisted verification summary from a legacy migration report.",
-            "properties": {
-              "checks": {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/LegacyMigrationVerificationCheckResponse"
-                },
-                "title": "Checks",
-                "type": "object"
-              },
-              "mismatches": {
-                "default": 0,
-                "title": "Mismatches",
-                "type": "integer"
-              },
-              "passed": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Passed"
-              },
-              "ran": {
-                "default": false,
-                "title": "Ran",
-                "type": "boolean"
-              }
-            },
-            "title": "LegacyMigrationVerificationSummaryResponse",
-            "type": "object"
-          },
-          "LegacyWorkspaceConversionRequest": {
-            "description": "Request to convert the active legacy workspace into a fresh V1 workspace.",
-            "properties": {
-              "dry_run": {
-                "default": false,
-                "description": "Run converter in dry-run mode",
-                "title": "Dry Run",
-                "type": "boolean"
-              },
-              "link_converted_workspace": {
-                "default": true,
-                "description": "Link and activate the converted workspace after a successful conversion",
-                "title": "Link Converted Workspace",
-                "type": "boolean"
-              },
-              "output_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Fresh output directory. Defaults to a sibling *-workspace-v2 directory.",
-                "title": "Output Path"
-              },
-              "strict": {
-                "default": false,
-                "description": "Abort on first unsupported legacy item",
-                "title": "Strict",
-                "type": "boolean"
-              },
-              "verify": {
-                "default": true,
-                "description": "Verify converted output after migration",
-                "title": "Verify",
-                "type": "boolean"
-              }
-            },
-            "title": "LegacyWorkspaceConversionRequest",
-            "type": "object"
-          },
-          "LegacyWorkspaceConversionResponse": {
-            "description": "Response for a legacy workspace conversion request.",
-            "properties": {
-              "activation_skipped": {
-                "default": false,
-                "title": "Activation Skipped",
-                "type": "boolean"
-              },
-              "active_workspace_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Active Workspace Path"
-              },
-              "best_effort": {
-                "default": false,
-                "title": "Best Effort",
-                "type": "boolean"
-              },
-              "command": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Command",
-                "type": "array"
-              },
-              "dry_run": {
-                "default": false,
-                "title": "Dry Run",
-                "type": "boolean"
-              },
-              "job_id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Job Id"
-              },
-              "link_converted_workspace": {
-                "default": true,
-                "title": "Link Converted Workspace",
-                "type": "boolean"
-              },
-              "link_error": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Link Error"
-              },
-              "linked_workspace_id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Linked Workspace Id"
-              },
-              "output_path": {
-                "title": "Output Path",
-                "type": "string"
-              },
-              "return_code": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Return Code"
-              },
-              "stderr": {
-                "default": "",
-                "title": "Stderr",
-                "type": "string"
-              },
-              "stdout": {
-                "default": "",
-                "title": "Stdout",
-                "type": "string"
-              },
-              "success": {
-                "default": true,
-                "title": "Success",
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "output_path"
-            ],
-            "title": "LegacyWorkspaceConversionResponse",
-            "type": "object"
-          },
           "LinkDatasetRequest": {
             "description": "Request model for linking a dataset.",
             "properties": {
@@ -32613,152 +31388,6 @@
               }
             },
             "title": "MetricCorrelationRequest",
-            "type": "object"
-          },
-          "MigrationJobResponse": {
-            "description": "Response when a migration job is enqueued.",
-            "properties": {
-              "job_id": {
-                "title": "Job Id",
-                "type": "string"
-              }
-            },
-            "required": [
-              "job_id"
-            ],
-            "title": "MigrationJobResponse",
-            "type": "object"
-          },
-          "MigrationReportResponse": {
-            "description": "Migration report (dry run or completed).",
-            "properties": {
-              "datasets_migrated": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Datasets Migrated",
-                "type": "array"
-              },
-              "duckdb_size_after": {
-                "default": 0,
-                "title": "Duckdb Size After",
-                "type": "integer"
-              },
-              "duckdb_size_before": {
-                "default": 0,
-                "title": "Duckdb Size Before",
-                "type": "integer"
-              },
-              "duration_seconds": {
-                "default": 0.0,
-                "title": "Duration Seconds",
-                "type": "number"
-              },
-              "errors": {
-                "items": {
-                  "type": "string"
-                },
-                "title": "Errors",
-                "type": "array"
-              },
-              "parquet_total_size": {
-                "default": 0,
-                "title": "Parquet Total Size",
-                "type": "integer"
-              },
-              "rows_migrated": {
-                "default": 0,
-                "title": "Rows Migrated",
-                "type": "integer"
-              },
-              "total_rows": {
-                "default": 0,
-                "title": "Total Rows",
-                "type": "integer"
-              },
-              "verification_mismatches": {
-                "default": 0,
-                "title": "Verification Mismatches",
-                "type": "integer"
-              },
-              "verification_passed": {
-                "default": false,
-                "title": "Verification Passed",
-                "type": "boolean"
-              },
-              "verification_sample_size": {
-                "default": 0,
-                "title": "Verification Sample Size",
-                "type": "integer"
-              }
-            },
-            "title": "MigrationReportResponse",
-            "type": "object"
-          },
-          "MigrationRequest": {
-            "description": "Request to migrate prediction arrays to Parquet.",
-            "properties": {
-              "batch_size": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Batch size for migration",
-                "title": "Batch Size"
-              },
-              "dry_run": {
-                "default": false,
-                "description": "Run migration in dry-run mode",
-                "title": "Dry Run",
-                "type": "boolean"
-              }
-            },
-            "title": "MigrationRequest",
-            "type": "object"
-          },
-          "MigrationStatusResponse": {
-            "description": "Response for migration status.",
-            "properties": {
-              "estimated_duration_seconds": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Estimated Duration Seconds"
-              },
-              "legacy_row_count": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Legacy Row Count"
-              },
-              "migration_needed": {
-                "title": "Migration Needed",
-                "type": "boolean"
-              },
-              "storage_mode": {
-                "title": "Storage Mode",
-                "type": "string"
-              }
-            },
-            "required": [
-              "migration_needed",
-              "storage_mode"
-            ],
-            "title": "MigrationStatusResponse",
             "type": "object"
           },
           "ModelComparisonResult": {
@@ -38322,15 +36951,6 @@
                 "title": "Datasets",
                 "type": "array"
               },
-              "duckdb_size_bytes": {
-                "default": 0,
-                "title": "Duckdb Size Bytes",
-                "type": "integer"
-              },
-              "migration_needed": {
-                "title": "Migration Needed",
-                "type": "boolean"
-              },
               "orphan_array_count": {
                 "default": 0,
                 "title": "Orphan Array Count",
@@ -38350,6 +36970,11 @@
                 "title": "Storage Mode",
                 "type": "string"
               },
+              "store_size_bytes": {
+                "default": 0,
+                "title": "Store Size Bytes",
+                "type": "integer"
+              },
               "total_datasets": {
                 "default": 0,
                 "title": "Total Datasets",
@@ -38362,8 +36987,7 @@
               }
             },
             "required": [
-              "storage_mode",
-              "migration_needed"
+              "storage_mode"
             ],
             "title": "StorageHealthResponse",
             "type": "object"
@@ -40361,12 +38985,6 @@
                 "title": "Datasets Count",
                 "type": "integer"
               },
-              "duckdb_size_bytes": {
-                "default": 0,
-                "description": "Metadata store size (SQLite)",
-                "title": "Duckdb Size Bytes",
-                "type": "integer"
-              },
               "last_accessed": {
                 "description": "Last access time",
                 "title": "Last Accessed",
@@ -40432,6 +39050,12 @@
                 "title": "Storage Mode",
                 "type": "string"
               },
+              "store_size_bytes": {
+                "default": 0,
+                "description": "Metadata store size (SQLite)",
+                "title": "Store Size Bytes",
+                "type": "integer"
+              },
               "total_size_bytes": {
                 "default": 0,
                 "description": "Total workspace size in bytes",
@@ -40446,62 +39070,6 @@
               "last_accessed"
             ],
             "title": "WorkspaceStatsResponse",
-            "type": "object"
-          },
-          "WorkspaceTransitionStatusResponse": {
-            "description": "Transition-release diagnosis for legacy workspace conversion.",
-            "properties": {
-              "conversion_command": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Conversion Command"
-              },
-              "conversion_required": {
-                "title": "Conversion Required",
-                "type": "boolean"
-              },
-              "converter_available": {
-                "default": false,
-                "title": "Converter Available",
-                "type": "boolean"
-              },
-              "default_output_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Default Output Path"
-              },
-              "format": {
-                "title": "Format",
-                "type": "string"
-              },
-              "message": {
-                "title": "Message",
-                "type": "string"
-              },
-              "path": {
-                "title": "Path",
-                "type": "string"
-              }
-            },
-            "required": [
-              "path",
-              "format",
-              "conversion_required",
-              "message"
-            ],
-            "title": "WorkspaceTransitionStatusResponse",
             "type": "object"
           },
           "api__inspector__ConfusionMatrixRequest": {
@@ -51546,48 +50114,6 @@
             ]
           }
         },
-        "/api/workspace/legacy-convert": {
-          "post": {
-            "description": "Convert the active legacy workspace into a fresh V1 workspace.",
-            "operationId": "convert_legacy_workspace_api_workspace_legacy_convert_post",
-            "requestBody": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/LegacyWorkspaceConversionRequest"
-                  }
-                }
-              },
-              "required": true
-            },
-            "responses": {
-              "200": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/LegacyWorkspaceConversionResponse"
-                    }
-                  }
-                },
-                "description": "Successful Response"
-              },
-              "422": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/HTTPValidationError"
-                    }
-                  }
-                },
-                "description": "Validation Error"
-              }
-            },
-            "summary": "Convert Legacy Workspace",
-            "tags": [
-              "workspace"
-            ]
-          }
-        },
         "/api/workspace/list": {
           "get": {
             "description": "List all known workspaces.\n\nReturns all workspaces that have been accessed recently or are\nregistered in the global configuration.",
@@ -51605,120 +50131,6 @@
               }
             },
             "summary": "List Workspaces",
-            "tags": [
-              "workspace"
-            ]
-          }
-        },
-        "/api/workspace/migrate": {
-          "post": {
-            "description": "Migrate legacy prediction arrays to Parquet sidecar files.",
-            "operationId": "migrate_workspace_arrays_api_workspace_migrate_post",
-            "requestBody": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/MigrationRequest"
-                  }
-                }
-              },
-              "required": true
-            },
-            "responses": {
-              "200": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "anyOf": [
-                        {
-                          "$ref": "#/components/schemas/MigrationJobResponse"
-                        },
-                        {
-                          "$ref": "#/components/schemas/MigrationReportResponse"
-                        }
-                      ],
-                      "title": "Response Migrate Workspace Arrays Api Workspace Migrate Post"
-                    }
-                  }
-                },
-                "description": "Successful Response"
-              },
-              "422": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/HTTPValidationError"
-                    }
-                  }
-                },
-                "description": "Validation Error"
-              }
-            },
-            "summary": "Migrate Workspace Arrays",
-            "tags": [
-              "workspace"
-            ]
-          }
-        },
-        "/api/workspace/migrate/report-preview": {
-          "post": {
-            "description": "Preview offline nirs4all-tools migration reports without writing anything.",
-            "operationId": "preview_legacy_migration_report_route_api_workspace_migrate_report_preview_post",
-            "requestBody": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/LegacyMigrationReportPreviewRequest"
-                  }
-                }
-              },
-              "required": true
-            },
-            "responses": {
-              "200": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/LegacyMigrationReportPreviewResponse"
-                    }
-                  }
-                },
-                "description": "Successful Response"
-              },
-              "422": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/HTTPValidationError"
-                    }
-                  }
-                },
-                "description": "Validation Error"
-              }
-            },
-            "summary": "Preview Legacy Migration Report Route",
-            "tags": [
-              "workspace"
-            ]
-          }
-        },
-        "/api/workspace/migrate/status": {
-          "get": {
-            "description": "Get migration status and rough migration estimate.",
-            "operationId": "get_workspace_migration_status_api_workspace_migrate_status_get",
-            "responses": {
-              "200": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/MigrationStatusResponse"
-                    }
-                  }
-                },
-                "description": "Successful Response"
-              }
-            },
-            "summary": "Get Workspace Migration Status",
             "tags": [
               "workspace"
             ]
@@ -52017,7 +50429,7 @@
         },
         "/api/workspace/storage-health": {
           "get": {
-            "description": "Combined storage health: integrity check + stats + migration status.",
+            "description": "Combined storage health: integrity check + stats.",
             "operationId": "get_workspace_storage_health_api_workspace_storage_health_get",
             "responses": {
               "200": {
@@ -52054,28 +50466,6 @@
               }
             },
             "summary": "Get Workspace Storage Status",
-            "tags": [
-              "workspace"
-            ]
-          }
-        },
-        "/api/workspace/transition-status": {
-          "get": {
-            "description": "Detect legacy workspace formats that need transition conversion.",
-            "operationId": "get_workspace_transition_status_api_workspace_transition_status_get",
-            "responses": {
-              "200": {
-                "content": {
-                  "application/json": {
-                    "schema": {
-                      "$ref": "#/components/schemas/WorkspaceTransitionStatusResponse"
-                    }
-                  }
-                },
-                "description": "Successful Response"
-              }
-            },
-            "summary": "Get Workspace Transition Status",
             "tags": [
               "workspace"
             ]

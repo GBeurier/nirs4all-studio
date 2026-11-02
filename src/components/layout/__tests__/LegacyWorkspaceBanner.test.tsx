@@ -8,8 +8,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getWorkspaceTransitionStatus } from "@/api/workspace";
-import type { WorkspaceTransitionStatusResponse } from "@/types/storage";
+import { getWorkspaceFormatStatus } from "@/api/workspace";
+import { clientStorageKeys, readClientStorageJson } from "@/lib/clientStorage";
 import { LegacyWorkspaceBanner } from "../LegacyWorkspaceBanner";
 
 vi.mock("react-i18next", () => ({
@@ -17,29 +17,13 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/api/workspace", () => ({
-  getWorkspaceTransitionStatus: vi.fn(),
+  getWorkspaceFormatStatus: vi.fn(),
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
 
 const mounted: Array<{ container: HTMLDivElement; root: Root }> = [];
-
-function transitionStatus(
-  overrides: Partial<WorkspaceTransitionStatusResponse> = {},
-): WorkspaceTransitionStatusResponse {
-  return {
-    path: "/tmp/legacy",
-    format: "duckdb-workspace",
-    conversion_required: true,
-    message:
-      "Legacy DuckDB workspace detected. Convert it to the V1 workspace format before switching runtimes.",
-    conversion_command: "nirs4all workspace convert /tmp/legacy",
-    default_output_path: "/tmp/legacy-workspace-v2",
-    converter_available: true,
-    ...overrides,
-  };
-}
 
 async function render(element: ReactElement) {
   const container = document.createElement("div");
@@ -68,29 +52,33 @@ afterEach(async () => {
     container.remove();
   }
   vi.clearAllMocks();
+  localStorage.clear();
 });
 
 describe("LegacyWorkspaceBanner", () => {
-  it("shows a workspace-open warning when conversion is required", async () => {
-    vi.mocked(getWorkspaceTransitionStatus).mockResolvedValue(transitionStatus());
+  it("points to nirs4all-tools once for a DuckDB workspace", async () => {
+    vi.mocked(getWorkspaceFormatStatus).mockResolvedValue({ path: "/tmp/legacy", legacy_duckdb: true });
 
     const container = await render(<LegacyWorkspaceBanner />);
     await flushAsyncUi();
 
     expect(container.textContent).toContain("layout.legacyWorkspace.title");
-    expect(container.textContent).toContain("Legacy DuckDB workspace detected");
-    const link = container.querySelector("a");
-    expect(link?.getAttribute("href")).toBe("/settings?tab=workspaces");
+    expect(container.textContent).toContain("nirs4all-tools workspace convert");
+    expect(container.querySelector("a")?.getAttribute("href")).toBe("https://github.com/GBeurier/nirs4all-tools");
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("button[aria-label='layout.legacyWorkspace.dismiss']")?.click();
+    });
+    expect(container.textContent).toBe("");
+    expect(readClientStorageJson(clientStorageKeys.dismissedLegacyWorkspaceNotices)).toEqual(["/tmp/legacy"]);
+
+    const again = await render(<LegacyWorkspaceBanner />);
+    await flushAsyncUi();
+    expect(again.textContent).toBe("");
   });
 
   it("stays hidden for V1 workspaces", async () => {
-    vi.mocked(getWorkspaceTransitionStatus).mockResolvedValue(
-      transitionStatus({
-        conversion_required: false,
-        format: "nirs4all-workspace-v2",
-        message: "Workspace is already in the V1 format.",
-      }),
-    );
+    vi.mocked(getWorkspaceFormatStatus).mockResolvedValue({ path: "/tmp/v1", legacy_duckdb: false });
 
     const container = await render(<LegacyWorkspaceBanner />);
     await flushAsyncUi();

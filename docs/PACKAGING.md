@@ -253,13 +253,6 @@ mutations are disabled. Users may still switch the compatibility diagnostic
 environment to an external Python runtime; that choice does not replace the
 packaged stdio plugin host.
 
-The loose `nirs4all-tools>=0.0.5` range remains confined to the transitional
-FastAPI/tooling dependency declaration. The packaged Rust product instead
-installs and attests the qualified `nirs4all-tools` 0.0.7 wheel from commit
-`88c2bc1e29603049cdbf1a1080a35845edf2f3c9`, plus exact `duckdb==1.5.5` and
-`pyarrow==25.0.1` readers, inside the bounded CPython stdio closure. It remains
-excluded from `BACKEND_COMMON_PACKAGES` and never acquires an HTTP role.
-
 ## Runtime Modes
 
 `/api/system/build` exposes the runtime contract used by Electron and the frontend:
@@ -312,9 +305,8 @@ node scripts/bake-python-plugin-runtime.cjs
 ```
 
 This produces `backend-dist/` with `python-runtime/` and the strict
-`PLUGIN_RUNTIME_READY.json`. Pass `--plugin-wheel <path>` and
-`--tools-wheel <path>` for an offline build; both wheels must match their
-pinned SHA-256 identities. Every transitive scientific dependency comes from
+`PLUGIN_RUNTIME_READY.json`. Pass `--plugin-wheel <path>` for an offline
+build; the wheel must match its pinned SHA-256 identity. Every transitive scientific dependency comes from
 the attested `nirs4all` wheel closure; the bake fails closed if that published
 closure is incomplete or differs from its recorded hashes.
 
@@ -412,17 +404,9 @@ Uvicorn, `main.py`, `api/`, or `websocket/` sources. The Rust sidecar selects
 that interpreter through fixed `NIRS4ALL_PYTHON_PLUGIN_*` identities and invokes
 it only through the bounded stdio protocol. It never owns a port, scheduler,
 store, or fallback route.
-The Rust transition-status route is always available. The conversion route is
-advertised only when that attested closure also contains the exact qualified
-`nirs4all-tools` distribution and its required format readers; the sidecar
-invokes it only via bounded stdio and keeps HTTP, activation, and rollback
-state in Rust. Both the bake and sidecar capability gates execute a minimal
-DuckDB query and a PyArrow Parquet memory round-trip; matching package names or
-versions alone cannot advertise conversion.
-Every public conversion execution path rechecks this attestation immediately
-before spawn. Windows packages use the sidecar's internal Job Object launcher;
-it joins a kill-on-close job before creating CPython, so descendants cannot race
-the containment boundary or request breakaway.
+Windows packages start CPython through the sidecar's internal Job Object
+launcher; it joins a kill-on-close job before creating CPython, so descendants
+cannot race the containment boundary or request breakaway.
 The image does embed the exact `nirs4all-methods` ABI 2.14 library and its
 `STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
 independent of the plugin host. CI supplies that library through a local

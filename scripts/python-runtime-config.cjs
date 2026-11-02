@@ -29,7 +29,6 @@ const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
   "nirs4all-io==0.2.11",
   "nirs4all-methods==1.3.9",
   "nirs4all-formats==0.2.13",
-  "duckdb==1.5.5",
   "pyarrow==25.0.1",
   "shap==0.47.1",
   "matplotlib==3.10.1",
@@ -57,7 +56,6 @@ const REUSABLE_RUNTIME_PACKAGES = Object.freeze([
   "nirs4all-io>=0.2.11,<0.3",
   "nirs4all-methods>=1.3.9,<2",
   "nirs4all-formats",
-  "duckdb",
 ]);
 // Native ABI exposed by nirs4all-methods (n4m.abi_version()[:2]).
 const REQUIRED_METHODS_ABI = Object.freeze([2, 20]);

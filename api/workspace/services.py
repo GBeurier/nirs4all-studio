@@ -6,151 +6,18 @@ payload builder, and the predictions-maintenance compatibility shims. None of
 these are FastAPI handlers; they are pure helpers invoked from the routers.
 """
 
-import importlib.util
-import inspect
 import json
-import shutil
-import sqlite3
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 
 from ..lazy_imports import get_cached
-from ..results_repository import workspace_store_root
 from ..shared.json_safe import sanitize_dict, sanitize_float
 from ..shared.logger import get_logger
-from ._shared import MIGRATION_AVAILABLE, PREDICTIONS_AVAILABLE, STORE_AVAILABLE
+from ._shared import PREDICTIONS_AVAILABLE, STORE_AVAILABLE
 
 logger = get_logger(__name__)
-
-_TOOLS_BEST_EFFORT_CODES = {10}
-_TOOLS_SUCCESS_CODES = {0, *_TOOLS_BEST_EFFORT_CODES}
-
-
-# ============= Transition-release legacy workspace conversion =============
-
-
-def _quote_command_part(value: str) -> str:
-    import shlex
-
-    return shlex.quote(value)
-
-
-def _default_legacy_conversion_output(workspace_path: Path) -> Path:
-    return workspace_path.with_name(f"{workspace_path.name}-workspace-v2")
-
-
-def _sqlite_has_prediction_arrays(sqlite_path: Path) -> bool:
-    uri = f"file:{sqlite_path.as_posix()}?mode=ro"
-    try:
-        with sqlite3.connect(uri, uri=True) as conn:
-            row = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='prediction_arrays'"
-            ).fetchone()
-            return row is not None
-    except sqlite3.DatabaseError:
-        return False
-
-
-def _has_legacy_runs_tree(workspace_path: Path) -> bool:
-    runs_dir = workspace_path / "runs"
-    return runs_dir.is_dir() and any(runs_dir.glob("*/*/manifest.yaml"))
-
-
-def _converter_available() -> bool:
-    return shutil.which("nirs4all-tools") is not None or importlib.util.find_spec("nirs4all_tools") is not None
-
-
-def _build_legacy_conversion_command(
-    workspace_path: Path,
-    output_path: Path,
-    *,
-    verify: bool = True,
-    dry_run: bool = False,
-    strict: bool = False,
-) -> list[str]:
-    command = [
-        sys.executable,
-        "-m",
-        "nirs4all_tools",
-        "legacy",
-        "migrate",
-        str(workspace_path),
-        "--output",
-        str(output_path),
-        "--target",
-        "nirs4all-workspace-v2",
-    ]
-    if verify and not dry_run:
-        command.append("--verify")
-    if dry_run:
-        command.append("--dry-run")
-    if strict:
-        command.append("--strict")
-    return command
-
-
-def _inspect_legacy_workspace_transition(workspace_path: Path) -> dict[str, Any]:
-    output = _default_legacy_conversion_output(workspace_path)
-    command = _build_legacy_conversion_command(workspace_path, output)
-    shell_command = " ".join(_quote_command_part(part) for part in command)
-
-    sqlite_path = workspace_path / "store.sqlite"
-    duckdb_path = workspace_path / "store.duckdb"
-    if duckdb_path.exists() and not sqlite_path.exists():
-        return {
-            "path": str(workspace_path),
-            "format": "duckdb-workspace",
-            "conversion_required": True,
-            "message": "Legacy DuckDB workspace detected. Convert it to the V1 workspace format before switching runtimes.",
-            "conversion_command": shell_command,
-            "default_output_path": str(output),
-            "converter_available": _converter_available(),
-        }
-    if sqlite_path.exists() and _sqlite_has_prediction_arrays(sqlite_path):
-        return {
-            "path": str(workspace_path),
-            "format": "sqlite-workspace-legacy-arrays",
-            "conversion_required": True,
-            "message": "Workspace uses legacy prediction_arrays storage. Convert it to the V1 workspace format before publishing or sharing.",
-            "conversion_command": shell_command,
-            "default_output_path": str(output),
-            "converter_available": _converter_available(),
-        }
-    if _has_legacy_runs_tree(workspace_path):
-        return {
-            "path": str(workspace_path),
-            "format": "fs-runs-legacy",
-            "conversion_required": True,
-            "message": "Legacy filesystem run manifests detected. Convert them into a fresh V1 workspace before opening in new runtimes.",
-            "conversion_command": shell_command,
-            "default_output_path": str(output),
-            "converter_available": _converter_available(),
-        }
-    return {
-        "path": str(workspace_path),
-        "format": "sqlite-workspace-v2" if sqlite_path.exists() else "new-or-empty",
-        "conversion_required": False,
-        "message": "Workspace is compatible with the V1 runtime format.",
-        "conversion_command": None,
-        "default_output_path": None,
-        "converter_available": _converter_available(),
-    }
-
-
-def _run_legacy_workspace_converter(command: list[str]) -> dict[str, Any]:
-    proc = subprocess.run(command, check=False, capture_output=True, text=True)
-    return {
-        "return_code": proc.returncode,
-        "stdout": proc.stdout,
-        "stderr": proc.stderr,
-        "success": proc.returncode in _TOOLS_SUCCESS_CODES,
-        "best_effort": proc.returncode in _TOOLS_BEST_EFFORT_CODES,
-    }
-
 
 # ============= Dataset name → linked-id matching =============
 
@@ -967,102 +834,6 @@ def _invoke_predictions_method(workspace_path: Path, method_name: str, **kwargs:
                 store.close()
             except Exception:
                 pass
-
-
-def _normalize_migration_report(report: Any) -> dict[str, Any]:
-    """Map migration report object/dict to API response shape."""
-    raw = _to_plain_dict(report)
-    if not isinstance(raw, dict):
-        raw = {}
-    return {
-        "total_rows": int(raw.get("total_rows", 0) or 0),
-        "rows_migrated": int(raw.get("rows_migrated", 0) or 0),
-        "datasets_migrated": list(raw.get("datasets_migrated", []) or []),
-        "verification_passed": bool(raw.get("verification_passed", False)),
-        "verification_sample_size": int(raw.get("verification_sample_size", 0) or 0),
-        "verification_mismatches": int(raw.get("verification_mismatches", 0) or 0),
-        "duckdb_size_before": int(raw.get("duckdb_size_before", 0) or 0),
-        "duckdb_size_after": int(raw.get("duckdb_size_after", 0) or 0),
-        "parquet_total_size": int(raw.get("parquet_total_size", 0) or 0),
-        "duration_seconds": float(raw.get("duration_seconds", 0.0) or 0.0),
-        "errors": [str(e) for e in (raw.get("errors", []) or [])],
-    }
-
-
-def _call_migrate_arrays_to_parquet(
-    workspace_path: Path,
-    *,
-    dry_run: bool,
-    batch_size: int | None = None,
-) -> dict[str, Any]:
-    """Call the library migration function, tolerant of nirs4all signature versions."""
-    migrate_arrays_to_parquet = get_cached("migrate_arrays_to_parquet", optional=True)
-    if not MIGRATION_AVAILABLE or migrate_arrays_to_parquet is None:
-        raise HTTPException(status_code=501, detail="Migration API is not available in current nirs4all version")
-
-    kwargs: dict[str, Any] = {"dry_run": dry_run}
-    if batch_size is not None:
-        kwargs["batch_size"] = batch_size
-
-    try:
-        signature = inspect.signature(migrate_arrays_to_parquet)
-        accepted = set(signature.parameters.keys())
-        kwargs = {k: v for k, v in kwargs.items() if k in accepted}
-    except Exception:
-        pass
-
-    report = migrate_arrays_to_parquet(workspace_path, **kwargs)  # type: ignore[misc]
-    return _normalize_migration_report(report)
-
-
-def _get_legacy_arrays_row_count(workspace_path: Path) -> int | None:
-    """Count legacy rows in prediction_arrays if the table exists."""
-    if not STORE_AVAILABLE:
-        return None
-    store_root = workspace_store_root(workspace_path)
-    if store_root is None:
-        return None
-
-    try:
-        store = get_cached("WorkspaceStore")(store_root)
-    except Exception:
-        return None
-
-    try:
-        has_table = False
-        try:
-            table_df = store._fetch_pl(  # type: ignore[attr-defined]
-                "SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_name = 'prediction_arrays'"
-            )
-            if len(table_df) > 0:
-                has_table = int(table_df.row(0, named=True).get("cnt", 0) or 0) > 0
-        except Exception:
-            has_table = False
-
-        if not has_table:
-            return None
-
-        count_df = store._fetch_pl("SELECT COUNT(*) AS cnt FROM prediction_arrays")
-        if len(count_df) == 0:
-            return 0
-        return int(count_df.row(0, named=True).get("cnt", 0) or 0)
-    except Exception:
-        return None
-    finally:
-        try:
-            store.close()
-        except Exception:
-            pass
-
-
-def _estimate_migration_duration_seconds(legacy_row_count: int | None) -> int | None:
-    """Estimate migration time from row count using a conservative throughput heuristic."""
-    if legacy_row_count is None:
-        return None
-    if legacy_row_count == 0:
-        return 0
-    rows_per_second = 10_000
-    return max(1, int(legacy_row_count / rows_per_second))
 
 
 def _extract_orphan_counts(report: dict[str, Any]) -> tuple[int, int]:

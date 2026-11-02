@@ -46,20 +46,17 @@ env:
   PYTHON_VERSION: '3.11'
   # Release archives/images must be reproducible. Keep these refs pinned to the
   # selected immutable releases and update them with the ecosystem release board.
-  # SDK source and normalized wheel are exact; conversion-tools retains its PyPI proof.
+  # SDK source and normalized wheel are exact.
   NIRS4ALL_PUBLICATION_STATUS: source-built
   NIRS4ALL_LIBRARY_REF: 563220eb2becc6a1340431d588315f0793664fe4
   NIRS4ALL_SOURCE_EPOCH: '1793630954'
   DAG_ML_REF: 747cb9c54271e32cc213b880928a983562bb1b20
   DAG_ML_DATA_REF: 78719b68c8e9ffd4c2035792574b8da33387d237
-  NIRS4ALL_TOOLS_REF: ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8
   NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/563220eb2becc6a1340431d588315f0793664fe4.tar.gz
   NIRS4ALL_WHEEL_URL: ''
   NIRS4ALL_WHEEL_SHA256: 6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe
   DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/747cb9c54271e32cc213b880928a983562bb1b20.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/78719b68c8e9ffd4c2035792574b8da33387d237.tar.gz
-  NIRS4ALL_TOOLS_SOURCE_URL: https://github.com/GBeurier/nirs4all-tools/archive/ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8.tar.gz
-  NIRS4ALL_TOOLS_WHEEL_URL: https://files.pythonhosted.org/packages/10/19/68649801e059cf243393585e75a7ca125cddde202d12f555eed1baeb159a/nirs4all_tools-0.0.8-py3-none-any.whl
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -152,13 +149,13 @@ jobs:
             echo "::error::Pinned nirs4all requires its qualified immutable source build"
             exit 1
           fi
-          for value in "$NIRS4ALL_LIBRARY_REF" "$DAG_ML_REF" "$DAG_ML_DATA_REF" "$NIRS4ALL_TOOLS_REF"; do
+          for value in "$NIRS4ALL_LIBRARY_REF" "$DAG_ML_REF" "$DAG_ML_DATA_REF"; do
             if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
               echo "::error::Release runtime dependency refs must be immutable 40-char SHAs, got '$value'"
               exit 1
             fi
           done
-          for url in "$NIRS4ALL_SOURCE_URL" "$DAG_ML_SOURCE_URL" "$DAG_ML_DATA_SOURCE_URL" "$NIRS4ALL_TOOLS_SOURCE_URL"; do
+          for url in "$NIRS4ALL_SOURCE_URL" "$DAG_ML_SOURCE_URL" "$DAG_ML_DATA_SOURCE_URL"; do
             if [[ "$url" == *"/refs/heads/"* ]]; then
               echo "::error::Release runtime source URL must not use a moving branch tarball: $url"
               exit 1
@@ -225,7 +222,7 @@ jobs:
       dag_ml_ref: 747cb9c54271e32cc213b880928a983562bb1b20
       dag_ml_data_ref: 78719b68c8e9ffd4c2035792574b8da33387d237
 
-  # Build the pinned SDK once and acquire the unchanged public conversion-tools.
+  # Build the pinned SDK once.
   # Every distributable consumes the same normalized, hash-verified payloads.
   pinned-plugin-wheels:
     name: Acquire pinned plugin wheels
@@ -255,18 +252,13 @@ jobs:
           node scripts/setup-python-env.cjs \
             --build-plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl \
             --build-python python
-          curl --fail --location --proto "=https" --tlsv1.2 \
-            --output dist/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl \
-            "$NIRS4ALL_TOOLS_WHEEL_URL"
           cd dist/pinned-plugin-wheels
           echo "$NIRS4ALL_WHEEL_SHA256  nirs4all-1.4.14-py3-none-any.whl" | sha256sum --check --strict
-          echo '9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310  nirs4all_tools-0.0.8-py3-none-any.whl' | sha256sum --check --strict
 
       - name: Prove deterministic plugin runtime closure
         run: >-
           node scripts/verify-plugin-runtime-reproducibility.cjs
           --plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl
-          --tools-wheel dist/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
           --evidence dist/plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json
 
       - name: Upload plugin runtime reproducibility evidence
@@ -367,7 +359,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl
 
       - name: Bundle LightGBM OpenMP before sealing the runtime
         run: python3 -B .release-packaging/scripts/bundle-linux-openmp.py --runtime-root backend-dist/python-runtime/python
@@ -515,7 +507,7 @@ jobs:
           } | ConvertTo-Json | Out-File -FilePath version.json -Encoding utf8
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         shell: pwsh
@@ -698,7 +690,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         run: |
@@ -923,7 +915,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         run: |

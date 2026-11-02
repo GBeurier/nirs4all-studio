@@ -103,15 +103,8 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     assert data_source is not None
     assert data_ref.group(1) == data_source.group(1) == "78719b68c8e9ffd4c2035792574b8da33387d237"
 
-    tools_ref = re.search(r"^  NIRS4ALL_TOOLS_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
-    tools_source = re.search(
-        r"^  NIRS4ALL_TOOLS_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$",
-        workflow,
-        re.MULTILINE,
-    )
-    assert tools_ref is not None
-    assert tools_source is not None
-    assert tools_ref.group(1) == tools_source.group(1) == "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8"
+    # Studio bundles no workspace converter; conversion is the separate nirs4all-tools.
+    assert "NIRS4ALL_TOOLS" not in workflow
 
 
 def test_reused_environment_range_is_shared_with_the_sidecar() -> None:
@@ -159,15 +152,13 @@ def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> No
     assert workflow.count("name: Download canonical plugin wheels") == 4
     version = json.loads((ROOT / "recommended-config.json").read_text())["nirs4all"]
     assert workflow.count(f"--plugin-wheel _deps/pinned-plugin-wheels/nirs4all-{version}-py3-none-any.whl") == 4
-    assert workflow.count("--tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.8-py3-none-any.whl") == 4
+    assert "--tools-wheel" not in workflow
     parsed = yaml.safe_load(workflow)
     acquisition = next(step["run"] for step in parsed["jobs"]["pinned-plugin-wheels"]["steps"]
                        if step.get("name") == "Build SDK and verify canonical plugin wheels")
-    assert acquisition.count('curl --fail --location --proto "=https" --tlsv1.2') == 1
     assert "node scripts/setup-python-env.cjs" in acquisition
     assert "--build-plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl" in acquisition
-    assert '"$NIRS4ALL_TOOLS_WHEEL_URL"' in acquisition
-    assert "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310" in acquisition
+    assert "nirs4all_tools" not in acquisition
     assert "pip wheel" not in acquisition
 
 
@@ -286,7 +277,8 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
     # Python and Rust DAG consume the same published 0.3.43 cohort.
     assert "dag-ml==0.3.43" in constraints
     assert "nirs4all-formats==0.2.13" in constraints
-    assert "nirs4all-tools==0.0.8" in constraints
+    assert "nirs4all-tools" not in constraints
+    assert "duckdb" not in constraints
     assert "scikit-learn==1.9.0" in constraints
 
 

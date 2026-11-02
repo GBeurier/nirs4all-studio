@@ -153,26 +153,13 @@ describe("plugin-only CPython runtime", () => {
         "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "b8e466756b4f4f0ad162d9cc0d62e87776854a76a0c5022744298ea2ed1476da",
+        sha256: "fe4e6eac136fbd1dfc0d5465aa65f7e79d045b976c10e4ac5c7e461bb58951e3",
       },
       platform: "linux",
       arch: "x64",
-      conversion_tools: {
-        source_commit: "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
-        wheel_sha256:
-          "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310",
-        distribution: "nirs4all-tools",
-        distribution_version: "0.0.8",
-        module: "nirs4all_tools",
-        readers: { duckdb: "1.5.5", pyarrow: "25.0.1" },
-        functional_probes: {
-          duckdb: "in-memory-select-40-plus-2",
-          pyarrow_parquet: "in-memory-round-trip",
-        },
-      },
     });
     expect(marker).not.toHaveProperty("distribution_record_sha256");
-    expect(marker.conversion_tools).not.toHaveProperty("distribution_record_sha256");
+    expect(marker).not.toHaveProperty("conversion_tools");
     expect(pluginRuntime.FORBIDDEN_DISTRIBUTIONS).toEqual(
       expect.arrayContaining(["fastapi", "starlette", "uvicorn", "sentry-sdk"]),
     );
@@ -183,7 +170,7 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "b8e466756b4f4f0ad162d9cc0d62e87776854a76a0c5022744298ea2ed1476da",
+      "fe4e6eac136fbd1dfc0d5465aa65f7e79d045b976c10e4ac5c7e461bb58951e3",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -256,15 +243,12 @@ describe("plugin-only CPython runtime", () => {
       "stage/backend",
       "--plugin-wheel",
       "stage/nirs4all.whl",
-      "--tools-wheel",
-      "stage/nirs4all_tools.whl",
       "--verify-only",
     ]);
     expect(parsed).toMatchObject({
       backendRoot: path.resolve("stage/backend"),
       constraints: pluginRuntime.PLUGIN_CONSTRAINTS_PATH,
       pluginWheel: path.resolve("stage/nirs4all.whl"),
-      toolsWheel: path.resolve("stage/nirs4all_tools.whl"),
       verifyOnly: true,
     });
   });

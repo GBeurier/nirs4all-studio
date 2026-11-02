@@ -12,18 +12,13 @@
  *   - requirements-cpu.txt      (the live PyInstaller CPU build install list)
  *   - backend.spec hiddenimports (the frozen-build module roster)
  *
- * Build-only tooling (pyinstaller) is ignored. Transitional diagnostic tools
- * are declared separately in BACKEND_TRANSITION_TOOL_PACKAGES: they must stay
- * in both requirements files without entering the runtime/hiddenimport set.
+ * Build-only tooling (pyinstaller) is ignored.
  *
  * Exit 0 when every source agrees; exit 1 with a precise diff otherwise.
  */
 const fs = require("fs");
 const path = require("path");
-const {
-  BACKEND_COMMON_PACKAGES,
-  BACKEND_TRANSITION_TOOL_PACKAGES,
-} = require("./python-http-runtime-config.cjs");
+const { BACKEND_COMMON_PACKAGES } = require("./python-http-runtime-config.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
 const BUILD_ONLY = new Set(["pyinstaller"]);
@@ -56,12 +51,6 @@ const canonical = new Map(
     return [base, spec];
   }),
 );
-const transitionTools = new Map(
-  BACKEND_TRANSITION_TOOL_PACKAGES.map((s) => {
-    const { base, spec } = parseSpec(s);
-    return [base, spec];
-  }),
-);
 
 const errors = [];
 
@@ -82,19 +71,11 @@ function checkRequirements(file) {
       errors.push(`${file}: '${found.get(base)}' must match canonical '${spec}'`);
     }
   }
-  for (const [base, spec] of transitionTools) {
-    if (!found.has(base)) {
-      errors.push(`${file}: missing transitional tooling dep '${spec}'`);
-    } else if (found.get(base) !== spec) {
-      errors.push(`${file}: '${found.get(base)}' must match transitional tooling '${spec}'`);
-    }
-  }
   for (const [base, spec] of found) {
-    if (!canonical.has(base) && !transitionTools.has(base)) {
+    if (!canonical.has(base)) {
       errors.push(
         `${file}: '${spec}' is not in canonical BACKEND_COMMON_PACKAGES ` +
-          `or BACKEND_TRANSITION_TOOL_PACKAGES ` +
-          `(classify it in scripts/python-http-runtime-config.cjs or remove it here)`,
+          `(add it in scripts/python-http-runtime-config.cjs or remove it here)`,
       );
     }
   }
@@ -124,6 +105,5 @@ if (errors.length) {
 
 console.log(
   `✓ backend dependency sources in sync (${canonical.size} runtime packages: ` +
-    `requirements.txt, requirements-cpu.txt, backend.spec; ` +
-    `${transitionTools.size} transitional tooling package)`,
+    `requirements.txt, requirements-cpu.txt, backend.spec)`,
 );

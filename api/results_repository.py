@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 NATIVE_RESULTS_DIRNAME = "nirs4all_results"
-STORE_DB_FILENAMES = ("store.sqlite", "store.duckdb")
+STORE_DB_FILENAME = "store.sqlite"
 
 
 class ResultsRepository(Protocol):
@@ -90,15 +90,14 @@ def workspace_location_candidates(workspace_path: Path) -> tuple[Path, ...]:
 def workspace_store_path(workspace_path: Path) -> Path | None:
     """Return the first WorkspaceStore database path for a workspace."""
     for candidate in workspace_location_candidates(workspace_path):
-        for filename in STORE_DB_FILENAMES:
-            store_path = candidate / filename
-            if store_path.exists():
-                return store_path
+        store_path = candidate / STORE_DB_FILENAME
+        if store_path.exists():
+            return store_path
     return None
 
 
 def workspace_store_root(workspace_path: Path) -> Path | None:
-    """Return the root directory for a legacy WorkspaceStore database."""
+    """Return the root directory for the WorkspaceStore database."""
     store_path = workspace_store_path(workspace_path)
     return store_path.parent if store_path is not None else None
 

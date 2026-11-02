@@ -2,7 +2,6 @@ import type { TFunction } from "i18next";
 
 const KNOWN_RUN_TOKEN_KEYS: Record<string, string> = {
   cluster: "cluster",
-  duckdb: "duckdb",
   legacy: "legacy",
   "local-python": "localPython",
   native: "native",
