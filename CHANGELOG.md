@@ -43,6 +43,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
   is refused; later runs are no longer blocked.
 - Advertise the native run-management routes requested by the renderer.
 
+### Removed
+
+- DuckDB and the legacy workspace conversion. Studio opens current SQLite
+  workspaces only; a DuckDB workspace shows a one-time notice pointing to the
+  dedicated `nirs4all-tools` converter. DuckDB and nirs4all-tools are no longer
+  installed in the included runtime nor required in selected environments.
+
 ---
 
 ## [0.15.7] — 2026-10-30
