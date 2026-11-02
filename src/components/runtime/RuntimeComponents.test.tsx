@@ -12,7 +12,7 @@ import { NativeResultsExportAffordance } from "./NativeResultsExportAffordance";
 import { RuntimeBackendStatus } from "./RuntimeBackendStatus";
 import { RuntimeDiagnosticsList } from "./RuntimeDiagnosticsList";
 import { RuntimeEngineBadge } from "./RuntimeEngineBadge";
-import { RuntimeRunStatePresentation } from "./RuntimeStatus";
+import { RuntimeRunStatePresentation, RuntimeStatusBadge } from "./RuntimeStatus";
 
 beforeAll(async () => {
   await i18n.changeLanguage("en");
@@ -53,6 +53,12 @@ afterEach(() => {
 });
 
 describe("runtime result components", () => {
+  it("shows cancellation separately from completion in the shared status badge", async () => {
+    const { container, root } = await render(<RuntimeStatusBadge status="cancelled" />);
+    expect(container.textContent).toBe("Cancelled");
+    expect(container.textContent).not.toContain("Completed");
+    await act(async () => root.unmount());
+  });
   it("renders engine, diagnostics, progress, and native export affordance", async () => {
     const source = {
       engine: "legacy",
