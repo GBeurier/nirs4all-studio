@@ -124,6 +124,29 @@ interface EnsureBackendPackagesOptions {
   timeoutMs?: number;
 }
 
+/** Record which Python environment this session runs, and why, in the main log. */
+function logEnvironmentDecision(decision: {
+  mode: EnvRuntimeMode;
+  pythonPath: string | null;
+  versions: Record<string, string | null>;
+  issues: readonly string[];
+  fallback: RuntimeFallback["reason"] | null;
+  running: string | null;
+}): void {
+  const versions = Object.entries(decision.versions)
+    .map(([name, version]) => `${name} ${version ?? "missing"}`).join(", ");
+  const parts = [
+    `selected=${decision.mode}`,
+    `path=${decision.pythonPath ?? "none"}`,
+    `versions=${versions || (decision.mode === "bundled" ? "qualified with this installer" : "not read")}`,
+    `compatible=${decision.pythonPath !== null && decision.issues.length === 0 && decision.fallback !== "missing"}`,
+  ];
+  if (decision.issues.length > 0) parts.push(`issues=${decision.issues.join("; ")}`);
+  if (decision.fallback) parts.push(`fallback=included runtime (selected environment is ${decision.fallback})`);
+  parts.push(`running=${decision.running ?? "none"}`);
+  console.log(`[EnvManager] Python environment: ${parts.join(" | ")}`);
+}
+
 function envTimeoutMs(name: string, fallbackMs: number): number {
   const value = Number.parseInt(process.env[name] ?? "", 10);
   return Number.isInteger(value) && value >= 1000 ? value : fallbackMs;
@@ -308,7 +331,7 @@ export class EnvManager {
     this.runtimeFallback = null;
     const mode = this.getConfiguredRuntimeMode();
     const pythonPath = this.getConfiguredPythonPath();
-    const issues = pythonPath
+    const { issues, versions } = pythonPath
       ? await checkRuntimePackageVersions({
         pythonPath,
         appVersion: app.getVersion(),
@@ -316,16 +339,17 @@ export class EnvManager {
         reused: mode !== "bundled",
         force,
       })
-      : [];
+      : { issues: [], versions: {} };
     const selectedPythonPath = pythonPath ?? this.pythonPath;
     const unusable = !pythonPath || issues.length > 0;
     if (allowBundledFallback && unusable && selectedPythonPath && (mode === "custom" || mode === "managed") && detectBundledRuntime()) {
       this.runtimeFallback = { reason: pythonPath ? "incompatible" : "missing", selectedPythonPath, issues };
-      console.warn(`[EnvManager] Using the included runtime for this session; ${selectedPythonPath} is ${this.runtimeFallback.reason}${issues.length ? `: ${issues.join("; ")}` : ""}`);
+      logEnvironmentDecision({ mode, pythonPath: selectedPythonPath, versions, issues, fallback: this.runtimeFallback.reason, running: detectBundledRuntime()?.pythonPath ?? null });
       this.status = "ready";
       this.lastError = null;
       return true;
     }
+    logEnvironmentDecision({ mode, pythonPath: selectedPythonPath, versions, issues, fallback: null, running: pythonPath });
     if (!pythonPath) return false;
     const error = issues.length > 0 ? describeRuntimePackageIssues(issues) : null;
     this.lastError = error;
@@ -826,7 +850,7 @@ export class EnvManager {
 
     let preparedSitePackages: string | null;
     try {
-      const versionIssues = await checkRuntimePackageVersions({
+      const { issues: versionIssues } = await checkRuntimePackageVersions({
         pythonPath,
         appVersion: app.getVersion(),
         userDataDir: app.getPath("userData"),
