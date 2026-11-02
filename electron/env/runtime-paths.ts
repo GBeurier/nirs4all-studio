@@ -128,6 +128,15 @@ export function detectBundledRuntime(): BundledRuntimeInfo | null {
   return null;
 }
 
+/**
+ * Whether an interpreter path points into a Studio installation's included
+ * runtime, including one from a previous install location. Earlier releases
+ * persisted the bundled selection as such an absolute path.
+ */
+export function isBundledRuntimeLayoutPath(pythonPath: string): boolean {
+  return /[\\/]resources[\\/]backend[\\/]python-runtime[\\/]/i.test(pythonPath);
+}
+
 /** Classify an env root + interpreter into a managed/bundled/conda/venv/system kind. */
 export function getEnvKind(envDir: string, envRoot: string, pythonPath: string): EnvKind {
   const bundledRuntime = detectBundledRuntime();

@@ -31,6 +31,29 @@ export interface DesktopInspectedEnv extends DesktopDetectedEnv {
   profileAlignmentGuess: DesktopProfileAlignmentGuess | null;
 }
 
+/** Why this session runs Studio's included runtime instead of the selected environment. */
+export interface DesktopRuntimeFallback {
+  reason: "missing" | "incompatible";
+  selectedPythonPath: string;
+  issues: string[];
+}
+
+/** Electron's view of the configured Python runtime (`env:getInfo`). */
+export interface DesktopEnvInfo {
+  status: string;
+  envDir: string;
+  pythonPath: string | null;
+  sitePackages: string | null;
+  pythonVersion: string | null;
+  isCustom: boolean;
+  canInstallRequiredVersions?: boolean;
+  setupDeferred?: boolean;
+  runtimeFallback?: DesktopRuntimeFallback;
+  /** Why the packaged Python host was disabled, when it was. */
+  pythonHostError?: string;
+  error?: string;
+}
+
 export interface DesktopEnvActionResult {
   success: boolean;
   message: string;

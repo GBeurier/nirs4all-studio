@@ -181,6 +181,13 @@ const electronApi = {
     pythonVersion: string | null;
     isCustom: boolean;
     canInstallRequiredVersions?: boolean;
+    setupDeferred?: boolean;
+    runtimeFallback?: {
+      reason: "missing" | "incompatible";
+      selectedPythonPath: string;
+      issues: string[];
+    };
+    pythonHostError?: string;
     error?: string;
   }> => ipcRenderer.invoke("env:getInfo"),
 
