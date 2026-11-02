@@ -2,8 +2,8 @@
 //!
 //! The SQL and its compatibility envelope are published by the Python
 //! `WorkspaceStore` owner.  This module carries that versioned contract into the
-//! native product, validates it defensively, and never opens a writer, a
-//! `DuckDB` store, arrays, or prediction payloads. The one explicit artifact
+//! native product, validates it defensively, and never opens a writer,
+//! arrays, or prediction payloads. The one explicit artifact
 //! exception is the bounded Archive V2 registration projection: it reads only
 //! Store-owned path/hash metadata and never opens or interprets artifact bytes.
 
