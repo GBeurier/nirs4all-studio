@@ -600,4 +600,35 @@ describe("NativeSidecarManager", () => {
       url: "http://127.0.0.1:43123",
     });
   });
+
+  it("logs sidecar timing diagnostics at debug and the host acquisition at info", async () => {
+    const { logSidecarStderr, sidecarStderrLevel } = await import("./native-sidecar-manager");
+    expect(sidecarStderrLevel("Studio boundary timing phase=readiness_route elapsed_us=12")).toBe("debug");
+    expect(sidecarStderrLevel("Studio performance worker_started pid=4")).toBe("debug");
+    expect(sidecarStderrLevel("Studio scientific host packaged ready nirs4all=1.4.14 elapsed_ms=812")).toBe("info");
+    expect(sidecarStderrLevel("studio-sidecar connection error: os error 10053")).toBe("error");
+
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      // Chunks split lines arbitrarily; only complete lines are classified.
+      let tail = logSidecarStderr("", "Studio boundary timing phase=a elapsed_us=1\nStudio boundary ti");
+      tail = logSidecarStderr(tail, "ming phase=b elapsed_us=2\r\nStudio scientific host selected unavailable reason=python_host_timed_out elapsed_ms=180000\npanic: boom");
+      expect(tail).toBe("panic: boom");
+      expect(logSidecarStderr(tail, "\n")).toBe("");
+      expect(debug.mock.calls.map(([line]) => line)).toEqual([
+        "[Native sidecar] Studio boundary timing phase=a elapsed_us=1",
+        "[Native sidecar] Studio boundary timing phase=b elapsed_us=2",
+      ]);
+      expect(log.mock.calls.map(([line]) => line)).toEqual([
+        "[Native sidecar] Studio scientific host selected unavailable reason=python_host_timed_out elapsed_ms=180000",
+      ]);
+      expect(error.mock.calls.map(([line]) => line)).toEqual(["[Native sidecar] panic: boom"]);
+    } finally {
+      debug.mockRestore();
+      log.mockRestore();
+      error.mockRestore();
+    }
+  });
 });
