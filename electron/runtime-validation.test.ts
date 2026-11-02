@@ -50,13 +50,23 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
   it("checks startup versions without importing scientific packages", async () => {
     fs.writeFileSync(path.join(sitePackages, "nirs4all.py"), "raise RuntimeError('startup must only read metadata')\n");
     fs.writeFileSync(path.join(sitePackages, "n4m.py"), "raise RuntimeError('startup must only read metadata')\n");
-    await expect(checkRuntimePackageVersions({
+    const check = () => checkRuntimePackageVersions({
       pythonPath: executable, appVersion: "0.15.4", userDataDir: path.join(root, "version-cache"), reused: true, force: true,
-    })).resolves.toBeNull();
+    });
+    await expect(check()).resolves.toEqual({
+      issues: [],
+      versions: { nirs4all: "1.4.14", "nirs4all-io": "0.2.11", "nirs4all-methods": "1.3.9", "nirs4all-formats": "0.2.13", duckdb: "1.5.5" },
+    });
     fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.14", "Version: 1.0.3"));
-    expect(await checkRuntimePackageVersions({
-      pythonPath: executable, appVersion: "0.15.4", userDataDir: path.join(root, "version-cache"), reused: true, force: true,
-    })).toContain("nirs4all 1.0.3 is installed; 1.4.14 is required");
+    expect((await check()).issues).toEqual(["nirs4all 1.0.3 is installed; nirs4all>=1.4.14,<1.5 is required"]);
+  });
+  it("accepts newer releases inside the required ranges and refuses the next nirs4all minor", async () => {
+    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.14", "Version: 1.4.15"));
+    fs.writeFileSync(metadataPath("nirs4all-io"), metadata("nirs4all-io").replace("Version: 0.2.11", "Version: 0.2.13"));
+    fs.writeFileSync(metadataPath("nirs4all-methods"), metadata("nirs4all-methods").replace("Version: 1.3.9", "Version: 1.3.12"));
+    await expect(validatePythonRuntime(executable, { reused: true })).resolves.toBeUndefined();
+    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.14", "Version: 1.5.0rc1"));
+    await expect(validatePythonRuntime(executable, { reused: true })).rejects.toThrow("nirs4all 1.5.0rc1 is installed; nirs4all>=1.4.14,<1.5 is required");
   });
   it("accepts the published Methods distribution through its n4m import in a reused environment", async () => {
     await expect(validatePythonRuntime(executable, { reused: true })).resolves.toBeUndefined();

@@ -12,6 +12,7 @@ const fr = {
     "checking": "Vérification du moteur d’analyse…",
     "ready": "Votre environnement est prêt pour les analyses.",
     "prepare": "Utilisez Changer… pour sélectionner et préparer un environnement. Une ancienne version de nirs4all peut être mise à jour sur place.",
+    "checkFailed": "Studio n’a pas pu vérifier le moteur d’analyse.",
     "later": "Configurer plus tard",
     "open": "Ouvrir Studio"
 },
@@ -150,8 +151,16 @@ const fr = {
       },
       writable: "Probablement modifiable",
       readOnly: "Probablement en lecture seule",
+      fallback: {
+        title: "Studio utilise son environnement Python inclus",
+        missing: "L'environnement sélectionné {{path}} est introuvable.",
+        incompatible: "L'environnement sélectionné {{path}} nécessite d'autres versions de paquets : {{issues}}.",
+        summary: "Studio a démarré avec son environnement inclus pour que les analyses restent possibles.",
+        installRequired: "Installer les versions requises dans l'environnement sélectionné",
+        keepIncluded: "Continuer avec l'environnement inclus",
+      },
       error: {
-        versionUnsupported: "L'environnement Python sélectionné contient une version de nirs4all non prise en charge. Choisissez l'environnement inclus dans Studio dans les Paramètres, ou installez nirs4all 1.4.8 dans l'environnement sélectionné.",
+        versionUnsupported: "L'environnement Python sélectionné contient une version de nirs4all non prise en charge. Choisissez l'environnement inclus dans Studio dans les Paramètres, ou utilisez Installer les versions requises dans les paramètres de l'environnement Python pour mettre à jour l'environnement sélectionné.",
         tampered: "Le paquet nirs4all installé a échoué à la vérification d'intégrité. Choisissez l'environnement inclus dans Studio dans les Paramètres, ou réinstallez nirs4all dans l'environnement sélectionné.",
         notReady: "L'environnement Python sélectionné n'est pas prêt pour l'analyse. Préparez-le depuis les paramètres de l'environnement Python.",
         restartFailed: "Échec du redémarrage du backend",
@@ -904,6 +913,7 @@ notFound: {
     },
     pythonEnvPicker: {
       installRequiredVersions: "Install required versions",
+      loadFailed: "Studio n'a pas pu lire l'environnement Python.",
       unknown: "Inconnue",
       reviewPackages: "Examiner les paquets",
       reviewPackagesHint: "Voir les paquets installés et les fonctionnalités optionnelles disponibles",
@@ -1305,6 +1315,11 @@ notFound: {
       workspaceWaiting: "En attente du démarrage ML",
       loaderAlt: "Animation de chargement du moteur d’analyse",
       errorDescription: "Studio n'a pas pu démarrer.",
+    },
+    pythonRuntime: {
+      unavailableTitle: "Les fonctions scientifiques sont indisponibles",
+      unavailableReason: "L'environnement Python sélectionné n'est pas prêt pour l'analyse.",
+      review: "Vérifier l'environnement Python",
     },
     legacyWorkspace: {
       title: "Ancien format d'espace de travail détecté",
