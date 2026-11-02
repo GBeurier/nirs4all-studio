@@ -63,7 +63,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   const resolvingRuns = useRef(new Set<string>());
   const [failures, setFailures] = useState<Array<{ runId: string; runName: string; error: string | null }>>([]);
   const reportFailure = useCallback((runId: string, runName: string, error?: string | null) => {
-    if (error === "Cancelled" || notifiedFailures.current.has(runId)) return;
+    if (error === "Cancelled" || error === "Job was cancelled" || notifiedFailures.current.has(runId)) return;
     notifiedFailures.current.add(runId);
     setFailures((previous) => [...previous, {
       runId, runName, error: error?.trim() || null,
@@ -143,7 +143,8 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
                   newState.progress = 100;
                   newState.progressUnavailable = false;
                 } else if (message.type === "job_failed") {
-                  newState.status = "failed";
+                  newState.status = message.data?.error === "Job was cancelled" || message.data?.error === "Cancelled"
+                    ? "cancelled" : "failed";
                   newState.message = message.data?.error || i18next.t("runs.failure.messageFallback");
                 }
 
@@ -275,7 +276,8 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       void getWorkspaceExecutionJobRecord(runId).then((record) => {
         if (!["completed", "failed", "cancelled"].includes(record.status)) return;
         void invalidatePredictionRelatedQueries(queryClient);
-        const status = record.status === "completed" ? "completed" : "failed";
+        const status = record.status === "completed" ? "completed"
+          : record.status === "cancelled" ? "cancelled" : "failed";
         if (record.status === "failed") {
           reportFailure(runId, state.runName || record.run_name, record.error);
         }

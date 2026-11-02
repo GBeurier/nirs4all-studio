@@ -42,7 +42,7 @@ function getInitialAlignStatus(t: TFunction): Pick<BusyProgressState, "title" | 
   };
 }
 
-export function usePythonEnvPickerController() {
+export function usePythonEnvPickerController({ showEnvironments = false } = {}) {
   const { t } = useTranslation();
   const [electronApi] = useState(getElectronApi);
   const [envInfo, setEnvInfo] = useState<EnvInfo | null>(null);
@@ -271,6 +271,10 @@ export function usePythonEnvPickerController() {
       setIsScanning(false);
     }
   }, [electronApi]);
+
+  useEffect(() => {
+    if (showEnvironments) void handleOpenDialog();
+  }, [showEnvironments, handleOpenDialog]);
 
   useEffect(() => {
     const choose = () => { void handleOpenDialog(); };

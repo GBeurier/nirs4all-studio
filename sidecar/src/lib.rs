@@ -8334,6 +8334,47 @@ mod tests {
     }
 
     #[test]
+    fn durable_job_status_is_readable_before_the_first_scientific_store() {
+        let root = test_directory("durable-job-before-store");
+        let config = root.join("config");
+        let workspace = root.join("workspace");
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(workspace.join("runs")).unwrap();
+        fs::write(
+            config.join("app_settings.json"),
+            json!({
+                "linked_workspaces": [linked_workspace_record("workspace-a", &workspace, true, 0)]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut state = SidecarState::with_app_settings_dir(&config);
+        for status in ["running", "failed", "cancelled"] {
+            let id = format!("run_native_{status}");
+            let record = json!({
+                "job_id":id,"job_type":"training","requested_backend":"local-python",
+                "execution_backend":"dag-ml-core","execution_mode":"bounded-cpython-stdio",
+                "status":status,"progress":0,"progress_message":"Calculating",
+                "created_at":"2026-11-02T10:00:00Z","started_at":null,"completed_at":null,
+                "request":{},"driver":{},"metrics":{},"error":if status == "failed" { json!("Invalid model parameter") } else { Value::Null }
+            });
+            crate::execution_job_records::write_execution_job_record(&workspace, &id, &record)
+                .unwrap();
+            let response = route_request(
+                &mut state,
+                "GET",
+                &format!("/api/runs/execution-job-records/{id}"),
+            );
+            assert_eq!(response.status, 200, "{status}: {}", response.body);
+            let payload: Value = serde_json::from_str(&response.body).unwrap();
+            assert_eq!(payload["status"], status);
+            assert_eq!(payload["error"], record["error"]);
+        }
+        assert!(!workspace.join("store.sqlite").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn durable_execution_job_reads_use_active_store_and_never_the_memory_registry() {
         let root = test_directory("durable-execution-record");
         let config = root.join("config");
