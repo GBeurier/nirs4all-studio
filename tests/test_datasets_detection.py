@@ -359,6 +359,27 @@ def test_scientific_run_config_keeps_native_na_and_loads(tmp_path: Path):
     assert dataset.num_samples == 4
 
 
+@pytest.mark.parametrize(("targets", "expected"), [
+    ([{"column": "target", "type": "regression"}], "remove_sample"),
+    ([{"column": "target", "type": "regression"}, {"column": "other", "type": "regression"}], "ignore"),
+])
+def test_scientific_run_excludes_missing_single_target_samples(tmp_path: Path, targets, expected):
+    from api.library_documents import configure_dataset
+
+    (tmp_path / "Xtrain.csv").write_text("1000;1100\n1;2\n3;4\n5;6\n")
+    (tmp_path / "Ytrain.csv").write_text("target;other\n1;\n;2\n3;3\n")
+    record = {"path": str(tmp_path), "name": "Sparse", "config": {
+        "files": [
+            {"path": "Xtrain.csv", "type": "X", "split": "train"},
+            {"path": "Ytrain.csv", "type": "Y", "split": "train", "overrides": {"na_policy": "ignore"}},
+        ],
+        "na_policy": "abort", "delimiter": ";", "targets": targets,
+    }}
+    config = configure_dataset({"record": record, "scientific_run": True})
+    assert config["train_y_params"]["na"]["policy"] == expected
+    assert configure_dataset({"record": record})["train_y_params"]["na_policy"] == "ignore"
+
+
 def test_scientific_run_preserves_saved_multimodal_dataset_document(tmp_path: Path):
     from api.library_documents import configure_dataset
 

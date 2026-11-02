@@ -36,8 +36,8 @@
     },
     {
       "path": "api/library_documents.py",
-      "size": 21779,
-      "sha256": "e3375a9abd9a3bbdb0950333035add84029f4870e134b8c6c90c9f460a6aabcf"
+      "size": 22242,
+      "sha256": "20e509067429325001c5d14d23a97f82d8c530d304da933e637f9ad52fafc272"
     },
     {
       "path": "api/library_inspector.py",
@@ -116,8 +116,8 @@
     },
     {
       "path": "api/shared/dataset_config.py",
-      "size": 16169,
-      "sha256": "5924c267d8a3dd4104dca0b0f6334869db8a05791417e7455487291198cbf707"
+      "size": 16895,
+      "sha256": "12c5af8c2b5927420b4c7af23563c5cdc972c898d08a42cca9d1ed726448f034"
     },
     {
       "path": "api/shared/decimation.py",
