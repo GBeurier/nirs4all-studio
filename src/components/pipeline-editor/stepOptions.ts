@@ -51,7 +51,7 @@ const stepOptionSeeds: Record<StepType, StepOptionSeed[]> = {
     { name: "KubelkaMunk", defaultParams: {}, category: "Conversion" },
 
     // === Feature Selection ===
-    { name: "CARS", defaultParams: { n_pls_components: 10, n_sampling_runs: 50 }, category: "Feature Selection" },
+    { name: "CARS", defaultParams: { n_components: 10, n_sampling_runs: 50 }, category: "Feature Selection" },
     { name: "MCUVE", defaultParams: { n_components: 10, n_iterations: 100 }, category: "Feature Selection" },
     { name: "VIP", defaultParams: { n_components: 10, threshold: 1.0 }, category: "Feature Selection" },
 
@@ -109,7 +109,7 @@ const stepOptionSeeds: Record<StepType, StepOptionSeed[]> = {
     { name: "OPLSDA", defaultParams: { n_components: 10 }, category: "Advanced PLS" },
     { name: "IKPLS", defaultParams: { n_components: 10 }, category: "Advanced PLS" },
     { name: "SparsePLS", defaultParams: { n_components: 10, alpha: 0.1 }, category: "Advanced PLS" },
-    { name: "LWPLS", defaultParams: { n_components: 10, n_neighbors: 50 }, category: "Advanced PLS" },
+    { name: "LWPLS", defaultParams: { n_components: 10, lambda_in_similarity: 1.0 }, category: "Advanced PLS" },
     { name: "IntervalPLS", defaultParams: { n_components: 10, n_intervals: 20 }, category: "Advanced PLS" },
     { name: "RobustPLS", defaultParams: { n_components: 10 }, category: "Advanced PLS" },
     { name: "SIMPLS", defaultParams: { n_components: 10 }, category: "Advanced PLS" },

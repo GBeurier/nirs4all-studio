@@ -106,7 +106,7 @@
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
-| **CARS** | nirs4all | advanced | `n_pls_components`=10, `n_sampling_runs`=50 | `n_pls_components` [5-30] | `n_pls_components` |
+| **CARS** | nirs4all | advanced | `n_components`=10, `n_sampling_runs`=50 | `n_components` [5-30] | `n_components` |
 | **MCUVE** | nirs4all | advanced | `n_components`=10, `n_iterations`=100 | `n_components` [5-30] | `n_components` |
 | **FlexiblePCA** | nirs4all | standard | `n_components`=0.95, `whiten`=false | `n_components` [1-30] | - |
 | **FlexibleSVD** | nirs4all | standard | `n_components`=0.95 | `n_components` [1-30] | - |
@@ -210,15 +210,15 @@
 | **OPLSDA** | nirs4all | standard | `n_components`=10 | `n_components` [1-20] | `n_components` |
 | **IKPLS** | nirs4all | standard | `n_components`=10 | `n_components` [1-30] | `n_components` |
 | **SparsePLS** | nirs4all | standard | `n_components`=10, `alpha`=0.1 | `n_components` [1-20], `alpha` [0.001-1] | `n_components` |
-| **LWPLS** | nirs4all | advanced | `n_components`=10, `n_neighbors`=50 | `n_components` [1-20], `n_neighbors` [10-100] | `n_components` |
+| **LWPLS** | nirs4all | advanced | `n_components`=10, `lambda_in_similarity`=1 | `n_components` [1-20], `lambda_in_similarity` [0.001-32] | `n_components` |
 | **IntervalPLS** | nirs4all | advanced | `n_components`=10, `n_intervals`=20 | `n_components` [1-20], `n_intervals` [5-40] | `n_components` |
 | **RobustPLS** | nirs4all | advanced | `n_components`=10 | `n_components` [1-20] | `n_components` |
 | **SIMPLS** | nirs4all | standard | `n_components`=10 | `n_components` [1-30] | `n_components` |
 | **DiPLS** | nirs4all | advanced | `n_components`=10 | `n_components` [1-20] | `n_components` |
 | **RecursivePLS** | nirs4all | advanced | `n_components`=10 | `n_components` [1-20], `forgetting_factor` [0.9-1] | `n_components` |
-| **AOMPLSRegressor** | nirs4all | advanced | `n_components`=10 | `n_components` [1-30] | `n_components` |
+| **AOMPLSRegressor** | nirs4all | advanced | `max_components`=10 | `max_components` [1-30] | `max_components` |
 | **AOMPLSClassifier** | nirs4all | advanced | `n_components`=10 | `n_components` [1-30] | - |
-| **POPPLSRegressor** | nirs4all | advanced | `n_components`=10 | `n_components` [1-30] | `n_components` |
+| **POPPLSRegressor** | nirs4all | advanced | `max_components`=10 | `max_components` [1-30] | `max_components` |
 | **POPPLSClassifier** | nirs4all | advanced | `n_components`=10 | `n_components` [1-30] | - |
 
 ### Deep Learning
@@ -470,7 +470,7 @@
 | **KennardStone** | nirs4all | core | `test_size`=0.2, `metric` (euclidean/mahalanobis/cosine) | - | - |
 | **SPXY** | nirs4all | standard | `test_size`=0.2 | - | - |
 | **SPXYGFold** | nirs4all | standard | `n_splits`=5 | - | - |
-| **KMeansSplitter** | nirs4all | standard | `n_clusters`=5, `test_size`=0.2 | - | - |
+| **KMeansSplitter** | nirs4all | standard | `test_size`=0.2 | - | - |
 | **SPlitSplitter** | nirs4all | standard | `test_size`=0.2 | - | - |
 | **KBinsStratifiedSplitter** | nirs4all | standard | `n_bins`=5, `test_size`=0.2 | - | - |
 | **BinnedStratifiedGroupKFold** | nirs4all | standard | `n_splits`=5, `n_bins`=5 | - | - |
@@ -718,4 +718,4 @@
 
 ---
 
-*Generated on 2026-08-31*
+*Generated on 2026-11-02*

@@ -90,7 +90,7 @@ WavelengthSelector
 
 CARS (Competitive Adaptive Reweighted Sampling)
 : An automated variable selection method that uses PLS to iteratively identify the most informative wavelengths.
-: **Parameters**: `n_pls_components`, `n_sampling_runs`.
+: **Parameters**: `n_components`, `n_sampling_runs`.
 
 ## Combining Preprocessing Steps
 

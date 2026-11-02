@@ -164,15 +164,6 @@
     },
     "parameters": [
       {
-        "name": "n_clusters",
-        "type": "int",
-        "default": 5,
-        "min": 2,
-        "max": 50,
-        "description": "Number of clusters",
-        "sweepable": true
-      },
-      {
         "name": "test_size",
         "type": "float",
         "default": 0.2,

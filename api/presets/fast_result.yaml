@@ -23,9 +23,9 @@ variants:
     - model:
         class: nirs4all.operators.models.sklearn.aom_pls.AOMPLSRegressor
         params:
-          n_components: 12
-          center: true
-          scale: false
+          max_components: 12
+          center_x: true
+          scale_x: false
       name: AOM-PLS
     - model:
         class: tabpfn.TabPFNRegressor

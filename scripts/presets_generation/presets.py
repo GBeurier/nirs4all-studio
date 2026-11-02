@@ -266,9 +266,7 @@ def aom_regression_finetune_params(*, n_trials: int = 80) -> dict[str, object]:
         "n_trials": n_trials,
         "sampler": "tpe",
         "model_params": {
-            "n_components": ("int", 1, 27),
-            "n_orth": ("int", 0, 5),
-            "operator_index": ("int", 0, 120),
+            "max_components": ("int", 1, 27),
         },
     }
 
@@ -485,14 +483,14 @@ def tuned_ridge_classification_step(*, n_trials: int = 30) -> dict[str, object]:
     )
 
 
-def fixed_aom_regression_step(n_components: int) -> dict[str, object]:
+def fixed_aom_regression_step(max_components: int) -> dict[str, object]:
     """Fixed AOM-PLS regression step."""
     return model_step(
         class_ref(
             "nirs4all.operators.models.sklearn.aom_pls.AOMPLSRegressor",
-            n_components=n_components,
-            center=True,
-            scale=False,
+            max_components=max_components,
+            center_x=True,
+            scale_x=False,
         ),
         name="AOM-PLS",
     )
@@ -512,7 +510,7 @@ def fixed_aom_classification_step(n_components: int) -> dict[str, object]:
 def tuned_aom_regression_step(*, n_trials: int = 80) -> dict[str, object]:
     """Finetuned AOM-PLS regression step."""
     return model_step(
-        class_ref("nirs4all.operators.models.sklearn.aom_pls.AOMPLSRegressor", center=True, scale=False),
+        class_ref("nirs4all.operators.models.sklearn.aom_pls.AOMPLSRegressor", center_x=True, scale_x=False),
         name="AOM-PLS-Finetuned",
         finetune_params=aom_regression_finetune_params(n_trials=n_trials),
     )
