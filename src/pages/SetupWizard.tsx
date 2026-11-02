@@ -126,7 +126,7 @@ function DesktopSetupWizard() {
         <p className="text-muted-foreground">{t("pythonSetup.description")}</p>
         <p className="text-sm text-muted-foreground">{t("pythonSetup.settingsHint")}</p>
       </div>
-      <PythonEnvPicker />
+      <PythonEnvPicker showEnvironments />
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       <p role="status" className="text-sm">{checking ? t("pythonSetup.checking") : ready ? t("pythonSetup.ready") : t("pythonSetup.prepare")}</p>
       <div className="flex flex-wrap justify-end gap-2">

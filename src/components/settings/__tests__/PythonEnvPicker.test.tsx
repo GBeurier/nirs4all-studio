@@ -243,6 +243,19 @@ afterEach(() => {
 });
 
 describe("PythonEnvPicker", () => {
+  it("shows detected environments directly during initial setup", async () => {
+    const electronApi = createElectronApi();
+    electronApi.detectExistingEnvs.mockResolvedValue([{
+      path: "C:\\envs\\analysis", pythonPath: "C:\\envs\\analysis\\python.exe", pythonVersion: "3.11.9",
+      hasNirs4all: true, hasCorePackages: true, envKind: "venv", writable: true,
+    }]);
+    const view = await renderComponent(electronApi, true);
+    await waitFor(() => expect(view.container.textContent).toContain("C:\\envs\\analysis\\python.exe"));
+    expect(electronApi.detectExistingEnvs).toHaveBeenCalledTimes(1);
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(electronApi.applyExistingEnv).not.toHaveBeenCalled();
+    await view.unmount();
+  });
   it.each([false, true])("offers an explicit selected-environment repair (startup: %s)", async startup => {
     const electronApi = createElectronApi();
     const pythonPath = "C:\\envs\\configured\\python.exe";

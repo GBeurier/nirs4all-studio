@@ -74,6 +74,13 @@ async function mount(runs: Array<{
 }
 
 describe("active run polling and render cost", () => {
+  it("removes a cancelled job without announcing a scientific failure", async () => {
+    const app = await mount([{ id: "run-1", name: "PLS", status: "running" }]);
+    await app.message({ type: "job_failed", channel: "job:run-1", data: { error: "Job was cancelled" } });
+    expect(app.value().getRunProgress("run-1")?.status).toBe("cancelled");
+    expect(app.value().hasActiveRuns).toBe(false);
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+  });
   it("restores unavailable fit progress and heartbeat messages from polls, then real completion", async () => {
     const runs = [{ id: "run-1", name: "RF", status: "running", progress: 0,
       progress_message: "Scientific computation running · 130s elapsed. Fit progress is unavailable.",

@@ -31,9 +31,9 @@ import {
 import { PythonEnvPickerHeader } from "./PythonEnvPickerHeader";
 import { usePythonEnvPickerController } from "./PythonEnvPickerController";
 
-export function PythonEnvPicker() {
+export function PythonEnvPicker({ showEnvironments = false }: { showEnvironments?: boolean }) {
   const { t } = useTranslation();
-  const controller = usePythonEnvPickerController();
+  const controller = usePythonEnvPickerController({ showEnvironments });
 
   // Not in Electron: don't render
   if (!controller.electronApi) return null;
@@ -167,6 +167,7 @@ export function PythonEnvPicker() {
         )}
 
         <PythonEnvSelectionDialog
+          inline={showEnvironments}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           labels={selectionLabels}

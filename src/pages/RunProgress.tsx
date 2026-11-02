@@ -20,7 +20,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { getRunExecutionJobRecord, getWorkspaceExecutionJobRecord, stopRun } from "@/api/runs";
+import { getWorkspaceExecutionJobRecord, stopRun } from "@/api/runs";
+import { getApiErrorMessage } from "@/api/transport";
 import { getN4AWorkspaceRunDetail, getWorkspaceRunPipelineLogs } from "@/api/linkedWorkspaces";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 import { ReconnectingIndicator, ErrorState, LoadingState } from "@/components/ui/state-display";
@@ -94,20 +95,18 @@ export default function RunProgress() {
     refetchInterval: (query) => getRunDetailRefetchInterval((query.state.data as Run | undefined)?.status, wsConnected),
   });
 
-  const { data: executionJobRecord = null } = useQuery({
+  const {
+    data: executionJobRecord = null,
+    isLoading: isLoadingExecutionJob,
+    error: executionJobError,
+    refetch: refetchExecutionJob,
+  } = useQuery({
     queryKey: ["run", runId, "execution-job-record"],
     queryFn: async () => {
       try {
-        return await getRunExecutionJobRecord(runId!);
+        return await getWorkspaceExecutionJobRecord(runId!);
       } catch (err) {
-        if (isNotFoundApiError(err)) {
-          try {
-            return await getWorkspaceExecutionJobRecord(runId!);
-          } catch (jobError) {
-            if (isNotFoundApiError(jobError)) return null;
-            throw jobError;
-          }
-        }
+        if (isNotFoundApiError(err)) return null;
         throw err;
       }
     },
@@ -121,7 +120,17 @@ export default function RunProgress() {
     }),
   });
 
-  const run = runDetail ?? (executionJobRecord
+  const storedRunIds = executionJobRecord?.driver.store_run_ids;
+  const storedRunId = executionJobRecord?.status === "completed" && Array.isArray(storedRunIds) && storedRunIds.length === 1
+    ? storedRunIds.find((id): id is string => typeof id === "string" && id.length > 0)
+    : undefined;
+  const { data: storedRunDetail } = useQuery({
+    queryKey: ["run", runId, "stored-detail", workspaceId, storedRunId],
+    queryFn: async () => buildRunFromWorkspaceDetail(await getN4AWorkspaceRunDetail(workspaceId!, storedRunId!)),
+    enabled: executionJobId && !!workspaceId && !!storedRunId,
+  });
+
+  const run = runDetail ?? storedRunDetail ?? (executionJobRecord
     ? buildRunFromExecutionJobRecord(executionJobRecord) : undefined);
 
   // WebSocket updates
@@ -148,7 +157,7 @@ export default function RunProgress() {
       if (message.type === "job_completed") {
         void invalidatePredictionRelatedQueries(queryClient);
         toast.success(i18next.t("runs.progress.completedToast"));
-      } else if (message.type === "job_failed") {
+      } else if (message.type === "job_failed" && message.data?.error !== "Job was cancelled" && message.data?.error !== "Cancelled") {
         void invalidatePredictionRelatedQueries(queryClient);
         toast.error(i18next.t("runs.progress.failedToast", { error: message.data?.error || i18next.t("runs.unknownError") }));
       }
@@ -222,7 +231,7 @@ export default function RunProgress() {
         pipelineEntries.map(async (entry) => {
           if (!executionJobId && runDetail?.datasets.flatMap(dataset => dataset.pipelines)
             .find(pipeline => pipeline.id === entry.pipelineId)?.logs?.length === 0) return [];
-          const response = await getWorkspaceRunPipelineLogs(workspaceId, runId, entry.pipelineId);
+          const response = await getWorkspaceRunPipelineLogs(workspaceId, run.id, entry.pipelineId);
           const logs = response.logs || [];
           return logs.map(
             (log) => `[${entry.datasetName}] [${entry.pipelineName}] ${log.message ?? log.event ?? ""}`
@@ -253,7 +262,7 @@ export default function RunProgress() {
       toast.success(t("runs.progress.stopped"));
       queryClient.invalidateQueries({ queryKey: ["run", runId] });
     } catch (err) {
-      toast.error(t("runs.progress.stopFailed"));
+      toast.error(t("runs.progress.stopFailed"), { description: getApiErrorMessage(err) });
     } finally {
       setIsStopping(false);
     }
@@ -276,9 +285,9 @@ export default function RunProgress() {
     }
 
     return undefined;
-  }, [runStatus, runId]);
+  }, [runStatus, runId, run?.id]);
 
-  if (isLoading && !run) {
+  if ((executionJobId ? isLoadingExecutionJob : isLoading) && !run) {
     return (
       <div className="p-6">
         <LoadingState message={t("runs.progress.loading")} />
@@ -292,11 +301,10 @@ export default function RunProgress() {
         <ErrorState
           title={t("runs.progress.notFound")}
           message={
-            error instanceof Error
-              ? error.message
-              : t("runs.progress.notFoundHint")
+            getApiErrorMessage(executionJobId ? executionJobError : error)
+              ?? t("runs.progress.notFoundHint")
           }
-          onRetry={() => refetch()}
+          onRetry={() => executionJobId ? refetchExecutionJob() : refetch()}
         />
         <div className="mt-4 flex justify-center">
           <Button asChild variant="outline">

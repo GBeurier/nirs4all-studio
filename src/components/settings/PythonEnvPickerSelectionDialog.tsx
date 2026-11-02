@@ -46,6 +46,7 @@ export interface PythonEnvSelectionLabels {
 }
 
 interface PythonEnvSelectionDialogProps {
+  inline?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   labels: PythonEnvSelectionLabels;
@@ -66,6 +67,7 @@ interface PythonEnvSelectionDialogProps {
 }
 
 export function PythonEnvSelectionDialog({
+  inline = false,
   open,
   onOpenChange,
   labels,
@@ -84,16 +86,7 @@ export function PythonEnvSelectionDialog({
   onUseInspectionAsIs,
   onInstallCoreAndSwitch,
 }: PythonEnvSelectionDialogProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>{labels.selectInterpreter}</DialogTitle>
-          <DialogDescription>
-            {labels.selectInterpreterDesc}
-          </DialogDescription>
-        </DialogHeader>
-
+  const content = <>
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
         <div className="space-y-4 mt-2">
           {switchProgressState && !inspection && (
@@ -185,6 +178,20 @@ export function PythonEnvSelectionDialog({
             </>
           )}
         </div>
+  </>;
+  if (inline) return <section aria-label={labels.selectInterpreter} className="space-y-3 border-t pt-4">
+    <h3 className="font-medium">{labels.selectInterpreter}</h3>
+    <p className="text-sm text-muted-foreground">{labels.selectInterpreterDesc}</p>
+    {content}
+  </section>;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{labels.selectInterpreter}</DialogTitle>
+          <DialogDescription>{labels.selectInterpreterDesc}</DialogDescription>
+        </DialogHeader>
+        {content}
       </DialogContent>
     </Dialog>
   );
