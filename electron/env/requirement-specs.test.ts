@@ -48,7 +48,7 @@ describe("package requirement ranges", () => {
     expect(requirementIssue("nirs4all>=1.4.14,<1.5", "1.4.15")).toBeNull();
     expect(requirementIssue("nirs4all-io>=0.2.11,<0.3", null)).toBe("nirs4all-io is missing");
     expect(requirementIssue("nirs4all>=1.4.14,<1.5", "1.4.13")).toBe("nirs4all 1.4.13 is installed; nirs4all>=1.4.14,<1.5 is required");
-    expect(requirementIssue("duckdb", "2.0.0")).toBeNull();
+    expect(requirementIssue("nirs4all-formats", "2.0.0")).toBeNull();
   });
 
   it.skipIf(!python)("matches the Python implementation used by interpreter probes", () => {

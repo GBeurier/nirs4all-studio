@@ -25,7 +25,6 @@
  *   --cache-dir <path>    Cache dir for python-build-standalone downloads
  *   --constraints <path>  Optional pip constraints file for the bake step
  *   --plugin-wheel <path> Exact canonical nirs4all wheel built once by CI
- *   --tools-wheel <path>  Exact canonical nirs4all-tools wheel built once by CI
  *   --help                Show usage
  */
 
@@ -64,7 +63,6 @@ Options:
   --cache-dir <path>    Cache dir for python-build-standalone downloads
   --constraints <path>  Optional pip constraints file for the bake step
   --plugin-wheel <path> Exact canonical nirs4all wheel built once by CI
-  --tools-wheel <path>  Exact canonical nirs4all-tools wheel built once by CI
   --help                Show this message`);
 }
 
@@ -83,7 +81,6 @@ function parseArgs(argv = process.argv.slice(2)) {
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
     constraintsFile: "",
     pluginWheel: "",
-    toolsWheel: "",
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -118,8 +115,6 @@ function parseArgs(argv = process.argv.slice(2)) {
       parsed.constraintsFile = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--plugin-wheel") {
       parsed.pluginWheel = path.resolve(inlineValue ?? argv[++i]);
-    } else if (flag === "--tools-wheel") {
-      parsed.toolsWheel = path.resolve(inlineValue ?? argv[++i]);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -135,7 +130,6 @@ function resolveBuildConfig(rawOptions, host = { platform: process.platform, arc
     cacheDir: path.resolve(rawOptions.cacheDir),
     constraintsFile: rawOptions.constraintsFile ? path.resolve(rawOptions.constraintsFile) : "",
     pluginWheel: rawOptions.pluginWheel ? path.resolve(rawOptions.pluginWheel) : "",
-    toolsWheel: rawOptions.toolsWheel ? path.resolve(rawOptions.toolsWheel) : "",
     localNirs4allPath: rawOptions.localNirs4allPath ? path.resolve(rawOptions.localNirs4allPath) : "",
     localDagMlPath: rawOptions.localDagMlPath ? path.resolve(rawOptions.localDagMlPath) : "",
     localDagMlDataPath: rawOptions.localDagMlDataPath ? path.resolve(rawOptions.localDagMlDataPath) : "",
@@ -157,13 +151,8 @@ function resolveBuildConfig(rawOptions, host = { platform: process.platform, arc
   if (config.constraintsFile && !fs.existsSync(config.constraintsFile)) {
     throw new Error(`Constraints file not found: ${config.constraintsFile}`);
   }
-  if (Boolean(config.pluginWheel) !== Boolean(config.toolsWheel)) {
-    throw new Error("Canonical nirs4all and nirs4all-tools wheels must be supplied together");
-  }
-  for (const [label, wheelPath] of [["nirs4all", config.pluginWheel], ["nirs4all-tools", config.toolsWheel]]) {
-    if (wheelPath && !fs.existsSync(wheelPath)) {
-      throw new Error(`Canonical ${label} wheel not found: ${wheelPath}`);
-    }
+  if (config.pluginWheel && !fs.existsSync(config.pluginWheel)) {
+    throw new Error(`Canonical nirs4all wheel not found: ${config.pluginWheel}`);
   }
   if (
     config.localNirs4all ||
@@ -450,7 +439,7 @@ async function buildArchiveStandalone(config) {
       bakeArgs.push("--constraints", config.constraintsFile);
     }
     if (config.pluginWheel) {
-      bakeArgs.push("--plugin-wheel", config.pluginWheel, "--tools-wheel", config.toolsWheel);
+      bakeArgs.push("--plugin-wheel", config.pluginWheel);
     }
     await runCommand(getNodeCommand(), bakeArgs);
     await runCommand(getNodeCommand(), [path.join("scripts", "build-native-sidecar.cjs")]);

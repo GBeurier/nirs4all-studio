@@ -33,7 +33,7 @@ def test_constraints_select_one_compatible_scientific_pin_per_target(platform, m
         "nirs4all": "1.4.14", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13",
         "nirs4all-core": "0.4.6", "nirs4all-io": "0.2.11",
         "nirs4all-methods": "1.3.9", "pls4all": "1.3.9",
-        "nirs4all-formats": "0.2.13", "nirs4all-tools": "0.0.8",
+        "nirs4all-formats": "0.2.13",
     }
     for package, version in {**cohort, **expected}.items():
         assert selected[package] == f"=={version}"

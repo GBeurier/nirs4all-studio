@@ -22,7 +22,7 @@ describe("existing Python inventory", () => {
     expect(mocks.execFile).toHaveBeenCalledTimes(1);
   });
   it("distinguishes absent dependencies from an installed SDK requiring an in-place update", () => {
-    expect(getCorePackageIssues(new Map([["nirs4all", "1.4.7"], ["duckdb", "1.5.5"]]))).toEqual([
+    expect(getCorePackageIssues(new Map([["nirs4all", "1.4.7"]]))).toEqual([
       { name: "nirs4all", installedVersion: "1.4.7", requiredVersion: ">=1.4.14,<1.5" },
       { name: "nirs4all-io", installedVersion: null, requiredVersion: ">=0.2.11,<0.3" },
       { name: "nirs4all-methods", installedVersion: null, requiredVersion: ">=1.3.9,<2" },
@@ -36,10 +36,10 @@ describe("existing Python inventory", () => {
   });
   it("accepts newer releases inside the declared ranges", () => {
     expect(getCorePackageIssues(new Map([
-      ["nirs4all", "1.4.15"], ["nirs4all_io", "0.2.13"], ["nirs4all_methods", "1.3.12"], ["nirs4all_formats", "0.2.14"], ["duckdb", "2.0.0"],
+      ["nirs4all", "1.4.15"], ["nirs4all_io", "0.2.13"], ["nirs4all_methods", "1.3.12"], ["nirs4all_formats", "0.2.14"],
     ]))).toEqual([]);
     expect(getCorePackageIssues(new Map([
-      ["nirs4all", "1.5.0"], ["nirs4all_io", "0.3.0"], ["nirs4all_methods", "1.3.12"], ["nirs4all_formats", "0.2.14"], ["duckdb", "2.0.0"],
+      ["nirs4all", "1.5.0"], ["nirs4all_io", "0.3.0"], ["nirs4all_methods", "1.3.12"], ["nirs4all_formats", "0.2.14"],
     ]))).toEqual([
       { name: "nirs4all", installedVersion: "1.5.0", requiredVersion: ">=1.4.14,<1.5" },
       { name: "nirs4all-io", installedVersion: "0.3.0", requiredVersion: ">=0.2.11,<0.3" },

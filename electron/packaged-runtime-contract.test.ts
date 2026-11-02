@@ -111,20 +111,6 @@ function makeResources(): {
     distribution: "nirs4all",
     distribution_version: "1.4.14",
     installed_manifest_sha256: "0ed298d6dfd461ddb4dafcd7b14d11ead9753301fbcf348ca4fdacbe97573beb",
-    conversion_tools: {
-      source_commit: "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8",
-      wheel_sha256: "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310",
-      distribution: "nirs4all-tools",
-      distribution_version: "0.0.8",
-      installed_manifest_sha256: "92069ded823ffd1e291b4c8272b46e8b247ed5b619734e1ebf5ad3f612774ac8",
-      module: "nirs4all_tools",
-      cli: "python -I -B -m nirs4all_tools",
-      readers: { duckdb: "1.5.5", pyarrow: "25.0.1" },
-      functional_probes: {
-        duckdb: "in-memory-select-40-plus-2",
-        pyarrow_parquet: "in-memory-round-trip",
-      },
-    },
     platform: "linux",
     arch: process.arch,
     forbidden_distributions: [

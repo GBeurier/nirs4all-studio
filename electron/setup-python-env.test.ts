@@ -97,7 +97,7 @@ describe("setup-python-env", () => {
     ]);
   });
 
-  it("builds the exact source SDK while preserving the published Tools wheel", () => {
+  it("builds the exact source SDK wheel", () => {
     expect(
       setupPythonEnvModule.buildDeterministicWheelEnv("1788621086", {
         EXISTING: "preserved",
@@ -127,14 +127,7 @@ describe("setup-python-env", () => {
     expect(setupSource).toContain("await buildPinnedPluginWheel(runtimePython, selectedPluginWheel)");
     expect(setupSource).toContain("normalize-plugin-wheel.py");
     expect(setupSource).not.toContain("PLUGIN_WHEEL_URL");
-    expect(setupSource).toContain(
-      'const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";',
-    );
-    expect(setupSource).toContain(
-      'const TOOLS_WHEEL_URL = "https://files.pythonhosted.org/packages/10/19/68649801e059cf243393585e75a7ca125cddde202d12f555eed1baeb159a/nirs4all_tools-0.0.8-py3-none-any.whl";',
-    );
-    expect(setupSource).toContain("await downloadFile(TOOLS_WHEEL_URL, selectedToolsWheel)");
-    expect(setupSource).not.toContain("TOOLS_SOURCE_URL");
+    expect(setupSource).not.toContain("nirs4all_tools");
   });
 
   it("adds --no-compile when building bundled standalone pip installs", () => {

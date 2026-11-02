@@ -19,7 +19,7 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
   let executable: string;
   let sitePackages: string;
   const versions: Record<string, string> = {
-    nirs4all: "1.4.14", "nirs4all-core": "0.4.6", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13", "nirs4all-io": "0.2.11", "nirs4all-formats": "0.2.13", "nirs4all-methods": "1.3.9", duckdb: "1.5.5", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1", lightgbm: "4.6.0",
+    nirs4all: "1.4.14", "nirs4all-core": "0.4.6", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13", "nirs4all-io": "0.2.11", "nirs4all-formats": "0.2.13", "nirs4all-methods": "1.3.9", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1", lightgbm: "4.6.0",
   };
   const metadata = (name: string, extra = "") => `Metadata-Version: 2.1\nName: ${name}\nVersion: ${versions[name]}\n${extra}`;
   const metadataPath = (name: string) => path.join(sitePackages, `${name.replaceAll("-", "_")}-${versions[name]}.dist-info`, "METADATA");
@@ -55,7 +55,7 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
     });
     await expect(check()).resolves.toEqual({
       issues: [],
-      versions: { nirs4all: "1.4.14", "nirs4all-io": "0.2.11", "nirs4all-methods": "1.3.9", "nirs4all-formats": "0.2.13", duckdb: "1.5.5" },
+      versions: { nirs4all: "1.4.14", "nirs4all-io": "0.2.11", "nirs4all-methods": "1.3.9", "nirs4all-formats": "0.2.13" },
     });
     fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.14", "Version: 1.0.3"));
     expect((await check()).issues).toEqual(["nirs4all 1.0.3 is installed; nirs4all>=1.4.14,<1.5 is required"]);
@@ -93,8 +93,8 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
   });
 
   it("refuses installed but incompatible transitive requirements using real pip check", async () => {
-    fs.writeFileSync(metadataPath("shap"), metadata("shap", "Requires-Dist: duckdb>=99\n"));
-    await expect(validatePythonRuntime(executable)).rejects.toThrow(/duckdb>=99/);
+    fs.writeFileSync(metadataPath("shap"), metadata("shap", "Requires-Dist: pyarrow>=99\n"));
+    await expect(validatePythonRuntime(executable)).rejects.toThrow(/pyarrow>=99/);
   });
 
   it("refuses a missing scientific entrypoint", async () => {

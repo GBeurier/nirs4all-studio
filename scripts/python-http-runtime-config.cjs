@@ -20,11 +20,6 @@ const BACKEND_COMMON_PACKAGES = Object.freeze([
   "msgpack>=1.0.0",
 ]);
 
-const BACKEND_TRANSITION_TOOL_PACKAGES = Object.freeze([
-  "nirs4all-tools>=0.0.8",
-]);
-
 module.exports = {
   BACKEND_COMMON_PACKAGES,
-  BACKEND_TRANSITION_TOOL_PACKAGES,
 };
