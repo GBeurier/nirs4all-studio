@@ -5,7 +5,8 @@ import {
   getRecommendedConfig,
 } from "@/api/config";
 import { getRuntimeSummary } from "@/api/system";
-import { api, resetBackendUrl } from "@/api/transport";
+import { resetBackendUrl } from "@/api/transport";
+import { waitForScientificReadiness } from "@/lib/scientificReadiness";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import {
   filterPackageNamesForProfile,
@@ -73,7 +74,7 @@ export async function loadPostSwitchValidation(): Promise<PostSwitchValidation> 
     retryAsync(() => getRuntimeSummary(), 6),
     retryAsync(() => detectGPU(), 4).catch(() => null),
     retryAsync(() => getRecommendedConfig(), 4).catch(() => null),
-    retryAsync(() => api.get<{ ml_ready?: boolean; ml_error?: string }>("/system/readiness"), 4),
+    retryAsync(() => waitForScientificReadiness(), 4),
   ]);
 
   if (!runtimeSummary.coherent || !runtimeSummary.core_ready || readiness.ml_ready !== true) {

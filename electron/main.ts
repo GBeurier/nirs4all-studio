@@ -204,6 +204,23 @@ function getNativeSidecarInfo() {
     : info;
 }
 
+/** The sidecar's cold acquisition budget (180 s) plus a margin. */
+const SCIENTIFIC_ACQUISITION_WAIT_MS = 200_000;
+
+/**
+ * Rust acquires the scientific host after it reports ready; readiness says
+ * `ml_loading` until that acquisition ends. Wait for its outcome.
+ */
+async function waitForScientificAcquisition(url: string) {
+  const deadline = Date.now() + SCIENTIFIC_ACQUISITION_WAIT_MS;
+  for (;;) {
+    const response = await nativeSidecarManager.authenticatedFetch(`${url}/api/system/readiness`);
+    const readiness = await response.json() as { ml_ready?: boolean; ml_loading?: boolean; ml_error?: string };
+    if (!response.ok || readiness.ml_loading !== true || Date.now() >= deadline) return { response, readiness };
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 async function applyPythonRuntimeChange<T extends { success: boolean }>(
   change: () => Promise<T>,
 ): Promise<T> {
@@ -216,11 +233,10 @@ async function applyPythonRuntimeChange<T extends { success: boolean }>(
     await startNativeSidecar(false, false);
     const info = nativeSidecarManager.getInfo();
     if (!info.url) throw new Error("The analysis backend could not be started.");
-    const [readinessResponse, coherenceResponse] = await Promise.all([
-      nativeSidecarManager.authenticatedFetch(`${info.url}/api/system/readiness`),
+    const [{ response: readinessResponse, readiness }, coherenceResponse] = await Promise.all([
+      waitForScientificAcquisition(info.url),
       nativeSidecarManager.authenticatedFetch(`${info.url}/api/system/env-coherence`),
     ]);
-    const readiness = await readinessResponse.json() as { ml_ready?: boolean; ml_error?: string };
     const coherence = await coherenceResponse.json() as { coherent?: boolean; running_python?: string };
     if (!readinessResponse.ok || readiness.ml_ready !== true) {
       console.error("Selected scientific library could not be activated:", readiness.ml_error);
