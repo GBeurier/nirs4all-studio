@@ -48,14 +48,14 @@ env:
   # selected immutable releases and update them with the ecosystem release board.
   # SDK source and normalized wheel are exact; conversion-tools retains its PyPI proof.
   NIRS4ALL_PUBLICATION_STATUS: source-built
-  NIRS4ALL_LIBRARY_REF: f5c3b2ad0983caf9eb7d6c5b6364c99aee85f678
-  NIRS4ALL_SOURCE_EPOCH: '1793611940'
+  NIRS4ALL_LIBRARY_REF: 302e8e8be8d39ef25ef951104bb59cc55e561b25
+  NIRS4ALL_SOURCE_EPOCH: '1793621659'
   DAG_ML_REF: 747cb9c54271e32cc213b880928a983562bb1b20
   DAG_ML_DATA_REF: 78719b68c8e9ffd4c2035792574b8da33387d237
   NIRS4ALL_TOOLS_REF: ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/f5c3b2ad0983caf9eb7d6c5b6364c99aee85f678.tar.gz
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/302e8e8be8d39ef25ef951104bb59cc55e561b25.tar.gz
   NIRS4ALL_WHEEL_URL: ''
-  NIRS4ALL_WHEEL_SHA256: 974e68cc7b857441fe0fcc2ecc9d96fe22f878ac7203901e0b9b871340f6c54a
+  NIRS4ALL_WHEEL_SHA256: dd3ec7fc3612fa5fba20f32e6f309c458f55cbb9d510b81278fdad6954d1db05
   DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/747cb9c54271e32cc213b880928a983562bb1b20.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/78719b68c8e9ffd4c2035792574b8da33387d237.tar.gz
   NIRS4ALL_TOOLS_SOURCE_URL: https://github.com/GBeurier/nirs4all-tools/archive/ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8.tar.gz
@@ -165,7 +165,7 @@ jobs:
             fi
           done
           if [[ "$NIRS4ALL_SOURCE_URL" != "https://github.com/GBeurier/nirs4all/archive/$NIRS4ALL_LIBRARY_REF.tar.gz" ||
-                "$NIRS4ALL_SOURCE_EPOCH" != "1793611940" || -n "$NIRS4ALL_WHEEL_URL" ]]; then
+                "$NIRS4ALL_SOURCE_EPOCH" != "1793621659" || -n "$NIRS4ALL_WHEEL_URL" ]]; then
             echo "::error::SDK source build must match the exact commit/epoch and cannot substitute a registry wheel"
             exit 1
           fi
@@ -221,7 +221,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      nirs4all_library_ref: f5c3b2ad0983caf9eb7d6c5b6364c99aee85f678
+      nirs4all_library_ref: 302e8e8be8d39ef25ef951104bb59cc55e561b25
       dag_ml_ref: 747cb9c54271e32cc213b880928a983562bb1b20
       dag_ml_data_ref: 78719b68c8e9ffd4c2035792574b8da33387d237
 

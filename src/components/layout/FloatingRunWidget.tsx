@@ -52,7 +52,7 @@ function RunItem({
           {item.runName}
         </span>
         <Badge variant="outline" className="text-[10px]">
-          {item.progressLabel ?? t("runs.widget.unavailable")}
+          {item.progressLabel ?? t("runs.status.running")}
         </Badge>
       </div>
       {item.progressUnavailable
@@ -174,7 +174,7 @@ export function FloatingRunWidget() {
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">{t("runs.widget.progress")}</span>
-                  <span className="font-medium">{selectedItem?.progressLabel ?? t("runs.widget.unavailable")}</span>
+                  <span className="font-medium">{selectedItem?.progressLabel ?? t("runs.status.running")}</span>
                 </div>
                 {selectedItem?.progressUnavailable
                   ? <IndeterminateProgress className="h-2" />

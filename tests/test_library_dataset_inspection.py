@@ -60,18 +60,24 @@ def test_multimodal_inspection_restores_real_typed_cohort():
     assert result["summary"]["test_samples"] == 1
 
 
-def test_wizard_import_preserves_sparse_multitarget_rows_and_metadata(tmp_path):
+@pytest.mark.parametrize("global_policy", ["auto", "abort"])
+@pytest.mark.parametrize("scientific_run", [False, True])
+def test_wizard_import_preserves_sparse_multitarget_rows_and_metadata(tmp_path, scientific_run, global_policy):
     """Exercise the actual IO owner after the wizard supplies role NA defaults."""
     from api.library_documents import configure_dataset
 
     (tmp_path / "Xcal.csv").write_text("1000;1001\n1;2\n3;4\n5;6\n")
     (tmp_path / "Ycal.csv").write_text("protein;fat\n1.5;10\n;20\n3.5;\n")
     (tmp_path / "Mcal.csv").write_text("subject;batch\na;A\nb;\nc;C\n")
-    config = {"name": "sparse targets", "task_type": "regression", "global_params": {"delimiter": ";", "has_header": True, "na_policy": "auto"},
+    config = {"name": "sparse targets", "task_type": "regression", "global_params": {"delimiter": ";", "has_header": True, "na_policy": global_policy},
               "files": [{"path": str(tmp_path / filename), "type": role, "split": "train",
                          "overrides": {"delimiter": ";", "has_header": True, "na_policy": "auto" if role == "X" else "ignore"}}
                         for filename, role in [("Xcal.csv", "X"), ("Ycal.csv", "Y"), ("Mcal.csv", "metadata")]]}
-    configured = configure_dataset({"record": {"path": str(tmp_path), "config": config}})
+    configured = configure_dataset({"record": {"path": str(tmp_path), "config": config}, "scientific_run": scientific_run})
+    if scientific_run:
+        from nirs4all.api.studio_scientific_general import _materialize_file_dataset
+        loaded = _materialize_file_dataset(configured)
+        assert loaded.x({}).shape[0] == 3
     result = inspect_dataset_document("dataset.preview", {"config": configured, "max_samples": 3})
     assert result["success"] is True
     assert result["summary"]["num_samples"] == 3
@@ -84,7 +90,8 @@ def test_wizard_import_preserves_sparse_multitarget_rows_and_metadata(tmp_path):
 
 @pytest.mark.parametrize("stored_shape", ["files", "library"])
 @pytest.mark.parametrize("policy", ["auto", "ignore", "abort"])
-def test_reopened_dataset_retains_sparse_rows_or_reports_explicit_abort(tmp_path, stored_shape, policy):
+@pytest.mark.parametrize("scientific_run", [False, True])
+def test_reopened_dataset_retains_sparse_rows_or_reports_explicit_abort(tmp_path, stored_shape, policy, scientific_run):
     """Existing records must behave like a fresh wizard import, for both splits."""
     from api.library_documents import configure_dataset
     files = []
@@ -100,7 +107,7 @@ def test_reopened_dataset_retains_sparse_rows_or_reports_explicit_abort(tmp_path
             files.append({"path": str(tmp_path / filename), "type": role, "split": split})
             library[f"{split}_{'group' if role == 'metadata' else role.lower()}"] = str(tmp_path / filename)
     config = {**library, "files": files} if stored_shape == "files" else library
-    configured = configure_dataset({"record": {"path": str(tmp_path), "config": config}})
+    configured = configure_dataset({"record": {"path": str(tmp_path), "config": config}, "scientific_run": scientific_run})
     if policy == "abort":
         with pytest.raises(ValueError, match="NA"):
             inspect_dataset_document("dataset.preview", {"config": configured})

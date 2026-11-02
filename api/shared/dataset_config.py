@@ -63,17 +63,19 @@ def _na_policy(params: dict[str, Any], default: str | None = "auto") -> str | No
     return policy
 
 
-def for_dataset_configs(config: dict[str, Any]) -> dict[str, Any]:
+def for_dataset_configs(config: dict[str, Any], *, native_io: bool = False) -> dict[str, Any]:
     """Adapt native IO parameters to the library's DatasetConfigs/run loader.
 
     Native IO consumes nested ``na`` settings. DatasetConfigs consumes their
     flat equivalents and otherwise forwards ``na`` to pandas as a CSV option.
     Preserve the requested policy, including ignore, without changing rows.
+    Studio V2 materializes files through native IO and must retain nested NA
+    settings; the historical DatasetConfigs loader still needs flat options.
     """
     def loading_params(params: dict[str, Any], key: str) -> dict[str, Any]:
         bridged = _with_library_na_params(params)
         return {name: value for name, value in bridged.items()
-                if name != "na" and (name != "signal_type" or key.endswith("_x_params"))}
+                if (name != "na" or native_io) and (name != "signal_type" or key.endswith("_x_params"))}
 
     return {
         key: loading_params(value, key)
