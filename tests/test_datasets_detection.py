@@ -337,8 +337,8 @@ def test_legacy_flat_dataset_record_still_translates_root_parsing(tmp_path: Path
     assert config["global_params"]["has_header"] is False
 
 
-def test_scientific_run_config_loads_with_nirs4all_115(tmp_path: Path):
-    from nirs4all.data.config import DatasetConfigs
+def test_scientific_run_config_keeps_native_na_and_loads(tmp_path: Path):
+    from nirs4all.api.dataset_inspection import load_dataset_for_analysis
 
     from api.library_documents import configure_dataset
 
@@ -352,9 +352,11 @@ def test_scientific_run_config_loads_with_nirs4all_115(tmp_path: Path):
         "na_policy": "auto", "header_unit": "nm", "delimiter": ";",
     }}
     config = configure_dataset({"record": record, "scientific_run": True})
-    assert "na" not in config["global_params"]
+    # Scientific runs load through native IO, which reads the nested NA policy.
+    assert config["global_params"]["na"]["policy"] == "auto"
     assert "signal_type" not in config["train_y_params"]
-    assert DatasetConfigs(config).get_dataset_at(0).num_samples == 4
+    dataset, _reader = load_dataset_for_analysis(config)
+    assert dataset.num_samples == 4
 
 
 def test_scientific_run_preserves_saved_multimodal_dataset_document(tmp_path: Path):
