@@ -31,15 +31,24 @@ interface VersionCheckCache {
   issues: string[];
 }
 
+/** Cold interpreters on Windows (first launch after an update, antivirus scans) can exceed 10 seconds. */
+const PACKAGE_VERSION_PROBE_TIMEOUT_MS = 30_000;
+
+/** Explain package version issues to the user, with the available recovery actions. */
+export function describeRuntimePackageIssues(issues: readonly string[]): string {
+  return `This Python environment needs the versions required by Studio: ${issues.join("; ")}. Install the required versions below or in Python Environment settings (this can downgrade newer packages), or select Studio's included environment.`;
+}
+
+/** Return the package version issues of a reused environment; empty when compatible or unknown. */
 export async function checkRuntimePackageVersions(options: {
   pythonPath: string;
   appVersion: string;
   userDataDir: string;
   reused: boolean;
   force?: boolean;
-}): Promise<string | null> {
+}): Promise<string[]> {
   // The immutable bundled runtime is qualified with the installer.
-  if (!options.reused) return null;
+  if (!options.reused) return [];
   const requirements = REUSABLE_RUNTIME_PACKAGES;
   const fingerprint = computeEnvFingerprint(path.dirname(options.pythonPath), options.pythonPath);
   const key = JSON.stringify([2, options.pythonPath, options.appVersion, requirements, fingerprint]);
@@ -57,9 +66,12 @@ export async function checkRuntimePackageVersions(options: {
     const result = await execFileText(options.pythonPath, [
       "-I", "-B", "-c", PACKAGE_VERSION_PROBE,
       JSON.stringify(requirements),
-    ], 10_000);
+    ], PACKAGE_VERSION_PROBE_TIMEOUT_MS);
     // Unknown metadata must not disable a healthy host; Rust readiness remains authoritative.
-    if (!result) return null;
+    if (!result) {
+      console.warn(`[EnvManager] Package versions of ${options.pythonPath} could not be read; Rust readiness decides`);
+      return [];
+    }
     try {
       const parsed: unknown = JSON.parse(result.stdout.trim());
       if (!Array.isArray(parsed) || !parsed.every(issue => typeof issue === "string")) {
@@ -67,7 +79,7 @@ export async function checkRuntimePackageVersions(options: {
       }
       issues = parsed;
     } catch {
-      return null;
+      return [];
     }
     try {
       if (fingerprint) {
@@ -76,7 +88,5 @@ export async function checkRuntimePackageVersions(options: {
       }
     } catch { /* A read-only settings directory must not prevent startup. */ }
   }
-  return issues.length > 0
-    ? `This Python environment needs the versions required by Studio: ${issues.join("; ")}. Install the required versions below or in Python Environment settings (this can downgrade newer packages), or select Studio's included environment.`
-    : null;
+  return issues;
 }
