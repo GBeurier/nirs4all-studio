@@ -97,7 +97,18 @@ pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_HOST_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
+/// Exact nirs4all release of the packaged runtime, attested with the manifest,
+/// wheel, source commit and callable digests below.
 pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.14";
+/// Exclusive upper bound of the nirs4all releases a selected environment may use.
+///
+/// Selected (custom or managed) environments are not attested file by file:
+/// they accept any nirs4all release in `[SCIENTIFIC_DISTRIBUTION_VERSION,
+/// SCIENTIFIC_DISTRIBUTION_LIMIT)`, the range Electron checks and installs
+/// (`REUSABLE_RUNTIME_PACKAGES`). Studio reaches nirs4all only through named,
+/// schema-versioned callables that stay stable within a minor release.
+pub const SCIENTIFIC_DISTRIBUTION_LIMIT: &str = "1.5";
+pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = ">=1.4.14,<1.5";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
     "0ed298d6dfd461ddb4dafcd7b14d11ead9753301fbcf348ca4fdacbe97573beb";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
@@ -150,7 +161,9 @@ try:
     record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0] not in installer_members))
     manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
     distribution_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest() if manifest_bytes else None
-    distribution_files_verified=bool(record_rows)
+    # Only the packaged runtime (argv[1]) is attested member by member.
+    # Selected environments are admitted by version range and Methods ABI.
+    distribution_files_verified=bool(record_rows) and bool(sys.argv[1])
     if distribution_files_verified:
         for relative,encoded,size in record_rows:
             algorithm,expected=encoded.split("=",1)
@@ -200,36 +213,47 @@ if sys.argv[1]:
         if not os.path.samefile(runtime_prefix,sys.prefix):
             raise RuntimeError("scientific runtime prefix changed")
         sys.prefix=runtime_prefix
+def studio_distribution_supported(version):
+    import re
+    match=re.match(r"v?(\d+(?:\.\d+)*)(.*)$",version.strip(),re.I)
+    if not match:
+        return False
+    release=[int(part) for part in match.group(1).split(".")]
+    prerelease=bool(re.match(r"[-_.]?(a|b|c|rc|alpha|beta|pre|preview|dev)",match.group(2).strip(),re.I))
+    def compare(bound):
+        size=max(len(release),len(bound))
+        left=release+[0]*(size-len(release))
+        right=bound+[0]*(size-len(bound))
+        return (left>right)-(left<right)
+    minimum=compare([1,4,14])
+    return (minimum>0 or (minimum==0 and not prerelease)) and compare([1,5])<0
 raw=sys.stdin.buffer.read(33554433)
 if len(raw)>33554432:
     raise RuntimeError("scientific request exceeds stdin budget")
 request=json.loads(raw)
 distribution=importlib.metadata.distribution("nirs4all")
-if distribution.version != "1.4.14":
-    raise RuntimeError("scientific distribution version changed")
-record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
-record_path=distribution.locate_file(record_entry) if record_entry else None
-record_bytes=open(record_path,"rb").read() if record_path else b""
-metadata_root=str(record_entry).rsplit("/",1)[0]+"/"
-installer_members={metadata_root+name for name in ("INSTALLER","REQUESTED","direct_url.json","uv_cache.json")}
-record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0] not in installer_members))
-manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-if hashlib.sha256(manifest_bytes).hexdigest() != "0ed298d6dfd461ddb4dafcd7b14d11ead9753301fbcf348ca4fdacbe97573beb":
-    raise RuntimeError("scientific distribution identity changed")
-for relative,encoded,size in record_rows:
-    if "=" not in encoded or (size and not size.isdigit()):
-        raise RuntimeError("scientific distribution record changed")
-    if not sys.argv[1]:
-        algorithm,expected=encoded.split("=",1)
-        payload=open(distribution.locate_file(relative),"rb").read()
-        import base64
-        actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
-        if actual != expected or (size and len(payload) != int(size)):
-            raise RuntimeError("scientific distribution member changed")
+if sys.argv[1]:
+    if distribution.version != "1.4.14":
+        raise RuntimeError("scientific distribution version changed")
+    record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
+    record_path=distribution.locate_file(record_entry) if record_entry else None
+    record_bytes=open(record_path,"rb").read() if record_path else b""
+    metadata_root=str(record_entry).rsplit("/",1)[0]+"/"
+    installer_members={metadata_root+name for name in ("INSTALLER","REQUESTED","direct_url.json","uv_cache.json")}
+    record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0] not in installer_members))
+    manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
+    if hashlib.sha256(manifest_bytes).hexdigest() != "0ed298d6dfd461ddb4dafcd7b14d11ead9753301fbcf348ca4fdacbe97573beb":
+        raise RuntimeError("scientific distribution identity changed")
+    for relative,encoded,size in record_rows:
+        if "=" not in encoded or (size and not size.isdigit()):
+            raise RuntimeError("scientific distribution record changed")
+elif not studio_distribution_supported(distribution.version):
+    raise RuntimeError("scientific distribution version unsupported")
 # Build qualification verifies the full packaged closure. Runtime acquisition
 # verifies the scientific RECORD members once; subsequent workers verify its
 # identity and the selected callable without repeating whole-package hashing.
-# Reused environments hash their scientific RECORD on each fresh worker.
+# Selected environments are admitted by version range; Rust snapshots their
+# nirs4all package and metadata to refuse later changes.
 import nirs4all
 target=getattr(nirs4all,"studio_scientific_job_v1",None)
 if not callable(target):
@@ -334,6 +358,7 @@ pub enum ScientificCpythonUnavailable {
     CallableUnavailable,
     CallableTampered,
     DistributionTampered,
+    DistributionVersionUnsupported,
     RuntimeContractUnavailable,
     RuntimeContractTampered,
     RequestResolverUnavailable,
@@ -365,6 +390,7 @@ impl ScientificCpythonUnavailable {
             Self::CallableUnavailable => "scientific_callable_unavailable",
             Self::CallableTampered => "scientific_callable_tampered",
             Self::DistributionTampered => "scientific_distribution_tampered",
+            Self::DistributionVersionUnsupported => "scientific_distribution_version_unsupported",
             Self::RuntimeContractUnavailable => "python_runtime_contract_unavailable",
             Self::RuntimeContractTampered => "python_runtime_contract_tampered",
             Self::RequestResolverUnavailable => "scientific_request_resolver_unavailable",
@@ -422,13 +448,15 @@ struct PackagedRuntimeIdentity {
 
 /// Sticky acquisition record for an explicitly selected `CPython` stdio host.
 ///
-/// Selection requires the exact attested distribution and callable, a qualified
+/// The packaged runtime requires the exact attested distribution and callable;
+/// a selected environment requires a supported nirs4all release. Both need a qualified
 /// Unix process group or Windows kill-on-close Job Object, and the Rust-owned
 /// saved-run resolver that prepares the callable's path-free matrix contract
 /// before any job mutation.
 #[derive(Debug)]
 pub struct CpythonScientificJobExecutor {
     identity: Option<HostIdentity>,
+    distribution_version: Option<String>,
     callable_identity: Option<HostIdentity>,
     packaged_runtime: Option<PackagedRuntimeIdentity>,
     existing_site_packages: Option<PathBuf>,
@@ -452,6 +480,12 @@ pub(crate) struct LibraryFacadeError {
 impl CpythonScientificJobExecutor {
     pub(crate) const fn dataset_cache_scope(&self) -> u64 {
         self.dataset_cache_scope
+    }
+
+    /// The nirs4all release found when this host was acquired.
+    #[must_use]
+    pub fn distribution_version(&self) -> Option<&str> {
+        self.distribution_version.as_deref()
     }
 
     fn verify_document_adapters(&self, site_packages: &Path) -> Result<(), String> {
@@ -771,10 +805,7 @@ impl CpythonScientificJobExecutor {
         let acquired = packaged_runtime.as_ref().map_or_else(
             || {
                 existing_site_packages.as_deref().map_or_else(
-                    || {
-                        acquire_host(path, site_packages)
-                            .map(|(identity, callable)| (identity, callable, None, None))
-                    },
+                    || acquire_host(path, site_packages).map(|acquired| (acquired, None, None)),
                     |selected_site| {
                         let mut identity =
                             host_identity_with_limit(path, MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)?;
@@ -788,10 +819,11 @@ impl CpythonScientificJobExecutor {
                             selected_site,
                         )?;
                         let (worker, output) = warm_library_host::Worker::acquire(&identity, None)?;
-                        let (identity, callable) = parse_acquired_host(identity, &output)?;
-                        verify_identity(&identity)?;
+                        let acquired =
+                            parse_acquired_host(identity, &output, DistributionPolicy::Selected)?;
+                        verify_identity(&acquired.identity)?;
                         selected.verify()?;
-                        Ok((identity, callable, Some(worker), Some(selected)))
+                        Ok((acquired, Some(worker), Some(selected)))
                     },
                 )
             },
@@ -799,16 +831,18 @@ impl CpythonScientificJobExecutor {
                 let identity = host_identity(path)?;
                 let (worker, output) =
                     warm_library_host::Worker::acquire(&identity, Some(runtime))?;
-                let (identity, callable) = parse_acquired_host(identity, &output)?;
-                Ok((identity, callable, Some(worker), None))
+                let acquired =
+                    parse_acquired_host(identity, &output, DistributionPolicy::Packaged)?;
+                Ok((acquired, Some(worker), None))
             },
         );
         match acquired {
-            Ok((identity, callable_identity, worker, selected_library)) => {
-                let callable_ready = callable_identity.is_some();
+            Ok((acquired, worker, selected_library)) => {
+                let callable_ready = acquired.callable.is_some();
                 Self {
-                    identity: Some(identity),
-                    callable_identity,
+                    identity: Some(acquired.identity),
+                    distribution_version: Some(acquired.distribution_version),
+                    callable_identity: acquired.callable,
                     packaged_runtime,
                     existing_site_packages,
                     selected_library,
@@ -827,6 +861,7 @@ impl CpythonScientificJobExecutor {
             }
             Err(error) => Self {
                 identity: None,
+                distribution_version: None,
                 callable_identity: None,
                 packaged_runtime,
                 existing_site_packages,
@@ -845,6 +880,7 @@ impl CpythonScientificJobExecutor {
     fn unavailable(error: ScientificCpythonUnavailable, config_dir: PathBuf) -> Self {
         Self {
             identity: None,
+            distribution_version: None,
             callable_identity: None,
             packaged_runtime: None,
             existing_site_packages: None,
@@ -1031,19 +1067,144 @@ const fn platform_kill_tree_qualified() -> bool {
     cfg!(any(unix, windows))
 }
 
+/// Which nirs4all distribution an acquired host must expose.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DistributionPolicy {
+    /// The packaged runtime: the exact attested release, RECORD manifest,
+    /// verified members and callable digest.
+    Packaged,
+    /// A selected (custom or managed) interpreter: a supported release only.
+    Selected,
+}
+
+#[derive(Debug)]
+struct AcquiredHost {
+    identity: HostIdentity,
+    callable: Option<HostIdentity>,
+    distribution_version: String,
+}
+
 fn acquire_host(
     path: &Path,
     site_packages: Option<&Path>,
-) -> Result<(HostIdentity, Option<HostIdentity>), ScientificCpythonUnavailable> {
+) -> Result<AcquiredHost, ScientificCpythonUnavailable> {
     let identity = host_identity(path)?;
     let output = run_preflight(&identity.canonical_path, site_packages)?;
-    parse_acquired_host(identity, &output)
+    let policy = if site_packages.is_some() {
+        DistributionPolicy::Packaged
+    } else {
+        DistributionPolicy::Selected
+    };
+    parse_acquired_host(identity, &output, policy)
+}
+
+/// Numeric release and pre-release marker of a PEP 440 version.
+fn version_release(value: &str) -> Option<(Vec<u64>, bool)> {
+    let value = value.trim();
+    let value = value
+        .strip_prefix('v')
+        .or_else(|| value.strip_prefix('V'))
+        .unwrap_or(value);
+    let end = value
+        .find(|character: char| !(character.is_ascii_digit() || character == '.'))
+        .unwrap_or(value.len());
+    let numeric = value[..end].trim_end_matches('.');
+    let release = numeric
+        .split('.')
+        .map(|part| part.parse::<u64>().ok())
+        .collect::<Option<Vec<_>>>()?;
+    let marker = value[numeric.len()..]
+        .trim()
+        .trim_start_matches(['-', '_', '.'])
+        .to_ascii_lowercase();
+    let prerelease = [
+        "a", "b", "c", "rc", "alpha", "beta", "pre", "preview", "dev",
+    ]
+    .iter()
+    .any(|prefix| marker.starts_with(prefix));
+    Some((release, prerelease))
+}
+
+fn compare_releases(left: &[u64], right: &[u64]) -> std::cmp::Ordering {
+    let length = left.len().max(right.len());
+    (0..length)
+        .map(|index| {
+            left.get(index)
+                .copied()
+                .unwrap_or(0)
+                .cmp(&right.get(index).copied().unwrap_or(0))
+        })
+        .find(|ordering| ordering.is_ne())
+        .unwrap_or(std::cmp::Ordering::Equal)
+}
+
+/// Whether a selected environment's nirs4all release is in
+/// `[SCIENTIFIC_DISTRIBUTION_VERSION, SCIENTIFIC_DISTRIBUTION_LIMIT)`.
+/// Pre-releases sort before their release, and pre-releases of the limit are
+/// excluded, as in PEP 440.
+fn distribution_version_supported(version: &str) -> bool {
+    let (Some((release, prerelease)), Some((minimum, _)), Some((limit, _))) = (
+        version_release(version),
+        version_release(SCIENTIFIC_DISTRIBUTION_VERSION),
+        version_release(SCIENTIFIC_DISTRIBUTION_LIMIT),
+    ) else {
+        return false;
+    };
+    let from_minimum = match compare_releases(&release, &minimum) {
+        std::cmp::Ordering::Greater => true,
+        std::cmp::Ordering::Equal => !prerelease,
+        std::cmp::Ordering::Less => false,
+    };
+    from_minimum && compare_releases(&release, &limit).is_lt()
+}
+
+/// Check the reported nirs4all distribution against `policy`; return its version.
+fn checked_distribution(
+    object: &serde_json::Map<String, Value>,
+    policy: DistributionPolicy,
+) -> Result<String, ScientificCpythonUnavailable> {
+    let distribution_version = object
+        .get("distribution_version")
+        .and_then(Value::as_str)
+        .ok_or(ScientificCpythonUnavailable::DistributionTampered)?
+        .to_owned();
+    if object.get("distribution").and_then(Value::as_str) != Some("nirs4all") {
+        return Err(ScientificCpythonUnavailable::DistributionTampered);
+    }
+    if policy == DistributionPolicy::Selected
+        && !distribution_version_supported(&distribution_version)
+    {
+        return Err(ScientificCpythonUnavailable::DistributionVersionUnsupported);
+    }
+    if policy == DistributionPolicy::Packaged
+        && (distribution_version != SCIENTIFIC_DISTRIBUTION_VERSION
+            || object
+                .get("distribution_manifest_sha256")
+                .and_then(Value::as_str)
+                != Some(SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256)
+            || !object
+                .get("distribution_record_sha256")
+                .and_then(Value::as_str)
+                .is_some_and(valid_lower_sha256)
+            || object
+                .get("distribution_files_verified")
+                .and_then(Value::as_bool)
+                != Some(true)
+            || object.get("selected_wheel_sha256").and_then(Value::as_str)
+                != Some(SCIENTIFIC_WHEEL_SHA256)
+            || object.get("source_commit").and_then(Value::as_str)
+                != Some(SCIENTIFIC_SOURCE_COMMIT))
+    {
+        return Err(ScientificCpythonUnavailable::DistributionTampered);
+    }
+    Ok(distribution_version)
 }
 
 fn parse_acquired_host(
     identity: HostIdentity,
     output: &[u8],
-) -> Result<(HostIdentity, Option<HostIdentity>), ScientificCpythonUnavailable> {
+    policy: DistributionPolicy,
+) -> Result<AcquiredHost, ScientificCpythonUnavailable> {
     let response: Value = serde_json::from_slice(output)
         .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
     let object = response
@@ -1059,27 +1220,7 @@ fn parse_acquired_host(
     {
         return Err(ScientificCpythonUnavailable::MalformedResponse);
     }
-    if object.get("distribution").and_then(Value::as_str) != Some("nirs4all")
-        || object.get("distribution_version").and_then(Value::as_str)
-            != Some(SCIENTIFIC_DISTRIBUTION_VERSION)
-        || object
-            .get("distribution_manifest_sha256")
-            .and_then(Value::as_str)
-            != Some(SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256)
-        || !object
-            .get("distribution_record_sha256")
-            .and_then(Value::as_str)
-            .is_some_and(valid_lower_sha256)
-        || object
-            .get("distribution_files_verified")
-            .and_then(Value::as_bool)
-            != Some(true)
-        || object.get("selected_wheel_sha256").and_then(Value::as_str)
-            != Some(SCIENTIFIC_WHEEL_SHA256)
-        || object.get("source_commit").and_then(Value::as_str) != Some(SCIENTIFIC_SOURCE_COMMIT)
-    {
-        return Err(ScientificCpythonUnavailable::DistributionTampered);
-    }
+    let distribution_version = checked_distribution(object, policy)?;
     if object.get("implementation").and_then(Value::as_str) != Some("cpython") {
         return Err(ScientificCpythonUnavailable::NotCpython);
     }
@@ -1118,7 +1259,7 @@ fn parse_acquired_host(
             .get("callable_sha256")
             .and_then(Value::as_str)
             .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-        if expected_digest != SCIENTIFIC_CALLABLE_SHA256 {
+        if policy == DistributionPolicy::Packaged && expected_digest != SCIENTIFIC_CALLABLE_SHA256 {
             return Err(ScientificCpythonUnavailable::CallableTampered);
         }
         let callable_identity =
@@ -1135,7 +1276,11 @@ fn parse_acquired_host(
         }
         None
     };
-    Ok((identity, callable_identity))
+    Ok(AcquiredHost {
+        identity,
+        callable: callable_identity,
+        distribution_version,
+    })
 }
 
 fn valid_lower_sha256(digest: &str) -> bool {
@@ -2303,7 +2448,7 @@ fn run_scientific_process_with_diagnostic(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 fn run_scientific_process_with_progress(
     host: &HostIdentity,
     callable: &HostIdentity,
@@ -3901,6 +4046,7 @@ done"#,
         write_runtime_closure(&python_root, &site_packages, &closure);
         CpythonScientificJobExecutor {
             identity: Some(host_identity(&host).unwrap()),
+            distribution_version: Some(SCIENTIFIC_DISTRIBUTION_VERSION.into()),
             callable_identity: Some(host_identity(&callable).unwrap()),
             packaged_runtime: Some(
                 packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap(),
@@ -3980,6 +4126,173 @@ done"#,
         format!(
             r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_record_sha256":"0000000000000000000000000000000000000000000000000000000000000000","distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
         )
+    }
+
+    const SUPPORTED_VERSION_CASES: [(&str, bool); 12] = [
+        ("1.4.14", true),
+        ("1.4.15", true),
+        ("1.4.99.post1", true),
+        ("1.4.14.0", true),
+        ("1.4.13", false),
+        ("1.4.14rc1", false),
+        ("1.4.14.dev0", false),
+        ("1.5", false),
+        ("1.5.0", false),
+        ("1.5.0rc1", false),
+        ("2.0.0", false),
+        ("unknown", false),
+    ];
+
+    #[test]
+    fn selected_environments_accept_the_studio_nirs4all_range() {
+        assert_eq!(
+            SCIENTIFIC_DISTRIBUTION_REQUIREMENT,
+            format!(">={SCIENTIFIC_DISTRIBUTION_VERSION},<{SCIENTIFIC_DISTRIBUTION_LIMIT}")
+        );
+        for (version, supported) in SUPPORTED_VERSION_CASES {
+            assert_eq!(
+                distribution_version_supported(version),
+                supported,
+                "{version}"
+            );
+        }
+        // The worker re-checks the same bounds in Python before each request.
+        let to_list = |version: &str| format!("[{}]", version.replace('.', ","));
+        let helper = EXECUTION_SCRIPT
+            .split_once("def studio_distribution_supported(version):")
+            .unwrap()
+            .1
+            .split_once("raw=sys.stdin.buffer.read(33554433)")
+            .unwrap()
+            .0;
+        assert!(helper.contains(&format!(
+            "minimum=compare({})",
+            to_list(SCIENTIFIC_DISTRIBUTION_VERSION)
+        )));
+        assert!(helper.contains(&format!(
+            "compare({})<0",
+            to_list(SCIENTIFIC_DISTRIBUTION_LIMIT)
+        )));
+        assert!(EXECUTION_SCRIPT.contains(&format!(
+            "if sys.argv[1]:\n    if distribution.version != \"{SCIENTIFIC_DISTRIBUTION_VERSION}\":"
+        )));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn worker_version_check_matches_the_rust_range() {
+        if !Command::new("python3")
+            .arg("-c")
+            .arg("pass")
+            .status()
+            .is_ok_and(|status| status.success())
+        {
+            return;
+        }
+        let helper = EXECUTION_SCRIPT
+            .split_once("raw=sys.stdin.buffer.read(33554433)")
+            .unwrap()
+            .0
+            .split_once("def studio_distribution_supported(version):")
+            .unwrap()
+            .1;
+        let versions: Vec<_> = SUPPORTED_VERSION_CASES
+            .iter()
+            .map(|(version, _)| *version)
+            .collect();
+        let script = format!(
+            "import json,sys\ndef studio_distribution_supported(version):{helper}print(json.dumps([studio_distribution_supported(v) for v in json.loads(sys.argv[1])]))\n"
+        );
+        let output = Command::new("python3")
+            .args(["-I", "-B", "-c", &script])
+            .arg(serde_json::to_string(&versions).unwrap())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let expected: Vec<_> = SUPPORTED_VERSION_CASES
+            .iter()
+            .map(|(_, supported)| *supported)
+            .collect();
+        assert_eq!(
+            serde_json::from_slice::<Vec<bool>>(&output.stdout).unwrap(),
+            expected
+        );
+    }
+
+    fn preflight_output(version: &str, callable: &Path) -> Vec<u8> {
+        let digest = hex_digest(&host_identity(callable).unwrap().sha256);
+        serde_json::to_vec(&serde_json::json!({
+            "callable": "nirs4all.studio_scientific_job_v1",
+            "callable_path": callable,
+            "callable_sha256": digest,
+            "distribution": "nirs4all",
+            "distribution_error": null,
+            // A PyPI or locally built wheel: not the packaged attested identity.
+            "distribution_files_verified": false,
+            "distribution_manifest_sha256": "1".repeat(64),
+            "distribution_record_sha256": "2".repeat(64),
+            "distribution_version": version,
+            "implementation": "cpython",
+            "isolated": true,
+            "network_bind_denied": true,
+            "network_ownership": "forbidden",
+            "ready": true,
+            "schema": "nirs4all.studio-scientific-cpython-host.v1",
+            "selected_wheel_sha256": SCIENTIFIC_WHEEL_SHA256,
+            "source_commit": SCIENTIFIC_SOURCE_COMMIT,
+            "version": [3, 11, 13],
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn only_the_packaged_runtime_requires_the_attested_distribution_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let callable = root.path().join("studio_scientific.py");
+        fs::write(
+            &callable,
+            "def studio_scientific_job_v1(request): return request\n",
+        )
+        .unwrap();
+        let host = host_identity(&callable).unwrap();
+        for version in ["1.4.14", "1.4.15"] {
+            let acquired = parse_acquired_host(
+                host.clone(),
+                &preflight_output(version, &callable),
+                DistributionPolicy::Selected,
+            )
+            .unwrap();
+            assert_eq!(acquired.distribution_version, version);
+            assert!(acquired.callable.is_some());
+            assert_eq!(
+                parse_acquired_host(
+                    host.clone(),
+                    &preflight_output(version, &callable),
+                    DistributionPolicy::Packaged,
+                )
+                .unwrap_err(),
+                ScientificCpythonUnavailable::DistributionTampered
+            );
+        }
+        for version in ["1.4.13", "1.5.0"] {
+            assert_eq!(
+                parse_acquired_host(
+                    host.clone(),
+                    &preflight_output(version, &callable),
+                    DistributionPolicy::Selected,
+                )
+                .unwrap_err(),
+                ScientificCpythonUnavailable::DistributionVersionUnsupported
+            );
+        }
+        assert_eq!(
+            ScientificCpythonUnavailable::DistributionVersionUnsupported.reason(),
+            "scientific_distribution_version_unsupported"
+        );
     }
 
     #[test]
@@ -4143,7 +4456,7 @@ done"#,
         let started = Instant::now();
         let (worker, output) = warm_library_host::Worker::acquire(&host, Some(&runtime)).unwrap();
         eprintln!("preflight + warm acquisition: {:?}", started.elapsed());
-        parse_acquired_host(host, &output).unwrap();
+        parse_acquired_host(host, &output, DistributionPolicy::Packaged).unwrap();
         drop(worker);
     }
 
@@ -4476,6 +4789,7 @@ done"#,
         // and setup must be usable before the user registers any datasets.
         let scientific_host = Arc::new(CpythonScientificJobExecutor {
             identity: Some(host_identity(&host).unwrap()),
+            distribution_version: Some(SCIENTIFIC_DISTRIBUTION_VERSION.into()),
             callable_identity: Some(host_identity(&callable).unwrap()),
             packaged_runtime: Some(
                 packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap(),

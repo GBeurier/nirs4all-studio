@@ -156,6 +156,10 @@ pub trait ScientificJobExecutor: Debug + Send + Sync {
 /// remain owned by [`NativeJobRuntime`].
 pub trait ScientificJobTerminal: Debug + Send + Sync {
     /// Publish observed scientific work; None means no measured denominator.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the progress update cannot be published.
     fn progress(
         &self,
         job_id: &str,

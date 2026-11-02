@@ -70,3 +70,17 @@ def test_uv_metadata_does_not_hide_tampered_sdk_code(tmp_path):
     _installation(tmp_path, f"{METADATA}/uv_cache.json")
     (tmp_path / "nirs4all/__init__.py").write_text("def studio_scientific_job_v1(request): return 123\n", encoding="utf-8")
     assert not _probe(tmp_path)["distribution_files_verified"]
+
+
+def test_selected_environment_is_admitted_by_version_not_member_hashes(tmp_path):
+    # Custom and managed environments (no packaged site-packages argument) are
+    # checked by version range and ABI; only the packaged runtime is attested.
+    _installation(tmp_path)
+    (tmp_path / "nirs4all/__init__.py").write_text("def studio_scientific_job_v1(request): return 123\n", encoding="utf-8")
+    env = dict(os.environ) | {"NIRS4ALL_SELECTED_SITE_PACKAGES": str(tmp_path)}
+    completed = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", PROBE, ""],
+                               env=env, text=True, capture_output=True, check=True, timeout=30)
+    result = json.loads(completed.stdout)
+    assert result["ready"]
+    assert result["distribution_version"] == "1.4.13"
+    assert not result["distribution_files_verified"]
