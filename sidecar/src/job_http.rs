@@ -176,11 +176,13 @@ pub trait ScientificJobTerminal: Debug + Send + Sync {
     fn activity(&self, _job_id: &str, _message: &str) -> Result<(), NativeJobRuntimeError> {
         Ok(())
     }
-    /// Publish and persist a validated scientific result as completed.
+    /// Publish and persist a validated scientific result as completed, or as
+    /// an explicit failure when the result itself cannot be recorded.
     ///
     /// # Errors
     ///
-    /// Returns a Rust lifecycle, event, or durable-write failure.
+    /// Returns a Rust lifecycle, event, or durable-write failure which also
+    /// prevented recording that explicit failure.
     fn complete(&self, job_id: &str, result: Value) -> Result<(), NativeJobRuntimeError>;
 
     /// Publish and persist a bounded worker failure.
@@ -739,9 +741,12 @@ impl NativeJobRuntime {
 
     /// Complete a job, honoring cooperative cancellation, and publish once.
     ///
+    /// The job snapshot keeps the full result. A result too large for one
+    /// WebSocket frame is published as `null`; clients read it from HTTP state.
+    ///
     /// # Errors
     ///
-    /// Returns lifecycle validation or event-projection failures.
+    /// Returns lifecycle validation, durable-write or event-publication failures.
     pub fn complete_at(
         &self,
         id: &str,
@@ -749,8 +754,13 @@ impl NativeJobRuntime {
         timestamp: &str,
         now: Instant,
     ) -> Result<JobSnapshot, NativeJobRuntimeError> {
-        ensure_event_data_bounded(&json!({"job_id": id, "result": result}))?;
-        self.mutate_terminal(|registry| registry.complete_at(id, result, timestamp, now))
+        self.mutate_terminal(|registry| {
+            let mut mutation = registry.complete_at(id, result, timestamp, now)?;
+            if let Some(event) = mutation.event.as_mut() {
+                event.omit_result_beyond(MAX_JOB_EVENT_DATA_BYTES);
+            }
+            Ok(mutation)
+        })
     }
 
     /// Fail a job and publish the exact legacy failure event.
@@ -799,6 +809,7 @@ impl NativeJobRuntime {
             // A fresh process may observe its kill token immediately and call
             // back from another thread; the acknowledgement must never race
             // ahead of the authoritative lifecycle flag.
+            let already_requested = snapshot.cancellation_requested();
             let mutation = registry.request_cancel_at(id, timestamp, now)?;
             drop(registry);
             let executor = self
@@ -810,9 +821,19 @@ impl NativeJobRuntime {
                     || Arc::clone(&self.executor),
                     |job| Arc::clone(&job.executor),
                 );
-            executor
-                .request_cooperative_cancel(id)
-                .map_err(NativeJobRuntimeError::Executor)?;
+            if let Err(error) = executor.request_cooperative_cancel(id) {
+                // The worker never received this request: do not let a later
+                // completion be recorded as a cancellation. A job which became
+                // terminal meanwhile has nothing left to withdraw.
+                if !already_requested {
+                    let _ = self
+                        .registry
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .withdraw_cancel_request(id);
+                }
+                return Err(NativeJobRuntimeError::Executor(error));
+            }
             return self.publish(mutation);
         }
         let mutation = registry.request_cancel_at(id, timestamp, now)?;
@@ -958,7 +979,18 @@ impl ScientificJobTerminal for NativeJobRuntime {
         Ok(())
     }
     fn complete(&self, job_id: &str, result: Value) -> Result<(), NativeJobRuntimeError> {
-        self.complete_at(job_id, result, &rfc3339_now(), Instant::now())?;
+        if let Err(error) = self.complete_at(job_id, result, &rfc3339_now(), Instant::now()) {
+            // A result the lifecycle refuses must not leave the job running:
+            // record an explicit failure. Only an unrecordable failure is
+            // reported back to the executor as a systemic fault.
+            self.fail_at(
+                job_id,
+                format!("The scientific result could not be recorded: {error:?}"),
+                None,
+                &rfc3339_now(),
+                Instant::now(),
+            )?;
+        }
         Ok(())
     }
 

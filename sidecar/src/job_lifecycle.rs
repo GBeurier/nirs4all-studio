@@ -258,6 +258,17 @@ impl LegacyJobEvent {
             ("timestamp".into(), Value::String(self.timestamp.clone())),
         ]))
     }
+
+    /// Replace a `job_completed` result with `null` when the event data would
+    /// exceed `max_data_bytes`. The job snapshot keeps the full result, which
+    /// stays readable through the authoritative HTTP job state.
+    pub fn omit_result_beyond(&mut self, max_data_bytes: usize) {
+        if self.event_type == LegacyJobEventType::Completed
+            && self.data.to_string().len() > max_data_bytes
+        {
+            self.data["result"] = Value::Null;
+        }
+    }
 }
 
 /// Result of a state mutation and, when applicable, its sole ordered event.
@@ -723,6 +734,19 @@ impl JobRegistry {
             }
             terminal => Err(JobLifecycleError::TerminalState(terminal)),
         }
+    }
+
+    /// Withdraw a running job's cancellation request which its worker refused,
+    /// so a later completion is recorded as completed instead of cancelled.
+    ///
+    /// # Errors
+    ///
+    /// Rejects missing and non-running jobs.
+    pub fn withdraw_cancel_request(&mut self, id: &str) -> Result<(), JobLifecycleError> {
+        self.running_record(id, "withdraw_cancel")?
+            .snapshot
+            .cancellation_requested = false;
+        Ok(())
     }
 
     /// Acknowledge a cooperative cancellation from a running worker.
