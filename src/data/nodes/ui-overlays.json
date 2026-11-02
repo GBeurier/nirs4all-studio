@@ -159,7 +159,7 @@
     "displayOrder": 60,
     "longDescription": "Variable selection method that uses PLS to iteratively select important wavelengths.",
     "finetuneRanges": {
-      "n_pls_components": { "type": "int", "range": [5, 30] }
+      "n_components": { "type": "int", "range": [5, 30] }
     }
   },
   "preprocessing.mcuve": {

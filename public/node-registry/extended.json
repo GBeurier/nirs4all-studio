@@ -10802,9 +10802,9 @@
       },
       {
         "name": "coef0",
-        "type": "int",
+        "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "n_components",
