@@ -970,7 +970,7 @@ impl ScientificJobTerminal for NativeJobRuntime {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get_mut(job_id)
         {
-            context.progress_known = progress.is_some();
+            context.progress_known |= progress.is_some();
         }
         self.progress_at(
             job_id,
