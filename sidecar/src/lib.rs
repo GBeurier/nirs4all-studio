@@ -4345,11 +4345,24 @@ fn scientific_submission_runtime_response(
             job_http::JobExecutorError::PreflightBlocked { code, detail },
         )) => HttpResponse::json(400, json!({"code": code, "detail": detail}).to_string()),
         Err(job_http::NativeJobRuntimeError::Executor(
-            job_http::JobExecutorError::InvalidCapability
-            | job_http::JobExecutorError::PreflightRefused,
+            job_http::JobExecutorError::PreflightRefused { code, detail },
         )) => HttpResponse::json(
             503,
-            json!({"detail": "Scientific job executor preflight failed"}).to_string(),
+            json!({
+                "code": code,
+                "detail": format!("Scientific job executor preflight failed: {detail} ({code})"),
+            })
+            .to_string(),
+        ),
+        Err(job_http::NativeJobRuntimeError::Executor(
+            job_http::JobExecutorError::InvalidCapability,
+        )) => HttpResponse::json(
+            503,
+            json!({
+                "code": "scientific_executor_invalid_capability",
+                "detail": "Scientific job executor preflight failed: the executor returned an invalid execution identity (scientific_executor_invalid_capability)",
+            })
+            .to_string(),
         ),
         Err(job_http::NativeJobRuntimeError::Executor(
             job_http::JobExecutorError::SubmissionRefused,

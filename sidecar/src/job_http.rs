@@ -256,8 +256,15 @@ pub struct ScientificSubmissionReceipt {
 pub enum JobExecutorError {
     Unselected,
     InvalidCapability,
-    PreflightRefused,
-    PreflightBlocked { code: String, detail: String },
+    /// Preflight refused for a concrete, stable reason shown to the user.
+    PreflightRefused {
+        code: &'static str,
+        detail: &'static str,
+    },
+    PreflightBlocked {
+        code: String,
+        detail: String,
+    },
     SubmissionRefused,
     CancellationRefused,
 }
@@ -1380,7 +1387,7 @@ fn cancellation_failure(job_id: &str, error: &NativeJobRuntimeError) -> HttpResp
         ),
         NativeJobRuntimeError::Executor(
             JobExecutorError::InvalidCapability
-            | JobExecutorError::PreflightRefused
+            | JobExecutorError::PreflightRefused { .. }
             | JobExecutorError::PreflightBlocked { .. }
             | JobExecutorError::SubmissionRefused,
         ) => legacy_detail(503, "Scientific job executor is unavailable"),

@@ -112,7 +112,10 @@
     },
     "executor_preflight": {
       "status": 503,
-      "body": {"detail": "Scientific job executor preflight failed"}
+      "body": {
+        "code": "typed_stable_refusal_code",
+        "detail": "Scientific job executor preflight failed: {refusal_explanation} ({code})"
+      }
     },
     "executor_submission": {
       "status": 503,
