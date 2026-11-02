@@ -52,11 +52,11 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
     fs.writeFileSync(path.join(sitePackages, "n4m.py"), "raise RuntimeError('startup must only read metadata')\n");
     await expect(checkRuntimePackageVersions({
       pythonPath: executable, appVersion: "0.15.4", userDataDir: path.join(root, "version-cache"), reused: true, force: true,
-    })).resolves.toBeNull();
+    })).resolves.toEqual([]);
     fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.14", "Version: 1.0.3"));
     expect(await checkRuntimePackageVersions({
       pythonPath: executable, appVersion: "0.15.4", userDataDir: path.join(root, "version-cache"), reused: true, force: true,
-    })).toContain("nirs4all 1.0.3 is installed; 1.4.14 is required");
+    })).toEqual(["nirs4all 1.0.3 is installed; 1.4.14 is required"]);
   });
   it("accepts the published Methods distribution through its n4m import in a reused environment", async () => {
     await expect(validatePythonRuntime(executable, { reused: true })).resolves.toBeUndefined();

@@ -13,8 +13,9 @@ const childProcessMocks = vi.hoisted(() => ({
 vi.mock("./env/runtime-adapters", () => ({
   prepareRuntimeAdapters: vi.fn(async (pythonPath: string) => path.join(path.dirname(pythonPath), "site-packages")),
 }));
-vi.mock("./env/runtime-version-check", () => ({
-  checkRuntimePackageVersions: vi.fn(async () => null),
+vi.mock("./env/runtime-version-check", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./env/runtime-version-check")>()),
+  checkRuntimePackageVersions: vi.fn(async (): Promise<string[]> => []),
 }));
 
 const fakeApp = {
@@ -88,7 +89,7 @@ describe("EnvManager", () => {
     const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
     const { EnvManager } = await import("./env-manager");
     const manager = new EnvManager();
-    vi.mocked(checkRuntimePackageVersions).mockResolvedValueOnce("nirs4all 1.0.3 installed; 1.4.14 required");
+    vi.mocked(checkRuntimePackageVersions).mockResolvedValueOnce(["nirs4all 1.0.3 installed; 1.4.14 required"]);
     await expect(manager.checkPackageVersions()).resolves.toBe(false);
     await expect(manager.getInfo()).resolves.toMatchObject({
       pythonPath, status: "error", canInstallRequiredVersions: true,

@@ -57,7 +57,7 @@ import { checkPythonEnv, detectExistingEnvs } from "./env/env-detection";
 import { clearVerifyCache, computeEnvFingerprint, readVerifyCache, writeVerifyCache } from "./env/verify-cache";
 import { validatePythonRuntime } from "./env/runtime-validation";
 import { prepareRuntimeAdapters } from "./env/runtime-adapters";
-import { checkRuntimePackageVersions } from "./env/runtime-version-check";
+import { checkRuntimePackageVersions, describeRuntimePackageIssues } from "./env/runtime-version-check";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
@@ -263,13 +263,14 @@ export class EnvManager {
   async checkPackageVersions(force = false): Promise<boolean> {
     const pythonPath = this.getConfiguredPythonPath();
     if (!pythonPath) return false;
-    const error = await checkRuntimePackageVersions({
+    const issues = await checkRuntimePackageVersions({
       pythonPath,
       appVersion: app.getVersion(),
       userDataDir: app.getPath("userData"),
       reused: !this.isBundled(),
       force,
     });
+    const error = issues.length > 0 ? describeRuntimePackageIssues(issues) : null;
     this.lastError = error;
     this.status = error ? "error" : "ready";
     return error === null;
@@ -767,14 +768,14 @@ export class EnvManager {
 
     let preparedSitePackages: string | null;
     try {
-      const versionError = await checkRuntimePackageVersions({
+      const versionIssues = await checkRuntimePackageVersions({
         pythonPath,
         appVersion: app.getVersion(),
         userDataDir: app.getPath("userData"),
         reused: !bundledSelection,
         force: true,
       });
-      if (versionError) throw new Error(versionError);
+      if (versionIssues.length > 0) throw new Error(describeRuntimePackageIssues(versionIssues));
       preparedSitePackages = bundledSelection ? null : await prepareRuntimeAdapters(pythonPath);
     } catch (error) {
       return {
