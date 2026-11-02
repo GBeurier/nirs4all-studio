@@ -837,15 +837,6 @@ pub fn record_run_projection(
     job_id: &str,
     record: &Value,
 ) -> Result<Option<Value>, crate::workspace_store::WorkspaceStoreReadError> {
-    // The scientific library initializes SQLite at the end of the first run.
-    // Its durable control record remains authoritative while that schema is
-    // being created; reading the store then can observe user_version = 0.
-    if matches!(
-        record["status"].as_str(),
-        Some("pending" | "running" | "cancelling")
-    ) {
-        return Ok(None);
-    }
     let ids = legacy_store_run_id(workspace, job_id)
         .map_or_else(|| native_store_run_ids(record), |id| vec![id]);
     let ids = if ids.is_empty() {
@@ -863,6 +854,18 @@ pub fn record_run_projection(
             // A durable job exists before the scientific library creates its
             // store, including failures and cancellations before the first fit.
             Err(crate::workspace_store::WorkspaceStoreReadError::StoreNotFound) => return Ok(None),
+            // A first run briefly exposes SQLite before its schema is created.
+            // Keep serving its durable progress while initialization is active.
+            Err(crate::workspace_store::WorkspaceStoreReadError::SchemaVersion {
+                actual: 0,
+                ..
+            }) if matches!(
+                record["status"].as_str(),
+                Some("pending" | "running" | "cancelling")
+            ) =>
+            {
+                return Ok(None)
+            }
             result => result?,
         };
         if run.is_some() {
