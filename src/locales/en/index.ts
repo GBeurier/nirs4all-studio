@@ -7174,7 +7174,6 @@ notFound: {
     },
     widget: {
       starting: "Starting...",
-      unavailable: "Unavailable",
       expand: "Show active runs ({{count}})",
       minimize: "Minimize active runs",
       title: "Active Runs",

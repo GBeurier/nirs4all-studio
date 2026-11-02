@@ -27,7 +27,7 @@ describe("buildInitialState", () => {
 
   it("preserves legacy header units and nested global NA policies", () => {
     const config = { header_type: "nm", global_params: { na: { policy: "abort" } } };
-    const state = buildInitialState(createDataset({ config: config as DatasetConfig }));
+    const state = buildInitialState(createDataset({ config: config as unknown as DatasetConfig }));
     expect(state.parsing?.header_unit).toBe("nm");
     expect(state.parsing?.na_policy).toBe("abort");
   });

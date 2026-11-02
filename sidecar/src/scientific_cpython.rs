@@ -2303,7 +2303,7 @@ fn run_scientific_process_with_diagnostic(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)] // One bounded child lifecycle: spawn, stream, cancel, reap.
 fn run_scientific_process_with_progress(
     host: &HostIdentity,
     callable: &HostIdentity,
