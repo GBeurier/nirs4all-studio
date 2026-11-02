@@ -7174,7 +7174,6 @@ notFound: {
     },
     widget: {
       starting: "Démarrage...",
-      unavailable: "Indisponible",
       expand: "Afficher les exécutions actives ({{count}})",
       minimize: "Réduire les exécutions actives",
       title: "Exécutions actives",

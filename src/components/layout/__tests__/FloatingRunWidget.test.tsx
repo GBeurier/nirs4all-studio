@@ -36,7 +36,7 @@ describe("unavailable fit progress presentation", () => {
   it("renders single and multiple active runs without a false zero percentage", () => {
     for (const runs of [[unavailableRun], [unavailableRun, { ...unavailableRun, runId: "run-two" }]]) {
       const widget = renderWidget(runs);
-      expect(widget.textContent).toContain("Unavailable");
+      expect(widget.textContent).toContain("Running");
       expect(widget.textContent).not.toContain("0%");
       const bars = widget.querySelectorAll('[role="progressbar"]');
       expect(bars.length).toBeGreaterThan(0);
@@ -54,7 +54,7 @@ describe("unavailable fit progress presentation", () => {
       primaryText="Scientific computation running" secondaryText="Fit progress is unavailable."
       overallProgress={0} progressUnavailable
     />);
-    expect(html).toContain("Unavailable");
+    expect(html).toContain("Running");
     expect(html).not.toContain("0%");
     expect(html).toContain('aria-valuetext="Fit progress unavailable"');
     expect(html).not.toContain("aria-valuenow");

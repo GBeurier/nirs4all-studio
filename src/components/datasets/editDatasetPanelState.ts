@@ -154,7 +154,7 @@ export function buildInitialState(dataset: Dataset): WizardInitialState {
   const parsing = { ...DEFAULT_PARSING, ...config.global_params,
     ...Object.fromEntries(Object.entries(config).filter(([key, value]) => key in DEFAULT_PARSING && value != null)) } as ParsingOptions;
   parsing.header_unit = config.header_unit ?? config.header_type ?? parsing.header_unit;
-  const globalNa = config.global_params?.na as { policy?: ParsingOptions["na_policy"] } | undefined;
+  const globalNa = (config.global_params as Record<string, unknown> | undefined)?.na as { policy?: ParsingOptions["na_policy"] } | undefined;
   if (!config.na_policy && !config.global_params?.na_policy && globalNa?.policy) parsing.na_policy = globalNa.policy;
 
   return {
