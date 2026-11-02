@@ -15,6 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 - Expand model parameter sweeps before repetition and repetition-fusion execution.
 - Preserve dataset and pipeline preparation errors, native error-journal messages,
   and Python capability timeout reasons.
+- Advertise the existing native run-management routes so the renderer can check
+  execution backends, read run logs, and request run deletion or reruns.
 - Package the reviewed, source-built nirs4all 1.4.14 fixes in Studio 0.15.8-rc.1.
   This is a local Windows candidate, not a qualified stable publication.
 
