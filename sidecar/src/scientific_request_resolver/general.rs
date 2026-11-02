@@ -43,7 +43,13 @@ pub(super) fn resolve(
                 )
                 .collect::<Vec<_>>(),
         )
-        .map_err(|_| ScientificResolveError::DatasetAssembly)?;
+        .map_err(|message| {
+            document_failure(
+                "dataset_assembly_failed",
+                "Dataset loading failed before execution",
+                &message,
+            )
+        })?;
         if fingerprints.len() != selection.datasets.len() {
             return Err(ScientificResolveError::DatasetInvalid);
         }
@@ -136,7 +142,13 @@ fn normalize_documents(
         requests.push(json!({"operation":"pipeline.normalize", "payload":document}));
     }
     bounded(&json!({"requests":requests}), MAX_GENERAL_BYTES)?;
-    let normalized = adapt(&requests).map_err(|_| ScientificResolveError::PipelineInvalid)?;
+    let normalized = adapt(&requests).map_err(|message| {
+        document_failure(
+            "document_translation_failed",
+            "Dataset or pipeline preparation failed",
+            &message,
+        )
+    })?;
     if normalized.len() != requests.len() {
         return Err(ScientificResolveError::PipelineInvalid);
     }
@@ -163,6 +175,18 @@ fn normalize_documents(
     }
     let pipelines = runtime_pipelines(normalized)?;
     Ok((datasets, pipelines))
+}
+
+fn document_failure(code: &str, context: &str, message: &str) -> ScientificResolveError {
+    let detail: String = message
+        .chars()
+        .filter(|character| !character.is_control() || matches!(character, '\n' | '\t'))
+        .take(3000)
+        .collect();
+    ScientificResolveError::ExecutionUnavailable {
+        code: code.into(),
+        message: format!("{context}: {detail}"),
+    }
 }
 
 fn runtime_pipelines(
@@ -675,6 +699,44 @@ mod tests {
             })
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn dataset_loading_failure_preserves_the_library_cause_before_admission() {
+        let (root, config, workspace) = fixture("dataset-loading-diagnostic");
+        let cause = "column with name \"row_id\" is already present in the DataFrame";
+        let result = ScientificRequestResolver::new(config).resolve_general(
+            &submission(&workspace, "local-python"),
+            |operation, payload| {
+                if operation == "dataset.fingerprint" {
+                    Err(cause.into())
+                } else {
+                    adapter(operation, payload)
+                }
+            },
+        );
+        assert_eq!(
+            result,
+            Err(ScientificResolveError::ExecutionUnavailable {
+                code: "dataset_assembly_failed".into(),
+                message: format!("Dataset loading failed before execution: {cause}"),
+            })
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn document_failure_diagnostic_is_bounded_and_removes_control_characters() {
+        let error = document_failure(
+            "document_translation_failed",
+            "Preparation failed",
+            &format!("\0{}", "x".repeat(10_000)),
+        );
+        let ScientificResolveError::ExecutionUnavailable { message, .. } = error else {
+            panic!("expected preparation failure")
+        };
+        assert_eq!(message.len(), "Preparation failed: ".len() + 3000);
+        assert!(!message.contains('\0'));
     }
 
     #[test]

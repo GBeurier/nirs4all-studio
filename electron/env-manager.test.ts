@@ -88,7 +88,7 @@ describe("EnvManager", () => {
     const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
     const { EnvManager } = await import("./env-manager");
     const manager = new EnvManager();
-    vi.mocked(checkRuntimePackageVersions).mockResolvedValueOnce("nirs4all 1.0.3 installed; 1.4.13 required");
+    vi.mocked(checkRuntimePackageVersions).mockResolvedValueOnce("nirs4all 1.0.3 installed; 1.4.14 required");
     await expect(manager.checkPackageVersions()).resolves.toBe(false);
     await expect(manager.getInfo()).resolves.toMatchObject({
       pythonPath, status: "error", canInstallRequiredVersions: true,
@@ -387,7 +387,7 @@ describe("EnvManager", () => {
     const installArgs = childProcessMocks.spawn.mock.calls
       .filter(([, args]) => Array.isArray(args) && args.includes("install"))
       .flatMap(([, args]) => args as string[]);
-    expect(installArgs).toContain("nirs4all==1.4.13");
+    expect(installArgs).toContain("nirs4all==1.4.14");
     expect(installArgs).toContain("only-if-needed");
     expect(installArgs.some((arg) => arg.startsWith("shap") || arg.startsWith("matplotlib"))).toBe(false);
     expect(installArgs.join(" ").toLowerCase()).not.toMatch(
@@ -462,7 +462,7 @@ describe("EnvManager", () => {
         installed: inspectCalls === 1
           ? { nirs4all: "0.9.3" }
           : {
-              nirs4all: "1.4.13",
+              nirs4all: "1.4.14",
               "nirs4all-io": "0.2.11",
               "nirs4all-methods": "1.3.9",
               "nirs4all-formats": "0.2.13",
@@ -548,7 +548,7 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.8",
           installed: {
-            nirs4all: "1.4.13",
+            nirs4all: "1.4.14",
               "nirs4all-io": "0.2.11",
               "nirs4all-methods": "1.3.9",
             "nirs4all-formats": "0.2.13",
@@ -617,7 +617,7 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.7",
           installed: {
-            nirs4all: "1.4.13",
+            nirs4all: "1.4.14",
               "nirs4all-io": "0.2.11",
               "nirs4all-methods": "1.3.9",
             "nirs4all-formats": "0.2.13",

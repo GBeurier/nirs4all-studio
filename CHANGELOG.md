@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ## [Unreleased]
 
+### Windows hotfix candidate
+
+- Preserve incoming metadata named `row_id` without colliding with the private
+  positional index. Dataset loading keeps row order and does not require ID alignment.
+- Expand model parameter sweeps before repetition and repetition-fusion execution.
+- Preserve dataset and pipeline preparation errors, native error-journal messages,
+  and Python capability timeout reasons.
+- Package the reviewed, source-built nirs4all 1.4.14 fixes in Studio 0.15.8-rc.1.
+  This is a local Windows candidate, not a qualified stable publication.
+
 ---
 
 ## [0.15.7] — 2026-10-30
