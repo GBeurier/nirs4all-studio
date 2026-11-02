@@ -920,7 +920,10 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         request: &ScientificSubmissionPreflight,
     ) -> Result<ScientificExecutorSelection, JobExecutorError> {
         if !self.is_selected() {
-            return Err(JobExecutorError::PreflightRefused);
+            return Err(JobExecutorError::PreflightRefused {
+                code: self.unavailable_reason(),
+                detail: "the scientific Python host is not available",
+            });
         }
         // The mandatory batch worker below revalidates the selected executable,
         // callable and manifest anchors, and the scientific distribution before
@@ -934,10 +937,17 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
             .map_err(|error| match error {
                 crate::scientific_request_resolver::ScientificResolveError::ExecutionUnavailable { code, message } =>
                     JobExecutorError::PreflightBlocked { code, detail: message },
-                _ => JobExecutorError::PreflightRefused,
+                other => {
+                    let (code, detail) = other.refusal();
+                    JobExecutorError::PreflightRefused { code, detail }
+                }
             })?;
-        validate_scientific_request(&payload, &request.job_id)
-            .map_err(|_| JobExecutorError::PreflightRefused)?;
+        validate_scientific_request(&payload, &request.job_id).map_err(|error| {
+            JobExecutorError::PreflightRefused {
+                code: error.reason(),
+                detail: "the resolved scientific request does not satisfy the executor contract",
+            }
+        })?;
         Ok(ScientificExecutorSelection {
             execution_backend: "dag-ml-core".into(),
             execution_mode: Some("bounded-cpython-stdio".into()),

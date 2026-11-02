@@ -52,6 +52,71 @@ pub enum ScientificResolveError {
     DatasetAssembly,
 }
 
+impl ScientificResolveError {
+    /// Stable machine code and user-readable explanation of the refusal.
+    #[must_use]
+    pub const fn refusal(&self) -> (&'static str, &'static str) {
+        match self {
+            Self::InvalidSubmission => (
+                "scientific_submission_invalid",
+                "the submission does not match its manifest and campaign specification",
+            ),
+            Self::UnsupportedSubmission => (
+                "scientific_submission_unsupported",
+                "this backend, campaign shape or split option is not supported by the selected executor",
+            ),
+            Self::CatalogueUnavailable => (
+                "scientific_dataset_catalogue_unavailable",
+                "the linked-dataset catalogue cannot be read",
+            ),
+            Self::CatalogueUnsafe => (
+                "scientific_dataset_catalogue_unsafe",
+                "the linked-dataset catalogue is not a regular file inside the configuration directory",
+            ),
+            Self::CatalogueTooLarge => (
+                "scientific_dataset_catalogue_too_large",
+                "the linked-dataset catalogue exceeds its size limit",
+            ),
+            Self::CatalogueInvalid => (
+                "scientific_dataset_catalogue_invalid",
+                "the linked-dataset catalogue is not valid",
+            ),
+            Self::DatasetMissing => (
+                "scientific_dataset_missing",
+                "the selected dataset is not linked",
+            ),
+            Self::DatasetInvalid => (
+                "scientific_dataset_invalid",
+                "the selected dataset link or configuration is not valid",
+            ),
+            Self::PipelineMissing => (
+                "scientific_pipeline_missing",
+                "the selected pipeline is not saved in the active workspace",
+            ),
+            Self::PipelineUnsafe => (
+                "scientific_pipeline_unsafe",
+                "the selected pipeline is not a regular file inside the workspace",
+            ),
+            Self::PipelineTooLarge => (
+                "scientific_pipeline_too_large",
+                "the selected pipeline file exceeds its size limit",
+            ),
+            Self::PipelineInvalid => (
+                "scientific_pipeline_invalid",
+                "the selected pipeline is not valid for this executor",
+            ),
+            Self::ExecutionUnavailable { .. } => (
+                "scientific_execution_unavailable",
+                "the scientific runtime cannot execute this request",
+            ),
+            Self::DatasetAssembly => (
+                "scientific_dataset_assembly_failed",
+                "the selected dataset cannot be loaded within the executor limits",
+            ),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ScientificRequestResolver {
     config_dir: PathBuf,

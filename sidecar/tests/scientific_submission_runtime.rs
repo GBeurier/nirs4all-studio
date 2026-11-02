@@ -158,10 +158,10 @@ impl ScientificJobExecutor for ResolvingExecutor {
         &self,
         request: &ScientificSubmissionPreflight,
     ) -> Result<ScientificExecutorSelection, JobExecutorError> {
-        let prepared_payload = self
-            .resolver
-            .resolve(request)
-            .map_err(|_| JobExecutorError::PreflightRefused)?;
+        let prepared_payload = self.resolver.resolve(request).map_err(|error| {
+            let (code, detail) = error.refusal();
+            JobExecutorError::PreflightRefused { code, detail }
+        })?;
         Ok(ScientificExecutorSelection {
             execution_backend: "dag-ml-core".into(),
             execution_mode: Some("bounded-cpython-stdio".into()),
@@ -590,6 +590,13 @@ fn resolver_id_mismatch_is_refused_before_registry_events_or_durable_mutation() 
         &serde_json::to_vec(&payload).unwrap(),
     );
     assert_eq!(response.status, 503);
+    assert_eq!(
+        body(&response),
+        json!({
+            "code": "scientific_submission_invalid",
+            "detail": "Scientific job executor preflight failed: the submission does not match its manifest and campaign specification (scientific_submission_invalid)",
+        })
+    );
     assert_eq!(runtime.published_event_count(), 0);
     assert_eq!(runtime.durable_write_count(), 0);
     assert_eq!(fs::read_dir(workspace.join("runs")).unwrap().count(), 0);
