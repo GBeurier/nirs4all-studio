@@ -49,6 +49,7 @@ import {
   getEnvKind,
   getManagedPythonPath,
   getSitePackagesForPythonPath,
+  isBundledRuntimeLayoutPath,
   isLikelyWritable,
   resolveSitePackages,
 } from "./env/runtime-paths";
@@ -97,7 +98,18 @@ export interface EnvInfo {
   isCustom: boolean;
   canInstallRequiredVersions?: boolean;
   setupDeferred?: boolean;
+  /** Set when this session runs Studio's included runtime instead of the selected environment. */
+  runtimeFallback?: RuntimeFallback;
   error?: string;
+}
+
+/** Why the selected environment was replaced by the included runtime for this session. */
+export interface RuntimeFallback {
+  reason: "missing" | "incompatible";
+  /** The interpreter the user selected, kept so it can be repaired or relocated. */
+  selectedPythonPath: string;
+  /** Package version issues of the selected environment (empty when it is missing). */
+  issues: string[];
 }
 
 export type EnvRuntimeMode = "bundled" | "managed" | "custom" | "none";
@@ -128,6 +140,9 @@ export class EnvManager {
   private envDir: string;
   private settingsPath: string;
   private pythonPath: string | null = null;
+  /** Studio's included runtime was explicitly selected (persisted as a marker, never a path). */
+  private bundledSelected = false;
+  private runtimeFallback: RuntimeFallback | null = null;
   private savedAppVersion: string | null = null;
   private savedSkipWizard: boolean = false;
 
@@ -148,14 +163,23 @@ export class EnvManager {
 
     this.savedAppVersion = (data.appVersion as string) ?? null;
     this.savedSkipWizard = (data.skipWizardOnLaunch as boolean) ?? false;
-    if (data.pythonPath) {
-      this.pythonPath = data.pythonPath as string;
+    if (data.runtime === "bundled") {
+      this.bundledSelected = true;
+    } else if (typeof data.pythonPath === "string") {
+      // Earlier releases saved the included runtime as an absolute path, which
+      // went stale when an update moved the installation.
+      if (this.isBundledPythonPath(data.pythonPath) || isBundledRuntimeLayoutPath(data.pythonPath)) {
+        this.bundledSelected = true;
+      } else {
+        this.pythonPath = data.pythonPath;
+      }
     }
   }
 
   private saveSettings(): void {
     const data: EnvSettings = {};
-    if (this.pythonPath) data.pythonPath = this.pythonPath;
+    if (this.bundledSelected) data.runtime = "bundled";
+    else if (this.pythonPath) data.pythonPath = this.pythonPath;
     if (this.savedAppVersion) data.appVersion = this.savedAppVersion;
     if (this.savedSkipWizard) data.skipWizardOnLaunch = this.savedSkipWizard;
     writeEnvSettings(this.settingsPath, data);
@@ -201,6 +225,11 @@ export class EnvManager {
     return !!bundled && normalize(pythonPath) === normalize(bundled.pythonPath);
   }
 
+  /** The included runtime runs when it was selected or replaces an unusable selection. */
+  private usesBundledRuntime(): boolean {
+    return this.bundledSelected || this.runtimeFallback !== null;
+  }
+
   /**
    * Get the Python executable Electron is currently configured to use.
    *
@@ -208,6 +237,7 @@ export class EnvManager {
    * is the default when no existing or managed environment has been selected.
    */
   getConfiguredPythonPath(): string | null {
+    if (this.usesBundledRuntime()) return detectBundledRuntime()?.pythonPath ?? null;
     if (this.pythonPath) return fs.existsSync(this.pythonPath) ? this.pythonPath : null;
     const managedPython = getManagedPythonPath(this.envDir);
     if (fs.existsSync(managedPython)) return managedPython;
@@ -221,7 +251,8 @@ export class EnvManager {
 
   /** Get the configured runtime mode from Electron state. */
   getConfiguredRuntimeMode(): EnvRuntimeMode {
-    if (this.pythonPath) return this.isBundledPythonPath(this.pythonPath) ? "bundled" : "custom";
+    if (this.usesBundledRuntime()) return detectBundledRuntime() ? "bundled" : "none";
+    if (this.pythonPath) return "custom";
     if (fs.existsSync(getManagedPythonPath(this.envDir))) return "managed";
     return detectBundledRuntime() ? "bundled" : "none";
   }
@@ -241,11 +272,17 @@ export class EnvManager {
   }
 
   snapshotSelection() {
-    return { pythonPath: this.pythonPath, configuredPythonPath: this.getConfiguredPythonPath(), runtimeMode: this.getConfiguredRuntimeMode(), status: this.status, lastError: this.lastError, preparedSitePackages: this.preparedSitePackages, savedAppVersion: this.savedAppVersion, savedSkipWizard: this.savedSkipWizard };
+    // A default (unselected) included runtime is pinned on restore so a managed
+    // environment created by a failed change does not silently take over.
+    const bundledSelected = this.bundledSelected
+      || (!this.pythonPath && !this.runtimeFallback && this.getConfiguredRuntimeMode() === "bundled");
+    return { pythonPath: this.pythonPath, bundledSelected, runtimeFallback: this.runtimeFallback, status: this.status, lastError: this.lastError, preparedSitePackages: this.preparedSitePackages, savedAppVersion: this.savedAppVersion, savedSkipWizard: this.savedSkipWizard };
   }
 
   restoreSelection(snapshot: ReturnType<EnvManager["snapshotSelection"]>): void {
-    this.pythonPath = snapshot.pythonPath ?? (snapshot.runtimeMode === "bundled" ? snapshot.configuredPythonPath : null);
+    this.pythonPath = snapshot.pythonPath;
+    this.bundledSelected = snapshot.bundledSelected;
+    this.runtimeFallback = snapshot.runtimeFallback;
     this.preparedSitePackages = snapshot.preparedSitePackages;
     this.status = snapshot.status;
     this.lastError = snapshot.lastError;
@@ -259,17 +296,37 @@ export class EnvManager {
     if (pythonPath && !this.isBundled()) this.preparedSitePackages = await prepareRuntimeAdapters(pythonPath);
   }
 
-  /** Check package versions on first launch, app update, or explicit env change. */
-  async checkPackageVersions(force = false): Promise<boolean> {
+  /**
+   * Check package versions on first launch, app update, or explicit env change.
+   *
+   * With `allowBundledFallback` (packaged builds), a selected environment that
+   * is missing or needs other package versions is replaced for this session by
+   * the included runtime. The selection itself is kept so it can be repaired,
+   * and `getInfo().runtimeFallback` explains what happened.
+   */
+  async checkPackageVersions(force = false, allowBundledFallback = false): Promise<boolean> {
+    this.runtimeFallback = null;
+    const mode = this.getConfiguredRuntimeMode();
     const pythonPath = this.getConfiguredPythonPath();
+    const issues = pythonPath
+      ? await checkRuntimePackageVersions({
+        pythonPath,
+        appVersion: app.getVersion(),
+        userDataDir: app.getPath("userData"),
+        reused: mode !== "bundled",
+        force,
+      })
+      : [];
+    const selectedPythonPath = pythonPath ?? this.pythonPath;
+    const unusable = !pythonPath || issues.length > 0;
+    if (allowBundledFallback && unusable && selectedPythonPath && (mode === "custom" || mode === "managed") && detectBundledRuntime()) {
+      this.runtimeFallback = { reason: pythonPath ? "incompatible" : "missing", selectedPythonPath, issues };
+      console.warn(`[EnvManager] Using the included runtime for this session; ${selectedPythonPath} is ${this.runtimeFallback.reason}${issues.length ? `: ${issues.join("; ")}` : ""}`);
+      this.status = "ready";
+      this.lastError = null;
+      return true;
+    }
     if (!pythonPath) return false;
-    const issues = await checkRuntimePackageVersions({
-      pythonPath,
-      appVersion: app.getVersion(),
-      userDataDir: app.getPath("userData"),
-      reused: !this.isBundled(),
-      force,
-    });
     const error = issues.length > 0 ? describeRuntimePackageIssues(issues) : null;
     this.lastError = error;
     this.status = error ? "error" : "ready";
@@ -332,6 +389,7 @@ export class EnvManager {
       isCustom: this.getConfiguredRuntimeMode() === "custom",
       canInstallRequiredVersions: this.status === "error" && Boolean(this.lastError && pythonPath) && !this.isBundled(),
       setupDeferred: this.savedSkipWizard,
+      ...(this.runtimeFallback ? { runtimeFallback: this.runtimeFallback } : {}),
       error: this.lastError ?? undefined,
     };
   }
@@ -786,12 +844,16 @@ export class EnvManager {
     }
 
     const previousPythonPath = this.pythonPath;
-    this.pythonPath = pythonPath;
+    const previousBundledSelected = this.bundledSelected;
+    this.pythonPath = bundledSelection ? null : pythonPath;
+    this.bundledSelected = bundledSelection;
     try { this.saveSettings(); }
     catch (error) {
       this.pythonPath = previousPythonPath;
+      this.bundledSelected = previousBundledSelected;
       return { success: false, message: error instanceof Error ? error.message : "Could not save the environment selection", info };
     }
+    this.runtimeFallback = null;
     this.preparedSitePackages = preparedSitePackages;
     this.status = "ready";
     this.lastError = null;
@@ -831,7 +893,11 @@ export class EnvManager {
       envDir: this.envDir,
       setStatus: (status) => { this.status = status; },
       setLastError: (error) => { this.lastError = error; },
-      setPythonPath: (pythonPath) => { this.pythonPath = pythonPath; },
+      setPythonPath: (pythonPath) => {
+        this.pythonPath = pythonPath;
+        this.bundledSelected = false;
+        this.runtimeFallback = null;
+      },
       saveSettings: () => this.saveSettings(),
     };
   }

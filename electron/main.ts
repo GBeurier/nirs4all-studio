@@ -162,8 +162,16 @@ function nativeSidecarStartOptions(pythonPackagesCompatible = true) {
   };
 }
 
-async function startNativeSidecar(forceVersionCheck = false): Promise<void> {
-  const compatible = await envManager.checkPackageVersions(forceVersionCheck);
+/**
+ * Start the Rust sidecar on the selected Python runtime. Packaged builds run
+ * the included runtime when the selection is missing or incompatible, unless
+ * the caller is validating an explicit user change of environment.
+ */
+async function startNativeSidecar(
+  forceVersionCheck = false,
+  allowBundledFallback = app.isPackaged,
+): Promise<void> {
+  const compatible = await envManager.checkPackageVersions(forceVersionCheck, allowBundledFallback);
   try { if (compatible) await envManager.prepareSelectedRuntimeAdapters(); }
   catch (error) { console.warn("Selected environment needs Studio adapter preparation:", error); }
   const info = await nativeSidecarManager.start(nativeSidecarStartOptions(compatible));
@@ -205,7 +213,7 @@ async function applyPythonRuntimeChange<T extends { success: boolean }>(
     if (!result.success) return result;
     nativePythonPluginHostStale = true;
     await nativeSidecarManager.stop();
-    await startNativeSidecar();
+    await startNativeSidecar(false, false);
     const info = nativeSidecarManager.getInfo();
     if (!info.url) throw new Error("The analysis backend could not be started.");
     const [readinessResponse, coherenceResponse] = await Promise.all([
@@ -612,7 +620,8 @@ ipcMain.handle("env:isReady", () => {
 });
 
 ipcMain.handle("env:getInfo", async () => {
-  return envManager.getInfo();
+  const { pythonPluginHostError } = getNativeSidecarInfo();
+  return { ...await envManager.getInfo(), ...(pythonPluginHostError ? { pythonHostError: pythonPluginHostError } : {}) };
 });
 
 ipcMain.handle("env:detectExisting", async () => {

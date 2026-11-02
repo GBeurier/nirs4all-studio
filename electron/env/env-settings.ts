@@ -13,7 +13,13 @@ import { randomUUID } from "node:crypto";
 export const SETTINGS_FILE = "env-settings.json";
 
 export interface EnvSettings {
+  /** A user-selected interpreter outside the Studio installation. */
   pythonPath?: string;
+  /**
+   * Studio's included runtime was selected. Stored as a marker rather than an
+   * absolute path so the selection survives updates that move the install tree.
+   */
+  runtime?: "bundled";
   /** App version when the setup wizard was last completed */
   appVersion?: string;
   /** "Don't ask again" flag — skips wizard on subsequent launches (portable mode) */
@@ -39,6 +45,7 @@ function isEnvSettings(data: unknown): data is EnvSettings {
   if (!data || typeof data !== "object" || Array.isArray(data)) return false;
   const value = data as Record<string, unknown>;
   return (value.pythonPath === undefined || (typeof value.pythonPath === "string" && value.pythonPath.length > 0))
+    && (value.runtime === undefined || value.runtime === "bundled")
     && (value.appVersion === undefined || typeof value.appVersion === "string")
     && (value.skipWizardOnLaunch === undefined || typeof value.skipWizardOnLaunch === "boolean");
 }
