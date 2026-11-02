@@ -145,12 +145,12 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "f5c3b2ad0983caf9eb7d6c5b6364c99aee85f678",
+      source_commit: "302e8e8be8d39ef25ef951104bb59cc55e561b25",
       wheel_sha256:
-        "974e68cc7b857441fe0fcc2ecc9d96fe22f878ac7203901e0b9b871340f6c54a",
+        "dd3ec7fc3612fa5fba20f32e6f309c458f55cbb9d510b81278fdad6954d1db05",
       distribution_version: "1.4.14",
       installed_manifest_sha256:
-        "14ede7d4b35749feeaf5d5a7dd8e9a31bb8414c3eb573bb73dd86e1511df15a9",
+        "0ed298d6dfd461ddb4dafcd7b14d11ead9753301fbcf348ca4fdacbe97573beb",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
         sha256: "b8e466756b4f4f0ad162d9cc0d62e87776854a76a0c5022744298ea2ed1476da",

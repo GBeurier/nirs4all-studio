@@ -155,6 +155,15 @@ pub trait ScientificJobExecutor: Debug + Send + Sync {
 /// WebSocket publication, cancellation acknowledgement, and durable storage
 /// remain owned by [`NativeJobRuntime`].
 pub trait ScientificJobTerminal: Debug + Send + Sync {
+    /// Publish observed scientific work; None means no measured denominator.
+    fn progress(
+        &self,
+        job_id: &str,
+        _progress: Option<f64>,
+        message: &str,
+    ) -> Result<(), NativeJobRuntimeError> {
+        self.activity(job_id, message)
+    }
     /// Publish truthful worker activity without inventing a completed-fit count.
     ///
     /// # Errors
@@ -276,6 +285,7 @@ pub struct NativeJobRuntime {
 
 #[derive(Clone, Debug)]
 struct DurableScientificJob {
+    progress_known: bool,
     workspace_path: PathBuf,
     requested_backend: String,
     execution_backend: String,
@@ -452,6 +462,7 @@ impl NativeJobRuntime {
             .insert(
                 job_id.clone(),
                 DurableScientificJob {
+                    progress_known: false,
                     workspace_path: workspace_path.clone(),
                     requested_backend: requested_backend.into(),
                     execution_backend: selection.execution_backend.clone(),
@@ -642,7 +653,7 @@ impl NativeJobRuntime {
                 }
                 let mut public = job.public_json();
                 public["progress_unavailable"] =
-                    json!(job.progress == 0.0 && matches!(job.status, JobStatus::Running));
+                    json!(!context.progress_known && matches!(job.status, JobStatus::Running));
                 Some(json!({"job":public, "legacyConfig":context.request["legacyConfig"]}))
             })
             .collect()
@@ -907,6 +918,37 @@ impl NativeJobRuntime {
 }
 
 impl ScientificJobTerminal for NativeJobRuntime {
+    fn progress(
+        &self,
+        job_id: &str,
+        progress: Option<f64>,
+        message: &str,
+    ) -> Result<(), NativeJobRuntimeError> {
+        let previous = self.get_at(job_id, Instant::now());
+        let previous_progress = previous.as_ref().map_or(0.0, |job| job.progress);
+        if previous
+            .as_ref()
+            .is_some_and(|job| !matches!(job.status, JobStatus::Running))
+        {
+            return Ok(());
+        }
+        if let Some(context) = self
+            .durable_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_mut(job_id)
+        {
+            context.progress_known = progress.is_some();
+        }
+        self.progress_at(
+            job_id,
+            progress.unwrap_or(previous_progress).max(previous_progress),
+            message,
+            &rfc3339_now(),
+            Instant::now(),
+        )?;
+        Ok(())
+    }
     fn activity(&self, job_id: &str, message: &str) -> Result<(), NativeJobRuntimeError> {
         self.progress_at(job_id, 0.0, message, &rfc3339_now(), Instant::now())?;
         Ok(())
@@ -959,7 +1001,7 @@ fn durable_record(snapshot: &JobSnapshot, context: &DurableScientificJob) -> Val
         "status": snapshot.status.as_str(),
         "progress": snapshot.progress,
         "progress_message": snapshot.progress_message,
-        "progress_unavailable": snapshot.progress == 0.0 && matches!(snapshot.status, JobStatus::Running),
+        "progress_unavailable": !context.progress_known && matches!(snapshot.status, JobStatus::Running),
         "created_at": snapshot.created_at,
         "started_at": snapshot.started_at,
         "completed_at": snapshot.completed_at,

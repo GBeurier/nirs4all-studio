@@ -137,7 +137,7 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
     def finish(config: dict[str, Any]) -> dict[str, Any]:
         if document.get("scientific_run") is not True:
             return config
-        return for_dataset_configs(config)
+        return for_dataset_configs(config, native_io=True)
 
     if "record" in document:
         record = document["record"]

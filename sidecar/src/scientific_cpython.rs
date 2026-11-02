@@ -99,10 +99,10 @@ pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
 pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.14";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
-    "14ede7d4b35749feeaf5d5a7dd8e9a31bb8414c3eb573bb73dd86e1511df15a9";
+    "0ed298d6dfd461ddb4dafcd7b14d11ead9753301fbcf348ca4fdacbe97573beb";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
-    "974e68cc7b857441fe0fcc2ecc9d96fe22f878ac7203901e0b9b871340f6c54a";
-pub const SCIENTIFIC_SOURCE_COMMIT: &str = "f5c3b2ad0983caf9eb7d6c5b6364c99aee85f678";
+    "dd3ec7fc3612fa5fba20f32e6f309c458f55cbb9d510b81278fdad6954d1db05";
+pub const SCIENTIFIC_SOURCE_COMMIT: &str = "302e8e8be8d39ef25ef951104bb59cc55e561b25";
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
 
@@ -169,7 +169,7 @@ except Exception as error:
     distribution_record_sha256=None
     distribution_files_verified=False
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"974e68cc7b857441fe0fcc2ecc9d96fe22f878ac7203901e0b9b871340f6c54a","source_commit":"f5c3b2ad0983caf9eb7d6c5b6364c99aee85f678"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"dd3ec7fc3612fa5fba20f32e6f309c458f55cbb9d510b81278fdad6954d1db05","source_commit":"302e8e8be8d39ef25ef951104bb59cc55e561b25"},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
@@ -214,7 +214,7 @@ metadata_root=str(record_entry).rsplit("/",1)[0]+"/"
 installer_members={metadata_root+name for name in ("INSTALLER","REQUESTED","direct_url.json","uv_cache.json")}
 record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0] not in installer_members))
 manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-if hashlib.sha256(manifest_bytes).hexdigest() != "14ede7d4b35749feeaf5d5a7dd8e9a31bb8414c3eb573bb73dd86e1511df15a9":
+if hashlib.sha256(manifest_bytes).hexdigest() != "0ed298d6dfd461ddb4dafcd7b14d11ead9753301fbcf348ca4fdacbe97573beb":
     raise RuntimeError("scientific distribution identity changed")
 for relative,encoded,size in record_rows:
     if "=" not in encoded or (size and not size.isdigit()):
@@ -257,7 +257,32 @@ with contextlib.redirect_stdout(sys.stderr):
         general=getattr(nirs4all,"studio_scientific_job_v2",None)
         if not callable(general):
             raise RuntimeError("general scientific callable unavailable")
-        response=general(request)
+        from nirs4all.pipeline.dagml.progress import observe_progress
+        import time
+        last_progress=[0.0]
+        latest_progress=[None]
+        def publish_progress(event, force=False):
+            latest_progress[0]=event
+            now=time.monotonic()
+            if not force and now-last_progress[0]<1.0:
+                return
+            try:
+                frame={"schema":"nirs4all.studio-progress.v1","job_id":request["job_id"],"progress":event.get("progress"),"message":str(event["message"])[:500]}
+                encoded_event=json.dumps(frame,ensure_ascii=True,allow_nan=False,separators=(",",":"))
+                if len(encoded_event)+18>8192:
+                    return
+                sys.stderr.write("NIRS4ALL_PROGRESS "+encoded_event+"\n")
+                sys.stderr.flush()
+                last_progress[0]=now
+            except Exception:
+                pass
+        publish_progress({"progress":None,"message":"Loading dataset and preparing scientific execution"})
+        try:
+            with observe_progress(publish_progress):
+                response=general(request)
+        finally:
+            if latest_progress[0] is not None:
+                publish_progress(latest_progress[0],force=True)
         response_limit=262144
     elif request.get("schema") in {"nirs4all.studio-synthetic-dataset-job.v1","nirs4all.studio-playground-job.v1"}:
         from nirs4all.api.studio_scientific import StudioScientificJobError
@@ -956,37 +981,15 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         let running = Arc::clone(&self.running);
         let terminal_callback_failed = Arc::clone(&self.terminal_callback_failed);
         std::thread::spawn(move || {
-            let worker_done = Arc::new(AtomicBool::new(false));
-            let activity_done = Arc::clone(&worker_done);
-            let activity_cancelled = Arc::clone(&cancelled);
-            let activity_terminal = Arc::clone(&terminal);
-            let activity_job_id = job_id.clone();
-            let activity_worker = std::thread::spawn(move || {
-                let started = Instant::now();
-                while !activity_done.load(Ordering::Acquire)
-                    && !activity_cancelled.load(Ordering::Acquire)
-                {
-                    let elapsed = started.elapsed().as_secs();
-                    let _ = activity_terminal.activity(&activity_job_id, &format!("Scientific computation running · {elapsed}s elapsed. Fit progress is unavailable."));
-                    for _ in 0..50 {
-                        if activity_done.load(Ordering::Acquire)
-                            || activity_cancelled.load(Ordering::Acquire)
-                        {
-                            return;
-                        }
-                        std::thread::sleep(Duration::from_millis(100));
-                    }
-                }
-            });
+            let _ = terminal.activity(&job_id, "Preparing the scientific runtime");
             let (outcome, diagnostic) = run_scientific_process(
                 &host,
                 &callable,
                 packaged_runtime.as_ref(),
                 &encoded,
                 &cancelled,
+                Some(Arc::clone(&terminal)),
             );
-            worker_done.store(true, Ordering::Release);
-            let _ = activity_worker.join();
             running
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -2169,9 +2172,10 @@ fn run_scientific_process(
     packaged_runtime: Option<&PackagedRuntimeIdentity>,
     input: &[u8],
     cancelled: &AtomicBool,
+    progress_terminal: Option<Arc<dyn ScientificJobTerminal>>,
 ) -> (Result<Value, ScientificCpythonUnavailable>, Option<String>) {
     let mut diagnostic = None;
-    let result = run_scientific_process_with_diagnostic(
+    let result = run_scientific_process_with_progress(
         host,
         callable,
         packaged_runtime,
@@ -2179,6 +2183,7 @@ fn run_scientific_process(
         cancelled,
         SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT,
         &mut diagnostic,
+        progress_terminal,
     );
     (result, diagnostic)
 }
@@ -2286,6 +2291,29 @@ fn run_scientific_process_with_diagnostic(
     execution_timeout: Duration,
     diagnostic: &mut Option<String>,
 ) -> Result<Value, ScientificCpythonUnavailable> {
+    run_scientific_process_with_progress(
+        host,
+        callable,
+        packaged_runtime,
+        input,
+        cancelled,
+        execution_timeout,
+        diagnostic,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_scientific_process_with_progress(
+    host: &HostIdentity,
+    callable: &HostIdentity,
+    packaged_runtime: Option<&PackagedRuntimeIdentity>,
+    input: &[u8],
+    cancelled: &AtomicBool,
+    execution_timeout: Duration,
+    diagnostic: &mut Option<String>,
+    progress_terminal: Option<Arc<dyn ScientificJobTerminal>>,
+) -> Result<Value, ScientificCpythonUnavailable> {
     verify_identity(host)?;
     verify_identity(callable).map_err(|_| ScientificCpythonUnavailable::CallableTampered)?;
     if let Some(identity) = packaged_runtime {
@@ -2342,9 +2370,15 @@ fn run_scientific_process_with_diagnostic(
     let training_diagnostics = request.get("schema").and_then(Value::as_str)
         == Some("nirs4all.studio-scientific-job.v2")
         && request.get("operation").and_then(Value::as_str) == Some("run");
+    let progress_job_id = expected_job_id.clone();
     let stderr_reader = std::thread::spawn(move || {
         if training_diagnostics {
-            read_bounded_tail(stderr, MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES)
+            read_training_stderr(
+                stderr,
+                MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES,
+                &progress_job_id,
+                progress_terminal.as_deref(),
+            )
         } else {
             read_bounded(stderr, MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES)
         }
@@ -3152,6 +3186,79 @@ fn join_reader(
         .map_err(|_| ScientificCpythonUnavailable::OutputReadFailed)
 }
 
+fn read_training_stderr(
+    mut reader: impl Read,
+    limit: usize,
+    job_id: &str,
+    terminal: Option<&dyn ScientificJobTerminal>,
+) -> std::io::Result<(Vec<u8>, bool)> {
+    let mut retained = Vec::with_capacity(limit.min(65_536));
+    let mut line = Vec::with_capacity(8192);
+    let mut oversized = false;
+    let mut exceeded = false;
+    let mut buffer = [0_u8; 4096];
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        exceeded |= retained.len().saturating_add(count) > limit;
+        if count >= limit {
+            retained.clear();
+            retained.extend_from_slice(&buffer[count.saturating_sub(limit)..count]);
+        } else {
+            let discard = retained.len().saturating_add(count).saturating_sub(limit);
+            retained.drain(..discard);
+            retained.extend_from_slice(&buffer[..count]);
+        }
+        for byte in &buffer[..count] {
+            if *byte == b'\n' {
+                if !oversized {
+                    if let (Some(terminal), Some(payload)) =
+                        (terminal, line.strip_prefix(b"NIRS4ALL_PROGRESS "))
+                    {
+                        publish_progress_frame(payload, job_id, terminal);
+                    }
+                }
+                line.clear();
+                oversized = false;
+            } else if line.len() < 8192 {
+                line.push(*byte);
+            } else {
+                oversized = true;
+            }
+        }
+    }
+    Ok((retained, exceeded))
+}
+
+fn publish_progress_frame(payload: &[u8], job_id: &str, terminal: &dyn ScientificJobTerminal) {
+    let Ok(frame) = serde_json::from_slice::<Value>(payload) else {
+        return;
+    };
+    if frame["schema"] != "nirs4all.studio-progress.v1" || frame["job_id"] != job_id {
+        return;
+    }
+    let Some(message) = frame["message"].as_str().filter(|text| {
+        !text.is_empty() && text.len() <= 4096 && !text.chars().any(char::is_control)
+    }) else {
+        return;
+    };
+    let progress = if frame["progress"].is_null() {
+        None
+    } else {
+        let Some(value) = frame["progress"]
+            .as_f64()
+            .filter(|value| value.is_finite() && (0.0..=100.0).contains(value))
+        else {
+            return;
+        };
+        Some(value)
+    };
+    let _ = terminal.progress(job_id, progress, message);
+}
+
+#[cfg(test)]
 fn read_bounded_tail(mut reader: impl Read, limit: usize) -> std::io::Result<(Vec<u8>, bool)> {
     let mut retained = Vec::with_capacity(limit.min(64 * 1024));
     let mut buffer = [0_u8; 4096];
@@ -4684,6 +4791,7 @@ done"#,
             None,
             br#"{"job_id":"diagnostic-job"}"#,
             &AtomicBool::new(false),
+            None,
         );
         assert_eq!(result, Err(ScientificCpythonUnavailable::ProcessFailed));
         let diagnostic = diagnostic.unwrap();

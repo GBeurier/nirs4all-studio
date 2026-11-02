@@ -69,12 +69,12 @@ const PRUNED_LAUNCHER_RECORD_PREFIXES = Object.freeze([
   "../../../Scripts/",
 ]);
 const PRUNED_LAUNCHER_RECORD_FILES = Object.freeze(["../../Scripts/nirs4all.exe"]);
-const PLUGIN_SOURCE_COMMIT = "f5c3b2ad0983caf9eb7d6c5b6364c99aee85f678";
+const PLUGIN_SOURCE_COMMIT = "302e8e8be8d39ef25ef951104bb59cc55e561b25";
 const PLUGIN_SOURCE_REPOSITORY = "https://github.com/GBeurier/nirs4all.git";
-const PLUGIN_SOURCE_EPOCH = "1793611940";
+const PLUGIN_SOURCE_EPOCH = "1793621659";
 const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.14-py3-none-any.whl";
-const PLUGIN_WHEEL_SHA256 = "974e68cc7b857441fe0fcc2ecc9d96fe22f878ac7203901e0b9b871340f6c54a";
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "14ede7d4b35749feeaf5d5a7dd8e9a31bb8414c3eb573bb73dd86e1511df15a9";
+const PLUGIN_WHEEL_SHA256 = "dd3ec7fc3612fa5fba20f32e6f309c458f55cbb9d510b81278fdad6954d1db05";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "0ed298d6dfd461ddb4dafcd7b14d11ead9753301fbcf348ca4fdacbe97573beb";
 const TOOLS_SOURCE_COMMIT = "ca5cc30c4f7ab748142cfe25ea6d6b3e4c983cc8";
 const TOOLS_WHEEL_FILENAME = "nirs4all_tools-0.0.8-py3-none-any.whl";
 const TOOLS_WHEEL_SHA256 = "9b152be79b7d510406d10da1cf097c5d67176334e2d54de0fd49ef0757774310";
