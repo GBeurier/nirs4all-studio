@@ -163,7 +163,11 @@ pub const MAX_UPDATE_SETTINGS_BYTES: u64 = 16 * 1024;
 pub const VENV_METADATA_FILE: &str = "venv_metadata.json";
 pub const MAX_VENV_METADATA_BYTES: u64 = 16 * 1024;
 pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(60);
-pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration = Duration::from_secs(15);
+/// Diagnostic probes import optional stacks (torch, tensorflow, jax, shap, ...)
+/// in a fresh interpreter; a cold start after an update needs the same budget
+/// as the scientific preflight.
+pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration =
+    scientific_cpython::SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT;
 pub const MAX_PYTHON_PLUGIN_OUTPUT_BYTES: usize = 8 * 1024;
 pub const MAX_PYTHON_PLUGIN_RUNTIME_STATUS_OUTPUT_BYTES: usize = 256 * 1024;
 pub const MAX_PYTHON_PLUGIN_RUNTIME_PACKAGES: usize = 4 * 1024;
@@ -445,7 +449,7 @@ pub struct SidecarState {
     archive_v2_prediction: ArchiveV2PredictionRuntime,
     legacy_conversion: LegacyConversionRuntime,
     native_updater: native_updates::NativeUpdater,
-    python_probes: PythonProbeCache,
+    python_probes: PythonProbes,
 }
 
 /// Clone owners while holding the route lock, then validate the same runtime
@@ -3221,7 +3225,7 @@ fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
 
 fn python_capabilities_response_for_host(
     host: Option<&Path>,
-    probes: &PythonProbeCache,
+    probes: &PythonProbes,
 ) -> HttpResponse {
     let Some(python_plugin_host) = host else {
         return error_response(
@@ -3250,7 +3254,7 @@ fn python_system_info_response(state: &SidecarState) -> HttpResponse {
 
 fn python_system_info_response_for_host(
     host: Option<&Path>,
-    probes: &PythonProbeCache,
+    probes: &PythonProbes,
 ) -> HttpResponse {
     let Some(python_plugin_host) = host else {
         return system_info_without_python("No Python runtime is configured");
@@ -3294,7 +3298,7 @@ fn python_updates_version_response(state: &SidecarState) -> HttpResponse {
 
 fn python_updates_version_response_for_host(
     host: Option<&Path>,
-    probes: &PythonProbeCache,
+    probes: &PythonProbes,
 ) -> HttpResponse {
     let Some(python_plugin_host) = host else {
         return error_response(
@@ -3371,7 +3375,7 @@ fn python_updates_runtime_status_response(state: &SidecarState) -> HttpResponse 
 
 fn python_updates_runtime_status_response_for_host(
     host: Option<&Path>,
-    probes: &PythonProbeCache,
+    probes: &PythonProbes,
 ) -> HttpResponse {
     let Some(python_plugin_host) = host else {
         return error_response(
@@ -3539,7 +3543,7 @@ struct RuntimeDiagnosticsSnapshot {
     runtime_kind: String,
     python_plugin_host_bundled: bool,
     build_info: Value,
-    probes: PythonProbeCache,
+    probes: PythonProbes,
 }
 
 impl RuntimeDiagnosticsSnapshot {
@@ -3586,7 +3590,7 @@ fn python_system_build_response_from_snapshot(state: &RuntimeDiagnosticsSnapshot
 }
 
 fn cached_python_system_build(
-    probes: &PythonProbeCache,
+    probes: &PythonProbes,
     python_plugin_host: &Path,
 ) -> Result<Value, PythonPluginBridgeFailure> {
     probes.get_or_probe(ProbeKind::SystemBuild, python_plugin_host, || {
@@ -3771,6 +3775,8 @@ fn preflight_python_plugin_host(
         }
     }
 }
+
+type PythonProbes = PythonProbeCache<PythonPluginBridgeFailure>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PythonPluginBridgeFailure {
