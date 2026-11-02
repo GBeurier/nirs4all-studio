@@ -1039,3 +1039,23 @@ fn refused_cancellation_is_withdrawn_so_a_later_result_completes_the_job() {
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn known_progress_stays_known_across_message_only_frames() {
+    let (root, workspace, runtime, _state, executor, job_id) = submit_detached("progress-known");
+    let terminal = executor.terminal.lock().unwrap().clone().unwrap();
+    let progress_unavailable = || {
+        runtime.training_list_at(&workspace, Instant::now())[0]["job"]["progress_unavailable"]
+            .clone()
+    };
+    assert_eq!(progress_unavailable(), json!(true));
+    terminal
+        .progress(&job_id, Some(40.0), "fold 1 of 5")
+        .unwrap();
+    terminal.progress(&job_id, None, "still fitting").unwrap();
+    assert_eq!(progress_unavailable(), json!(false));
+    let job = runtime.get_at(&job_id, Instant::now()).unwrap();
+    assert!((job.progress - 40.0).abs() < f64::EPSILON);
+    assert_eq!(job.progress_message, "still fitting");
+    fs::remove_dir_all(root).unwrap();
+}
