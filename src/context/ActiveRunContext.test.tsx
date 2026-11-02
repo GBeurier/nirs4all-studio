@@ -81,6 +81,16 @@ describe("active run polling and render cost", () => {
     expect(app.value().hasActiveRuns).toBe(false);
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
+  it("removes a terminal run from the widget without a further active-run change", async () => {
+    const app = await mount([{ id: "run-1", name: "PLS", status: "running" }]);
+    await app.message({ type: "job_completed", channel: "job:run-1", data: {} });
+    expect(app.value().getRunProgress("run-1")?.status).toBe("completed");
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 6000);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5050)); });
+    clock.mockRestore();
+    expect(app.value().getRunProgress("run-1")).toBeUndefined();
+  }, 10_000);
   it("restores unavailable fit progress and heartbeat messages from polls, then real completion", async () => {
     const runs = [{ id: "run-1", name: "RF", status: "running", progress: 0,
       progress_message: "Scientific computation running · 130s elapsed. Fit progress is unavailable.",
