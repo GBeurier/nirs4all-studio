@@ -66,8 +66,8 @@ def read_aggregated_results(operation: str, document: dict[str, Any]) -> dict[st
     workspace = Path(document["workspace_path"])
     generated = datetime.now(UTC).isoformat()
     if not (workspace / "store.sqlite").exists():
-        if (workspace / "store.duckdb").exists() or any(workspace.glob("*.meta.parquet")):
-            raise ValueError("Legacy prediction storage requires workspace migration")
+        if any(workspace.glob("*.meta.parquet")):
+            raise ValueError("Legacy prediction storage is not supported; convert the workspace with nirs4all-tools")
         if operation in {"results.chains", "results.top"}:
             result: dict[str, Any] = {"predictions": [], "total": 0, "generated_at": generated}
             if operation == "results.top":

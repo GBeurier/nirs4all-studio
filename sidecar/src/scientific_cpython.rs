@@ -2470,6 +2470,36 @@ fn contained_scientific_command(path: &Path) -> Result<Command, ScientificCpytho
     Ok(command)
 }
 
+#[cfg(windows)]
+/// Run the scientific worker inside the current process' kill-on-close Job Object.
+///
+/// # Errors
+///
+/// Returns an error when the launcher cannot assign itself to the Job Object.
+pub fn run_windows_job_launcher(
+    executable: &std::ffi::OsStr,
+    arguments: impl IntoIterator<Item = std::ffi::OsString>,
+) -> Result<std::convert::Infallible, String> {
+    let _job = studio_windows_job::KillOnCloseJob::assign_current_process()?;
+    let code = Command::new(executable)
+        .args(arguments)
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .map_or_else(
+            |error| {
+                eprintln!("studio-sidecar: could not start contained scientific worker: {error}");
+                70
+            },
+            |status| status.code().unwrap_or(70),
+        );
+    // `process::exit` deliberately skips Drop. The OS closes the last Job
+    // handle while terminating this launcher, which atomically kills any
+    // descendants that outlived Python without replacing Python's exit code.
+    std::process::exit(code)
+}
+
 fn run_scientific_process(
     host: &HostIdentity,
     callable: &HostIdentity,

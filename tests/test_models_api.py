@@ -39,7 +39,7 @@ def mock_workspace(tmp_path):
     """Create a mock workspace with a fake store file."""
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
-    (workspace_dir / "store.duckdb").touch()
+    (workspace_dir / "store.sqlite").touch()
 
     ws = MagicMock()
     ws.path = str(workspace_dir)
@@ -309,9 +309,9 @@ class TestModelsAvailableEndpoint:
         import api.models
         from main import app
 
-        workspace_dir = tmp_path / "legacy_workspace"
+        workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        (workspace_dir / "store.duckdb").touch()
+        (workspace_dir / "store.sqlite").touch()
 
         workspace = MagicMock()
         workspace.path = str(workspace_dir)

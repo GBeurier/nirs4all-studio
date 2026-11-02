@@ -27,8 +27,7 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
       native_job_cancellation_routes: true,
       durable_execution_job_record_reads: true,
       system_capabilities_route: true,
-      workspace_transition_status_route: true,
-      legacy_workspace_conversion_route: true,
+      workspace_format_status_route: true,
       ...overrides,
     },
   }), { status: 200 });
@@ -596,7 +595,7 @@ describe("renderer transport preselection", () => {
     });
   });
 
-  it("selects Rust-owned transition detection and bounded Tools conversion separately", async () => {
+  it("selects the Rust-owned workspace format check without a Python host", async () => {
     const request = vi.fn().mockResolvedValue(capabilityResponse());
     const withoutPythonHost = () => ({
       status: "running" as const,
@@ -605,38 +604,14 @@ describe("renderer transport preselection", () => {
     });
 
     await expect(preselectRendererTransport(
-      { kind: "http", method: "GET", path: "/workspace/transition-status" },
+      { kind: "http", method: "GET", path: "/workspace/format-status" },
       withoutPythonHost,
       request,
     )).resolves.toMatchObject({
-      surface: "workspace-transition-status",
+      surface: "workspace-format-status",
       target: "native-sidecar",
-    });
-    await expect(preselectRendererTransport(
-      { kind: "http", method: "POST", path: "/workspace/legacy-convert" },
-      withoutPythonHost,
-      request,
-    )).resolves.toMatchObject({
-      surface: "legacy-workspace-conversion",
-      target: "reject",
-      reason: "native_python_host_unavailable",
-      status: 503,
     });
     expect(request).toHaveBeenCalledOnce();
-
-    const configuredRequest = vi.fn().mockResolvedValue(
-      capabilityResponse({ python_plugin_preflight: true }),
-    );
-    await expect(preselectRendererTransport(
-      { kind: "http", method: "POST", path: "/workspace/legacy-convert" },
-      running,
-      configuredRequest,
-    )).resolves.toMatchObject({
-      surface: "legacy-workspace-conversion",
-      target: "native-sidecar",
-      reason: "native_capability_preflight_passed",
-    });
-    expect(configuredRequest).toHaveBeenCalledOnce();
   });
 
   it("rejects a native candidate before target request when sidecar or capability is unavailable", async () => {

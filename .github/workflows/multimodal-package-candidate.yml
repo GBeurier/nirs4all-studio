@@ -112,14 +112,6 @@ jobs:
           python scripts/verify-installed-candidate-wheels.py backend-dist/python-runtime/python/lib/python3.11/site-packages "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
-      - name: Retain canonical pure-Python tools wheel for desktop candidates
-        uses: actions/upload-artifact@v4
-        with:
-          name: multimodal-tools-wheel
-          path: build/.python-cache/studio-python-tools-wheel/nirs4all_tools-*.whl
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 7
       - name: Build nonpublishing DEB
         run: |
           npm run build:electron
@@ -291,11 +283,6 @@ jobs:
         run: |
           npm ci
           python -m pip install setuptools==84.0.0 wheel==0.48.0 packaging==26.3 build==1.6.1 maturin==1.14.1
-      - name: Retrieve canonical tools wheel
-        uses: actions/download-artifact@v4
-        with:
-          name: multimodal-tools-wheel
-          path: candidate-tools-wheel
       - name: Retrieve canonical nirs4all wheel
         uses: actions/download-artifact@v4
         with:
@@ -369,12 +356,10 @@ jobs:
           nirs_wheels=(candidate-wheels/nirs4all-*.whl)
           dag_wheels=(candidate-wheels/dag_ml-*.whl)
           io_wheels=(candidate-wheels/nirs4all_io-*.whl)
-          tools_wheels=(candidate-tools-wheel/nirs4all_tools-*.whl)
           test "${#nirs_wheels[@]}" -eq 1
           test "${#dag_wheels[@]}" -eq 1
           test "${#io_wheels[@]}" -eq 1
-          test "${#tools_wheels[@]}" -eq 1
-          node scripts/bake-python-plugin-runtime.cjs --plugin-wheel "${nirs_wheels[0]}" --dag-wheel "${dag_wheels[0]}" --io-wheel "${io_wheels[0]}" --tools-wheel "${tools_wheels[0]}"
+          node scripts/bake-python-plugin-runtime.cjs --plugin-wheel "${nirs_wheels[0]}" --dag-wheel "${dag_wheels[0]}" --io-wheel "${io_wheels[0]}"
           python scripts/verify-installed-candidate-wheels.py "${{ matrix.site_packages }}" "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
           node scripts/build-native-sidecar.cjs --target "${{ matrix.target }}"
           node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" --require-bundled-python-plugin --require-bundled-methods

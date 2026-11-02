@@ -288,7 +288,7 @@ async function main(argv = process.argv.slice(2)) {
       const installed = await timed(proof, 'baseline_install', BUDGETS.install, () => install(file, options.platform, installRoot));
       preserved = await seedBaseline(installed, options.platform, profile, data, workspace, envOverrides);
       before = fileSnapshot(workspace);
-      assert(Object.keys(before).some(name => /store\.(sqlite|duckdb)$/.test(name)), 'Baseline workspace has no real store');
+      assert(Object.keys(before).some(name => /store\.sqlite$/.test(name)), 'Baseline workspace has no real store');
       proof.baseline = { ...baseline, installer_sha256: sha256File(file), preserved };
     }
     const installed = await timed(proof, 'candidate_install', BUDGETS.install, () => install(options.installer, options.platform, installRoot));

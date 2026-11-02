@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ..jobs import JobStatus, JobType, job_manager
-from ..results_repository import STORE_DB_FILENAMES, workspace_store_path, workspace_store_root
+from ..results_repository import STORE_DB_FILENAME, workspace_store_path, workspace_store_root
 from ..shared.logger import get_logger
 from ..store_adapter import StoreAdapter
 from ..workspace_manager import workspace_manager
@@ -20,7 +20,6 @@ logger = get_logger(__name__)
 
 STORE_AVAILABLE = True
 PREDICTIONS_AVAILABLE = True
-MIGRATION_AVAILABLE = True
 
 
 # Simple TTL cache for workspace discovery operations
@@ -84,20 +83,15 @@ _DATASET_SCORES_CACHE: dict[tuple, Any] = {}
 def _store_signature(workspace_path: Path) -> tuple | None:
     """Return a cheap signature for the workspace store files.
 
-    Combines (mtime_ns, size) for configured store DB files when present.
-    Returns None if neither file exists.
+    Combines (mtime_ns, size) for the SQLite store and its WAL/SHM files.
+    Returns None if the store does not exist.
     """
     store_root = workspace_store_root(workspace_path)
     if store_root is None:
         return None
 
     parts: list[tuple[str, int, int]] = []
-    sidecar_names = {
-        f"{name}{suffix}"
-        for name in STORE_DB_FILENAMES
-        for suffix in ("-wal", "-shm", ".wal")
-    }
-    for name in [*STORE_DB_FILENAMES, *sorted(sidecar_names)]:
+    for name in (STORE_DB_FILENAME, f"{STORE_DB_FILENAME}-shm", f"{STORE_DB_FILENAME}-wal"):
         p = store_root / name
         try:
             st = p.stat()

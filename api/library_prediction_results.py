@@ -15,8 +15,8 @@ def read_prediction_results(operation: str, document: dict[str, Any]) -> dict[st
     # A freshly created workspace has no store yet. Existing legacy data must
     # never be mistaken for an empty workspace.
     if not (workspace / "store.sqlite").exists():
-        if (workspace / "store.duckdb").exists() or any(workspace.glob("*.meta.parquet")):
-            raise ValueError("Legacy prediction storage requires workspace migration before native result access")
+        if any(workspace.glob("*.meta.parquet")):
+            raise ValueError("Legacy prediction storage is not supported; convert the workspace with nirs4all-tools")
         if operation == "results.page":
             return {"records": [], "total": 0, "limit": document["limit"],
                     "offset": document["offset"], "has_more": False}
