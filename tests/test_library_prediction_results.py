@@ -107,6 +107,20 @@ def test_aggregated_chain_detail_and_real_arrays_with_live_writer(tmp_path: Path
         "chains": [], "total": 0, "metric": None}
 
 
+
+def test_aggregated_results_read_a_store_nested_in_the_project_folder(tmp_path: Path):
+    from api.library_aggregated_results import read_aggregated_results
+
+    with WorkspaceStore(tmp_path / "workspace") as writer:
+        run = writer.begin_run("nested", config={}, datasets=[{"name": "wheat"}])
+        pipeline = writer.begin_pipeline(run, "PLS", expanded_config=[], generator_choices=[], dataset_name="wheat", dataset_hash="hash")
+        chain = writer.save_chain(pipeline, steps=[], model_step_idx=0, model_class="PLSRegression", preprocessings="SNV", fold_strategy="per_fold", fold_artifacts={}, shared_artifacts={})
+        writer.save_prediction(pipeline, chain, "wheat", "PLS", "PLSRegression", "0", "val", 0.25, None, None, "rmse", "regression", 3, 20, {"val": {"rmse": 0.25}}, {"n_components": 3}, None, None, 0, 0.0)
+        writer.update_chain_summary(chain)
+        base = {"workspace_path": str(tmp_path)}
+        assert read_aggregated_results("results.chains", base)["total"] == 1
+        assert [entry["chain_id"] for entry in read_aggregated_results("results.dataset_chains", {**base, "dataset_name": "wheat"})["chains"]] == [chain]
+
 def test_verbatim_windows_workspace_paths_reach_the_library_plain(monkeypatch):
     import api.library_aggregated_results as aggregated
     from api.library_documents import adapt_document, plain_windows_path
