@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.15.10] — 2026-11-03
+
+### Fixed
+
+- Results, result cards and "Show all trained models" now read a workspace
+  whose store is nested in a `workspace/` folder of the linked project, instead
+  of showing empty lists.
+
 ## [0.15.9] — 2026-11-03
 
 ### Changed
