@@ -143,7 +143,7 @@ const stepOptionSeeds: Record<StepType, StepOptionSeed[]> = {
     { name: "Transformer", defaultParams: { n_heads: 4, n_layers: 2, d_model: 64 }, category: "Deep Learning", isDeepLearning: true },
 
     // === Meta-Models ===
-    { name: "MetaModel", defaultParams: { base_estimator: "Ridge" }, category: "Meta" },
+    { name: "MetaModel", defaultParams: { model: "sklearn.linear_model.Ridge" }, category: "Meta" },
   ],
 
   filter: [

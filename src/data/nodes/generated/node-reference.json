@@ -5922,15 +5922,15 @@
       "supportsParameterSweeps": false,
       "parameters": [
         {
-          "name": "estimator",
+          "name": "model",
           "type": "select",
-          "default": "ridge",
-          "description": "Base estimator for meta-model",
+          "default": "sklearn.linear_model.Ridge",
+          "description": "Meta-learner estimator (full class path)",
           "options": [
-            "ridge",
-            "lasso",
-            "pls",
-            "linear"
+            "sklearn.linear_model.Ridge",
+            "sklearn.linear_model.Lasso",
+            "sklearn.cross_decomposition.PLSRegression",
+            "sklearn.linear_model.LinearRegression"
           ]
         }
       ]
@@ -10145,11 +10145,6 @@
           "name": "random_state",
           "type": "string",
           "isAdvanced": true
-        },
-        {
-          "name": "base_estimator",
-          "type": "string",
-          "isAdvanced": true
         }
       ]
     },
@@ -10288,11 +10283,6 @@
         },
         {
           "name": "random_state",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "base_estimator",
           "type": "string",
           "isAdvanced": true
         }
