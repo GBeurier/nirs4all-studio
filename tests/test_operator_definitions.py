@@ -440,24 +440,9 @@ def test_splitter_instantiate(name, op_def):
 
 _model_ops = _load_definitions("models")
 
-# Nodes whose `select` parameter cannot be passed to the constructor as-is
-# (the constructor expects an estimator instance). Strict xfail so the marker
-# fails once the node definition is fixed.
-_MODEL_PARAM_KNOWN_DRIFT = {"MetaModel", "ClassifierChain", "RegressorChain"}
-
-
 @pytest.mark.parametrize(
     "name,op_def",
-    [
-        pytest.param(
-            name,
-            op_def,
-            marks=pytest.mark.xfail(strict=True, reason="select parameter is not an estimator instance")
-            if name in _MODEL_PARAM_KNOWN_DRIFT
-            else (),
-        )
-        for name, op_def in _model_ops
-    ],
+    _model_ops,
     ids=[name for name, _ in _model_ops],
 )
 def test_model_params_match_constructor(name, op_def):

@@ -269,7 +269,7 @@
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
-| **MetaModel** | nirs4all | standard | `estimator` (ridge/lasso/pls/linear) | - | - |
+| **MetaModel** | nirs4all | standard | `model` (sklearn.linear_model.Ridge/sklearn.linear_model.Lasso/sklearn.cross_decomposition.PLSRegression/sklearn.linear_model.LinearRegression) | - | - |
 | **PCR** | nirs4all | standard | `n_components`=10 | `n_components` [1-30] | `n_components` |
 
 ### PLS

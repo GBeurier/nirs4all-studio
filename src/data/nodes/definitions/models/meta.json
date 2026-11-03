@@ -16,28 +16,28 @@
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "estimator",
+        "name": "model",
         "type": "select",
-        "default": "ridge",
+        "default": "sklearn.linear_model.Ridge",
         "options": [
           {
-            "value": "ridge",
+            "value": "sklearn.linear_model.Ridge",
             "label": "Ridge"
           },
           {
-            "value": "lasso",
+            "value": "sklearn.linear_model.Lasso",
             "label": "Lasso"
           },
           {
-            "value": "pls",
+            "value": "sklearn.cross_decomposition.PLSRegression",
             "label": "PLSRegression"
           },
           {
-            "value": "linear",
+            "value": "sklearn.linear_model.LinearRegression",
             "label": "Linear Regression"
           }
         ],
-        "description": "Base estimator for meta-model"
+        "description": "Meta-learner estimator (full class path)"
       }
     ],
     "supportsParameterSweeps": false,
