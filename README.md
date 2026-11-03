@@ -11,7 +11,7 @@
 
 A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis, with a Rust-owned product control plane, React UI, native Methods execution, and bounded CPython stdio interoperability for explicit libraries/plugins.
 
-[![License: CeCILL-2.1](https://img.shields.io/badge/license-CeCILL--2.1-blue.svg)](LICENSE)
+[![License: CECILL-2.1 OR AGPL-3.0-or-later](https://img.shields.io/badge/license-CeCILL--2.1%20OR%20AGPL--3.0--or--later-blue.svg)](LICENSES)
 [![Node 20+](https://img.shields.io/badge/node-20+-green.svg)](https://nodejs.org/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
@@ -596,7 +596,7 @@ When `SENTRY_DSN` is not set, crash reporting is completely disabled with zero o
 
 ## License
 
-This project is licensed under the [CeCILL-2.1 License](LICENSE).
+This project is dual-licensed under `CECILL-2.1 OR AGPL-3.0-or-later`: see [LICENSES/CeCILL-2.1.txt](LICENSES/CeCILL-2.1.txt) and [LICENSES/AGPL-3.0-or-later.txt](LICENSES/AGPL-3.0-or-later.txt).
 Third-party notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the corresponding license texts are bundled in [LICENSES/](LICENSES).
 
 ---
