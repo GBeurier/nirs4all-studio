@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "generatedAt": "2026-08-31",
+  "generatedAt": "2026-11-03",
   "totalNodes": 338,
   "stats": {
     "augmentation": {
@@ -3685,18 +3685,18 @@
           ]
         },
         {
-          "name": "n_neighbors",
-          "type": "int",
-          "default": 50,
-          "description": "Number of neighbors for local model",
-          "min": 5,
-          "max": 200,
+          "name": "lambda_in_similarity",
+          "type": "float",
+          "default": 1,
+          "description": "Gaussian kernel width for sample similarity; smaller values give more local models",
+          "min": 0.001,
+          "max": 64,
           "sweepable": true,
           "finetunable": true,
-          "finetuneType": "int",
+          "finetuneType": "log_float",
           "finetuneRange": [
-            10,
-            100
+            0.001,
+            32
           ]
         }
       ]
@@ -4031,10 +4031,10 @@
       "supportsParameterSweeps": true,
       "parameters": [
         {
-          "name": "n_components",
+          "name": "max_components",
           "type": "int",
           "default": 10,
-          "description": "Number of PLS components",
+          "description": "Maximum number of PLS components; the operator and component count are selected by internal cross-validation",
           "min": 1,
           "max": 50,
           "sweepable": true,
@@ -4066,19 +4066,17 @@
           ]
         },
         {
-          "name": "n_orth",
-          "type": "int",
-          "default": 0,
-          "description": "Number of orthogonal components to remove",
-          "min": 0,
-          "max": 10,
+          "name": "center_x",
+          "type": "bool",
+          "default": true,
+          "description": "Center X before fitting",
           "isAdvanced": true
         },
         {
-          "name": "scale",
+          "name": "scale_x",
           "type": "bool",
-          "default": true,
-          "description": "Scale data before fitting",
+          "default": false,
+          "description": "Scale X to unit variance before fitting",
           "isAdvanced": true
         }
       ]
@@ -4111,15 +4109,6 @@
           ]
         },
         {
-          "name": "n_orth",
-          "type": "int",
-          "default": 0,
-          "description": "Number of orthogonal components to remove",
-          "min": 0,
-          "max": 10,
-          "isAdvanced": true
-        },
-        {
           "name": "scale",
           "type": "bool",
           "default": true,
@@ -4141,10 +4130,10 @@
       "supportsParameterSweeps": true,
       "parameters": [
         {
-          "name": "n_components",
+          "name": "max_components",
           "type": "int",
           "default": 10,
-          "description": "Number of PLS components",
+          "description": "Maximum number of PLS components; the operator and component count are selected by internal cross-validation",
           "min": 1,
           "max": 50,
           "sweepable": true,
@@ -4167,19 +4156,17 @@
           ]
         },
         {
-          "name": "n_orth",
-          "type": "int",
-          "default": 0,
-          "description": "Number of orthogonal components",
-          "min": 0,
-          "max": 10,
+          "name": "center_x",
+          "type": "bool",
+          "default": true,
+          "description": "Center X before fitting",
           "isAdvanced": true
         },
         {
-          "name": "auto_select",
+          "name": "scale_x",
           "type": "bool",
-          "default": true,
-          "description": "Automatically select best operator per component",
+          "default": false,
+          "description": "Scale X to unit variance before fitting",
           "isAdvanced": true
         }
       ]
@@ -4210,22 +4197,6 @@
             1,
             30
           ]
-        },
-        {
-          "name": "n_orth",
-          "type": "int",
-          "default": 0,
-          "description": "Number of orthogonal components",
-          "min": 0,
-          "max": 10,
-          "isAdvanced": true
-        },
-        {
-          "name": "auto_select",
-          "type": "bool",
-          "default": true,
-          "description": "Automatically select best operator per component",
-          "isAdvanced": true
         }
       ]
     },
@@ -5951,15 +5922,15 @@
       "supportsParameterSweeps": false,
       "parameters": [
         {
-          "name": "estimator",
+          "name": "model",
           "type": "select",
-          "default": "ridge",
-          "description": "Base estimator for meta-model",
+          "default": "sklearn.linear_model.Ridge",
+          "description": "Meta-learner estimator (full class path)",
           "options": [
-            "ridge",
-            "lasso",
-            "pls",
-            "linear"
+            "sklearn.linear_model.Ridge",
+            "sklearn.linear_model.Lasso",
+            "sklearn.cross_decomposition.PLSRegression",
+            "sklearn.linear_model.LinearRegression"
           ]
         }
       ]
@@ -7957,15 +7928,11 @@
           "isAdvanced": true
         },
         {
-          "name": "n_alphas",
-          "type": "string",
-          "default": "deprecated",
-          "isAdvanced": true
-        },
-        {
           "name": "alphas",
-          "type": "string",
-          "default": "warn",
+          "type": "int",
+          "default": 100,
+          "description": "Number of values in the automatically generated regularization grid",
+          "min": 1,
           "isAdvanced": true
         },
         {
@@ -8252,15 +8219,11 @@
           "isAdvanced": true
         },
         {
-          "name": "n_alphas",
-          "type": "string",
-          "default": "deprecated",
-          "isAdvanced": true
-        },
-        {
           "name": "alphas",
-          "type": "string",
-          "default": "warn",
+          "type": "int",
+          "default": 100,
+          "description": "Number of values in the automatically generated regularization grid",
+          "min": 1,
           "isAdvanced": true
         },
         {
@@ -8548,7 +8511,6 @@
         {
           "name": "penalty",
           "type": "select",
-          "default": "deprecated",
           "options": [
             "l1",
             "l2",
@@ -8652,7 +8614,6 @@
         {
           "name": "l1_ratios",
           "type": "string",
-          "default": "warn",
           "isAdvanced": true
         },
         {
@@ -8675,7 +8636,6 @@
         {
           "name": "penalty",
           "type": "select",
-          "default": "deprecated",
           "options": [
             "l1",
             "l2",
@@ -8734,7 +8694,6 @@
         {
           "name": "use_legacy_attributes",
           "type": "string",
-          "default": "warn",
           "isAdvanced": true
         }
       ]
@@ -8837,15 +8796,11 @@
           "isAdvanced": true
         },
         {
-          "name": "n_alphas",
-          "type": "string",
-          "default": "deprecated",
-          "isAdvanced": true
-        },
-        {
           "name": "alphas",
-          "type": "string",
-          "default": "warn",
+          "type": "int",
+          "default": 100,
+          "description": "Number of values in the automatically generated regularization grid",
+          "min": 1,
           "isAdvanced": true
         },
         {
@@ -8958,15 +8913,11 @@
           "isAdvanced": true
         },
         {
-          "name": "n_alphas",
-          "type": "string",
-          "default": "deprecated",
-          "isAdvanced": true
-        },
-        {
           "name": "alphas",
-          "type": "string",
-          "default": "warn",
+          "type": "int",
+          "default": 100,
+          "description": "Number of values in the automatically generated regularization grid",
+          "min": 1,
           "isAdvanced": true
         },
         {
@@ -10194,12 +10145,6 @@
           "name": "random_state",
           "type": "string",
           "isAdvanced": true
-        },
-        {
-          "name": "base_estimator",
-          "type": "string",
-          "default": "deprecated",
-          "isAdvanced": true
         }
       ]
     },
@@ -10339,12 +10284,6 @@
         {
           "name": "random_state",
           "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "base_estimator",
-          "type": "string",
-          "default": "deprecated",
           "isAdvanced": true
         }
       ]
@@ -13525,7 +13464,7 @@
       "name": "Derivate",
       "type": "preprocessing",
       "classPath": "nirs4all.operators.transforms.scalers.Derivate",
-      "description": "nirs4all preprocessing Derivate",
+      "description": "Finite-difference spectral derivative along wavelengths (axis=1).",
       "source": "nirs4all",
       "tier": "standard",
       "category": "Derivatives",
@@ -13542,6 +13481,13 @@
           "name": "delta",
           "type": "int",
           "default": 1,
+          "isAdvanced": true
+        },
+        {
+          "name": "axis",
+          "type": "int",
+          "default": 1,
+          "description": "Axis for differentiation: 1 = wavelengths, 0 = samples.",
           "isAdvanced": true
         }
       ]
@@ -13796,7 +13742,7 @@
       "supportsParameterSweeps": true,
       "parameters": [
         {
-          "name": "n_pls_components",
+          "name": "n_components",
           "type": "int",
           "default": 10,
           "description": "Number of PLS components for variable importance",
@@ -15957,12 +15903,6 @@
           ]
         },
         {
-          "name": "quantile_method",
-          "type": "string",
-          "default": "warn",
-          "isAdvanced": true
-        },
-        {
           "name": "dtype",
           "type": "string",
           "isAdvanced": true
@@ -17668,21 +17608,13 @@
       "supportsParameterSweeps": true,
       "parameters": [
         {
-          "name": "n_clusters",
-          "type": "int",
-          "default": 5,
-          "description": "Number of clusters",
-          "min": 2,
-          "max": 50,
-          "sweepable": true
-        },
-        {
           "name": "test_size",
           "type": "float",
           "default": 0.2,
           "description": "Proportion of samples for test set",
           "min": 0.05,
-          "max": 0.5
+          "max": 0.5,
+          "sweepable": true
         }
       ]
     },

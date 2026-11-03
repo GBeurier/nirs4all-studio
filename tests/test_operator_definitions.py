@@ -260,7 +260,7 @@ def test_preprocessing_params_accepted(name, op_def):
         for p in sig.parameters.values()
     )
 
-    # Build raw defaults and normalize them (applies rename mappings like n_pls_components → n_components)
+    # Build raw defaults and normalize them (applies UI-to-constructor mappings such as window → window_length)
     raw_params = _build_defaults(op_def)
     normalized = normalize_params(name, raw_params)
     normalized_names = set(normalized.keys())
@@ -432,3 +432,36 @@ def test_splitter_instantiate(name, op_def):
 
     operator = cls(**valid)
     assert operator is not None
+
+
+# ============================================================================
+# Model operators
+# ============================================================================
+
+_model_ops = _load_definitions("models")
+
+@pytest.mark.parametrize(
+    "name,op_def",
+    _model_ops,
+    ids=[name for name, _ in _model_ops],
+)
+def test_model_params_match_constructor(name, op_def):
+    """Every model node parameter must be a constructor keyword.
+
+    The editor emits every parameter that has a default, and nirs4all drops
+    unknown keywords with only a printed notice, so a stale name is silently
+    ignored and the constructor default is used instead.
+    """
+    cls = _import_class(op_def.get("classPath", ""))
+    if cls is None:
+        pytest.skip(f"{name} not importable")
+    try:
+        sig = inspect.signature(cls.__init__)
+    except (ValueError, TypeError):
+        pytest.skip(f"{name} signature not inspectable")
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+        pytest.skip(f"{name} accepts **kwargs")
+
+    accepted = set(sig.parameters) - {"self"}
+    unknown = [param["name"] for param in op_def.get("parameters", []) if param["name"] not in accepted]
+    assert unknown == [], f"{name}: parameters not accepted by {op_def['classPath']}: {unknown}"

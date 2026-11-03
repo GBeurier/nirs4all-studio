@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-10-06T02:02:16.482882+00:00",
+  "generatedAt": "2026-11-03T00:54:58.911486+00:00",
   "nodeCount": 253,
   "pythonVersion": "3.11.15",
   "sklearnVersion": "1.9.0",
-  "nirs4allVersion": "1.4.2",
+  "nirs4allVersion": "1.4.14",
   "generator": {
     "script": "scripts/generate_extended_registry.py",
     "format": "NodeDefinition[]"

@@ -144,25 +144,17 @@ variants:
     - model:
         class: nirs4all.operators.models.sklearn.aom_pls.AOMPLSRegressor
         params:
-          center: true
-          scale: false
+          center_x: true
+          scale_x: false
       name: AOM-PLS-Finetuned
       finetune_params:
         n_trials: 80
         sampler: tpe
         model_params:
-          n_components:
+          max_components:
           - int
           - 1
           - 27
-          n_orth:
-          - int
-          - 0
-          - 5
-          operator_index:
-          - int
-          - 0
-          - 120
     - model:
         class: tabpfn.TabPFNRegressor
         params:

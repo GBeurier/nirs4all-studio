@@ -51,7 +51,7 @@ const stepOptionSeeds: Record<StepType, StepOptionSeed[]> = {
     { name: "KubelkaMunk", defaultParams: {}, category: "Conversion" },
 
     // === Feature Selection ===
-    { name: "CARS", defaultParams: { n_pls_components: 10, n_sampling_runs: 50 }, category: "Feature Selection" },
+    { name: "CARS", defaultParams: { n_components: 10, n_sampling_runs: 50 }, category: "Feature Selection" },
     { name: "MCUVE", defaultParams: { n_components: 10, n_iterations: 100 }, category: "Feature Selection" },
     { name: "VIP", defaultParams: { n_components: 10, threshold: 1.0 }, category: "Feature Selection" },
 
@@ -83,7 +83,7 @@ const stepOptionSeeds: Record<StepType, StepOptionSeed[]> = {
     { name: "KennardStone", defaultParams: { test_size: 0.2, metric: "euclidean" }, category: "NIRS" },
     { name: "SPXY", defaultParams: { test_size: 0.2 }, category: "NIRS" },
     { name: "SPXYGFold", defaultParams: { n_splits: 5 }, category: "NIRS" },
-    { name: "KMeansSplitter", defaultParams: { n_clusters: 5, test_size: 0.2 }, category: "NIRS" },
+    { name: "KMeansSplitter", defaultParams: { test_size: 0.2 }, category: "NIRS" },
     { name: "SPlitSplitter", defaultParams: { test_size: 0.2 }, category: "NIRS" },
     { name: "KBinsStratifiedSplitter", defaultParams: { n_bins: 5, test_size: 0.2 }, category: "NIRS" },
     { name: "BinnedStratifiedGroupKFold", defaultParams: { n_splits: 5, n_bins: 5 }, category: "NIRS" },
@@ -109,7 +109,7 @@ const stepOptionSeeds: Record<StepType, StepOptionSeed[]> = {
     { name: "OPLSDA", defaultParams: { n_components: 10 }, category: "Advanced PLS" },
     { name: "IKPLS", defaultParams: { n_components: 10 }, category: "Advanced PLS" },
     { name: "SparsePLS", defaultParams: { n_components: 10, alpha: 0.1 }, category: "Advanced PLS" },
-    { name: "LWPLS", defaultParams: { n_components: 10, n_neighbors: 50 }, category: "Advanced PLS" },
+    { name: "LWPLS", defaultParams: { n_components: 10, lambda_in_similarity: 1.0 }, category: "Advanced PLS" },
     { name: "IntervalPLS", defaultParams: { n_components: 10, n_intervals: 20 }, category: "Advanced PLS" },
     { name: "RobustPLS", defaultParams: { n_components: 10 }, category: "Advanced PLS" },
     { name: "SIMPLS", defaultParams: { n_components: 10 }, category: "Advanced PLS" },
@@ -143,7 +143,7 @@ const stepOptionSeeds: Record<StepType, StepOptionSeed[]> = {
     { name: "Transformer", defaultParams: { n_heads: 4, n_layers: 2, d_model: 64 }, category: "Deep Learning", isDeepLearning: true },
 
     // === Meta-Models ===
-    { name: "MetaModel", defaultParams: { base_estimator: "Ridge" }, category: "Meta" },
+    { name: "MetaModel", defaultParams: { model: "sklearn.linear_model.Ridge" }, category: "Meta" },
   ],
 
   filter: [

@@ -39,11 +39,6 @@
         "name": "random_state",
         "type": "string",
         "isAdvanced": true
-      },
-      {
-        "name": "base_estimator",
-        "type": "string",
-        "isAdvanced": true
       }
     ]
   },
@@ -200,11 +195,6 @@
       },
       {
         "name": "random_state",
-        "type": "string",
-        "isAdvanced": true
-      },
-      {
-        "name": "base_estimator",
         "type": "string",
         "isAdvanced": true
       }

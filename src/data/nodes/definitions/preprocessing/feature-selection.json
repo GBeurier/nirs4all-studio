@@ -17,7 +17,7 @@
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "n_pls_components",
+        "name": "n_components",
         "type": "int",
         "default": 10,
         "min": 1,

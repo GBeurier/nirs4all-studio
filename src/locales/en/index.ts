@@ -5181,7 +5181,7 @@ notFound: {
         nEstimators: "Number of trees in ensemble",
         maxDepth: "Maximum tree depth",
         boostingLearningRate: "Gradient boosting learning rate",
-        nNeighbors: "Number of neighbors for local weighting",
+        lambdaInSimilarity: "Similarity kernel width for local weighting",
         nIntervals: "Number of spectral intervals",
         epochs: "Training epochs",
         batchSize: "Batch size",
