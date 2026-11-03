@@ -27,7 +27,7 @@
   "maximum_stderr_bytes": 65536,
   "preflight_timeout_ms": 45000,
   "execution_timeout_ms": 120000,
-  "training_execution_timeout_ms": 3600000,
+  "training_execution_timeout_ms": 86400000,
   "training_diagnostics": "stderr_drained_with_final_64KiB_retained; truncation_does_not_invalidate_a_successful_verified_JSON_result; stdout_and_preflight_limits_remain_strict",
   "host_identity": "canonical_path_size_sha256_sticky_reverified",
   "callable_identity": "canonical_path_size_sha256_sticky_reverified_in_rust_and_child",
