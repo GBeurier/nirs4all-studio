@@ -275,7 +275,13 @@
         "name": "lambda_in_similarity",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1.0,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [
+          0.001,
+          32
+        ]
       },
       {
         "name": "scale",

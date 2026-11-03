@@ -83,7 +83,7 @@ const stepOptionSeeds: Record<StepType, StepOptionSeed[]> = {
     { name: "KennardStone", defaultParams: { test_size: 0.2, metric: "euclidean" }, category: "NIRS" },
     { name: "SPXY", defaultParams: { test_size: 0.2 }, category: "NIRS" },
     { name: "SPXYGFold", defaultParams: { n_splits: 5 }, category: "NIRS" },
-    { name: "KMeansSplitter", defaultParams: { n_clusters: 5, test_size: 0.2 }, category: "NIRS" },
+    { name: "KMeansSplitter", defaultParams: { test_size: 0.2 }, category: "NIRS" },
     { name: "SPlitSplitter", defaultParams: { test_size: 0.2 }, category: "NIRS" },
     { name: "KBinsStratifiedSplitter", defaultParams: { n_bins: 5, test_size: 0.2 }, category: "NIRS" },
     { name: "BinnedStratifiedGroupKFold", defaultParams: { n_splits: 5, n_bins: 5 }, category: "NIRS" },
