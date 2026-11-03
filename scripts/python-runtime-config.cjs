@@ -23,12 +23,12 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
 // dependencies live in python-http-runtime-config.cjs, which is source/dev only.
 const PLUGIN_DISTRIBUTION_VERSION = recommendedConfig.nirs4all;
 const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
-  "nirs4all-core==0.4.6",
-  "dag-ml==0.3.43",
-  "dag-ml-data==0.2.13",
-  "nirs4all-io==0.2.11",
-  "nirs4all-methods==1.3.9",
-  "nirs4all-formats==0.2.13",
+  "nirs4all-core==0.4.7",
+  "dag-ml==0.3.44",
+  "dag-ml-data==0.2.16",
+  "nirs4all-io==0.2.14",
+  "nirs4all-methods==1.3.13",
+  "nirs4all-formats==0.2.14",
   "pyarrow==25.0.1",
   "shap==0.47.1",
   "matplotlib==3.10.1",
@@ -53,8 +53,8 @@ const PLUGIN_DISTRIBUTION_REQUIREMENT =
 // where pip resolves io/methods within these ranges.
 const REUSABLE_RUNTIME_PACKAGES = Object.freeze([
   `nirs4all${PLUGIN_DISTRIBUTION_REQUIREMENT}`,
-  "nirs4all-io>=0.2.11,<0.3",
-  "nirs4all-methods>=1.3.9,<2",
+  "nirs4all-io>=0.2.14,<0.3",
+  "nirs4all-methods>=1.3.13,<2",
   "nirs4all-formats",
 ]);
 // Native ABI exposed by nirs4all-methods (n4m.abi_version()[:2]).

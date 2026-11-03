@@ -1,7 +1,7 @@
 import i18n from "i18next";
 
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
-import type { ExperimentConfig, RunExecutionBackend } from "@/types/runs";
+import type { ExperimentConfig, MissingTargetPolicy, RunExecutionBackend } from "@/types/runs";
 import { STRICT_NATIVE_RUNTIME_ENGINE } from "./runtimeBackendPreference";
 
 import {
@@ -19,6 +19,7 @@ export interface BuildExperimentLaunchConfigInput {
   selectedDatasetIds: string[];
   selectedPipelineConfigs: SelectedPipelineConfig[];
   selectedGroupingPayload: Record<string, string | null>;
+  missingTargetPolicy: MissingTargetPolicy;
   missingIssues?: MissingOperatorIssue[];
   executionBackend?: RunExecutionBackend;
 }
@@ -29,6 +30,7 @@ export function buildExperimentLaunchConfig({
   selectedDatasetIds,
   selectedPipelineConfigs,
   selectedGroupingPayload,
+  missingTargetPolicy,
   missingIssues = [],
   executionBackend = "local-python",
 }: BuildExperimentLaunchConfigInput): ExperimentConfig {
@@ -92,6 +94,7 @@ export function buildExperimentLaunchConfig({
     inline_pipeline: inlinePipeline,
     inline_pipelines: additionalInlinePipelines,
     split_group_by_by_dataset: selectedGroupingPayload,
+    missing_target_policy: missingTargetPolicy,
     engine: STRICT_NATIVE_RUNTIME_ENGINE,
     allow_fallback: false,
   };

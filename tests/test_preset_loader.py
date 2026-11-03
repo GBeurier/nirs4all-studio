@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import json
 
 import pytest
@@ -215,3 +217,41 @@ class TestPresetFileParsing:
         with pytest.raises(HTTPException) as exc:
             preset_loader.load_preset("bad_task")
         assert exc.value.status_code == 404
+
+
+def _preset_constructor_calls(node, path=""):
+    """Yield (class path, parameter names, location) for every class step and finetune space."""
+    if isinstance(node, dict):
+        class_path = node.get("class")
+        if isinstance(class_path, str) and isinstance(node.get("params"), dict):
+            yield class_path, list(node["params"]), path
+        model = node.get("model")
+        model_path = model.get("class") if isinstance(model, dict) else model
+        if isinstance(model_path, str) and "finetune_params" in node:
+            yield model_path, list(node["finetune_params"].get("model_params", {})), f"{path}/finetune_params"
+        for key, value in node.items():
+            yield from _preset_constructor_calls(value, f"{path}/{key}")
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from _preset_constructor_calls(value, f"{path}[{index}]")
+
+
+@pytest.mark.parametrize("preset_path", sorted(preset_loader.PRESETS_DIR.glob("*.yaml")), ids=lambda path: path.stem)
+def test_preset_params_are_constructor_keywords(preset_path):
+    """Preset params and finetune spaces must name real constructor keywords.
+
+    nirs4all drops unknown keywords with only a printed notice, so a stale name
+    would silently run with the constructor default or tune nothing.
+    """
+    unknown = []
+    for class_path, names, where in _preset_constructor_calls(yaml.safe_load(preset_path.read_text(encoding="utf-8"))):
+        module_name, _, attr = class_path.rpartition(".")
+        try:
+            cls = getattr(importlib.import_module(module_name), attr)
+        except ImportError:
+            continue  # optional dependency (lightgbm, xgboost, tabpfn, torch) not installed
+        params = inspect.signature(cls.__init__).parameters
+        if any(param.kind is inspect.Parameter.VAR_KEYWORD for param in params.values()):
+            continue
+        unknown.extend((where, class_path, name) for name in names if name not in params)
+    assert unknown == []

@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { partitionBadgeClass } from "@/lib/partitionColors";
+import { isPredictionOnlyPartition, partitionBadgeClass } from "@/lib/partitionColors";
+import { getPartitionLabel } from "@/components/predictions/predictionLabels";
 import {
   formatMetricValue,
   getMetricAbbreviation,
@@ -43,7 +44,7 @@ export function ChainDetailPredictionBreakdown({
                   variant="outline"
                   className={cn("h-5 px-1.5 text-[10px]", partitionBadgeClass(row.partition))}
                 >
-                  {row.partition}
+                  {getPartitionLabel(t, row.partition)}
                 </Badge>
                 <span className="text-[11px] text-muted-foreground">
                   {row.n_samples != null ? t("predictions.detail.samples", { count: row.n_samples }) : t("predictions.detail.samplesUnknown")}
@@ -71,7 +72,9 @@ export function ChainDetailPredictionBreakdown({
                   ))
                 ) : (
                   <div className="rounded-lg border border-dashed border-border/60 px-3 py-5 text-sm text-muted-foreground">
-                    {t("predictions.detail.breakdown.noMetricMap")}
+                    {isPredictionOnlyPartition(row.partition)
+                      ? t("predictions.detail.breakdown.notScored")
+                      : t("predictions.detail.breakdown.noMetricMap")}
                   </div>
                 )}
               </div>

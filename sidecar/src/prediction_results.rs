@@ -6,6 +6,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// Stored prediction partitions. `prediction` rows hold model outputs for
+/// samples whose target is missing: no `y_true` and no scores.
+fn is_prediction_partition(value: &str) -> bool {
+    matches!(value, "train" | "val" | "test" | "prediction")
+}
+
 fn endpoint(path: &str) -> Option<(&str, &str)> {
     let suffix = path.strip_prefix("/api/workspaces/")?;
     let (id, tail) = suffix.split_once("/predictions/")?;
@@ -18,8 +24,38 @@ fn endpoint(path: &str) -> Option<(&str, &str)> {
     Some((id, tail))
 }
 
+/// Every chain of one dataset: `/api/workspaces/{id}/runs/{run}/datasets/{name}/chains`
+/// (one run) or `/api/workspaces/{id}/results/datasets/{name}/chains` (all runs).
+fn dataset_chains_endpoint(path: &str) -> Option<(&str, Option<&str>, &str)> {
+    let (id, tail) = path.strip_prefix("/api/workspaces/")?.split_once('/')?;
+    let tail = tail.strip_suffix("/chains")?;
+    let (run, dataset) = match tail.strip_prefix("runs/") {
+        Some(rest) => {
+            let (run, dataset) = rest.split_once("/datasets/")?;
+            (Some(run), dataset)
+        }
+        None => (None, tail.strip_prefix("results/datasets/")?),
+    };
+    let segment = |value: &str| !value.is_empty() && !value.contains('/');
+    (segment(id) && run.is_none_or(segment) && segment(dataset)).then_some((id, run, dataset))
+}
+
+fn decoded_segment(raw: &str, max_len: usize) -> Option<String> {
+    let value = percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .ok()?;
+    (!value.is_empty()
+        && value.len() <= max_len
+        && !value.contains(['/', '\\', '\0'])
+        && !matches!(value.as_ref(), "." | ".."))
+    .then(|| value.into_owned())
+}
+
 pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<HttpResponse> {
-    if endpoint(&request.path).is_none() && aggregated_endpoint(&request.path).is_none() {
+    if endpoint(&request.path).is_none()
+        && aggregated_endpoint(&request.path).is_none()
+        && dataset_chains_endpoint(&request.path).is_none()
+    {
         return None;
     }
     let (settings, host) = {
@@ -31,20 +67,24 @@ pub fn route(runtime: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Optio
     // Cover the complete HTTP read, including adapter verification and JSON
     // response construction. This activity token holds no admission readlock:
     // the existing warm exchange still owns its unchanged pre/post guards.
-    let operation = aggregated_endpoint(&request.path).map_or_else(
-        || {
-            endpoint(&request.path).map(|(_, kind)| {
-                if kind.ends_with("/scatter") {
-                    "results.arrays"
-                } else if kind == "data" {
-                    "results.page"
-                } else {
-                    "results.summary"
-                }
-            })
-        },
-        |(operation, _)| Some(operation),
-    )?;
+    let operation = if dataset_chains_endpoint(&request.path).is_some() {
+        Some("results.dataset_chains")
+    } else {
+        aggregated_endpoint(&request.path).map_or_else(
+            || {
+                endpoint(&request.path).map(|(_, kind)| {
+                    if kind.ends_with("/scatter") {
+                        "results.arrays"
+                    } else if kind == "data" {
+                        "results.page"
+                    } else {
+                        "results.summary"
+                    }
+                })
+            },
+            |(operation, _)| Some(operation),
+        )
+    }?;
     let _activity = if request.method == "GET" {
         match host
             .as_deref()
@@ -81,6 +121,9 @@ fn dispatch(
     }
     if let Some((operation, identifier)) = aggregated_endpoint(&request.path) {
         return dispatch_aggregated(settings, request, operation, identifier, invoke);
+    }
+    if let Some((raw_id, run, dataset)) = dataset_chains_endpoint(&request.path) {
+        return dispatch_dataset_chains(settings, request, (raw_id, run, dataset), invoke);
     }
     let Some((raw_id, kind)) = endpoint(&request.path) else {
         return error(404, "Route not found".into());
@@ -147,6 +190,47 @@ fn aggregated_endpoint(path: &str) -> Option<(&'static str, Option<&str>)> {
             };
             (!id.is_empty() && !id.contains('/')).then_some((operation, Some(id)))
         }
+    }
+}
+
+fn dispatch_dataset_chains(
+    settings: &AppSettingsStore,
+    request: &HttpRequest,
+    (raw_id, raw_run, raw_dataset): (&str, Option<&str>, &str),
+    invoke: &impl Fn(&str, &Value) -> Result<Value, String>,
+) -> HttpResponse {
+    let error =
+        |status, detail: &str| HttpResponse::json(status, json!({"detail": detail}).to_string());
+    if request
+        .query
+        .as_deref()
+        .is_some_and(|query| !query.is_empty())
+    {
+        return error(400, "Unsupported dataset chains query");
+    }
+    let Some(id) = decoded_segment(raw_id, 256) else {
+        return error(400, "Invalid workspace id");
+    };
+    let Some(dataset) = decoded_segment(raw_dataset, 1024) else {
+        return error(400, "Invalid dataset name");
+    };
+    let run = match raw_run.map(|run| decoded_segment(run, 256)) {
+        Some(None) => return error(400, "Invalid run id"),
+        Some(Some(run)) => Some(run),
+        None => None,
+    };
+    let access = match settings.linked_workspace_access(&id) {
+        Ok(Some(access)) => access,
+        Ok(None) => return error(404, "Workspace not found"),
+        Err(detail) => return error(409, &detail),
+    };
+    let mut payload = json!({"workspace_path": access.path(), "dataset_name": dataset});
+    if let Some(run) = run {
+        payload["run_id"] = json!(run);
+    }
+    match invoke("results.dataset_chains", &payload) {
+        Ok(value) => HttpResponse::json(200, value.to_string()),
+        Err(detail) => error(503, &detail),
     }
 }
 
@@ -244,7 +328,7 @@ fn aggregated_filters(
             }
             payload["n"] = json!(n);
         } else {
-            if key == "partition" && !matches!(value.as_ref(), "train" | "val" | "test") {
+            if key == "partition" && !is_prediction_partition(&value) {
                 return Err("Invalid prediction partition".into());
             }
             if key == "score_column"
@@ -293,7 +377,7 @@ fn filters(query: Option<&str>, page: bool) -> Result<Value, String> {
                 if value.is_empty() || value.len() > 1024 || value.contains('\0') {
                     return Err("Invalid prediction filter".into());
                 }
-                if key == "partition" && !matches!(value.as_ref(), "train" | "val" | "test") {
+                if key == "partition" && !is_prediction_partition(&value) {
                     return Err("Invalid prediction partition".into());
                 }
                 payload[key.as_ref()] = json!(value);
@@ -307,6 +391,93 @@ fn filters(query: Option<&str>, page: bool) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn partition_filters_accept_target_missing_prediction_rows() {
+        let page = filters(Some("partition=prediction"), true).unwrap();
+        assert_eq!(page["partition"], "prediction");
+        assert!(filters(Some("partition=oops"), true).is_err());
+        let request = HttpRequest {
+            method: "GET".into(),
+            path: "/api/aggregated-predictions/chain/chain-1/detail".into(),
+            query: Some("partition=prediction&fold_id=final".into()),
+            headers: std::collections::BTreeMap::default(),
+            body: vec![],
+        };
+        let detail = aggregated_filters(&request, "results.chain_detail", Some("chain-1")).unwrap();
+        assert_eq!(detail["partition"], "prediction");
+        assert_eq!(detail["fold_id"], "final");
+    }
+    #[test]
+    fn dataset_chain_listings_reach_the_owner_for_one_run_or_all_runs() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        std::fs::write(
+            root.path().join("app_settings.json"),
+            json!({"linked_workspaces":[{"id":"ws-1","path":workspace,"is_active":true}]})
+                .to_string(),
+        )
+        .unwrap();
+        let settings = AppSettingsStore::new(root.path());
+        let get = |path: &str, query: Option<&str>| HttpRequest {
+            method: "GET".into(),
+            path: path.into(),
+            query: query.map(Into::into),
+            headers: std::collections::BTreeMap::default(),
+            body: vec![],
+        };
+        for (path, run) in [
+            (
+                "/api/workspaces/ws-1/runs/run-7/datasets/Missing%20target%20run/chains",
+                Some("run-7"),
+            ),
+            (
+                "/api/workspaces/ws-1/results/datasets/Missing%20target%20run/chains",
+                None,
+            ),
+        ] {
+            let response = dispatch(&settings, &get(path, None), &|operation, payload| {
+                assert_eq!(operation, "results.dataset_chains");
+                assert_eq!(payload["workspace_path"], json!(workspace));
+                assert_eq!(payload["dataset_name"], "Missing target run");
+                assert_eq!(payload.get("run_id").and_then(Value::as_str), run);
+                Ok(json!({"chains":[{"chain_id":"chain-1"}],"total":1,"metric":"rmse"}))
+            });
+            assert_eq!(response.status, 200, "{}", response.body);
+            assert_eq!(
+                serde_json::from_str::<Value>(&response.body).unwrap()["chains"][0]["chain_id"],
+                "chain-1"
+            );
+        }
+        let refuse = |_: &str, _: &Value| -> Result<Value, String> {
+            panic!("refused requests never reach the owner")
+        };
+        let status = |path: &str, query: Option<&str>| {
+            dispatch(&settings, &get(path, query), &refuse).status
+        };
+        assert_eq!(
+            status(
+                "/api/workspaces/ws-1/results/datasets/a/chains",
+                Some("x=1")
+            ),
+            400
+        );
+        assert_eq!(
+            status("/api/workspaces/ws-1/results/datasets/%2E%2E/chains", None),
+            400
+        );
+        assert_eq!(
+            status("/api/workspaces/missing/results/datasets/a/chains", None),
+            404
+        );
+        assert!(
+            dataset_chains_endpoint("/api/workspaces/ws-1/results/datasets/a/b/chains").is_none()
+        );
+        assert!(dataset_chains_endpoint("/api/workspaces/ws-1/runs//datasets/a/chains").is_none());
+        assert!(dataset_chains_endpoint("/api/workspaces/ws-1/runs/r/datasets/a/scores").is_none());
+    }
+
     #[test]
     fn editor_reload_routes_keep_the_object_contract_on_the_http_wire() {
         use std::{

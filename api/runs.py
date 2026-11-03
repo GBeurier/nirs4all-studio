@@ -52,6 +52,7 @@ from .run_execution_plan import build_campaign_run_group_execution_plan, build_l
 from .run_store_repository import RunStoreRepository
 from .runtime_engine import fallback_policy_record, resolve_engine, rt_error_envelope_from_exception
 from .runtime_errors import RtError
+from .shared.dataset_config import MissingTargetPolicy
 from .shared.json_safe import sanitize_float
 from .shared.logger import get_logger
 from .shared.runtime_grouping import (
@@ -215,6 +216,8 @@ class Run(BaseModel):
     engine: str | None = None
     allow_fallback: bool = False
     robustness: dict[str, Any] | None = None
+    # What training does with samples whose target is missing (None keeps the dataset policy).
+    missing_target_policy: MissingTargetPolicy | None = None
     datasets: list[DatasetRun]
     status: Literal["queued", "running", "completed", "failed"]
     created_at: str
@@ -256,6 +259,7 @@ class ExperimentConfig(BaseModel):
     project_id: str | None = None  # Project grouping
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
     robustness: RobustnessLaunchPayload | None = None
+    missing_target_policy: MissingTargetPolicy | None = Field(None, description="Samples whose target is missing: 'predict' excludes them from fitting and predicts them; 'remove' drops them for this run.")
 
 
 class QuickRunRequest(BaseModel):
@@ -1861,6 +1865,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         engine=run.engine,
                         allow_fallback=run.allow_fallback,
                         robustness=run.robustness,
+                        missing_target_policy=run.missing_target_policy,
                         should_stop=lambda: job.cancellation_requested,
                     )
                     training_succeeded = True
@@ -2052,6 +2057,7 @@ def _execute_pipeline_training(
     engine: str | None = None,
     allow_fallback: bool = False,
     robustness: dict[str, Any] | None = None,
+    missing_target_policy: MissingTargetPolicy | None = None,
     should_stop: Any | None = None,
 ) -> dict[str, Any]:
     """Execute one pipeline via nirs4all.run() on the current worker thread.
@@ -2157,7 +2163,7 @@ def _execute_pipeline_training(
         from .nirs4all_adapter import build_dataset_config, ensure_models_dir, expand_pipeline_variants
         from .spectra import _load_dataset
         try:
-            dataset_config = build_dataset_config(dataset_id)
+            dataset_config = build_dataset_config(dataset_id, missing_target_policy)
             log(f"[INFO] Dataset config keys: {list(dataset_config.keys())}")
         except Exception as e:
             raise ValueError(f"Dataset '{dataset_id}' config build failed: {e}")
@@ -2989,6 +2995,7 @@ def _create_run_group_from_payload(
         engine=config.engine,
         allow_fallback=config.allow_fallback,
         robustness=normalize_robustness_launch_payload(config.robustness),
+        missing_target_policy=config.missing_target_policy,
         datasets=_build_dataset_runs_from_execution_plan(execution_plan),
         status="queued",
         created_at=now,
@@ -3060,6 +3067,7 @@ def _create_run_from_config(
         engine=config.engine,
         allow_fallback=config.allow_fallback,
         robustness=normalize_robustness_launch_payload(config.robustness),
+        missing_target_policy=config.missing_target_policy,
         datasets=_build_dataset_runs_from_execution_plan(execution_plan),
         status="queued",
         created_at=now,
@@ -3318,6 +3326,7 @@ async def retry_run(run_id: str):
         # actually ran is recorded per-pipeline during execution.
         engine=old_run.engine,
         allow_fallback=old_run.allow_fallback,
+        missing_target_policy=old_run.missing_target_policy,
         datasets=[
             DatasetRun(
                 dataset_id=dataset.dataset_id,

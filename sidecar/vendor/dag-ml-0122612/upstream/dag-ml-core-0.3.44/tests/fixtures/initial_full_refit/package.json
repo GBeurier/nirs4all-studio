@@ -1,0 +1,444 @@
+{
+  "schema_version": 1,
+  "package_id": "package:cli.process.dsl.initial.refit",
+  "run_id": "run:cli.process.dsl.refit.phase",
+  "effective_plan": {
+    "id": "plan:cli.process.dsl.refit.phase",
+    "graph_plan": {
+      "graph": {
+        "id": "dsl:initial.refit.test",
+        "interface": {
+          "inputs": [
+            {
+              "name": "x",
+              "kind": "data",
+              "representation": "tabular_numeric",
+              "cardinality": "one",
+              "description": ""
+            }
+          ],
+          "outputs": [
+            {
+              "name": "prediction",
+              "kind": "prediction",
+              "representation": null,
+              "cardinality": "one",
+              "description": ""
+            }
+          ]
+        },
+        "nodes": [
+          {
+            "id": "model:initial",
+            "kind": "model",
+            "operator": {
+              "type": "MockModel"
+            },
+            "params": {},
+            "ports": {
+              "inputs": [
+                {
+                  "name": "x",
+                  "kind": "data",
+                  "representation": "tabular_numeric",
+                  "cardinality": "one",
+                  "description": ""
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "oof",
+                  "kind": "prediction",
+                  "representation": null,
+                  "cardinality": "one",
+                  "description": ""
+                }
+              ]
+            },
+            "metadata": {},
+            "seed_label": null
+          }
+        ],
+        "edges": [],
+        "search_space_fingerprint": null,
+        "metadata": {}
+      },
+      "topological_order": [
+        "model:initial"
+      ],
+      "parallel_levels": [
+        [
+          "model:initial"
+        ]
+      ]
+    },
+    "campaign": {
+      "id": "campaign:initial.refit.test",
+      "root_seed": 7,
+      "leakage_policy": {
+        "split_unit": "sample",
+        "forbid_origin_cross_fold": true,
+        "allow_observation_split_with_shared_target": false,
+        "require_group_ids": false,
+        "unsafe_flags": []
+      },
+      "aggregation_policy": {
+        "aggregation_level": "sample",
+        "method": "mean",
+        "weights": "none",
+        "emit_parallel_metrics": true,
+        "selection_metric_level": "sample",
+        "store_raw_predictions": true,
+        "store_aggregated_predictions": true
+      },
+      "split_invocation": null,
+      "generation": {
+        "strategy": "none",
+        "dimensions": [],
+        "max_variants": 1
+      },
+      "shape_plans": {},
+      "data_bindings": {
+        "model:initial": [
+          {
+            "node_id": "model:initial",
+            "input_name": "x",
+            "request_id": "nir-to-tabular",
+            "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+            "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+            "relation_fingerprint": "54839c177f3bf21cddf28c238236249a3962f090bc438ed64b93eaf7cdb04741",
+            "output_representation": "tabular_numeric",
+            "feature_set_id": "x",
+            "source_ids": [
+              "nir"
+            ],
+            "require_relations": true,
+            "view_policy": {
+              "fit_partition": "fold_train",
+              "predict_partition": "fold_validation",
+              "include_augmented_train": true,
+              "include_augmented_validation": false,
+              "include_excluded": false,
+              "require_sample_ids": true
+            },
+            "metadata": {}
+          }
+        ]
+      },
+      "metadata": {}
+    },
+    "node_plans": {
+      "model:initial": {
+        "node_id": "model:initial",
+        "kind": "model",
+        "controller_id": "controller:model.mock",
+        "controller_version": "0.1.0",
+        "supported_phases": [
+          "FIT_CV",
+          "REFIT",
+          "PREDICT"
+        ],
+        "controller_capabilities": [
+          "deterministic",
+          "thread_safe",
+          "process_safe",
+          "emits_predictions",
+          "consumes_oof_predictions",
+          "emits_artifacts",
+          "stateful",
+          "uses_core_rng"
+        ],
+        "fit_scope": "fold_train",
+        "rng_policy": "uses_core_seed",
+        "artifact_policy": "serializable",
+        "input_nodes": [],
+        "output_nodes": [],
+        "shape_plan": null,
+        "data_bindings": [
+          {
+            "node_id": "model:initial",
+            "input_name": "x",
+            "request_id": "nir-to-tabular",
+            "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+            "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+            "relation_fingerprint": "54839c177f3bf21cddf28c238236249a3962f090bc438ed64b93eaf7cdb04741",
+            "output_representation": "tabular_numeric",
+            "feature_set_id": "x",
+            "source_ids": [
+              "nir"
+            ],
+            "require_relations": true,
+            "view_policy": {
+              "fit_partition": "fold_train",
+              "predict_partition": "fold_validation",
+              "include_augmented_train": true,
+              "include_augmented_validation": false,
+              "include_excluded": false,
+              "require_sample_ids": true
+            },
+            "metadata": {}
+          }
+        ],
+        "params_fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      }
+    },
+    "controller_manifests": {
+      "controller:model.mock": {
+        "controller_id": "controller:model.mock",
+        "controller_version": "0.1.0",
+        "operator_kind": "model",
+        "priority": 0,
+        "supported_phases": [
+          "FIT_CV",
+          "REFIT",
+          "PREDICT"
+        ],
+        "input_ports": [
+          {
+            "name": "x",
+            "kind": "data",
+            "representation": "tabular_numeric",
+            "cardinality": "one",
+            "description": ""
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "oof",
+            "kind": "prediction",
+            "representation": null,
+            "cardinality": "one",
+            "description": ""
+          }
+        ],
+        "data_requirements": null,
+        "capabilities": [
+          "deterministic",
+          "thread_safe",
+          "process_safe",
+          "emits_predictions",
+          "consumes_oof_predictions",
+          "emits_artifacts",
+          "stateful",
+          "uses_core_rng"
+        ],
+        "fit_scope": "fold_train",
+        "rng_policy": "uses_core_seed",
+        "artifact_policy": "serializable"
+      }
+    },
+    "variants": [
+      {
+        "variant_id": "variant:base",
+        "choices": {},
+        "fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "seed": 5850368024386837439
+      }
+    ],
+    "fold_set": null,
+    "graph_fingerprint": "07eae7a45b630292669db4aa8b38132ec62f897a745ac0d9a88d02a0a6db5832",
+    "campaign_fingerprint": "1714d131e0a5edff92630777395264d79636e26341c84e90f1e85fd83ece3173",
+    "controller_fingerprint": "8673d2559e1f0f61897cb0ff00388bad59e5529ecda153e6073967928d8f1f1f"
+  },
+  "effective_plan_fingerprint": "bd02d8b209d65327e4c0a4cf545b2f4eb83f859f2b60186de9ea55f1f08494d8",
+  "execution_root_seed": 12345,
+  "scheduler": "Sequential",
+  "resource_limits": {
+    "cpu_threads": 1,
+    "gpu_devices": []
+  },
+  "variant_id": "variant:base",
+  "training_sample_ids": [
+    "sample:2",
+    "sample:1"
+  ],
+  "training_relations": {
+    "records": [
+      {
+        "unit_level": "observation",
+        "unit_id": null,
+        "observation_id": "obs.S001.aug0",
+        "sample_id": "sample:1",
+        "source_id": "nir",
+        "rep_id": null,
+        "target_id": "target:1",
+        "group_id": "plant.A",
+        "origin_sample_id": "sample:1",
+        "derived_unit_id": null,
+        "component_observation_ids": [],
+        "sample_influence_weight": null,
+        "quality_flag": null,
+        "is_augmented": true
+      },
+      {
+        "unit_level": "observation",
+        "unit_id": null,
+        "observation_id": "obs.S001.base",
+        "sample_id": "sample:1",
+        "source_id": "nir",
+        "rep_id": null,
+        "target_id": "target:1",
+        "group_id": "plant.A",
+        "origin_sample_id": null,
+        "derived_unit_id": null,
+        "component_observation_ids": [],
+        "sample_influence_weight": null,
+        "quality_flag": null,
+        "is_augmented": false
+      },
+      {
+        "unit_level": "observation",
+        "unit_id": null,
+        "observation_id": "obs.S001.rep1",
+        "sample_id": "sample:1",
+        "source_id": "nir",
+        "rep_id": null,
+        "target_id": "target:1",
+        "group_id": "plant.A",
+        "origin_sample_id": null,
+        "derived_unit_id": null,
+        "component_observation_ids": [],
+        "sample_influence_weight": null,
+        "quality_flag": null,
+        "is_augmented": false
+      },
+      {
+        "unit_level": "observation",
+        "unit_id": null,
+        "observation_id": "obs.S002.base",
+        "sample_id": "sample:2",
+        "source_id": "nir",
+        "rep_id": null,
+        "target_id": "target:2",
+        "group_id": "plant.B",
+        "origin_sample_id": null,
+        "derived_unit_id": null,
+        "component_observation_ids": [],
+        "sample_influence_weight": null,
+        "quality_flag": null,
+        "is_augmented": false
+      }
+    ]
+  },
+  "training_envelope": {
+    "schema_version": 1,
+    "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+    "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+    "relation_fingerprint": "54839c177f3bf21cddf28c238236249a3962f090bc438ed64b93eaf7cdb04741",
+    "data_content_fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "target_content_fingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "coordinator_relations": {
+      "records": [
+        {
+          "unit_level": "observation",
+          "unit_id": null,
+          "observation_id": "obs.S001.aug0",
+          "sample_id": "sample:1",
+          "source_id": "nir",
+          "rep_id": null,
+          "target_id": "target:1",
+          "group_id": "plant.A",
+          "origin_sample_id": "sample:1",
+          "derived_unit_id": null,
+          "component_observation_ids": [],
+          "sample_influence_weight": null,
+          "quality_flag": null,
+          "is_augmented": true
+        },
+        {
+          "unit_level": "observation",
+          "unit_id": null,
+          "observation_id": "obs.S001.base",
+          "sample_id": "sample:1",
+          "source_id": "nir",
+          "rep_id": null,
+          "target_id": "target:1",
+          "group_id": "plant.A",
+          "origin_sample_id": null,
+          "derived_unit_id": null,
+          "component_observation_ids": [],
+          "sample_influence_weight": null,
+          "quality_flag": null,
+          "is_augmented": false
+        },
+        {
+          "unit_level": "observation",
+          "unit_id": null,
+          "observation_id": "obs.S001.rep1",
+          "sample_id": "sample:1",
+          "source_id": "nir",
+          "rep_id": null,
+          "target_id": "target:1",
+          "group_id": "plant.A",
+          "origin_sample_id": null,
+          "derived_unit_id": null,
+          "component_observation_ids": [],
+          "sample_influence_weight": null,
+          "quality_flag": null,
+          "is_augmented": false
+        },
+        {
+          "unit_level": "observation",
+          "unit_id": null,
+          "observation_id": "obs.S002.base",
+          "sample_id": "sample:2",
+          "source_id": "nir",
+          "rep_id": null,
+          "target_id": "target:2",
+          "group_id": "plant.B",
+          "origin_sample_id": null,
+          "derived_unit_id": null,
+          "component_observation_ids": [],
+          "sample_influence_weight": null,
+          "quality_flag": null,
+          "is_augmented": false
+        }
+      ]
+    }
+  },
+  "data_identities": [
+    {
+      "requirement_key": "model:initial.x",
+      "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+      "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+      "relation_fingerprint": "54839c177f3bf21cddf28c238236249a3962f090bc438ed64b93eaf7cdb04741",
+      "data_content_fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "target_content_fingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "identity_fingerprint": "9590020ebadcadda62b790c50fbdcbfa919c7e12e6105d5a17f8139248e642b3"
+    }
+  ],
+  "outputs": [
+    {
+      "output_id": "output:model:initial:oof",
+      "node_id": "model:initial",
+      "port_name": "oof"
+    }
+  ],
+  "artifacts": [
+    {
+      "record": {
+        "node_id": "model:initial",
+        "controller_id": "controller:model.mock",
+        "artifact": {
+          "id": "artifact:model:initial:refit",
+          "kind": "mock_model",
+          "controller_id": "controller:model.mock",
+          "backend": "json",
+          "uri": "artifacts/3f94183856e2a2d139379214106de3af53e31301479ed31d58a7720f5b3a7445.json",
+          "content_fingerprint": "68aaf8a131ef0861226205a0f026fe9f0685358ae2e5b2c8f83354c13f630bbe",
+          "size_bytes": 128,
+          "plugin": "dagml.python_process",
+          "plugin_version": "1.0.0"
+        },
+        "params_fingerprint": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "data_requirement_keys": [
+          "model:initial.x"
+        ],
+        "prediction_requirement_keys": []
+      },
+      "load_mode": "host_sidecar"
+    }
+  ],
+  "raw_artifact_payloads": {},
+  "package_fingerprint": "0dde64ad1405a4b18d2cb76891b604e4db17b24e19ae11202980940cecb1801b"
+}

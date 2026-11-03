@@ -1744,6 +1744,7 @@ def test_execute_run_job_tolerates_run_store_open_failure(monkeypatch, tmp_path,
         store_run_id=None,
         engine=None,
         robustness=None,
+        missing_target_policy=None,
         allow_fallback=True,
         should_stop=None,
     ):
@@ -1846,6 +1847,7 @@ def test_execute_run_job_tolerates_store_precreation_failure(monkeypatch, tmp_pa
         store_run_id=None,
         engine=None,
         robustness=None,
+        missing_target_policy=None,
         allow_fallback=True,
         should_stop=None,
     ):
@@ -2017,6 +2019,7 @@ def test_execute_run_job_clears_precreated_store_run_when_project_assignment_fai
         store_run_id=None,
         engine=None,
         robustness=None,
+        missing_target_policy=None,
         allow_fallback=True,
         should_stop=None,
     ):

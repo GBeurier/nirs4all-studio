@@ -1,7 +1,7 @@
 {
   "name": "nirs4all-webapp",
   "private": true,
-  "version": "0.15.8",
+  "version": "0.15.9",
   "homepage": "https://nirs4all.org",
   "type": "module",
   "description": "Unified NIRS analysis desktop application",
@@ -107,7 +107,7 @@
     "i18next-browser-languagedetector": "^8.2.0",
     "i18next-http-backend": "^4.0.6",
     "lucide-react": "^0.556.0",
-    "nirs4all-ui": "file:./vendor/npm/nirs4all-ui-0.1.17.tgz",
+    "nirs4all-ui": "file:./vendor/npm/nirs4all-ui-0.2.1.tgz",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-hook-form": "^7.68.0",

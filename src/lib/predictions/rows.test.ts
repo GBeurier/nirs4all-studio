@@ -59,6 +59,18 @@ describe("predictionGroupKey", () => {
 });
 
 describe("buildPredictionModelRows", () => {
+  it("keeps a scored primary and counts samples predicted without a target", () => {
+    const rows = buildPredictionModelRows([
+      makePred({ id: "missing", trace_id: "t1", fold_id: "final", partition: "prediction", n_samples: 3, test_score: null, scores: {} }),
+      makePred({ id: "train", trace_id: "t1", fold_id: "final", partition: "train", n_samples: 40, train_score: 0.2, metric: "rmse" }),
+      makePred({ id: "test", trace_id: "t1", fold_id: "final", partition: "test", n_samples: 10, test_score: 0.3, metric: "rmse" }),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: "test", primaryTestScore: 0.3, nSamplesEval: 10, nSamplesPredicted: 3 });
+    expect(Number.isNaN(rows[0].primaryTestScore)).toBe(false);
+    expect(buildPredictionModelRows([makePred({ trace_id: "t2", fold_id: "final", partition: "test" })])[0].nSamplesPredicted).toBeNull();
+  });
+
   it("merges test/val/train partitions of a group into one row, preferring test as primary", () => {
     const preds: PredictionRecord[] = [
       makePred({

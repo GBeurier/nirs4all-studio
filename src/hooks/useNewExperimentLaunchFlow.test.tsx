@@ -161,6 +161,7 @@ function launchFlowInput(overrides: Partial<UseNewExperimentLaunchFlowInput> = {
     selectedDatasetIds: ["d1"],
     selectedPipelineConfigs,
     selectedGroupingPayload: { d1: null },
+    missingTargetPolicy: "predict",
     hasGroupingBlockingError: false,
     onGroupingBlockingError: vi.fn(),
     onRunCreated: vi.fn(),
@@ -201,6 +202,7 @@ describe("useNewExperimentLaunchFlow", () => {
       inline_pipeline: undefined,
       inline_pipelines: [],
       split_group_by_by_dataset: { d1: null },
+      missing_target_policy: "predict",
       engine: "dag-ml",
       allow_fallback: false,
     });
@@ -214,7 +216,7 @@ describe("useNewExperimentLaunchFlow", () => {
     apiMocks.runPreflight.mockResolvedValue({ ready: true, issues: [] } satisfies PreflightResult);
     apiMocks.createRun.mockResolvedValue(run());
 
-    const mounted = await renderHook(() => useNewExperimentLaunchFlow(launchFlowInput()));
+    const mounted = await renderHook(() => useNewExperimentLaunchFlow(launchFlowInput({ missingTargetPolicy: "remove" })));
 
     await act(async () => {
       await mounted.result.current!.handleLaunch();
@@ -226,6 +228,7 @@ describe("useNewExperimentLaunchFlow", () => {
       allow_fallback: false,
       dataset_ids: ["d1"],
       pipeline_ids: ["p1"],
+      missing_target_policy: "remove",
     }));
 
     await mounted.unmount();
@@ -318,6 +321,7 @@ describe("useNewExperimentLaunchFlow", () => {
       inline_pipeline: undefined,
       inline_pipelines: [],
       split_group_by_by_dataset: { d1: null },
+      missing_target_policy: "predict",
       engine: "dag-ml",
       allow_fallback: false,
     }, singlePairSplitSpecResult));
@@ -426,6 +430,7 @@ describe("useNewExperimentLaunchFlow", () => {
       },
       inline_pipelines: [],
       split_group_by_by_dataset: { d1: null },
+      missing_target_policy: "predict",
       engine: "dag-ml",
       allow_fallback: false,
     });
@@ -539,6 +544,7 @@ describe("useNewExperimentLaunchFlow", () => {
         },
         inline_pipelines: [],
         split_group_by_by_dataset: { d1: null },
+        missing_target_policy: "predict",
         engine: "dag-ml",
         allow_fallback: false,
       },

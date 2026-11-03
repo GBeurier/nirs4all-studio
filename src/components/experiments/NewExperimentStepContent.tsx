@@ -6,6 +6,7 @@ import type { NewExperimentExecutionEnvironmentDiagnostics } from "@/hooks/useNe
 import type { UseNewExperimentLaunchFlowResult } from "@/hooks/useNewExperimentLaunchFlow";
 import type { UseNewExperimentPlanFlowResult } from "@/hooks/useNewExperimentPlanFlow";
 import type { UseNewExperimentSelectionFlowResult } from "@/hooks/useNewExperimentSelectionFlow";
+import type { MissingTargetPolicy } from "@/types/runs";
 import {
   NEW_EXPERIMENT_DATASETS_STEP,
   NEW_EXPERIMENT_LAUNCH_STEP,
@@ -30,10 +31,13 @@ export interface NewExperimentStepContentProps {
   filteredInputs: UseNewExperimentFilteredInputsResult;
   inputData: NewExperimentInputData;
   launchFlow: UseNewExperimentLaunchFlowResult;
+  missingTargetPolicy: MissingTargetPolicy;
+  missingTargetRemovalAvailable: boolean;
   planFlow: UseNewExperimentPlanFlowResult;
   selectionFlow: UseNewExperimentSelectionFlowResult;
   onExperimentDescriptionChange: (value: string) => void;
   onExperimentNameChange: (value: string) => void;
+  onMissingTargetPolicyChange: (value: MissingTargetPolicy) => void;
 }
 
 export function NewExperimentStepContent({
@@ -44,10 +48,13 @@ export function NewExperimentStepContent({
   filteredInputs,
   inputData,
   launchFlow,
+  missingTargetPolicy,
+  missingTargetRemovalAvailable,
   planFlow,
   selectionFlow,
   onExperimentDescriptionChange,
   onExperimentNameChange,
+  onMissingTargetPolicyChange,
 }: NewExperimentStepContentProps) {
   if (currentStep === NEW_EXPERIMENT_PIPELINES_STEP) {
     return (
@@ -84,10 +91,13 @@ export function NewExperimentStepContent({
         customExperimentName={customExperimentName}
         executionEnvironmentDiagnostics={executionEnvironmentDiagnostics}
         experimentDescription={experimentDescription}
+        missingTargetPolicy={missingTargetPolicy}
+        missingTargetRemovalAvailable={missingTargetRemovalAvailable}
         planFlow={planFlow}
         selectionFlow={selectionFlow}
         onExperimentDescriptionChange={onExperimentDescriptionChange}
         onExperimentNameChange={onExperimentNameChange}
+        onMissingTargetPolicyChange={onMissingTargetPolicyChange}
       />
     );
   }

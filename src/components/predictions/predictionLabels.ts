@@ -1,11 +1,12 @@
 import type { TFunction } from "i18next";
 
-import { normalizePartition } from "@/lib/partitionColors";
+import { isPredictionOnlyPartition, normalizePartition } from "@/lib/partitionColors";
 
 const KNOWN_TASK_TYPES = new Set(["regression", "classification", "binary_classification", "multiclass_classification"]);
 
-/** Localised name of a train / val / test partition; unrecognised partitions use `fallback`, then the stored value. */
+/** Localised name of a train / val / test / prediction-only partition; unrecognised partitions use `fallback`, then the stored value. */
 export function getPartitionLabel(t: TFunction, partition: string | null | undefined, fallback?: string): string {
+  if (isPredictionOnlyPartition(partition)) return t("predictions.partitions.prediction");
   const key = normalizePartition(partition);
   return key ? t(`predictions.partitions.${key}`) : (fallback ?? partition ?? "");
 }

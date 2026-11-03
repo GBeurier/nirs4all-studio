@@ -6,6 +6,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.15.9] — 2026-11-03
+
+### Changed
+
+- Package nirs4all 1.4.15 in the included runtime, with its qualified native
+  cohort: nirs4all-core 0.4.7, dag-ml 0.3.44, dag-ml-data 0.2.16,
+  nirs4all-io 0.2.14, nirs4all-formats 0.2.14 and nirs4all-methods/pls4all
+  1.3.13 (ABI 2.20). The Studio service uses the same Core 0.4.7 and IO 0.2.14
+  crates. Custom and managed environments now need `nirs4all>=1.4.15,<1.5`,
+  `nirs4all-io>=0.2.14,<0.3` and `nirs4all-methods>=1.3.13,<2`.
+- Training excludes samples whose selected target is missing, then predicts
+  them; nirs4all 1.4.15 does this natively. Imports, previews and analyses
+  keep every row unless the user asks to remove it.
+- New Experiment asks what to do with samples missing their target: exclude
+  them from training and predict them (default), or remove them for this run.
+  A dataset saved to remove those samples keeps that answer preselected.
+- Results, Predictions and Runs list these samples as "Predicted (no target)"
+  rows: they are filterable and exported, and never scored or used in metrics,
+  residuals or observed-versus-predicted charts.
+- Use nirs4all-ui 0.2.x shared components and pipeline preset catalogue.
+- Vendor the exact published Cargo package payloads of the native cohort as
+  release evidence, each checked against its `Cargo.lock` checksum.
+
+### Fixed
+
+- Long training campaigns are no longer stopped after one hour: the Complex PLS
+  preset runs for several hours. Training stays cancellable and reports its
+  progress; its time budget is now 24 hours.
+- "Show all trained models" in a run's dataset panel and the all-models lists of
+  result cards load in the desktop app again (they always reported "No models
+  found"): the dataset chain listings are now served by the Studio service.
+- AOM-PLS and POP-PLS presets and nodes use the native parameter names
+  (`max_components`, `center_x`, `scale_x`): the 12-component presets no longer
+  silently run with 3 components, and the ultra-slow search tunes
+  `max_components`. LWPLS, KMeansSplitter, CARS, MetaModel and chain
+  estimator nodes expose their real keywords.
+- State the `CECILL-2.1 OR AGPL-3.0-or-later` dual licence in the README.
+
+### Removed
+
+- Studio's own missing-target exclusion for single-target runs, superseded by
+  the library behaviour above.
+
+---
+
 ## [0.15.8] — 2026-11-02
 
 ### Changed

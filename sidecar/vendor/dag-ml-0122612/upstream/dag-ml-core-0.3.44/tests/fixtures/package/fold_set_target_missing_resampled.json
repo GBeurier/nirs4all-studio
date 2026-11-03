@@ -1,0 +1,19 @@
+{
+  "id": "cv.shared.target_missing",
+  "sample_ids": ["s4", "s1", "s3", "s2"],
+  "folds": [
+    {
+      "fold_id": "fold1",
+      "train_sample_ids": ["s4", "s1"],
+      "validation_sample_ids": ["s3", "s2"]
+    },
+    {
+      "fold_id": "fold0",
+      "train_sample_ids": ["s3", "s4"],
+      "validation_sample_ids": ["s2", "s1"]
+    }
+  ],
+  "partition_mode": "resampled",
+  "train_exclusion": "fold_local",
+  "target_missing_sample_ids": ["s6", "s5"]
+}

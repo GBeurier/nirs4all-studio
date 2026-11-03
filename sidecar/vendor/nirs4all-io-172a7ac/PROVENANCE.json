@@ -1,0 +1,36 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/nirs4all-io.git",
+  "commit": "172a7acfcc029742f45fbcf477f55f46dc7fbafe",
+  "repository_tree": "b238838b7efec55a09de146fc5b103743f700787",
+  "included_crate_trees": {
+    "nirs4all-io": "9fab67d2113e89ebbdb2f10f86c8a63d43603b38",
+    "nirs4all-io-core": "ef1345d9dfcf1a9974d60ce60b8fef33930f3dc5",
+    "nirs4all-io-dagml": "a3bae1bdadd5496e524c389c47e8ad0c22d95b0e"
+  },
+  "selected_crate_packages": [
+    {
+      "name": "nirs4all-io",
+      "version": "0.2.14",
+      "sha256": "172a381c32a1009ac3719c0c915e6e897a157c897cc99077cb7100a7b8a02270"
+    },
+    {
+      "name": "nirs4all-io-core",
+      "version": "0.2.14",
+      "sha256": "37e99cd89ca38908afbf63d0a473eee38d15c48a39b323e224762cc50116575e"
+    },
+    {
+      "name": "nirs4all-io-dagml",
+      "version": "0.2.14",
+      "sha256": "3d85f5e796158badccde3a7581212fd5c1d6ab510c187f63b8a2d681af69160b"
+    }
+  ],
+  "snapshot_policy": "Only the exact published Cargo package payloads that sidecar/Cargo.lock resolves are extracted under upstream/, each verified against its Cargo.lock registry checksum. Each payload includes Cargo's normalized and original manifests, VCS identity, lockfile, the package's selected source/include files, and its licence/readme files. Workspace qualification evidence, unrelated crates, bindings, generated native extensions and sites are excluded.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 112
+  },
+  "verification": "../../scripts/verify-vendored-io.sh",
+  "release_gate": "The extracted package payloads and checksums identify the published nirs4all-io, nirs4all-io-core, nirs4all-io-dagml 0.2.14 release exactly; Studio runtime resolution remains pinned to the same registry checksums in sidecar/Cargo.lock."
+}

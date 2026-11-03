@@ -95,11 +95,11 @@ function writePackagedContract(
     product_backend: "rust-sidecar",
     transport: "bounded-cpython-stdio-v1",
     http_listener: "forbidden",
-    source_commit: "563220eb2becc6a1340431d588315f0793664fe4",
-    wheel_sha256: "6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe",
+    source_commit: "2ab9953ccb4b5e72f76be6cb637503622c5869cf",
+    wheel_sha256: "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0",
     distribution: "nirs4all",
-    distribution_version: "1.4.14",
-    installed_manifest_sha256: "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c",
+    distribution_version: "1.4.15",
+    installed_manifest_sha256: "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a",
     platform: fixturePlatform,
     arch: process.arch,
     forbidden_distributions: [
@@ -151,9 +151,9 @@ function writePackagedContract(
         member: null,
         abi: { major: 2, minor: 20 },
         source: {
-          commit: "b246b5029cc62cf0cc369df2611069498f2da183",
-          tree: "8c4b525882dc454d7a4dd1a805fb916b0d22e250",
-          project_version: "1.3.9",
+          commit: "fa8ff57603ec23bce95f73d52170285e8f3e2861",
+          tree: "f4339ad1fd512d681898873f955f4d12769d6e51",
+          project_version: "1.3.13",
         },
       },
     }),
@@ -591,7 +591,7 @@ describe("NativeSidecarManager", () => {
     const { logSidecarStderr, sidecarStderrLevel } = await import("./native-sidecar-manager");
     expect(sidecarStderrLevel("Studio boundary timing phase=readiness_route elapsed_us=12")).toBe("debug");
     expect(sidecarStderrLevel("Studio performance worker_started pid=4")).toBe("debug");
-    expect(sidecarStderrLevel("Studio scientific host packaged ready nirs4all=1.4.14 elapsed_ms=812")).toBe("info");
+    expect(sidecarStderrLevel("Studio scientific host packaged ready nirs4all=1.4.15 elapsed_ms=812")).toBe("info");
     expect(sidecarStderrLevel("studio-sidecar connection error: os error 10053")).toBe("error");
 
     const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);

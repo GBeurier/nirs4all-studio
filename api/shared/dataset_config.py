@@ -7,7 +7,12 @@ to ensure consistent behavior for per-file overrides, aggregation, folds, etc.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+# A run's answer for samples whose target is missing, as a target NA policy:
+# "predict" keeps them (training excludes and predicts them), "remove" drops them.
+MissingTargetPolicy = Literal["predict", "remove"]
+MISSING_TARGET_NA_POLICIES: dict[str, str] = {"predict": "ignore", "remove": "remove_sample"}
 
 _FILE_TYPE_ALIASES = {
     "x": "X",
@@ -63,7 +68,7 @@ def _na_policy(params: dict[str, Any], default: str | None = "auto") -> str | No
     return policy
 
 
-def for_dataset_configs(config: dict[str, Any], *, native_io: bool = False, exclude_missing_targets: bool = False) -> dict[str, Any]:
+def for_dataset_configs(config: dict[str, Any], *, native_io: bool = False, target_na_policy: str | None = None) -> dict[str, Any]:
     """Adapt native IO parameters to the library's DatasetConfigs/run loader.
 
     Native IO consumes nested ``na`` settings. DatasetConfigs consumes their
@@ -71,17 +76,16 @@ def for_dataset_configs(config: dict[str, Any], *, native_io: bool = False, excl
     Preserve the requested policy, including ignore, without changing rows.
     Studio V2 materializes files through native IO and must retain nested NA
     settings; the historical DatasetConfigs loader still needs flat options.
-    ``exclude_missing_targets`` turns an ``auto``/``ignore`` training-target
-    policy into ``remove_sample``: a model cannot be fitted on missing targets.
-    Other analyses keep those samples unless the user asked to remove them.
+    ``target_na_policy`` replaces the NA policy of every target file for this
+    load only (a run's explicit missing-target choice); the saved dataset is
+    not modified.
     """
-    global_policy = _na_policy(config.get("global_params") or {})
-    if exclude_missing_targets and "train_y" in config:
-        config = {**config, "train_y_params": config.get("train_y_params") or {}}
+    if target_na_policy is not None:
+        config = {**config, **{f"{split}_y_params": config.get(f"{split}_y_params") or {} for split in ("train", "test") if config.get(f"{split}_y")}}
 
     def loading_params(params: dict[str, Any], key: str) -> dict[str, Any]:
-        if exclude_missing_targets and key == "train_y_params" and _na_policy(params, global_policy) in (None, "auto", "ignore"):
-            params = {**{name: value for name, value in params.items() if name != "na"}, "na_policy": "remove_sample"}
+        if target_na_policy is not None and key in ("train_y_params", "test_y_params"):
+            params = {**{name: value for name, value in params.items() if name not in ("na", "na_fill_config")}, "na_policy": target_na_policy}
         bridged = _with_library_na_params(params)
         return {name: value for name, value in bridged.items()
                 if (name != "na" or native_io) and (name != "signal_type" or key.endswith("_x_params"))}

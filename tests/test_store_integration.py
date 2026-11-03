@@ -313,6 +313,24 @@ class TestStoreAdapter:
         count_query = mock_store._fetch_pl.call_args.args[0]
         assert "COUNT(*)" in count_query
 
+    def test_get_predictions_page_never_scores_prediction_only_rows(self, mock_polars_df):
+        rows = [
+            {"prediction_id": f"pred-{partition}", "chain_id": "chain-1", "partition": partition, "fold_id": "final",
+             "refit_context": "refit", "val_score": None, "test_score": None, "train_score": None}
+            for partition in ("test", "prediction")
+        ]
+        mock_store = MagicMock()
+        mock_store.query_predictions.return_value = mock_polars_df(rows)
+        count_df = MagicMock()
+        count_df.__len__ = lambda self: 1
+        count_df.row = MagicMock(return_value={"cnt": 2})
+        mock_store._fetch_pl.side_effect = [count_df, mock_polars_df([{"chain_id": "chain-1", "cv_val_score": 0.123}])]
+
+        result = self._make_adapter(mock_store).get_predictions_page(limit=10, offset=0)
+
+        scores = {record["partition"]: record.get("val_score") for record in result["records"]}
+        assert scores == {"test": 0.123, "prediction": None}
+
     def test_get_dataset_top_chains_keeps_best_final_outside_top_cv(self, mock_polars_df):
         mock_store = MagicMock()
         mock_store.query_chain_summaries.return_value = mock_polars_df([
@@ -710,6 +728,26 @@ class TestStoreAdapter:
         assert len(result["y_pred"]) == 3
         assert result["sample_ids"] == ["sample-a", "sample-b", "sample-c"]
         assert result["sample_metadata"] == {"batch": ["A", "B", "A"]}
+
+    def test_get_prediction_scatter_returns_prediction_only_rows_without_truth(self):
+        import numpy as np
+
+        mock_store = MagicMock()
+        mock_store.get_prediction.return_value = {
+            "prediction_id": "pred-missing",
+            "y_true": None,
+            "y_pred": np.array([1.1, 2.1]),
+            "partition": "prediction",
+            "sample_ids": np.array(["sample-a", "sample-b"]),
+        }
+
+        result = self._make_adapter(mock_store).get_prediction_scatter("pred-missing")
+
+        assert result is not None
+        assert result["y_true"] is None
+        assert result["n_samples"] == 2
+        assert result["partition"] == "prediction"
+        assert result["sample_ids"] == ["sample-a", "sample-b"]
 
     def test_get_prediction_scatter_refuses_positional_or_misaligned_sample_ids(self):
         import numpy as np

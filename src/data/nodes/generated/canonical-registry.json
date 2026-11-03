@@ -275,7 +275,13 @@
         "name": "lambda_in_similarity",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1.0,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [
+          0.001,
+          32
+        ]
       },
       {
         "name": "scale",
@@ -1822,7 +1828,13 @@
         "name": "n_components",
         "type": "int",
         "isAdvanced": true,
-        "default": 10
+        "default": 10,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          5,
+          30
+        ]
       },
       {
         "name": "n_sampling_runs",

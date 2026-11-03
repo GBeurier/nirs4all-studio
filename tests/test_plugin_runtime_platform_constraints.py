@@ -30,10 +30,10 @@ def test_constraints_select_one_compatible_scientific_pin_per_target(platform, m
         assert requirement.name not in selected, f"Ambiguous constraint for {requirement.name} on {platform}/{machine}"
         selected[requirement.name] = str(requirement.specifier)
     cohort = {
-        "nirs4all": "1.4.14", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13",
-        "nirs4all-core": "0.4.6", "nirs4all-io": "0.2.11",
-        "nirs4all-methods": "1.3.9", "pls4all": "1.3.9",
-        "nirs4all-formats": "0.2.13",
+        "nirs4all": "1.4.15", "dag-ml": "0.3.44", "dag-ml-data": "0.2.16",
+        "nirs4all-core": "0.4.7", "nirs4all-io": "0.2.14",
+        "nirs4all-methods": "1.3.13", "pls4all": "1.3.13",
+        "nirs4all-formats": "0.2.14",
     }
     for package, version in {**cohort, **expected}.items():
         assert selected[package] == f"=={version}"

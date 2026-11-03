@@ -1,0 +1,26 @@
+{
+  "schema_version": "nirs4all.ui-release-artifact/v1",
+  "package": {
+    "name": "nirs4all-ui",
+    "version": "0.2.1",
+    "repository": "git+https://github.com/GBeurier/nirs4all-ui.git"
+  },
+  "source": {
+    "commit_sha": "8bfc5f51600b59fc5cc899cd93f58da98fb2f851",
+    "dirty": false
+  },
+  "artifact": {
+    "filename": "nirs4all-ui-0.2.1.tgz",
+    "size": 3561081,
+    "sha256": "6506dee02968378cb116bd6d6fe858b4ef34424b0d5764173c4a789594f25505",
+    "npm_integrity": "sha512-ghuJQADFkn2nPCFYZn2hbS+Q0UBNkFnlB4wP+rMm+8UGtAVIKtjKcDtkUNToiOAGceyDhKM/RYS0MppSIaxaxQ==",
+    "npm_shasum": "a575db36e4ed4230ac4e88360861e3677f220ecf",
+    "entry_count": 1099,
+    "required_files": [
+      "LICENSE",
+      "dist/index.d.ts",
+      "dist/index.js",
+      "package.json"
+    ]
+  }
+}

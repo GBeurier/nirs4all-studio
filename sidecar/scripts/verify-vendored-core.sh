@@ -2,27 +2,26 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-vendor_root="$script_dir/../vendor/nirs4all-core-57fee01"
+vendor_root="$script_dir/../vendor/nirs4all-core-1dffd9f"
+lock="$script_dir/../Cargo.lock"
 inventory="$vendor_root/INVENTORY.sha256"
 actual=$(mktemp)
 expected=$(mktemp)
 trap 'rm -f "$actual" "$expected"' EXIT HUP INT TERM
 
-test -f "$vendor_root/upstream/Cargo.toml"
-test -f "$vendor_root/upstream/Cargo.lock"
-test -f "$vendor_root/upstream/bindings/wasm/package-lock.json"
-test -f "$vendor_root/upstream/bindings/rust/nirs4all/src/archive_v2.rs"
-test -f "$vendor_root/upstream/bindings/rust/nirs4all/src/native_methods_replay.rs"
-grep -q 'preflight_methods_archive_v2_library' "$vendor_root/upstream/bindings/rust/nirs4all/src/lib.rs"
-grep -q 'inspect_methods_archive_v2_predictors' "$vendor_root/upstream/bindings/rust/nirs4all/src/lib.rs"
-grep -q 'train_dataset_package_methods_conformal_archive_v2' "$vendor_root/upstream/bindings/rust/nirs4all/src/lib.rs"
-test "$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$vendor_root/upstream/bindings/rust/nirs4all/Cargo.toml" | head -n 1)" = "0.3.30"
-grep -q 'n4m = { version = "=0.1.4"' "$vendor_root/upstream/bindings/rust/nirs4all/Cargo.toml"
-grep -q '"commit": "57fee01ca5477856d5ede53cac56cc21b361cb31"' "$vendor_root/PROVENANCE.json"
-grep -q '"repository_tree": "2b84921d86d4f14811ab5d6d94d1bac99cf34a2c"' "$vendor_root/PROVENANCE.json"
-grep -q '"nirs4all": "cfdef4276f81fbb4e340e02a0db1e6faba5c57dc"' "$vendor_root/PROVENANCE.json"
-grep -q '"sha256": "da33681fd164c7320b3c53c2f992be993d529d2abdc9b4d25626014deeb35f52"' "$vendor_root/PROVENANCE.json"
-grep -q '"hashed_files": 258' "$vendor_root/PROVENANCE.json"
+test -f "$vendor_root/upstream/nirs4all-0.4.7"/Cargo.toml
+test -f "$vendor_root/upstream/nirs4all-0.4.7"/Cargo.toml.orig
+test -f "$vendor_root/upstream/nirs4all-0.4.7"/Cargo.lock
+test -f "$vendor_root/upstream/nirs4all-0.4.7"/.cargo_vcs_info.json
+test "$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$vendor_root/upstream/nirs4all-0.4.7"/Cargo.toml | head -n 1)" = "0.4.7"
+grep -q '"sha1": "1dffd9f4472551cc09ad9d99ed9d40814bd003cc"' "$vendor_root/upstream/nirs4all-0.4.7"/.cargo_vcs_info.json
+grep -q '"nirs4all": "34df15ad83a459b4d96a5fa3b9684614587fdc5a"' "$vendor_root/PROVENANCE.json"
+grep -q '"sha256": "85610ceb9ea2f1111db1137ae1f7e58ce132d71c3eb31f04944495fc83403394"' "$vendor_root/PROVENANCE.json"
+grep -A2 -x 'name = "nirs4all"' "$lock" | grep -qx 'version = "0.4.7"'
+grep -qx 'checksum = "85610ceb9ea2f1111db1137ae1f7e58ce132d71c3eb31f04944495fc83403394"' "$lock"
+grep -q '"commit": "1dffd9f4472551cc09ad9d99ed9d40814bd003cc"' "$vendor_root/PROVENANCE.json"
+grep -q '"repository_tree": "3990c98a44a49c2c3827f61daad78915e33e948a"' "$vendor_root/PROVENANCE.json"
+grep -q '"hashed_files": 58' "$vendor_root/PROVENANCE.json"
 
 (
   cd "$vendor_root"
@@ -32,5 +31,5 @@ sed 's/^[0-9a-f][0-9a-f]*  //' "$inventory" | LC_ALL=C sort >"$expected"
 diff -u "$expected" "$actual"
 (
   cd "$vendor_root"
-  sha256sum --check --strict INVENTORY.sha256
+  sha256sum --check --strict --quiet INVENTORY.sha256
 )
