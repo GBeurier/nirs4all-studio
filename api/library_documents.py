@@ -19,7 +19,7 @@ from .pipeline_canonical import (
     hydrate_editor_steps,
     validate_canonical,
 )
-from .shared.dataset_config import build_nirs4all_config, build_nirs4all_config_from_stored, for_dataset_configs
+from .shared.dataset_config import MISSING_TARGET_NA_POLICIES, build_nirs4all_config, build_nirs4all_config_from_stored, for_dataset_configs
 
 
 def normalize_pipeline(document: dict[str, Any]) -> dict[str, Any]:
@@ -142,7 +142,7 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("missing_target_policy must be 'predict' or 'remove'")
     if missing_target_policy is not None and document.get("scientific_run") is not True:
         raise ValueError("missing_target_policy applies only to scientific runs")
-    target_na_policy = {"predict": "ignore", "remove": "remove_sample"}.get(missing_target_policy)
+    target_na_policy = MISSING_TARGET_NA_POLICIES.get(missing_target_policy) if missing_target_policy else None
 
     def finish(config: dict[str, Any]) -> dict[str, Any]:
         if document.get("scientific_run") is not True:

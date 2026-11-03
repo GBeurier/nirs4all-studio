@@ -3793,6 +3793,22 @@
                 "title": "Inline Pipelines",
                 "type": "array"
               },
+              "missing_target_policy": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "predict",
+                      "remove"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Samples whose target is missing: 'predict' excludes them from fitting and predicts them; 'remove' drops them for this run.",
+                "title": "Missing Target Policy"
+              },
               "name": {
                 "minLength": 1,
                 "title": "Name",
@@ -9411,6 +9427,21 @@
               "id": {
                 "title": "Id",
                 "type": "string"
+              },
+              "missing_target_policy": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "predict",
+                      "remove"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Missing Target Policy"
               },
               "name": {
                 "title": "Name",
@@ -29926,6 +29957,22 @@
                 "title": "Inline Pipelines",
                 "type": "array"
               },
+              "missing_target_policy": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "predict",
+                      "remove"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Samples whose target is missing: 'predict' excludes them from fitting and predicts them; 'remove' drops them for this run.",
+                "title": "Missing Target Policy"
+              },
               "name": {
                 "minLength": 1,
                 "title": "Name",
@@ -35544,6 +35591,21 @@
               "id": {
                 "title": "Id",
                 "type": "string"
+              },
+              "missing_target_policy": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "predict",
+                      "remove"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Missing Target Policy"
               },
               "name": {
                 "title": "Name",
