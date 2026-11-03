@@ -134,10 +134,20 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
     """Expose library-resolved references for Rust's subsequent confinement check."""
     from nirs4all.api.dataset_documents import normalize_dataset_document
 
+    # A run states what happens to samples whose target is missing: the
+    # library excludes them from fitting and predicts them, or the run removes
+    # them at load. The choice applies to this run's config only.
+    missing_target_policy = document.get("missing_target_policy")
+    if missing_target_policy not in (None, "predict", "remove"):
+        raise ValueError("missing_target_policy must be 'predict' or 'remove'")
+    if missing_target_policy is not None and document.get("scientific_run") is not True:
+        raise ValueError("missing_target_policy applies only to scientific runs")
+    target_na_policy = {"predict": "ignore", "remove": "remove_sample"}.get(missing_target_policy)
+
     def finish(config: dict[str, Any]) -> dict[str, Any]:
         if document.get("scientific_run") is not True:
             return config
-        return for_dataset_configs(config, native_io=True)
+        return for_dataset_configs(config, native_io=True, target_na_policy=target_na_policy)
 
     if "record" in document:
         record = document["record"]
@@ -152,6 +162,8 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
             descriptor = config["dataset_document"]
             if not isinstance(descriptor, dict) or descriptor.get("schema") != "nirs4all.studio-multimodal-dataset.v1" or not isinstance(descriptor.get("cohort"), dict) or set(descriptor) != {"schema", "cohort"}:
                 raise ValueError("Invalid multimodal dataset descriptor")
+            if missing_target_policy == "remove":
+                raise ValueError("Removing samples with a missing target is not supported for multimodal datasets; keep them to have them predicted")
             return descriptor
         if not config:
             path = record.get("path")

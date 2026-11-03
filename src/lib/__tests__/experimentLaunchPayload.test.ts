@@ -360,6 +360,7 @@ describe("experimentLaunchPayload", () => {
         },
       ],
       selectedGroupingPayload: { d1: null },
+      missingTargetPolicy: "remove",
       strictCampaignSpecs,
       executionAdapter: CLUSTER_EXPERIMENT_EXECUTION_ADAPTER,
       missingIssues: [
@@ -386,6 +387,7 @@ describe("experimentLaunchPayload", () => {
         steps: [{ id: "model", name: "PLS", type: "model", params: {} }],
       },
       split_group_by_by_dataset: { d1: null },
+      missing_target_policy: "remove",
     });
     expect(plan.strictCampaignSpecs.splitSpecs[0].campaign.pipelines).toEqual([
       expect.objectContaining({

@@ -9497,6 +9497,15 @@ transferAnalysis: {
       descriptionPlaceholder: "Add notes about this experiment...",
       groupingTitle: "Sample Grouping Summary",
       noSplittersBadge: "No splitters",
+      missingTargets: {
+        title: "Samples without a target value",
+        description: "Some samples may have no value for the selected target. Choose how this run handles them; the saved datasets are not changed.",
+        predict: "Exclude them from training and predict them",
+        predictHint: "Models are fitted on samples with a target; the others receive a prediction, listed as \"Predicted (no target)\" and never scored.",
+        remove: "Remove these samples",
+        removeHint: "Samples without a target are dropped when the data is loaded for this run.",
+        removeUnavailable: "Not available for multimodal datasets: their samples without a target are always predicted.",
+      },
       summary: {
         datasets: "Datasets",
         pipelines: "Pipelines",

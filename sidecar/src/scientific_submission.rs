@@ -126,6 +126,7 @@ fn validate_legacy_config(
             "inline_pipelines",
             "project_id",
             "split_group_by_by_dataset",
+            "missing_target_policy",
         ],
         "legacyConfig",
     )?;
@@ -211,6 +212,14 @@ fn validate_legacy_runtime_options(
     optional_bool(object.get("shuffle"), "legacyConfig.shuffle")?;
     optional_nullable_integer(object.get("random_state"), "legacyConfig.random_state")?;
     optional_text(object.get("project_id"), "legacyConfig.project_id", true)?;
+    if object
+        .get("missing_target_policy")
+        .is_some_and(|value| !matches!(value.as_str(), Some("predict" | "remove")))
+    {
+        return Err(ScientificSubmissionValidationError::Unsupported(
+            "legacyConfig.missing_target_policy must be predict or remove",
+        ));
+    }
     validate_grouping_map(object.get("split_group_by_by_dataset"))
 }
 
@@ -1050,6 +1059,25 @@ mod tests {
             validate_scientific_submission(&serde_json::to_vec(&payload).unwrap()).unwrap();
         assert_eq!(validated.run_name(), "Native campaign");
         assert_eq!(validated.requested_backend(), "cluster");
+    }
+
+    #[test]
+    fn accepts_only_the_closed_missing_target_choices() {
+        for policy in ["predict", "remove"] {
+            let mut accepted = payload();
+            accepted["legacyConfig"]["missing_target_policy"] = json!(policy);
+            assert!(
+                validate_scientific_submission(&serde_json::to_vec(&accepted).unwrap()).is_ok()
+            );
+        }
+        for policy in [json!("remove_sample"), json!(null), json!(true)] {
+            let mut refused = payload();
+            refused["legacyConfig"]["missing_target_policy"] = policy;
+            assert!(matches!(
+                validate_scientific_submission(&serde_json::to_vec(&refused).unwrap()),
+                Err(ScientificSubmissionValidationError::Unsupported(_))
+            ));
+        }
     }
 
     #[test]
