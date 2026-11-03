@@ -134,14 +134,10 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
     """Expose library-resolved references for Rust's subsequent confinement check."""
     from nirs4all.api.dataset_documents import normalize_dataset_document
 
-    def finish(config: dict[str, Any], targets: Any = None) -> dict[str, Any]:
+    def finish(config: dict[str, Any]) -> dict[str, Any]:
         if document.get("scientific_run") is not True:
             return config
-        # Training cannot fit a missing target: with one declared target the
-        # run excludes those training samples. Other analyses keep every row
-        # unless the user chose remove_sample; sparse multi-target files too.
-        single_target = isinstance(targets, list) and len(targets) == 1
-        return for_dataset_configs(config, native_io=True, exclude_missing_targets=single_target)
+        return for_dataset_configs(config, native_io=True)
 
     if "record" in document:
         record = document["record"]
@@ -150,7 +146,6 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         config = record.get("config") or {}
         if not isinstance(config, dict):
             raise ValueError("Dataset config must be an object")
-        targets = config.get("targets") or record.get("targets")
         # The inline cohort is reconstructed by the scientific host. Keep this
         # document intact; flat file configurations still use normalization.
         if "dataset_document" in config:
@@ -175,7 +170,7 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         # legacy flat NA policies for both new wizard and existing records.
         if config.get("files") or config.get("train_x") or config.get("test_x"):
             config = build_nirs4all_config_from_stored(record)
-        return finish(normalize_dataset_document(config, base_dir=record.get("path")), targets)
+        return finish(normalize_dataset_document(config, base_dir=record.get("path")))
     config = build_nirs4all_config(
         files=document.get("files", []),
         parsing=document.get("parsing", {}),
@@ -185,7 +180,7 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         task_type=document.get("task_type"),
         dataset_name=document.get("name"),
     )
-    return finish(normalize_dataset_document(config, base_dir=document.get("path")), document.get("targets"))
+    return finish(normalize_dataset_document(config, base_dir=document.get("path")))
 
 
 def plain_windows_path(value: str) -> str:
