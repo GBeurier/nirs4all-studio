@@ -32,6 +32,21 @@ describe("buildMetricsStripStats", () => {
     ]);
   });
 
+  it("leaves samples predicted without a target out of the metrics", () => {
+    expect(buildMetricsStripStats("regression", [
+      dataset({ yTrue: [1, 2, 3], yPred: [1, 3, 2] }),
+      dataset({ partition: "prediction", yTrue: [], yPred: [10, 20] }),
+    ], i18next.t)).toEqual([
+      { label: "RMSE", value: "0.8165" },
+      { label: "R²", value: "0.0000" },
+      { label: "MAE", value: "0.6667" },
+      { label: "n", value: "3" },
+    ]);
+    expect(buildMetricsStripStats("classification", [
+      dataset({ partition: "prediction", yTrue: [], yPred: [1, 0] }),
+    ], i18next.t).map(stat => stat.value)).toEqual(["—", "—", "—", "—"]);
+  });
+
   it("ignores non-finite regression pairs", () => {
     expect(buildMetricsStripStats("regression", [
       dataset({ yTrue: [1, Number.NaN, 3], yPred: [1, 2, Number.POSITIVE_INFINITY] }),

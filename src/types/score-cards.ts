@@ -33,6 +33,8 @@ export interface ScoreCardRow {
   partition?: string;        // "val", "test", "train"
   nSamplesTrain?: number | null;
   nSamplesEval?: number | null;
+  /** Samples whose target is missing: excluded from training and scoring, then predicted. */
+  nSamplesPredicted?: number | null;
   foldCount?: number;
   metric: string | null;
   taskType?: string | null;

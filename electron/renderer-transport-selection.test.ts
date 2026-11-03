@@ -165,6 +165,7 @@ describe("renderer transport preselection", () => {
       "/aggregated-predictions/top?metric=rmse&n=100&score_column=final_test_score",
       "/aggregated-predictions/chain/chain-1?metric=rmse&dataset_name=wheat",
       "/aggregated-predictions/chain/cha%C3%AEne/detail?partition=val&fold_id=0",
+      "/aggregated-predictions/chain/chain-1/detail?partition=prediction&fold_id=final",
       "/aggregated-predictions/prediction-1/arrays",
       "/aggregated-predictions/chain/chain-1/pipeline-steps",
       "/aggregated-predictions/pipeline/pipeline-1/pipeline-steps",
@@ -214,6 +215,7 @@ describe("renderer transport preselection", () => {
     const request = async () => capabilityResponse({ workspace_prediction_result_routes: true, python_plugin_preflight: true });
     for (const path of ["/workspaces/workspace-1/predictions/data?limit=1000&offset=0",
       "/workspaces/workspace-1/predictions/data?dataset=durum+wheat&partition=test",
+      "/workspaces/workspace-1/predictions/data?partition=prediction",
       "/workspaces/workspace-1/predictions/summary", "/workspaces/workspace-1/predictions/prediction-1/scatter"]) {
       await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
         .resolves.toMatchObject({ target: "native-sidecar", surface: "workspace-prediction-results" });

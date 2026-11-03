@@ -24,6 +24,7 @@ import {
 } from "@/lib/experimentLaunchFlowState";
 import { resolveExperimentLaunchPreflightDecision } from "@/lib/experimentLaunchPreflight";
 import type { MissingOperatorIssue } from "@/lib/pipelineOperatorAvailability";
+import type { MissingTargetPolicy } from "@/types/runs";
 import { useNewExperimentLaunchSubmissionMutation } from "./useNewExperimentLaunchSubmissionMutation";
 
 export interface UseNewExperimentLaunchFlowInput {
@@ -32,6 +33,7 @@ export interface UseNewExperimentLaunchFlowInput {
   selectedDatasetIds: string[];
   selectedPipelineConfigs: SelectedPipelineConfig[];
   selectedGroupingPayload: Record<string, string | null>;
+  missingTargetPolicy: MissingTargetPolicy;
   singlePairSplitSpecResult?: CampaignSinglePairSplitSpecResult;
   hasGroupingBlockingError: boolean;
   executionAdapter?: ExperimentExecutionAdapter;
@@ -59,6 +61,7 @@ export function useNewExperimentLaunchFlow({
   selectedDatasetIds,
   selectedPipelineConfigs,
   selectedGroupingPayload,
+  missingTargetPolicy,
   singlePairSplitSpecResult = { splitSpecs: [], skippedRunIds: [] },
   hasGroupingBlockingError,
   executionAdapter = LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
@@ -86,6 +89,7 @@ export function useNewExperimentLaunchFlow({
       selectedDatasetIds,
       selectedPipelineConfigs,
       selectedGroupingPayload,
+      missingTargetPolicy,
       strictCampaignSpecs: singlePairSplitSpecResult,
       executionAdapter,
       missingIssues,
@@ -94,6 +98,7 @@ export function useNewExperimentLaunchFlow({
     executionAdapter,
     experimentDescription,
     experimentName,
+    missingTargetPolicy,
     selectedDatasetIds,
     selectedGroupingPayload,
     selectedPipelineConfigs,

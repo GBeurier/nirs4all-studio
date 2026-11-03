@@ -359,25 +359,52 @@ def test_scientific_run_config_keeps_native_na_and_loads(tmp_path: Path):
     assert dataset.num_samples == 4
 
 
-@pytest.mark.parametrize(("targets", "expected"), [
-    ([{"column": "target", "type": "regression"}], "remove_sample"),
-    ([{"column": "target", "type": "regression"}, {"column": "other", "type": "regression"}], "ignore"),
+@pytest.mark.parametrize(("choice", "saved_policy", "expected_policy", "expected_samples"), [
+    (None, "ignore", "ignore", 4),
+    (None, "remove_sample", "remove_sample", 3),
+    ("predict", "remove_sample", "ignore", 4),
+    ("predict", "abort", "ignore", 4),
+    ("remove", "auto", "remove_sample", 3),
 ])
-def test_scientific_run_excludes_missing_single_target_samples(tmp_path: Path, targets, expected):
+def test_scientific_run_applies_the_missing_target_choice_to_target_files_only(tmp_path: Path, choice, saved_policy, expected_policy, expected_samples):
+    from nirs4all.api.dataset_inspection import load_dataset_for_analysis
+
     from api.library_documents import configure_dataset
 
-    (tmp_path / "Xtrain.csv").write_text("1000;1100\n1;2\n3;4\n5;6\n")
-    (tmp_path / "Ytrain.csv").write_text("target;other\n1;\n;2\n3;3\n")
-    record = {"path": str(tmp_path), "name": "Sparse", "config": {
+    (tmp_path / "Xtrain.csv").write_text("1000;1100\n1;2\n3;4\n5;6\n7;8\n")
+    (tmp_path / "Ytrain.csv").write_text("target\n1\n\n3\n4\n")
+    (tmp_path / "Xtest.csv").write_text("1000;1100\n1;2\n3;4\n")
+    (tmp_path / "Ytest.csv").write_text("target\n1\n2\n")
+    record = {"path": str(tmp_path), "name": "Missing targets", "config": {
         "files": [
             {"path": "Xtrain.csv", "type": "X", "split": "train"},
-            {"path": "Ytrain.csv", "type": "Y", "split": "train", "overrides": {"na_policy": "ignore"}},
+            {"path": "Ytrain.csv", "type": "Y", "split": "train", "overrides": {"na_policy": saved_policy}},
+            {"path": "Xtest.csv", "type": "X", "split": "test"},
+            {"path": "Ytest.csv", "type": "Y", "split": "test", "overrides": {"na_policy": saved_policy}},
         ],
-        "na_policy": "abort", "delimiter": ";", "targets": targets,
+        "na_policy": "auto", "delimiter": ";",
     }}
-    config = configure_dataset({"record": record, "scientific_run": True})
-    assert config["train_y_params"]["na"]["policy"] == expected
-    assert configure_dataset({"record": record})["train_y_params"]["na_policy"] == "ignore"
+    document = {"record": record, "scientific_run": True}
+    if choice is not None:
+        document["missing_target_policy"] = choice
+    config = configure_dataset(document)
+    for key in ("train_y_params", "test_y_params"):
+        assert config[key]["na"]["policy"] == expected_policy
+    assert config["global_params"]["na"]["policy"] == "auto"
+    dataset, _reader = load_dataset_for_analysis(config)
+    assert dataset.num_samples == expected_samples + 2
+    # The saved record is untouched; previews keep the saved policy.
+    assert record["config"]["files"][1]["overrides"] == {"na_policy": saved_policy}
+
+
+def test_missing_target_choice_is_validated_and_limited_to_scientific_runs(tmp_path: Path):
+    from api.library_documents import configure_dataset
+
+    record = {"path": str(tmp_path), "config": {"train_x": str(tmp_path / "X.csv"), "train_y": str(tmp_path / "Y.csv")}}
+    with pytest.raises(ValueError, match="must be 'predict' or 'remove'"):
+        configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "remove_sample"})
+    with pytest.raises(ValueError, match="only to scientific runs"):
+        configure_dataset({"record": record, "missing_target_policy": "remove"})
 
 
 def test_scientific_run_preserves_saved_multimodal_dataset_document(tmp_path: Path):
@@ -389,6 +416,9 @@ def test_scientific_run_preserves_saved_multimodal_dataset_document(tmp_path: Pa
     }
     record = {"path": str(tmp_path), "config": {"dataset_document": descriptor}}
     assert configure_dataset({"record": record, "scientific_run": True}) == descriptor
+    assert configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "predict"}) == descriptor
+    with pytest.raises(ValueError, match="not supported for multimodal datasets"):
+        configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "remove"})
     with pytest.raises(ValueError, match="Invalid multimodal dataset descriptor"):
         configure_dataset({"record": {"path": str(tmp_path), "config": {
             "dataset_document": {**descriptor, "extra": True},

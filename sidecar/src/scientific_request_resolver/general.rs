@@ -94,6 +94,12 @@ fn normalize_documents(
 ) -> Result<(Vec<Value>, Vec<Value>), ScientificResolveError> {
     let mut requests = Vec::new();
     let mut dataset_checks = Vec::new();
+    // The run's explicit choice for samples without a target applies to this
+    // run's dataset configs only; the saved records are never rewritten.
+    let missing_target_policy = preflight
+        .payload
+        .pointer("/legacyConfig/missing_target_policy")
+        .cloned();
     for id in &selection.datasets {
         let mut record = resolver.read_dataset(id)?;
         let root = record
@@ -125,7 +131,11 @@ fn normalize_documents(
         }
         bounded(&record, MAX_DOCUMENT_BYTES)?;
         dataset_checks.push((root, descriptor));
-        requests.push(json!({"operation":"dataset.configure", "payload":{"record":record,"scientific_run":true}}));
+        let mut payload = json!({"record":record,"scientific_run":true});
+        if let Some(policy) = &missing_target_policy {
+            payload["missing_target_policy"] = policy.clone();
+        }
+        requests.push(json!({"operation":"dataset.configure", "payload":payload}));
     }
     for (id, inline) in &selection.pipelines {
         let mut document = match inline {
@@ -835,6 +845,38 @@ mod tests {
             canonical_root.join("dataset/x.csv")
         );
         assert!(request["dataset"].get("X").is_none());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn run_missing_target_choice_reaches_only_the_dataset_configuration() {
+        use std::cell::RefCell;
+        let (root, config, workspace) = fixture("general-missing-target-policy");
+        let resolver = ScientificRequestResolver::new(config);
+        for policy in [None, Some("predict"), Some("remove")] {
+            let mut input = submission(&workspace, "local-python");
+            if let Some(policy) = policy {
+                input.payload["legacyConfig"]["missing_target_policy"] = json!(policy);
+            }
+            let seen = RefCell::new(Vec::new());
+            resolver
+                .resolve_general(&input, |operation, payload| {
+                    seen.borrow_mut().push((
+                        operation.to_owned(),
+                        payload.get("missing_target_policy").cloned(),
+                    ));
+                    adapter(operation, payload)
+                })
+                .unwrap();
+            for (operation, carried) in seen.into_inner() {
+                let expected = if operation == "dataset.configure" {
+                    policy.map(|policy| json!(policy))
+                } else {
+                    None
+                };
+                assert_eq!(carried, expected, "{operation}");
+            }
+        }
         fs::remove_dir_all(root).unwrap();
     }
 
