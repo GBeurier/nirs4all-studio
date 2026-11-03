@@ -7,7 +7,12 @@ to ensure consistent behavior for per-file overrides, aggregation, folds, etc.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+# A run's answer for samples whose target is missing, as a target NA policy:
+# "predict" keeps them (training excludes and predicts them), "remove" drops them.
+MissingTargetPolicy = Literal["predict", "remove"]
+MISSING_TARGET_NA_POLICIES: dict[str, str] = {"predict": "ignore", "remove": "remove_sample"}
 
 _FILE_TYPE_ALIASES = {
     "x": "X",
