@@ -64,6 +64,9 @@ def _predictions(store: Any, chain_id: str, summary: dict[str, Any] | None, docu
 def read_aggregated_results(operation: str, document: dict[str, Any]) -> dict[str, Any]:
     """Project real owner data, without migrations, reconciliation, or HTTP imports."""
     workspace = Path(document["workspace_path"])
+    # A project folder may hold its store in a nested ``workspace/`` directory.
+    if not (workspace / "store.sqlite").exists() and (workspace / "workspace" / "store.sqlite").exists():
+        workspace = workspace / "workspace"
     generated = datetime.now(UTC).isoformat()
     if not (workspace / "store.sqlite").exists():
         if any(workspace.glob("*.meta.parquet")):
@@ -102,7 +105,7 @@ def read_aggregated_results(operation: str, document: dict[str, Any]) -> dict[st
             if any(isinstance(step, dict) and isinstance(step.get("dagml_host_replay"), dict) for step in chain.get("steps") or []):
                 from nirs4all.api.workspace_chain_snapshot import workspace_chain_snapshot
 
-                steps = workspace_chain_snapshot(document["workspace_path"], document["chain_id"])
+                steps = workspace_chain_snapshot(str(workspace), document["chain_id"])
                 if steps is None:
                     raise ValueError("not_found: Chain snapshot does not exist")
             else:
