@@ -1,0 +1,20 @@
+[package]
+name = "dag-ml-results"
+description = "Validated native results reader for dag-ml prediction and score records."
+version.workspace = true
+edition.workspace = true
+# Patched ZSTD support is provided by Parquet 60 (Rust 1.88).
+rust-version = "1.88"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+arrow-array = "60.1.0"
+arrow-schema = "60.1.0"
+parquet = { version = "60.1.0", features = ["arrow"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true

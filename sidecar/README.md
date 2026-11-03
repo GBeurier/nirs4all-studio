@@ -4,23 +4,15 @@
 separate Cargo package, not a Tauri application and not an Electron switch.
 The only executable is `studio-sidecar`.
 
-## Local candidate qualification (2026-10-29)
+## Native source cohort
 
-The selected corrective cohort is source-built and unpublished. Its immutable
-owner commits are recorded in `contracts/studio_native_source_cohort_v1.json`.
-The current `Cargo.lock` records the explicitly patched local source cohort;
-it does not attest registry publication. Local builds require an explicit Cargo
-configuration mapping those candidate packages to their verified owner checkouts.
-No absolute local override is enabled by this repository.
-
-Qualify with `cargo --config /path/to/candidate-sources.toml test
---manifest-path sidecar/Cargo.toml --all-targets`. Set `N4M_LIBRARY_PATH` to the
-regular (non-symlink) ABI 2.20 library file and `STUDIO_GENERAL_TEST_PYTHON` to the
-installed candidate SDK environment for the optional real scientific-host test.
-The local qualification receipt must retain the configuration hash, source
-commits, resolved lock and artifact hashes. Before a release, publish the owner
-packages, regenerate the ordinary registry lock, and qualify the exact installed
-cohort again. The historical public lock is not evidence for this candidate.
+The sidecar resolves the published registry crates of the nirs4all 1.4.15 SDK
+cohort: Core 0.4.7, IO 0.2.14, Formats 0.2.14, DAG-ML 0.3.44, dag-ml-data 0.2.16
+and the n4m 0.4.1 loader for the ABI 2.20 Methods 1.3.13 library. Their owner
+commits and registry checksums are recorded in
+`contracts/studio_native_source_cohort_v1.json`; `Cargo.lock` carries the same
+checksums and no local source override. Set `N4M_LIBRARY_PATH` to the regular
+(non-symlink) ABI 2.20 library file when running `cargo test`.
 
 ## Fold-local target score projection
 
@@ -340,36 +332,27 @@ until reliable process-tree termination is qualified. Missing, changed,
 timed-out, malformed, or oversized hosts likewise fail closed. There is no
 legacy or FastAPI fallback.
 
-Studio retains a complete immutable source snapshot of the published IO 0.1.18
-commit `493feb3b9dc5b856c4837afda14292358a8a3184`, including every crate,
-test, fixture, binding, script, document, asset, and upstream licence and notice
-file under `sidecar/vendor/nirs4all-io-493feb3/`. Run
-`sidecar/scripts/verify-vendored-io.sh` to reject missing, added, or changed
-files, and `sidecar/scripts/test-vendored-io.sh` for the locked offline Rust gate.
-The runtime uses the exact published crates rather than sibling or vendored path
-dependencies.
-
-The release evidence also retains the complete Core 0.3.30 source at commit
-`57fee01ca5477856d5ede53cac56cc21b361cb31` under
-`sidecar/vendor/nirs4all-core-57fee01/`, the published DagML 0.3.25 package
-payloads from commit `233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27` under
-`sidecar/vendor/dag-ml-233d4ec/`, the complete dag-ml-data 0.2.11 source at
-commit `ffe533704a1a0b0c7bb7d97a997caade3f4ba36e` under
-`sidecar/vendor/dag-ml-data-ffe5337/`, and the published n4m 0.1.4 payload from
-Methods commit `48ad1e5a50844f68c2b99e93b02ad6a3b491c07b` under
-`sidecar/vendor/n4m-48ad1e5/`. The vendored-source verification scripts reject
-inventory drift and check exact repository trees, crate trees, package versions,
-and registry checksums. These directories are immutable release evidence of that earlier train only;
-Cargo resolves the current published train (DagML 0.3.34, Data 0.2.12, IO 0.2.4,
-Methods/n4m 0.4.0 at ABI 2.17, and Core 0.4.1) from the registry.
-Run the Core gate against the qualified ABI 2.5 Methods library:
-
-```sh
-N4M_LIBRARY_PATH=/absolute/path/to/libn4m sidecar/scripts/test-vendored-core.sh
-```
-
-Both source-test scripts use an ephemeral Cargo target directory and leave no
-generated build tree in the repo.
+Studio retains the exact published Cargo package payloads that `Cargo.lock`
+resolves for the native cohort, each verified against its registry checksum:
+Core 0.4.7 (`nirs4all`, commit `1dffd9f4472551cc09ad9d99ed9d40814bd003cc`) under
+`sidecar/vendor/nirs4all-core-1dffd9f/`, IO 0.2.14 (`nirs4all-io`,
+`nirs4all-io-core`, `nirs4all-io-dagml`, commit
+`172a7acfcc029742f45fbcf477f55f46dc7fbafe`) under
+`sidecar/vendor/nirs4all-io-172a7ac/`, DAG-ML 0.3.44 (`dag-ml`, `dag-ml-core`,
+`dag-ml-results`, commit `01226120552529aad45e5ba60d3f6327894adc67`) under
+`sidecar/vendor/dag-ml-0122612/`, dag-ml-data 0.2.16 (`dag-ml-data`,
+`dag-ml-data-core`, `dag-ml-data-provider`, commit
+`eb2ad7835ca85feebf6f626d9f43f61575a1c9a9`) under
+`sidecar/vendor/dag-ml-data-eb2ad78/`, and n4m 0.4.1 (Methods commit
+`b246b5029cc62cf0cc369df2611069498f2da183`) under `sidecar/vendor/n4m-b246b50/`.
+Each directory has a `PROVENANCE.json` (upstream commit and tree, crate trees,
+package checksums) and an `INVENTORY.sha256`. `npm run test:vendored-native-sources`
+rejects missing, added, or changed files and checks the commits, trees,
+versions, and that every payload checksum is the one `Cargo.lock` selects. The
+runtime uses the published crates, never these directories as path
+dependencies. The payloads are evidence, not a build input: their unit tests
+reference upstream workspace fixtures that a package does not ship, so they run
+in the owner repositories' CI.
 
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the

@@ -1,0 +1,36 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/dag-ml.git",
+  "commit": "01226120552529aad45e5ba60d3f6327894adc67",
+  "repository_tree": "14f02a3278e74e953a94f482dc4a4f8800c85f54",
+  "included_crate_trees": {
+    "dag-ml": "bba3d934c7cc6488cca1557128e7ed24577bbd1e",
+    "dag-ml-core": "2c48c565f0e453cf6f643d9a33f275e95f92e808",
+    "dag-ml-results": "2531c913e359e54b2f13e67a5fdb92cb46292d6d"
+  },
+  "selected_crate_packages": [
+    {
+      "name": "dag-ml",
+      "version": "0.3.44",
+      "sha256": "0c752eebc932ccd9bfff7d85fdeb27edaa223866f34e7a7c6f3fd87e9e54ef6f"
+    },
+    {
+      "name": "dag-ml-core",
+      "version": "0.3.44",
+      "sha256": "e4f4fd800766c7a01a9f6605226556a8e8f5fbd7df498457b5c8ecc8b9029080"
+    },
+    {
+      "name": "dag-ml-results",
+      "version": "0.3.44",
+      "sha256": "7bf34f0a2ed9a6250fab06716d34a11c85b190f61d61c90220dac0bd877a75ea"
+    }
+  ],
+  "snapshot_policy": "Only the exact published Cargo package payloads that sidecar/Cargo.lock resolves are extracted under upstream/, each verified against its Cargo.lock registry checksum. Each payload includes Cargo's normalized and original manifests, VCS identity, lockfile, the package's selected source/include files, and its licence/readme files. Workspace qualification evidence, unrelated crates, bindings, generated native extensions and sites are excluded.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 135
+  },
+  "verification": "../../scripts/verify-vendored-dagml.sh",
+  "release_gate": "The extracted package payloads and checksums identify the published dag-ml, dag-ml-core, dag-ml-results 0.3.44 release exactly; Studio runtime resolution remains pinned to the same registry checksums in sidecar/Cargo.lock."
+}
