@@ -19,7 +19,7 @@ from .pipeline_canonical import (
     hydrate_editor_steps,
     validate_canonical,
 )
-from .shared.dataset_config import build_nirs4all_config, build_nirs4all_config_from_stored, for_dataset_configs
+from .shared.dataset_config import MISSING_TARGET_NA_POLICIES, build_nirs4all_config, build_nirs4all_config_from_stored, for_dataset_configs
 
 
 def normalize_pipeline(document: dict[str, Any]) -> dict[str, Any]:
@@ -134,14 +134,20 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
     """Expose library-resolved references for Rust's subsequent confinement check."""
     from nirs4all.api.dataset_documents import normalize_dataset_document
 
-    def finish(config: dict[str, Any], targets: Any = None) -> dict[str, Any]:
+    # A run states what happens to samples whose target is missing: the
+    # library excludes them from fitting and predicts them, or the run removes
+    # them at load. The choice applies to this run's config only.
+    missing_target_policy = document.get("missing_target_policy")
+    if missing_target_policy not in (None, "predict", "remove"):
+        raise ValueError("missing_target_policy must be 'predict' or 'remove'")
+    if missing_target_policy is not None and document.get("scientific_run") is not True:
+        raise ValueError("missing_target_policy applies only to scientific runs")
+    target_na_policy = MISSING_TARGET_NA_POLICIES.get(missing_target_policy) if missing_target_policy else None
+
+    def finish(config: dict[str, Any]) -> dict[str, Any]:
         if document.get("scientific_run") is not True:
             return config
-        # Training cannot fit a missing target: with one declared target the
-        # run excludes those training samples. Other analyses keep every row
-        # unless the user chose remove_sample; sparse multi-target files too.
-        single_target = isinstance(targets, list) and len(targets) == 1
-        return for_dataset_configs(config, native_io=True, exclude_missing_targets=single_target)
+        return for_dataset_configs(config, native_io=True, target_na_policy=target_na_policy)
 
     if "record" in document:
         record = document["record"]
@@ -150,13 +156,14 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         config = record.get("config") or {}
         if not isinstance(config, dict):
             raise ValueError("Dataset config must be an object")
-        targets = config.get("targets") or record.get("targets")
         # The inline cohort is reconstructed by the scientific host. Keep this
         # document intact; flat file configurations still use normalization.
         if "dataset_document" in config:
             descriptor = config["dataset_document"]
             if not isinstance(descriptor, dict) or descriptor.get("schema") != "nirs4all.studio-multimodal-dataset.v1" or not isinstance(descriptor.get("cohort"), dict) or set(descriptor) != {"schema", "cohort"}:
                 raise ValueError("Invalid multimodal dataset descriptor")
+            if missing_target_policy == "remove":
+                raise ValueError("Removing samples with a missing target is not supported for multimodal datasets; keep them to have them predicted")
             return descriptor
         if not config:
             path = record.get("path")
@@ -175,7 +182,7 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         # legacy flat NA policies for both new wizard and existing records.
         if config.get("files") or config.get("train_x") or config.get("test_x"):
             config = build_nirs4all_config_from_stored(record)
-        return finish(normalize_dataset_document(config, base_dir=record.get("path")), targets)
+        return finish(normalize_dataset_document(config, base_dir=record.get("path")))
     config = build_nirs4all_config(
         files=document.get("files", []),
         parsing=document.get("parsing", {}),
@@ -185,7 +192,7 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         task_type=document.get("task_type"),
         dataset_name=document.get("name"),
     )
-    return finish(normalize_dataset_document(config, base_dir=document.get("path")), document.get("targets"))
+    return finish(normalize_dataset_document(config, base_dir=document.get("path")))
 
 
 def plain_windows_path(value: str) -> str:
@@ -253,7 +260,7 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         from .library_runtime_config import compare_configuration
 
         return compare_configuration(document)
-    if operation in {"results.chains", "results.top", "results.chain", "results.chain_detail", "results.arrays", "results.chain_steps", "results.pipeline_steps"}:
+    if operation in {"results.chains", "results.dataset_chains", "results.top", "results.chain", "results.chain_detail", "results.arrays", "results.chain_steps", "results.pipeline_steps"}:
         from .library_aggregated_results import read_aggregated_results
 
         return read_aggregated_results(operation, document)

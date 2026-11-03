@@ -57,7 +57,7 @@ def resolve_dataset_path(dataset_id: str) -> str:
     return str(path)
 
 
-def build_dataset_config(dataset_id: str) -> dict[str, Any]:
+def build_dataset_config(dataset_id: str, missing_target_policy: str | None = None) -> dict[str, Any]:
     """Build a nirs4all-compliant dataset configuration from webapp dataset record.
 
     Delegates to the canonical translator in shared.dataset_config, ensuring
@@ -65,11 +65,13 @@ def build_dataset_config(dataset_id: str) -> dict[str, Any]:
 
     Args:
         dataset_id: The dataset ID from the webapp.
+        missing_target_policy: A run's answer for samples whose target is
+            missing ("predict" or "remove"); None keeps the saved policy.
 
     Returns:
         A dict configuration compatible with nirs4all.run(dataset=config).
     """
-    from .shared.dataset_config import build_nirs4all_config_from_stored, for_dataset_configs
+    from .shared.dataset_config import MISSING_TARGET_NA_POLICIES, build_nirs4all_config_from_stored, for_dataset_configs
 
     dataset = get_dataset_record(dataset_id)
     config = dataset.get("config", {})
@@ -95,7 +97,8 @@ def build_dataset_config(dataset_id: str) -> dict[str, Any]:
         translated.setdefault("folder", dataset_path)
     if dataset.get("task_type") and dataset["task_type"] != "auto":
         translated.setdefault("task_type", dataset["task_type"])
-    return for_dataset_configs(translated)
+    target_na_policy = MISSING_TARGET_NA_POLICIES[missing_target_policy] if missing_target_policy else None
+    return for_dataset_configs(translated, target_na_policy=target_na_policy)
 
 
 def _looks_like_function_model_path(reference: Any) -> bool:

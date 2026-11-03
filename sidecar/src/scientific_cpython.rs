@@ -99,9 +99,10 @@ const VERIFIED_DISTRIBUTION_STAT_ENV: &str = "NIRS4ALL_VERIFIED_DISTRIBUTION_STA
 /// Keep preview, setup and translation within the qualified cold-start budget.
 pub const SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT: Duration = SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT;
 pub const SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT: Duration = Duration::from_secs(120);
-// Training campaigns are cancellable and isolated from interactive readers.
-// Their computation budget must accommodate cross-validation and model sweeps.
-pub const SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT: Duration = Duration::from_secs(3600);
+// Training campaigns are cancellable, isolated from interactive readers and
+// report progress through the heartbeat. Their budget must accommodate the
+// shipped benchmark presets (Complex PLS runs for several hours).
+pub const SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT: Duration = Duration::from_secs(86_400);
 pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
@@ -110,7 +111,7 @@ pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
 /// Exact nirs4all release of the packaged runtime, attested with the manifest,
 /// wheel, source commit and callable digests below.
-pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.14";
+pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.15";
 /// Exclusive upper bound of the nirs4all releases a selected environment may use.
 ///
 /// Selected (custom or managed) environments are not attested file by file:
@@ -119,12 +120,12 @@ pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.14";
 /// (`REUSABLE_RUNTIME_PACKAGES`). Studio reaches nirs4all only through named,
 /// schema-versioned callables that stay stable within a minor release.
 pub const SCIENTIFIC_DISTRIBUTION_LIMIT: &str = "1.5";
-pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = ">=1.4.14,<1.5";
+pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = ">=1.4.15,<1.5";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
-    "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c";
+    "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
-    "6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe";
-pub const SCIENTIFIC_SOURCE_COMMIT: &str = "563220eb2becc6a1340431d588315f0793664fe4";
+    "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0";
+pub const SCIENTIFIC_SOURCE_COMMIT: &str = "2ab9953ccb4b5e72f76be6cb637503622c5869cf";
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
 
@@ -204,7 +205,7 @@ except Exception as error:
     distribution_files_verified=False
     distribution_stat_sha256=None
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_stat_sha256":distribution_stat_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe","source_commit":"563220eb2becc6a1340431d588315f0793664fe4"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_stat_sha256":distribution_stat_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0","source_commit":"2ab9953ccb4b5e72f76be6cb637503622c5869cf"},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
@@ -247,7 +248,7 @@ def studio_distribution_supported(version):
         left=release+[0]*(size-len(release))
         right=bound+[0]*(size-len(bound))
         return (left>right)-(left<right)
-    minimum=compare([1,4,14])
+    minimum=compare([1,4,15])
     return (minimum>0 or (minimum==0 and not prerelease)) and compare([1,5])<0
 raw=sys.stdin.buffer.read(33554433)
 if len(raw)>33554432:
@@ -255,7 +256,7 @@ if len(raw)>33554432:
 request=json.loads(raw)
 distribution=importlib.metadata.distribution("nirs4all")
 if sys.argv[1]:
-    if distribution.version != "1.4.14":
+    if distribution.version != "1.4.15":
         raise RuntimeError("scientific distribution version changed")
     record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
     record_path=distribution.locate_file(record_entry) if record_entry else None
@@ -264,7 +265,7 @@ if sys.argv[1]:
     installer_members={metadata_root+name for name in ("INSTALLER","REQUESTED","direct_url.json","uv_cache.json")}
     record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0] not in installer_members))
     manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-    if hashlib.sha256(manifest_bytes).hexdigest() != "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c":
+    if hashlib.sha256(manifest_bytes).hexdigest() != "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a":
         raise RuntimeError("scientific distribution identity changed")
     for relative,encoded,size in record_rows:
         if "=" not in encoded or (size and not size.isdigit()):
@@ -298,7 +299,7 @@ with contextlib.redirect_stdout(sys.stderr):
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":True,"result":result,"error":None}
         except Exception as error:
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":False,"result":None,"error":str(error).encode("utf-8")[:4000].decode("utf-8",errors="ignore")}
-        response_limit=33554432 if request.get("operation") in {"spectra.data","spectra.stats","playground.operators","playground.presets","dataset.preview","dataset.stats","dataset.inspect_format","results.chain_steps","results.pipeline_steps","results.chains","results.top","results.chain","results.chain_detail","results.arrays","results.page","results.summary","predictions.catalogue","predictions.run","predictions.file","operators.availability","results.export","inspector.data","inspector.histogram","inspector.rankings","inspector.branch-topology","inspector.scatter","inspector.heatmap","inspector.candlestick","inspector.branch-comparison","inspector.fold-stability","inspector.confusion","inspector.preprocessing-impact","inspector.hyperparameter","inspector.bias-variance","analysis.shap_compute","analysis.shap_view","synthesis.preview"} else document_limit
+        response_limit=33554432 if request.get("operation") in {"spectra.data","spectra.stats","playground.operators","playground.presets","dataset.preview","dataset.stats","dataset.inspect_format","results.chain_steps","results.pipeline_steps","results.chains","results.dataset_chains","results.top","results.chain","results.chain_detail","results.arrays","results.page","results.summary","predictions.catalogue","predictions.run","predictions.file","operators.availability","results.export","inspector.data","inspector.histogram","inspector.rankings","inspector.branch-topology","inspector.scatter","inspector.heatmap","inspector.candlestick","inspector.branch-comparison","inspector.fold-stability","inspector.confusion","inspector.preprocessing-impact","inspector.hyperparameter","inspector.bias-variance","analysis.shap_compute","analysis.shap_view","synthesis.preview"} else document_limit
     elif request.get("schema") == "nirs4all.studio-scientific-job.v2":
         general=getattr(nirs4all,"studio_scientific_job_v2",None)
         if not callable(general):
@@ -2550,6 +2551,7 @@ fn request_limits(request: &Value) -> (usize, usize) {
                         | "results.chain_steps"
                         | "results.pipeline_steps"
                         | "results.chains"
+                        | "results.dataset_chains"
                         | "results.top"
                         | "results.chain"
                         | "results.chain_detail"
@@ -4522,13 +4524,13 @@ done"#,
     }
 
     const SUPPORTED_VERSION_CASES: [(&str, bool); 12] = [
-        ("1.4.14", true),
         ("1.4.15", true),
+        ("1.4.16", true),
         ("1.4.99.post1", true),
-        ("1.4.14.0", true),
-        ("1.4.13", false),
-        ("1.4.14rc1", false),
-        ("1.4.14.dev0", false),
+        ("1.4.15.0", true),
+        ("1.4.14", false),
+        ("1.4.15rc1", false),
+        ("1.4.15.dev0", false),
         ("1.5", false),
         ("1.5.0", false),
         ("1.5.0rc1", false),
@@ -4653,7 +4655,7 @@ done"#,
         )
         .unwrap();
         let host = host_identity(&callable).unwrap();
-        for version in ["1.4.14", "1.4.15"] {
+        for version in ["1.4.15", "1.4.16"] {
             let acquired = parse_acquired_host(
                 host.clone(),
                 &preflight_output(version, &callable),
@@ -4672,7 +4674,7 @@ done"#,
                 ScientificCpythonUnavailable::DistributionTampered
             );
         }
-        for version in ["1.4.13", "1.5.0"] {
+        for version in ["1.4.14", "1.5.0"] {
             assert_eq!(
                 parse_acquired_host(
                     host.clone(),
@@ -4715,6 +4717,10 @@ done"#,
         );
         assert_eq!(contract["selected_source_commit"], SCIENTIFIC_SOURCE_COMMIT);
         assert_eq!(contract["selected_wheel_sha256"], SCIENTIFIC_WHEEL_SHA256);
+        assert_eq!(
+            contract["training_execution_timeout_ms"].as_u64(),
+            u64::try_from(SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT.as_millis()).ok()
+        );
         assert!(contract
             .get("selected_distribution_record_sha256")
             .is_none());

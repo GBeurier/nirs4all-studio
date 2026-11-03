@@ -319,18 +319,18 @@
         ]
       },
       {
-        "name": "n_neighbors",
-        "type": "int",
-        "default": 50,
-        "min": 5,
-        "max": 200,
-        "description": "Number of neighbors for local model",
+        "name": "lambda_in_similarity",
+        "type": "float",
+        "default": 1.0,
+        "min": 0.001,
+        "max": 64,
+        "description": "Gaussian kernel width for sample similarity; smaller values give more local models",
         "sweepable": true,
         "finetunable": true,
-        "finetuneType": "int",
+        "finetuneType": "log_float",
         "finetuneRange": [
-          10,
-          100
+          0.001,
+          32
         ]
       }
     ],
@@ -724,12 +724,12 @@
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "n_components",
+        "name": "max_components",
         "type": "int",
         "default": 10,
         "min": 1,
         "max": 50,
-        "description": "Number of PLS components",
+        "description": "Maximum number of PLS components; the operator and component count are selected by internal cross-validation",
         "sweepable": true,
         "sweepPresets": [
           {
@@ -759,19 +759,17 @@
         ]
       },
       {
-        "name": "n_orth",
-        "type": "int",
-        "default": 0,
-        "min": 0,
-        "max": 10,
-        "description": "Number of orthogonal components to remove",
+        "name": "center_x",
+        "type": "bool",
+        "default": true,
+        "description": "Center X before fitting",
         "isAdvanced": true
       },
       {
-        "name": "scale",
+        "name": "scale_x",
         "type": "bool",
-        "default": true,
-        "description": "Scale data before fitting",
+        "default": false,
+        "description": "Scale X to unit variance before fitting",
         "isAdvanced": true
       }
     ],
@@ -812,15 +810,6 @@
         ]
       },
       {
-        "name": "n_orth",
-        "type": "int",
-        "default": 0,
-        "min": 0,
-        "max": 10,
-        "description": "Number of orthogonal components to remove",
-        "isAdvanced": true
-      },
-      {
         "name": "scale",
         "type": "bool",
         "default": true,
@@ -849,12 +838,12 @@
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "n_components",
+        "name": "max_components",
         "type": "int",
         "default": 10,
         "min": 1,
         "max": 50,
-        "description": "Number of PLS components",
+        "description": "Maximum number of PLS components; the operator and component count are selected by internal cross-validation",
         "sweepable": true,
         "sweepPresets": [
           {
@@ -875,19 +864,17 @@
         ]
       },
       {
-        "name": "n_orth",
-        "type": "int",
-        "default": 0,
-        "min": 0,
-        "max": 10,
-        "description": "Number of orthogonal components",
+        "name": "center_x",
+        "type": "bool",
+        "default": true,
+        "description": "Center X before fitting",
         "isAdvanced": true
       },
       {
-        "name": "auto_select",
+        "name": "scale_x",
         "type": "bool",
-        "default": true,
-        "description": "Automatically select best operator per component",
+        "default": false,
+        "description": "Scale X to unit variance before fitting",
         "isAdvanced": true
       }
     ],
@@ -925,22 +912,6 @@
           1,
           30
         ]
-      },
-      {
-        "name": "n_orth",
-        "type": "int",
-        "default": 0,
-        "min": 0,
-        "max": 10,
-        "description": "Number of orthogonal components",
-        "isAdvanced": true
-      },
-      {
-        "name": "auto_select",
-        "type": "bool",
-        "default": true,
-        "description": "Automatically select best operator per component",
-        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,

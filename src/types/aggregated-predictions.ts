@@ -91,6 +91,7 @@ export interface PartitionPrediction {
   model_name: string;
   model_class: string;
   fold_id: string;
+  /** "train" | "val" | "test", or "prediction" for samples predicted without a target (no scores). */
   partition: string;
   val_score: number | null;
   test_score: number | null;

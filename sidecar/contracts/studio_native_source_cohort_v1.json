@@ -5,76 +5,76 @@
   "requires_explicit_local_cargo_config": false,
   "packages": {
     "nirs4all": {
-      "version": "0.4.6",
+      "version": "0.4.7",
       "repository": "https://github.com/GBeurier/nirs4all-core.git",
-      "source_commit": "3d4d8ef497adbc44763c04499f703d98e53b4ad4",
-      "registry_checksum_sha256": "2c3b74b00041bda2e1707fc048dd37b9e8f67b9cf3d07597146bdf6bb0d9b5b1"
+      "source_commit": "1dffd9f4472551cc09ad9d99ed9d40814bd003cc",
+      "registry_checksum_sha256": "85610ceb9ea2f1111db1137ae1f7e58ce132d71c3eb31f04944495fc83403394"
     },
     "nirs4all-io": {
-      "version": "0.2.11",
+      "version": "0.2.14",
       "repository": "https://github.com/GBeurier/nirs4all-io.git",
-      "source_commit": "6fd4ed8140fd3a105c8ba506e36151937a46848b",
-      "registry_checksum_sha256": "cc4fb28139c509acde40b89ea42115236dea83b02de3fcab816b5ee15227075f"
+      "source_commit": "172a7acfcc029742f45fbcf477f55f46dc7fbafe",
+      "registry_checksum_sha256": "172a381c32a1009ac3719c0c915e6e897a157c897cc99077cb7100a7b8a02270"
     },
     "nirs4all-io-core": {
-      "version": "0.2.11",
+      "version": "0.2.14",
       "repository": "https://github.com/GBeurier/nirs4all-io.git",
-      "source_commit": "6fd4ed8140fd3a105c8ba506e36151937a46848b",
-      "registry_checksum_sha256": "d7674ad6138ce2f621a0b1a5d26daec26a8f538d6a5f3ce685e2318f1dd80423"
+      "source_commit": "172a7acfcc029742f45fbcf477f55f46dc7fbafe",
+      "registry_checksum_sha256": "37e99cd89ca38908afbf63d0a473eee38d15c48a39b323e224762cc50116575e"
     },
     "nirs4all-io-dagml": {
-      "version": "0.2.11",
+      "version": "0.2.14",
       "repository": "https://github.com/GBeurier/nirs4all-io.git",
-      "source_commit": "6fd4ed8140fd3a105c8ba506e36151937a46848b",
-      "registry_checksum_sha256": "c22eeb5543f303d2d5c168fcb9c78151a573ae49772773785ab5b4284abbff51"
+      "source_commit": "172a7acfcc029742f45fbcf477f55f46dc7fbafe",
+      "registry_checksum_sha256": "3d85f5e796158badccde3a7581212fd5c1d6ab510c187f63b8a2d681af69160b"
     },
     "nirs4all-formats": {
-      "version": "0.2.13",
+      "version": "0.2.14",
       "repository": "https://github.com/GBeurier/nirs4all-formats.git",
-      "source_commit": "7333f35c79364cecd95d94cd18678c53286a78b0",
-      "registry_checksum_sha256": "662a598c2580ce75e027d1a6179de2f42a1a1e2a22ff6802d6674f803ea63d19"
+      "source_commit": "051fe9c0433160f26e8090566418dbc7546c4f96",
+      "registry_checksum_sha256": "890a252fedae8d8629284e5909eafd583d4e9e0413daae92099cedbf78c7539c"
     },
     "nirs4all-formats-core": {
-      "version": "0.2.13",
+      "version": "0.2.14",
       "repository": "https://github.com/GBeurier/nirs4all-formats.git",
-      "source_commit": "7333f35c79364cecd95d94cd18678c53286a78b0",
-      "registry_checksum_sha256": "26b37f7540f019a607824481b2716077186a4e8b726ee1c47d05599f29837fc6"
+      "source_commit": "051fe9c0433160f26e8090566418dbc7546c4f96",
+      "registry_checksum_sha256": "1ce405f9dc8f8b7fac0057c2730d1cabcfb08ef6e80c00e1b5a685dffee982d8"
     },
     "dag-ml": {
-      "version": "0.3.43",
+      "version": "0.3.44",
       "repository": "https://github.com/GBeurier/dag-ml.git",
-      "source_commit": "747cb9c54271e32cc213b880928a983562bb1b20",
-      "registry_checksum_sha256": "f1c43af1fccd1d599880c9cb994a241269386eb1083510299b52c4a5aecfbffd"
+      "source_commit": "01226120552529aad45e5ba60d3f6327894adc67",
+      "registry_checksum_sha256": "0c752eebc932ccd9bfff7d85fdeb27edaa223866f34e7a7c6f3fd87e9e54ef6f"
     },
     "dag-ml-core": {
-      "version": "0.3.43",
+      "version": "0.3.44",
       "repository": "https://github.com/GBeurier/dag-ml.git",
-      "source_commit": "747cb9c54271e32cc213b880928a983562bb1b20",
-      "registry_checksum_sha256": "0b91f6b70a59b2e34218fa1cc47ec4c0ef72da72fe7a53436d3fda230731af46"
+      "source_commit": "01226120552529aad45e5ba60d3f6327894adc67",
+      "registry_checksum_sha256": "e4f4fd800766c7a01a9f6605226556a8e8f5fbd7df498457b5c8ecc8b9029080"
     },
     "dag-ml-results": {
-      "version": "0.3.43",
+      "version": "0.3.44",
       "repository": "https://github.com/GBeurier/dag-ml.git",
-      "source_commit": "747cb9c54271e32cc213b880928a983562bb1b20",
-      "registry_checksum_sha256": "d9968a4e92147a272324ae73d2e38d479f1590da55055238c5f58e17d2f3e413"
+      "source_commit": "01226120552529aad45e5ba60d3f6327894adc67",
+      "registry_checksum_sha256": "7bf34f0a2ed9a6250fab06716d34a11c85b190f61d61c90220dac0bd877a75ea"
     },
     "dag-ml-data": {
-      "version": "0.2.13",
+      "version": "0.2.16",
       "repository": "https://github.com/GBeurier/dag-ml-data.git",
-      "source_commit": "78719b68c8e9ffd4c2035792574b8da33387d237",
-      "registry_checksum_sha256": "0c8ad3e06a04a707c377baf742e0e113c39c7641fddf47d1585ab68444e41215"
+      "source_commit": "eb2ad7835ca85feebf6f626d9f43f61575a1c9a9",
+      "registry_checksum_sha256": "f57a340d701cc08eadbc0c5b1745dd46d76b91aba1a68a718be4adc4abc77adc"
     },
     "dag-ml-data-core": {
-      "version": "0.2.13",
+      "version": "0.2.16",
       "repository": "https://github.com/GBeurier/dag-ml-data.git",
-      "source_commit": "78719b68c8e9ffd4c2035792574b8da33387d237",
-      "registry_checksum_sha256": "5799bef4f26ea1c9de2df7e4a0ce4cf09b0f5140dc6c604402a98ef3ca1a1b12"
+      "source_commit": "eb2ad7835ca85feebf6f626d9f43f61575a1c9a9",
+      "registry_checksum_sha256": "2b422140ba492c707ba776403ccb613a4f371f6a64bc1af3adfc2af7d883b2fc"
     },
     "dag-ml-data-provider": {
-      "version": "0.2.13",
+      "version": "0.2.16",
       "repository": "https://github.com/GBeurier/dag-ml-data.git",
-      "source_commit": "78719b68c8e9ffd4c2035792574b8da33387d237",
-      "registry_checksum_sha256": "3e30aef23b9a8defc36051ad38e61f02782d72d624501f686d9c985aa0469a2d"
+      "source_commit": "eb2ad7835ca85feebf6f626d9f43f61575a1c9a9",
+      "registry_checksum_sha256": "48268bd5b790a5512b71aca85617729d3bad83fea3a0368e257291e3ace2f781"
     },
     "n4m": {
       "version": "0.4.1",
@@ -85,7 +85,7 @@
   },
   "notes": [
     "Cargo.lock selects published registry artifacts with their real checksums; no local source override is active.",
-    "The SDK and native Methods remain on the explicitly qualified 1.3.9 cohort.",
-    "Studio 0.15.4 is held for local manual testing and NA review; this manifest does not authorize publication."
+    "The Rust n4m crate stays 0.4.1 (published from Methods b246b502); the native Methods library and Python distribution are the qualified 1.3.13 release (ABI 2.20).",
+    "Studio 0.15.9 pins the nirs4all 1.4.15 SDK cohort: Core 0.4.7, DAG-ML 0.3.44, dag-ml-data 0.2.16, IO 0.2.14, Formats 0.2.14."
   ]
 }

@@ -66,7 +66,7 @@ This page lists every pipeline node available in the {doc}`pipeline-editor-page`
 | **KennardStone** | Distance-based representative sampling for uniform coverage of the design space. | `test_size` (default 0.2), `metric`: euclidean/mahalanobis/cosine |
 | **SPXY** | Sample Partitioning based on both X and Y spaces. | `test_size` (default 0.2) |
 | **SPXYGFold** | SPXY-based K-fold cross-validation. | `n_splits` (default 5) |
-| **KMeansSplitter** | K-means clustering based train/test split. | `n_clusters` (default 5), `test_size` (default 0.2) |
+| **KMeansSplitter** | K-means clustering based train/test split. | `test_size` (default 0.2) |
 | **KBinsStratifiedSplitter** | Bins-based stratification for regression problems. | `n_bins` (default 5), `test_size` (default 0.2) |
 | **BinnedStratifiedGroupKFold** | Group-aware binned stratified K-fold. | `n_splits` (default 5), `n_bins` (default 5) |
 | **SystematicCircularSplitter** | Systematic sampling with circular wrapping. | `test_size` (default 0.2) |

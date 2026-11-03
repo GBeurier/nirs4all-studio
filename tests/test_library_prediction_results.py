@@ -96,6 +96,15 @@ def test_aggregated_chain_detail_and_real_arrays_with_live_writer(tmp_path: Path
         assert arrays["sample_indices"] == [8, 3, 2]
         with pytest.raises(ValueError, match="not_found"):
             read_aggregated_results("results.arrays", {**base, "prediction_id": "missing"})
+        run_chains = read_aggregated_results("results.dataset_chains", {**base, "run_id": run, "dataset_name": "wheat"})
+        assert run_chains["total"] == 1 and run_chains["metric"] == "rmse"
+        assert run_chains["chains"][0]["chain_id"] == chain
+        all_chains = read_aggregated_results("results.dataset_chains", {**base, "dataset_name": "wheat"})
+        assert [entry["chain_id"] for entry in all_chains["chains"]] == [chain]
+        other_run = read_aggregated_results("results.dataset_chains", {**base, "run_id": "other-run", "dataset_name": "wheat"})
+        assert other_run == {"chains": [], "total": 0, "metric": None}
+    assert read_aggregated_results("results.dataset_chains", {"workspace_path": str(tmp_path / "empty"), "dataset_name": "wheat"}) == {
+        "chains": [], "total": 0, "metric": None}
 
 
 def test_verbatim_windows_workspace_paths_reach_the_library_plain(monkeypatch):

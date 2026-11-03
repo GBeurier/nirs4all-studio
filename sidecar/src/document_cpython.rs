@@ -178,6 +178,7 @@ fn is_supported_operation(operation: &str) -> bool {
             | "results.chain_steps"
             | "results.pipeline_steps"
             | "results.chains"
+            | "results.dataset_chains"
             | "results.top"
             | "results.chain"
             | "results.chain_detail"

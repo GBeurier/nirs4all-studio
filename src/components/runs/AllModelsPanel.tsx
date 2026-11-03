@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { isPredictionOnlyPartition, PREDICTION_ONLY_BADGE_CLASS } from "@/lib/partitionColors";
 import { formatMetricValue, isLowerBetter } from "@/lib/scores";
 import { getAllChainsForDataset } from "@/api/enrichedRuns";
 import { getChainPartitionDetail } from "@/api/aggregatedPredictions";
@@ -126,6 +127,7 @@ function ModelFoldRows({ chainId, metric }: { chainId: string; metric: string })
         <div className="p-3 space-y-4">
           {folds.map(foldId => {
             const foldRows = rows.filter(r => r.fold_id === foldId);
+            const predictedOnly = foldRows.filter(r => isPredictionOnlyPartition(r.partition));
             return (
               <div key={foldId} className="space-y-2">
                 <div className="text-xs font-semibold text-muted-foreground">
@@ -172,6 +174,14 @@ function ModelFoldRows({ chainId, metric }: { chainId: string; metric: string })
                     );
                   })}
                 </div>
+                {predictedOnly.map(row => (
+                  <div key={row.prediction_id} className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0", PREDICTION_ONLY_BADGE_CLASS)}>
+                      {t("predictions.partitions.prediction")}
+                    </Badge>
+                    {t("predictions.partitions.predictedSamples", { count: row.n_samples ?? 0 })}
+                  </div>
+                ))}
               </div>
             );
           })}

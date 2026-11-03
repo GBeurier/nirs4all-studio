@@ -165,6 +165,7 @@ describe("renderer transport preselection", () => {
       "/aggregated-predictions/top?metric=rmse&n=100&score_column=final_test_score",
       "/aggregated-predictions/chain/chain-1?metric=rmse&dataset_name=wheat",
       "/aggregated-predictions/chain/cha%C3%AEne/detail?partition=val&fold_id=0",
+      "/aggregated-predictions/chain/chain-1/detail?partition=prediction&fold_id=final",
       "/aggregated-predictions/prediction-1/arrays",
       "/aggregated-predictions/chain/chain-1/pipeline-steps",
       "/aggregated-predictions/pipeline/pipeline-1/pipeline-steps",
@@ -214,12 +215,28 @@ describe("renderer transport preselection", () => {
     const request = async () => capabilityResponse({ workspace_prediction_result_routes: true, python_plugin_preflight: true });
     for (const path of ["/workspaces/workspace-1/predictions/data?limit=1000&offset=0",
       "/workspaces/workspace-1/predictions/data?dataset=durum+wheat&partition=test",
+      "/workspaces/workspace-1/predictions/data?partition=prediction",
       "/workspaces/workspace-1/predictions/summary", "/workspaces/workspace-1/predictions/prediction-1/scatter"]) {
       await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
         .resolves.toMatchObject({ target: "native-sidecar", surface: "workspace-prediction-results" });
     }
     for (const suffix of ["limit=1001", "offset=-1", "limit=1&limit=2", "partition=oops", "path=/tmp/other"]) {
       await expect(preselectRendererTransport({ kind: "http", method: "GET", path: `/workspaces/workspace-1/predictions/data?${suffix}` }, running, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+  });
+
+  it("selects the dataset chain listings behind the run and results model panels", async () => {
+    const request = async () => capabilityResponse({ workspace_prediction_result_routes: true, python_plugin_preflight: true });
+    for (const path of ["/workspaces/workspace-1/runs/run-7/datasets/Missing%20target%20run/chains",
+      "/workspaces/workspace-1/results/datasets/durum%20wheat/chains"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar", surface: "workspace-prediction-results" });
+    }
+    for (const path of ["/workspaces/workspace-1/results/datasets/a/chains?x=1", "/workspaces/workspace-1/results/datasets/%2E%2E/chains",
+      "/workspaces/workspace-1/results/datasets/a%2Fb/chains", "/workspaces/../runs/run-7/datasets/a/chains",
+      "/workspaces/workspace-1/runs/run-7/datasets/a/scores"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
         .resolves.toMatchObject({ target: "reject" });
     }
   });

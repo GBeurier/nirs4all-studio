@@ -1448,7 +1448,8 @@ class StoreAdapter:
                     if avs is not None and isinstance(avs, (int, float)):
                         cv_val_map[cid] = round(float(avs), 6)
                 for rec in records:
-                    if rec.get("refit_context") is not None and rec.get("chain_id") in cv_val_map:
+                    # Prediction-only rows (missing targets) are never scored.
+                    if rec.get("refit_context") is not None and rec.get("chain_id") in cv_val_map and rec.get("partition") != "prediction":
                         rec["val_score"] = cv_val_map[rec["chain_id"]]
             except Exception:
                 pass
@@ -1643,7 +1644,8 @@ class StoreAdapter:
 
         Returns:
             Dict with y_true, y_pred, n_samples, partition, model_name,
-            dataset_name; or ``None`` if not found.
+            dataset_name; or ``None`` if not found. ``y_true`` is ``None`` for
+            prediction-only rows (samples whose target is missing).
         """
         pred = self._store.get_prediction(prediction_id, load_arrays=True)
         if pred is None:
@@ -1651,13 +1653,13 @@ class StoreAdapter:
 
         y_true = pred.get("y_true")
         y_pred = pred.get("y_pred")
-        if y_true is None or y_pred is None:
+        if y_pred is None:
             return None
 
-        y_true_list = _to_json_compatible(y_true)
+        y_true_list = _to_json_compatible(y_true) if y_true is not None else None
         y_pred_list = _to_json_compatible(y_pred)
 
-        if not y_true_list or not y_pred_list:
+        if not y_pred_list or (y_true_list is not None and not y_true_list):
             return None
 
         sample_metadata = _extract_sample_metadata(
@@ -1670,7 +1672,7 @@ class StoreAdapter:
         sample_ids = (
             raw_sample_ids
             if isinstance(raw_sample_ids, list)
-            and len(raw_sample_ids) == len(y_true_list)
+            and len(raw_sample_ids) == len(y_pred_list)
             and all(isinstance(sample_id, str) for sample_id in raw_sample_ids)
             else None
         )
@@ -1679,7 +1681,7 @@ class StoreAdapter:
             "prediction_id": prediction_id,
             "y_true": y_true_list,
             "y_pred": y_pred_list,
-            "n_samples": len(y_true_list),
+            "n_samples": len(y_pred_list),
             "partition": pred.get("partition", "unknown"),
             "model_name": pred.get("model_name", "unknown"),
             "dataset_name": pred.get("dataset_name", "unknown"),

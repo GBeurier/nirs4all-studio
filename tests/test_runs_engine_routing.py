@@ -79,7 +79,13 @@ def stub_training_deps(monkeypatch):
     monkeypatch.delenv("N4A_ENGINE", raising=False)
     monkeypatch.setattr(runtime_engine_api, "supports_explicit_run_engine", lambda: True)
 
-    monkeypatch.setattr(adapter_api, "build_dataset_config", lambda dataset_id: {"path": dataset_id})
+    calls: dict = {"captured": None, "count": 0, "missing_target_policy": []}
+
+    def build_dataset_config(dataset_id, missing_target_policy=None):
+        calls["missing_target_policy"].append(missing_target_policy)
+        return {"path": dataset_id}
+
+    monkeypatch.setattr(adapter_api, "build_dataset_config", build_dataset_config)
     monkeypatch.setattr(spectra_api, "_load_dataset", lambda dataset_id: SimpleNamespace(name=dataset_id))
     monkeypatch.setattr(
         runs_api,
@@ -90,8 +96,6 @@ def stub_training_deps(monkeypatch):
     monkeypatch.setattr(runs_api, "count_runtime_variants", lambda steps: 1)
     monkeypatch.setattr(runs_api, "contains_generators", lambda steps: False)
     monkeypatch.setattr(adapter_api, "extract_best_metrics", lambda result: {})
-
-    calls: dict = {"captured": None, "count": 0}
 
     def install(run_impl):
         def fake_run(**kwargs):
@@ -147,6 +151,24 @@ def test_execute_pipeline_training_passes_requested_engine_to_run(stub_training_
     assert result["engine_diagnostics"] is None
     assert result["fallback_policy"]["allow_fallback"] is False
     assert result["fallback_policy"]["mode"] == "refuse_fallback"
+
+
+@pytest.mark.parametrize("policy", [None, "predict", "remove"])
+def test_execute_pipeline_training_loads_the_run_missing_target_policy(stub_training_deps, policy):
+    """The run's missing-target answer reaches the dataset config of that run."""
+    stub_training_deps["install"](lambda **kwargs: SimpleNamespace())
+
+    runs_api._execute_pipeline_training(_pipeline(), "dataset-a", None, "run-1", missing_target_policy=policy)
+
+    assert stub_training_deps["missing_target_policy"] == [policy]
+
+
+def test_experiment_config_accepts_only_known_missing_target_policies():
+    base = {"name": "na", "dataset_ids": ["dataset-a"], "pipeline_ids": ["pipe-a"]}
+    assert runs_api.ExperimentConfig(**base).missing_target_policy is None
+    assert runs_api.ExperimentConfig(**base, missing_target_policy="remove").missing_target_policy == "remove"
+    with pytest.raises(ValueError):
+        runs_api.ExperimentConfig(**base, missing_target_policy="drop")
 
 
 def test_execute_pipeline_training_records_library_default_for_default_engine(stub_training_deps):
@@ -567,6 +589,7 @@ def test_execute_run_job_records_engine_outcome_on_pipeline(monkeypatch, tmp_pat
         store_run_id=None,
         engine=None,
         robustness=None,
+        missing_target_policy=None,
         allow_fallback=True,
         should_stop=None,
     ):
@@ -615,6 +638,7 @@ def test_execute_run_job_persists_engine_requested_on_training_failure(monkeypat
         store_run_id=None,
         engine=None,
         robustness=None,
+        missing_target_policy=None,
         allow_fallback=True,
         should_stop=None,
     ):
@@ -663,6 +687,7 @@ def test_execute_run_job_persists_structured_refusal_policy(monkeypatch, tmp_pat
         store_run_id=None,
         engine=None,
         robustness=None,
+        missing_target_policy=None,
         allow_fallback=True,
         should_stop=None,
     ):

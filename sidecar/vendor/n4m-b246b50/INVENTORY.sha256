@@ -1,0 +1,15 @@
+e5482e3dbebb82f17441077875da021e92567b8028d4750e2df238d644518deb  ./PROVENANCE.json
+fef7f797478f220323533ff7cc462fa7ec8160d1a306277372d7c8b738179d89  ./upstream/n4m-0.4.1/.cargo_vcs_info.json
+349c979d73394ce3ba25228b9dbab23b2913d3a48ef437d66ec97142b0e1ac83  ./upstream/n4m-0.4.1/Cargo.lock
+6e58d9208ad907ebcaba0b4ae36060af4d25bb2278777e659fe626c605f8c4c5  ./upstream/n4m-0.4.1/Cargo.toml
+33163514be2a024299c4f3abef50b0e46aec4d7f88cca473124853fb6956f8c1  ./upstream/n4m-0.4.1/Cargo.toml.orig
+d8a6cc31abc16b6748c7a21f21611f5a1ec33f67d22ca23d7da1c19b95496bee  ./upstream/n4m-0.4.1/LICENSES/AGPL-3.0-or-later.txt
+4ea234937bc7b0aa5247e436690d1eb9324875bc7590ecde50befd38e35190a5  ./upstream/n4m-0.4.1/LICENSES/CeCILL-2.1.txt
+ed96e77faa558d87e93d6a3f0de31f6d52b62a347d1bf51910fea774782b698d  ./upstream/n4m-0.4.1/README.md
+c021a44a01151994b4acbd6630e204c4f4b4acdd43b74726d97a2a9aa6831a9e  ./upstream/n4m-0.4.1/abi_probe.c
+3b6529ea94388b90e58e1cb7ce850b62e926f512b3a66083498842c216d63fb4  ./upstream/n4m-0.4.1/build.rs
+5da9928b4e38ae1a0c73277f71324b69ac647ee49494bc9f44df1d5043e708ae  ./upstream/n4m-0.4.1/scripts/run_sanitized_tests.sh
+6562ce66dc559a278898c70f13a49d401093eadc9da43d6ee27ed60fa4da3dd0  ./upstream/n4m-0.4.1/src/dynamic.rs
+b3114cddb017ccedcaebd28eaf1a30260f124fa568ccbd86147610e5e27a62c5  ./upstream/n4m-0.4.1/src/lib.rs
+c3b2fc6878089c95eca64b77441d26380e99fbdc6721c1a289523015bbd9a919  ./upstream/n4m-0.4.1/src/multimodal.rs
+27b0ce64a2a271778a858e1ffa303ffdd93e3933d2cb6e42c65fb63ef2e09513  ./upstream/n4m-0.4.1/src/roles.rs

@@ -116,13 +116,17 @@ describe("NewExperimentReviewStep", () => {
         executionEnvironmentDiagnostics={DEFAULT_NEW_EXPERIMENT_EXECUTION_ENVIRONMENT.diagnostics}
         experimentDescription=""
         groupingSelection={groupingSelection}
+        missingTargetPolicy="predict"
+        missingTargetRemovalAvailable
         selectedDatasetIds={["d1"]}
         onExperimentDescriptionChange={vi.fn()}
         onExperimentNameChange={vi.fn()}
+        onMissingTargetPolicyChange={vi.fn()}
       />,
     );
 
     expect(container.textContent).toContain("Experiment Overview");
+    expect(container.textContent).toContain("Samples without a target value");
     expect(container.textContent).not.toContain("All combinations");
     await expandCampaignPlanPreview(container);
     expect(container.textContent).toContain("All combinations");
@@ -196,9 +200,12 @@ describe("NewExperimentReviewStep", () => {
         executionEnvironmentDiagnostics={DEFAULT_NEW_EXPERIMENT_EXECUTION_ENVIRONMENT.diagnostics}
         experimentDescription=""
         groupingSelection={groupingSelection}
+        missingTargetPolicy="predict"
+        missingTargetRemovalAvailable
         selectedDatasetIds={["d1"]}
         onExperimentDescriptionChange={vi.fn()}
         onExperimentNameChange={vi.fn()}
+        onMissingTargetPolicyChange={vi.fn()}
       />,
     );
 

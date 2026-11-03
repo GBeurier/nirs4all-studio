@@ -23,26 +23,26 @@ describe("existing Python inventory", () => {
   });
   it("distinguishes absent dependencies from an installed SDK requiring an in-place update", () => {
     expect(getCorePackageIssues(new Map([["nirs4all", "1.4.7"]]))).toEqual([
-      { name: "nirs4all", installedVersion: "1.4.7", requiredVersion: ">=1.4.14,<1.5" },
-      { name: "nirs4all-io", installedVersion: null, requiredVersion: ">=0.2.11,<0.3" },
-      { name: "nirs4all-methods", installedVersion: null, requiredVersion: ">=1.3.9,<2" },
+      { name: "nirs4all", installedVersion: "1.4.7", requiredVersion: ">=1.4.15,<1.5" },
+      { name: "nirs4all-io", installedVersion: null, requiredVersion: ">=0.2.14,<0.3" },
+      { name: "nirs4all-methods", installedVersion: null, requiredVersion: ">=1.3.13,<2" },
       { name: "nirs4all-formats", installedVersion: null, requiredVersion: null },
     ]);
   });
   it("reports a different incompatible Methods binding as an in-place package change", () => {
     expect(getCorePackageIssues(new Map([["nirs4all_methods", "1.3.6"]]))).toContainEqual({
-      name: "nirs4all-methods", installedVersion: "1.3.6", requiredVersion: ">=1.3.9,<2",
+      name: "nirs4all-methods", installedVersion: "1.3.6", requiredVersion: ">=1.3.13,<2",
     });
   });
   it("accepts newer releases inside the declared ranges", () => {
     expect(getCorePackageIssues(new Map([
-      ["nirs4all", "1.4.15"], ["nirs4all_io", "0.2.13"], ["nirs4all_methods", "1.3.12"], ["nirs4all_formats", "0.2.14"],
+      ["nirs4all", "1.4.16"], ["nirs4all_io", "0.2.15"], ["nirs4all_methods", "1.3.14"], ["nirs4all_formats", "0.2.15"],
     ]))).toEqual([]);
     expect(getCorePackageIssues(new Map([
-      ["nirs4all", "1.5.0"], ["nirs4all_io", "0.3.0"], ["nirs4all_methods", "1.3.12"], ["nirs4all_formats", "0.2.14"],
+      ["nirs4all", "1.5.0"], ["nirs4all_io", "0.3.0"], ["nirs4all_methods", "1.3.14"], ["nirs4all_formats", "0.2.15"],
     ]))).toEqual([
-      { name: "nirs4all", installedVersion: "1.5.0", requiredVersion: ">=1.4.14,<1.5" },
-      { name: "nirs4all-io", installedVersion: "0.3.0", requiredVersion: ">=0.2.11,<0.3" },
+      { name: "nirs4all", installedVersion: "1.5.0", requiredVersion: ">=1.4.15,<1.5" },
+      { name: "nirs4all-io", installedVersion: "0.3.0", requiredVersion: ">=0.2.14,<0.3" },
     ]);
   });
 });
