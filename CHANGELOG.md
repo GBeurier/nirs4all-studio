@@ -31,6 +31,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ### Fixed
 
+- Long training campaigns are no longer stopped after one hour: the Complex PLS
+  preset runs for several hours. Training stays cancellable and reports its
+  progress; its time budget is now 24 hours.
+- "Show all trained models" in a run's dataset panel and the all-models lists of
+  result cards load in the desktop app again (they always reported "No models
+  found"): the dataset chain listings are now served by the Studio service.
 - AOM-PLS and POP-PLS presets and nodes use the native parameter names
   (`max_components`, `center_x`, `scale_x`): the 12-component presets no longer
   silently run with 3 components, and the ultra-slow search tunes
