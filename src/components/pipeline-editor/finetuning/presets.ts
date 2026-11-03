@@ -107,12 +107,11 @@ export const paramPresets: ParamPreset[] = [
   },
   // LWPLS
   {
-    name: "n_neighbors",
-    type: "int",
-    low: 10,
-    high: 100,
-    step: 10,
-    descriptionKey: "pipelineEditor.finetune.preset.nNeighbors",
+    name: "lambda_in_similarity",
+    type: "log_float",
+    low: 0.001,
+    high: 32,
+    descriptionKey: "pipelineEditor.finetune.preset.lambdaInSimilarity",
     forModels: ["LWPLS"],
   },
   // IntervalPLS
