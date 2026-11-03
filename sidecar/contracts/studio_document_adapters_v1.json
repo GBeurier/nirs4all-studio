@@ -181,8 +181,8 @@
     },
     {
       "path": "src/data/nodes/definitions/models/advanced-pls.json",
-      "size": 22663,
-      "sha256": "db22617d38919dc3b2ea08c848db9ca9510a316fe686012e0b752cfbf322c997"
+      "size": 22193,
+      "sha256": "93157eb5cbb03f7138259fa781fe95d32e088b10a9016414d46886911051697a"
     },
     {
       "path": "src/data/nodes/definitions/models/deep-learning.json",
@@ -296,8 +296,8 @@
     },
     {
       "path": "src/data/nodes/definitions/preprocessing/feature-selection.json",
-      "size": 6384,
-      "sha256": "8341857b1baad3139ea4cbc6eb873e569562f46efcc3d2ff50745b2fb9deb3cc"
+      "size": 6380,
+      "sha256": "218b7f4c5953188daa9b9f70aa71863703a80de2d6f45f6482981657a933cc8f"
     },
     {
       "path": "src/data/nodes/definitions/preprocessing/nirs-core.json",
@@ -366,8 +366,8 @@
     },
     {
       "path": "src/data/nodes/definitions/splitting/nirs-splitters.json",
-      "size": 10683,
-      "sha256": "59f9a771f28fcf1a1dbed63dcc564d3f6fe17bad03c2737a5daa99c61258bd11"
+      "size": 10510,
+      "sha256": "882412b490939ffbdb25d4a78894d8a971455ab2f4c036feab2b88ccc8bd0823"
     },
     {
       "path": "src/data/nodes/definitions/splitting/sklearn-splitters.json",
@@ -381,8 +381,8 @@
     },
     {
       "path": "src/data/nodes/generated/canonical-registry.json",
-      "size": 418354,
-      "sha256": "ba1acc9e1937615c60f8f120bc6e6416a6040a1424a8539773e20f9a24b3035a"
+      "size": 418482,
+      "sha256": "32d3417bf888831bb369abf455818cd0ac089a60229cb0abbd8914fb94287c1b"
     }
   ]
 }
