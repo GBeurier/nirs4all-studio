@@ -226,6 +226,21 @@ describe("renderer transport preselection", () => {
     }
   });
 
+  it("selects the dataset chain listings behind the run and results model panels", async () => {
+    const request = async () => capabilityResponse({ workspace_prediction_result_routes: true, python_plugin_preflight: true });
+    for (const path of ["/workspaces/workspace-1/runs/run-7/datasets/Missing%20target%20run/chains",
+      "/workspaces/workspace-1/results/datasets/durum%20wheat/chains"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar", surface: "workspace-prediction-results" });
+    }
+    for (const path of ["/workspaces/workspace-1/results/datasets/a/chains?x=1", "/workspaces/workspace-1/results/datasets/%2E%2E/chains",
+      "/workspaces/workspace-1/results/datasets/a%2Fb/chains", "/workspaces/../runs/run-7/datasets/a/chains",
+      "/workspaces/workspace-1/runs/run-7/datasets/a/scores"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+  });
+
   it("rejects malformed workspace chart identifiers and extra query parameters", async () => {
     const request = async () => capabilityResponse({ workspace_prediction_result_routes: true, python_plugin_preflight: true });
     for (const path of ["/workspaces/workspace-1/predictions/%2F/scatter", "/workspaces/../predictions/prediction-1/scatter",

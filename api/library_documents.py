@@ -260,7 +260,7 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         from .library_runtime_config import compare_configuration
 
         return compare_configuration(document)
-    if operation in {"results.chains", "results.top", "results.chain", "results.chain_detail", "results.arrays", "results.chain_steps", "results.pipeline_steps"}:
+    if operation in {"results.chains", "results.dataset_chains", "results.top", "results.chain", "results.chain_detail", "results.arrays", "results.chain_steps", "results.pipeline_steps"}:
         from .library_aggregated_results import read_aggregated_results
 
         return read_aggregated_results(operation, document)
