@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "generatedAt": "2026-11-02",
+  "generatedAt": "2026-11-03",
   "totalNodes": 338,
   "stats": {
     "augmentation": {
@@ -17623,7 +17623,8 @@
           "default": 0.2,
           "description": "Proportion of samples for test set",
           "min": 0.05,
-          "max": 0.5
+          "max": 0.5,
+          "sweepable": true
         }
       ]
     },
