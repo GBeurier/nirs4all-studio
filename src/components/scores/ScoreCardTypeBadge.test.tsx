@@ -23,4 +23,11 @@ describe('ScoreCardTypeBadge provenance', () => {
     expect(html).toContain('>Refit<');
     expect(html).not.toContain('CV estimate');
   });
+
+  it('labels refit rows that predicted samples without a target', () => {
+    const html = renderToStaticMarkup(<ScoreCardTypeBadge row={{ ...row, nSamplesPredicted: 3 }} />);
+    expect(html).toContain('>Refit<');
+    expect(html).toContain('3 predicted without target');
+    expect(renderToStaticMarkup(<ScoreCardTypeBadge row={{ ...row, nSamplesPredicted: null }} />)).not.toContain('without target');
+  });
 });

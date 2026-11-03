@@ -129,8 +129,8 @@ export function buildPredictionViewerCsvExport(
     const series = getPredictionViewerDistributionSeries(config.histogramSeries);
     const rows: Record<string, unknown>[] = [];
     for (const dataset of datasets) {
-      const count = Math.min(dataset.yTrue.length, dataset.yPred.length);
-      for (let index = 0; index < count; index++) {
+      // Samples without a target (prediction-only rows) keep their predicted values.
+      for (let index = 0; index < dataset.yPred.length; index++) {
         for (const seriesKind of series) {
           const value = seriesKind === "actual"
             ? dataset.yTrue[index]
@@ -156,15 +156,16 @@ export function buildPredictionViewerCsvExport(
   const rows: Record<string, unknown>[] = [];
   const hasConformalIntervals = datasets.some(dataset => dataset.conformalIntervals?.some(interval => interval != null));
   for (const dataset of datasets) {
-    const count = Math.min(dataset.yTrue.length, dataset.yPred.length);
-    for (let index = 0; index < count; index++) {
+    // Export every prediction; samples without a target have no y_true or residual.
+    for (let index = 0; index < dataset.yPred.length; index++) {
       const interval = dataset.conformalIntervals?.[index];
+      const actual = Number.isFinite(dataset.yTrue[index]) ? dataset.yTrue[index] : null;
       rows.push({
         sample_id: dataset.sampleIds?.[index] ?? index,
         partition: dataset.label,
-        y_true: dataset.yTrue[index],
+        y_true: actual,
         y_pred: dataset.yPred[index],
-        residual: dataset.yTrue[index] - dataset.yPred[index],
+        residual: actual == null ? null : actual - dataset.yPred[index],
         ...(hasConformalIntervals
           ? {
               conformal_coverage: interval?.coverage ?? null,

@@ -6,6 +6,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// Stored prediction partitions. `prediction` rows hold model outputs for
+/// samples whose target is missing: no `y_true` and no scores.
+fn is_prediction_partition(value: &str) -> bool {
+    matches!(value, "train" | "val" | "test" | "prediction")
+}
+
 fn endpoint(path: &str) -> Option<(&str, &str)> {
     let suffix = path.strip_prefix("/api/workspaces/")?;
     let (id, tail) = suffix.split_once("/predictions/")?;
@@ -244,7 +250,7 @@ fn aggregated_filters(
             }
             payload["n"] = json!(n);
         } else {
-            if key == "partition" && !matches!(value.as_ref(), "train" | "val" | "test") {
+            if key == "partition" && !is_prediction_partition(&value) {
                 return Err("Invalid prediction partition".into());
             }
             if key == "score_column"
@@ -293,7 +299,7 @@ fn filters(query: Option<&str>, page: bool) -> Result<Value, String> {
                 if value.is_empty() || value.len() > 1024 || value.contains('\0') {
                     return Err("Invalid prediction filter".into());
                 }
-                if key == "partition" && !matches!(value.as_ref(), "train" | "val" | "test") {
+                if key == "partition" && !is_prediction_partition(&value) {
                     return Err("Invalid prediction partition".into());
                 }
                 payload[key.as_ref()] = json!(value);
@@ -307,6 +313,23 @@ fn filters(query: Option<&str>, page: bool) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn partition_filters_accept_target_missing_prediction_rows() {
+        let page = filters(Some("partition=prediction"), true).unwrap();
+        assert_eq!(page["partition"], "prediction");
+        assert!(filters(Some("partition=oops"), true).is_err());
+        let request = HttpRequest {
+            method: "GET".into(),
+            path: "/api/aggregated-predictions/chain/chain-1/detail".into(),
+            query: Some("partition=prediction&fold_id=final".into()),
+            headers: std::collections::BTreeMap::default(),
+            body: vec![],
+        };
+        let detail = aggregated_filters(&request, "results.chain_detail", Some("chain-1")).unwrap();
+        assert_eq!(detail["partition"], "prediction");
+        assert_eq!(detail["fold_id"], "final");
+    }
     #[test]
     fn editor_reload_routes_keep_the_object_contract_on_the_http_wire() {
         use std::{

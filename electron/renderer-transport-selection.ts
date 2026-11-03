@@ -137,6 +137,9 @@ function isUpdateChangelogPath(path: string): boolean {
     && isValidIdentifier(fields.get("current_version") ?? "");
 }
 
+/** Stored prediction partitions; `prediction` rows predict samples whose target is missing. */
+const PREDICTION_PARTITIONS = ["train", "val", "test", "prediction"];
+
 function classifyPredictionResults(method: string, path: string): NativeSurface | null {
   if (method !== "GET" || path.split("?").length > 2) return null;
   const [pathname, query] = path.split("?", 2);
@@ -159,7 +162,7 @@ function classifyPredictionResults(method: string, path: string): NativeSurface 
       if (key === "limit" && (Number(value) < 1 || Number(value) > 1000)) return null;
     } else if (key === "dataset" || (page && ["model_class", "partition"].includes(key))) {
       if (!value || value.length > 1024 || value.includes("\0")) return null;
-      if (key === "partition" && !["train", "val", "test"].includes(value)) return null;
+      if (key === "partition" && !PREDICTION_PARTITIONS.includes(value)) return null;
     } else return null;
   }
   return { name: "workspace-prediction-results", capability: "workspace_prediction_result_routes", requiresPythonHost: true };
@@ -199,7 +202,7 @@ function classifyAggregatedPredictionResults(method: string, path: string): Nati
   for (const [key, value] of fields) {
     if (!allowed.includes(key) || !value || Buffer.byteLength(value, "utf8") > 1024 || value.includes("\0")) return null;
     if (key === "n" && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 100)) return null;
-    if (key === "partition" && !["train", "val", "test"].includes(value)) return null;
+    if (key === "partition" && !PREDICTION_PARTITIONS.includes(value)) return null;
     if (key === "score_column" && !["cv_val_score", "cv_test_score", "cv_train_score", "final_test_score", "final_train_score"].includes(value)) return null;
   }
   return { name: "aggregated-prediction-results", capability: "aggregated_prediction_result_routes", requiresPythonHost: true };

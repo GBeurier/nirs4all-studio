@@ -3,6 +3,7 @@ import type { ScoreCardRow } from "@/types/score-cards";
 import { predictionRecordBestParams, predictionRecordToRow } from "@/lib/score-adapters";
 import { FOLD_ORDER, foldIdBase } from "@/lib/fold-utils";
 import { getScoreMapValue, isClassificationTaskType } from "@/lib/scores";
+import { isPredictionOnlyPartition, scoredPartitionRows } from "@/lib/partitionColors";
 
 export const ALL_FOLD_TYPES = ["folds", "refits", "averages"] as const;
 export const ALL_DATA_KINDS = ["raw", "aggregated"] as const;
@@ -113,7 +114,9 @@ export function buildPredictionModelRows(predictions: PredictionRecord[]): Score
     const testPred = group.find(pred => pred.partition === "test");
     const valPred = group.find(pred => pred.partition === "val");
     const trainPred = group.find(pred => pred.partition === "train");
-    const primary = testPred ?? valPred ?? trainPred ?? group[0];
+    // Samples with a missing target are predicted in the refit group but never scored.
+    const predictedOnly = group.filter(pred => isPredictionOnlyPartition(pred.partition));
+    const primary = testPred ?? valPred ?? trainPred ?? scoredPartitionRows(group)[0] ?? group[0];
 
     const row = predictionRecordToRow(primary);
 
@@ -149,6 +152,9 @@ export function buildPredictionModelRows(predictions: PredictionRecord[]): Score
     row.partition = undefined;
     row.nSamplesEval = testPred?.n_samples ?? valPred?.n_samples ?? primary.n_samples ?? row.nSamplesEval;
     row.nSamplesTrain = trainPred?.n_samples ?? null;
+    row.nSamplesPredicted = predictedOnly.length > 0
+      ? predictedOnly.reduce((total, pred) => total + (pred.n_samples ?? 0), 0)
+      : null;
     row.hasRefitArtifact = !!row.predictChainId;
 
     return row;

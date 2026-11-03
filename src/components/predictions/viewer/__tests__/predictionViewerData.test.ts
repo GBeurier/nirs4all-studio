@@ -104,6 +104,20 @@ describe("predictionViewerData", () => {
     expect(buildPredictionViewerCsvExport("scatter", [], { histogramSeries: "both" })).toBeNull();
   });
 
+  it("exports predictions of samples without a target, without y_true or residual", () => {
+    const predicted = dataset({ predictionId: "pred-2", partition: "prediction", label: "prediction", yTrue: [], yPred: [4.5, 5] });
+    expect(buildPredictionViewerCsvExport("residuals", [dataset({ yTrue: [1], yPred: [1.25] }), predicted], { histogramSeries: "both" })?.rows).toEqual([
+      { sample_id: 0, partition: "Test", y_true: 1, y_pred: 1.25, residual: -0.25 },
+      { sample_id: 0, partition: "prediction", y_true: null, y_pred: 4.5, residual: null },
+      { sample_id: 1, partition: "prediction", y_true: null, y_pred: 5, residual: null },
+    ]);
+    expect(buildPredictionViewerCsvExport("distribution", [predicted], { histogramSeries: "both" })?.rows).toEqual([
+      { sample_id: 0, partition: "prediction", series: "predicted", value: 4.5 },
+      { sample_id: 1, partition: "prediction", series: "predicted", value: 5 },
+    ]);
+    expect(buildPredictionViewerCsvExport("confusion", [predicted], { histogramSeries: "both" })?.rows).toEqual([]);
+  });
+
   it("includes conformal interval bounds in scatter CSV rows when available", () => {
     const csvExport = buildPredictionViewerCsvExport("scatter", [
       dataset({

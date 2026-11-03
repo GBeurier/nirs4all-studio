@@ -11,6 +11,7 @@ import {
   chainHasRefitArtifact,
   buildFoldTree,
   foldArtifactKey,
+  foldSort,
   foldIdBase,
   foldLabel,
   hasArtifactForFold,
@@ -78,5 +79,14 @@ describe("fold-utils", () => {
     expect(hasArtifactForFold("final_agg", artifacts)).toBe(false);
     expect(chainHasAnyArtifact(artifacts)).toBe(true);
     expect(chainHasRefitArtifact(artifacts)).toBe(true);
+  });
+
+  it("orders prediction-only rows after scored partitions of the same fold", () => {
+    const predictions = [
+      { fold_id: "final", partition: "prediction", prediction_id: "missing" },
+      { fold_id: "final", partition: "test", prediction_id: "test" },
+    ] as Parameters<typeof buildFoldTree>[0];
+    expect([...predictions].sort(foldSort).map(p => p.partition)).toEqual(["test", "prediction"]);
+    expect(buildFoldTree(predictions)?.prediction.partition).toBe("test");
   });
 });

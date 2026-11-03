@@ -8181,6 +8181,7 @@ notFound: {
         choosePrediction: "Choisissez une prédiction associée pour consulter ses métriques.",
         noPartitionMetrics: "Aucune métrique par partition n'est disponible pour cette sélection.",
         noMetricMap: "Aucun détail de métriques enregistré.",
+        notScored: "Non évalué : ces échantillons n'ont pas de valeur cible.",
       },
       samples_one: "{{count}} échantillon",
       samples_other: "{{count}} échantillons",
@@ -8375,11 +8376,15 @@ notFound: {
       train: "Entraînement",
       val: "Validation",
       test: "Test",
+      prediction: "Prédit (sans cible)",
+      predictedSamples_one: "{{count}} prédit sans cible",
+      predictedSamples_other: "{{count}} prédits sans cible",
     },
     partitionsShort: {
       train: "Entr.",
       val: "Val",
       test: "Test",
+      prediction: "Préd.",
     },
     taskTypes: {
       regression: "Régression",

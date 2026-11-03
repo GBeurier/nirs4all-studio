@@ -1,4 +1,5 @@
 import { buildFoldTree } from '@/lib/fold-utils';
+import { scoredPartitionRows } from '@/lib/partitionColors';
 import {
   buildFoldTrainCards,
   enrichCrossvalRow,
@@ -91,11 +92,14 @@ export function selectPreferredScoreCardPrediction(
   predictions: PartitionPrediction[] | null | undefined,
 ): PartitionPrediction | undefined {
   if (!predictions || predictions.length === 0) return undefined;
-  return predictions.find((prediction) => prediction.fold_id === 'final')
-    ?? predictions.find((prediction) => prediction.fold_id === 'macro')
-    ?? predictions.find((prediction) => prediction.fold_id === 'avg')
-    ?? predictions.find((prediction) => prediction.fold_id === 'w_avg')
-    ?? predictions.find((prediction) => prediction.partition === 'test')
+  // Prediction-only rows (missing targets) share the refit fold but carry no scores.
+  const scored = scoredPartitionRows(predictions);
+  return scored.find((prediction) => prediction.fold_id === 'final')
+    ?? scored.find((prediction) => prediction.fold_id === 'macro')
+    ?? scored.find((prediction) => prediction.fold_id === 'avg')
+    ?? scored.find((prediction) => prediction.fold_id === 'w_avg')
+    ?? scored.find((prediction) => prediction.partition === 'test')
+    ?? scored[0]
     ?? predictions[0];
 }
 
