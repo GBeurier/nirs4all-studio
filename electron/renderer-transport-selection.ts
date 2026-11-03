@@ -148,6 +148,15 @@ function classifyPredictionResults(method: string, path: string): NativeSurface 
     if (query !== undefined || !isValidIdentifier(scatter[1]) || !isValidIdentifier(scatter[2])) return null;
     return { name: "workspace-prediction-results", capability: "workspace_prediction_result_routes", requiresPythonHost: true };
   }
+  // Every chain of one dataset, for one run or across all runs.
+  const chains = /^\/workspaces\/([^/]+)\/(?:runs\/([^/]+)|results)\/datasets\/([^/]+)\/chains$/.exec(pathname);
+  if (chains) {
+    if (query !== undefined || !isValidIdentifier(chains[1]) || (chains[2] !== undefined && !isValidIdentifier(chains[2]))) return null;
+    let dataset: string;
+    try { dataset = decodeURIComponent(chains[3]); } catch { return null; }
+    if (!dataset || dataset.length > 1024 || /[\0/\\]/.test(dataset) || dataset === "." || dataset === "..") return null;
+    return { name: "workspace-prediction-results", capability: "workspace_prediction_result_routes", requiresPythonHost: true };
+  }
   const page = identifierPath("/workspaces/", "/predictions/data").exec(pathname);
   const summary = identifierPath("/workspaces/", "/predictions/summary").exec(pathname);
   const matched = page ?? summary;

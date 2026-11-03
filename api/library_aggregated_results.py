@@ -68,6 +68,8 @@ def read_aggregated_results(operation: str, document: dict[str, Any]) -> dict[st
     if not (workspace / "store.sqlite").exists():
         if any(workspace.glob("*.meta.parquet")):
             raise ValueError("Legacy prediction storage is not supported; convert the workspace with nirs4all-tools")
+        if operation == "results.dataset_chains":
+            return {"chains": [], "total": 0, "metric": None}
         if operation in {"results.chains", "results.top"}:
             result: dict[str, Any] = {"predictions": [], "total": 0, "generated_at": generated}
             if operation == "results.top":
@@ -75,6 +77,11 @@ def read_aggregated_results(operation: str, document: dict[str, Any]) -> dict[st
             return result
         raise ValueError("not_found: Prediction or chain does not exist")
     with StoreAdapter(workspace, read_only=True) as adapter:
+        if operation == "results.dataset_chains":
+            # Every chain of one dataset, for one run or across all runs.
+            if document.get("run_id"):
+                return adapter.get_all_chains_for_dataset(document["run_id"], document["dataset_name"])
+            return adapter.get_all_chains_for_results_dataset(document["dataset_name"])
         if operation == "results.pipeline_steps":
             from .library_aggregated_steps import _extract_stored_pipeline_steps
 
