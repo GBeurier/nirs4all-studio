@@ -32,9 +32,9 @@ env:
   VITE_SENTRY_DSN: ""
   NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
-  NIRS4ALL_LIBRARY_REF: ${{ inputs.nirs4all_library_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && '1b97a3039446dcd1752f0c460b0eddeda3860b0b' || 'main') }}
-  DAG_ML_REF: ${{ inputs.dag_ml_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && '747cb9c54271e32cc213b880928a983562bb1b20' || 'main') }}
-  DAG_ML_DATA_REF: ${{ inputs.dag_ml_data_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && '78719b68c8e9ffd4c2035792574b8da33387d237' || 'main') }}
+  NIRS4ALL_LIBRARY_REF: ${{ inputs.nirs4all_library_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && '2ab9953ccb4b5e72f76be6cb637503622c5869cf' || 'main') }}
+  DAG_ML_REF: ${{ inputs.dag_ml_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && '01226120552529aad45e5ba60d3f6327894adc67' || 'main') }}
+  DAG_ML_DATA_REF: ${{ inputs.dag_ml_data_ref || (startsWith(github.head_ref || github.ref_name, 'rc/') && 'eb2ad7835ca85feebf6f626d9f43f61575a1c9a9' || 'main') }}
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════

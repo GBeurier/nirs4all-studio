@@ -24,9 +24,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_sidecar_resolves_selected_native_releases() -> None:
     manifest = tomllib.loads((ROOT / "sidecar" / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
-    assert dependencies["nirs4all"] == "=0.4.6"
-    assert dependencies["nirs4all-io"] == "=0.2.11"
-    # Native consumers use published Core 0.4.6 and its selected DAG 0.3.43.
+    assert dependencies["nirs4all"] == "=0.4.7"
+    assert dependencies["nirs4all-io"] == "=0.2.14"
+    # Native consumers use published Core 0.4.7 and its selected DAG 0.3.44.
     assert "dag-ml-core" not in manifest.get("dev-dependencies", {})
 
 
@@ -62,12 +62,12 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     version = config["nirs4all"]
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
 
-    assert version == "1.4.14"
+    assert version == "1.4.15"
     ref = re.search(r"^  NIRS4ALL_LIBRARY_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert ref is not None
     assert source is not None
-    assert ref.group(1) == source.group(1) == "563220eb2becc6a1340431d588315f0793664fe4"
+    assert ref.group(1) == source.group(1) == "2ab9953ccb4b5e72f76be6cb637503622c5869cf"
     parsed = yaml.safe_load(workflow)
     contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
     assert parsed["env"]["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
@@ -77,11 +77,11 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     assert environment["NIRS4ALL_PUBLICATION_STATUS"] == contract["publication_status"] == "source-built"
     assert contract["public_registry_verified"] is False
     assert environment["NIRS4ALL_WHEEL_URL"] == contract["selected_wheel_url"] == ""
-    assert environment["NIRS4ALL_SOURCE_EPOCH"] == "1793630954"
+    assert environment["NIRS4ALL_SOURCE_EPOCH"] == "1793671925"
     bash = str(Path(shutil.which("git")).parents[1] / "bin/bash.exe") if sys.platform == "win32" else "bash"
     result = subprocess.run([bash, "-c", validation], env=environment, cwd=ROOT, capture_output=True)
     assert result.returncode == 0, result.stderr.decode()
-    for changed in ({"NIRS4ALL_WHEEL_URL": "https://files.pythonhosted.org/old/nirs4all-1.4.14-py3-none-any.whl"},
+    for changed in ({"NIRS4ALL_WHEEL_URL": "https://files.pythonhosted.org/old/nirs4all-1.4.15-py3-none-any.whl"},
                     {"NIRS4ALL_SOURCE_EPOCH": "1791533217"}, {"NIRS4ALL_PUBLICATION_STATUS": "published"},
                     {"NIRS4ALL_SOURCE_URL": "https://github.com/GBeurier/nirs4all/archive/main.tar.gz"}):
         assert subprocess.run([bash, "-c", validation], env=environment | changed, cwd=ROOT, capture_output=True).returncode != 0
@@ -91,7 +91,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     dag_source = re.search(r"^  DAG_ML_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert dag_ref is not None
     assert dag_source is not None
-    assert dag_ref.group(1) == dag_source.group(1) == "747cb9c54271e32cc213b880928a983562bb1b20"
+    assert dag_ref.group(1) == dag_source.group(1) == "01226120552529aad45e5ba60d3f6327894adc67"
 
     data_ref = re.search(r"^  DAG_ML_DATA_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     data_source = re.search(
@@ -101,7 +101,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     )
     assert data_ref is not None
     assert data_source is not None
-    assert data_ref.group(1) == data_source.group(1) == "78719b68c8e9ffd4c2035792574b8da33387d237"
+    assert data_ref.group(1) == data_source.group(1) == "eb2ad7835ca85feebf6f626d9f43f61575a1c9a9"
 
     # Studio bundles no workspace converter; conversion is the separate nirs4all-tools.
     assert "NIRS4ALL_TOOLS" not in workflow
@@ -118,11 +118,11 @@ def test_reused_environment_range_is_shared_with_the_sidecar() -> None:
     assert f'pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "{version}";' in source
     # Custom/managed: the required nirs4all release up to the next minor; the
     # bundled runtime alone keeps the exact attested identity.
-    assert requirement == rust_requirement.group(1) == ">=1.4.14,<1.5"
+    assert requirement == rust_requirement.group(1) == ">=1.4.15,<1.5"
     assert packages[0] == f"nirs4all{requirement}"
     # nirs4all's own declared ranges for its native dependencies.
-    assert "nirs4all-io>=0.2.11,<0.3" in packages
-    assert "nirs4all-methods>=1.3.9,<2" in packages
+    assert "nirs4all-io>=0.2.14,<0.3" in packages
+    assert "nirs4all-methods>=1.3.13,<2" in packages
     assert not any("==" in package for package in packages)
 
 
@@ -141,7 +141,7 @@ def test_recommended_profiles_use_single_nirs4all_version() -> None:
             continue
         assert package["recommended"] == version
         # The minimum includes the frozen categorical target and prediction-scoring contract.
-        assert package["min"] == ">=1.4.14"
+        assert package["min"] == ">=1.4.15"
 
 
 def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> None:
@@ -157,7 +157,7 @@ def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> No
     acquisition = next(step["run"] for step in parsed["jobs"]["pinned-plugin-wheels"]["steps"]
                        if step.get("name") == "Build SDK and verify canonical plugin wheels")
     assert "node scripts/setup-python-env.cjs" in acquisition
-    assert "--build-plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.14-py3-none-any.whl" in acquisition
+    assert "--build-plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.15-py3-none-any.whl" in acquisition
     assert "nirs4all_tools" not in acquisition
     assert "pip wheel" not in acquisition
 
@@ -170,11 +170,11 @@ def _wheel_normalizer():
 
 
 def _test_wheel(path: Path, *, windows: bool = False, corruption: bool = False, extra: bool = False) -> str:
-    metadata_name = "nirs4all-1.4.14.dist-info/METADATA"
-    record_name = "nirs4all-1.4.14.dist-info/RECORD"
+    metadata_name = "nirs4all-1.4.15.dist-info/METADATA"
+    record_name = "nirs4all-1.4.15.dist-info/RECORD"
     payloads = {"nirs4all/example.py": b"scientific_code = 'preserved'\n",
-                metadata_name: b"Metadata-Version: 2.4\nName: nirs4all\nVersion: 1.4.14\n\nDescription\n",
-                "nirs4all-1.4.14.dist-info/WHEEL": b"Wheel-Version: 1.0\nTag: py3-none-any\n"}
+                metadata_name: b"Metadata-Version: 2.4\nName: nirs4all\nVersion: 1.4.15\n\nDescription\n",
+                "nirs4all-1.4.15.dist-info/WHEEL": b"Wheel-Version: 1.0\nTag: py3-none-any\n"}
 
     def record_rows():
         return [(name, "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).decode().rstrip("="), str(len(payload)))
@@ -268,15 +268,15 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
 
     assert "node scripts/verify-plugin-runtime-reproducibility.cjs" in workflow
     assert "plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json" in workflow
-    assert "nirs4all==1.4.14" in constraints
-    assert "nirs4all-core==0.4.6" in constraints
-    assert "nirs4all-io==0.2.11" in constraints
-    assert "dag-ml-data==0.2.13" in constraints
-    assert "nirs4all-methods==1.3.9" in constraints
-    assert "pls4all==1.3.9" in constraints
-    # Python and Rust DAG consume the same published 0.3.43 cohort.
-    assert "dag-ml==0.3.43" in constraints
-    assert "nirs4all-formats==0.2.13" in constraints
+    assert "nirs4all==1.4.15" in constraints
+    assert "nirs4all-core==0.4.7" in constraints
+    assert "nirs4all-io==0.2.14" in constraints
+    assert "dag-ml-data==0.2.16" in constraints
+    assert "nirs4all-methods==1.3.13" in constraints
+    assert "pls4all==1.3.13" in constraints
+    # Python and Rust DAG consume the same published 0.3.44 cohort.
+    assert "dag-ml==0.3.44" in constraints
+    assert "nirs4all-formats==0.2.14" in constraints
     assert "nirs4all-tools" not in constraints
     assert "duckdb" not in constraints
     assert "scikit-learn==1.9.0" in constraints
