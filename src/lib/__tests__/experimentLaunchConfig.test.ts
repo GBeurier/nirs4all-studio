@@ -31,6 +31,7 @@ describe("experimentLaunchConfig", () => {
         { id: CURRENT_EDITED_PIPELINE_ID, name: "Draft", steps: [{ id: "draft" }] },
       ],
       selectedGroupingPayload: { d1: null },
+      missingTargetPolicy: "predict",
     })).toEqual({
       name: "Experiment",
       description: undefined,
@@ -39,6 +40,7 @@ describe("experimentLaunchConfig", () => {
       inline_pipeline: { name: "Draft", steps: [{ id: "draft" }] },
       inline_pipelines: [],
       split_group_by_by_dataset: { d1: null },
+      missing_target_policy: "predict",
       engine: "dag-ml",
       allow_fallback: false,
     });
@@ -52,6 +54,7 @@ describe("experimentLaunchConfig", () => {
         { id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps },
       ],
       selectedGroupingPayload: { d1: null },
+      missingTargetPolicy: "predict",
       executionBackend: "local-python",
     })).not.toHaveProperty("execution_backend");
 
@@ -62,9 +65,25 @@ describe("experimentLaunchConfig", () => {
         { id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps },
       ],
       selectedGroupingPayload: { d1: null },
+      missingTargetPolicy: "predict",
       executionBackend: "cluster",
     })).toMatchObject({
       execution_backend: "cluster",
+    });
+  });
+
+  it("carries the run's missing-target choice without touching dataset ids", () => {
+    expect(buildExperimentLaunchConfig({
+      name: "Remove",
+      selectedDatasetIds: ["d1", "d2"],
+      selectedPipelineConfigs: [
+        { id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps },
+      ],
+      selectedGroupingPayload: { d1: null, d2: null },
+      missingTargetPolicy: "remove",
+    })).toMatchObject({
+      dataset_ids: ["d1", "d2"],
+      missing_target_policy: "remove",
     });
   });
 
@@ -76,6 +95,7 @@ describe("experimentLaunchConfig", () => {
         { id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps },
       ],
       selectedGroupingPayload: { d1: null },
+      missingTargetPolicy: "predict",
     })).toMatchObject({
       engine: "dag-ml",
       allow_fallback: false,
@@ -90,6 +110,7 @@ describe("experimentLaunchConfig", () => {
         { id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps },
       ],
       selectedGroupingPayload: { d1: "batch" },
+      missingTargetPolicy: "predict",
       missingIssues: [
         {
           type: "missing_module",
@@ -115,6 +136,7 @@ describe("experimentLaunchConfig", () => {
         { id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps },
       ],
       selectedGroupingPayload: { d1: null },
+      missingTargetPolicy: "predict",
       missingIssues: [
         {
           type: "missing_module",

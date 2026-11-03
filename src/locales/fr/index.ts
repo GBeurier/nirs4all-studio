@@ -9497,6 +9497,15 @@ transferAnalysis: {
       descriptionPlaceholder: "Ajoutez des notes sur cette expérience…",
       groupingTitle: "Résumé du regroupement des échantillons",
       noSplittersBadge: "Aucun découpage",
+      missingTargets: {
+        title: "Échantillons sans valeur cible",
+        description: "Certains échantillons peuvent ne pas avoir de valeur pour la cible choisie. Indiquez comment cette exécution doit les traiter ; les jeux de données enregistrés ne sont pas modifiés.",
+        predict: "Les exclure de l'entraînement et les prédire",
+        predictHint: "Les modèles sont entraînés sur les échantillons qui ont une cible ; les autres reçoivent une prédiction, affichée comme « Prédit (sans cible) » et jamais évaluée.",
+        remove: "Supprimer ces échantillons",
+        removeHint: "Les échantillons sans cible sont écartés au chargement des données pour cette exécution.",
+        removeUnavailable: "Indisponible pour les jeux de données multimodaux : leurs échantillons sans cible sont toujours prédits.",
+      },
       summary: {
         datasets: "Jeux de données",
         pipelines: "Pipelines",

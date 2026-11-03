@@ -45,8 +45,14 @@ vi.mock("@/components/experiments/NewExperimentRuntimeGroupingStep", () => ({
 }));
 
 vi.mock("@/components/experiments/NewExperimentReviewStep", () => ({
-  NewExperimentReviewStep: ({ customExperimentName }: { customExperimentName: string }) => (
-    <div data-testid="review-step">review:{customExperimentName}</div>
+  NewExperimentReviewStep: ({
+    customExperimentName,
+    missingTargetPolicy,
+  }: {
+    customExperimentName: string;
+    missingTargetPolicy: string;
+  }) => (
+    <div data-testid="review-step">review:{customExperimentName}:{missingTargetPolicy}</div>
   ),
 }));
 
@@ -186,10 +192,13 @@ function propsForStep(currentStep: NewExperimentWizardStep) {
     filteredInputs,
     inputData,
     launchFlow,
+    missingTargetPolicy: "remove" as const,
+    missingTargetRemovalAvailable: true,
     planFlow,
     selectionFlow,
     onExperimentDescriptionChange: vi.fn(),
     onExperimentNameChange: vi.fn(),
+    onMissingTargetPolicyChange: vi.fn(),
   };
 }
 
@@ -198,7 +207,7 @@ describe("NewExperimentStepContent", () => {
     [NEW_EXPERIMENT_PIPELINES_STEP, "pipelines:pipeline-1"],
     [NEW_EXPERIMENT_DATASETS_STEP, "datasets:dataset-1"],
     [NEW_EXPERIMENT_RUNTIME_GROUPING_STEP, "runtime:1"],
-    [NEW_EXPERIMENT_REVIEW_STEP, "review:Manual"],
+    [NEW_EXPERIMENT_REVIEW_STEP, "review:Manual:remove"],
     [NEW_EXPERIMENT_LAUNCH_STEP, "launch:Experiment:legacy-local"],
   ] as const)("renders the step content for step %s", async (currentStep, expectedText) => {
     const { container, root } = await render(<NewExperimentStepContent {...propsForStep(currentStep)} />);
