@@ -1,6 +1,6 @@
 {
   "schema_version": "1.2",
-  "app_version": "0.15.8",
+  "app_version": "0.15.9",
   "nirs4all": "1.4.15",
   "_note": "cpu-lite ships a slim install \u2014 its exclude_optionals + the xgboost->xgboost-cpu package_renames keep torch/tensorflow/jax/autogluon/tabpfn/umap-learn and CUDA wheels out (enforced at build and in the interactive installer). Requires nirs4all >= 1.4.15 (training excludes, then predicts, samples with a missing target), whose slim core does not bundle matplotlib/shap/umap; the full profiles install shap+matplotlib explicitly so SHAP keeps working.",
   "profiles": {
