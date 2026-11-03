@@ -1,0 +1,24 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/nirs4all-methods.git",
+  "commit": "b246b5029cc62cf0cc369df2611069498f2da183",
+  "repository_tree": "8c4b525882dc454d7a4dd1a805fb916b0d22e250",
+  "included_crate_trees": {
+    "n4m": "a2dd723826c6d0d3797b48b71e14d7f69b839044"
+  },
+  "selected_crate_packages": [
+    {
+      "name": "n4m",
+      "version": "0.4.1",
+      "sha256": "4d036a20611f734738741f0b70e8e0393a7fbf6dcf06bb41051a4eeae6d880b8"
+    }
+  ],
+  "snapshot_policy": "Only the exact published Cargo package payloads that sidecar/Cargo.lock resolves are extracted under upstream/, each verified against its Cargo.lock registry checksum. Each payload includes Cargo's normalized and original manifests, VCS identity, lockfile, the package's selected source/include files, and its licence/readme files. Workspace qualification evidence, unrelated crates, bindings, generated native extensions and sites are excluded.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 15
+  },
+  "verification": "../../scripts/verify-vendored-n4m.sh",
+  "release_gate": "The extracted package payloads and checksums identify the published n4m 0.4.1 release exactly; Studio runtime resolution remains pinned to the same registry checksums in sidecar/Cargo.lock."
+}
