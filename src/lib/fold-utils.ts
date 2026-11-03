@@ -17,13 +17,20 @@ import type { ScoreCardType } from "@/types/score-cards";
 /** Sort priority for special fold IDs (lower = first). */
 export const FOLD_ORDER: Record<string, number> = { final: 0, macro: 1, avg: 2, w_avg: 3 };
 
+const PARTITION_ORDER = ["val", "test", "train"];
+
+/** Scored partitions first; other partitions (e.g. prediction-only rows) last. */
+function partitionSortValue(partition: string): number {
+  const index = PARTITION_ORDER.indexOf(partition);
+  return index < 0 ? PARTITION_ORDER.length : index;
+}
+
 /** Sort PartitionPrediction rows: final → avg → w_avg → numbered folds, then by partition. */
 export function foldSort(a: PartitionPrediction, b: PartitionPrediction): number {
   const aOrder = FOLD_ORDER[a.fold_id] ?? (100 + parseInt(a.fold_id || "999"));
   const bOrder = FOLD_ORDER[b.fold_id] ?? (100 + parseInt(b.fold_id || "999"));
   if (aOrder !== bOrder) return aOrder - bOrder;
-  const partOrder = ["val", "test", "train"];
-  return partOrder.indexOf(a.partition) - partOrder.indexOf(b.partition);
+  return partitionSortValue(a.partition) - partitionSortValue(b.partition);
 }
 
 // ============================================================================

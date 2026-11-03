@@ -6,10 +6,12 @@ import {
   type SelectedPipelinesRuntimeGrouping,
 } from "@/lib/runtimeSplitGrouping";
 import { experimentReviewCopy } from "@/lib/experimentReviewPresentation";
+import type { MissingTargetPolicy } from "@/types/runs";
 
 import { NewExperimentCampaignPlanPreview } from "./NewExperimentCampaignPlanPreview";
 import { NewExperimentReviewDescriptionField } from "./NewExperimentReviewDescriptionField";
 import { NewExperimentReviewExperimentCard } from "./NewExperimentReviewExperimentCard";
+import { NewExperimentReviewMissingTargetsField } from "./NewExperimentReviewMissingTargetsField";
 import { NewExperimentReviewRuntimeGroupingSummary } from "./NewExperimentReviewRuntimeGroupingSummary";
 
 export interface NewExperimentReviewStepProps {
@@ -21,9 +23,12 @@ export interface NewExperimentReviewStepProps {
   executionEnvironmentDiagnostics: NewExperimentExecutionEnvironmentDiagnostics;
   experimentDescription: string;
   groupingSelection: SelectedPipelinesRuntimeGrouping;
+  missingTargetPolicy: MissingTargetPolicy;
+  missingTargetRemovalAvailable: boolean;
   selectedDatasetIds: string[];
   onExperimentDescriptionChange: (value: string) => void;
   onExperimentNameChange: (value: string) => void;
+  onMissingTargetPolicyChange: (value: MissingTargetPolicy) => void;
 }
 
 export function NewExperimentReviewStep({
@@ -35,9 +40,12 @@ export function NewExperimentReviewStep({
   executionEnvironmentDiagnostics,
   experimentDescription,
   groupingSelection,
+  missingTargetPolicy,
+  missingTargetRemovalAvailable,
   selectedDatasetIds,
   onExperimentDescriptionChange,
   onExperimentNameChange,
+  onMissingTargetPolicyChange,
 }: NewExperimentReviewStepProps) {
   return (
     <div className="space-y-6">
@@ -51,6 +59,11 @@ export function NewExperimentReviewStep({
       <NewExperimentCampaignPlanPreview
         campaignPreview={campaignPreview}
         executionEnvironmentDiagnostics={executionEnvironmentDiagnostics}
+      />
+      <NewExperimentReviewMissingTargetsField
+        missingTargetPolicy={missingTargetPolicy}
+        removalAvailable={missingTargetRemovalAvailable}
+        onMissingTargetPolicyChange={onMissingTargetPolicyChange}
       />
       <NewExperimentReviewDescriptionField
         experimentDescription={experimentDescription}

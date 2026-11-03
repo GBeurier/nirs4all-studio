@@ -272,6 +272,12 @@ export interface RunRobustnessLaunchPayload {
   publish_evidence?: Record<string, unknown>;
 }
 
+/**
+ * What a run does with samples whose selected target is missing: exclude them
+ * from fitting and predict them (library default), or remove them at load.
+ */
+export type MissingTargetPolicy = "predict" | "remove";
+
 // Experiment configuration for creating new runs
 export interface ExperimentConfig {
   name: string;
@@ -289,6 +295,8 @@ export interface ExperimentConfig {
   random_state?: number | null;
   project_id?: string | null;
   split_group_by_by_dataset?: SplitGroupByByDataset;
+  /** Run-only handling of samples without a target; saved datasets are unchanged. */
+  missing_target_policy?: MissingTargetPolicy;
   /** Inline pipeline from editor (for unsaved pipelines) */
   inline_pipeline?: {
     name: string;

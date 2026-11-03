@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { foldBadgeClasses, foldLabel } from "@/lib/fold-utils";
+import { PREDICTION_ONLY_BADGE_CLASS } from "@/lib/partitionColors";
 import { cn } from "@/lib/utils";
 import type { ScoreCardRow } from "@/types/score-cards";
 
@@ -23,6 +24,15 @@ export function ScoreCardTypeBadge({ row }: { row: ScoreCardRow }) {
         {row.foldId?.endsWith("_agg") && (
           <Badge variant="outline" className="text-[9px] border-purple-500/30 text-purple-500">
             {t("results.scores.badge.aggregated")}
+          </Badge>
+        )}
+        {row.nSamplesPredicted != null && row.nSamplesPredicted > 0 && (
+          <Badge
+            variant="outline"
+            className={cn("text-[9px]", PREDICTION_ONLY_BADGE_CLASS)}
+            title={t("predictions.partitions.prediction")}
+          >
+            {t("predictions.partitions.predictedSamples", { count: row.nSamplesPredicted })}
           </Badge>
         )}
       </div>
