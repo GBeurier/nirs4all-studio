@@ -5181,7 +5181,7 @@ notFound: {
         nEstimators: "Nombre d’arbres de l’ensemble",
         maxDepth: "Profondeur maximale des arbres",
         boostingLearningRate: "Taux d’apprentissage du gradient boosting",
-        nNeighbors: "Nombre de voisins pour la pondération locale",
+        lambdaInSimilarity: "Largeur du noyau de similarité pour la pondération locale",
         nIntervals: "Nombre d’intervalles spectraux",
         epochs: "Époques d’entraînement",
         batchSize: "Taille de lot",

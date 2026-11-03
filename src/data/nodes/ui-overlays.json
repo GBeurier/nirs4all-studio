@@ -159,7 +159,7 @@
     "displayOrder": 60,
     "longDescription": "Variable selection method that uses PLS to iteratively select important wavelengths.",
     "finetuneRanges": {
-      "n_pls_components": { "type": "int", "range": [5, 30] }
+      "n_components": { "type": "int", "range": [5, 30] }
     }
   },
   "preprocessing.mcuve": {
@@ -343,7 +343,7 @@
     "longDescription": "Local PLS models weighted by sample similarity for non-linear relationships.",
     "finetuneRanges": {
       "n_components": { "type": "int", "range": [1, 20] },
-      "n_neighbors": { "type": "int", "range": [10, 100] }
+      "lambda_in_similarity": { "type": "log_float", "range": [0.001, 32] }
     }
   },
   "model.interval_pls": {
