@@ -1,5 +1,6 @@
 /**
- * Single source of truth for partition colors (train / val / test).
+ * Single source of truth for partition colors (train / val / test), plus the
+ * prediction-only partition of samples whose target is missing.
  *
  * Consolidates what was previously hardcoded in three places:
  *   - ChainDetailSheet PartitionBadge
@@ -46,7 +47,27 @@ export function normalizePartition(value: string | null | undefined): PartitionK
   return null;
 }
 
+/**
+ * Partition of the rows a run predicts for samples whose target is missing:
+ * excluded from training, then predicted. They carry no y_true and no scores,
+ * so they never enter metric, residual or y_true-vs-y_pred computations.
+ */
+export const PREDICTION_ONLY_PARTITION = "prediction";
+
+export const PREDICTION_ONLY_BADGE_CLASS =
+  "bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300";
+
+export function isPredictionOnlyPartition(value: string | null | undefined): boolean {
+  return value?.toLowerCase() === PREDICTION_ONLY_PARTITION;
+}
+
+/** Rows that carry a target and scores: drops prediction-only rows. */
+export function scoredPartitionRows<T extends { partition?: string | null }>(rows: readonly T[]): T[] {
+  return rows.filter((row) => !isPredictionOnlyPartition(row.partition));
+}
+
 export function partitionBadgeClass(value: string | null | undefined): string {
+  if (isPredictionOnlyPartition(value)) return PREDICTION_ONLY_BADGE_CLASS;
   const key = normalizePartition(value);
   return key ? PARTITION_BADGE_CLASS[key] : "";
 }

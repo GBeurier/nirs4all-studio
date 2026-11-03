@@ -146,6 +146,19 @@ describe('score card tree data helpers', () => {
     expect(selectPreferredScoreCardPrediction([])).toBeUndefined();
   });
 
+  it('never opens a prediction-only row (missing targets) as the preferred prediction', () => {
+    const missing = prediction({ prediction_id: 'missing', fold_id: 'final', partition: 'prediction', test_score: null, scores: {} });
+    const final = prediction({ prediction_id: 'final', fold_id: 'final', partition: 'test' });
+    expect(selectPreferredScoreCardPrediction([missing, final])?.prediction_id).toBe('final');
+    expect(selectPreferredScoreCardPrediction([missing])?.prediction_id).toBe('missing');
+    const display = buildModelTreeDisplayData([
+      missing,
+      prediction({ prediction_id: 'final-train', fold_id: 'final', partition: 'train', test_score: null, train_score: 0.1 }),
+      prediction({ prediction_id: 'fold-0', fold_id: '0', partition: 'val' }),
+    ]);
+    expect(display?.rootRow.id).toBe('final-train');
+  });
+
   it('builds model tree display rows from partition predictions', () => {
     const display = buildModelTreeDisplayData([
       prediction({ prediction_id: 'fold-0', fold_id: '0', partition: 'test' }),

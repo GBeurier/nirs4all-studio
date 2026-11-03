@@ -42,7 +42,7 @@ export function PartitionLegend({ partitions, config }: PartitionLegendProps) {
               className="h-2 w-2 rounded-full"
               style={{ backgroundColor: color }}
             />
-            {partition.label ?? getPartitionLabel(t, partition.partition)}
+            {getPartitionLabel(t, partition.partition, partition.label)}
           </span>
         );
       })}

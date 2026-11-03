@@ -8181,6 +8181,7 @@ notFound: {
         choosePrediction: "Choose a related prediction to inspect its metric map.",
         noPartitionMetrics: "No partition-level metrics are available for this selection.",
         noMetricMap: "No detailed metric map stored.",
+        notScored: "Not scored: these samples have no target value.",
       },
       samples_one: "{{count}} sample",
       samples_other: "{{count}} samples",
@@ -8375,11 +8376,15 @@ notFound: {
       train: "Train",
       val: "Validation",
       test: "Test",
+      prediction: "Predicted (no target)",
+      predictedSamples_one: "{{count}} predicted without target",
+      predictedSamples_other: "{{count}} predicted without target",
     },
     partitionsShort: {
       train: "Train",
       val: "Val",
       test: "Test",
+      prediction: "Pred.",
     },
     taskTypes: {
       regression: "Regression",
