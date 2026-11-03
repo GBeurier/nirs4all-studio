@@ -8,7 +8,7 @@ import { execFileText } from "./env/process-utils";
 import { checkRuntimePackageVersions, describeRuntimePackageIssues } from "./env/runtime-version-check";
 
 const directories: string[] = [];
-const COMPATIBLE = { issues: [], versions: { nirs4all: "1.4.14" } };
+const COMPATIBLE = { issues: [], versions: { nirs4all: "1.4.15" } };
 const UNKNOWN = { issues: [], versions: {} };
 function fixture() {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-version-check-"));
@@ -27,7 +27,7 @@ afterEach(() => {
 describe("startup package version check", () => {
   it("checks once, reuses the result on restart, and checks after an app update or env change", async () => {
     const options = fixture();
-    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":[],"versions":{"nirs4all":"1.4.14"}}', stderr: "" });
+    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":[],"versions":{"nirs4all":"1.4.15"}}', stderr: "" });
     await expect(checkRuntimePackageVersions(options)).resolves.toEqual(COMPATIBLE);
     await expect(checkRuntimePackageVersions(options)).resolves.toEqual(COMPATIBLE);
     expect(execFileText).toHaveBeenCalledTimes(1);
@@ -39,17 +39,17 @@ describe("startup package version check", () => {
 
   it("retains the installed and required versions and offers an update without installing anything", async () => {
     const options = fixture();
-    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":["nirs4all 1.0.3 is installed; nirs4all>=1.4.14,<1.5 is required"],"versions":{"nirs4all":"1.0.3"}}', stderr: "" });
+    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":["nirs4all 1.0.3 is installed; nirs4all>=1.4.15,<1.5 is required"],"versions":{"nirs4all":"1.0.3"}}', stderr: "" });
     const check = await checkRuntimePackageVersions(options);
     const { issues } = check;
-    expect(check).toEqual({ issues: ["nirs4all 1.0.3 is installed; nirs4all>=1.4.14,<1.5 is required"], versions: { nirs4all: "1.0.3" } });
+    expect(check).toEqual({ issues: ["nirs4all 1.0.3 is installed; nirs4all>=1.4.15,<1.5 is required"], versions: { nirs4all: "1.0.3" } });
     const error = describeRuntimePackageIssues(issues);
-    expect(error).toContain("nirs4all 1.0.3 is installed; nirs4all>=1.4.14,<1.5 is required");
+    expect(error).toContain("nirs4all 1.0.3 is installed; nirs4all>=1.4.15,<1.5 is required");
     expect(error).toContain("Install the required versions");
     expect(error).toContain("can downgrade newer packages");
     await expect(checkRuntimePackageVersions(options)).resolves.toEqual(check);
     expect(execFileText).toHaveBeenCalledTimes(1);
-    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":[],"versions":{"nirs4all":"1.4.14"}}', stderr: "" });
+    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":[],"versions":{"nirs4all":"1.4.15"}}', stderr: "" });
     await expect(checkRuntimePackageVersions({ ...options, force: true })).resolves.toEqual(COMPATIBLE);
     await expect(checkRuntimePackageVersions(options)).resolves.toEqual(COMPATIBLE);
     expect(execFileText).toHaveBeenCalledTimes(2);
@@ -62,12 +62,12 @@ describe("startup package version check", () => {
 
   it("rechecks when external pip changes the selected site-packages directory", async () => {
     const options = fixture();
-    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":[],"versions":{"nirs4all":"1.4.14"}}', stderr: "" });
+    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":[],"versions":{"nirs4all":"1.4.15"}}', stderr: "" });
     await checkRuntimePackageVersions(options);
     const sitePackages = path.join(options.userDataDir, "venv", "lib", "python3.11", "site-packages");
     fs.utimesSync(sitePackages, new Date(), new Date(Date.now() + 5000));
-    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":["nirs4all 1.0.3 is installed; nirs4all>=1.4.14,<1.5 is required"],"versions":{"nirs4all":"1.0.3"}}', stderr: "" });
-    expect((await checkRuntimePackageVersions(options)).issues).toEqual(["nirs4all 1.0.3 is installed; nirs4all>=1.4.14,<1.5 is required"]);
+    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":["nirs4all 1.0.3 is installed; nirs4all>=1.4.15,<1.5 is required"],"versions":{"nirs4all":"1.0.3"}}', stderr: "" });
+    expect((await checkRuntimePackageVersions(options)).issues).toEqual(["nirs4all 1.0.3 is installed; nirs4all>=1.4.15,<1.5 is required"]);
     expect(execFileText).toHaveBeenCalledTimes(2);
   });
 
@@ -76,7 +76,7 @@ describe("startup package version check", () => {
     fs.writeFileSync(path.join(options.userDataDir, "runtime-package-versions.json"), JSON.stringify({
       key: "stale", issues: ["nirs4all-io 0.2.13 is installed; 0.2.11 is required"],
     }));
-    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":[],"versions":{"nirs4all":"1.4.14"}}', stderr: "" });
+    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":[],"versions":{"nirs4all":"1.4.15"}}', stderr: "" });
     await expect(checkRuntimePackageVersions(options)).resolves.toEqual(COMPATIBLE);
     expect(execFileText).toHaveBeenCalledTimes(1);
   });
@@ -85,7 +85,7 @@ describe("startup package version check", () => {
     const options = fixture();
     vi.mocked(execFileText).mockResolvedValue(null);
     await expect(checkRuntimePackageVersions(options)).resolves.toEqual(UNKNOWN);
-    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":[],"versions":{"nirs4all":"1.4.14"}}', stderr: "" });
+    vi.mocked(execFileText).mockResolvedValue({ stdout: '{"issues":[],"versions":{"nirs4all":"1.4.15"}}', stderr: "" });
     await expect(checkRuntimePackageVersions(options)).resolves.toEqual(COMPATIBLE);
     expect(execFileText).toHaveBeenCalledTimes(2);
   });
