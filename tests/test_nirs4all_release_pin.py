@@ -255,7 +255,7 @@ def test_generated_operator_registries_are_from_the_published_runtime() -> None:
         ROOT / "public" / "node-registry" / "extended.meta.json",
     ]:
         metadata = json.loads(path.read_text(encoding="utf-8"))
-        assert metadata["nirs4allVersion"] == "1.4.2"
+        assert metadata["nirs4allVersion"] == "1.4.14"
         assert metadata["pythonVersion"].startswith("3.11.")
         assert metadata["sklearnVersion"] == "1.9.0"
         python_versions.add(metadata["pythonVersion"])
