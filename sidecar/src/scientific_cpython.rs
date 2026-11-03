@@ -99,9 +99,10 @@ const VERIFIED_DISTRIBUTION_STAT_ENV: &str = "NIRS4ALL_VERIFIED_DISTRIBUTION_STA
 /// Keep preview, setup and translation within the qualified cold-start budget.
 pub const SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT: Duration = SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT;
 pub const SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT: Duration = Duration::from_secs(120);
-// Training campaigns are cancellable and isolated from interactive readers.
-// Their computation budget must accommodate cross-validation and model sweeps.
-pub const SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT: Duration = Duration::from_secs(3600);
+// Training campaigns are cancellable, isolated from interactive readers and
+// report progress through the heartbeat. Their budget must accommodate the
+// shipped benchmark presets (Complex PLS runs for several hours).
+pub const SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT: Duration = Duration::from_secs(86_400);
 pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
@@ -298,7 +299,7 @@ with contextlib.redirect_stdout(sys.stderr):
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":True,"result":result,"error":None}
         except Exception as error:
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":False,"result":None,"error":str(error).encode("utf-8")[:4000].decode("utf-8",errors="ignore")}
-        response_limit=33554432 if request.get("operation") in {"spectra.data","spectra.stats","playground.operators","playground.presets","dataset.preview","dataset.stats","dataset.inspect_format","results.chain_steps","results.pipeline_steps","results.chains","results.top","results.chain","results.chain_detail","results.arrays","results.page","results.summary","predictions.catalogue","predictions.run","predictions.file","operators.availability","results.export","inspector.data","inspector.histogram","inspector.rankings","inspector.branch-topology","inspector.scatter","inspector.heatmap","inspector.candlestick","inspector.branch-comparison","inspector.fold-stability","inspector.confusion","inspector.preprocessing-impact","inspector.hyperparameter","inspector.bias-variance","analysis.shap_compute","analysis.shap_view","synthesis.preview"} else document_limit
+        response_limit=33554432 if request.get("operation") in {"spectra.data","spectra.stats","playground.operators","playground.presets","dataset.preview","dataset.stats","dataset.inspect_format","results.chain_steps","results.pipeline_steps","results.chains","results.dataset_chains","results.top","results.chain","results.chain_detail","results.arrays","results.page","results.summary","predictions.catalogue","predictions.run","predictions.file","operators.availability","results.export","inspector.data","inspector.histogram","inspector.rankings","inspector.branch-topology","inspector.scatter","inspector.heatmap","inspector.candlestick","inspector.branch-comparison","inspector.fold-stability","inspector.confusion","inspector.preprocessing-impact","inspector.hyperparameter","inspector.bias-variance","analysis.shap_compute","analysis.shap_view","synthesis.preview"} else document_limit
     elif request.get("schema") == "nirs4all.studio-scientific-job.v2":
         general=getattr(nirs4all,"studio_scientific_job_v2",None)
         if not callable(general):
@@ -2550,6 +2551,7 @@ fn request_limits(request: &Value) -> (usize, usize) {
                         | "results.chain_steps"
                         | "results.pipeline_steps"
                         | "results.chains"
+                        | "results.dataset_chains"
                         | "results.top"
                         | "results.chain"
                         | "results.chain_detail"
@@ -4715,6 +4717,10 @@ done"#,
         );
         assert_eq!(contract["selected_source_commit"], SCIENTIFIC_SOURCE_COMMIT);
         assert_eq!(contract["selected_wheel_sha256"], SCIENTIFIC_WHEEL_SHA256);
+        assert_eq!(
+            contract["training_execution_timeout_ms"].as_u64(),
+            u64::try_from(SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT.as_millis()).ok()
+        );
         assert!(contract
             .get("selected_distribution_record_sha256")
             .is_none());
