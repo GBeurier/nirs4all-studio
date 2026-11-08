@@ -108,9 +108,9 @@ pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_HOST_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
-/// Exact nirs4all release of the packaged runtime, attested with the manifest,
-/// wheel, source commit and callable digests below.
-pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.14";
+/// Chosen minimum SDK version for the current qualified local owner cohort.
+/// This floor does not assert publication or the first version of any API.
+pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.16";
 /// Exclusive upper bound of the nirs4all releases a selected environment may use.
 ///
 /// Selected (custom or managed) environments are not attested file by file:
@@ -119,7 +119,10 @@ pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.14";
 /// (`REUSABLE_RUNTIME_PACKAGES`). Studio reaches nirs4all only through named,
 /// schema-versioned callables that stay stable within a minor release.
 pub const SCIENTIFIC_DISTRIBUTION_LIMIT: &str = "1.5";
-pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = ">=1.4.14,<1.5";
+pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = ">=1.4.16,<1.5";
+/// Retained historical packaged proof. It is below the current floor and
+/// cannot qualify the new cohort; Root supplies a future shipping attestation.
+const HISTORICAL_PACKAGED_DISTRIBUTION_VERSION: &str = "1.4.14";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
     "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
@@ -204,7 +207,7 @@ except Exception as error:
     distribution_files_verified=False
     distribution_stat_sha256=None
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_stat_sha256":distribution_stat_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe","source_commit":"563220eb2becc6a1340431d588315f0793664fe4"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_stat_sha256":distribution_stat_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe" if sys.argv[1] else None,"source_commit":"563220eb2becc6a1340431d588315f0793664fe4" if sys.argv[1] else None},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
@@ -247,13 +250,15 @@ def studio_distribution_supported(version):
         left=release+[0]*(size-len(release))
         right=bound+[0]*(size-len(bound))
         return (left>right)-(left<right)
-    minimum=compare([1,4,14])
+    minimum=compare([1,4,16])
     return (minimum>0 or (minimum==0 and not prerelease)) and compare([1,5])<0
 raw=sys.stdin.buffer.read(33554433)
 if len(raw)>33554432:
     raise RuntimeError("scientific request exceeds stdin budget")
 request=json.loads(raw)
 distribution=importlib.metadata.distribution("nirs4all")
+if not studio_distribution_supported(distribution.version):
+    raise RuntimeError("scientific distribution version unsupported")
 if sys.argv[1]:
     if distribution.version != "1.4.14":
         raise RuntimeError("scientific distribution version changed")
@@ -269,8 +274,6 @@ if sys.argv[1]:
     for relative,encoded,size in record_rows:
         if "=" not in encoded or (size and not size.isdigit()):
             raise RuntimeError("scientific distribution record changed")
-elif not studio_distribution_supported(distribution.version):
-    raise RuntimeError("scientific distribution version unsupported")
 # Build qualification verifies the full packaged closure. Runtime acquisition
 # verifies the scientific RECORD members once; subsequent workers verify its
 # identity and the selected callable without repeating whole-package hashing.
@@ -1320,13 +1323,11 @@ fn checked_distribution(
     if object.get("distribution").and_then(Value::as_str) != Some("nirs4all") {
         return Err(ScientificCpythonUnavailable::DistributionTampered);
     }
-    if policy == DistributionPolicy::Selected
-        && !distribution_version_supported(&distribution_version)
-    {
+    if !distribution_version_supported(&distribution_version) {
         return Err(ScientificCpythonUnavailable::DistributionVersionUnsupported);
     }
     if policy == DistributionPolicy::Packaged
-        && (distribution_version != SCIENTIFIC_DISTRIBUTION_VERSION
+        && (distribution_version != HISTORICAL_PACKAGED_DISTRIBUTION_VERSION
             || object
                 .get("distribution_manifest_sha256")
                 .and_then(Value::as_str)
@@ -4521,14 +4522,16 @@ done"#,
         )
     }
 
-    const SUPPORTED_VERSION_CASES: [(&str, bool); 12] = [
-        ("1.4.14", true),
-        ("1.4.15", true),
+    const SUPPORTED_VERSION_CASES: [(&str, bool); 14] = [
+        ("1.4.14", false),
+        ("1.4.15", false),
+        ("1.4.16", true),
+        ("1.4.17", true),
         ("1.4.99.post1", true),
-        ("1.4.14.0", true),
+        ("1.4.16.0", true),
         ("1.4.13", false),
-        ("1.4.14rc1", false),
-        ("1.4.14.dev0", false),
+        ("1.4.16rc1", false),
+        ("1.4.16.dev0", false),
         ("1.5", false),
         ("1.5.0", false),
         ("1.5.0rc1", false),
@@ -4567,8 +4570,11 @@ done"#,
             to_list(SCIENTIFIC_DISTRIBUTION_LIMIT)
         )));
         assert!(EXECUTION_SCRIPT.contains(&format!(
-            "if sys.argv[1]:\n    if distribution.version != \"{SCIENTIFIC_DISTRIBUTION_VERSION}\":"
+            "if sys.argv[1]:\n    if distribution.version != \"{HISTORICAL_PACKAGED_DISTRIBUTION_VERSION}\":"
         )));
+        assert!(EXECUTION_SCRIPT.contains(
+            "if not studio_distribution_supported(distribution.version):\n    raise RuntimeError(\"scientific distribution version unsupported\")\nif sys.argv[1]:"
+        ));
     }
 
     #[cfg(unix)]
@@ -4653,7 +4659,7 @@ done"#,
         )
         .unwrap();
         let host = host_identity(&callable).unwrap();
-        for version in ["1.4.14", "1.4.15"] {
+        for version in ["1.4.16", "1.4.17"] {
             let acquired = parse_acquired_host(
                 host.clone(),
                 &preflight_output(version, &callable),
@@ -4672,16 +4678,18 @@ done"#,
                 ScientificCpythonUnavailable::DistributionTampered
             );
         }
-        for version in ["1.4.13", "1.5.0"] {
-            assert_eq!(
-                parse_acquired_host(
-                    host.clone(),
-                    &preflight_output(version, &callable),
-                    DistributionPolicy::Selected,
-                )
-                .unwrap_err(),
-                ScientificCpythonUnavailable::DistributionVersionUnsupported
-            );
+        for version in ["1.4.13", "1.4.14", "1.4.15", "1.5.0"] {
+            for policy in [DistributionPolicy::Selected, DistributionPolicy::Packaged] {
+                assert_eq!(
+                    parse_acquired_host(
+                        host.clone(),
+                        &preflight_output(version, &callable),
+                        policy
+                    )
+                    .unwrap_err(),
+                    ScientificCpythonUnavailable::DistributionVersionUnsupported
+                );
+            }
         }
         assert_eq!(
             ScientificCpythonUnavailable::DistributionVersionUnsupported.reason(),
@@ -4714,6 +4722,13 @@ done"#,
             "tkinter_and__tkinter_pruned_from_headless_plugin_closure"
         );
         assert_eq!(contract["selected_source_commit"], SCIENTIFIC_SOURCE_COMMIT);
+        assert_eq!(
+            contract["selected_distribution_version"],
+            HISTORICAL_PACKAGED_DISTRIBUTION_VERSION
+        );
+        assert!(!distribution_version_supported(
+            HISTORICAL_PACKAGED_DISTRIBUTION_VERSION
+        ));
         assert_eq!(contract["selected_wheel_sha256"], SCIENTIFIC_WHEEL_SHA256);
         assert!(contract
             .get("selected_distribution_record_sha256")
@@ -4828,7 +4843,7 @@ done"#,
     #[cfg(unix)]
     #[test]
     #[ignore = "requires STUDIO_BENCH_RUNTIME_ROOT with a real packaged runtime"]
-    fn benchmark_packaged_runtime_acquisition_phases() {
+    fn benchmark_historical_packaged_runtime_refusal_phases() {
         let root = PathBuf::from(
             std::env::var_os("STUDIO_BENCH_RUNTIME_ROOT").expect("packaged runtime path"),
         );
@@ -4856,7 +4871,10 @@ done"#,
         )
         .unwrap();
         eprintln!("preflight + warm acquisition: {:?}", started.elapsed());
-        parse_acquired_host(host, &output, DistributionPolicy::Packaged).unwrap();
+        assert_eq!(
+            parse_acquired_host(host, &output, DistributionPolicy::Packaged).unwrap_err(),
+            ScientificCpythonUnavailable::DistributionVersionUnsupported
+        );
         drop(worker);
     }
 
@@ -5082,14 +5100,14 @@ done"#,
             );
             assert_eq!(
                 executor.unavailable_reason(),
-                "scientific_callable_unavailable"
+                "scientific_distribution_tampered"
             );
             key
         };
         // No record: a full verification within the cold budget.
         let key = acquire();
         assert_eq!(fs::read_to_string(&observed).unwrap(), "none");
-        // An unready host is never recorded as verified.
+        // A current version with only the historical proof is never verified.
         let cache = host_verification_cache::VerificationCache::new(&config);
         assert_eq!(cache.lookup(&key), None);
         assert_eq!(
@@ -5113,14 +5131,14 @@ done"#,
         let root = tempfile::tempdir().unwrap();
         let site = root.path().join("site-packages");
         fs::create_dir_all(site.join("nirs4all")).unwrap();
-        fs::create_dir_all(site.join("nirs4all-1.4.15.dist-info")).unwrap();
+        fs::create_dir_all(site.join("nirs4all-1.4.16.dist-info")).unwrap();
         let callable = site.join("nirs4all/__init__.py");
         fs::write(
             &callable,
             "def studio_scientific_job_v1(request): return request\n",
         )
         .unwrap();
-        let response = String::from_utf8(preflight_output("1.4.15", &callable)).unwrap();
+        let response = String::from_utf8(preflight_output("1.4.16", &callable)).unwrap();
         let host = shell_host(
             &root.path().join("bin"),
             "python3",
@@ -5134,7 +5152,7 @@ done"#,
             "{}",
             executor.unavailable_reason()
         );
-        assert_eq!(executor.distribution_version(), Some("1.4.15"));
+        assert_eq!(executor.distribution_version(), Some("1.4.16"));
         let mut identity = host_identity(&host).unwrap();
         identity.canonical_path = std::path::absolute(&host).unwrap();
         let key = host_verification_cache::VerificationKey::new(&identity, Some(&site), None);
@@ -5169,9 +5187,11 @@ done"#,
             None,
             root.join("config"),
         );
+        // The current SDK version with historical shipping proof is refused
+        // during distribution admission, before callable readiness is checked.
         assert_eq!(
             acquired.unavailable_reason(),
-            "scientific_callable_unavailable"
+            "scientific_distribution_tampered"
         );
         let packaged = acquired.packaged_runtime.as_ref().unwrap();
         assert_eq!(packaged.full_hash_scans.load(Ordering::Relaxed), 1);

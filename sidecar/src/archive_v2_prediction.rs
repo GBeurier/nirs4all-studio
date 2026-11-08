@@ -23,12 +23,13 @@ use cap_std::fs::MetadataExt as CapMetadataExt;
 use cap_std::{ambient_authority, fs::Dir};
 use nirs4all::{
     dag_ml::{
-        ConformalPresentationV2, NativePredictorDescriptorV1, PortablePredictorPackage, RunId,
+        ConformalPresentationV2, NativePredictorDescriptorV1, RunId,
         NATIVE_PREDICTOR_CAPABILITY_PREDICT,
     },
-    inspect_methods_archive_v2_predictors, load_archive_v2_bytes,
-    load_methods_archive_v2_conformal_presentation_v2, predict_methods_archive_v2_matrix,
-    predict_methods_archive_v2_matrix_conformal_presentation_v2,
+    inspect_methods_archive_v2_predictors, load_methods_archive_v2_conformal_presentation_v2,
+    n4a::N4aMemoryBudget,
+    n4a_native_package::load_native_package_bytes,
+    predict_methods_archive_v2_matrix, predict_methods_archive_v2_matrix_conformal_presentation_v2,
     preflight_methods_archive_v2_library, MethodsArchiveMatrixPredictRequest,
 };
 use serde_json::{json, Map, Value};
@@ -42,7 +43,6 @@ pub const ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE: &str =
 pub const ARCHIVE_V2_CONFORMAL_PROJECTION_ROUTE: &str =
     "/api/predict/archive-v2/conformal-projection";
 pub const MAX_PREDICTION_BODY_BYTES: usize = crate::matrix_limits::MAX_PREDICTION_BODY_BYTES;
-pub const MAX_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_PREDICTION_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_ARCHIVE_V2_CATALOGUE_RESPONSE_BYTES: usize = 256 * 1024;
 const MAX_SAMPLES: usize = 128;
@@ -54,12 +54,10 @@ const MAX_ARCHIVE_REF_BYTES: usize = 240;
 const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
-const CORE_PROJECT_VERSION: &str = "0.4.4";
+const CORE_PROJECT_VERSION: &str = "0.5.0";
 const METHODS_ABI_MAJOR: u32 = 2;
-const METHODS_ABI_MINOR: u32 = 20;
-const METHODS_SOURCE_COMMIT: &str = "b246b5029cc62cf0cc369df2611069498f2da183";
-const METHODS_SOURCE_TREE: &str = "8c4b525882dc454d7a4dd1a805fb916b0d22e250";
-const METHODS_PROJECT_VERSION: &str = "1.3.9";
+const METHODS_ABI_MINOR: u32 = 22;
+const NATIVE_SOURCE_COHORT: &str = include_str!("../contracts/studio_native_source_cohort_v2.json");
 const WINDOWS_NATIVE_LINKAGE_PROFILE: &str = "studio-msvc-static-crt-v1";
 const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
 
@@ -141,7 +139,7 @@ pub struct CoreArchiveV2PredictionExecutor {
 
 impl CoreArchiveV2PredictionExecutor {
     /// Acquire one exact packaged libn4m identity before advertising the
-    /// capability. The packaged contract fixes ABI 2.20 and this preflight
+    /// capability. The selected cohort fixes ABI 2.22 and this preflight
     /// attests its exact bytes. Core snapshots and re-attests those bytes, then
     /// the n4m binding performs the ABI compatibility call during execution.
     pub fn acquire(
@@ -175,8 +173,9 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
         archive_bytes: &[u8],
         expected_sha256: &str,
     ) -> Result<ArchiveV2CatalogueInspection, ArchiveV2PredictionExecutorError> {
-        let archive = load_archive_v2_bytes(archive_bytes)
-            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let archive =
+            load_native_package_bytes(archive_bytes, None, N4aMemoryBudget::host_allocator())
+                .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
         if archive.reference().archive_sha256() != expected_sha256 {
             return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
         }
@@ -200,13 +199,8 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
             .ok()
             .filter(|value| *value > 0 && *value <= MAX_FEATURES)
             .ok_or(ArchiveV2PredictionExecutorError::ExecutionFailed)?;
-        let package_json = std::str::from_utf8(
-            archive
-                .portable_predictor_package()
-                .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?,
-        )
-        .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
-        let package = PortablePredictorPackage::from_json(package_json)
+        let package = archive
+            .predictor_package()
             .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
         let target_names = package
             .output_bindings
@@ -237,8 +231,12 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
         &self,
         resolved: &ResolvedArchiveV2PredictionRequest,
     ) -> Result<ArchiveV2PredictionOutput, ArchiveV2PredictionExecutorError> {
-        let archive = load_archive_v2_bytes(&resolved.archive_bytes)
-            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let archive = load_native_package_bytes(
+            &resolved.archive_bytes,
+            None,
+            N4aMemoryBudget::host_allocator(),
+        )
+        .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
         if archive.reference().archive_sha256() != resolved.request.archive_sha256 {
             return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
         }
@@ -312,8 +310,9 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
         expected_sha256: &str,
         presentation_json: &str,
     ) -> Result<String, ArchiveV2PredictionExecutorError> {
-        let archive = load_archive_v2_bytes(archive_bytes)
-            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let archive =
+            load_native_package_bytes(archive_bytes, None, N4aMemoryBudget::host_allocator())
+                .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
         if archive.reference().archive_sha256() != expected_sha256 {
             return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
         }
@@ -332,8 +331,12 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
         &self,
         resolved: &ResolvedArchiveV2PredictionRequest,
     ) -> Result<ConformalPresentationV2, ArchiveV2PredictionExecutorError> {
-        let archive = load_archive_v2_bytes(&resolved.archive_bytes)
-            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let archive = load_native_package_bytes(
+            &resolved.archive_bytes,
+            None,
+            N4aMemoryBudget::host_allocator(),
+        )
+        .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
         if archive.reference().archive_sha256() != resolved.request.archive_sha256 {
             return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
         }
@@ -654,6 +657,10 @@ impl ArchiveV2PredictionRuntime {
 }
 
 pub fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdentity> {
+    // An unpublished local build is not a shipping source attestation. Root
+    // supplies this identity only after freezing a durable packaged candidate.
+    let cohort: Value = serde_json::from_str(NATIVE_SOURCE_COHORT).ok()?;
+    let expected_source = cohort.get("packaged_methods_identity")?.as_object()?;
     let executable = std::env::current_exe().ok()?;
     let native_directory = executable.parent()?;
     let backend_root = native_directory.parent()?;
@@ -706,11 +713,7 @@ pub fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdent
         return None;
     }
     let source = methods.get("source")?.as_object()?;
-    if source.len() != 3
-        || source.get("commit").and_then(Value::as_str) != Some(METHODS_SOURCE_COMMIT)
-        || source.get("tree").and_then(Value::as_str) != Some(METHODS_SOURCE_TREE)
-        || source.get("project_version").and_then(Value::as_str) != Some(METHODS_PROJECT_VERSION)
-    {
+    if source.len() != 3 || source != expected_source {
         return None;
     }
     let packaged_path = backend_root.join(Path::new(member_path));
@@ -1107,7 +1110,7 @@ fn valid_sha256(value: &str) -> bool {
 }
 
 #[cfg(unix)]
-fn stable_std_cap_identity(
+pub fn stable_std_cap_identity(
     std_metadata: &fs::Metadata,
     cap_metadata: &cap_std::fs::Metadata,
 ) -> bool {
@@ -1115,7 +1118,7 @@ fn stable_std_cap_identity(
 }
 
 #[cfg(not(unix))]
-fn stable_std_cap_identity(
+pub fn stable_std_cap_identity(
     std_metadata: &fs::Metadata,
     cap_metadata: &cap_std::fs::Metadata,
 ) -> bool {
@@ -1207,6 +1210,21 @@ fn read_archive_identity(
     archive_ref: &str,
     archive_sha256: &str,
 ) -> Result<Vec<u8>, ArchiveV2PredictionError> {
+    read_archive_identity_with_budget(
+        workspace_path,
+        archive_ref,
+        archive_sha256,
+        N4aMemoryBudget::host_allocator(),
+    )
+}
+
+#[allow(clippy::too_many_lines)] // Keep the capability-rooted open/read/identity boundary together.
+fn read_archive_identity_with_budget(
+    workspace_path: &Path,
+    archive_ref: &str,
+    archive_sha256: &str,
+    budget: N4aMemoryBudget,
+) -> Result<Vec<u8>, ArchiveV2PredictionError> {
     let workspace = open_workspace(workspace_path)?;
     let mut components = Path::new(archive_ref)
         .components()
@@ -1234,9 +1252,6 @@ fn read_archive_identity(
     if before.file_type().is_symlink() || !before.is_file() {
         return Err(ArchiveV2PredictionError::ArchiveUnsafe);
     }
-    if before.len() > MAX_ARCHIVE_BYTES {
-        return Err(ArchiveV2PredictionError::ArchiveTooLarge);
-    }
     let mut file = directory
         .open(file_name)
         .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?
@@ -1257,16 +1272,43 @@ fn read_archive_identity(
     {
         return Err(ArchiveV2PredictionError::ArchiveUnsafe);
     }
-    if opened.len() > MAX_ARCHIVE_BYTES {
-        return Err(ArchiveV2PredictionError::ArchiveTooLarge);
-    }
-    let mut bytes = Vec::with_capacity(usize::try_from(opened.len()).unwrap_or(0).min(64 * 1024));
-    Read::by_ref(&mut file)
-        .take(MAX_ARCHIVE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?;
-    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_ARCHIVE_BYTES {
-        return Err(ArchiveV2PredictionError::ArchiveTooLarge);
+    // This operation retains the opened bytes for Core. Admit working memory,
+    // not an intrinsic archive size; all growth remains fallible.
+    budget
+        .admit(opened.len())
+        .map_err(|_| ArchiveV2PredictionError::ArchiveTooLarge)?;
+    let mut bytes = Vec::new();
+    let initial =
+        usize::try_from(opened.len()).map_err(|_| ArchiveV2PredictionError::ArchiveTooLarge)?;
+    bytes
+        .try_reserve_exact(initial)
+        .map_err(|_| ArchiveV2PredictionError::ArchiveTooLarge)?;
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let count = match file.read(&mut buffer) {
+            Ok(count) => count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return Err(ArchiveV2PredictionError::ArchiveUnsafe),
+        };
+        if count == 0 {
+            break;
+        }
+        let retained = bytes
+            .len()
+            .checked_add(count)
+            .and_then(|size| u64::try_from(size).ok())
+            .ok_or(ArchiveV2PredictionError::ArchiveTooLarge)?;
+        if retained > opened.len() {
+            budget
+                .admit(retained)
+                .map_err(|_| ArchiveV2PredictionError::ArchiveTooLarge)?;
+        }
+        if bytes.capacity() - bytes.len() < count {
+            bytes
+                .try_reserve_exact(count)
+                .map_err(|_| ArchiveV2PredictionError::ArchiveTooLarge)?;
+        }
+        bytes.extend_from_slice(&buffer[..count]);
     }
     let after_read = file
         .metadata()
@@ -1780,22 +1822,134 @@ mod tests {
     }
 
     #[test]
-    fn resolver_refuses_oversized_archive_before_reading_or_execution() {
-        let root = root("too-large");
+    fn resolver_applies_authorized_memory_without_allocating_a_sparse_archive() {
+        let root = root("memory-budget");
         let archive = root.join("exports/models/model-a.n4a");
         fs::create_dir_all(archive.parent().unwrap()).unwrap();
         fs::File::create(&archive)
             .unwrap()
-            .set_len(MAX_ARCHIVE_BYTES + 1)
+            .set_len(64 * 1024 * 1024 + 1)
             .unwrap();
-        let runtime = ArchiveV2PredictionRuntime::with_executor(Arc::new(FakeExecutor));
-        let parsed = parse_request(&request(&"0".repeat(64))).unwrap();
-
+        let length = fs::metadata(&archive).unwrap().len();
+        N4aMemoryBudget::host_allocator().admit(length).unwrap();
         assert_eq!(
-            runtime.execute(parsed, &root),
+            read_archive_identity_with_budget(
+                &root,
+                "models/model-a.n4a",
+                &"0".repeat(64),
+                N4aMemoryBudget::bytes(1024),
+            ),
             Err(ArchiveV2PredictionError::ArchiveTooLarge)
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn resolver_hashes_every_opened_byte_within_the_authorized_memory() {
+        let root = root("whole-file");
+        let archive = root.join("exports/models/model-a.n4a");
+        fs::create_dir_all(archive.parent().unwrap()).unwrap();
+        let mut bytes = vec![7_u8; 65536];
+        bytes.extend_from_slice(b"tail");
+        fs::write(&archive, &bytes).unwrap();
+        let digest = format!("{:x}", Sha256::digest(&bytes));
+        let budget = N4aMemoryBudget::bytes(u64::try_from(bytes.len()).unwrap());
+        assert_eq!(
+            read_archive_identity_with_budget(&root, "models/model-a.n4a", &digest, budget)
+                .unwrap(),
+            bytes
+        );
+        let prefix_digest = format!("{:x}", Sha256::digest(&bytes[..65536]));
+        assert_eq!(
+            read_archive_identity_with_budget(&root, "models/model-a.n4a", &prefix_digest, budget),
+            Err(ArchiveV2PredictionError::ArchiveDigestMismatch)
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn core_refuses_frozen_physical_archive_v2_with_reexport_advice() {
+        let bytes = include_bytes!("../fixtures/archive-v2/multitarget-pls-abi2.0.n4a");
+        assert_eq!(
+            format!("{:x}", Sha256::digest(bytes)),
+            "6c626742245db5232a35c6b70095640480f6c6fb98c56dca5bce958686bbc99e"
+        );
+        let error = load_native_package_bytes(bytes, None, N4aMemoryBudget::host_allocator())
+            .expect_err("the frozen physical Archive V2 must be refused");
+        assert!(
+            error
+                .to_string()
+                .contains("legacy physical archives are refused; re-export"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires Root's raw-pls2-affine-multitarget-core-v1 fixture and attested Methods library"]
+    fn raw_pls2_affine_multitarget_core_v1_predicts_without_python_or_fallback() {
+        let source = PathBuf::from(std::env::var("N4A_RT_PRED_ARCHIVE_V2").unwrap());
+        let expected_sha256 = std::env::var("N4A_RT_PRED_ARCHIVE_V2_SHA256").unwrap();
+        let methods_path = PathBuf::from(std::env::var("N4A_RT_PRED_METHODS_LIBRARY").unwrap());
+        let methods_sha256 = std::env::var("N4A_RT_PRED_METHODS_SHA256").unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let archive = directory.path().join("exports/models/model-a.n4a");
+        fs::create_dir_all(archive.parent().unwrap()).unwrap();
+        fs::copy(source, &archive).unwrap();
+        let bytes = fs::read(&archive).unwrap();
+        assert_eq!(format!("{:x}", Sha256::digest(&bytes)), expected_sha256);
+        let executor = Arc::new(
+            CoreArchiveV2PredictionExecutor::acquire(PackagedMethodsLibraryIdentity {
+                size: fs::metadata(&methods_path).unwrap().len(),
+                path: methods_path,
+                sha256: methods_sha256.clone(),
+                abi_major: METHODS_ABI_MAJOR,
+                abi_minor: METHODS_ABI_MINOR,
+            })
+            .expect("the selected Methods artifact must pass owner preflight"),
+        );
+        let inspection = executor.inspect(&bytes, &expected_sha256).unwrap();
+        assert_eq!(inspection.n_features, 2);
+        assert_eq!(inspection.target_names, ["protein", "moisture"]);
+        let runtime = ArchiveV2PredictionRuntime::with_executor(executor);
+        let mut body: Value = serde_json::from_slice(&request(&expected_sha256)).unwrap();
+        body["input"]["sample_ids"] = json!(["predict.0", "predict.1"]);
+        body["input"]["x"] = json!([[1.5, 0.5], [3.5, 1.5]]);
+        let parsed = parse_request(body.to_string().as_bytes()).unwrap();
+        let response: Value =
+            serde_json::from_str(&runtime.execute(parsed, directory.path()).unwrap()).unwrap();
+        assert_eq!(response["engine"], "core_rust_methods");
+        assert_eq!(response["fallback_used"], false);
+        assert_eq!(response["archive_sha256"], expected_sha256);
+        assert_eq!(response["sample_ids"], json!(["predict.0", "predict.1"]));
+        assert_eq!(response["target_names"], json!(["protein", "moisture"]));
+        assert_eq!(
+            response["provenance"]["executor"],
+            format!("nirs4all-core@0.5.0+libn4m-abi-2.22:{methods_sha256}")
+        );
+        // Independent affine oracle for the new named fixture; the old ABI 2.0
+        // witness and its numerical oracle remain historical provenance.
+        let expected = [[3.5, 17.0], [6.5, 23.0]];
+        let rows = response["values"].as_array().unwrap();
+        assert_eq!(rows.len(), expected.len());
+        for (actual, expected) in rows.iter().zip(expected) {
+            let actual = actual.as_array().unwrap();
+            assert_eq!(actual.len(), expected.len());
+            for (actual, expected) in actual.iter().zip(expected) {
+                let actual = actual.as_f64().unwrap();
+                assert!(actual.is_finite());
+                assert!((actual - expected).abs() <= 1.0e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn unpublished_cohort_without_shipping_identity_cannot_select_packaged_methods() {
+        let cohort: Value = serde_json::from_str(NATIVE_SOURCE_COHORT).unwrap();
+        assert_eq!(cohort["publication_status"], "local-unpublished");
+        assert_eq!(cohort["public_registry_verified"], false);
+        assert_eq!(cohort["requires_explicit_local_cargo_config"], true);
+        assert!(cohort["packaged_methods_identity"].is_null());
+        assert!(packaged_methods_library_identity().is_none());
     }
 
     #[cfg(unix)]
@@ -1816,15 +1970,21 @@ mod tests {
 
     #[test]
     fn concrete_executor_refuses_wrong_packaged_abi_before_selection() {
-        let error = CoreArchiveV2PredictionExecutor::acquire(PackagedMethodsLibraryIdentity {
-            path: PathBuf::from("/must-not-open-libn4m"),
-            size: 0,
-            sha256: "0".repeat(64),
-            abi_major: METHODS_ABI_MAJOR,
-            abi_minor: METHODS_ABI_MINOR + 1,
-        })
-        .unwrap_err();
-        assert_eq!(error, ArchiveV2PredictionExecutorError::ExecutionFailed);
+        for (abi_major, abi_minor) in [
+            (METHODS_ABI_MAJOR, METHODS_ABI_MINOR + 1),
+            (METHODS_ABI_MAJOR + 1, METHODS_ABI_MINOR),
+        ] {
+            // Refuse both a different selected minor and an incompatible major.
+            let error = CoreArchiveV2PredictionExecutor::acquire(PackagedMethodsLibraryIdentity {
+                path: PathBuf::from("/must-not-open-libn4m"),
+                size: 0,
+                sha256: "0".repeat(64),
+                abi_major,
+                abi_minor,
+            })
+            .unwrap_err();
+            assert_eq!(error, ArchiveV2PredictionExecutorError::ExecutionFailed);
+        }
     }
 
     #[test]
@@ -1834,11 +1994,11 @@ mod tests {
             size: 1,
             sha256: "b".repeat(64),
             abi_major: 2,
-            abi_minor: 20,
+            abi_minor: 22,
         };
         assert_eq!(
             core_methods_executor_identity(&methods),
-            format!("nirs4all-core@0.4.4+libn4m-abi-2.20:{}", "b".repeat(64))
+            format!("nirs4all-core@0.5.0+libn4m-abi-2.22:{}", "b".repeat(64))
         );
     }
 
@@ -1904,7 +2064,7 @@ mod tests {
     }
 
     #[test]
-    fn frozen_contract_records_caps_and_conditional_product_selection() {
+    fn active_contract_records_memory_policy_and_conditional_product_selection() {
         let contract: Value = serde_json::from_str(include_str!(
             "../contracts/studio_archive_v2_prediction_v1.json"
         ))
@@ -1935,9 +2095,16 @@ mod tests {
             contract["request"]["maximum_encoded_bytes"],
             MAX_PREDICTION_BODY_BYTES
         );
+        assert!(contract["archive_resolution"]
+            .get("maximum_bytes")
+            .is_none());
         assert_eq!(
-            contract["archive_resolution"]["maximum_bytes"],
-            MAX_ARCHIVE_BYTES
+            contract["archive_resolution"]["intrinsic_content_ceiling"],
+            false
+        );
+        assert_eq!(
+            contract["archive_resolution"]["sha256"],
+            "computed_from_all_bytes_read_to_eof_from_that_handle"
         );
         assert_eq!(
             contract["success_response"]["maximum_encoded_bytes"],
@@ -1951,7 +2118,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "locked registry nirs4all 0.4.4 and n4m 0.4.0"
+            "local-unpublished nirs4all 0.5.0 cohort; explicit Root Cargo source overrides and resolved lock required"
         );
     }
 }

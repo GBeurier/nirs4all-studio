@@ -19,7 +19,7 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
   let executable: string;
   let sitePackages: string;
   const versions: Record<string, string> = {
-    nirs4all: "1.4.14", "nirs4all-core": "0.4.6", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13", "nirs4all-io": "0.2.11", "nirs4all-formats": "0.2.13", "nirs4all-methods": "1.3.9", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1", lightgbm: "4.6.0",
+    nirs4all: "1.4.16", "nirs4all-core": "0.5.0", "dag-ml": "0.4.0", "dag-ml-data": "0.2.16", "nirs4all-io": "0.3.0", "nirs4all-formats": "0.2.15", "nirs4all-methods": "1.3.15", pyarrow: "25.0.1", shap: "0.47.1", matplotlib: "3.10.1", lightgbm: "4.6.0",
   };
   const metadata = (name: string, extra = "") => `Metadata-Version: 2.1\nName: ${name}\nVersion: ${versions[name]}\n${extra}`;
   const metadataPath = (name: string) => path.join(sitePackages, `${name.replaceAll("-", "_")}-${versions[name]}.dist-info`, "METADATA");
@@ -38,7 +38,7 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
       const module = name === "nirs4all-methods" ? "n4m" : name.replaceAll("-", "_");
       fs.writeFileSync(path.join(sitePackages, `${module}.py`), name === "nirs4all"
         ? "def studio_scientific_job_v1(): pass\ndef studio_scientific_job_v2(): pass\n"
-        : name === "nirs4all-methods" ? "def abi_version(): return (2, 20, 0)\n" : "");
+        : name === "nirs4all-methods" ? "def abi_version(): return (2, 22, 0)\n" : "");
     }
   });
 
@@ -55,20 +55,28 @@ describe.skipIf(!python)("managed runtime validation with real Python", () => {
     });
     await expect(check()).resolves.toEqual({
       issues: [],
-      versions: { nirs4all: "1.4.14", "nirs4all-io": "0.2.11", "nirs4all-methods": "1.3.9", "nirs4all-formats": "0.2.13" },
+      versions: { nirs4all: "1.4.16", "nirs4all-io": "0.3.0", "nirs4all-methods": "1.3.15", "nirs4all-formats": "0.2.15" },
     });
-    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.14", "Version: 1.0.3"));
-    expect((await check()).issues).toEqual(["nirs4all 1.0.3 is installed; nirs4all>=1.4.14,<1.5 is required"]);
+    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.16", "Version: 1.0.3"));
+    expect((await check()).issues).toEqual(["nirs4all 1.0.3 is installed; nirs4all>=1.4.16,<1.5 is required"]);
   });
   it("accepts newer releases inside the required ranges and refuses the next nirs4all minor", async () => {
-    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.14", "Version: 1.4.15"));
-    fs.writeFileSync(metadataPath("nirs4all-io"), metadata("nirs4all-io").replace("Version: 0.2.11", "Version: 0.2.13"));
-    fs.writeFileSync(metadataPath("nirs4all-methods"), metadata("nirs4all-methods").replace("Version: 1.3.9", "Version: 1.3.12"));
+    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.16", "Version: 1.4.17"));
+    fs.writeFileSync(metadataPath("nirs4all-io"), metadata("nirs4all-io").replace("Version: 0.3.0", "Version: 0.3.1"));
+    fs.writeFileSync(metadataPath("nirs4all-methods"), metadata("nirs4all-methods").replace("Version: 1.3.15", "Version: 1.3.16"));
     await expect(validatePythonRuntime(executable, { reused: true })).resolves.toBeUndefined();
-    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.14", "Version: 1.5.0rc1"));
-    await expect(validatePythonRuntime(executable, { reused: true })).rejects.toThrow("nirs4all 1.5.0rc1 is installed; nirs4all>=1.4.14,<1.5 is required");
+    fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.16", "Version: 1.5.0rc1"));
+    await expect(validatePythonRuntime(executable, { reused: true })).rejects.toThrow("nirs4all 1.5.0rc1 is installed; nirs4all>=1.4.16,<1.5 is required");
   });
-  it("accepts the published Methods distribution through its n4m import in a reused environment", async () => {
+  it("rejects SDK releases below the chosen current floor", async () => {
+    for (const version of ["1.4.14", "1.4.15"]) {
+      fs.writeFileSync(metadataPath("nirs4all"), metadata("nirs4all").replace("Version: 1.4.16", `Version: ${version}`));
+      await expect(validatePythonRuntime(executable, { reused: true })).rejects.toThrow(
+        `nirs4all ${version} is installed; nirs4all>=1.4.16,<1.5 is required`,
+      );
+    }
+  });
+  it("accepts the current Methods distribution through its n4m import in a reused environment", async () => {
     await expect(validatePythonRuntime(executable, { reused: true })).resolves.toBeUndefined();
   });
 

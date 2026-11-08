@@ -43,6 +43,7 @@ const { tlsRequestOptions, explainNetworkError } = require("./tls-trust.cjs");
 const {
   assertProfileSupportedOnPlatform,
   PYTHON_VERSION,
+  PLUGIN_DISTRIBUTION_VERSION,
   PLUGIN_SUPPORT_PACKAGES,
   PBS_TAG,
   getArchiveFilename,
@@ -72,6 +73,8 @@ const PLUGIN_SOURCE_COMMIT = "563220eb2becc6a1340431d588315f0793664fe4";
 const PLUGIN_SOURCE_REPOSITORY = "https://github.com/GBeurier/nirs4all.git";
 const PLUGIN_SOURCE_EPOCH = "1793630954";
 const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.14-py3-none-any.whl";
+// This immutable recipe is historical and cannot build the current cohort.
+const HISTORICAL_PLUGIN_DISTRIBUTION_VERSION = "1.4.14";
 const PLUGIN_WHEEL_SHA256 = "6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe";
 const PLUGIN_INSTALLED_MANIFEST_SHA256 = "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c";
 const WHEEL_BUILD_TOOLCHAIN = Object.freeze([
@@ -159,7 +162,7 @@ if (pluginOnly && !constraintsFile) {
     projectRoot,
     "build",
     "constraints",
-    "plugin-runtime-cpython311.txt",
+    "plugin-runtime-cpython311-local-cohort.txt",
   );
 }
 
@@ -177,6 +180,9 @@ if (!profile) {
 }
 
 try {
+  if ((pluginOnly || buildPluginWheelOutput) && PLUGIN_DISTRIBUTION_VERSION !== HISTORICAL_PLUGIN_DISTRIBUTION_VERSION) {
+    throw new Error("Historical SDK wheel/closure recipe does not qualify the current local-unpublished cohort; Root must stage coherent local wheels and supply a new shipping attestation");
+  }
   assertProfileSupportedOnPlatform(profile, process.platform);
   getProfilePackageInstallSpecs(profile, {
     includeExtraPackages: false,

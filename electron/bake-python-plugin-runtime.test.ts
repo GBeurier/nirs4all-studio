@@ -183,12 +183,15 @@ describe("plugin-only CPython runtime", () => {
     const { PLUGIN_HOST_PACKAGES } = require("../scripts/python-runtime-config.cjs") as {
       PLUGIN_HOST_PACKAGES: string[];
     };
+    // Current local-unpublished metadata does not attest a shipping closure.
+    const localRequirements = fs.readFileSync(
+      path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311-local-cohort.txt"),
+      "utf8",
+    ).split(/\r?\n/);
     for (const spec of PLUGIN_HOST_PACKAGES) {
-      const [name, version] = spec.split("==");
-      for (const target of [linux, linuxArm, macArm, macIntel, windows]) {
-        expect(target.get(name), `${name} must be installed in every packaged host`).toBe(version);
-      }
+      expect(localRequirements, `${spec} must be declared in the local-unpublished cohort`).toContain(spec);
     }
+    // The immutable historical shipping closure retains its own cohort pins.
     expect(linux.get("nirs4all")).toBe("1.4.14");
     expect(linux.get("nirs4all-core")).toBe("0.4.6");
     for (const target of [linux, linuxArm, macArm, macIntel, windows]) {
@@ -196,6 +199,7 @@ describe("plugin-only CPython runtime", () => {
         "nirs4all": "1.4.14", "dag-ml": "0.3.43", "dag-ml-data": "0.2.13",
         "nirs4all-core": "0.4.6", "nirs4all-io": "0.2.11", "nirs4all-formats": "0.2.13",
         "nirs4all-methods": "1.3.9", "pls4all": "1.3.9",
+        "pyarrow": "25.0.1", "shap": "0.47.1", "matplotlib": "3.10.1", "lightgbm": "4.6.0",
       })) {
         expect(target.get(name), `${name} cohort pin must match on every platform`).toBe(version);
       }

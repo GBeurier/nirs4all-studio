@@ -14,6 +14,7 @@ const PLUGIN_ROLE = "library-plugin-host-only";
 const PLUGIN_SOURCE_COMMIT = "563220eb2becc6a1340431d588315f0793664fe4";
 const PLUGIN_WHEEL_SHA256 = "6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe";
 const { PLUGIN_DISTRIBUTION_VERSION } = require("./python-runtime-config.cjs");
+const HISTORICAL_PLUGIN_DISTRIBUTION_VERSION = "1.4.14";
 const PLUGIN_INSTALLED_MANIFEST_SHA256 = "0d6cba7c8ff27088591034ee7d03bcfb51f797109a184cea8a62dd7e156fe46c";
 const PLUGIN_CONSTRAINTS_RELATIVE_PATH = "build/constraints/plugin-runtime-cpython311.txt";
 const PLUGIN_CONSTRAINTS_PATH = path.join(projectRoot, ...PLUGIN_CONSTRAINTS_RELATIVE_PATH.split("/"));
@@ -390,7 +391,7 @@ function runPreflight(runtimeRoot, sitePackages, platform = process.platform) {
     response.isolated !== true ||
     response.no_site !== true ||
     response.dont_write_bytecode !== true ||
-    response.version !== PLUGIN_DISTRIBUTION_VERSION ||
+    response.version !== HISTORICAL_PLUGIN_DISTRIBUTION_VERSION ||
     !isLowerSha256(response.record) ||
     response.manifest !== PLUGIN_INSTALLED_MANIFEST_SHA256 ||
     response.verified !== true ||
@@ -415,7 +416,7 @@ function expectedMarker(platform = process.platform, arch = process.arch) {
     source_commit: PLUGIN_SOURCE_COMMIT,
     wheel_sha256: PLUGIN_WHEEL_SHA256,
     distribution: "nirs4all",
-    distribution_version: PLUGIN_DISTRIBUTION_VERSION,
+    distribution_version: HISTORICAL_PLUGIN_DISTRIBUTION_VERSION,
     installed_manifest_sha256: PLUGIN_INSTALLED_MANIFEST_SHA256,
     constraints: {
       path: PLUGIN_CONSTRAINTS_RELATIVE_PATH,
@@ -514,6 +515,9 @@ function runSetup(options) {
 }
 
 function main() {
+  if (PLUGIN_DISTRIBUTION_VERSION !== HISTORICAL_PLUGIN_DISTRIBUTION_VERSION) {
+    throw new Error("Historical SDK wheel/closure attestation is unavailable for the current local-unpublished cohort; Root must supply and qualify its shipping successor");
+  }
   const options = parseArgs();
   if (!options.verifyOnly && !options.finalizeExisting) {
     runSetup(options);

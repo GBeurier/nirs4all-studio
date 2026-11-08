@@ -743,11 +743,11 @@ fn project_train_regression(
     Ok((x, y))
 }
 
-fn target_is_supported_regression(values: &[f32]) -> bool {
+fn target_is_supported_regression(values: &[f64]) -> bool {
     let all_integral = values.iter().all(|value| value.fract() == 0.0);
     if all_integral {
         let mut unique = values.to_vec();
-        unique.sort_by(f32::total_cmp);
+        unique.sort_by(f64::total_cmp);
         unique.dedup_by(|left, right| left.total_cmp(right).is_eq());
         if unique.len() <= 100 {
             return false;
@@ -755,7 +755,7 @@ fn target_is_supported_regression(values: &[f32]) -> bool {
     }
     if values.iter().all(|value| (0.0..=1.0).contains(value)) {
         let mut unique = values.to_vec();
-        unique.sort_by(f32::total_cmp);
+        unique.sort_by(f64::total_cmp);
         unique.dedup_by(|left, right| left.total_cmp(right).is_eq());
         if unique.len().saturating_mul(20) <= values.len() {
             return false;
@@ -780,11 +780,11 @@ fn validate_components(
     Ok(())
 }
 
-fn matrix_rows(matrix: &Matrix) -> Vec<Vec<f32>> {
+fn matrix_rows(matrix: &Matrix) -> Vec<Vec<f64>> {
     matrix
         .data
         .chunks_exact(matrix.n_cols)
-        .map(<[f32]>::to_vec)
+        .map(<[f64]>::to_vec)
         .collect()
 }
 
@@ -1011,6 +1011,45 @@ mod tests {
         assert_eq!(payload["pipeline"]["cross_validation"]["n_splits"], 3);
         assert_eq!(payload["options"]["random_state"], 42);
         assert!(serde_json::to_vec(&payload).unwrap().len() < 65_536);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn preserves_non_f32_values_in_the_serialized_worker_payload() {
+        let (root, config, workspace) = fixture("f64-worker-payload");
+        fs::write(
+            root.join("dataset/x.csv"),
+            "1000,1001\n1.0000000000000002,2\n2,3\n3,4\n4,5\n5,6\n6,7\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("dataset/y.csv"),
+            "protein\n1.0000000000000002\n2.2\n3.4\n4.8\n5.3\n6.7\n",
+        )
+        .unwrap();
+        let payload = ScientificRequestResolver::new(&config)
+            .resolve(&submission(&workspace, "local-python"))
+            .unwrap();
+        let encoded = serde_json::to_vec(&payload).unwrap();
+        let decoded: Value = serde_json::from_slice(&encoded).unwrap();
+        let expected = 1.000_000_000_000_000_2_f64;
+        assert_eq!(expected.to_bits(), 0x3ff0_0000_0000_0001);
+        assert_eq!(
+            decoded["dataset"]["X"][0][0].as_f64().unwrap().to_bits(),
+            expected.to_bits()
+        );
+        assert_eq!(
+            decoded["dataset"]["y"][0].as_f64().unwrap().to_bits(),
+            expected.to_bits()
+        );
+        assert_eq!(decoded["dataset"]["X"].as_array().unwrap().len(), 6);
+        assert_eq!(decoded["dataset"]["X"][5], json!([6.0, 7.0]));
+        assert_eq!(decoded["dataset"]["y"].as_array().unwrap().len(), 6);
+        assert_eq!(decoded["dataset"]["name"], "dataset-a");
+        assert_eq!(decoded["dataset"]["task_type"], "regression");
+        assert_eq!(decoded["engine"], "dag-ml");
+        assert_eq!(decoded["allow_fallback"], false);
+        assert!(encoded.len() < 65_536);
         fs::remove_dir_all(root).unwrap();
     }
 

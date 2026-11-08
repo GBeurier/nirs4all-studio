@@ -250,7 +250,8 @@ fn execute_native_training(
         .ok_or(NativeTrainingFailure::Failed)?;
     let assembled = load_assembled(&Input::Path(dataset_path.into()), None, None)
         .map_err(|_| NativeTrainingFailure::Failed)?;
-    let package = DatasetPackage::from_assembled(&assembled);
+    let package =
+        DatasetPackage::from_assembled(&assembled).map_err(|_| NativeTrainingFailure::Failed)?;
     validate_materialized_package(&package, &prepared.source_id, prepared.savgol_window)
         .map_err(|_| NativeTrainingFailure::Failed)?;
     cancellation_point(cancelled)?;

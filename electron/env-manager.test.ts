@@ -89,7 +89,7 @@ describe("EnvManager", () => {
     const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
     const { EnvManager } = await import("./env-manager");
     const manager = new EnvManager();
-    vi.mocked(checkRuntimePackageVersions).mockResolvedValueOnce({ issues: ["nirs4all 1.0.3 installed; 1.4.14 required"], versions: { nirs4all: "1.0.3" } });
+    vi.mocked(checkRuntimePackageVersions).mockResolvedValueOnce({ issues: ["nirs4all 1.0.3 installed; 1.4.16 required"], versions: { nirs4all: "1.0.3" } });
     await expect(manager.checkPackageVersions()).resolves.toBe(false);
     await expect(manager.getInfo()).resolves.toMatchObject({
       pythonPath, status: "error", canInstallRequiredVersions: true,
@@ -390,7 +390,7 @@ describe("EnvManager", () => {
       .flatMap(([, args]) => args as string[]);
     // The required nirs4all range; pip resolves io/methods within nirs4all's own ranges.
     expect(installArgs).toEqual(expect.arrayContaining([
-      "nirs4all>=1.4.14,<1.5", "nirs4all-io>=0.2.11,<0.3", "nirs4all-methods>=1.3.9,<2", "only-if-needed",
+      "nirs4all>=1.4.16,<1.5", "nirs4all-io>=0.3.0,<0.4", "nirs4all-methods>=1.3.15,<2", "only-if-needed",
     ]));
     expect(installArgs.some((arg) => arg.startsWith("nirs4all") && arg.includes("=="))).toBe(false);
     expect(installArgs.some((arg) => arg.startsWith("shap") || arg.startsWith("matplotlib"))).toBe(false);
@@ -466,10 +466,10 @@ describe("EnvManager", () => {
         installed: inspectCalls === 1
           ? { nirs4all: "0.9.3" }
           : {
-              nirs4all: "1.4.14",
-              "nirs4all-io": "0.2.11",
-              "nirs4all-methods": "1.3.9",
-              "nirs4all-formats": "0.2.13",
+              nirs4all: "1.4.16",
+              "nirs4all-io": "0.3.0",
+              "nirs4all-methods": "1.3.15",
+              "nirs4all-formats": "0.2.15",
               pyarrow: "25.0.1",
               shap: "0.47.1",
               matplotlib: "3.10.1",
@@ -551,10 +551,10 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.8",
           installed: {
-            nirs4all: "1.4.14",
-              "nirs4all-io": "0.2.11",
-              "nirs4all-methods": "1.3.9",
-            "nirs4all-formats": "0.2.13",
+            nirs4all: "1.4.16",
+              "nirs4all-io": "0.3.0",
+              "nirs4all-methods": "1.3.15",
+              "nirs4all-formats": "0.2.15",
             pyarrow: "25.0.1",
             shap: "0.47.1",
             matplotlib: "3.10.1",
@@ -619,10 +619,10 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.7",
           installed: {
-            nirs4all: "1.4.14",
-              "nirs4all-io": "0.2.11",
-              "nirs4all-methods": "1.3.9",
-            "nirs4all-formats": "0.2.13",
+            nirs4all: "1.4.16",
+              "nirs4all-io": "0.3.0",
+              "nirs4all-methods": "1.3.15",
+              "nirs4all-formats": "0.2.15",
             pyarrow: "25.0.1",
             shap: "0.47.1",
             matplotlib: "3.10.1",
@@ -1305,7 +1305,7 @@ describe("EnvManager included-runtime fallback", () => {
     const userDataDir = makeUserDataDir();
     const customPython = selectCustomPython(userDataDir);
     const bundledPython = makeBundledRuntime();
-    const issues = ["nirs4all 1.4.13 is installed; nirs4all>=1.4.14,<1.5 is required"];
+    const issues = ["nirs4all 1.4.13 is installed; nirs4all>=1.4.16,<1.5 is required"];
     const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
     vi.mocked(checkRuntimePackageVersions).mockResolvedValue({ issues, versions: { nirs4all: "1.4.13", "nirs4all-io": null } });
     const { EnvManager } = await import("./env-manager");
@@ -1355,7 +1355,7 @@ describe("EnvManager included-runtime fallback", () => {
     const customPython = selectCustomPython(userDataDir);
     makeBundledRuntime();
     const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
-    vi.mocked(checkRuntimePackageVersions).mockResolvedValue({ issues: ["nirs4all 1.0.3 is installed; 1.4.14 is required"], versions: { nirs4all: "1.0.3" } });
+    vi.mocked(checkRuntimePackageVersions).mockResolvedValue({ issues: ["nirs4all 1.0.3 is installed; 1.4.16 is required"], versions: { nirs4all: "1.0.3" } });
     const { EnvManager } = await import("./env-manager");
     const manager = new EnvManager();
 

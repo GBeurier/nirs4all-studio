@@ -50,8 +50,9 @@
     "parent_component": "refused",
     "symlink_component": "refused",
     "read_handle": "single_capability_rooted_handle_with_pre_open_post_identity_checks",
-    "maximum_bytes": 67108864,
-    "sha256": "computed_from_the_bounded_bytes_read_from_that_handle"
+    "intrinsic_content_ceiling": false,
+    "working_memory": "Core N4aMemoryBudget or the host allocator; allocation refusal is not a content-size limit",
+    "sha256": "computed_from_all_bytes_read_to_eof_from_that_handle"
   },
   "success_response": {
     "additional_properties": false,
@@ -78,8 +79,8 @@
     "python_http_owner": false,
     "fastapi_fallback": false,
     "dag_ml_envelope": false,
-    "core": "locked registry nirs4all 0.4.4 and n4m 0.4.0",
-    "libn4m_identity": "product-owned absolute non-symlink path plus size plus SHA-256 plus ABI 2.20; never request-controlled",
+    "core": "local-unpublished nirs4all 0.5.0 cohort; explicit Root Cargo source overrides and resolved lock required",
+    "libn4m_identity": "product-owned absolute non-symlink path plus size plus SHA-256 plus exact selected cohort ABI; owner compatibility preflight remains authoritative; never request-controlled",
     "core_preflight": "preflight_methods_archive_v2_library snapshots the attested bytes and checks the real ABI before capability selection",
     "predictor_preflight": "Core derives every native predictor descriptor, including the content-bound N4MM v2 pipeline fingerprint, from inventoried bytes before calculation; Studio requires non-empty PREDICT capability coverage and at least one descriptor matching request feature/target dimensions, passes X raw without preprocessing, and leaves Core replay authoritative for pipeline ownership, topology, and chaining",
     "build_stage": "NIRS4ALL_BUILD_METHODS_LIBRARY plus NIRS4ALL_BUILD_METHODS_SHA256, both build-time-only and mandatory for every release artifact",

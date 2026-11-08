@@ -76,18 +76,54 @@ def test_text_class_prediction_reopens_model_and_preserves_labels_and_metrics(tm
     json.dumps(response, allow_nan=False)
 
 
-def test_catalogue_marks_multimodal_archive_from_manifest_without_loading_model(tmp_path):
+def test_catalogue_marks_multimodal_archive_from_manifest_without_loading_model(tmp_path, monkeypatch):
+    import joblib
+    from nirs4all.pipeline.dagml.host_container import (
+        BUNDLE_CONTENT_TYPE,
+        BUNDLE_MANIFEST_MEMBER,
+        HostMember,
+        write_host_container,
+    )
+
+    path = tmp_path / "exports" / "captured.n4a"
+    path.parent.mkdir()
+    write_host_container(path, [HostMember(
+        BUNDLE_MANIFEST_MEMBER,
+        json.dumps({
+            "source_type": "dagml_native", "multimodal_host": {"schema": "nirs4all.multimodal-host.v1"},
+            "target_names": ["protein", "moisture"],
+        }).encode("utf-8"),
+        "provenance", BUNDLE_CONTENT_TYPE,
+    )])
+    monkeypatch.setattr(joblib, "load", lambda *args, **kwargs: pytest.fail("catalogue deserialized a model"))
+    monkeypatch.setattr(Ridge, "fit", lambda *args, **kwargs: pytest.fail("catalogue fitted a model"))
+    catalogue = available_models({"workspace_path": str(tmp_path), "exports": [{
+        "id": "exports/captured.n4a", "path": str(path), "size": path.stat().st_size,
+        "fingerprint": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
+    }]})
+    model = catalogue["models"][0]
+    assert catalogue["total"] == 1
+    assert model["id"] == "exports/captured.n4a"
+    assert model["input_kind"] == "multimodal"
+    assert model["target_names"] == ["protein", "moisture"]
+    assert model["execution_profile"] == "captured_general"
+
+
+def test_catalogue_refuses_old_root_manifest_zip_before_loading_model(tmp_path, monkeypatch):
+    import joblib
+
     path = tmp_path / "exports" / "captured.n4a"
     path.parent.mkdir()
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("manifest.json", json.dumps({
             "source_type": "dagml_native", "multimodal_host": {"schema": "nirs4all.multimodal-host.v1"},
         }))
-    catalogue = available_models({"workspace_path": str(tmp_path), "exports": [{
-        "id": "exports/captured.n4a", "path": str(path), "size": path.stat().st_size,
-        "fingerprint": "sha256:" + "a" * 64,
-    }]})
-    assert catalogue["models"][0]["input_kind"] == "multimodal"
+    monkeypatch.setattr(joblib, "load", lambda *args, **kwargs: pytest.fail("old ZIP deserialized a model"))
+    with pytest.raises(ValueError, match="not a readable .n4a V1 container: re-export"):
+        available_models({"workspace_path": str(tmp_path), "exports": [{
+            "id": "exports/captured.n4a", "path": str(path), "size": path.stat().st_size,
+            "fingerprint": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
+        }]})
 
 
 @pytest.fixture
@@ -208,7 +244,7 @@ def test_replaced_general_bundle_is_refused_before_pickle(trained, monkeypatch):
     fingerprint = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
     path.write_bytes(b"changed after model selection")
     monkeypatch.setattr(joblib, "load", lambda *args, **kwargs: pytest.fail("unverified pickle"))
-    with pytest.raises(ValueError, match="source archive changed"):
+    with pytest.raises(ValueError, match="n4a physical refusal: ZIP end record must end the file without a comment"):
         run_prediction({"workspace_path": str(root), "model_id": "exports/fitted.n4a", "model_source": "bundle",
                         "bundle_path": str(path), "archive_fingerprint": fingerprint, "data_source": "array", "spectra": X[:3].tolist()})
 
