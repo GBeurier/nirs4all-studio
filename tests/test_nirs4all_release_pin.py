@@ -25,18 +25,18 @@ def test_sidecar_resolves_selected_native_releases() -> None:
     manifest = tomllib.loads((ROOT / "sidecar" / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
     assert dependencies["nirs4all"] == "=0.5.0"
-    assert dependencies["nirs4all-io"] == "=0.3.0"
-    # Root resolves the local-unpublished owner cohort with explicit overrides.
+    assert dependencies["nirs4all-io"] == "=0.3.1"
+    # Core and Studio resolve one public Rust IO cohort without overrides.
     assert "dag-ml-core" not in manifest.get("dev-dependencies", {})
 
 
-def test_lock_selects_the_local_unpublished_owner_cohort() -> None:
+def test_lock_selects_the_public_registry_owner_cohort() -> None:
     locked = tomllib.loads((ROOT / "sidecar" / "Cargo.lock").read_text(encoding="utf-8"))
     cohort = json.loads((ROOT / "sidecar/contracts/studio_native_source_cohort_v2.json").read_text())
     assert cohort["schema_version"] == 2
-    assert cohort["publication_status"] == "local-unpublished"
-    assert cohort["public_registry_verified"] is False
-    assert cohort["requires_explicit_local_cargo_config"] is True
+    assert cohort["publication_status"] == "published-registry"
+    assert cohort["public_registry_verified"] is True
+    assert cohort["requires_explicit_local_cargo_config"] is False
     selected = cohort["packages"]
     assert {"nirs4all", "nirs4all-io", "nirs4all-formats", "dag-ml", "dag-ml-data", "n4m"} <= set(selected)
     for name, source in selected.items():
@@ -44,11 +44,10 @@ def test_lock_selects_the_local_unpublished_owner_cohort() -> None:
         assert len(matching) == 1, f"one owner runtime is required for {name}"
         assert matching[0]["version"] == source["version"]
         assert source["repository"].startswith("https://github.com/")
-        assert "registry_checksum_sha256" not in source
-        assert "source" not in matching[0], f"{name} requires Root's explicit local source override"
-        assert "checksum" not in matching[0]
+        assert matching[0]["source"] == "registry+https://github.com/rust-lang/crates.io-index"
+        assert re.fullmatch(r"[0-9a-f]{64}", matching[0]["checksum"])
     # The Rust binding version is independent of the selected libn4m ABI.
-    assert selected["n4m"]["version"] == "0.4.1"
+    assert selected["n4m"]["version"] == "0.4.2"
 
 
 def test_historical_published_registry_cohort_is_unchanged() -> None:
@@ -289,16 +288,21 @@ def test_historical_release_rebuilds_and_compares_its_exact_plugin_closure_twice
 
 def test_current_local_constraints_select_the_qualified_sdk_and_owner_cohort() -> None:
     constraints = (ROOT / "build/constraints/plugin-runtime-cpython311-local-cohort.txt").read_text()
-    assert "Local-unpublished" in constraints
+    assert "SDK 1.4.16 is public (Root run 42612130615)" in constraints
     for requirement in [
-        "nirs4all==1.4.16", "nirs4all-core==0.5.0", "nirs4all-io==0.3.0",
+        "nirs4all==1.4.16", "nirs4all-core==0.5.0", "nirs4all-io==0.3.1",
         "dag-ml==0.4.0", "dag-ml-data==0.2.16", "nirs4all-methods==1.3.15", "pls4all==1.3.15",
+        "nirs4all-formats==0.2.16",
     ]:
         assert requirement in constraints.splitlines()
     cohort = json.loads((ROOT / "sidecar/contracts/studio_native_source_cohort_v2.json").read_text())
     assert cohort["sdk_selection"]["requirement"] == ">=1.4.16,<1.5"
     assert cohort["sdk_selection"]["publication_status"] == "local-unpublished"
-    assert cohort["packaged_methods_identity"] is None
+    assert cohort["packaged_methods_identity"] == {
+        "commit": "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
+        "tree": "61406cd2cf11204273a9972e4f268acfde7eb424",
+        "project_version": "1.3.15",
+    }
 
 
 def test_release_dispatch_only_publishes_when_explicitly_requested() -> None:

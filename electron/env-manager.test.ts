@@ -467,9 +467,9 @@ describe("EnvManager", () => {
           ? { nirs4all: "0.9.3" }
           : {
               nirs4all: "1.4.16",
-              "nirs4all-io": "0.3.0",
+              "nirs4all-io": "0.3.1",
               "nirs4all-methods": "1.3.15",
-              "nirs4all-formats": "0.2.15",
+              "nirs4all-formats": "0.2.16",
               pyarrow: "25.0.1",
               shap: "0.47.1",
               matplotlib: "3.10.1",
@@ -552,9 +552,9 @@ describe("EnvManager", () => {
           version: "3.11.8",
           installed: {
             nirs4all: "1.4.16",
-              "nirs4all-io": "0.3.0",
+              "nirs4all-io": "0.3.1",
               "nirs4all-methods": "1.3.15",
-              "nirs4all-formats": "0.2.15",
+              "nirs4all-formats": "0.2.16",
             pyarrow: "25.0.1",
             shap: "0.47.1",
             matplotlib: "3.10.1",
@@ -620,9 +620,9 @@ describe("EnvManager", () => {
           version: "3.11.7",
           installed: {
             nirs4all: "1.4.16",
-              "nirs4all-io": "0.3.0",
+              "nirs4all-io": "0.3.1",
               "nirs4all-methods": "1.3.15",
-              "nirs4all-formats": "0.2.15",
+              "nirs4all-formats": "0.2.16",
             pyarrow: "25.0.1",
             shap: "0.47.1",
             matplotlib: "3.10.1",

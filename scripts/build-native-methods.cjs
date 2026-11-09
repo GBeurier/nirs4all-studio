@@ -47,7 +47,7 @@ function assertPortableLinuxMethods(libraryPath, inspect = spawnSync) {
   });
   const unsupported = dependencies.filter((name) => !LINUX_SYSTEM_LIBRARIES.has(name));
   if (unsupported.length) {
-    throw new Error(`Linux Methods requires non-system runtime libraries: ${unsupported.join(", ")}. Build the standalone native library; do not copy a library out of a Python wheel.`);
+    throw new Error(`Linux Methods requires non-system runtime libraries: ${unsupported.join(", ")}. Use a Methods artifact with the supported standalone dependency closure.`);
   }
   return dependencies;
 }
@@ -204,7 +204,8 @@ function appendGitHubEnvironment(environmentPath, library) {
     environmentPath,
     `NIRS4ALL_BUILD_METHODS_LIBRARY=${library.libraryPath}\n` +
       `NIRS4ALL_BUILD_METHODS_DIRECTORY=${path.dirname(library.libraryPath)}\n` +
-      `NIRS4ALL_BUILD_METHODS_SHA256=${library.sha256}\n`,
+      `NIRS4ALL_BUILD_METHODS_SHA256=${library.sha256}\n` +
+      "NIRS4ALL_BUILD_METHODS_IDENTITY_PROFILE=source-build\n",
   );
 }
 

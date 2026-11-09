@@ -1,0 +1,26 @@
+{
+  "platform": "linux",
+  "arch": "x64",
+  "abi": {
+    "major": 2,
+    "minor": 22
+  },
+  "library": {
+    "size": 6961112,
+    "sha256": "303ab386777f8fee343008e20b24faf406f31cb2976e7e823ae4e4fbb03535ac"
+  },
+  "artifact": {
+    "kind": "public-wheel",
+    "distribution": {
+      "name": "nirs4all-methods",
+      "version": "1.3.15"
+    },
+    "wheel": {
+      "filename": "nirs4all_methods-1.3.15-py3-none-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/66/d0/9a8e124484104ab15e5939c45ba744aac6a9aa4ff6913762425e3d4cd624/nirs4all_methods-1.3.15-py3-none-manylinux_2_28_x86_64.whl",
+      "sha256": "4822cea941375c8e08f747ea45d9363dcf92792d91d0a28e058d25e4c56c6d5e",
+      "member": "n4m/lib/libn4m.so"
+    },
+    "source": null
+  }
+}

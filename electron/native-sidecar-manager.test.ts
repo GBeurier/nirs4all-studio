@@ -149,11 +149,11 @@ function writePackagedContract(
       methods_library: {
         mode: "unavailable",
         member: null,
-        abi: { major: 2, minor: 20 },
+        abi: { major: 2, minor: 22 },
         source: {
-          commit: "b246b5029cc62cf0cc369df2611069498f2da183",
-          tree: "8c4b525882dc454d7a4dd1a805fb916b0d22e250",
-          project_version: "1.3.9",
+          commit: "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
+          tree: "61406cd2cf11204273a9972e4f268acfde7eb424",
+          project_version: "1.3.15",
         },
       },
     }),

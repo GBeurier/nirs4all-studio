@@ -1,4 +1,6 @@
 const crypto = require("node:crypto");
+const { isDeepStrictEqual } = require("node:util");
+const publicMethodsWheel = require("./methods-public-wheel-profile.json");
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -16,10 +18,10 @@ const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
 const MAX_PYTHON_CLOSURE_FILES = 100_000;
 const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 const METHODS_ABI_MAJOR = 2;
-const METHODS_ABI_MINOR = 20;
-const METHODS_SOURCE_COMMIT = "b246b5029cc62cf0cc369df2611069498f2da183";
-const METHODS_SOURCE_TREE = "8c4b525882dc454d7a4dd1a805fb916b0d22e250";
-const METHODS_PROJECT_VERSION = "1.3.9";
+const METHODS_ABI_MINOR = 22;
+const METHODS_SOURCE_COMMIT = "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed";
+const METHODS_SOURCE_TREE = "61406cd2cf11204273a9972e4f268acfde7eb424";
+const METHODS_PROJECT_VERSION = "1.3.15";
 const WINDOWS_NATIVE_RUNTIME_LINKAGE = Object.freeze({
   profile: "studio-msvc-static-crt-v1",
   methods_cmake_runtime: "MultiThreaded",
@@ -248,11 +250,25 @@ function bundledMethodsRelativePath(platform) {
   return path.join("native", "libn4m.so");
 }
 
+// This is an exact product selection, not a claim about the wheel's source tree.
+function hasExactPublicMethodsArtifact(methods, platform, arch) {
+  return methods != null && Object.keys(methods).length === 4 &&
+    methods.mode === "bundled-required" &&
+    platform === publicMethodsWheel.platform && arch === publicMethodsWheel.arch &&
+    isDeepStrictEqual(methods.abi, publicMethodsWheel.abi) &&
+    isDeepStrictEqual(methods.artifact, publicMethodsWheel.artifact) &&
+    methods.member != null && Object.keys(methods.member).length === 3 &&
+    methods.member.path === "native/libn4m.so" &&
+    methods.member.size === publicMethodsWheel.library.size &&
+    methods.member?.sha256 === publicMethodsWheel.library.sha256;
+}
+
 function createRuntimeContract({
   backendRoot,
   platform = process.platform,
   arch = process.arch,
   methodsLibraryPath = null,
+  methodsIdentityProfile = "public-wheel",
 }) {
   const sidecarName = platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar";
   const sidecarRelativePath = path.join("native", sidecarName);
@@ -316,27 +332,32 @@ function createRuntimeContract({
       throw new Error("Native Methods stage must be a canonical non-symlink file");
     }
   }
-  const methodsLibrary = methodsLibraryPath !== null
-    ? {
-        mode: "bundled-required",
-        member: describeFile(methodsPath, methodsRelativePath, backendRoot),
-        abi: { major: METHODS_ABI_MAJOR, minor: METHODS_ABI_MINOR },
-        source: {
-          commit: METHODS_SOURCE_COMMIT,
-          tree: METHODS_SOURCE_TREE,
-          project_version: METHODS_PROJECT_VERSION,
-        },
+  const source = {
+    commit: METHODS_SOURCE_COMMIT,
+    tree: METHODS_SOURCE_TREE,
+    project_version: METHODS_PROJECT_VERSION,
+  };
+  const methodsLibrary = {
+    mode: methodsLibraryPath === null ? "unavailable" : "bundled-required",
+    member: methodsLibraryPath === null
+      ? null : describeFile(methodsPath, methodsRelativePath, backendRoot),
+    abi: { major: METHODS_ABI_MAJOR, minor: METHODS_ABI_MINOR },
+    source,
+  };
+  if (methodsLibraryPath !== null) {
+    if (methodsIdentityProfile === "public-wheel") {
+      delete methodsLibrary.source;
+      methodsLibrary.artifact = publicMethodsWheel.artifact;
+      if (!hasExactPublicMethodsArtifact(methodsLibrary, platform, arch)) {
+        throw new Error("Staged Methods library does not match the selected public wheel artifact");
       }
-    : {
-        mode: "unavailable",
-        member: null,
-        abi: { major: METHODS_ABI_MAJOR, minor: METHODS_ABI_MINOR },
-        source: {
-          commit: METHODS_SOURCE_COMMIT,
-          tree: METHODS_SOURCE_TREE,
-          project_version: METHODS_PROJECT_VERSION,
-        },
-      };
+    } else if (methodsIdentityProfile !== "source-build" ||
+        methodsLibrary.member.sha256 === publicMethodsWheel.library.sha256) {
+      throw new Error("Invalid Methods identity profile; a public wheel must not claim source identity");
+    }
+    // source-build is explicitly selected by the existing source-checked builder.
+    // Neither a package version nor an arbitrary library hash proves that source.
+  }
 
   return {
     schema: CONTRACT_SCHEMA,
@@ -618,9 +639,13 @@ function verifyRuntimeContract({
     !["unavailable", "bundled-required"].includes(methods.mode) ||
     methods.abi?.major !== METHODS_ABI_MAJOR ||
     methods.abi?.minor !== METHODS_ABI_MINOR ||
-    methods.source?.commit !== METHODS_SOURCE_COMMIT ||
-    methods.source?.tree !== METHODS_SOURCE_TREE ||
-    methods.source?.project_version !== METHODS_PROJECT_VERSION
+    (Object.hasOwn(methods, "artifact")
+      ? !hasExactPublicMethodsArtifact(methods, platform, arch)
+      : Object.keys(methods).length !== 4 || !isDeepStrictEqual(methods.source, {
+          commit: METHODS_SOURCE_COMMIT,
+          tree: METHODS_SOURCE_TREE,
+          project_version: METHODS_PROJECT_VERSION,
+        }))
   ) {
     throw new Error("Invalid native Methods policy in packaged runtime contract");
   }
@@ -657,6 +682,7 @@ function verifyRuntimeContract({
     pythonRuntimeRoot,
     pythonSitePackagesPath,
     methodsLibraryPath,
+    methodsIdentityProfile: Object.hasOwn(methods, "artifact") ? "public-wheel" : "source-build",
   };
 }
 
@@ -729,6 +755,7 @@ module.exports = {
   compareUtf8Paths,
   createRuntimeContract,
   hasValidPlatformSignature,
+  hasExactPublicMethodsArtifact,
   METHODS_ABI_MAJOR,
   METHODS_ABI_MINOR,
   METHODS_PROJECT_VERSION,

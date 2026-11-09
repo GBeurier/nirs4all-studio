@@ -657,10 +657,6 @@ impl ArchiveV2PredictionRuntime {
 }
 
 pub fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdentity> {
-    // An unpublished local build is not a shipping source attestation. Root
-    // supplies this identity only after freezing a durable packaged candidate.
-    let cohort: Value = serde_json::from_str(NATIVE_SOURCE_COHORT).ok()?;
-    let expected_source = cohort.get("packaged_methods_identity")?.as_object()?;
     let executable = std::env::current_exe().ok()?;
     let native_directory = executable.parent()?;
     let backend_root = native_directory.parent()?;
@@ -712,8 +708,7 @@ pub fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdent
     if abi.len() != 2 {
         return None;
     }
-    let source = methods.get("source")?.as_object()?;
-    if source.len() != 3 || source != expected_source {
+    if !packaged_methods_artifact_is_valid(methods, root) {
         return None;
     }
     let packaged_path = backend_root.join(Path::new(member_path));
@@ -725,6 +720,45 @@ pub fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdent
         sha256: member.get("sha256")?.as_str()?.to_owned(),
         abi_major: u32::try_from(abi.get("major")?.as_u64()?).ok()?,
         abi_minor: u32::try_from(abi.get("minor")?.as_u64()?).ok()?,
+    })
+}
+
+// Validate once at the packaged startup boundary, before Core preflight.
+fn packaged_methods_artifact_is_valid(
+    methods: &serde_json::Map<String, Value>,
+    root: &serde_json::Map<String, Value>,
+) -> bool {
+    if methods.len() != 4
+        || methods.get("abi")
+            != Some(&json!({"major": METHODS_ABI_MAJOR, "minor": METHODS_ABI_MINOR}))
+    {
+        return false;
+    }
+    if let Some(artifact) = methods.get("artifact") {
+        let Ok(profile) = serde_json::from_str::<Value>(include_str!(
+            "../../scripts/methods-public-wheel-profile.json"
+        )) else {
+            return false;
+        };
+        let Some(member) = methods.get("member").and_then(Value::as_object) else {
+            return false;
+        };
+        return cfg!(all(target_os = "linux", target_arch = "x86_64"))
+            && root.get("platform") == profile.get("platform")
+            && root.get("arch") == profile.get("arch")
+            && methods.get("mode").and_then(Value::as_str) == Some("bundled-required")
+            && artifact == &profile["artifact"]
+            && member.len() == 3
+            && member.get("path").and_then(Value::as_str) == Some("native/libn4m.so")
+            && member.get("size") == profile["library"].get("size")
+            && member.get("sha256") == profile["library"].get("sha256");
+    }
+    let Ok(cohort) = serde_json::from_str::<Value>(NATIVE_SOURCE_COHORT) else {
+        return false;
+    };
+    methods.get("source").is_some_and(|source| {
+        source.as_object().is_some_and(|source| source.len() == 3)
+            && source == &cohort["packaged_methods_identity"]
     })
 }
 
@@ -1536,6 +1570,66 @@ mod tests {
     }
 
     #[test]
+    fn packaged_methods_source_and_public_artifact_are_disjoint() {
+        let profile: Value = serde_json::from_str(include_str!(
+            "../../scripts/methods-public-wheel-profile.json"
+        ))
+        .unwrap();
+        let root = json!({"platform": "linux", "arch": "x64"});
+        let methods = json!({
+            "mode": "bundled-required",
+            "member": {"path": "native/libn4m.so", "size": profile["library"]["size"],
+                "sha256": profile["library"]["sha256"]},
+            "abi": profile["abi"], "artifact": profile["artifact"]
+        });
+        let valid = |candidate: &Value, root: &Value| {
+            packaged_methods_artifact_is_valid(
+                candidate.as_object().unwrap(),
+                root.as_object().unwrap(),
+            )
+        };
+        assert_eq!(
+            valid(&methods, &root),
+            cfg!(all(target_os = "linux", target_arch = "x86_64"))
+        );
+        for pointer in [
+            "/artifact/kind",
+            "/artifact/distribution/name",
+            "/artifact/distribution/version",
+            "/artifact/wheel/filename",
+            "/artifact/wheel/url",
+            "/artifact/wheel/sha256",
+            "/artifact/wheel/member",
+            "/member/sha256",
+            "/abi/minor",
+            "/abi/major",
+            "/member/path",
+            "/member/size",
+            "/artifact/source",
+        ] {
+            let mut changed = methods.clone();
+            *changed.pointer_mut(pointer).unwrap() = json!("wrong");
+            assert!(!valid(&changed, &root), "{pointer}");
+        }
+        let mut changed = methods.clone();
+        changed["source"] = json!({"commit": "eccbe5"});
+        assert!(!valid(&changed, &root));
+        changed = methods.clone();
+        changed["artifact"]["extra"] = json!(true);
+        assert!(!valid(&changed, &root));
+        let mut wrong_root = root.clone();
+        wrong_root["arch"] = json!("arm64");
+        assert!(!valid(&methods, &wrong_root));
+        let cohort: Value = serde_json::from_str(NATIVE_SOURCE_COHORT).unwrap();
+        let mut source = methods;
+        source.as_object_mut().unwrap().remove("artifact");
+        source["source"] = cohort["packaged_methods_identity"].clone();
+        assert!(valid(&source, &root));
+        source["source"]["commit"] = json!("eccbe5");
+        assert!(!valid(&source, &root));
+    }
+
+    #[test]
     fn canonical_methods_path_rejects_relative_and_symlink_aliases() {
         let directory = tempfile::tempdir().unwrap();
         let library = directory.path().join("libn4m-test");
@@ -1943,12 +2037,19 @@ mod tests {
     }
 
     #[test]
-    fn unpublished_cohort_without_shipping_identity_cannot_select_packaged_methods() {
+    fn public_source_identity_without_packaged_contract_cannot_select_methods() {
         let cohort: Value = serde_json::from_str(NATIVE_SOURCE_COHORT).unwrap();
-        assert_eq!(cohort["publication_status"], "local-unpublished");
-        assert_eq!(cohort["public_registry_verified"], false);
-        assert_eq!(cohort["requires_explicit_local_cargo_config"], true);
-        assert!(cohort["packaged_methods_identity"].is_null());
+        assert_eq!(cohort["publication_status"], "published-registry");
+        assert_eq!(cohort["public_registry_verified"], true);
+        assert_eq!(cohort["requires_explicit_local_cargo_config"], false);
+        assert_eq!(
+            cohort["packaged_methods_identity"],
+            json!({
+                "commit": "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
+                "tree": "61406cd2cf11204273a9972e4f268acfde7eb424",
+                "project_version": "1.3.15"
+            })
+        );
         assert!(packaged_methods_library_identity().is_none());
     }
 
@@ -2118,7 +2219,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "local-unpublished nirs4all 0.5.0 cohort; explicit Root Cargo source overrides and resolved lock required"
+            "published nirs4all 0.5.0 crates.io cohort; ordinary registry lock and exact selected Methods source required"
         );
     }
 }

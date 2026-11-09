@@ -36,7 +36,7 @@ const TARGETS = Object.freeze({
 function assertMethodsBuildIdentityConfigured(sourcePath, expectedSha256) {
   if (sourcePath === null || expectedSha256 === null) {
     throw new Error(
-      `Native Methods ABI 2.20 is required: set ${METHODS_BUILD_SOURCE_ENV} and ${METHODS_BUILD_SHA256_ENV}`,
+      `Native Methods ABI 2.22 is required: set ${METHODS_BUILD_SOURCE_ENV} and ${METHODS_BUILD_SHA256_ENV}`,
     );
   }
 }
@@ -210,6 +210,7 @@ async function buildNativeSidecar({
   cargoTargetDir = process.env.CARGO_TARGET_DIR || null,
   methodsLibrarySource = process.env[METHODS_BUILD_SOURCE_ENV]?.trim() || null,
   methodsLibrarySha256 = process.env[METHODS_BUILD_SHA256_ENV]?.trim() || null,
+  methodsIdentityProfile = process.env.NIRS4ALL_BUILD_METHODS_IDENTITY_PROFILE?.trim() || "public-wheel",
 } = {}) {
   assertMethodsBuildIdentityConfigured(methodsLibrarySource, methodsLibrarySha256);
   const target = targetTriple ? TARGETS[targetTriple] : null;
@@ -254,7 +255,7 @@ async function buildNativeSidecar({
   });
   if (methodsLibraryPath === null) {
     throw new Error(
-      `Native Methods ABI 2.20 is required: set ${METHODS_BUILD_SOURCE_ENV} and ${METHODS_BUILD_SHA256_ENV}`,
+      `Native Methods ABI 2.22 is required: set ${METHODS_BUILD_SOURCE_ENV} and ${METHODS_BUILD_SHA256_ENV}`,
     );
   }
   const contract = writeRuntimeContract({
@@ -262,6 +263,7 @@ async function buildNativeSidecar({
     platform: targetPlatform,
     arch: target?.arch ?? process.arch,
     methodsLibraryPath,
+    methodsIdentityProfile,
   });
   paths.runtimeContractPath = contract.contractPath;
   return paths.packagedBinaryPath;

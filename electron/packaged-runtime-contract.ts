@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import publicMethodsWheel from "../scripts/methods-public-wheel-profile.json";
 
 export const PACKAGED_RUNTIME_CONTRACT_FILE =
   "STUDIO_RUNTIME_CONTRACT.json";
@@ -15,10 +17,10 @@ const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
 const PLUGIN_SOURCE_COMMIT = "563220eb2becc6a1340431d588315f0793664fe4";
 const PLUGIN_WHEEL_SHA256 = "6746fa0ee5d31ba23fa5c4cd30232febccc75476e45cd388204d475e22b74dfe";
 const METHODS_ABI_MAJOR = 2;
-const METHODS_ABI_MINOR = 20;
-const METHODS_SOURCE_COMMIT = "b246b5029cc62cf0cc369df2611069498f2da183";
-const METHODS_SOURCE_TREE = "8c4b525882dc454d7a4dd1a805fb916b0d22e250";
-const METHODS_PROJECT_VERSION = "1.3.9";
+const METHODS_ABI_MINOR = 22;
+const METHODS_SOURCE_COMMIT = "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed";
+const METHODS_SOURCE_TREE = "61406cd2cf11204273a9972e4f268acfde7eb424";
+const METHODS_PROJECT_VERSION = "1.3.15";
 const WINDOWS_NATIVE_RUNTIME_LINKAGE = {
   profile: "studio-msvc-static-crt-v1",
   methods_cmake_runtime: "MultiThreaded",
@@ -62,14 +64,35 @@ interface PackagedRuntimeContract {
     mode: string;
     member: ContractMember | null;
     abi: { major: number; minor: number };
-    source: { commit: string; tree: string; project_version: string };
-  };
+  } & (
+    | { source: { commit: string; tree: string; project_version: string }; artifact?: never }
+    | { artifact: Omit<typeof publicMethodsWheel.artifact, "kind"> & { kind: "public-wheel" }; source?: never }
+  );
   native_runtime_linkage?: {
     profile?: unknown;
     methods_cmake_runtime?: unknown;
     sidecar_rust_target_feature?: unknown;
     forbidden_dynamic_import_prefixes?: unknown;
   };
+}
+
+// This is an exact product selection, not a claim about the wheel's source tree.
+export function hasExactPublicMethodsArtifact(
+  methods: unknown,
+  platform: string,
+  arch: string,
+): boolean {
+  if (methods === null || typeof methods !== "object") return false;
+  const policy = methods as PackagedRuntimeContract["methods_library"];
+  return Object.keys(policy).length === 4 &&
+    policy.mode === "bundled-required" &&
+    platform === publicMethodsWheel.platform && arch === publicMethodsWheel.arch &&
+    isDeepStrictEqual(policy.abi, publicMethodsWheel.abi) &&
+    isDeepStrictEqual(policy.artifact, publicMethodsWheel.artifact) &&
+    policy.member != null && Object.keys(policy.member).length === 3 &&
+    policy.member.path === "native/libn4m.so" &&
+    policy.member.size === publicMethodsWheel.library.size &&
+    policy.member.sha256 === publicMethodsWheel.library.sha256;
 }
 
 export function hasExactWindowsNativeRuntimeLinkage(
@@ -404,9 +427,13 @@ export function verifyPackagedRuntimeContract({
     !["unavailable", "bundled-required"].includes(methods.mode) ||
     methods.abi?.major !== METHODS_ABI_MAJOR ||
     methods.abi?.minor !== METHODS_ABI_MINOR ||
-    methods.source?.commit !== METHODS_SOURCE_COMMIT ||
-    methods.source?.tree !== METHODS_SOURCE_TREE ||
-    methods.source?.project_version !== METHODS_PROJECT_VERSION
+    (Object.hasOwn(methods, "artifact")
+      ? !hasExactPublicMethodsArtifact(methods, platform, arch)
+      : Object.keys(methods).length !== 4 || !isDeepStrictEqual(methods.source, {
+          commit: METHODS_SOURCE_COMMIT,
+          tree: METHODS_SOURCE_TREE,
+          project_version: METHODS_PROJECT_VERSION,
+        }))
   ) {
     throw new Error("Invalid native Methods policy in packaged runtime contract");
   }

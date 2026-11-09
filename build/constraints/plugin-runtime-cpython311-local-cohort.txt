@@ -1,10 +1,10 @@
-# Local-unpublished current Studio CPython library-host cohort.
-# Root must provide coherent local wheels; these pins do not assert publication.
+# Current Studio CPython library-host candidate with public owner pins.
+# SDK 1.4.16 is public (Root run 42612130615); this installed host closure is not yet qualified.
 # Historical release proof remains in plugin-runtime-cpython311.txt unchanged.
 #
 # Exact requirements for Root's next local staging wave, not an attested
-# installed closure or shipping recipe. Root supplies the corresponding local
-# wheels and qualifies their source, bytes and dependency resolution separately.
+# installed closure or shipping recipe. Root selects the corresponding public
+# artifacts and qualifies installed bytes and dependency resolution separately.
 alembic==1.19.2
 annotated-types==0.8.0
 attrs==26.1.0
@@ -27,8 +27,8 @@ MarkupSafe==3.0.3
 narwhals==2.25.0
 nirs4all==1.4.16
 nirs4all-core==0.5.0
-nirs4all-io==0.3.0
-nirs4all-formats==0.2.15
+nirs4all-io==0.3.1
+nirs4all-formats==0.2.16
 nirs4all-methods==1.3.15
 # macOS Intel's last Numba wheel requires NumPy < 2.4.
 numpy==2.3.5; sys_platform == "darwin" and platform_machine == "x86_64"

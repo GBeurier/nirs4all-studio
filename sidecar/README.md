@@ -4,23 +4,49 @@
 separate Cargo package, not a Tauri application and not an Electron switch.
 The only executable is `studio-sidecar`.
 
-## Local candidate qualification (2026-10-29)
+## Public backend owner cohort (2026-11-09)
 
-The selected corrective cohort is source-built and unpublished. Its immutable
-owner commits are recorded in `contracts/studio_native_source_cohort_v1.json`.
-The current `Cargo.lock` records the explicitly patched local source cohort;
-it does not attest registry publication. Local builds require an explicit Cargo
-configuration mapping those candidate packages to their verified owner checkouts.
-No absolute local override is enabled by this repository.
+`contracts/studio_native_source_cohort_v2.json` selects Core 0.5.0, DAG 0.4.0,
+DMD 0.2.16, IO 0.3.1, Formats 0.2.16 and Rust n4m 0.4.2 from crates.io.
+Core requires Rust IO 0.3.1 exactly; Studio uses the same version. Use the
+ordinary registry lock without candidate source overrides. Browser npm and
+owner-built browser artifacts have separate provenance and are not this graph.
 
-Qualify with `cargo --config /path/to/candidate-sources.toml test
---manifest-path sidecar/Cargo.toml --all-targets`. Set `N4M_LIBRARY_PATH` to the
-regular (non-symlink) ABI 2.20 library file and `STUDIO_GENERAL_TEST_PYTHON` to the
-installed candidate SDK environment for the optional real scientific-host test.
-The local qualification receipt must retain the configuration hash, source
-commits, resolved lock and artifact hashes. Before a release, publish the owner
-packages, regenerate the ordinary registry lock, and qualify the exact installed
-cohort again. The historical public lock is not evidence for this candidate.
+Packaged Methods has two explicit identity paths at ABI 2.22. The default
+`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.15
+artifact declared in `scripts/methods-public-wheel-profile.json`: its exact
+installed library size/hash, wheel reference and unknown source. It does not
+infer a source commit from the package version, ABI, public tag or Rust crate.
+The existing producer writes `methods_library.artifact` with kind `public-wheel`
+and `source: null`; Electron and Rust validate that same selected profile.
+
+The separate source-built path retains `methods_library.source`. The
+existing source-checked Methods builder exports `source-build` through
+`NIRS4ALL_BUILD_METHODS_IDENTITY_PROFILE`; its clean commit/tree/header checks
+remain mandatory. Manual source packaging, including Docker's
+`NIRS4ALL_METHODS_IDENTITY_PROFILE`, must explicitly select that profile after
+those checks. The contract writer records that caller assertion; it does not
+prove binary-to-source correspondence. The unrelated native eccbe5 artifact
+must never be relabelled as either selected artifact.
+
+Normal startup discovers the contract beside the executable, validates identity
+and acquires Core preflight before advertising native prediction/training.
+The retained injected HTTP test alone does not qualify that startup path.
+The ignored `public_methods_wheel_startup` integration test launches the real
+binary and replays the same owner-produced fixture, then checks typed refusal
+for absent, incompatible or altered selections without acquiring Python.
+SDK 1.4.16 is public, confirmed by Root publication run 42612130615 and the
+recorded public wheel hash. Studio host installation and current-closure
+qualification remain separate; historical SDK shipping receipts do not qualify
+that closure. The retained SDK host-cohort status is owned by that integration
+lane and is not a claim that the SDK is absent from the public registry.
+
+After resolving the final registry lock, qualify the existing backend tests and
+`node scripts/test-native-archive-v2.cjs` with one attested Methods library.
+The latter generates one owner-produced raw PLS2 fixture and reuses it for the
+Rust/runtime/HTTP checks. Retain its output, exact library identity and command
+results. Do not substitute the frozen physical Archive V2 witness for that
+current fixture, or rebuild historical vendored owners for current qualification.
 
 ## Fold-local target score projection
 
@@ -360,9 +386,9 @@ Methods commit `48ad1e5a50844f68c2b99e93b02ad6a3b491c07b` under
 `sidecar/vendor/n4m-48ad1e5/`. The vendored-source verification scripts reject
 inventory drift and check exact repository trees, crate trees, package versions,
 and registry checksums. These directories are immutable release evidence of that earlier train only;
-Cargo resolves the current published train (DagML 0.3.34, Data 0.2.12, IO 0.2.4,
-Methods/n4m 0.4.0 at ABI 2.17, and Core 0.4.1) from the registry.
-Run the Core gate against the qualified ABI 2.5 Methods library:
+The current registry profile is declared in `studio_native_source_cohort_v2.json`.
+The following command tests only the historical Core snapshot and requires its
+historical ABI 2.5 library; it is not a current backend gate:
 
 ```sh
 N4M_LIBRARY_PATH=/absolute/path/to/libn4m sidecar/scripts/test-vendored-core.sh
