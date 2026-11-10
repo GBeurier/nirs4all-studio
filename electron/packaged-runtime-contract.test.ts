@@ -219,7 +219,8 @@ describe("packaged runtime contract", () => {
       .toThrow("does not match the selected public wheel artifact");
   });
 
-  it.skipIf(process.platform !== "linux" || process.arch !== "x64" || !process.env.NIRS4ALL_BUILD_METHODS_LIBRARY)(
+  it.skipIf(process.platform !== "linux" || process.arch !== "x64" || !process.env.NIRS4ALL_BUILD_METHODS_LIBRARY ||
+    (process.env.NIRS4ALL_BUILD_METHODS_IDENTITY_PROFILE?.trim() || "public-wheel") !== "public-wheel")(
     "selects the actual public wheel through producer and Electron, then rejects tampering",
     () => {
       const fixture = makeResources();
@@ -248,6 +249,52 @@ describe("packaged runtime contract", () => {
       expect(() => producer.writeRuntimeContract({ ...options, methodsIdentityProfile: "source-build" }))
         .toThrow("a public wheel must not claim source identity");
       fs.appendFileSync(methodsLibraryPath, "tampered");
+      expect(verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "linux", arch: "x64" }))
+        .toMatchObject({ methodsLibraryPath: null, methodsLibraryError: expect.stringContaining("integrity mismatch") });
+    },
+  );
+
+  it.skipIf(process.platform !== "linux" || process.arch !== "x64" ||
+    !process.env.NIRS4ALL_BUILD_METHODS_LIBRARY || !process.env.NIRS4ALL_BUILD_METHODS_SHA256 ||
+    process.env.NIRS4ALL_BUILD_METHODS_IDENTITY_PROFILE?.trim() !== "source-build")(
+    "selects the actual source build through producer and Electron, then rejects tampering",
+    () => {
+      const fixture = makeResources();
+      const backendRoot = path.join(fixture.resourcesPath, "backend");
+      fs.rmSync(path.join(backendRoot, "python-runtime", "PLUGIN_RUNTIME_READY.json"));
+      const methodsLibraryPath = path.join(backendRoot, "native", "libn4m.so");
+      fs.copyFileSync(process.env.NIRS4ALL_BUILD_METHODS_LIBRARY!, methodsLibraryPath);
+      const stagedSha256 = digest(fs.readFileSync(methodsLibraryPath));
+      expect(stagedSha256).toBe(process.env.NIRS4ALL_BUILD_METHODS_SHA256);
+      expect(stagedSha256).not.toBe(publicMethodsWheel.library.sha256);
+      const producer = require("../scripts/native-runtime-contract.cjs") as {
+        writeRuntimeContract(options: {
+          backendRoot: string; platform: string; arch: string; methodsLibraryPath: string;
+          methodsIdentityProfile?: string;
+        }): { contract: { methods_library: { source?: unknown; artifact?: unknown } } };
+        verifyRuntimeContract(options: {
+          backendRoot: string; artifactBoundaryRoot: string; platform: string; arch: string; requireBundledMethods: boolean;
+        }): { methodsLibraryPath: string | null; methodsIdentityProfile: string };
+      };
+      const options = { backendRoot, platform: "linux", arch: "x64", methodsLibraryPath };
+      expect(() => producer.writeRuntimeContract(options))
+        .toThrow("does not match the selected public wheel artifact");
+      const written = producer.writeRuntimeContract({ ...options, methodsIdentityProfile: "source-build" });
+      expect(written.contract.methods_library.source).toEqual({
+        commit: "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
+        tree: "61406cd2cf11204273a9972e4f268acfde7eb424",
+        project_version: "1.3.15",
+      });
+      expect(written.contract.methods_library).not.toHaveProperty("artifact");
+      const verification = {
+        backendRoot, artifactBoundaryRoot: backendRoot, platform: "linux", arch: "x64", requireBundledMethods: true,
+      };
+      expect(producer.verifyRuntimeContract(verification))
+        .toMatchObject({ methodsLibraryPath, methodsIdentityProfile: "source-build" });
+      expect(verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "linux", arch: "x64" }))
+        .toMatchObject({ methodsLibraryPath, methodsLibraryError: null });
+      fs.appendFileSync(methodsLibraryPath, "tampered");
+      expect(() => producer.verifyRuntimeContract(verification)).toThrow("integrity mismatch");
       expect(verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "linux", arch: "x64" }))
         .toMatchObject({ methodsLibraryPath: null, methodsLibraryError: expect.stringContaining("integrity mismatch") });
     },
