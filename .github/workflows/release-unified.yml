@@ -856,7 +856,7 @@ jobs:
   installer-macos-arm64:
     name: Installer — macOS arm64
     needs: [prepare, pinned-plugin-wheels]
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
