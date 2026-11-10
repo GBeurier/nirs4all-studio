@@ -46,16 +46,15 @@ env:
   PYTHON_VERSION: '3.11'
   # Release archives/images must be reproducible. Keep these refs pinned to the
   # selected immutable releases and update them with the ecosystem release board.
-  # SDK source and normalized wheel are exact.
-  NIRS4ALL_PUBLICATION_STATUS: source-built
-  NIRS4ALL_LIBRARY_REF: 2ab9953ccb4b5e72f76be6cb637503622c5869cf
-  NIRS4ALL_SOURCE_EPOCH: '1793671925'
-  DAG_ML_REF: 01226120552529aad45e5ba60d3f6327894adc67
+  # SDK publication source and public wheel bytes are exact.
+  NIRS4ALL_PUBLICATION_STATUS: published-registry
+  NIRS4ALL_LIBRARY_REF: 28c51162fc4d31d674c6606d608367a5f4b32b0e
+  DAG_ML_REF: beaba0b62f9a65bca86c2f521fc482bd80092ba3
   DAG_ML_DATA_REF: eb2ad7835ca85feebf6f626d9f43f61575a1c9a9
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/2ab9953ccb4b5e72f76be6cb637503622c5869cf.tar.gz
-  NIRS4ALL_WHEEL_URL: ''
-  NIRS4ALL_WHEEL_SHA256: 27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0
-  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/01226120552529aad45e5ba60d3f6327894adc67.tar.gz
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/28c51162fc4d31d674c6606d608367a5f4b32b0e.tar.gz
+  NIRS4ALL_WHEEL_URL: https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl
+  NIRS4ALL_WHEEL_SHA256: 17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4
+  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/beaba0b62f9a65bca86c2f521fc482bd80092ba3.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/eb2ad7835ca85feebf6f626d9f43f61575a1c9a9.tar.gz
 
 jobs:
@@ -144,9 +143,10 @@ jobs:
       - name: Validate pinned runtime dependency refs
         shell: bash
         run: |
+          set -euo pipefail
           node scripts/verify-runtime-cohort.cjs
-          if [[ "$NIRS4ALL_PUBLICATION_STATUS" != "source-built" ]]; then
-            echo "::error::Pinned nirs4all requires its qualified immutable source build"
+          if [[ "$NIRS4ALL_PUBLICATION_STATUS" != "published-registry" ]]; then
+            echo "::error::Pinned nirs4all requires its exact published wheel"
             exit 1
           fi
           for value in "$NIRS4ALL_LIBRARY_REF" "$DAG_ML_REF" "$DAG_ML_DATA_REF"; do
@@ -162,8 +162,8 @@ jobs:
             fi
           done
           if [[ "$NIRS4ALL_SOURCE_URL" != "https://github.com/GBeurier/nirs4all/archive/$NIRS4ALL_LIBRARY_REF.tar.gz" ||
-                "$NIRS4ALL_SOURCE_EPOCH" != "1793671925" || -n "$NIRS4ALL_WHEEL_URL" ]]; then
-            echo "::error::SDK source build must match the exact commit/epoch and cannot substitute a registry wheel"
+                "$NIRS4ALL_WHEEL_URL" != "https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl" ]]; then
+            echo "::error::SDK publication source and wheel URL must match the selected public artifact"
             exit 1
           fi
           if [[ ! "$NIRS4ALL_WHEEL_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
@@ -218,12 +218,12 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
-      nirs4all_library_ref: 2ab9953ccb4b5e72f76be6cb637503622c5869cf
-      dag_ml_ref: 01226120552529aad45e5ba60d3f6327894adc67
+      nirs4all_library_ref: 28c51162fc4d31d674c6606d608367a5f4b32b0e
+      dag_ml_ref: beaba0b62f9a65bca86c2f521fc482bd80092ba3
       dag_ml_data_ref: eb2ad7835ca85feebf6f626d9f43f61575a1c9a9
 
-  # Build the pinned SDK once.
-  # Every distributable consumes the same normalized, hash-verified payloads.
+  # Download the exact public SDK wheel once.
+  # Every distributable consumes the same hash-verified payload.
   pinned-plugin-wheels:
     name: Acquire pinned plugin wheels
     needs: prepare
@@ -241,7 +241,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Build SDK and verify canonical plugin wheels
+      - name: Download and verify canonical plugin wheel
         env:
           GIT_CONFIG_COUNT: '1'
           GIT_CONFIG_KEY_0: core.autocrlf
@@ -249,16 +249,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip==26.2.1
           mkdir -p dist/pinned-plugin-wheels
-          node scripts/setup-python-env.cjs \
-            --build-plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.15-py3-none-any.whl \
-            --build-python python
+          python -c 'import os,urllib.request; urllib.request.urlretrieve(os.environ["NIRS4ALL_WHEEL_URL"], "dist/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl")'
           cd dist/pinned-plugin-wheels
-          echo "$NIRS4ALL_WHEEL_SHA256  nirs4all-1.4.15-py3-none-any.whl" | sha256sum --check --strict
+          echo "$NIRS4ALL_WHEEL_SHA256  nirs4all-1.4.16-py3-none-any.whl" | sha256sum --check --strict
 
       - name: Prove deterministic plugin runtime closure
         run: >-
           node scripts/verify-plugin-runtime-reproducibility.cjs
-          --plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.15-py3-none-any.whl
+          --plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl
           --evidence dist/plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json
 
       - name: Upload plugin runtime reproducibility evidence
@@ -359,7 +357,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.15-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl
 
       - name: Bundle LightGBM OpenMP before sealing the runtime
         run: python3 -B .release-packaging/scripts/bundle-linux-openmp.py --runtime-root backend-dist/python-runtime/python
@@ -507,7 +505,7 @@ jobs:
           } | ConvertTo-Json | Out-File -FilePath version.json -Encoding utf8
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.15-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         shell: pwsh
@@ -690,7 +688,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.15-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         run: |
@@ -915,7 +913,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.15-py3-none-any.whl
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         run: |

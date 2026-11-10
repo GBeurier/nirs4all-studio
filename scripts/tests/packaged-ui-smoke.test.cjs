@@ -28,10 +28,14 @@ async function run(change = {}) {
     './verify-runtime-cohort.cjs': { verifyRuntimeCohort: () => ({}), verifyInstalledCohort: () => ({}) },
     './qualify-local-packaged.cjs': { withOwnedProfile: (_profile, action) => action(),
       bootstrapOwnedWorkspace: async () => { calls.push('bootstrap'); }, assertOwnedWorkspace: async () => true },
+    './smoke-shap-journey.cjs': { shapJourney: async () => {
+      calls.push('shap'); if (change.shap) throw new Error('SHAP regression failed');
+    } },
     './smoke-first-launch-ui.cjs': { sanitizeDiagnostic: String, main: async options => {
-      calls.push('ui'); assert.equal(options.journeys, undefined); assert(options.sandboxRoot);
+      calls.push('ui'); assert.equal(typeof options.journeys, 'function'); assert(options.sandboxRoot);
       assert.equal(options.performancePolicy.budgets_enforced, false);
       if (change.ui) throw new Error('renderer failed');
+      await options.journeys({ env: {} });
     } },
   };
   vm.runInNewContext(source, { module, exports: module.exports, require: name => Object.hasOwn(mocks, name) ? mocks[name] : require(name),
@@ -44,10 +48,10 @@ async function run(change = {}) {
   if (proof.isolated_profile) fs.rmSync(path.dirname(proof.isolated_profile), { recursive: true, force: true });
   return { proof, error, calls };
 }
-test('hosted UI smoke verifies source/contract/bootstrap before actual UI without full journeys', async () => {
+test('hosted UI smoke verifies source/contract/bootstrap and the real SHAP regression', async () => {
   const result = await run(); assert.equal(result.error, undefined); assert.equal(result.proof.success, true);
   assert.equal(result.proof.installed_cycle, false); assert.equal(result.proof.full_local_qualification, false);
-  assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui']);
+  assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap']);
 });
 test('wrong packaged source refuses UI and retains a failing proof', async () => {
   const result = await run({ source: 'c'.repeat(40) }); assert.match(result.error.message, /source mismatch/);
@@ -64,4 +68,8 @@ test('contract failure remains blocking for hosted builds', async () => {
 test('actual UI assertion failure remains blocking under observational performance', async () => {
   const result = await run({ ui: true }); assert.match(result.error.message, /renderer failed/);
   assert.equal(result.proof.success, false); assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui']);
+});
+test('a SHAP regression blocks publication and retains the failing proof', async () => {
+  const result = await run({ shap: true }); assert.match(result.error.message, /SHAP regression failed/);
+  assert.equal(result.proof.success, false); assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap']);
 });

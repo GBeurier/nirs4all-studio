@@ -1,4 +1,4 @@
-/** Hosted build smoke only: exact packaged contract, renderer and readiness. */
+/** Hosted smoke: exact packaged contract, renderer, readiness and real SHAP. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -10,6 +10,7 @@ const { resolvePerformancePolicy } = require('./qualification-performance.cjs');
 const { sha256File, parseChecksumSidecar } = require('./finalize-release-assets.cjs');
 const { verifyRuntimeCohort, verifyInstalledCohort } = require('./verify-runtime-cohort.cjs');
 const { withOwnedProfile, bootstrapOwnedWorkspace, assertOwnedWorkspace } = require('./qualify-local-packaged.cjs');
+const { shapJourney } = require('./smoke-shap-journey.cjs');
 
 async function main(argv = process.argv.slice(2), env = process.env) {
   const index = argv.indexOf('--output');
@@ -22,7 +23,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const args = [...rest.slice(0, installerIndex), ...rest.slice(installerIndex + 2)];
   const config = archive.assertValidConfig(archive.parseArgs(args));
   const proof = { schema: 'nirs4all.studio.packaged-ui-smoke.v1', success: false,
-    scope: 'unpacked-build-startup-renderer-readiness', full_local_qualification: false,
+    scope: 'unpacked-build-startup-renderer-readiness-shap', full_local_qualification: false,
     installed_cycle: false,
     platform: config.platform, arch: process.arch, source_sha: env.RELEASE_SOURCE_SHA,
     performance_policy: resolvePerformancePolicy(env), timings: [] };
@@ -48,7 +49,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     assert.equal(marker.source_commit, env.NIRS4ALL_LIBRARY_REF, 'Embedded SDK source mismatch');
     proof.embedded_sdk = { source_sha: marker.source_commit, version: marker.distribution_version,
       wheel_sha256: marker.wheel_sha256, constraints_sha256: marker.constraints.sha256 };
-    // No upgrade, training, scientific business journey, HPO or replay is run here.
+    // A small real SHAP regression qualifies the shipped host and renderer.
     const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-packaged-ui-'));
     const profile = path.join(sandbox, 'profile'); fs.mkdirSync(profile);
     proof.isolated_profile = profile;
@@ -56,7 +57,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
       await bootstrapOwnedWorkspace(layout, profile, sandbox);
       await ui.main({ config, sandboxRoot: profile, consent: 'decline', timings: proof.timings,
         performancePolicy: proof.performance_policy,
-        inspectProfile: async ({ env: actualEnv }) => assertOwnedWorkspace(actualEnv, sandbox) });
+        inspectProfile: async ({ env: actualEnv }) => assertOwnedWorkspace(actualEnv, sandbox),
+        journeys: async context => shapJourney(context, proof, await assertOwnedWorkspace(context.env, sandbox)) });
     });
     proof.success = true;
     return proof;

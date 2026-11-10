@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.15.11] — 2026-11-10
+
+### Fixed
+
+- SHAP analysis now recovers progress, completed results and failures when job
+  WebSocket events are missed. Reopening an interrupted submission no longer
+  leaves the analysis stuck on "Starting" without a job identifier.
+
+### Changed
+
+- Ship the exact public nirs4all 1.4.16 wheel with Core 0.5.0, DAG-ML 0.4.0,
+  IO 0.3.1, Formats 0.2.16 and Methods 1.3.15 (ABI 2.22). Release builds use
+  the same verified wheel and runtime cohort as the packaged backend.
+
 ## [0.15.10] — 2026-11-03
 
 ### Fixed

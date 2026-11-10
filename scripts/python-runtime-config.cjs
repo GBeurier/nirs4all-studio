@@ -22,7 +22,7 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
 // package list exact and intentionally small: Python HTTP/control-plane
 // dependencies live in python-http-runtime-config.cjs, which is source/dev only.
 const PLUGIN_DISTRIBUTION_VERSION = recommendedConfig.nirs4all;
-// Public owner pins; SDK 1.4.16 still requires its own public artifact.
+// Exact public SDK and owner pins; each bundled host is verified by the bake.
 // These selections do not attest an installed or packaged runtime.
 const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
   "nirs4all-core==0.5.0",

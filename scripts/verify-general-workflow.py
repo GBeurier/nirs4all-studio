@@ -108,6 +108,13 @@ with (ROOT / "sidecar.log").open("w") as log:
                 assert process.poll() is None, (ROOT / "sidecar.log").read_text()
                 time.sleep(0.5)
         call("/sidecar/v1/capabilities")
+        for _ in range(120):
+            readiness = call("/api/system/readiness")
+            if readiness.get("ml_ready"):
+                break
+            assert readiness.get("ml_loading"), readiness
+            time.sleep(0.5)
+        assert readiness.get("ml_ready"), readiness
         call("/api/workspace/create", {"path": str(ROOT / "workspace"), "name": "Packaged General Witness"})
         call("/api/workspace/select", {"path": str(ROOT / "workspace")})
         if args.synthetic:

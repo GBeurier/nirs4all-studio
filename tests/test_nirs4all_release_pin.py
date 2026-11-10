@@ -59,55 +59,33 @@ def test_historical_published_registry_cohort_is_unchanged() -> None:
     assert cohort["public_registry_verified"] is True
 
 
-def test_release_workflow_uses_immutable_nirs4all_source() -> None:
-    # This frozen release workflow attests its historical profile, not the
-    # current SDK requirement in recommended-config.json.
-    historical = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
-    version = historical["selected_distribution_version"]
-    workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
-
-    assert version == "1.4.15"
-    ref = re.search(r"^  NIRS4ALL_LIBRARY_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
-    source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
-    assert ref is not None
-    assert source is not None
-    assert ref.group(1) == source.group(1) == "2ab9953ccb4b5e72f76be6cb637503622c5869cf"
+def test_release_workflow_uses_the_exact_public_sdk_wheel() -> None:
+    workflow = (ROOT / ".github/workflows/release-unified.yml").read_text(encoding="utf-8")
     parsed = yaml.safe_load(workflow)
-    contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
-    assert parsed["env"]["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
+    contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_sdk1416_v1.json").read_text())
+    environment = dict(os.environ) | {key: "" if value is None else str(value) for key, value in parsed["env"].items()}
+    assert environment["NIRS4ALL_PUBLICATION_STATUS"] == contract["publication_status"] == "published-registry"
+    assert contract["public_registry_verified"] is True
+    assert environment["NIRS4ALL_LIBRARY_REF"] == contract["selected_source_commit"]
+    assert environment["NIRS4ALL_WHEEL_URL"] == contract["selected_wheel_url"]
+    assert environment["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
+    assert environment["NIRS4ALL_SOURCE_URL"] == f"https://github.com/GBeurier/nirs4all/archive/{contract['selected_source_commit']}.tar.gz"
     validation = next(step["run"] for step in parsed["jobs"]["prepare"]["steps"]
                       if step.get("name") == "Validate pinned runtime dependency refs")
-    environment = dict(os.environ) | {key: "" if value is None else str(value) for key, value in parsed["env"].items()}
-    assert environment["NIRS4ALL_PUBLICATION_STATUS"] == contract["publication_status"] == "source-built"
-    assert contract["public_registry_verified"] is False
-    assert environment["NIRS4ALL_WHEEL_URL"] == contract["selected_wheel_url"] == ""
-    assert environment["NIRS4ALL_SOURCE_EPOCH"] == "1793671925"
     bash = str(Path(shutil.which("git")).parents[1] / "bin/bash.exe") if sys.platform == "win32" else "bash"
     result = subprocess.run([bash, "-c", validation], env=environment, cwd=ROOT, capture_output=True)
     assert result.returncode == 0, result.stderr.decode()
     for changed in ({"NIRS4ALL_WHEEL_URL": "https://files.pythonhosted.org/old/nirs4all-1.4.15-py3-none-any.whl"},
-                    {"NIRS4ALL_SOURCE_EPOCH": "1791533217"}, {"NIRS4ALL_PUBLICATION_STATUS": "published"},
-                    {"NIRS4ALL_SOURCE_URL": "https://github.com/GBeurier/nirs4all/archive/main.tar.gz"}):
+                    {"NIRS4ALL_WHEEL_SHA256": "0" * 64}, {"NIRS4ALL_PUBLICATION_STATUS": "source-built"},
+                    {"NIRS4ALL_SOURCE_URL": "https://github.com/GBeurier/nirs4all/archive/main.tar.gz"},
+                    {"DAG_ML_REF": "main"}):
         assert subprocess.run([bash, "-c", validation], env=environment | changed, cwd=ROOT, capture_output=True).returncode != 0
-    assert f"ref: {version}" not in workflow
-
-    dag_ref = re.search(r"^  DAG_ML_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
-    dag_source = re.search(r"^  DAG_ML_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
-    assert dag_ref is not None
-    assert dag_source is not None
-    assert dag_ref.group(1) == dag_source.group(1) == "01226120552529aad45e5ba60d3f6327894adc67"
-
-    data_ref = re.search(r"^  DAG_ML_DATA_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
-    data_source = re.search(
-        r"^  DAG_ML_DATA_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$",
-        workflow,
-        re.MULTILINE,
-    )
-    assert data_ref is not None
-    assert data_source is not None
-    assert data_ref.group(1) == data_source.group(1) == "eb2ad7835ca85feebf6f626d9f43f61575a1c9a9"
-
-    # Studio bundles no workspace converter; conversion is the separate nirs4all-tools.
+    cohort = json.loads((ROOT / "build/runtime-cohort.json").read_text())
+    for key, prefix, repository in [("dag", "DAG_ML", "dag-ml"), ("dag_data", "DAG_ML_DATA", "dag-ml-data")]:
+        reference = environment[f"{prefix}_REF"]
+        assert re.fullmatch(r"[0-9a-f]{40}", reference)
+        assert reference == cohort[key]["source_sha"]
+        assert environment[f"{prefix}_SOURCE_URL"] == f"https://github.com/GBeurier/{repository}/archive/{reference}.tar.gz"
     assert "NIRS4ALL_TOOLS" not in workflow
 
 
@@ -155,14 +133,16 @@ def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> No
     assert "  pinned-plugin-wheels:\n" in workflow
     assert workflow.count("needs: [prepare, pinned-plugin-wheels]") == 4
     assert workflow.count("name: Download canonical plugin wheels") == 4
-    version = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())["selected_distribution_version"]
+    version = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_sdk1416_v1.json").read_text())["selected_distribution_version"]
     assert workflow.count(f"--plugin-wheel _deps/pinned-plugin-wheels/nirs4all-{version}-py3-none-any.whl") == 4
     assert "--tools-wheel" not in workflow
     parsed = yaml.safe_load(workflow)
     acquisition = next(step["run"] for step in parsed["jobs"]["pinned-plugin-wheels"]["steps"]
-                       if step.get("name") == "Build SDK and verify canonical plugin wheels")
-    assert "node scripts/setup-python-env.cjs" in acquisition
-    assert "--build-plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.15-py3-none-any.whl" in acquisition
+                       if step.get("name") == "Download and verify canonical plugin wheel")
+    assert "urllib.request.urlretrieve" in acquisition
+    assert "dist/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl" in acquisition
+    assert "sha256sum --check --strict" in acquisition
+    assert "--build-plugin-wheel" not in acquisition
     assert "nirs4all_tools" not in acquisition
     assert "pip wheel" not in acquisition
 

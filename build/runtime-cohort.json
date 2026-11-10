@@ -1,42 +1,43 @@
 {
   "schema": "nirs4all.studio.runtime-cohort.v1",
   "sdk": {
-    "version": "1.4.15",
-    "source_sha": "2ab9953ccb4b5e72f76be6cb637503622c5869cf",
-    "wheel_sha256": "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0",
-    "qualification_oracle_sha256": "3a497b5715280a99378f490d8e312e740dd9f489b77f1d57b855519bf5e0d315",
-    "raw_public_wheel_sha256": "1510b378be9d0afbe4a154154425ece75d0a17988b62a07a9c3ce576f00e8ef8",
-    "installed_manifest_sha256": "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a",
-    "source_date_epoch": 1793671925,
-    "source_tree": "026192334347bd3075e9d89fdf157793761b3fad"
+    "version": "1.4.16",
+    "source_sha": "28c51162fc4d31d674c6606d608367a5f4b32b0e",
+    "wheel_sha256": "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4",
+    "qualification_oracle_sha256": "5c8932cbae3ab5890314a1db4a5081619339b6ef2e849fb4c4b98ca77ef9a223",
+    "raw_public_wheel_sha256": "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4",
+    "installed_manifest_sha256": "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f",
+    "source_tree": "8bb8092320ec48f50183b1932f87867c8df909b1",
+    "publication_status": "published-registry",
+    "wheel_url": "https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl"
   },
   "dag": {
-    "version": "0.3.44",
-    "source_sha": "01226120552529aad45e5ba60d3f6327894adc67"
+    "version": "0.4.0",
+    "source_sha": "beaba0b62f9a65bca86c2f521fc482bd80092ba3"
   },
   "dag_data": {
     "version": "0.2.16",
     "source_sha": "eb2ad7835ca85feebf6f626d9f43f61575a1c9a9"
   },
   "core": {
-    "version": "0.4.7",
-    "source_sha": "1dffd9f4472551cc09ad9d99ed9d40814bd003cc",
-    "native_version": "0.4.7",
+    "version": "0.5.0",
+    "source_sha": "53f53b727e983057f137f42ca0f87d7368db5990",
+    "native_version": "0.5.0",
     "native_source_status": "published-registry",
-    "native_source_sha": "1dffd9f4472551cc09ad9d99ed9d40814bd003cc"
+    "native_source_sha": "53f53b727e983057f137f42ca0f87d7368db5990"
   },
   "io": {
-    "version": "0.2.14",
-    "source_sha": "172a7acfcc029742f45fbcf477f55f46dc7fbafe"
+    "version": "0.3.1",
+    "source_sha": "28e47c9d6491b83a31dd36a25f2b0a35eeab9860"
   },
   "formats": {
-    "version": "0.2.14",
-    "source_sha": "051fe9c0433160f26e8090566418dbc7546c4f96"
+    "version": "0.2.16",
+    "source_sha": "819f5764a2138d755155e5018d7bbcb178924861"
   },
   "methods": {
-    "version": "1.3.13",
-    "source_sha": "fa8ff57603ec23bce95f73d52170285e8f3e2861",
-    "source_tree": "f4339ad1fd512d681898873f955f4d12769d6e51",
-    "abi": "2.20.0"
+    "version": "1.3.15",
+    "source_sha": "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
+    "source_tree": "61406cd2cf11204273a9972e4f268acfde7eb424",
+    "abi": "2.22.0"
   }
 }
