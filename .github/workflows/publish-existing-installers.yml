@@ -2,13 +2,19 @@ name: Publish existing Studio installers
 
 on:
   workflow_dispatch:
+    inputs:
+      macos_retry_run_id:
+        description: Successful macOS runner retry for the immutable Studio 0.15.11 source
+        required: true
+        type: string
 
 permissions:
   contents: write
   actions: read
+  packages: write
 
 concurrency:
-  group: publish-existing-studio-installers-0.15.2
+  group: publish-existing-studio-installers-0.15.11
   cancel-in-progress: false
 
 jobs:
@@ -17,14 +23,13 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      RELEASE_TAG: 0.15.2
-      RELEASE_SHA: 434d8221bc72a3fbb65dcc62b74cfc77e565d34b
+      RELEASE_TAG: 0.15.11
+      RELEASE_SHA: 41a984cfb904987ed5a772d2caaa0fa217a00a2c
       RELEASE_PRERELEASE: 'false'
       RELEASE_NOTES_PATH: release-notes.md
+      MACOS_RETRY_RUN: ${{ inputs.macos_retry_run_id }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: 434d8221bc72a3fbb65dcc62b74cfc77e565d34b
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -34,54 +39,128 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const source = process.env.RELEASE_SHA;
-            const original = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: 37742597366 })).data;
-            const retry = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: 37747471309 })).data;
+            if (!/^\d+$/.test(process.env.MACOS_RETRY_RUN)) throw Error('Invalid retry run identifier');
+            const run_id = Number(process.env.MACOS_RETRY_RUN);
+            const original = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: 42845474685 })).data;
+            const retry = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id })).data;
             if (original.head_sha !== source || original.path !== '.github/workflows/release-unified.yml' || original.status !== 'completed') throw Error('Unexpected original release identity');
-            if (retry.head_sha !== 'ab050828cf1a0a1234bd1a308bf04138ff9129c3' || retry.path !== '.github/workflows/release-unified.yml' || retry.status !== 'completed') throw Error('Unexpected macOS retry identity');
-            const oldJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: 37742597366, per_page: 100 });
-            const newJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: 37747471309, per_page: 100 });
-            const one = (jobs, name) => { const rows = jobs.filter(job => job.name === name); if (rows.length !== 1) throw Error('Ambiguous platform job'); return rows[0]; };
-            if (one(oldJobs, 'Installer — Linux x64').conclusion !== 'success') throw Error('Linux package smoke must have succeeded');
-            const windows = one(oldJobs, 'Installer — Windows x64');
-            for (const name of ['Package with electron-builder', 'Verify packaged native sidecar', 'Upload artifacts']) if (!windows.steps.some(step => step.name === name && step.conclusion === 'success')) throw Error('Windows package or exact native verification missing');
-            // The original Windows smoke altered the unpacked build by recursively
-            // generating checksums. Publication is dispatched only after the real
-            // preserved NSIS payload passes the local Windows smoke.
-            const mac = one(newJobs, 'Installer — macOS arm64');
-            if (mac.conclusion !== 'success' || !mac.steps.some(step => step.name === 'Smoke packaged UI and runtime contract' && step.conclusion === 'success')) throw Error('Corrected macOS package smoke must have succeeded');
+            if (retry.head_sha !== 'd22901cc0237c548029dd371f7416ef0e1f079fa' || retry.path !== '.github/workflows/release-unified.yml' || retry.status !== 'completed' || retry.conclusion !== 'success') throw Error('Unexpected macOS runner retry identity');
+            let tag = (await github.rest.git.getRef({ owner, repo, ref: 'tags/0.15.11' })).data.object;
+            while (tag.type === 'tag') tag = (await github.rest.git.getTag({ owner, repo, tag_sha: tag.sha })).data.object;
+            if (tag.type !== 'commit' || tag.sha !== source) throw Error('Immutable application tag mismatch');
+            const oldJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: 42845474685, per_page: 100 });
+            const newJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id, per_page: 100 });
+            const one = (jobs, name) => { const rows = jobs.filter(job => job.name === name); if (rows.length !== 1) throw Error('Ambiguous or missing job: ' + name); return rows[0]; };
+            for (const name of ['Qualify release commit / Frontend', 'Qualify release commit / Backend', 'Qualify release commit / Native Docker Runtime', 'Qualify release commit / Native Sidecar Windows Containment', 'Qualify release commit / Electron Build Test', 'Qualify release commit / CI Summary', 'Native Docker Image']) {
+              if (one(oldJobs, name).conclusion !== 'success') throw Error('Required source qualification failed: ' + name);
+            }
+            for (const [jobs, name] of [[oldJobs, 'Installer — Linux x64'], [oldJobs, 'Installer — Windows x64'], [newJobs, 'Installer — macOS arm64']]) {
+              const job = one(jobs, name);
+              if (job.conclusion !== 'success') throw Error('Installer did not qualify: ' + name);
+              for (const step of ['Smoke packaged UI and runtime contract', 'Upload artifacts']) {
+                if (!job.steps.some(item => item.name === step && item.conclusion === 'success')) throw Error('Missing installer qualification: ' + name + ' / ' + step);
+              }
+            }
       - uses: actions/download-artifact@v4
         with:
           name: installer-linux-x64-payload
-          run-id: 37742597366
+          run-id: 42845474685
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/linux
       - uses: actions/download-artifact@v4
         with:
           name: installer-windows-x64-payload
-          run-id: 37742597366
+          run-id: 42845474685
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/windows
       - uses: actions/download-artifact@v4
         with:
           name: installer-macos-arm64-payload
-          run-id: 37747471309
+          run-id: ${{ inputs.macos_retry_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/macos
-      - name: Verify and normalize exact existing installer payloads
+      - uses: actions/download-artifact@v4
+        with:
+          name: packaged-ui-linux-proof
+          run-id: 42845474685
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: proofs/linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: packaged-ui-windows-proof
+          run-id: 42845474685
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: proofs/windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: packaged-ui-macos-arm64-proof
+          run-id: ${{ inputs.macos_retry_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: proofs/macos
+      - name: Verify exact installers and their actual packaged SHAP evidence
         run: |
           mkdir release
           find artifacts -type f \( -name '*.deb' -o -name '*.exe' -o -name '*.dmg' -o -name '*.sha256' \) -exec cp {} release/ \;
-          node scripts/finalize-release-assets.cjs release 0.15.2 false false
+          node scripts/finalize-release-assets.cjs release 0.15.11 false false
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const { canonicalPublishedName, sha256File } = require('./scripts/finalize-release-assets.cjs');
+          const cohort = require('./build/runtime-cohort.json');
+          for (const [directory, platform] of [['linux', 'linux'], ['windows', 'win32'], ['macos', 'darwin']]) {
+            const proof = JSON.parse(fs.readFileSync(`proofs/${directory}/packaged-ui-smoke.json`, 'utf8'));
+            assert.equal(proof.success, true);
+            assert.equal(proof.source_sha, process.env.RELEASE_SHA);
+            assert.equal(proof.packaged_version.commit, process.env.RELEASE_SHA);
+            assert.equal(proof.packaged_version.version, process.env.RELEASE_TAG);
+            assert.equal(proof.platform, platform);
+            assert.equal(proof.embedded_sdk.source_sha, cohort.sdk.source_sha);
+            assert.equal(proof.embedded_sdk.wheel_sha256, cohort.sdk.wheel_sha256);
+            assert.equal(proof.shap.success, true);
+            assert(proof.shap.blocked_job_websockets > 0);
+            assert.equal(proof.shap.restored_results, true);
+            assert.equal(proof.shap.captured_prediction_additivity, true);
+            assert.equal(proof.installer.sha256, sha256File(`release/${canonicalPublishedName(proof.installer.name)}`));
+          }
+          NODE
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-candidate
+          run-id: 42845474685
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: docker-candidate
+      - name: Verify the original tested Docker image
+        run: |
+          docker load --input docker-candidate/studio-image.tar
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' nirs4all-studio:native-release-candidate)" = "$RELEASE_SHA"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' nirs4all-studio:native-release-candidate)" = "$RELEASE_TAG"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the same tested Docker image
+        run: |
+          IMAGE=ghcr.io/gbeurier/nirs4all-studio
+          docker tag nirs4all-studio:native-release-candidate "$IMAGE:$RELEASE_TAG"
+          docker push "$IMAGE:$RELEASE_TAG"
+          docker tag nirs4all-studio:native-release-candidate "$IMAGE:latest"
+          docker push "$IMAGE:latest"
       - name: Write release notes for these immutable artifacts
         run: |
           cat > release-notes.md <<'NOTES'
-          Studio 0.15.2 embeds public SDK 1.4.7, DAG 0.3.41 and Core 0.4.5 and fixes the embedded Python SDK identity guard. Version 0.15.1 was never published and is superseded.
+          Studio 0.15.11 fixes SHAP analyses stuck on "Starting" after missed job WebSocket events or interrupted submissions. Job progress and terminal results now reconcile with the backend, and restored results survive page reloads.
 
-          Installers: Windows x64, Linux x64 and macOS Apple Silicon. Intel Mac installers remain deferred. Each installer includes a SHA256 sidecar. macOS is unsigned; use right-click > Open on first launch.
+          The embedded public backend is nirs4all 1.4.16 with Core 0.5.0, DAG-ML 0.4.0, IO 0.3.1, Formats 0.2.16 and Methods 1.3.15 (ABI 2.22).
 
-          Docker: ghcr.io/gbeurier/nirs4all-studio:0.15.2 (also latest), digest sha256:3d302028832af375e165e8a18918c7ea84ef6ed7c85cca49de2ef7b41232c58b. See docs/NATIVE_HTTP_ACCESS.md for deployment configuration.
+          Installers: Windows x64, Linux x64 and macOS Apple Silicon. Each includes a SHA256 sidecar. Intel Mac installers remain deferred. Windows and macOS are unsigned. On Windows, use More info > Run anyway if SmartScreen prompts; on macOS, use right-click > Open on first launch.
 
-          Immutable application source: 434d8221bc72a3fbb65dcc62b74cfc77e565d34b. Linux, Windows and Docker reuse run 37742597366. macOS ARM uses the same application source with the corrected workflow smoke path in run 37747471309. Original workflow smoke failures are retained; successful binaries were not rebuilt. The preserved NSIS payload was checked separately on Windows before publication.
+          Each packaged application passed an actual train/refit/SHAP regression with missed WebSocket events, interrupted-submission recovery, restored results and captured-prediction additivity. This focused regression is not a full qualification of every scientific workflow.
+
+          Docker: ghcr.io/gbeurier/nirs4all-studio:0.15.11 (also latest). See docs/NATIVE_HTTP_ACCESS.md for deployment configuration.
+
+          Immutable application source: 41a984cfb904987ed5a772d2caaa0fa217a00a2c. Source checks, Windows, Linux and Docker reuse run 42845474685. Its macOS job could not start because GitHub retired the macos-14 runner; the macOS retry uses the same application tag with only the workflow runner changed to macos-15. Successful binaries are published unchanged.
           NOTES
+          printf '\nmacOS runner retry: https://github.com/GBeurier/nirs4all-studio/actions/runs/%s\n' "$MACOS_RETRY_RUN" >> release-notes.md
       - name: Publish the same verified installers
-        run: node scripts/publish-qualified-release.cjs release 0.15.2 false false
+        run: node scripts/publish-qualified-release.cjs release 0.15.11 false false
