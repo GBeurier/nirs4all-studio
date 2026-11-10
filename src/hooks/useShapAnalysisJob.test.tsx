@@ -111,6 +111,32 @@ afterEach(() => {
 });
 
 describe('useShapAnalysisJob', () => {
+  it('allows a new analysis after restoring an interrupted submission without a job id', async () => {
+    apiMocks.computeShapExplanation.mockResolvedValue({ job_id: 'job-1', status: 'completed' });
+    apiMocks.getShapResults.mockResolvedValue(shapResults());
+    const mounted = await renderHook(() => useShapAnalysisJob({ isSubmitting: true }));
+    expect(mounted.result.current?.isRunning).toBe(false);
+    expect(apiMocks.getShapStatus).not.toHaveBeenCalled();
+    await act(async () => {
+      await mounted.result.current?.runAnalysis({
+        chainId: 'chain-1', datasetId: 'corn', partition: 'test', explainerType: 'auto',
+      });
+    });
+    expect(mounted.result.current?.results?.job_id).toBe('job-1');
+    expect(mounted.result.current?.isRunning).toBe(false);
+    await mounted.unmount();
+  });
+
+  it('restores cached results without preserving an obsolete submitting flag', async () => {
+    const mounted = await renderHook(() => useShapAnalysisJob({
+      jobId: 'job-1', results: shapResults(), isSubmitting: true,
+    }));
+    expect(mounted.result.current?.results?.job_id).toBe('job-1');
+    expect(mounted.result.current?.isRunning).toBe(false);
+    expect(apiMocks.getShapStatus).not.toHaveBeenCalled();
+    await mounted.unmount();
+  });
+
   it('reconciles progress and completion when websocket events are missed', async () => {
     vi.useFakeTimers();
     apiMocks.computeShapExplanation.mockResolvedValue({ job_id: 'job-1', status: 'running' });

@@ -43,7 +43,9 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
   const [jobId, setJobId] = useState<string | null>(() => initialState.jobId ?? null);
   const [results, setResults] = useState<ShapResultsResponse | null>(() => initialState.results ?? null);
   const [rebinnedData, setRebinnedData] = useState<BinnedImportanceData | null>(() => initialState.rebinnedData ?? null);
-  const [isSubmitting, setIsSubmitting] = useState(() => initialState.isSubmitting ?? false);
+  // An in-flight POST cannot be resumed without its server job id. A cached
+  // submitting flag alone must leave the user able to start another analysis.
+  const [isSubmitting, setIsSubmitting] = useState(() => Boolean(initialState.jobId) && !initialState.results);
   const [error, setError] = useState<string | null>(null);
   const [selectedSamples, setSelectedSamples] = useState<number[]>(() => initialState.selectedSamples ?? []);
 
