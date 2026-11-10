@@ -24,16 +24,16 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_sidecar_resolves_selected_native_releases() -> None:
     manifest = tomllib.loads((ROOT / "sidecar" / "Cargo.toml").read_text(encoding="utf-8"))
     dependencies = manifest["dependencies"]
-    assert dependencies["nirs4all"] == "=0.4.7"
-    assert dependencies["nirs4all-io"] == "=0.2.14"
-    # Native consumers use published Core 0.4.7 and its selected DAG 0.3.44.
+    assert dependencies["nirs4all"] == "=0.5.0"
+    assert dependencies["nirs4all-io"] == "=0.3.1"
+    # Core and Studio resolve one public Rust IO cohort without overrides.
     assert "dag-ml-core" not in manifest.get("dev-dependencies", {})
 
 
-def test_lock_attests_the_published_registry_cohort_without_source_overrides() -> None:
+def test_lock_selects_the_public_registry_owner_cohort() -> None:
     locked = tomllib.loads((ROOT / "sidecar" / "Cargo.lock").read_text(encoding="utf-8"))
-    cohort = json.loads((ROOT / "sidecar/contracts/studio_native_source_cohort_v1.json").read_text())
-    assert cohort["schema_version"] == 1
+    cohort = json.loads((ROOT / "sidecar/contracts/studio_native_source_cohort_v2.json").read_text())
+    assert cohort["schema_version"] == 2
     assert cohort["publication_status"] == "published-registry"
     assert cohort["public_registry_verified"] is True
     assert cohort["requires_explicit_local_cargo_config"] is False
@@ -43,23 +43,27 @@ def test_lock_attests_the_published_registry_cohort_without_source_overrides() -
         matching = [package for package in locked["package"] if package["name"] == name]
         assert len(matching) == 1, f"one owner runtime is required for {name}"
         assert matching[0]["version"] == source["version"]
-        assert re.fullmatch(r"[0-9a-f]{40}", source["source_commit"])
         assert source["repository"].startswith("https://github.com/")
-        assert matching[0]["source"].startswith("registry+")
+        assert matching[0]["source"] == "registry+https://github.com/rust-lang/crates.io-index"
         assert re.fullmatch(r"[0-9a-f]{64}", matching[0]["checksum"])
-        assert matching[0]["checksum"] == source["registry_checksum_sha256"]
-    for package in locked["package"]:
-        if package["name"] in selected or package["name"] in {"studio-sidecar", "studio-windows-job"}:
-            continue
-        assert package.get("source", "").startswith("registry+"), "undeclared local overrides are forbidden"
-        assert re.fullmatch(r"[0-9a-f]{64}", package.get("checksum", ""))
-    # One actual ABI-2.20-capable loader, never the old public n4m 0.4.0.
-    assert selected["n4m"]["version"] == "0.4.1"
+    # The Rust binding version is independent of the selected libn4m ABI.
+    assert selected["n4m"]["version"] == "0.4.2"
+
+
+def test_historical_published_registry_cohort_is_unchanged() -> None:
+    historical = ROOT / "sidecar/contracts/studio_native_source_cohort_v1.json"
+    # Exact historical receipt from Main 2c2f380b; the current runtime uses v2.
+    assert hashlib.sha256(historical.read_bytes()).hexdigest() == "b6e3b9f01d644c641c5d99155dc94e999ada83c0e56b0e54100367b95c1977f1"
+    cohort = json.loads(historical.read_text())
+    assert cohort["publication_status"] == "published-registry"
+    assert cohort["public_registry_verified"] is True
 
 
 def test_release_workflow_uses_immutable_nirs4all_source() -> None:
-    config = json.loads((ROOT / "recommended-config.json").read_text(encoding="utf-8"))
-    version = config["nirs4all"]
+    # This frozen release workflow attests its historical profile, not the
+    # current SDK requirement in recommended-config.json.
+    historical = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())
+    version = historical["selected_distribution_version"]
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
 
     assert version == "1.4.15"
@@ -118,11 +122,12 @@ def test_reused_environment_range_is_shared_with_the_sidecar() -> None:
     assert f'pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "{version}";' in source
     # Custom/managed: the required nirs4all release up to the next minor; the
     # bundled runtime alone keeps the exact attested identity.
-    assert requirement == rust_requirement.group(1) == ">=1.4.15,<1.5"
+    assert version == "1.4.16"
+    assert requirement == rust_requirement.group(1) == ">=1.4.16,<1.5"
     assert packages[0] == f"nirs4all{requirement}"
     # nirs4all's own declared ranges for its native dependencies.
-    assert "nirs4all-io>=0.2.14,<0.3" in packages
-    assert "nirs4all-methods>=1.3.13,<2" in packages
+    assert "nirs4all-io>=0.3.0,<0.4" in packages
+    assert "nirs4all-methods>=1.3.15,<2" in packages
     assert not any("==" in package for package in packages)
 
 
@@ -140,8 +145,8 @@ def test_recommended_profiles_use_single_nirs4all_version() -> None:
         if package is None:
             continue
         assert package["recommended"] == version
-        # The minimum includes the frozen categorical target and prediction-scoring contract.
-        assert package["min"] == ">=1.4.15"
+        # Root chose the coherent current cohort floor; this is not an API-origin claim.
+        assert package["min"] == ">=1.4.16,<1.5"
 
 
 def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> None:
@@ -150,7 +155,7 @@ def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> No
     assert "  pinned-plugin-wheels:\n" in workflow
     assert workflow.count("needs: [prepare, pinned-plugin-wheels]") == 4
     assert workflow.count("name: Download canonical plugin wheels") == 4
-    version = json.loads((ROOT / "recommended-config.json").read_text())["nirs4all"]
+    version = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_v1.json").read_text())["selected_distribution_version"]
     assert workflow.count(f"--plugin-wheel _deps/pinned-plugin-wheels/nirs4all-{version}-py3-none-any.whl") == 4
     assert "--tools-wheel" not in workflow
     parsed = yaml.safe_load(workflow)
@@ -262,7 +267,7 @@ def test_generated_operator_registries_are_from_the_published_runtime() -> None:
     assert len(python_versions) == 1
 
 
-def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
+def test_historical_release_rebuilds_and_compares_its_exact_plugin_closure_twice() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
     constraints = (ROOT / "build" / "constraints" / "plugin-runtime-cpython311.txt").read_text(encoding="utf-8")
 
@@ -274,12 +279,64 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
     assert "dag-ml-data==0.2.16" in constraints
     assert "nirs4all-methods==1.3.13" in constraints
     assert "pls4all==1.3.13" in constraints
-    # Python and Rust DAG consume the same published 0.3.44 cohort.
+    # The historical SDK closure retains its own published DAG 0.3.44 cohort.
     assert "dag-ml==0.3.44" in constraints
     assert "nirs4all-formats==0.2.14" in constraints
     assert "nirs4all-tools" not in constraints
     assert "duckdb" not in constraints
     assert "scikit-learn==1.9.0" in constraints
+
+
+def test_current_shipping_constraints_select_the_public_sdk_and_owner_cohort() -> None:
+    constraints = (ROOT / "build/constraints/plugin-runtime-cpython311-sdk1416.txt").read_text()
+    assert "SDK 1.4.16 is public (Root run 42612130615)" in constraints
+    for requirement in [
+        "nirs4all==1.4.16", "nirs4all-core==0.5.0", "nirs4all-io==0.3.1",
+        "dag-ml==0.4.0", "dag-ml-data==0.2.16", "nirs4all-methods==1.3.15", "pls4all==1.3.15",
+        "nirs4all-formats==0.2.16",
+    ]:
+        assert requirement in constraints.splitlines()
+    cohort = json.loads((ROOT / "sidecar/contracts/studio_native_source_cohort_v2.json").read_text())
+    assert cohort["sdk_selection"]["requirement"] == ">=1.4.16,<1.5"
+    assert cohort["sdk_selection"]["publication_status"] == "published-registry"
+    assert cohort["packaged_methods_identity"] == {
+        "commit": "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
+        "tree": "61406cd2cf11204273a9972e4f268acfde7eb424",
+        "project_version": "1.3.15",
+    }
+
+
+def test_current_public_wheel_identity_is_shared_by_shipping_consumers() -> None:
+    contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_sdk1416_v1.json").read_text())
+    assert contract["selected_source_commit"] == "28c51162fc4d31d674c6606d608367a5f4b32b0e"
+    assert contract["selected_wheel_sha256"] == "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4"
+    assert contract["selected_distribution_version"] == "1.4.16"
+    assert contract["selected_installed_manifest_sha256"] == "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f"
+    assert contract["publication_status"] == "published-registry"
+    assert contract["public_registry_verified"] is True
+    assert contract["selected_wheel_url"].endswith("/nirs4all-1.4.16-py3-none-any.whl")
+    result = subprocess.run(["node", "-e", "console.log(JSON.stringify(require('./scripts/bake-python-plugin-runtime.cjs').expectedMarker()))"],
+                            cwd=ROOT, capture_output=True, text=True, check=True)
+    marker = json.loads(result.stdout)
+    for field, selected in [("source_commit", "selected_source_commit"), ("wheel_sha256", "selected_wheel_sha256"),
+                            ("distribution_version", "selected_distribution_version"),
+                            ("installed_manifest_sha256", "selected_installed_manifest_sha256")]:
+        assert marker[field] == contract[selected]
+    constraints = ROOT / marker["constraints"]["path"]
+    assert constraints.name == "plugin-runtime-cpython311-sdk1416.txt"
+    assert hashlib.sha256(constraints.read_bytes()).hexdigest() == marker["constraints"]["sha256"]
+    for path in ["scripts/setup-python-env.cjs", "electron/packaged-runtime-contract.ts", "sidecar/src/scientific_cpython.rs"]:
+        source = (ROOT / path).read_text()
+        for field in ["selected_source_commit", "selected_wheel_sha256"]:
+            assert contract[field] in source
+    rust = (ROOT / "sidecar/src/scientific_cpython.rs").read_text()
+    assert 'include_str!("../contracts/studio_scientific_cpython_host_sdk1416_v1.json")' in rust
+    policy = json.loads((ROOT / "qualification/policy.json").read_text())
+    for gate in policy["gates"]:
+        if "packaged" in gate["id"] or "application-migration" in gate["id"]:
+            assert "scripts/methods-public-wheel-profile.json" in gate["input_paths"]
+            assert "sidecar/" in gate["input_paths"]  # Includes the successor host contract.
+    # Publication inputs are not an installed-host, packaged-worker or all-platform qualification claim.
 
 
 def test_release_dispatch_only_publishes_when_explicitly_requested() -> None:

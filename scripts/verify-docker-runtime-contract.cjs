@@ -65,7 +65,7 @@ requireText(
 );
 requireText(
   dockerfile,
-  "COPY build/constraints/plugin-runtime-cpython311.txt build/constraints/plugin-runtime-cpython311.txt",
+  "COPY build/constraints/plugin-runtime-cpython311-sdk1416.txt build/constraints/plugin-runtime-cpython311-sdk1416.txt",
   "mandatory CPython constraints in plugin builder project root",
 );
 requireText(
@@ -95,7 +95,7 @@ requireText(
 );
 requireText(
   dockerfile,
-  "COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/python-runtime-config.cjs /contract-scripts/",
+  "COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/python-runtime-config.cjs scripts/methods-public-wheel-profile.json /contract-scripts/",
   "complete native contract verifier module graph",
 );
 requireText(
@@ -105,7 +105,7 @@ requireText(
 );
 requireText(
   dockerfile,
-  "COPY build/constraints/plugin-runtime-cpython311.txt /build/constraints/plugin-runtime-cpython311.txt",
+  "COPY build/constraints/plugin-runtime-cpython311-sdk1416.txt /build/constraints/plugin-runtime-cpython311-sdk1416.txt",
   "mandatory CPython constraints for native runtime verification",
 );
 requireText(
@@ -119,8 +119,10 @@ requireText(
   "pinned nirs4all-ui package before npm ci",
 );
 requireText(dockerfile, "cargo build --locked --release", "locked Rust build");
-requireText(dockerfile, "COPY --from=methods-runtime /libn4m.so.2.20.0", "native Methods named context");
+requireText(dockerfile, "COPY --from=methods-runtime /libn4m.so.2.22.0", "native Methods named context");
 requireText(dockerfile, "NIRS4ALL_METHODS_SHA256", "native Methods content identity");
+requireText(dockerfile, "COPY scripts/methods-public-wheel-profile.json scripts/methods-public-wheel-profile.json", "Rust compiled public Methods selection");
+requireText(dockerfile, "ARG NIRS4ALL_METHODS_IDENTITY_PROFILE=public-wheel", "public artifact identity default");
 requireText(dockerfile, "c.verifyRuntimeContract", "packaged runtime contract verification");
 requireText(dockerfile, "requireBundledPythonPlugin:true", "mandatory CPython plugin policy");
 requireText(dockerfile, "requireBundledMethods:true", "mandatory Methods policy");
@@ -205,7 +207,7 @@ requireText(dockerignore, "!build/", "constraints parent context allowlist");
 requireText(dockerignore, "!build/constraints/", "constraints directory context allowlist");
 requireText(
   dockerignore,
-  "!build/constraints/plugin-runtime-cpython311.txt",
+  "!build/constraints/plugin-runtime-cpython311-sdk1416.txt",
   "mandatory CPython constraints context allowlist",
 );
 forbid(dockerignore, /^(?:postcss\.config\.js|tailwind\.config\.ts)\/?$/m, "frontend CSS build configuration exclusion");
@@ -232,6 +234,8 @@ requireText(dockerSmoke, 'Object.hasOwn(exposedPorts, "8001/tcp")', "sidecar Doc
 
 requireText(ciWorkflow, "npm run test:docker-runtime-contract", "CI static Docker contract gate");
 requireText(ciWorkflow, "--build-context methods-runtime=", "CI Methods build context");
+requireText(ciWorkflow, "--build-arg NIRS4ALL_METHODS_IDENTITY_PROFILE=${NIRS4ALL_BUILD_METHODS_IDENTITY_PROFILE}", "CI source-builder identity profile");
+requireText(releaseWorkflow, "--build-arg NIRS4ALL_METHODS_IDENTITY_PROFILE=${NIRS4ALL_BUILD_METHODS_IDENTITY_PROFILE}", "release source-builder identity profile");
 requireText(releaseWorkflow, "STUDIO_VERSION=${{ needs.prepare.outputs.version }}", "release image version");
 requireText(releaseWorkflow, "STUDIO_REVISION=${{ needs.prepare.outputs.checkout_ref }}", "release image revision");
 requireText(releaseWorkflow, "scripts/smoke-docker-native-runtime.sh", "release live Docker smoke");

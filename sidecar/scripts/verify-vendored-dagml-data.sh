@@ -3,7 +3,8 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 vendor_root="$script_dir/../vendor/dag-ml-data-eb2ad78"
-lock="$script_dir/../Cargo.lock"
+# These immutable Main payloads attest the historical cohort, not the current lock.
+cohort="$script_dir/../contracts/studio_native_source_cohort_v1.json"
 inventory="$vendor_root/INVENTORY.sha256"
 actual=$(mktemp)
 expected=$(mktemp)
@@ -17,8 +18,8 @@ test "$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$vendor_root/upstream/dag-ml-dat
 grep -q '"sha1": "eb2ad7835ca85feebf6f626d9f43f61575a1c9a9"' "$vendor_root/upstream/dag-ml-data-0.2.16"/.cargo_vcs_info.json
 grep -q '"dag-ml-data": "8542e62591146efe9250362d00557cb946a92b75"' "$vendor_root/PROVENANCE.json"
 grep -q '"sha256": "f57a340d701cc08eadbc0c5b1745dd46d76b91aba1a68a718be4adc4abc77adc"' "$vendor_root/PROVENANCE.json"
-grep -A2 -x 'name = "dag-ml-data"' "$lock" | grep -qx 'version = "0.2.16"'
-grep -qx 'checksum = "f57a340d701cc08eadbc0c5b1745dd46d76b91aba1a68a718be4adc4abc77adc"' "$lock"
+sed -n '/^    "dag-ml-data": {$/,/^    }/p' "$cohort" | grep -q '"version": "0.2.16"'
+sed -n '/^    "dag-ml-data": {$/,/^    }/p' "$cohort" | grep -q '"registry_checksum_sha256": "f57a340d701cc08eadbc0c5b1745dd46d76b91aba1a68a718be4adc4abc77adc"'
 test -f "$vendor_root/upstream/dag-ml-data-core-0.2.16"/Cargo.toml
 test -f "$vendor_root/upstream/dag-ml-data-core-0.2.16"/Cargo.toml.orig
 test -f "$vendor_root/upstream/dag-ml-data-core-0.2.16"/Cargo.lock
@@ -27,8 +28,8 @@ test "$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$vendor_root/upstream/dag-ml-dat
 grep -q '"sha1": "eb2ad7835ca85feebf6f626d9f43f61575a1c9a9"' "$vendor_root/upstream/dag-ml-data-core-0.2.16"/.cargo_vcs_info.json
 grep -q '"dag-ml-data-core": "16d810b4feb1768c8676bc5b46c5247a5de3a08b"' "$vendor_root/PROVENANCE.json"
 grep -q '"sha256": "2b422140ba492c707ba776403ccb613a4f371f6a64bc1af3adfc2af7d883b2fc"' "$vendor_root/PROVENANCE.json"
-grep -A2 -x 'name = "dag-ml-data-core"' "$lock" | grep -qx 'version = "0.2.16"'
-grep -qx 'checksum = "2b422140ba492c707ba776403ccb613a4f371f6a64bc1af3adfc2af7d883b2fc"' "$lock"
+sed -n '/^    "dag-ml-data-core": {$/,/^    }/p' "$cohort" | grep -q '"version": "0.2.16"'
+sed -n '/^    "dag-ml-data-core": {$/,/^    }/p' "$cohort" | grep -q '"registry_checksum_sha256": "2b422140ba492c707ba776403ccb613a4f371f6a64bc1af3adfc2af7d883b2fc"'
 test -f "$vendor_root/upstream/dag-ml-data-provider-0.2.16"/Cargo.toml
 test -f "$vendor_root/upstream/dag-ml-data-provider-0.2.16"/Cargo.toml.orig
 test -f "$vendor_root/upstream/dag-ml-data-provider-0.2.16"/Cargo.lock
@@ -37,8 +38,8 @@ test "$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$vendor_root/upstream/dag-ml-dat
 grep -q '"sha1": "eb2ad7835ca85feebf6f626d9f43f61575a1c9a9"' "$vendor_root/upstream/dag-ml-data-provider-0.2.16"/.cargo_vcs_info.json
 grep -q '"dag-ml-data-provider": "6bab41e5199e15be16fbf6c2858b1ab68eabc18a"' "$vendor_root/PROVENANCE.json"
 grep -q '"sha256": "48268bd5b790a5512b71aca85617729d3bad83fea3a0368e257291e3ace2f781"' "$vendor_root/PROVENANCE.json"
-grep -A2 -x 'name = "dag-ml-data-provider"' "$lock" | grep -qx 'version = "0.2.16"'
-grep -qx 'checksum = "48268bd5b790a5512b71aca85617729d3bad83fea3a0368e257291e3ace2f781"' "$lock"
+sed -n '/^    "dag-ml-data-provider": {$/,/^    }/p' "$cohort" | grep -q '"version": "0.2.16"'
+sed -n '/^    "dag-ml-data-provider": {$/,/^    }/p' "$cohort" | grep -q '"registry_checksum_sha256": "48268bd5b790a5512b71aca85617729d3bad83fea3a0368e257291e3ace2f781"'
 grep -q '"commit": "eb2ad7835ca85feebf6f626d9f43f61575a1c9a9"' "$vendor_root/PROVENANCE.json"
 grep -q '"repository_tree": "8bbccfcf7194f33eea6df14c9bb64bea2e262d63"' "$vendor_root/PROVENANCE.json"
 grep -q '"hashed_files": 40' "$vendor_root/PROVENANCE.json"

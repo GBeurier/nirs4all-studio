@@ -271,6 +271,7 @@ function prepareMacosAttestedRuntime({
     platform: "darwin",
     arch,
     methodsLibraryPath: verifiedBefore.methodsLibraryPath,
+    methodsIdentityProfile: verifiedBefore.methodsIdentityProfile,
   });
   const verifiedAfter = verifyRuntimeContractImpl({
     backendRoot,

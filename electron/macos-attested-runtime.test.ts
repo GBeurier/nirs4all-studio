@@ -36,6 +36,7 @@ const macRuntime = require("../scripts/macos-attested-runtime.cjs") as {
       pythonRuntimeRoot: string;
       pythonPluginHostPath: string;
       methodsLibraryPath: string | null;
+      methodsIdentityProfile: "public-wheel" | "source-build";
     };
     writeRuntimeContractImpl: (options: Record<string, unknown>) => void;
   }): { machOs: string[] };
@@ -110,6 +111,7 @@ describe("macOS attested packaged runtime", () => {
           pythonRuntimeRoot: runtimeRoot,
           pythonPluginHostPath: pythonPath,
           methodsLibraryPath: methodsPath,
+          methodsIdentityProfile: "source-build" as const,
         };
       });
       const observedHashes: Record<string, string> = {};
@@ -123,6 +125,7 @@ describe("macOS attested packaged runtime", () => {
           platform: "darwin",
           arch: "arm64",
           methodsLibraryPath: methodsPath,
+          methodsIdentityProfile: "source-build",
         });
       });
       const signMachOImpl = vi.fn((filePath: string, options: { identity: string }) => {
@@ -196,6 +199,7 @@ describe("macOS attested packaged runtime", () => {
           pythonRuntimeRoot: runtimeRoot,
           pythonPluginHostPath: pythonPath,
           methodsLibraryPath: null,
+          methodsIdentityProfile: "source-build" as const,
         }),
         writeRuntimeContractImpl,
       })).toThrow("codesign rejected member");
@@ -269,6 +273,7 @@ describe("macOS attested packaged runtime", () => {
           pythonRuntimeRoot: runtimeRoot,
           pythonPluginHostPath: pythonPath,
           methodsLibraryPath: methodsPath,
+          methodsIdentityProfile: "source-build" as const,
         }),
         writeRuntimeContractImpl,
       })).toThrow("Methods library is not a Mach-O");

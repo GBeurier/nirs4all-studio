@@ -22,13 +22,15 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
 // package list exact and intentionally small: Python HTTP/control-plane
 // dependencies live in python-http-runtime-config.cjs, which is source/dev only.
 const PLUGIN_DISTRIBUTION_VERSION = recommendedConfig.nirs4all;
+// Public owner pins; SDK 1.4.16 still requires its own public artifact.
+// These selections do not attest an installed or packaged runtime.
 const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
-  "nirs4all-core==0.4.7",
-  "dag-ml==0.3.44",
+  "nirs4all-core==0.5.0",
+  "dag-ml==0.4.0",
   "dag-ml-data==0.2.16",
-  "nirs4all-io==0.2.14",
-  "nirs4all-methods==1.3.13",
-  "nirs4all-formats==0.2.14",
+  "nirs4all-io==0.3.1",
+  "nirs4all-methods==1.3.15",
+  "nirs4all-formats==0.2.16",
   "pyarrow==25.0.1",
   "shap==0.47.1",
   "matplotlib==3.10.1",
@@ -40,9 +42,8 @@ const PLUGIN_HOST_PACKAGES = Object.freeze([
 ]);
 // Custom and managed environments accept version ranges; only the bundled
 // runtime is pinned (and attested) exactly. Studio talks to nirs4all through
-// named, schema-versioned callables (studio_scientific_job_v1/v2 and the
-// studio-* request schemas) that stay stable within a minor release, so any
-// nirs4all patch release from the required one up to the next minor works.
+// named, schema-versioned callables. The minimum is the chosen current
+// qualified cohort floor; older SDK patch releases are not admitted.
 // The Rust sidecar enforces the same range (scientific_cpython.rs).
 const [PLUGIN_DISTRIBUTION_MAJOR, PLUGIN_DISTRIBUTION_MINOR] = PLUGIN_DISTRIBUTION_VERSION.split(".").map(Number);
 const PLUGIN_DISTRIBUTION_REQUIREMENT =
@@ -53,12 +54,12 @@ const PLUGIN_DISTRIBUTION_REQUIREMENT =
 // where pip resolves io/methods within these ranges.
 const REUSABLE_RUNTIME_PACKAGES = Object.freeze([
   `nirs4all${PLUGIN_DISTRIBUTION_REQUIREMENT}`,
-  "nirs4all-io>=0.2.14,<0.3",
-  "nirs4all-methods>=1.3.13,<2",
+  "nirs4all-io>=0.3.0,<0.4",
+  "nirs4all-methods>=1.3.15,<2",
   "nirs4all-formats",
 ]);
 // Native ABI exposed by nirs4all-methods (n4m.abi_version()[:2]).
-const REQUIRED_METHODS_ABI = Object.freeze([2, 20]);
+const REQUIRED_METHODS_ABI = Object.freeze([2, 22]);
 
 const LEGACY_FLAVOR_TO_PROFILE = Object.freeze({
   cpu: "cpu",

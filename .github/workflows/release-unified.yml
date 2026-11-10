@@ -1120,6 +1120,7 @@ jobs:
             --build-arg STUDIO_VERSION=${{ needs.prepare.outputs.version }} \
             --build-arg STUDIO_REVISION=${{ needs.prepare.outputs.checkout_ref }} \
             --build-arg NIRS4ALL_METHODS_SHA256=${NIRS4ALL_BUILD_METHODS_SHA256} \
+            --build-arg NIRS4ALL_METHODS_IDENTITY_PROFILE=${NIRS4ALL_BUILD_METHODS_IDENTITY_PROFILE} \
             --build-context methods-runtime="$(dirname "${NIRS4ALL_BUILD_METHODS_LIBRARY}")" \
             --label "org.opencontainers.image.title=nirs4all Studio" \
             --label "org.opencontainers.image.version=${{ needs.prepare.outputs.version }}" \

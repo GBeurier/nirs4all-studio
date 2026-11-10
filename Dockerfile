@@ -33,6 +33,7 @@ RUN npm run build
 FROM ${RUST_IMAGE} AS sidecar
 WORKDIR /build
 COPY sidecar/ sidecar/
+COPY scripts/methods-public-wheel-profile.json scripts/methods-public-wheel-profile.json
 COPY --from=studio-document-adapter-sources /api/synthetic_datasets.json api/synthetic_datasets.json
 COPY --from=studio-document-adapter-sources /api/presets/ api/presets/
 COPY --from=studio-document-adapter-sources /api/shared/system_info.py api/shared/system_info.py
@@ -51,7 +52,7 @@ COPY recommended-config.json ./
 COPY --from=studio-document-adapter-sources / /build/
 COPY scripts/setup-python-env.cjs scripts/tls-trust.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/
 COPY scripts/normalize-plugin-wheel.py scripts/
-COPY build/constraints/plugin-runtime-cpython311.txt build/constraints/plugin-runtime-cpython311.txt
+COPY build/constraints/plugin-runtime-cpython311-sdk1416.txt build/constraints/plugin-runtime-cpython311-sdk1416.txt
 RUN --mount=type=cache,target=/python-cache \
     node scripts/bake-python-plugin-runtime.cjs \
       --backend-root /product/backend \
@@ -59,19 +60,20 @@ RUN --mount=type=cache,target=/python-cache \
 
 FROM ${NODE_IMAGE} AS native-runtime-contract
 ARG NIRS4ALL_METHODS_SHA256
+ARG NIRS4ALL_METHODS_IDENTITY_PROFILE=public-wheel
 WORKDIR /product
 RUN test -n "${NIRS4ALL_METHODS_SHA256}" \
     && mkdir -p backend/native /contract-scripts
 COPY --from=python-plugin-runtime /product/backend/ backend/
 COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/studio-sidecar
-COPY --from=methods-runtime /libn4m.so.2.20.0 backend/native/libn4m.so
+COPY --from=methods-runtime /libn4m.so.2.22.0 backend/native/libn4m.so
 COPY --from=studio-document-adapter-sources / /
-COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/python-runtime-config.cjs /contract-scripts/
+COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/python-runtime-config.cjs scripts/methods-public-wheel-profile.json /contract-scripts/
 COPY recommended-config.json /recommended-config.json
-COPY build/constraints/plugin-runtime-cpython311.txt /build/constraints/plugin-runtime-cpython311.txt
+COPY build/constraints/plugin-runtime-cpython311-sdk1416.txt /build/constraints/plugin-runtime-cpython311-sdk1416.txt
 RUN test "$(sha256sum backend/native/libn4m.so | cut -d' ' -f1)" = "${NIRS4ALL_METHODS_SHA256}" \
     && chmod 0755 backend/native/studio-sidecar \
-    && node -e 'const c=require("/contract-scripts/native-runtime-contract.cjs"); c.writeRuntimeContract({backendRoot:"/product/backend",platform:"linux",arch:"x64",methodsLibraryPath:"/product/backend/native/libn4m.so"}); c.verifyRuntimeContract({backendRoot:"/product/backend",artifactBoundaryRoot:"/product/backend",platform:"linux",arch:"x64",requireBundledPythonPlugin:true,requireBundledMethods:true})'
+    && node -e 'const c=require("/contract-scripts/native-runtime-contract.cjs"); c.writeRuntimeContract({backendRoot:"/product/backend",platform:"linux",arch:"x64",methodsLibraryPath:"/product/backend/native/libn4m.so",methodsIdentityProfile:process.env.NIRS4ALL_METHODS_IDENTITY_PROFILE}); c.verifyRuntimeContract({backendRoot:"/product/backend",artifactBoundaryRoot:"/product/backend",platform:"linux",arch:"x64",requireBundledPythonPlugin:true,requireBundledMethods:true})'
 
 FROM ${NGINX_IMAGE} AS runtime
 ARG STUDIO_VERSION=0.11.1

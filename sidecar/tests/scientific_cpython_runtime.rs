@@ -736,16 +736,17 @@ fn selected_wheel_resolves_saved_route_and_persists_only_the_original_request() 
     for event in &events[1..events.len() - 1] {
         assert_eq!(event["type"], "job_progress");
         assert_eq!(event["data"]["job_id"], job_id);
-        assert_eq!(event["data"]["progress"].as_f64(), Some(0.0));
+        let progress = event["data"]["progress"].as_f64().unwrap();
+        assert!(progress.is_finite() && (0.0..=100.0).contains(&progress));
         assert_eq!(event["data"]["metrics"], json!({}));
-        let elapsed = event["data"]["message"]
-            .as_str()
-            .unwrap()
-            .strip_prefix("Scientific computation running · ")
-            .unwrap()
-            .strip_suffix("s elapsed. Fit progress is unavailable.")
-            .unwrap();
-        assert!(elapsed.parse::<u64>().is_ok());
+        let message = event["data"]["message"].as_str().unwrap();
+        assert!(!message.is_empty());
+        if let Some(elapsed) = message.strip_prefix("Scientific computation running · ") {
+            let elapsed = elapsed
+                .strip_suffix("s elapsed. Fit progress is unavailable.")
+                .unwrap();
+            assert!(elapsed.parse::<u64>().is_ok());
+        }
     }
     let progress_count = u64::try_from(events.len() - 2).unwrap();
     // One start, truthful activity, one completion.

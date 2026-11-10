@@ -76,7 +76,7 @@ impl Drop for BoundaryTiming {
 }
 
 pub const SCIENTIFIC_CPYTHON_HOST_CONTRACT: &str =
-    include_str!("../contracts/studio_scientific_cpython_host_v1.json");
+    include_str!("../contracts/studio_scientific_cpython_host_sdk1416_v1.json");
 pub const SCIENTIFIC_CPYTHON_EXECUTOR_ID: &str = "cpython-stdio-v1";
 pub const WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT: &str = "--internal-scientific-cpython-job";
 /// One-time cold-start budget for the immutable packaged scientific runtime.
@@ -109,9 +109,9 @@ pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_HOST_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
-/// Exact nirs4all release of the packaged runtime, attested with the manifest,
-/// wheel, source commit and callable digests below.
-pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.15";
+/// Chosen minimum SDK version for the current qualified local owner cohort.
+/// This floor does not assert publication or the first version of any API.
+pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.16";
 /// Exclusive upper bound of the nirs4all releases a selected environment may use.
 ///
 /// Selected (custom or managed) environments are not attested file by file:
@@ -120,12 +120,14 @@ pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.15";
 /// (`REUSABLE_RUNTIME_PACKAGES`). Studio reaches nirs4all only through named,
 /// schema-versioned callables that stay stable within a minor release.
 pub const SCIENTIFIC_DISTRIBUTION_LIMIT: &str = "1.5";
-pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = ">=1.4.15,<1.5";
+pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = ">=1.4.16,<1.5";
+/// Exact public SDK wheel selected for packaged admission.
+const PACKAGED_DISTRIBUTION_VERSION: &str = "1.4.16";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
-    "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a";
+    "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
-    "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0";
-pub const SCIENTIFIC_SOURCE_COMMIT: &str = "2ab9953ccb4b5e72f76be6cb637503622c5869cf";
+    "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4";
+pub const SCIENTIFIC_SOURCE_COMMIT: &str = "28c51162fc4d31d674c6606d608367a5f4b32b0e";
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
 
@@ -205,7 +207,7 @@ except Exception as error:
     distribution_files_verified=False
     distribution_stat_sha256=None
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_stat_sha256":distribution_stat_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0","source_commit":"2ab9953ccb4b5e72f76be6cb637503622c5869cf"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_stat_sha256":distribution_stat_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4" if sys.argv[1] else None,"source_commit":"28c51162fc4d31d674c6606d608367a5f4b32b0e" if sys.argv[1] else None},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
@@ -248,15 +250,17 @@ def studio_distribution_supported(version):
         left=release+[0]*(size-len(release))
         right=bound+[0]*(size-len(bound))
         return (left>right)-(left<right)
-    minimum=compare([1,4,15])
+    minimum=compare([1,4,16])
     return (minimum>0 or (minimum==0 and not prerelease)) and compare([1,5])<0
 raw=sys.stdin.buffer.read(33554433)
 if len(raw)>33554432:
     raise RuntimeError("scientific request exceeds stdin budget")
 request=json.loads(raw)
 distribution=importlib.metadata.distribution("nirs4all")
+if not studio_distribution_supported(distribution.version):
+    raise RuntimeError("scientific distribution version unsupported")
 if sys.argv[1]:
-    if distribution.version != "1.4.15":
+    if distribution.version != "1.4.16":
         raise RuntimeError("scientific distribution version changed")
     record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
     record_path=distribution.locate_file(record_entry) if record_entry else None
@@ -265,13 +269,11 @@ if sys.argv[1]:
     installer_members={metadata_root+name for name in ("INSTALLER","REQUESTED","direct_url.json","uv_cache.json")}
     record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0] not in installer_members))
     manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-    if hashlib.sha256(manifest_bytes).hexdigest() != "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a":
+    if hashlib.sha256(manifest_bytes).hexdigest() != "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f":
         raise RuntimeError("scientific distribution identity changed")
     for relative,encoded,size in record_rows:
         if "=" not in encoded or (size and not size.isdigit()):
             raise RuntimeError("scientific distribution record changed")
-elif not studio_distribution_supported(distribution.version):
-    raise RuntimeError("scientific distribution version unsupported")
 # Build qualification verifies the full packaged closure. Runtime acquisition
 # verifies the scientific RECORD members once; subsequent workers verify its
 # identity and the selected callable without repeating whole-package hashing.
@@ -1321,13 +1323,11 @@ fn checked_distribution(
     if object.get("distribution").and_then(Value::as_str) != Some("nirs4all") {
         return Err(ScientificCpythonUnavailable::DistributionTampered);
     }
-    if policy == DistributionPolicy::Selected
-        && !distribution_version_supported(&distribution_version)
-    {
+    if !distribution_version_supported(&distribution_version) {
         return Err(ScientificCpythonUnavailable::DistributionVersionUnsupported);
     }
     if policy == DistributionPolicy::Packaged
-        && (distribution_version != SCIENTIFIC_DISTRIBUTION_VERSION
+        && (distribution_version != PACKAGED_DISTRIBUTION_VERSION
             || object
                 .get("distribution_manifest_sha256")
                 .and_then(Value::as_str)
@@ -4523,14 +4523,16 @@ done"#,
         )
     }
 
-    const SUPPORTED_VERSION_CASES: [(&str, bool); 12] = [
-        ("1.4.15", true),
-        ("1.4.16", true),
-        ("1.4.99.post1", true),
-        ("1.4.15.0", true),
+    const SUPPORTED_VERSION_CASES: [(&str, bool); 14] = [
         ("1.4.14", false),
-        ("1.4.15rc1", false),
-        ("1.4.15.dev0", false),
+        ("1.4.15", false),
+        ("1.4.16", true),
+        ("1.4.17", true),
+        ("1.4.99.post1", true),
+        ("1.4.16.0", true),
+        ("1.4.13", false),
+        ("1.4.16rc1", false),
+        ("1.4.16.dev0", false),
         ("1.5", false),
         ("1.5.0", false),
         ("1.5.0rc1", false),
@@ -4568,9 +4570,15 @@ done"#,
             "compare({})<0",
             to_list(SCIENTIFIC_DISTRIBUTION_LIMIT)
         )));
+        assert!(PREFLIGHT_SCRIPT.contains(SCIENTIFIC_WHEEL_SHA256));
+        assert!(PREFLIGHT_SCRIPT.contains(SCIENTIFIC_SOURCE_COMMIT));
+        assert!(EXECUTION_SCRIPT.contains(SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256));
         assert!(EXECUTION_SCRIPT.contains(&format!(
-            "if sys.argv[1]:\n    if distribution.version != \"{SCIENTIFIC_DISTRIBUTION_VERSION}\":"
+            "if sys.argv[1]:\n    if distribution.version != \"{PACKAGED_DISTRIBUTION_VERSION}\":"
         )));
+        assert!(EXECUTION_SCRIPT.contains(
+            "if not studio_distribution_supported(distribution.version):\n    raise RuntimeError(\"scientific distribution version unsupported\")\nif sys.argv[1]:"
+        ));
     }
 
     #[cfg(unix)]
@@ -4655,7 +4663,7 @@ done"#,
         )
         .unwrap();
         let host = host_identity(&callable).unwrap();
-        for version in ["1.4.15", "1.4.16"] {
+        for version in ["1.4.16", "1.4.17"] {
             let acquired = parse_acquired_host(
                 host.clone(),
                 &preflight_output(version, &callable),
@@ -4674,16 +4682,18 @@ done"#,
                 ScientificCpythonUnavailable::DistributionTampered
             );
         }
-        for version in ["1.4.14", "1.5.0"] {
-            assert_eq!(
-                parse_acquired_host(
-                    host.clone(),
-                    &preflight_output(version, &callable),
-                    DistributionPolicy::Selected,
-                )
-                .unwrap_err(),
-                ScientificCpythonUnavailable::DistributionVersionUnsupported
-            );
+        for version in ["1.4.13", "1.4.14", "1.4.15", "1.5.0"] {
+            for policy in [DistributionPolicy::Selected, DistributionPolicy::Packaged] {
+                assert_eq!(
+                    parse_acquired_host(
+                        host.clone(),
+                        &preflight_output(version, &callable),
+                        policy
+                    )
+                    .unwrap_err(),
+                    ScientificCpythonUnavailable::DistributionVersionUnsupported
+                );
+            }
         }
         assert_eq!(
             ScientificCpythonUnavailable::DistributionVersionUnsupported.reason(),
@@ -4716,6 +4726,13 @@ done"#,
             "tkinter_and__tkinter_pruned_from_headless_plugin_closure"
         );
         assert_eq!(contract["selected_source_commit"], SCIENTIFIC_SOURCE_COMMIT);
+        assert_eq!(
+            contract["selected_distribution_version"],
+            PACKAGED_DISTRIBUTION_VERSION
+        );
+        assert!(distribution_version_supported(
+            PACKAGED_DISTRIBUTION_VERSION
+        ));
         assert_eq!(contract["selected_wheel_sha256"], SCIENTIFIC_WHEEL_SHA256);
         assert_eq!(
             contract["training_execution_timeout_ms"].as_u64(),
@@ -4834,7 +4851,7 @@ done"#,
     #[cfg(unix)]
     #[test]
     #[ignore = "requires STUDIO_BENCH_RUNTIME_ROOT with a real packaged runtime"]
-    fn benchmark_packaged_runtime_acquisition_phases() {
+    fn benchmark_historical_packaged_runtime_refusal_phases() {
         let root = PathBuf::from(
             std::env::var_os("STUDIO_BENCH_RUNTIME_ROOT").expect("packaged runtime path"),
         );
@@ -4862,7 +4879,10 @@ done"#,
         )
         .unwrap();
         eprintln!("preflight + warm acquisition: {:?}", started.elapsed());
-        parse_acquired_host(host, &output, DistributionPolicy::Packaged).unwrap();
+        assert_eq!(
+            parse_acquired_host(host, &output, DistributionPolicy::Packaged).unwrap_err(),
+            ScientificCpythonUnavailable::DistributionVersionUnsupported
+        );
         drop(worker);
     }
 
@@ -5095,7 +5115,7 @@ done"#,
         // No record: a full verification within the cold budget.
         let key = acquire();
         assert_eq!(fs::read_to_string(&observed).unwrap(), "none");
-        // An unready host is never recorded as verified.
+        // The current distribution passes admission, but an unready callable is never cached.
         let cache = host_verification_cache::VerificationCache::new(&config);
         assert_eq!(cache.lookup(&key), None);
         assert_eq!(
@@ -5119,14 +5139,14 @@ done"#,
         let root = tempfile::tempdir().unwrap();
         let site = root.path().join("site-packages");
         fs::create_dir_all(site.join("nirs4all")).unwrap();
-        fs::create_dir_all(site.join("nirs4all-1.4.15.dist-info")).unwrap();
+        fs::create_dir_all(site.join("nirs4all-1.4.16.dist-info")).unwrap();
         let callable = site.join("nirs4all/__init__.py");
         fs::write(
             &callable,
             "def studio_scientific_job_v1(request): return request\n",
         )
         .unwrap();
-        let response = String::from_utf8(preflight_output("1.4.15", &callable)).unwrap();
+        let response = String::from_utf8(preflight_output("1.4.16", &callable)).unwrap();
         let host = shell_host(
             &root.path().join("bin"),
             "python3",
@@ -5140,7 +5160,7 @@ done"#,
             "{}",
             executor.unavailable_reason()
         );
-        assert_eq!(executor.distribution_version(), Some("1.4.15"));
+        assert_eq!(executor.distribution_version(), Some("1.4.16"));
         let mut identity = host_identity(&host).unwrap();
         identity.canonical_path = std::path::absolute(&host).unwrap();
         let key = host_verification_cache::VerificationKey::new(&identity, Some(&site), None);
@@ -5175,6 +5195,8 @@ done"#,
             None,
             root.join("config"),
         );
+        // The current SDK identity is admitted; this fixture deliberately has
+        // no callable. Runtime inventory/tamper checks remain active below.
         assert_eq!(
             acquired.unavailable_reason(),
             "scientific_callable_unavailable"

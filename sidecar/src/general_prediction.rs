@@ -14,11 +14,12 @@ use nirs4all_io::core::infer::describe::describe_text;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use crate::scientific_request_resolver::ScientificRequestResolver;
+use crate::{
+    archive_v2_prediction::stable_std_cap_identity,
+    scientific_request_resolver::ScientificRequestResolver,
+};
 
 const MAX_ENTRIES: usize = 10000;
-const MAX_ARCHIVE_BYTES: u64 = 512 * 1024 * 1024;
-const MAX_CATALOGUE_MODEL_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_MULTIMODAL_DESCRIPTOR_BYTES: usize = 1024 * 1024;
 const MULTIMODAL_DATASET_SCHEMA: &str = "nirs4all.studio-multimodal-dataset.v1";
 
@@ -71,31 +72,52 @@ fn archive_record(workspace: &Path, relative: &Path) -> Result<Value, String> {
     let metadata = directory
         .symlink_metadata(relative)
         .map_err(|error| error.to_string())?;
-    if !metadata.is_file()
-        || metadata.file_type().is_symlink()
-        || metadata.len() > MAX_ARCHIVE_BYTES
-    {
-        return Err("Model bundle is not a regular bounded archive".into());
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err("Model bundle is not a regular archive".into());
     }
     // Read through a capability-confined handle and hash incrementally. Python
     // must verify this fingerprint on its own immutable snapshot before pickle.
     let mut file = directory
         .open(relative)
         .map_err(|error| error.to_string())?
-        .take(MAX_ARCHIVE_BYTES + 1);
+        .into_std();
+    let opened = file.metadata().map_err(|error| error.to_string())?;
+    let after_open = directory
+        .symlink_metadata(relative)
+        .map_err(|error| error.to_string())?;
+    if !opened.is_file()
+        || after_open.file_type().is_symlink()
+        || !after_open.is_file()
+        || !stable_std_cap_identity(&opened, &metadata)
+        || !stable_std_cap_identity(&opened, &after_open)
+    {
+        return Err("Model archive identity changed while opening".into());
+    }
     let mut hash = Sha256::new();
-    let mut buffer = vec![0_u8; 65536];
+    let mut buffer = [0_u8; 8192];
     let mut size = 0_u64;
     loop {
         let count = file.read(&mut buffer).map_err(|error| error.to_string())?;
         if count == 0 {
             break;
         }
-        size += u64::try_from(count).map_err(|_| "Archive byte count overflow")?;
-        if size > MAX_ARCHIVE_BYTES {
-            return Err("Model archive exceeds byte budget".into());
-        }
+        size = size
+            .checked_add(u64::try_from(count).map_err(|_| "Archive byte count overflow")?)
+            .ok_or("Archive byte count overflow")?;
         hash.update(&buffer[..count]);
+    }
+    let after_read = file.metadata().map_err(|error| error.to_string())?;
+    let final_path = directory
+        .symlink_metadata(relative)
+        .map_err(|error| error.to_string())?;
+    if final_path.file_type().is_symlink()
+        || !final_path.is_file()
+        || after_read.len() != opened.len()
+        || size != opened.len()
+        || !stable_std_cap_identity(&after_read, &final_path)
+        || !stable_std_cap_identity(&opened, &final_path)
+    {
+        return Err("Model archive identity changed while reading".into());
     }
     Ok(json!({"id":relative.to_string_lossy().replace('\\',"/"),
         "path":workspace.join(relative),"size":size,"fingerprint":format!("sha256:{:x}",hash.finalize())}))
@@ -110,7 +132,6 @@ pub fn catalogue_payload(workspace: &Path) -> Result<Value, String> {
     let mut visited = BTreeSet::new();
     let mut exports = Vec::new();
     let mut entries = 0_usize;
-    let mut total = 0_u64;
     while let Some(relative) = pending.pop() {
         if !directory.exists(&relative) {
             continue;
@@ -132,10 +153,6 @@ pub fn catalogue_payload(workspace: &Path) -> Result<Value, String> {
                 && visited.insert(path.clone())
             {
                 let record = archive_record(&workspace, &path)?;
-                total += record["size"].as_u64().ok_or("Invalid archive size")?;
-                if total > MAX_CATALOGUE_MODEL_BYTES {
-                    return Err("Model catalogue exceeds aggregate byte budget".into());
-                }
                 exports.push(record);
             }
         }
@@ -403,9 +420,16 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         std::fs::create_dir(root.path().join("exports")).unwrap();
         let path = root.path().join("exports/fitted.n4a");
-        std::fs::write(&path, b"opaque model bytes").unwrap();
+        let mut bytes = vec![11_u8; 65536];
+        bytes.extend_from_slice(b"tail");
+        std::fs::write(&path, &bytes).unwrap();
         let catalogue = catalogue_payload(root.path()).unwrap();
         let record = &catalogue["exports"][0];
+        assert_eq!(record["size"], bytes.len());
+        assert_eq!(
+            record["fingerprint"],
+            format!("sha256:{:x}", Sha256::digest(&bytes))
+        );
         let request = json!({"model_id":record["id"],"model_source":"bundle","archive_fingerprint":record["fingerprint"]});
         assert_eq!(
             model_payload(root.path(), &request).unwrap()["archive_fingerprint"],

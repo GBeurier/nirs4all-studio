@@ -1544,7 +1544,7 @@ fn archive_v2_prediction_error_response(error: &ArchiveV2PredictionError) -> Htt
         ArchiveV2PredictionError::ArchiveTooLarge => (
             413,
             ErrorCode::ArchiveV2PredictionArchiveTooLarge,
-            "Referenced workspace export exceeds 67108864 bytes",
+            "Referenced workspace export exceeds authorized memory or host allocation capacity",
             "archive_too_large",
         ),
         ArchiveV2PredictionError::ArchiveDigestMismatch => (
@@ -5166,6 +5166,9 @@ fn valid_json_value(value: &Value, depth: usize) -> bool {
 }
 
 #[cfg(test)]
+mod native_archive_fixture;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use nirs4all::dag_ml::{
@@ -5174,7 +5177,7 @@ mod tests {
     };
     use nirs4all::io::core::materialize::{
         AssembledDataset, Cell, Column, FoldProvenance, Frame, IdentityProvenance, Matrix,
-        PartitionBlock,
+        PartitionBlock, PrecisionRecord,
     };
     use nirs4all::{
         train_dataset_package_methods_conformal_archive_v2, DatasetPackage,
@@ -5573,11 +5576,14 @@ mod tests {
     }
 
     fn conformal_witness_matrix(rows: usize, columns: usize, values: &[f32]) -> Matrix {
-        Matrix {
-            data: values.to_vec(),
-            n_rows: rows,
-            n_cols: columns,
-        }
+        let mut matrix = Matrix::new(
+            values.iter().copied().map(f64::from).collect(),
+            rows,
+            columns,
+        );
+        matrix.precision = PrecisionRecord::select(Some("float32"), None, None, true)
+            .expect("conformal witness values originate as float32");
+        matrix
     }
 
     #[expect(
@@ -5664,6 +5670,7 @@ mod tests {
             )),
             weights: None,
             weights_header: None,
+            ..Default::default()
         };
         let mut assembled = AssembledDataset {
             name: format!("studio-conformal-{identity_prefix}"),
@@ -5706,7 +5713,7 @@ mod tests {
             audits: vec![],
         };
         assembled.blocks.insert("train".into(), block);
-        DatasetPackage::from_assembled(&assembled)
+        DatasetPackage::from_assembled(&assembled).expect("valid conformal witness dataset package")
     }
 
     #[expect(
@@ -8362,7 +8369,7 @@ mod tests {
     fn assert_native_saved_dataset_train_predict(feature_count: usize) {
         let library = PathBuf::from(
             env::var_os("N4M_LIBRARY_PATH")
-                .expect("N4M_LIBRARY_PATH must name the final ABI 2.20 libn4m"),
+                .expect("N4M_LIBRARY_PATH must name the selected ABI 2.22 libn4m"),
         );
         let library_bytes = fs::read(&library).unwrap();
         let methods = archive_v2_prediction::PackagedMethodsLibraryIdentity {
@@ -8370,7 +8377,7 @@ mod tests {
             size: u64::try_from(library_bytes.len()).unwrap(),
             sha256: format!("{:x}", Sha256::digest(&library_bytes)),
             abi_major: 2,
-            abi_minor: 20,
+            abi_minor: 22,
         };
         let predictor = Arc::new(
             archive_v2_prediction::CoreArchiveV2PredictionExecutor::acquire(methods.clone())
@@ -8768,7 +8775,7 @@ mod tests {
                 size: methods_size,
                 sha256: methods_sha256,
                 abi_major: 2,
-                abi_minor: 20,
+                abi_minor: 22,
             },
         )
         .unwrap();
@@ -8865,11 +8872,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires N4A_RT_PRED_ARCHIVE_V2, N4A_RT_PRED_METHODS_LIBRARY and N4A_RT_PRED_METHODS_SHA256"]
-    fn archive_v2_real_core_route_predicts_multitarget_without_python_or_fallback() {
-        let source_archive = PathBuf::from(
-            std::env::var("N4A_RT_PRED_ARCHIVE_V2")
-                .expect("N4A_RT_PRED_ARCHIVE_V2 must name the Core Archive V2 witness"),
+    #[ignore = "requires Root's raw-pls2-affine-multitarget-core-v1 fixture/SHA and selected Methods library/SHA"]
+    fn raw_pls2_affine_multitarget_core_v1_http_route_predicts_without_python_or_fallback() {
+        let source_archive = PathBuf::from(std::env::var("N4A_RT_PRED_ARCHIVE_V2").expect(
+            "N4A_RT_PRED_ARCHIVE_V2 must name Root's raw-pls2-affine-multitarget-core-v1 witness",
+        ));
+        let expected_archive_sha256 = std::env::var("N4A_RT_PRED_ARCHIVE_V2_SHA256").expect(
+            "N4A_RT_PRED_ARCHIVE_V2_SHA256 must attest the raw-pls2-affine-multitarget-core-v1 witness",
         );
         let methods_path = PathBuf::from(
             std::env::var("N4A_RT_PRED_METHODS_LIBRARY")
@@ -8878,7 +8887,7 @@ mod tests {
         let methods_sha256 = std::env::var("N4A_RT_PRED_METHODS_SHA256")
             .expect("N4A_RT_PRED_METHODS_SHA256 must attest the libn4m witness");
         let methods_size = fs::metadata(&methods_path).unwrap().len();
-        let root = test_directory("archive-v2-real-core-route");
+        let root = test_directory("raw-pls2-affine-multitarget-core-v1-route");
         let config = root.join("config");
         let workspace = root.join("workspace");
         let archive = workspace.join("exports/models/model-a.n4a");
@@ -8895,16 +8904,17 @@ mod tests {
         .unwrap();
         let archive_bytes = fs::read(&archive).unwrap();
         let archive_sha256 = format!("{:x}", Sha256::digest(&archive_bytes));
+        assert_eq!(archive_sha256, expected_archive_sha256);
         let executor = archive_v2_prediction::CoreArchiveV2PredictionExecutor::acquire(
             archive_v2_prediction::PackagedMethodsLibraryIdentity {
                 path: methods_path,
                 size: methods_size,
                 sha256: methods_sha256.clone(),
                 abi_major: 2,
-                abi_minor: 20,
+                abi_minor: 22,
             },
         )
-        .expect("the exact ABI 2.20 libn4m witness must preflight");
+        .expect("the selected ABI 2.22 libn4m witness must pass owner compatibility preflight");
         let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
             Arc::new(executor),
             &config,
@@ -8935,6 +8945,7 @@ mod tests {
         let response: Value = serde_json::from_str(&response.body).unwrap();
         assert_eq!(response["engine"], "core_rust_methods");
         assert_eq!(response["fallback_used"], false);
+        assert_eq!(response["archive_sha256"], expected_archive_sha256);
         assert_eq!(response["sample_ids"], json!(["predict.0", "predict.1"]));
         assert_eq!(response["target_names"], json!(["protein", "moisture"]));
         let readiness: Value = serde_json::from_str(&state.legacy_readiness_json()).unwrap();
@@ -8942,17 +8953,20 @@ mod tests {
         assert_eq!(readiness["ml_ready"], false);
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.4.4+libn4m-abi-2.20:{methods_sha256}")
+            format!("nirs4all-core@0.5.0+libn4m-abi-2.22:{methods_sha256}")
         );
-        let expected = [
-            [1.636_363_636_363_636_5, 13.272_727_272_727_273],
-            [2.499_999_999_999_999_6, 15.0],
-        ];
-        for (actual_row, expected_row) in
-            response["values"].as_array().unwrap().iter().zip(expected)
-        {
-            for (actual, expected) in actual_row.as_array().unwrap().iter().zip(expected_row) {
-                assert!((actual.as_f64().unwrap() - expected).abs() <= 1.0e-9);
+        // Independent affine oracle for the new named fixture, not a
+        // reconstruction of the frozen physical ABI 2.0 witness.
+        let expected = [[3.5, 17.0], [6.5, 23.0]];
+        let rows = response["values"].as_array().unwrap();
+        assert_eq!(rows.len(), expected.len());
+        for (actual_row, expected_row) in rows.iter().zip(expected) {
+            let actual_row = actual_row.as_array().unwrap();
+            assert_eq!(actual_row.len(), expected_row.len());
+            for (actual, expected) in actual_row.iter().zip(expected_row) {
+                let actual = actual.as_f64().unwrap();
+                assert!(actual.is_finite());
+                assert!((actual - expected).abs() <= 1.0e-9);
             }
         }
         assert_eq!(

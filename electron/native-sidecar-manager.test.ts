@@ -95,11 +95,11 @@ function writePackagedContract(
     product_backend: "rust-sidecar",
     transport: "bounded-cpython-stdio-v1",
     http_listener: "forbidden",
-    source_commit: "2ab9953ccb4b5e72f76be6cb637503622c5869cf",
-    wheel_sha256: "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0",
+    source_commit: "28c51162fc4d31d674c6606d608367a5f4b32b0e",
+    wheel_sha256: "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4",
     distribution: "nirs4all",
-    distribution_version: "1.4.15",
-    installed_manifest_sha256: "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a",
+    distribution_version: "1.4.16",
+    installed_manifest_sha256: "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f",
     platform: fixturePlatform,
     arch: process.arch,
     forbidden_distributions: [
@@ -149,11 +149,11 @@ function writePackagedContract(
       methods_library: {
         mode: "unavailable",
         member: null,
-        abi: { major: 2, minor: 20 },
+        abi: { major: 2, minor: 22 },
         source: {
-          commit: "fa8ff57603ec23bce95f73d52170285e8f3e2861",
-          tree: "f4339ad1fd512d681898873f955f4d12769d6e51",
-          project_version: "1.3.13",
+          commit: "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
+          tree: "61406cd2cf11204273a9972e4f268acfde7eb424",
+          project_version: "1.3.15",
         },
       },
     }),
@@ -591,7 +591,7 @@ describe("NativeSidecarManager", () => {
     const { logSidecarStderr, sidecarStderrLevel } = await import("./native-sidecar-manager");
     expect(sidecarStderrLevel("Studio boundary timing phase=readiness_route elapsed_us=12")).toBe("debug");
     expect(sidecarStderrLevel("Studio performance worker_started pid=4")).toBe("debug");
-    expect(sidecarStderrLevel("Studio scientific host packaged ready nirs4all=1.4.15 elapsed_ms=812")).toBe("info");
+    expect(sidecarStderrLevel("Studio scientific host packaged ready nirs4all=1.4.16 elapsed_ms=812")).toBe("info");
     expect(sidecarStderrLevel("studio-sidecar connection error: os error 10053")).toBe("error");
 
     const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);

@@ -11,13 +11,14 @@ const projectRoot = path.join(__dirname, "..");
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
 const PLUGIN_MARKER_SCHEMA = "nirs4all.studio-python-plugin-runtime.v1";
 const PLUGIN_ROLE = "library-plugin-host-only";
-const PLUGIN_SOURCE_COMMIT = "2ab9953ccb4b5e72f76be6cb637503622c5869cf";
-const PLUGIN_WHEEL_SHA256 = "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0";
+const PLUGIN_SOURCE_COMMIT = "28c51162fc4d31d674c6606d608367a5f4b32b0e";
+const PLUGIN_WHEEL_SHA256 = "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4";
 const { PLUGIN_DISTRIBUTION_VERSION } = require("./python-runtime-config.cjs");
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a";
-const PLUGIN_CONSTRAINTS_RELATIVE_PATH = "build/constraints/plugin-runtime-cpython311.txt";
+const PACKAGED_PLUGIN_DISTRIBUTION_VERSION = "1.4.16";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f";
+const PLUGIN_CONSTRAINTS_RELATIVE_PATH = "build/constraints/plugin-runtime-cpython311-sdk1416.txt";
 const PLUGIN_CONSTRAINTS_PATH = path.join(projectRoot, ...PLUGIN_CONSTRAINTS_RELATIVE_PATH.split("/"));
-const PLUGIN_CONSTRAINTS_SHA256 = "b7cf5e6686d7f662f22701a8d8245869f05564572035243ba67e25b7990aa2d0";
+const PLUGIN_CONSTRAINTS_SHA256 = "98471a18c3ae9e1a6f5bac672b70a4a6ae2dda5fecbabf64cc7a91be00a00807";
 const WINDOWS_CONSTRAINT_MARKER = 'sys_platform == "win32"';
 const MAC_INTEL_CONSTRAINT_MARKER = 'sys_platform == "darwin" and platform_machine == "x86_64"';
 const NON_MAC_INTEL_CONSTRAINT_MARKER = 'sys_platform != "darwin" or platform_machine != "x86_64"';
@@ -390,7 +391,7 @@ function runPreflight(runtimeRoot, sitePackages, platform = process.platform) {
     response.isolated !== true ||
     response.no_site !== true ||
     response.dont_write_bytecode !== true ||
-    response.version !== PLUGIN_DISTRIBUTION_VERSION ||
+    response.version !== PACKAGED_PLUGIN_DISTRIBUTION_VERSION ||
     !isLowerSha256(response.record) ||
     response.manifest !== PLUGIN_INSTALLED_MANIFEST_SHA256 ||
     response.verified !== true ||
@@ -415,7 +416,7 @@ function expectedMarker(platform = process.platform, arch = process.arch) {
     source_commit: PLUGIN_SOURCE_COMMIT,
     wheel_sha256: PLUGIN_WHEEL_SHA256,
     distribution: "nirs4all",
-    distribution_version: PLUGIN_DISTRIBUTION_VERSION,
+    distribution_version: PACKAGED_PLUGIN_DISTRIBUTION_VERSION,
     installed_manifest_sha256: PLUGIN_INSTALLED_MANIFEST_SHA256,
     constraints: {
       path: PLUGIN_CONSTRAINTS_RELATIVE_PATH,
@@ -491,6 +492,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--finalize-existing") options.finalizeExisting = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
+  if (options.constraints !== PLUGIN_CONSTRAINTS_PATH) {
+    throw new Error("Plugin bake requires the exact shipping constraints path");
+  }
   return options;
 }
 
@@ -514,7 +518,11 @@ function runSetup(options) {
 }
 
 function main() {
+  if (PLUGIN_DISTRIBUTION_VERSION !== PACKAGED_PLUGIN_DISTRIBUTION_VERSION) {
+    throw new Error("SDK version differs from the exact public shipping wheel");
+  }
   const options = parseArgs();
+  assertConstraintsIdentity();
   if (!options.verifyOnly && !options.finalizeExisting) {
     runSetup(options);
     materializeInternalRuntimeLinks(path.join(options.backendRoot, "python-runtime", "python"));

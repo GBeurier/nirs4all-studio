@@ -145,15 +145,15 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "2ab9953ccb4b5e72f76be6cb637503622c5869cf",
+      source_commit: "28c51162fc4d31d674c6606d608367a5f4b32b0e",
       wheel_sha256:
-        "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0",
-      distribution_version: "1.4.15",
+        "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4",
+      distribution_version: "1.4.16",
       installed_manifest_sha256:
-        "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a",
+        "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f",
       constraints: {
-        path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "b7cf5e6686d7f662f22701a8d8245869f05564572035243ba67e25b7990aa2d0",
+        path: "build/constraints/plugin-runtime-cpython311-sdk1416.txt",
+        sha256: "98471a18c3ae9e1a6f5bac672b70a4a6ae2dda5fecbabf64cc7a91be00a00807",
       },
       platform: "linux",
       arch: "x64",
@@ -167,10 +167,10 @@ describe("plugin-only CPython runtime", () => {
 
   it("loads an exact deterministic distribution closure with bounded platform additions", () => {
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_PATH).toBe(
-      path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
+      path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311-sdk1416.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "b7cf5e6686d7f662f22701a8d8245869f05564572035243ba67e25b7990aa2d0",
+      "98471a18c3ae9e1a6f5bac672b70a4a6ae2dda5fecbabf64cc7a91be00a00807",
     );
     expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
       "build/constraints/*.txt text eol=lf",
@@ -183,19 +183,23 @@ describe("plugin-only CPython runtime", () => {
     const { PLUGIN_HOST_PACKAGES } = require("../scripts/python-runtime-config.cjs") as {
       PLUGIN_HOST_PACKAGES: string[];
     };
+    // Current version constraints are verified against each actual installed closure.
+    const requirements = fs.readFileSync(
+      path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311-sdk1416.txt"),
+      "utf8",
+    ).split(/\r?\n/);
     for (const spec of PLUGIN_HOST_PACKAGES) {
-      const [name, version] = spec.split("==");
-      for (const target of [linux, linuxArm, macArm, macIntel, windows]) {
-        expect(target.get(name), `${name} must be installed in every packaged host`).toBe(version);
-      }
+      expect(requirements, `${spec} must be declared in the shipping constraints`).toContain(spec);
     }
-    expect(linux.get("nirs4all")).toBe("1.4.15");
-    expect(linux.get("nirs4all-core")).toBe("0.4.7");
+    // Active shipping inputs match the current SDK floor; history is separate.
+    expect(linux.get("nirs4all")).toBe("1.4.16");
+    expect(linux.get("nirs4all-core")).toBe("0.5.0");
     for (const target of [linux, linuxArm, macArm, macIntel, windows]) {
       for (const [name, version] of Object.entries({
-        "nirs4all": "1.4.15", "dag-ml": "0.3.44", "dag-ml-data": "0.2.16",
-        "nirs4all-core": "0.4.7", "nirs4all-io": "0.2.14", "nirs4all-formats": "0.2.14",
-        "nirs4all-methods": "1.3.13", "pls4all": "1.3.13",
+        "nirs4all": "1.4.16", "dag-ml": "0.4.0", "dag-ml-data": "0.2.16",
+        "nirs4all-core": "0.5.0", "nirs4all-io": "0.3.1", "nirs4all-formats": "0.2.16",
+        "nirs4all-methods": "1.3.15", "pls4all": "1.3.15",
+        "pyarrow": "25.0.1", "shap": "0.47.1", "matplotlib": "3.10.1", "lightgbm": "4.6.0",
       })) {
         expect(target.get(name), `${name} cohort pin must match on every platform`).toBe(version);
       }
@@ -235,6 +239,13 @@ describe("plugin-only CPython runtime", () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("refuses an alternate constraints file before setup can install a different closure", () => {
+    expect(() => pluginRuntime.parseArgs(["--constraints", "build/constraints/plugin-runtime-cpython311.txt"]))
+      .toThrow("exact shipping constraints path");
+    expect(() => pluginRuntime.parseArgs(["--constraints", pluginRuntime.PLUGIN_CONSTRAINTS_PATH]))
+      .not.toThrow();
   });
 
   it("parses an offline exact wheel without accepting source substitution", () => {

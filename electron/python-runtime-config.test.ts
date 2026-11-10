@@ -26,17 +26,17 @@ const transitionalHttpConfig = require("../scripts/python-http-runtime-config.cj
 describe("python-runtime-config", () => {
   it("accepts version ranges in reused environments and pins only the bundled cohort", () => {
     // nirs4all: the Studio-required release up to the next minor; io/methods: nirs4all's own declared ranges.
-    expect(runtimeConfig.PLUGIN_DISTRIBUTION_REQUIREMENT).toBe(">=1.4.15,<1.5");
+    expect(runtimeConfig.PLUGIN_DISTRIBUTION_REQUIREMENT).toBe(">=1.4.16,<1.5");
     expect(runtimeConfig.REUSABLE_RUNTIME_PACKAGES).toEqual([
-      "nirs4all>=1.4.15,<1.5", "nirs4all-io>=0.2.14,<0.3", "nirs4all-methods>=1.3.13,<2", "nirs4all-formats",
+      "nirs4all>=1.4.16,<1.5", "nirs4all-io>=0.3.0,<0.4", "nirs4all-methods>=1.3.15,<2", "nirs4all-formats",
     ]);
-    expect(runtimeConfig.REQUIRED_METHODS_ABI).toEqual([2, 20]);
+    expect(runtimeConfig.REQUIRED_METHODS_ABI).toEqual([2, 22]);
   });
   it("keeps transitional HTTP dependencies out of the packaged plugin-host config", () => {
     expect(transitionalHttpConfig.BACKEND_COMMON_PACKAGES).toContain("fastapi>=0.115.0");
-    expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("1.4.15");
+    expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("1.4.16");
     expect(runtimeConfig.PLUGIN_HOST_PACKAGES).toEqual([
-      "nirs4all==1.4.15", "nirs4all-core==0.4.7", "dag-ml==0.3.44", "dag-ml-data==0.2.16", "nirs4all-io==0.2.14", "nirs4all-methods==1.3.13", "nirs4all-formats==0.2.14", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
+      "nirs4all==1.4.16", "nirs4all-core==0.5.0", "dag-ml==0.4.0", "dag-ml-data==0.2.16", "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15", "nirs4all-formats==0.2.16", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
     ]);
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toEqual(runtimeConfig.PLUGIN_HOST_PACKAGES);
 
@@ -79,20 +79,20 @@ describe("python-runtime-config", () => {
       "xgboost",
     ]);
     expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "linux" })).toEqual([
-      "nirs4all>=1.4.15",
+      "nirs4all>=1.4.16,<1.5",
       "pyopls>=20.0",
       "trendfitter>=0.0.6",
       "xgboost-cpu>=2.0.0",
     ]);
     expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "win32" })).toEqual([
-      "nirs4all>=1.4.15",
+      "nirs4all>=1.4.16,<1.5",
       "pyopls>=20.0",
       "trendfitter>=0.0.6",
       "xgboost-cpu>=2.0.0",
     ]);
     // No macOS xgboost-cpu wheel exists — darwin keeps the regular name.
     expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "darwin" })).toEqual([
-      "nirs4all>=1.4.15",
+      "nirs4all>=1.4.16,<1.5",
       "pyopls>=20.0",
       "trendfitter>=0.0.6",
       "xgboost>=2.0.0",
@@ -111,7 +111,7 @@ describe("python-runtime-config", () => {
   it("maps legacy installer flavors onto product profiles while preserving the managed runtime footprint", () => {
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "darwin")).toBe("gpu-mps");
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "win32")).toBe("gpu-cuda-torch");
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==1.4.15");
+    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==1.4.16");
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES.some((pkg) => pkg.startsWith("torch"))).toBe(false);
   });
 

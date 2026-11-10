@@ -4,15 +4,49 @@
 separate Cargo package, not a Tauri application and not an Electron switch.
 The only executable is `studio-sidecar`.
 
-## Native source cohort
+## Public backend owner cohort (2026-11-09)
 
-The sidecar resolves the published registry crates of the nirs4all 1.4.15 SDK
-cohort: Core 0.4.7, IO 0.2.14, Formats 0.2.14, DAG-ML 0.3.44, dag-ml-data 0.2.16
-and the n4m 0.4.1 loader for the ABI 2.20 Methods 1.3.13 library. Their owner
-commits and registry checksums are recorded in
-`contracts/studio_native_source_cohort_v1.json`; `Cargo.lock` carries the same
-checksums and no local source override. Set `N4M_LIBRARY_PATH` to the regular
-(non-symlink) ABI 2.20 library file when running `cargo test`.
+`contracts/studio_native_source_cohort_v2.json` selects Core 0.5.0, DAG 0.4.0,
+DMD 0.2.16, IO 0.3.1, Formats 0.2.16 and Rust n4m 0.4.2 from crates.io.
+Core requires Rust IO 0.3.1 exactly; Studio uses the same version. Use the
+ordinary registry lock without candidate source overrides. Browser npm and
+owner-built browser artifacts have separate provenance and are not this graph.
+
+Packaged Methods has two explicit identity paths at ABI 2.22. The default
+`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.15
+artifact declared in `scripts/methods-public-wheel-profile.json`: its exact
+installed library size/hash, wheel reference and unknown source. It does not
+infer a source commit from the package version, ABI, public tag or Rust crate.
+The existing producer writes `methods_library.artifact` with kind `public-wheel`
+and `source: null`; Electron and Rust validate that same selected profile.
+
+The separate source-built path retains `methods_library.source`. The
+existing source-checked Methods builder exports `source-build` through
+`NIRS4ALL_BUILD_METHODS_IDENTITY_PROFILE`; its clean commit/tree/header checks
+remain mandatory. Manual source packaging, including Docker's
+`NIRS4ALL_METHODS_IDENTITY_PROFILE`, must explicitly select that profile after
+those checks. The contract writer records that caller assertion; it does not
+prove binary-to-source correspondence. The unrelated native eccbe5 artifact
+must never be relabelled as either selected artifact.
+
+Normal startup discovers the contract beside the executable, validates identity
+and acquires Core preflight before advertising native prediction/training.
+The retained injected HTTP test alone does not qualify that startup path.
+The ignored `public_methods_wheel_startup` integration test launches the real
+binary and replays the same owner-produced fixture, then checks typed refusal
+for absent, incompatible or altered selections without acquiring Python.
+SDK 1.4.16 is public, confirmed by Root publication run 42612130615 and the
+recorded public wheel hash. Studio host installation and current-closure
+qualification remain separate; historical SDK shipping receipts do not qualify
+that closure. The retained SDK host-cohort status is owned by that integration
+lane and is not a claim that the SDK is absent from the public registry.
+
+After resolving the final registry lock, qualify the existing backend tests and
+`node scripts/test-native-archive-v2.cjs` with one attested Methods library.
+The latter generates one owner-produced raw PLS2 fixture and reuses it for the
+Rust/runtime/HTTP checks. Retain its output, exact library identity and command
+results. Do not substitute the frozen physical Archive V2 witness for that
+current fixture, or rebuild historical vendored owners for current qualification.
 
 ## Fold-local target score projection
 
@@ -332,8 +366,9 @@ until reliable process-tree termination is qualified. Missing, changed,
 timed-out, malformed, or oversized hosts likewise fail closed. There is no
 legacy or FastAPI fallback.
 
-Studio retains the exact published Cargo package payloads that `Cargo.lock`
-resolves for the native cohort, each verified against its registry checksum:
+Studio retains Main's exact historical SDK 1.4.15 Cargo package payloads,
+verified against `contracts/studio_native_source_cohort_v1.json`. These are
+immutable provenance, not the current v2 registry lock or build inputs:
 Core 0.4.7 (`nirs4all`, commit `1dffd9f4472551cc09ad9d99ed9d40814bd003cc`) under
 `sidecar/vendor/nirs4all-core-1dffd9f/`, IO 0.2.14 (`nirs4all-io`,
 `nirs4all-io-core`, `nirs4all-io-dagml`, commit
@@ -348,7 +383,7 @@ Core 0.4.7 (`nirs4all`, commit `1dffd9f4472551cc09ad9d99ed9d40814bd003cc`) under
 Each directory has a `PROVENANCE.json` (upstream commit and tree, crate trees,
 package checksums) and an `INVENTORY.sha256`. `npm run test:vendored-native-sources`
 rejects missing, added, or changed files and checks the commits, trees,
-versions, and that every payload checksum is the one `Cargo.lock` selects. The
+versions, and every payload checksum against that historical cohort receipt. The
 runtime uses the published crates, never these directories as path
 dependencies. The payloads are evidence, not a build input: their unit tests
 reference upstream workspace fixtures that a package does not ship, so they run

@@ -7,6 +7,7 @@ from packaging.markers import default_environment
 from packaging.requirements import Requirement
 
 
+@pytest.mark.parametrize("filename", ["plugin-runtime-cpython311.txt", "plugin-runtime-cpython311-sdk1416.txt"])
 @pytest.mark.parametrize(
     ("platform", "machine", "expected"),
     [
@@ -17,9 +18,9 @@ from packaging.requirements import Requirement
         ("win32", "AMD64", {"numpy": "2.4.6", "numba": "0.67.0", "llvmlite": "0.49.0"}),
     ],
 )
-def test_constraints_select_one_compatible_scientific_pin_per_target(platform, machine, expected):
+def test_constraints_select_one_compatible_scientific_pin_per_target(filename, platform, machine, expected):
     environment = {**default_environment(), "sys_platform": platform, "platform_machine": machine}
-    constraints = Path(__file__).resolve().parents[1] / "build" / "constraints" / "plugin-runtime-cpython311.txt"
+    constraints = Path(__file__).resolve().parents[1] / "build" / "constraints" / filename
     selected = {}
     for line in constraints.read_text().splitlines():
         if not line or line.startswith("#"):
@@ -35,6 +36,10 @@ def test_constraints_select_one_compatible_scientific_pin_per_target(platform, m
         "nirs4all-methods": "1.3.13", "pls4all": "1.3.13",
         "nirs4all-formats": "0.2.14",
     }
+    if filename == "plugin-runtime-cpython311-sdk1416.txt":
+        cohort.update({"nirs4all": "1.4.16", "dag-ml": "0.4.0", "nirs4all-core": "0.5.0",
+                       "nirs4all-io": "0.3.1", "nirs4all-methods": "1.3.15", "pls4all": "1.3.15",
+                       "nirs4all-formats": "0.2.16"})
     for package, version in {**cohort, **expected}.items():
         assert selected[package] == f"=={version}"
     if platform == "darwin" and machine == "x86_64":

@@ -43,6 +43,7 @@ const { tlsRequestOptions, explainNetworkError } = require("./tls-trust.cjs");
 const {
   assertProfileSupportedOnPlatform,
   PYTHON_VERSION,
+  PLUGIN_DISTRIBUTION_VERSION,
   PLUGIN_SUPPORT_PACKAGES,
   PBS_TAG,
   getArchiveFilename,
@@ -68,12 +69,20 @@ const PRUNED_LAUNCHER_RECORD_PREFIXES = Object.freeze([
   "../../../Scripts/",
 ]);
 const PRUNED_LAUNCHER_RECORD_FILES = Object.freeze(["../../Scripts/nirs4all.exe"]);
-const PLUGIN_SOURCE_COMMIT = "2ab9953ccb4b5e72f76be6cb637503622c5869cf";
+const PLUGIN_SOURCE_COMMIT = "28c51162fc4d31d674c6606d608367a5f4b32b0e";
+const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.16-py3-none-any.whl";
+const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl";
+const PLUGIN_WHEEL_SHA256 = "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4";
+const PLUGIN_CONSTRAINTS_PATH = path.join(projectRoot, "build", "constraints", "plugin-runtime-cpython311-sdk1416.txt");
+const PLUGIN_CONSTRAINTS_SHA256 = "98471a18c3ae9e1a6f5bac672b70a4a6ae2dda5fecbabf64cc7a91be00a00807";
+// Retained historical source recipe. --build-plugin-wheel stays refused.
+const HISTORICAL_PLUGIN_SOURCE_COMMIT = "2ab9953ccb4b5e72f76be6cb637503622c5869cf";
 const PLUGIN_SOURCE_REPOSITORY = "https://github.com/GBeurier/nirs4all.git";
 const PLUGIN_SOURCE_EPOCH = "1793671925";
-const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.15-py3-none-any.whl";
-const PLUGIN_WHEEL_SHA256 = "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0";
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a";
+const HISTORICAL_PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.15-py3-none-any.whl";
+const HISTORICAL_PLUGIN_DISTRIBUTION_VERSION = "1.4.15";
+const HISTORICAL_PLUGIN_WHEEL_SHA256 = "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0";
+const HISTORICAL_PLUGIN_INSTALLED_MANIFEST_SHA256 = "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a";
 const WHEEL_BUILD_TOOLCHAIN = Object.freeze([
   "pip==26.2.1",
   "build==1.6.1",
@@ -155,12 +164,7 @@ for (let i = 0; i < args.length; i++) {
 
 const pluginOnly = buildMode === PLUGIN_BUILD_MODE;
 if (pluginOnly && !constraintsFile) {
-  constraintsFile = path.join(
-    projectRoot,
-    "build",
-    "constraints",
-    "plugin-runtime-cpython311.txt",
-  );
+  constraintsFile = PLUGIN_CONSTRAINTS_PATH;
 }
 
 let profile = explicitProfile;
@@ -177,6 +181,13 @@ if (!profile) {
 }
 
 try {
+  if (buildPluginWheelOutput && PLUGIN_DISTRIBUTION_VERSION !== HISTORICAL_PLUGIN_DISTRIBUTION_VERSION) {
+    throw new Error("Historical SDK wheel build recipe does not qualify the current published SDK; use its exact public wheel");
+  }
+  if (pluginOnly && (PLUGIN_DISTRIBUTION_VERSION !== "1.4.16" ||
+      constraintsFile !== PLUGIN_CONSTRAINTS_PATH || sha256File(constraintsFile) !== PLUGIN_CONSTRAINTS_SHA256)) {
+    throw new Error("Plugin runtime requires the exact SDK 1.4.16 shipping constraints");
+  }
   assertProfileSupportedOnPlatform(profile, process.platform);
   getProfilePackageInstallSpecs(profile, {
     includeExtraPackages: false,
@@ -353,7 +364,10 @@ function buildPluginToolchainInstallArgs() {
 }
 
 async function buildPinnedPluginWheel(runtimePython, destination) {
-  if (path.basename(destination) !== PLUGIN_WHEEL_FILENAME) {
+  if (PLUGIN_DISTRIBUTION_VERSION !== HISTORICAL_PLUGIN_DISTRIBUTION_VERSION) {
+    throw new Error("Historical SDK wheel build recipe does not qualify the current published SDK; use its exact public wheel");
+  }
+  if (path.basename(destination) !== HISTORICAL_PLUGIN_WHEEL_FILENAME) {
     throw new Error("Pinned plugin build requires its exact distribution filename");
   }
   await runCommand(runtimePython, ["-I", "-c", "import sys; assert sys.version_info[:2] == (3,11), 'Plugin wheel build requires Python 3.11'"]);
@@ -368,24 +382,24 @@ async function buildPinnedPluginWheel(runtimePython, destination) {
     await runCommandWithRetries(runtimePython, ["-I", "-m", "pip", "--isolated", "--python", buildExecutable,
       "install", ...PLUGIN_PIP_NETWORK_ARGS, ...WHEEL_BUILD_TOOLCHAIN], {}, { retries: 2, label: "install isolated exact wheel toolchain" });
     await runCommand("git", ["init", source], { env });
-    await runCommandWithRetries("git", ["-C", source, "fetch", "--depth", "1", PLUGIN_SOURCE_REPOSITORY, PLUGIN_SOURCE_COMMIT],
+    await runCommandWithRetries("git", ["-C", source, "fetch", "--depth", "1", PLUGIN_SOURCE_REPOSITORY, HISTORICAL_PLUGIN_SOURCE_COMMIT],
       { env }, { retries: 2, label: "fetch immutable plugin source" });
-    await runCommand("git", ["-C", source, "checkout", "--detach", PLUGIN_SOURCE_COMMIT], { env });
+    await runCommand("git", ["-C", source, "checkout", "--detach", HISTORICAL_PLUGIN_SOURCE_COMMIT], { env });
     const identity = await new Promise((resolve, reject) => {
       execFile("git", ["-C", source, "show", "-s", "--format=%H%n%ct", "HEAD"],
         { env, windowsHide: isWindows, timeout: 60_000, maxBuffer: 8192 }, (error, stdout) => error ? reject(error) : resolve(stdout.trim()));
     });
-    if (identity !== `${PLUGIN_SOURCE_COMMIT}\n${PLUGIN_SOURCE_EPOCH}`) {
+    if (identity !== `${HISTORICAL_PLUGIN_SOURCE_COMMIT}\n${PLUGIN_SOURCE_EPOCH}`) {
       throw new Error("Plugin source commit or epoch differs from the qualified recipe");
     }
     await runCommandWithRetries(buildExecutable, ["-I", "-m", "build", "--wheel", "--no-isolation",
       "--outdir", rawWheelDir, source], { env }, { retries: 1, label: "build immutable plugin wheel" });
     await runCommand(buildExecutable, ["-I", path.join(projectRoot, "scripts", "normalize-plugin-wheel.py"),
-      "--input", path.join(rawWheelDir, PLUGIN_WHEEL_FILENAME), "--output", destination,
-      "--epoch", PLUGIN_SOURCE_EPOCH, "--expected-manifest", PLUGIN_INSTALLED_MANIFEST_SHA256]);
+      "--input", path.join(rawWheelDir, HISTORICAL_PLUGIN_WHEEL_FILENAME), "--output", destination,
+      "--epoch", PLUGIN_SOURCE_EPOCH, "--expected-manifest", HISTORICAL_PLUGIN_INSTALLED_MANIFEST_SHA256]);
     const actual = sha256File(destination);
-    if (actual !== PLUGIN_WHEEL_SHA256) {
-      throw new Error(`Pinned plugin wheel identity mismatch: expected ${PLUGIN_WHEEL_SHA256}, got ${actual}`);
+    if (actual !== HISTORICAL_PLUGIN_WHEEL_SHA256) {
+      throw new Error(`Pinned plugin wheel identity mismatch: expected ${HISTORICAL_PLUGIN_WHEEL_SHA256}, got ${actual}`);
     }
     return destination;
   } finally {
@@ -764,6 +778,19 @@ async function downloadFile(url, destPath, options = {}) {
 }
 
 
+// Acquire the published bytes without rebuilding or normalizing the wheel.
+async function acquirePluginWheel(wheelDir, suppliedWheel = "", download = downloadFile) {
+  const selected = suppliedWheel || path.join(wheelDir, PLUGIN_WHEEL_FILENAME);
+  if (!suppliedWheel && !fs.existsSync(selected)) {
+    await download(PLUGIN_WHEEL_URL, selected);
+  }
+  const actual = sha256File(selected);
+  if (actual !== PLUGIN_WHEEL_SHA256) {
+    throw new Error(`Pinned plugin wheel identity mismatch: expected ${PLUGIN_WHEEL_SHA256}, got ${actual}`);
+  }
+  return selected;
+}
+
 // --- Main ---
 async function main() {
   const startTime = Date.now();
@@ -782,7 +809,7 @@ async function main() {
   console.log(`  Output dir:     ${outputDir}`);
   console.log(`  Runtime only:   ${runtimeOnly}`);
   console.log(`  Build mode:     ${buildMode}`);
-  console.log(`  Plugin wheel:   ${pluginWheel || "(rebuild pinned source)"}`);
+  console.log(`  Plugin wheel:   ${pluginWheel || PLUGIN_WHEEL_URL}`);
   console.log(`  Local nirs4all: ${localNirs4all}`);
   if (localNirs4all) {
     console.log(`  Local source:   ${resolveLocalNirs4allPath() || "(not found)"}`);
@@ -997,21 +1024,7 @@ async function main() {
         extraPipArgs: ["--no-deps"],
       }), {}, { label: "install exact DAG-ML and IO candidate wheels" });
     }
-    if (pluginWheel) {
-      selectedPluginWheel = pluginWheel;
-    } else {
-      for (const entry of fs.readdirSync(wheelDir)) {
-        if (entry.endsWith(".whl")) fs.rmSync(path.join(wheelDir, entry), { force: true });
-      }
-      selectedPluginWheel = path.join(wheelDir, PLUGIN_WHEEL_FILENAME);
-      await buildPinnedPluginWheel(runtimePython, selectedPluginWheel);
-    }
-    const actualWheelSha256 = sha256File(selectedPluginWheel);
-    if (actualWheelSha256 !== PLUGIN_WHEEL_SHA256) {
-      throw new Error(
-        `Pinned plugin wheel identity mismatch: expected ${PLUGIN_WHEEL_SHA256}, got ${actualWheelSha256}`,
-      );
-    }
+    selectedPluginWheel = await acquirePluginWheel(wheelDir, pluginWheel);
     await runCommandWithRetries(runtimePython, buildPluginRuntimeInstallArgs([selectedPluginWheel], {
       constraintsFile,
       isolated: true,
@@ -1123,7 +1136,7 @@ async function main() {
     );
     if (pluginOnly) {
       await removePrunedLauncherRecordRows(runtimePython, backendDist);
-      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.4.15");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", PLUGIN_DISTRIBUTION_VERSION);
       console.log("  Restored the exact pinned wheel RECORD after isolated installation");
     }
     console.log("");
@@ -1239,6 +1252,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  acquirePluginWheel,
   downloadFile,
   getCompileTargets,
   isStandaloneBundledRuntimeMode,

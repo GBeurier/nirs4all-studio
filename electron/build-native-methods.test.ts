@@ -88,7 +88,7 @@ describe("native Methods product build", () => {
       "-DCMAKE_OSX_ARCHITECTURES=arm64",
     );
     expect(
-      methodsBuild.targetConfig("darwin", "arm64").libraryPattern.test("libn4m.2.20.0.dylib"),
+      methodsBuild.targetConfig("darwin", "arm64").libraryPattern.test("libn4m.2.22.0.dylib"),
     ).toBe(true);
     expect(
       methodsBuild.targetConfig("darwin", "arm64").libraryPattern.test("libn4m.2.14.0.dylib"),
@@ -107,9 +107,9 @@ describe("native Methods product build", () => {
         "src",
       );
       fs.mkdirSync(libraryRoot, { recursive: true });
-      const realLibrary = path.join(libraryRoot, "libn4m.so.2.20.0");
-      fs.writeFileSync(realLibrary, "abi-2.20");
-      fs.symlinkSync("libn4m.so.2.20.0", path.join(libraryRoot, "libn4m.so"));
+      const realLibrary = path.join(libraryRoot, "libn4m.so.2.22.0");
+      fs.writeFileSync(realLibrary, "abi-2.22");
+      fs.symlinkSync("libn4m.so.2.22.0", path.join(libraryRoot, "libn4m.so"));
 
       expect(
         methodsBuild.resolveBuiltLibrary(
@@ -127,13 +127,14 @@ describe("native Methods product build", () => {
     try {
       const environmentPath = path.join(root, "github-env");
       methodsBuild.appendGitHubEnvironment(environmentPath, {
-        libraryPath: "/build/libn4m.so.2.20.0",
+        libraryPath: "/build/libn4m.so.2.22.0",
         sha256: "a".repeat(64),
       });
       expect(fs.readFileSync(environmentPath, "utf8")).toBe(
-        `NIRS4ALL_BUILD_METHODS_LIBRARY=/build/libn4m.so.2.20.0\n` +
+        `NIRS4ALL_BUILD_METHODS_LIBRARY=/build/libn4m.so.2.22.0\n` +
           `NIRS4ALL_BUILD_METHODS_DIRECTORY=/build\n` +
-          `NIRS4ALL_BUILD_METHODS_SHA256=${"a".repeat(64)}\n`,
+          `NIRS4ALL_BUILD_METHODS_SHA256=${"a".repeat(64)}\n` +
+          "NIRS4ALL_BUILD_METHODS_IDENTITY_PROFILE=source-build\n",
       );
       expect(() =>
         methodsBuild.appendGitHubEnvironment(environmentPath, {

@@ -9,8 +9,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   hasExactWindowsNativeRuntimeLinkage,
+  hasExactPublicMethodsArtifact,
   verifyPackagedRuntimeContract,
 } from "./packaged-runtime-contract";
+import publicMethodsWheel from "../scripts/methods-public-wheel-profile.json";
 import { preselectRendererTransport } from "./renderer-transport-selection";
 
 const require = createRequire(import.meta.url);
@@ -106,11 +108,11 @@ function makeResources(): {
     product_backend: "rust-sidecar",
     transport: "bounded-cpython-stdio-v1",
     http_listener: "forbidden",
-    source_commit: "2ab9953ccb4b5e72f76be6cb637503622c5869cf",
-    wheel_sha256: "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0",
+    source_commit: "28c51162fc4d31d674c6606d608367a5f4b32b0e",
+    wheel_sha256: "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4",
     distribution: "nirs4all",
-    distribution_version: "1.4.15",
-    installed_manifest_sha256: "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a",
+    distribution_version: "1.4.16",
+    installed_manifest_sha256: "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f",
     platform: "linux",
     arch: process.arch,
     forbidden_distributions: [
@@ -155,11 +157,11 @@ function makeResources(): {
       methods_library: {
         mode: "unavailable",
         member: null,
-        abi: { major: 2, minor: 20 },
+        abi: { major: 2, minor: 22 },
         source: {
-          commit: "fa8ff57603ec23bce95f73d52170285e8f3e2861",
-          tree: "f4339ad1fd512d681898873f955f4d12769d6e51",
-          project_version: "1.3.13",
+          commit: "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
+          tree: "61406cd2cf11204273a9972e4f268acfde7eb424",
+          project_version: "1.3.15",
         },
       },
     }),
@@ -176,6 +178,81 @@ afterEach(() => {
 });
 
 describe("packaged runtime contract", () => {
+  it("accepts only the selected public artifact metadata without inventing source identity", () => {
+    const producer = require("../scripts/native-runtime-contract.cjs") as {
+      hasExactPublicMethodsArtifact: typeof hasExactPublicMethodsArtifact;
+    };
+    // This checks metadata agreement only; the real bytes/startup test is separate.
+    const methods = {
+      mode: "bundled-required", abi: publicMethodsWheel.abi,
+      member: { path: "native/libn4m.so", ...publicMethodsWheel.library },
+      artifact: publicMethodsWheel.artifact,
+    };
+    for (const check of [hasExactPublicMethodsArtifact, producer.hasExactPublicMethodsArtifact]) {
+      expect(check(methods, "linux", "x64")).toBe(true);
+      expect(check(methods, "linux", "arm64")).toBe(false);
+      expect(check(methods, "darwin", "x64")).toBe(false);
+      expect(check({ ...methods, source: { commit: "eccbe5", tree: "unknown", project_version: "1.3.15" } }, "linux", "x64")).toBe(false);
+      expect(check({ ...methods, abi: { major: 2, minor: 20 } }, "linux", "x64")).toBe(false);
+      expect(check({ ...methods, member: { ...methods.member, sha256: "a".repeat(64) } }, "linux", "x64")).toBe(false);
+      for (const artifact of [
+        { ...methods.artifact, kind: "other" },
+        { ...methods.artifact, source: { commit: "eccbe5" } },
+        { ...methods.artifact, distribution: { name: "nirs4all-methods", version: "1.3.16" } },
+        { ...methods.artifact, wheel: { ...methods.artifact.wheel, sha256: "a".repeat(64) } },
+        { ...methods.artifact, extra: true },
+      ]) expect(check({ ...methods, artifact }, "linux", "x64")).toBe(false);
+    }
+  });
+
+  it("refuses arbitrary bytes in the public-wheel producer without stamping a source", () => {
+    const fixture = makeResources();
+    const backendRoot = path.join(fixture.resourcesPath, "backend");
+    // Do not invoke the unrelated Python-runtime bake verifier in this test.
+    fs.rmSync(path.join(backendRoot, "python-runtime", "PLUGIN_RUNTIME_READY.json"));
+    const methodsLibraryPath = path.join(backendRoot, "native", "libn4m.so");
+    fs.writeFileSync(methodsLibraryPath, "unselected-artifact-bytes");
+    const producer = require("../scripts/native-runtime-contract.cjs") as {
+      createRuntimeContract(options: { backendRoot: string; platform: string; arch: string; methodsLibraryPath: string }): unknown;
+    };
+    expect(() => producer.createRuntimeContract({ backendRoot, platform: "linux", arch: "x64", methodsLibraryPath }))
+      .toThrow("does not match the selected public wheel artifact");
+  });
+
+  it.skipIf(process.platform !== "linux" || process.arch !== "x64" || !process.env.NIRS4ALL_BUILD_METHODS_LIBRARY)(
+    "selects the actual public wheel through producer and Electron, then rejects tampering",
+    () => {
+      const fixture = makeResources();
+      const backendRoot = path.join(fixture.resourcesPath, "backend");
+      fs.rmSync(path.join(backendRoot, "python-runtime", "PLUGIN_RUNTIME_READY.json"));
+      const methodsLibraryPath = path.join(backendRoot, "native", "libn4m.so");
+      fs.copyFileSync(process.env.NIRS4ALL_BUILD_METHODS_LIBRARY!, methodsLibraryPath);
+      const producer = require("../scripts/native-runtime-contract.cjs") as {
+        writeRuntimeContract(options: {
+          backendRoot: string; platform: string; arch: string; methodsLibraryPath: string;
+          methodsIdentityProfile?: string;
+        }): { contractPath: string; contract: { methods_library: { artifact?: unknown; source?: unknown } } };
+        verifyRuntimeContract(options: {
+          backendRoot: string; artifactBoundaryRoot: string; platform: string; arch: string; requireBundledMethods: boolean;
+        }): { methodsLibraryPath: string | null };
+      };
+      const options = { backendRoot, platform: "linux", arch: "x64", methodsLibraryPath };
+      const written = producer.writeRuntimeContract(options);
+      expect(written.contract.methods_library.artifact).toEqual(publicMethodsWheel.artifact);
+      expect(written.contract.methods_library).not.toHaveProperty("source");
+      expect(producer.verifyRuntimeContract({
+        backendRoot, artifactBoundaryRoot: backendRoot, platform: "linux", arch: "x64", requireBundledMethods: true,
+      }).methodsLibraryPath).toBe(methodsLibraryPath);
+      expect(verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "linux", arch: "x64" }))
+        .toMatchObject({ methodsLibraryPath, methodsLibraryError: null });
+      expect(() => producer.writeRuntimeContract({ ...options, methodsIdentityProfile: "source-build" }))
+        .toThrow("a public wheel must not claim source identity");
+      fs.appendFileSync(methodsLibraryPath, "tampered");
+      expect(verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "linux", arch: "x64" }))
+        .toMatchObject({ methodsLibraryPath: null, methodsLibraryError: expect.stringContaining("integrity mismatch") });
+    },
+  );
+
   it("requires the exact closed Windows static-CRT linkage profile", () => {
     const exact = {
       profile: "studio-msvc-static-crt-v1",
@@ -320,6 +397,28 @@ describe("packaged runtime contract", () => {
     });
   });
 
+  it.each([
+    { distribution_version: "1.4.15" },
+    { installed_manifest_sha256: "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a" },
+    { source_commit: "2ab9953ccb4b5e72f76be6cb637503622c5869cf" },
+    { wheel_sha256: "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0" },
+  ])("refuses stale SDK identity even with an intact marker anchor: %j", (stale) => {
+    const fixture = makeResources();
+    const backend = path.join(fixture.resourcesPath, "backend");
+    const markerPath = path.join(backend, "python-runtime", "PLUGIN_RUNTIME_READY.json");
+    const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    const bytes = Buffer.from(JSON.stringify({ ...marker, ...stale }));
+    fs.writeFileSync(markerPath, bytes);
+    const contractPath = path.join(backend, "native", "STUDIO_RUNTIME_CONTRACT.json");
+    const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
+    contract.python_plugin_host.marker.size = bytes.length;
+    contract.python_plugin_host.marker.sha256 = digest(bytes);
+    fs.writeFileSync(contractPath, JSON.stringify(contract));
+    expect(verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "linux" }))
+      .toMatchObject({ sidecarPath: fixture.sidecarPath, pythonPluginHostPath: null,
+        pythonPluginHostError: "Packaged Python plugin marker identity mismatch" });
+  });
+
   it("disables a missing bundled Python host without changing the Rust backend", () => {
     const fixture = makeResources();
     fs.rmSync(fixture.pythonPath);
@@ -432,7 +531,7 @@ describe("packaged runtime contract", () => {
       "STUDIO_RUNTIME_CONTRACT.json",
     );
     const methodsPath = path.join(backendRoot, "native", "libn4m.so");
-    const methods = Buffer.from("libn4m-abi-2.20");
+    const methods = Buffer.from("libn4m-abi-2.22");
     fs.writeFileSync(methodsPath, methods);
     const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
     contract.methods_library = {
@@ -442,11 +541,11 @@ describe("packaged runtime contract", () => {
         size: methods.length,
         sha256: digest(methods),
       },
-      abi: { major: 2, minor: 20 },
+      abi: { major: 2, minor: 22 },
       source: {
-        commit: "fa8ff57603ec23bce95f73d52170285e8f3e2861",
-        tree: "f4339ad1fd512d681898873f955f4d12769d6e51",
-        project_version: "1.3.13",
+        commit: "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
+        tree: "61406cd2cf11204273a9972e4f268acfde7eb424",
+        project_version: "1.3.15",
       },
     };
     fs.writeFileSync(contractPath, JSON.stringify(contract));

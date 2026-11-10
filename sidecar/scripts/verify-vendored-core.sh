@@ -3,7 +3,8 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 vendor_root="$script_dir/../vendor/nirs4all-core-1dffd9f"
-lock="$script_dir/../Cargo.lock"
+# These immutable Main payloads attest the historical cohort, not the current lock.
+cohort="$script_dir/../contracts/studio_native_source_cohort_v1.json"
 inventory="$vendor_root/INVENTORY.sha256"
 actual=$(mktemp)
 expected=$(mktemp)
@@ -17,8 +18,8 @@ test "$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$vendor_root/upstream/nirs4all-0
 grep -q '"sha1": "1dffd9f4472551cc09ad9d99ed9d40814bd003cc"' "$vendor_root/upstream/nirs4all-0.4.7"/.cargo_vcs_info.json
 grep -q '"nirs4all": "34df15ad83a459b4d96a5fa3b9684614587fdc5a"' "$vendor_root/PROVENANCE.json"
 grep -q '"sha256": "85610ceb9ea2f1111db1137ae1f7e58ce132d71c3eb31f04944495fc83403394"' "$vendor_root/PROVENANCE.json"
-grep -A2 -x 'name = "nirs4all"' "$lock" | grep -qx 'version = "0.4.7"'
-grep -qx 'checksum = "85610ceb9ea2f1111db1137ae1f7e58ce132d71c3eb31f04944495fc83403394"' "$lock"
+sed -n '/^    "nirs4all": {$/,/^    }/p' "$cohort" | grep -q '"version": "0.4.7"'
+sed -n '/^    "nirs4all": {$/,/^    }/p' "$cohort" | grep -q '"registry_checksum_sha256": "85610ceb9ea2f1111db1137ae1f7e58ce132d71c3eb31f04944495fc83403394"'
 grep -q '"commit": "1dffd9f4472551cc09ad9d99ed9d40814bd003cc"' "$vendor_root/PROVENANCE.json"
 grep -q '"repository_tree": "3990c98a44a49c2c3827f61daad78915e33e948a"' "$vendor_root/PROVENANCE.json"
 grep -q '"hashed_files": 58' "$vendor_root/PROVENANCE.json"

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -17,6 +18,8 @@ const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
     },
   ): string[];
   buildPluginToolchainInstallArgs(): string[];
+  acquirePluginWheel(wheelDir: string, suppliedWheel?: string, download?: (url: string, destination: string) => Promise<void>): Promise<string>;
+  buildPinnedPluginWheel(python: string, destination: string): Promise<string>;
   buildPluginRuntimeInstallArgs(packageSpecs: string[], options?: { constraintsFile?: string; upgrade?: boolean }): string[];
   verifyInstalledDependencies(python: string, isolated: boolean, execute: (command: string, args: string[]) => Promise<void>): Promise<void>;
   buildDeterministicWheelEnv(
@@ -97,7 +100,7 @@ describe("setup-python-env", () => {
     ]);
   });
 
-  it("builds the exact source SDK wheel", () => {
+  it("retains the historical source recipe separately from public wheel acquisition", () => {
     expect(
       setupPythonEnvModule.buildDeterministicWheelEnv("1788621086", {
         EXISTING: "preserved",
@@ -118,16 +121,41 @@ describe("setup-python-env", () => {
       "utf8",
     );
     expect(setupSource).toContain(
-      'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.15-py3-none-any.whl";',
+      'const HISTORICAL_PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.15-py3-none-any.whl";',
     );
     expect(setupSource).toContain(
-      'const PLUGIN_SOURCE_COMMIT = "2ab9953ccb4b5e72f76be6cb637503622c5869cf";',
+      'const HISTORICAL_PLUGIN_SOURCE_COMMIT = "2ab9953ccb4b5e72f76be6cb637503622c5869cf";',
     );
     expect(setupSource).toContain('const PLUGIN_SOURCE_EPOCH = "1793671925";');
-    expect(setupSource).toContain("await buildPinnedPluginWheel(runtimePython, selectedPluginWheel)");
+    expect(setupSource).toContain("selectedPluginWheel = await acquirePluginWheel(wheelDir, pluginWheel)");
     expect(setupSource).toContain("normalize-plugin-wheel.py");
-    expect(setupSource).not.toContain("PLUGIN_WHEEL_URL");
+    expect(setupSource).toContain('const PLUGIN_WHEEL_FILENAME = "nirs4all-1.4.16-py3-none-any.whl";');
+    expect(setupSource).toContain('await download(PLUGIN_WHEEL_URL, selected)');
+    expect(setupSource).toContain('"nirs4all", PLUGIN_DISTRIBUTION_VERSION');
     expect(setupSource).not.toContain("nirs4all_tools");
+  });
+
+  it("keeps --build-plugin-wheel refused before any historical build work", async () => {
+    await expect(setupPythonEnvModule.buildPinnedPluginWheel("unused-python", "unused.whl"))
+      .rejects.toThrow("Historical SDK wheel build recipe");
+    const result = spawnSync(process.execPath, ["scripts/setup-python-env.cjs", "--build-plugin-wheel", "unused.whl"], { encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Historical SDK wheel build recipe");
+  });
+
+  it.each(["supplied", "downloaded"])("refuses altered same-version %s public wheel bytes", async (kind) => {
+    const root = makeTempDir("n4a-public-wheel-");
+    const wheel = path.join(root, "nirs4all-1.4.16-py3-none-any.whl");
+    const download = vi.fn(async (_url: string, destination: string) => {
+      fs.writeFileSync(destination, "wrong same-version wheel");
+    });
+    if (kind === "supplied") fs.writeFileSync(wheel, "wrong same-version wheel");
+    await expect(setupPythonEnvModule.acquirePluginWheel(root, kind === "supplied" ? wheel : "", download))
+      .rejects.toThrow("Pinned plugin wheel identity mismatch");
+    if (kind === "supplied") expect(download).not.toHaveBeenCalled();
+    else expect(download).toHaveBeenCalledWith(
+      "https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl", wheel,
+    );
   });
 
   it("adds --no-compile when building bundled standalone pip installs", () => {
@@ -169,7 +197,7 @@ describe("setup-python-env", () => {
     const args = setupPythonEnvModule.buildPluginRuntimeInstallArgs(PLUGIN_SUPPORT_PACKAGES, {
       constraintsFile: "build/constraints/plugin-runtime-cpython311.txt",
     });
-    expect(args).toContain("nirs4all-formats==0.2.14");
+    expect(args).toContain("nirs4all-formats==0.2.16");
     expect(args).toContain("build/constraints/plugin-runtime-cpython311.txt");
   });
 
