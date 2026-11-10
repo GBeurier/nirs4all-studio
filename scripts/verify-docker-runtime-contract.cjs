@@ -27,6 +27,11 @@ function forbid(source, pattern, label) {
   if (pattern.test(source)) errors.push(`forbidden ${label}: ${pattern}`);
 }
 
+const rustImageArgs = dockerfile.match(/^ARG RUST_IMAGE=.*$/gm) || [];
+if (rustImageArgs.length !== 1 || rustImageArgs[0] !== "ARG RUST_IMAGE=rust:1.96-bookworm") {
+  errors.push(`Rust builder must be exactly one ARG RUST_IMAGE=rust:1.96-bookworm; found ${JSON.stringify(rustImageArgs)}`);
+}
+
 requireText(dockerfile, "FROM ${NODE_IMAGE} AS frontend", "frontend build stage");
 requireText(dockerfile, "FROM ${RUST_IMAGE} AS sidecar", "Rust sidecar build stage");
 requireText(dockerfile, "FROM ${NODE_IMAGE} AS python-plugin-runtime", "bounded CPython plugin build stage");

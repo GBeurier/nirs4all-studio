@@ -740,7 +740,7 @@ fn selected_wheel_resolves_saved_route_and_persists_only_the_original_request() 
         assert!(progress.is_finite() && (0.0..=100.0).contains(&progress));
         assert_eq!(event["data"]["metrics"], json!({}));
         let message = event["data"]["message"].as_str().unwrap();
-        assert!(!message.is_empty());
+        assert_ne!(message, "");
         if let Some(elapsed) = message.strip_prefix("Scientific computation running · ") {
             let elapsed = elapsed
                 .strip_suffix("s elapsed. Fit progress is unavailable.")

@@ -4,9 +4,9 @@
 # the sole HTTP/control backend; CPython is a bounded stdio library/plugin host.
 
 ARG NODE_IMAGE=node:24-bookworm-slim
-# The locked ICU graph requires Rust 1.88 even though the sidecar sources retain
-# their lower language-level rust-version declaration.
-ARG RUST_IMAGE=rust:1.88-bookworm
+# The retained lock requires Rust >=1.91; the manifest's 1.88 is source-level only.
+# Rust 1.96 was used for local lock qualification, not the current sidecar source.
+ARG RUST_IMAGE=rust:1.96-bookworm
 ARG NGINX_IMAGE=nginx:1.27.5-bookworm
 
 FROM scratch AS studio-document-adapter-sources
