@@ -27,6 +27,15 @@ async function waitForJob(env, route) {
 }
 
 async function shapJourney({ page, env }, proof, workspace) {
+  // The renderer and workspace can be ready before the asynchronous ML host.
+  const deadline = Date.now() + 120000;
+  while (true) {
+    const readiness = await api(env, '/system/readiness');
+    if (readiness.ml_ready) break;
+    assert(readiness.ml_loading, 'The scientific host failed to initialize');
+    assert(Date.now() < deadline, 'The scientific host did not initialize within two minutes');
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
   const directory = path.join(workspace, 'shap-smoke-data');
   fs.mkdirSync(directory);
   for (const [partition, start, count] of [['cal', 0, 24], ['val', 24, 8]]) {

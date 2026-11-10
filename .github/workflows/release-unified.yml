@@ -410,6 +410,16 @@ jobs:
             [ -f "$f" ] && sha256sum "$f" > "$f.sha256"
           done
 
+      # Retry an immutable application tag with the current qualification helper.
+      - name: Checkout packaged SHAP qualification helper
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .release-qualification
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: scripts/smoke-shap-journey.cjs
+
       - name: Smoke packaged UI and runtime contract
         timeout-minutes: 8
         env:
@@ -417,6 +427,7 @@ jobs:
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          node -e "require('node:fs').copyFileSync('.release-qualification/scripts/smoke-shap-journey.cjs', 'scripts/smoke-shap-journey.cjs')"
           installers=(release/*.deb)
           test "${#installers[@]}" = 1
           xvfb-run -a node scripts/smoke-packaged-ui.cjs --extracted-root release/linux-unpacked --platform linux --timeout-ms 120000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
@@ -591,6 +602,16 @@ jobs:
             "$hash  $($_.Name)" | Out-File -FilePath "$($_.FullName).sha256" -Encoding ascii -NoNewline
           }
 
+      # Retry an immutable application tag with the current qualification helper.
+      - name: Checkout packaged SHAP qualification helper
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .release-qualification
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: scripts/smoke-shap-journey.cjs
+
       - name: Smoke packaged UI and runtime contract
         timeout-minutes: 8
         env:
@@ -599,6 +620,8 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         shell: pwsh
         run: |
+          node -e "require('node:fs').copyFileSync('.release-qualification/scripts/smoke-shap-journey.cjs', 'scripts/smoke-shap-journey.cjs')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $installers = @(Get-ChildItem release -File -Filter '*.exe')
           if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
           node scripts/smoke-packaged-ui.cjs --extracted-root release/win-unpacked --platform win32 --timeout-ms 120000 --installer $installers[0].FullName --output "$env:RUNNER_TEMP/packaged-ui-smoke.json"
@@ -818,6 +841,16 @@ jobs:
             [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
           done
 
+      # Retry an immutable application tag with the current qualification helper.
+      - name: Checkout packaged SHAP qualification helper
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .release-qualification
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: scripts/smoke-shap-journey.cjs
+
       - name: Smoke packaged UI and runtime contract
         timeout-minutes: 8
         env:
@@ -825,6 +858,7 @@ jobs:
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          node -e "require('node:fs').copyFileSync('.release-qualification/scripts/smoke-shap-journey.cjs', 'scripts/smoke-shap-journey.cjs')"
           installers=(release/*.dmg)
           test "${#installers[@]}" = 1
           export TMPDIR="$(cd "$RUNNER_TEMP" && pwd -P)"
@@ -1040,6 +1074,16 @@ jobs:
             [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
           done
 
+      # Retry an immutable application tag with the current qualification helper.
+      - name: Checkout packaged SHAP qualification helper
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .release-qualification
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: scripts/smoke-shap-journey.cjs
+
       - name: Smoke packaged UI and runtime contract
         timeout-minutes: 8
         env:
@@ -1047,6 +1091,7 @@ jobs:
           RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          node -e "require('node:fs').copyFileSync('.release-qualification/scripts/smoke-shap-journey.cjs', 'scripts/smoke-shap-journey.cjs')"
           installers=(release/*.dmg)
           test "${#installers[@]}" = 1
           export TMPDIR="$(cd "$RUNNER_TEMP" && pwd -P)"
@@ -1267,7 +1312,8 @@ jobs:
           - **Docker**: OCI runtime on Linux x64
 
           ---
-          *Commit: ${{ github.sha }}*
+          *Application source: ${{ needs.prepare.outputs.checkout_ref }}*
+          *Qualification workflow: ${{ github.sha }}*
           NOTES
 
           if [ '${{ needs.prepare.outputs.include_macos_x64 }}' != 'true' ]; then
