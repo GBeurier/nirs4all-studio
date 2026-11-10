@@ -100,6 +100,7 @@ function shapResults(overrides: Partial<ShapResultsResponse> = {}): ShapResultsR
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   Object.values(apiMocks).forEach((mock) => mock.mockReset());
   websocketMockState.current = {
     status: null,
@@ -110,6 +111,65 @@ afterEach(() => {
 });
 
 describe('useShapAnalysisJob', () => {
+  it('reconciles progress and completion when websocket events are missed', async () => {
+    vi.useFakeTimers();
+    apiMocks.computeShapExplanation.mockResolvedValue({ job_id: 'job-1', status: 'running' });
+    apiMocks.getShapStatus
+      .mockResolvedValueOnce({ status: 'running', progress: 25, progress_message: 'Computing SHAP values...' })
+      .mockResolvedValue({ status: 'completed', progress: 100 });
+    apiMocks.getShapResults.mockResolvedValue(shapResults());
+    const mounted = await renderHook(() => useShapAnalysisJob());
+
+    await act(async () => {
+      await mounted.result.current?.runAnalysis({
+        chainId: 'chain-1', datasetId: 'corn', partition: 'test', explainerType: 'auto',
+      });
+    });
+    expect(mounted.result.current?.progress).toBe(25);
+    expect(mounted.result.current?.progressMessage).toBe('Computing SHAP values...');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(mounted.result.current?.results?.job_id).toBe('job-1');
+    expect(mounted.result.current?.isRunning).toBe(false);
+    const statusCalls = apiMocks.getShapStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(apiMocks.getShapStatus).toHaveBeenCalledTimes(statusCalls);
+    await mounted.unmount();
+  });
+
+  it.each(['failed', 'cancelled'])('leaves starting when a %s event is missed', async (status) => {
+    vi.useFakeTimers();
+    apiMocks.getShapStatus
+      .mockResolvedValueOnce({ status: 'running' })
+      .mockResolvedValue({ status, error: 'SHAP computation stopped' });
+    const mounted = await renderHook(() => useShapAnalysisJob({ jobId: 'job-1', isSubmitting: true }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(mounted.result.current?.error).toBe('SHAP computation stopped');
+    expect(mounted.result.current?.isRunning).toBe(false);
+    expect(apiMocks.getShapResults).not.toHaveBeenCalled();
+    await mounted.unmount();
+  });
+
+  it('does not apply a stale socket failure to the next job and stops polling on unmount', async () => {
+    vi.useFakeTimers();
+    websocketMockState.current = { status: 'failed', progress: 0, progressMessage: '', error: 'Previous failure' };
+    apiMocks.computeShapExplanation.mockResolvedValue({ job_id: 'job-new', status: 'running' });
+    apiMocks.getShapStatus.mockResolvedValue({ status: 'running', progress: 15, progress_message: 'Loading dataset...' });
+    const mounted = await renderHook(() => useShapAnalysisJob());
+    await act(async () => {
+      await mounted.result.current?.runAnalysis({
+        chainId: 'chain-1', datasetId: 'corn', partition: 'test', explainerType: 'auto',
+      });
+    });
+    expect(mounted.result.current?.isRunning).toBe(true);
+    expect(mounted.result.current?.error).toBeNull();
+    expect(mounted.result.current?.progress).toBe(15);
+    await mounted.unmount();
+    const statusCalls = apiMocks.getShapStatus.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(apiMocks.getShapStatus).toHaveBeenCalledTimes(statusCalls);
+  });
+
   it('builds and runs a completed workspace-chain SHAP job', async () => {
     apiMocks.computeShapExplanation.mockResolvedValue({
       job_id: 'job-1',
@@ -142,6 +202,7 @@ describe('useShapAnalysisJob', () => {
       bin_aggregation: 'sum',
     });
     expect(apiMocks.getShapResults).toHaveBeenCalledWith('job-1');
+    expect(apiMocks.getShapResults).toHaveBeenCalledTimes(1);
     expect(mounted.result.current?.jobId).toBe('job-1');
     expect(mounted.result.current?.results?.job_id).toBe('job-1');
     expect(mounted.result.current?.isSubmitting).toBe(false);
@@ -156,6 +217,7 @@ describe('useShapAnalysisJob', () => {
       status: 'running',
       message: 'queued',
     });
+    apiMocks.getShapStatus.mockResolvedValue({ status: 'running' });
 
     const mounted = await renderHook(() => useShapAnalysisJob());
 

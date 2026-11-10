@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { computeShapExplanation, getShapResults, getShapStatus } from '@/api/shap';
@@ -47,18 +47,16 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
   const [error, setError] = useState<string | null>(null);
   const [selectedSamples, setSelectedSamples] = useState<number[]>(() => initialState.selectedSamples ?? []);
 
-  const { status: jobStatus, progress, progressMessage, error: wsError } = useJobUpdates(jobId);
+  const { status: jobStatus } = useJobUpdates(jobId);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('');
 
-  // `useJobUpdates` does not reset its internal status when jobId changes, so after a failure
-  // the stale 'failed' value can briefly leak into the next run. This ref tells the effects
-  // below to ignore 'failed' until the new job has reported a fresh (non-failed) status.
-  const awaitingFreshStatusRef = useRef(false);
-
-  const isRunning = jobStatus === 'running' || isSubmitting;
+  const isRunning = isSubmitting;
 
   const resetResultStateForRun = useCallback(() => {
-    awaitingFreshStatusRef.current = true;
     setIsSubmitting(true);
+    setProgress(0);
+    setProgressMessage('');
     setError(null);
     setResults(null);
     setRebinnedData(null);
@@ -68,9 +66,10 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
 
   useEffect(() => {
     if (!jobId) return;
-    if (results && !isSubmitting) return;
+    if (results) return;
 
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     const reconcileJob = async () => {
       try {
@@ -79,6 +78,8 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
 
         const status = typeof job.status === 'string' ? job.status : null;
         const statusError = readShapJobStatusError(job);
+        if (typeof job.progress === 'number') setProgress(job.progress);
+        if (typeof job.progress_message === 'string') setProgressMessage(job.progress_message);
 
         if (status === 'completed') {
           const fullResults = await getShapResults(jobId);
@@ -87,12 +88,16 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
           setRebinnedData(null);
           setSelectedSamples([]);
           setIsSubmitting(false);
+          setProgress(100);
           setError(null);
           return;
         }
 
         if (status === 'running' || status === 'pending') {
           setIsSubmitting(true);
+          // The job may finish before the socket subscribes, or while it is
+          // disconnected. Reconcile serially against the durable job snapshot.
+          timer = setTimeout(() => { void reconcileJob(); }, 1000);
           return;
         }
 
@@ -118,34 +123,9 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [isSubmitting, jobId, results, t]);
-
-  useEffect(() => {
-    if (jobStatus && jobStatus !== 'failed') {
-      awaitingFreshStatusRef.current = false;
-    }
-
-    if (jobStatus === 'completed' && jobId && !results) {
-      getShapResults(jobId)
-        .then((resolvedResults) => {
-          setResults(resolvedResults);
-          setRebinnedData(null);
-          setSelectedSamples([]);
-          setIsSubmitting(false);
-          setError(null);
-        })
-        .catch((err: unknown) => {
-          setError(getUnknownErrorMessage(err, t('results.variableImportance.job.fetchFailed')));
-          setIsSubmitting(false);
-        });
-    }
-
-    if (jobStatus === 'failed' && !awaitingFreshStatusRef.current) {
-      setError(wsError || t('results.variableImportance.job.failed'));
-      setIsSubmitting(false);
-    }
-  }, [jobId, jobStatus, results, t, wsError]);
+  }, [jobId, jobStatus, results, t]);
 
   const runAnalysis = useCallback(async ({
     chainId,
@@ -175,14 +155,15 @@ export function useShapAnalysisJob(initialState: UseShapAnalysisJobInitialState 
       });
 
       const response = await computeShapExplanation(request);
-      setJobId(response.job_id);
 
       if (response.status === 'completed') {
         const fullResults = await getShapResults(response.job_id);
         setResults(fullResults);
         setSelectedSamples([]);
         setIsSubmitting(false);
+        setProgress(100);
       }
+      setJobId(response.job_id);
     } catch (err) {
       setError(getUnknownErrorMessage(err, t('results.variableImportance.job.analysisFailed')));
       setIsSubmitting(false);
