@@ -396,7 +396,14 @@ describe("renderer transport preselection", () => {
     }
     await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/datasets/preview-upload" }, running, request))
       .resolves.toMatchObject({ target: "reject" });
-    for (const path of ["/updates/dependencies/install", "/updates/dependencies/uninstall", "/updates/dependencies/refresh?force_refresh=true", "/config/align"]) {
+    for (const action of ["install", "revert", "update", "uninstall"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "POST", path: `/updates/dependencies/${action}` }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar", status: 200 });
+      await expect(preselectRendererTransport({ kind: "http", method: "POST", path: `/updates/dependencies/${action}` },
+        () => ({ ...running(), pythonPluginHostConfigured: false }), request))
+        .resolves.toMatchObject({ target: "reject", reason: "native_python_host_unavailable" });
+    }
+    for (const path of ["/updates/dependencies/install?bad=true", "/updates/dependencies/refresh?force_refresh=true", "/config/align"]) {
       await expect(preselectRendererTransport({ kind: "http", method: "POST", path }, running, request))
         .resolves.toMatchObject({ target: "reject" });
     }

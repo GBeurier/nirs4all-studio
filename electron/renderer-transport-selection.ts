@@ -439,7 +439,8 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
     return { name: "runtime-config", capability: "recommended_config_routes", requiresPythonHost: true };
   }
   if ((method === "GET" && pathname === "/updates/dependencies" && validQuery({ force_refresh: bool })) ||
-      (method === "POST" && pathname === "/updates/dependencies/refresh" && !query)) {
+      (method === "POST" && ["/updates/dependencies/refresh", "/updates/dependencies/install",
+        "/updates/dependencies/revert", "/updates/dependencies/update", "/updates/dependencies/uninstall"].includes(pathname) && !query)) {
     return { name: "runtime-dependencies", capability: "recommended_config_routes", requiresPythonHost: true };
   }
   const inspection = ["detect-files", "detect-unified", "detect-files-list", "scan-folder", "detect-format", "auto-detect", "validate-files", "preview"];

@@ -11,8 +11,20 @@ use crate::{
     recommended_config, settings::AppSettingsStore, HttpRequest, HttpResponse, SidecarState,
 };
 
+static PACKAGE_ACTION: Mutex<()> = Mutex::new(());
+
+fn package_action_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/updates/dependencies/install"
+            | "/api/updates/dependencies/revert"
+            | "/api/updates/dependencies/update"
+            | "/api/updates/dependencies/uninstall"
+    )
+}
+
 pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<HttpResponse> {
-    if !matches!(
+    let configuration_route = matches!(
         (request.method.as_str(), request.path.as_str()),
         (
             "GET",
@@ -24,9 +36,25 @@ pub fn route(state: &Arc<Mutex<SidecarState>>, request: &HttpRequest) -> Option<
             "POST",
             "/api/config/complete-setup" | "/api/updates/dependencies/refresh"
         )
-    ) {
+    );
+    if !(configuration_route || request.method == "POST" && package_action_path(&request.path)) {
         return None;
     }
+    // Serialise explicit mutations without holding the product state lock
+    // throughout a potentially long download/install.
+    let _package_action = if package_action_path(&request.path) {
+        match PACKAGE_ACTION.try_lock() {
+            Ok(guard) => Some(guard),
+            Err(_) => {
+                return Some(HttpResponse::json(
+                    409,
+                    json!({"detail":"Another package action is running. Wait for it to finish before retrying."}).to_string(),
+                ));
+            }
+        }
+    } else {
+        None
+    };
     let (settings, host, scientific, reused_runtime, probes) = {
         let state = state
             .lock()
@@ -72,6 +100,7 @@ fn inspect_runtime_configuration(
     let function = match operation {
         "config.dependencies" => "dependency_inventory",
         "config.compare" => "compare_configuration",
+        "config.package" => "package_action",
         _ => return Err("Unknown runtime configuration operation".into()),
     };
     let document = serde_json::to_string(payload).map_err(|error| error.to_string())?;
@@ -83,7 +112,11 @@ fn inspect_runtime_configuration(
     crate::run_python_plugin_json_with_limit(
         host,
         &script,
-        crate::PYTHON_PLUGIN_CAPABILITIES_TIMEOUT,
+        if operation == "config.package" {
+            std::time::Duration::from_secs(600)
+        } else {
+            crate::PYTHON_PLUGIN_CAPABILITIES_TIMEOUT
+        },
         crate::document_cpython::MAX_DOCUMENT_BYTES,
     )
     .map_err(|error| format!("Python package inventory unavailable: {}", error.as_str()))
@@ -117,8 +150,11 @@ fn handle_with_policy(
             }
         }
         match request.path.as_str() {
-            "/api/updates/dependencies" | "/api/updates/dependencies/refresh" => {
-                dependency_inventory_response(request, &query, &config, adapt)
+            path if path == "/api/updates/dependencies"
+                || path == "/api/updates/dependencies/refresh"
+                || package_action_path(path) =>
+            {
+                dependency_response(request, &query, &config, settings, adapt, reused_runtime)
             }
 
             "/api/config/recommended" => {
@@ -205,11 +241,56 @@ fn handle_with_policy(
     }
 }
 
+fn dependency_response(
+    request: &HttpRequest,
+    query: &BTreeMap<String, String>,
+    config: &Value,
+    settings: &AppSettingsStore,
+    adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    reused_runtime: bool,
+) -> Result<Value, (u16, String)> {
+    let status = settings.setup_status().map_err(|error| (500, error))?;
+    let profile = status["selected_profile"].as_str().unwrap_or("cpu");
+    if !package_action_path(&request.path) {
+        return dependency_inventory_response(
+            request,
+            query,
+            config,
+            adapt,
+            !reused_runtime,
+            profile,
+        );
+    }
+    if !reused_runtime {
+        return Err((409, "The bundled Python runtime is read-only. Select an external Python environment in Settings first.".into()));
+    }
+    if !query.is_empty() {
+        return Err((400, "Package actions take no query fields".into()));
+    }
+    let body: Value =
+        serde_json::from_slice(&request.body).map_err(|error| (400, error.to_string()))?;
+    let result = adapt(
+        "config.package",
+        &json!({
+            "config":config,"profile":profile,"read_only":false,
+            "action":request.path.rsplit('/').next(),"request":body,
+        }),
+    )
+    .map_err(|error| (503, error))?;
+    if let Some(detail) = result["detail"].as_str() {
+        let status = if result["status"] == 409 { 409 } else { 400 };
+        return Err((status, detail.to_owned()));
+    }
+    Ok(result)
+}
+
 fn dependency_inventory_response(
     request: &HttpRequest,
     query: &BTreeMap<String, String>,
     config: &Value,
     adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    read_only: bool,
+    profile: &str,
 ) -> Result<Value, (u16, String)> {
     if (request.method == "POST" && !query.is_empty())
         || query.keys().any(|key| key != "force_refresh")
@@ -219,8 +300,11 @@ fn dependency_inventory_response(
     {
         return Err((400, "Invalid dependency inventory query".into()));
     }
-    let inventory =
-        adapt("config.dependencies", &json!({"config":config})).map_err(|error| (503, error))?;
+    let inventory = adapt(
+        "config.dependencies",
+        &json!({"config":config,"read_only":read_only,"profile":profile}),
+    )
+    .map_err(|error| (503, error))?;
     if request.method == "POST" {
         Ok(json!({"success":true,"message":"Dependency inventory refreshed"}))
     } else {
@@ -258,6 +342,79 @@ fn setup_profile(config: &Value, bytes: &[u8]) -> Result<String, (u16, String)> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn package_actions_require_external_runtime_and_forward_the_selected_profile() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path());
+        settings.complete_setup("cpu-lite").unwrap();
+        let probe = || panic!("package action invoked GPU probe");
+        for action in ["install", "revert", "update", "uninstall"] {
+            let mut request = HttpRequest {
+                method: "POST".into(),
+                path: format!("/api/updates/dependencies/{action}"),
+                query: None,
+                headers: BTreeMap::new(),
+                body: br#"{"package":"shap"}"#.to_vec(),
+            };
+            let adapt = |operation: &str, payload: &Value| {
+                assert_eq!(operation, "config.package");
+                assert_eq!(payload["profile"], "cpu-lite");
+                assert_eq!(payload["read_only"], false);
+                assert_eq!(payload["action"], action);
+                assert_eq!(payload["request"]["package"], "shap");
+                Ok(json!({"success":true,"package":"shap"}))
+            };
+            let forbidden = |_: &str, _: &Value| panic!("bundled runtime must never invoke pip");
+            assert_eq!(handle(&settings, &request, &probe, &forbidden).status, 409);
+            assert_eq!(
+                handle_with_policy(&settings, &request, &probe, &adapt, true).status,
+                200
+            );
+            let refused =
+                |_: &str, _: &Value| Ok(json!({"status":400,"detail":"Unknown optional package"}));
+            assert_eq!(
+                handle_with_policy(&settings, &request, &probe, &refused, true).status,
+                400
+            );
+            request.query = Some("bad=true".into());
+            assert_eq!(
+                handle_with_policy(&settings, &request, &probe, &forbidden, true).status,
+                400
+            );
+        }
+    }
+
+    #[test]
+    fn external_inventory_receives_mutability_policy() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path());
+        let request = HttpRequest {
+            method: "GET".into(),
+            path: "/api/updates/dependencies".into(),
+            query: None,
+            headers: BTreeMap::new(),
+            body: Vec::new(),
+        };
+        for reused in [false, true] {
+            let adapt = |operation: &str, payload: &Value| {
+                assert_eq!(operation, "config.dependencies");
+                assert_eq!(payload["read_only"], !reused);
+                Ok(json!({"read_only":!reused,"categories":[]}))
+            };
+            assert_eq!(
+                handle_with_policy(
+                    &settings,
+                    &request,
+                    &|| panic!("unexpected probe"),
+                    &adapt,
+                    reused
+                )
+                .status,
+                200
+            );
+        }
+    }
 
     #[test]
     fn metadata_diagnostics_do_not_qualify_an_unready_scientific_runtime_for_setup() {
