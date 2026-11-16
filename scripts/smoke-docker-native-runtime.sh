@@ -76,6 +76,21 @@ node -e '
   if (capabilities.features?.native_archive_v2_prediction !== true) throw new Error("native Methods archive replay is unavailable");
 ' "${health}" "${capability_status}" "${capability_response}" "${capabilities}"
 
+# The sidecar acquires its Python host in the background after it reports
+# ready. Wait for the outcome: scientific execution needs an admitted host.
+readiness=""
+for _ in $(seq 1 180); do
+  readiness=$(docker exec "${container}" curl --fail --silent http://127.0.0.1:8001/api/system/readiness)
+  if node -e 'process.exit(JSON.parse(process.argv[1]).ml_loading === true ? 1 : 0)' "${readiness}"; then
+    break
+  fi
+  sleep 1
+done
+node -e '
+  const readiness = JSON.parse(process.argv[1]);
+  if (readiness.ml_ready !== true) throw new Error(`scientific host was not admitted: ${readiness.ml_error ?? "still loading"}`);
+' "${readiness}"
+
 # Scientific execution is selected dynamically only after the Rust-owned
 # resolver has a valid catalogue. Seed the smallest valid V2 document in the
 # fresh state volume and prove the capability transition without restarting or
