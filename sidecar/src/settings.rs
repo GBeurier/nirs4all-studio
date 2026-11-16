@@ -23,7 +23,6 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 const APP_SETTINGS_FILE: &str = "app_settings.json";
-const SETUP_STATUS_FILE: &str = "setup_status.json";
 const DATASET_LINKS_FILE: &str = "dataset_links.json";
 const MAX_DATASET_LINKS_BYTES: u64 = 2 * 1024 * 1024;
 const CONFIG_ENV: &str = "NIRS4ALL_CONFIG";
@@ -35,7 +34,6 @@ const CONFIG_REDIRECT_FILE: &str = "config_redirect.txt";
 pub struct AppSettingsStore {
     config_dir: PathBuf,
     default_config_dir: PathBuf,
-    legacy_setup_path: Option<PathBuf>,
     write_lock: Arc<Mutex<()>>,
 }
 
@@ -184,16 +182,7 @@ impl AppSettingsStore {
 
     #[must_use]
     pub fn from_environment() -> Self {
-        let mut settings = Self::with_config_paths(resolve_config_dir(), default_config_dir());
-        // Explicit config roots (tests, portable profiles, server deployments)
-        // must remain isolated from the user's other installations.
-        if nonempty_env(CONFIG_ENV).is_none()
-            && nonempty_env(PORTABLE_ROOT_ENV).is_none()
-            && nonempty_env(PORTABLE_EXE_ENV).is_none()
-        {
-            settings.legacy_setup_path = legacy_setup_path();
-        }
-        settings
+        Self::with_config_paths(resolve_config_dir(), default_config_dir())
     }
 
     #[must_use]
@@ -209,7 +198,6 @@ impl AppSettingsStore {
         Self {
             config_dir: config_dir.into(),
             default_config_dir: default_config_dir.into(),
-            legacy_setup_path: None,
             write_lock: Arc::new(Mutex::new(())),
         }
     }
@@ -226,65 +214,6 @@ impl AppSettingsStore {
             "favorite_pipelines": favourite_pipelines(&settings),
             "ui_preferences": settings.get("ui_preferences").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})),
         }))
-    }
-
-    /// Read the first-launch marker shared with existing Studio installs.
-    /// Missing or malformed state is treated as setup not yet completed.
-    pub fn setup_status(&self) -> Result<Value, String> {
-        let native_path = self.config_dir.join(SETUP_STATUS_FILE);
-        // Python stored this marker in its platformdirs data directory, not
-        // beside app_settings.json. Preserve that decision across the upgrade.
-        let path = if native_path.exists() {
-            native_path
-        } else {
-            self.legacy_setup_path.clone().unwrap_or(native_path)
-        };
-        if !path.exists() {
-            return Ok(default_setup_status());
-        }
-        let content = fs::read_to_string(&path)
-            .map_err(|error| format!("could not read {}: {error}", path.display()))?;
-        let Ok(status) = serde_json::from_str::<Value>(&content) else {
-            return Ok(default_setup_status());
-        };
-        let Some(status) = status.as_object() else {
-            return Ok(default_setup_status());
-        };
-        if status.get("setup_completed").and_then(Value::as_bool) != Some(true) {
-            return Ok(default_setup_status());
-        }
-        let selected_profile = status
-            .get("selected_profile")
-            .and_then(Value::as_str)
-            .filter(|profile| !profile.trim().is_empty());
-        let Some(selected_profile) = selected_profile else {
-            return Ok(default_setup_status());
-        };
-        Ok(json!({
-            "setup_completed": true,
-            "selected_profile": selected_profile,
-            "completed_at": status.get("completed_at").and_then(Value::as_str),
-        }))
-    }
-
-    /// Persist a selected first-launch profile without acquiring a Python
-    /// runtime. Package installation remains an explicit plugin-host action.
-    pub fn complete_setup(&self, profile: &str) -> Result<Value, String> {
-        let _write_guard = self
-            .write_lock
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let profile = profile.trim();
-        if profile.is_empty() {
-            return Err("setup profile must not be empty".into());
-        }
-        let status = json!({
-            "setup_completed": true,
-            "selected_profile": profile,
-            "completed_at": null,
-        });
-        self.save_named_json(SETUP_STATUS_FILE, &status)?;
-        Ok(status)
     }
 
     pub fn update_ui_preferences(&self, updates: &Value) -> Result<(), String> {
@@ -908,22 +837,6 @@ fn resolve_config_dir() -> PathBuf {
     default
 }
 
-fn legacy_setup_path() -> Option<PathBuf> {
-    let data_dir = if cfg!(windows) {
-        nonempty_env("LOCALAPPDATA")
-            .map(|root| PathBuf::from(root).join("nirs4all/nirs4all-webapp"))
-    } else if cfg!(target_os = "macos") {
-        nonempty_env("HOME")
-            .map(|root| PathBuf::from(root).join("Library/Application Support/nirs4all-webapp"))
-    } else {
-        nonempty_env("XDG_DATA_HOME")
-            .map(PathBuf::from)
-            .or_else(|| nonempty_env("HOME").map(|root| PathBuf::from(root).join(".local/share")))
-            .map(|root| root.join("nirs4all-webapp"))
-    };
-    data_dir.map(|root| root.join(SETUP_STATUS_FILE))
-}
-
 fn default_config_dir() -> PathBuf {
     if cfg!(windows) {
         nonempty_env("APPDATA")
@@ -958,14 +871,6 @@ fn default_settings() -> Value {
             "density": "comfortable",
             "language": "en",
         },
-    })
-}
-
-fn default_setup_status() -> Value {
-    json!({
-        "setup_completed": false,
-        "selected_profile": null,
-        "completed_at": null,
     })
 }
 
@@ -1174,53 +1079,6 @@ mod tests {
         );
         assert!(store.remove_favourite("pipeline-a").unwrap());
         assert!(!store.remove_favourite("pipeline-a").unwrap());
-        fs::remove_dir_all(directory).unwrap();
-    }
-
-    #[test]
-    fn setup_status_preserves_python_installation_marker_and_native_precedence() {
-        let directory = temporary_directory("python-setup-migration");
-        let legacy = directory.join("python-data/setup_status.json");
-        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-        let original =
-            r#"{"setup_completed":true,"selected_profile":"cpu-lite","completed_at":"2026-08-07"}"#;
-        fs::write(&legacy, original).unwrap();
-        let mut store = AppSettingsStore::new(directory.join("native-config"));
-        store.legacy_setup_path = Some(legacy.clone());
-        assert_eq!(
-            store.setup_status().unwrap()["selected_profile"],
-            "cpu-lite"
-        );
-        assert!(!store.config_dir.join("app_settings.json").exists());
-        store.complete_setup("cpu").unwrap();
-        assert_eq!(store.setup_status().unwrap()["selected_profile"], "cpu");
-        assert_eq!(fs::read_to_string(legacy).unwrap(), original);
-        fs::remove_dir_all(directory).unwrap();
-    }
-
-    #[test]
-    fn setup_status_round_trips_in_the_legacy_file_without_python() {
-        let directory = temporary_directory("setup-status");
-        let store = AppSettingsStore::new(&directory);
-
-        assert_eq!(
-            store.setup_status().unwrap(),
-            json!({
-                "setup_completed": false,
-                "selected_profile": null,
-                "completed_at": null,
-            })
-        );
-        assert_eq!(
-            store.complete_setup("cpu").unwrap(),
-            json!({
-                "setup_completed": true,
-                "selected_profile": "cpu",
-                "completed_at": null,
-            })
-        );
-        assert_eq!(store.setup_status().unwrap()["selected_profile"], "cpu");
-        assert!(store.complete_setup("  ").is_err());
         fs::remove_dir_all(directory).unwrap();
     }
 

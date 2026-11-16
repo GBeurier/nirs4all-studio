@@ -1,4 +1,4 @@
-//! Attested pure document translations within the selected library runtime.
+//! Pure document translations within the selected library runtime.
 
 use std::{collections::BTreeSet, fs, path::Path};
 
@@ -164,8 +164,6 @@ fn is_supported_operation(operation: &str) -> bool {
             | "spectra.data"
             | "spectra.stats"
             | "pipeline.normalize"
-            | "config.compare"
-            | "config.dependencies"
             | "pipeline.import"
             | "pipeline.render"
             | "pipeline.count_variants"
@@ -296,10 +294,10 @@ pub fn validate_response(value: &Value) -> bool {
     }
 }
 
-/// Verify source bytes against the manifest compiled into this Rust sidecar,
-/// in addition to the enclosing full-runtime closure attestation.
-pub fn verify(site_packages: &Path) -> Result<(), String> {
-    let root = site_packages.join(PACKAGE);
+/// Verify the adapters shipped with the application against the manifest
+/// compiled into this sidecar. `adapters_dir` contains the package directory.
+pub fn verify(adapters_dir: &Path) -> Result<(), String> {
+    let root = adapters_dir.join(PACKAGE);
     if fs::symlink_metadata(&root)
         .map_err(|error| error.to_string())?
         .file_type()
@@ -414,7 +412,7 @@ mod tests {
             .status,
             503
         );
-        assert!(request("config.dependencies", &json!({"config": {}})).is_ok());
+        assert!(request("config.dependencies", &json!({"config": {}})).is_err());
         assert!(request("run", &json!({})).is_err());
         assert!(request(
             "documents.batch",

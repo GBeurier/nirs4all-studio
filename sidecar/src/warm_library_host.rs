@@ -1,10 +1,8 @@
 //! Two reusable interactive workers. Training keeps its dedicated job process.
 use super::{
-    request_limits, scientific_worker_command_with_script, terminate_worker,
-    validate_worker_response, verify_identity, verify_packaged_runtime_identity,
-    CpythonScientificJobExecutor, HostIdentity, PackagedRuntimeIdentity,
-    ScientificCpythonUnavailable, ScratchDirectory, EXECUTION_SCRIPT,
-    MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES,
+    request_limits, scientific_worker_command, terminate_worker, validate_worker_response,
+    CpythonScientificJobExecutor, ScientificCpythonUnavailable, ScientificHost, ScratchDirectory,
+    EXECUTION_SCRIPT, MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES,
 };
 use serde_json::Value;
 use std::{
@@ -14,11 +12,10 @@ use std::{
 };
 use std::{
     io::{Read, Write},
-    path::Path,
     process::Command,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError,
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -26,278 +23,20 @@ use std::{
 const MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
 const MAX_WORKER_DIAGNOSTIC_BYTES: usize = 4096;
 
-fn is_foreground_prediction_read(request: &Value) -> bool {
-    request["schema"] == crate::document_cpython::REQUEST_SCHEMA
-        && matches!(
-            request["operation"].as_str(),
-            Some("results.chains" | "results.chain" | "results.arrays" | "results.page")
-        )
-}
-
-// Match the renderer's normal readiness polling cadence. This schedules a real
-// background validation after a read burst; it never caches a ready response.
-const READINESS_QUIET_PERIOD: Duration = Duration::from_secs(1);
-
-#[derive(Default)]
-struct PredictionReadState {
-    active: usize,
-    last_finished: Option<Instant>,
-    failed: bool,
-}
-
-pub struct PredictionReadActivity(Arc<Mutex<PredictionReadState>>);
-
-impl Drop for PredictionReadActivity {
-    fn drop(&mut self) {
-        if let Ok(mut state) = self.0.lock() {
-            match state.active.checked_sub(1) {
-                Some(active) => state.active = active,
-                None => state.failed = true,
-            }
-            state.last_finished = Some(Instant::now());
-        }
-    }
-}
-
-struct RuntimeAdmission {
-    gate: RwLock<()>,
-    reads: Arc<Mutex<PredictionReadState>>,
-    quiet_period: Duration,
-}
-
-impl Default for RuntimeAdmission {
-    fn default() -> Self {
-        Self {
-            gate: RwLock::default(),
-            reads: Arc::default(),
-            quiet_period: READINESS_QUIET_PERIOD,
-        }
-    }
-}
-
-impl RuntimeAdmission {
-    fn read_activity(&self) -> Result<PredictionReadActivity, ScientificCpythonUnavailable> {
-        let mut state = self
-            .reads
-            .lock()
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-        if state.failed {
-            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-        }
-        if let Some(active) = state.active.checked_add(1) {
-            state.active = active;
-        } else {
-            state.failed = true;
-            drop(state);
-            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-        }
-        drop(state);
-        Ok(PredictionReadActivity(Arc::clone(&self.reads)))
-    }
-
-    fn reads_quiet(&self) -> Result<bool, ScientificCpythonUnavailable> {
-        let state = self
-            .reads
-            .lock()
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-        if state.failed {
-            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-        }
-        Ok(state.active == 0
-            && state
-                .last_finished
-                .is_none_or(|finished| finished.elapsed() >= self.quiet_period))
-    }
-
-    fn foreground(
-        &self,
-        timeout: Duration,
-    ) -> Result<RwLockReadGuard<'_, ()>, ScientificCpythonUnavailable> {
-        let _timing = super::BoundaryTiming::start("runtime_foreground_admission_wait");
-        let started = Instant::now();
-        loop {
-            match self.gate.try_read() {
-                Ok(guard) => {
-                    self.reads_quiet()?;
-                    return Ok(guard);
-                }
-                Err(TryLockError::Poisoned(_)) => {
-                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-                Err(TryLockError::WouldBlock) => {}
-            }
-            if started.elapsed() >= timeout {
-                return Err(ScientificCpythonUnavailable::TimedOut);
-            }
-            std::thread::sleep(Duration::from_millis(1));
-        }
-    }
-
-    fn background(
-        &self,
-        timeout: Duration,
-    ) -> Result<RwLockWriteGuard<'_, ()>, ScientificCpythonUnavailable> {
-        let _timing = super::BoundaryTiming::start("runtime_availability_admission_wait");
-        let started = Instant::now();
-        loop {
-            match self.gate.try_write() {
-                Ok(guard) if self.reads_quiet()? => return Ok(guard),
-                Ok(guard) => drop(guard),
-                Err(TryLockError::Poisoned(_)) => {
-                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-                Err(TryLockError::WouldBlock) => {}
-            }
-            if started.elapsed() >= timeout {
-                return Err(ScientificCpythonUnavailable::TimedOut);
-            }
-            std::thread::sleep(Duration::from_millis(1));
-        }
-    }
-}
-
-/// Filesystem notifications invalidate the installation validation, not user
-/// requests. Unsupported watchers retain exhaustive request-time validation.
-pub(super) struct RuntimeChanges {
-    generation: Arc<AtomicUsize>,
-    healthy: Arc<AtomicBool>,
-    validated: Mutex<Option<usize>>,
-    admission: RuntimeAdmission,
-    _watcher: Mutex<notify::RecommendedWatcher>,
-}
-
-impl std::fmt::Debug for RuntimeChanges {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RuntimeChanges")
-            .field("generation", &self.generation.load(Ordering::Acquire))
-            .finish_non_exhaustive()
-    }
-}
-
-impl RuntimeChanges {
-    pub(super) fn watch(root: &Path) -> Option<Arc<Self>> {
-        use notify::Watcher;
-        let package = root.parent()?.to_owned();
-        let observed = package.clone();
-        let generation = Arc::new(AtomicUsize::new(0));
-        let healthy = Arc::new(AtomicBool::new(true));
-        let changed = generation.clone();
-        let health = healthy.clone();
-        let mut watcher =
-            notify::recommended_watcher(move |event: notify::Result<notify::Event>| match event {
-                Ok(event) if !matches!(event.kind, notify::EventKind::Access(_)) => {
-                    if event.need_rescan()
-                        || event.paths.iter().any(|path| path.starts_with(&observed))
-                    {
-                        changed.fetch_add(1, Ordering::AcqRel);
-                    }
-                }
-                Err(_) => {
-                    health.store(false, Ordering::Release);
-                    changed.fetch_add(1, Ordering::AcqRel);
-                }
-                _ => {}
-            })
-            .ok()?;
-        watcher
-            .watch(&package, notify::RecursiveMode::Recursive)
-            .ok()?;
-        if let Some(parent) = package.parent() {
-            watcher
-                .watch(parent, notify::RecursiveMode::NonRecursive)
-                .ok()?;
-        }
-        Some(Arc::new(Self {
-            generation,
-            healthy,
-            validated: Mutex::new(None),
-            admission: RuntimeAdmission::default(),
-            _watcher: Mutex::new(watcher),
-        }))
-    }
-
-    pub(super) fn validate(
-        &self,
-        runtime: &PackagedRuntimeIdentity,
-    ) -> Result<usize, ScientificCpythonUnavailable> {
-        let _timing = super::BoundaryTiming::start("runtime_validation_total");
-        let generation = self.generation.load(Ordering::Acquire);
-        let waiting = super::BoundaryTiming::start("runtime_validation_lock_wait");
-        let mut validated = self
-            .validated
-            .lock()
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-        drop(waiting);
-        // Windows may coalesce a same-size write followed by restored mtime into
-        // no directory notification. Its FILE_BASIC_INFO.ChangeTime snapshot is
-        // still authoritative; check it on every boundary while retaining the
-        // cryptographic hash cache for unchanged installations.
-        if cfg!(windows) || !self.healthy.load(Ordering::Acquire) || *validated != Some(generation)
-        {
-            verify_packaged_runtime_identity(runtime)?;
-            if self.generation.load(Ordering::Acquire) != generation {
-                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-            }
-            *validated = Some(generation);
-        }
-        drop(validated);
-        Ok(generation)
-    }
-
-    fn foreground_prediction_read(
-        &self,
-        request: &Value,
-        timeout: Duration,
-    ) -> Result<Option<RwLockReadGuard<'_, ()>>, ScientificCpythonUnavailable> {
-        if is_foreground_prediction_read(request) {
-            self.admission.foreground(timeout).map(Some)
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub(super) fn prediction_read_activity(
-        &self,
-        operation: &str,
-    ) -> Result<Option<PredictionReadActivity>, ScientificCpythonUnavailable> {
-        if is_foreground_prediction_read(&serde_json::json!({
-            "schema": crate::document_cpython::REQUEST_SCHEMA,
-            "operation": operation,
-        })) {
-            self.admission.read_activity().map(Some)
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub(super) fn validate_background(
-        &self,
-        runtime: &PackagedRuntimeIdentity,
-    ) -> Result<usize, ScientificCpythonUnavailable> {
-        // Availability still performs the same exhaustive validation. Wait for
-        // active guarded exchanges instead of inserting scans between their
-        // before/after boundaries; never synthesize a ready response.
-        let _admission = self
-            .admission
-            .background(super::SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT)?;
-        self.validate(runtime)
-    }
-}
-
 /// Reuse the exact one-shot dispatcher and bootstrap checks with framed stdio.
 fn worker_script() -> String {
     let (prefix, rest) = EXECUTION_SCRIPT
         .split_once("raw=sys.stdin.buffer.read(33554433)")
         .expect("worker input boundary");
     let (_, bootstrap) = rest
-        .split_once("distribution=importlib.metadata.distribution")
-        .expect("distribution bootstrap");
+        .split_once("request=json.loads(raw)\n")
+        .expect("library bootstrap");
     let (bootstrap, dispatch) = bootstrap
         .split_once("import contextlib\n")
         .expect("dispatcher boundary");
     let dispatch = dispatch.replace("sys.stdout.buffer.write(encoded)",
         "sys.stdout.buffer.write(len(encoded).to_bytes(4, 'little'))\nsys.stdout.buffer.write(encoded)\nsys.stdout.buffer.flush()");
-    format!("{prefix}distribution=importlib.metadata.distribution{bootstrap}import contextlib\nwhile True:\n    raw=sys.stdin.buffer.readline(33554434)\n    if not raw: break\n    if len(raw)>33554433 or not raw.endswith(b'\\n'):\n        raise RuntimeError('interactive request exceeds stdin budget')\n    request=json.loads(raw)\n{}\n",
+    format!("{prefix}{bootstrap}import contextlib\nwhile True:\n    raw=sys.stdin.buffer.readline(33554434)\n    if not raw: break\n    if len(raw)>33554433 or not raw.endswith(b'\\n'):\n        raise RuntimeError('interactive request exceeds stdin budget')\n    request=json.loads(raw)\n{}\n",
         dispatch.lines().map(|line| format!("    {line}")).collect::<Vec<_>>().join("\n"))
 }
 
@@ -309,7 +48,6 @@ pub(super) struct Worker {
     stderr_tail: Arc<Mutex<Vec<u8>>>,
     stderr_reader: Option<std::thread::JoinHandle<()>>,
     completed: usize,
-    generation: Option<usize>,
     _scratch: ScratchDirectory,
 }
 
@@ -335,40 +73,19 @@ impl Worker {
         self.child.id()
     }
 
-    /// The acquisition probe becomes the first worker: expensive library imports
-    /// are paid once and retained for the first user interaction.
+    /// The admission probe becomes the first worker: expensive library imports
+    /// are paid once and retained for the first user interaction. Returns the
+    /// probe's report; the caller drops the worker when it refuses the host.
     pub(super) fn acquire(
-        host: &HostIdentity,
-        runtime: Option<&PackagedRuntimeIdentity>,
-        verified_distribution_stat: Option<&str>,
+        host: &ScientificHost,
         timeout: Duration,
     ) -> Result<(Self, Vec<u8>), ScientificCpythonUnavailable> {
-        let generation = runtime
-            .and_then(|runtime| runtime.changes.as_ref().map(|changes| (runtime, changes)))
-            .map(|(runtime, changes)| changes.validate(runtime))
-            .transpose()?;
         let probe = serde_json::to_string(super::PREFLIGHT_SCRIPT)
             .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
         let dispatcher = serde_json::to_string(&worker_script())
             .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
-        let script = format!("import contextlib,io,sys\n_capture=io.StringIO()\nwith contextlib.redirect_stdout(_capture):\n    exec({probe})\n_probe=_capture.getvalue().encode('utf-8')\nsys.stdout.buffer.write(len(_probe).to_bytes(4,'little'))\nsys.stdout.buffer.write(_probe)\nsys.stdout.buffer.flush()\nif not ready: raise SystemExit(0)\nsys.argv[2]=callable_path\nsys.argv[3]=callable_sha256\nexec({dispatcher})\n");
-        let scratch = ScratchDirectory::create()?;
-        let mut command = scientific_worker_command_with_script(
-            host,
-            host,
-            runtime.map(|runtime| runtime.site_packages.as_path()),
-            &scratch.path,
-            &script,
-        )?;
-        command
-            .env("OPENBLAS_NUM_THREADS", "1")
-            .env("OMP_NUM_THREADS", "1")
-            .env("MKL_NUM_THREADS", "1");
-        if let Some(digest) = verified_distribution_stat {
-            command.env(super::VERIFIED_DISTRIBUTION_STAT_ENV, digest);
-        }
-        let mut worker = Self::spawn_command(command, scratch)?;
-        worker.generation = generation;
+        let script = format!("import contextlib,io,sys\n_capture=io.StringIO()\nwith contextlib.redirect_stdout(_capture):\n    exec({probe})\n_probe=_capture.getvalue().encode('utf-8')\nsys.stdout.buffer.write(len(_probe).to_bytes(4,'little'))\nsys.stdout.buffer.write(_probe)\nsys.stdout.buffer.flush()\nif not ready: raise SystemExit(0)\nsys.argv[3]=distribution_version\nexec({dispatcher})\n");
+        let mut worker = Self::spawn_script(host, &script)?;
         let output = worker
             .responses
             .recv_timeout(timeout)
@@ -377,33 +94,37 @@ impl Worker {
                 mpsc::RecvTimeoutError::Disconnected => {
                     ScientificCpythonUnavailable::OutputReadFailed
                 }
-            })??;
+            })
+            .and_then(|output| output)
+            .inspect_err(|_| {
+                // The probe did not report: retain why for the application log.
+                let _ = terminate_worker(&mut worker.child);
+                if let Some(reader) = worker.stderr_reader.take() {
+                    let _ = reader.join();
+                }
+                if let Ok(tail) = worker.stderr_tail.lock() {
+                    eprintln!(
+                        "Studio scientific host probe failed: {}",
+                        super::bounded_process_diagnostic(&tail)
+                    );
+                }
+            })?;
         if output.len() > super::MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES {
             return Err(ScientificCpythonUnavailable::StdoutTooLarge);
-        }
-        if let Some((runtime, changes)) =
-            runtime.and_then(|runtime| runtime.changes.as_ref().map(|changes| (runtime, changes)))
-        {
-            if Some(changes.validate(runtime)?) != generation {
-                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-            }
         }
         Ok((worker, output))
     }
 
-    fn spawn(
-        host: &HostIdentity,
-        callable: &HostIdentity,
-        runtime: Option<&PackagedRuntimeIdentity>,
+    fn spawn(host: &ScientificHost) -> Result<Self, ScientificCpythonUnavailable> {
+        Self::spawn_script(host, &worker_script())
+    }
+
+    fn spawn_script(
+        host: &ScientificHost,
+        script: &str,
     ) -> Result<Self, ScientificCpythonUnavailable> {
         let scratch = ScratchDirectory::create()?;
-        let mut command = scientific_worker_command_with_script(
-            host,
-            callable,
-            runtime.map(|runtime| runtime.site_packages.as_path()),
-            &scratch.path,
-            &worker_script(),
-        )?;
+        let mut command = scientific_worker_command(host, &scratch.path, script)?;
         // Interactive requests share the desktop. Prevent each small preview
         // from expanding into a full machine's BLAS thread pool.
         command
@@ -480,7 +201,6 @@ impl Worker {
             stderr_tail,
             stderr_reader: Some(stderr_reader),
             completed: 0,
-            generation: None,
             _scratch: scratch,
         })
     }
@@ -544,33 +264,9 @@ impl Worker {
 }
 
 impl CpythonScientificJobExecutor {
-    fn interactive_generation(
-        &self,
-        host: &HostIdentity,
-        callable: &HostIdentity,
-        runtime: Option<&PackagedRuntimeIdentity>,
-    ) -> Result<Option<usize>, ScientificCpythonUnavailable> {
-        if let Some(runtime) = runtime {
-            if let Some(changes) = &runtime.changes {
-                return changes.validate(runtime).map(Some);
-            }
-            verify_identity(host)?;
-            verify_identity(callable)?;
-            verify_packaged_runtime_identity(runtime)?;
-        } else {
-            self.selected_library
-                .as_ref()
-                .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)?
-                .verify()?;
-        }
-        Ok(None)
-    }
-
     pub(super) fn run_interactive_request(
         &self,
-        host: &HostIdentity,
-        callable: &HostIdentity,
-        runtime: Option<&PackagedRuntimeIdentity>,
+        host: &ScientificHost,
         input: &[u8],
         timeout: Duration,
     ) -> Result<Value, ScientificCpythonUnavailable> {
@@ -589,35 +285,24 @@ impl CpythonScientificJobExecutor {
         // spent queued behind another request must not shrink this request's
         // own execution budget.
         let admission_started = Instant::now();
-        let _admission = runtime
-            .and_then(|runtime| runtime.changes.as_ref())
-            .map(|changes| changes.foreground_prediction_read(&request, timeout))
-            .transpose()?
-            .flatten();
         loop {
             for slot in &self.warm_workers {
                 if let Ok(mut slot) = slot.try_lock() {
                     let start = Instant::now();
                     let result = (|| {
-                        let generation = self.interactive_generation(host, callable, runtime)?;
-                        let expired = match slot.as_mut() {
-                            Some(worker) => {
-                                worker.generation != generation
-                                    || worker
-                                        .child
-                                        .try_wait()
-                                        .map_err(|_| ScientificCpythonUnavailable::ProcessFailed)?
-                                        .is_some()
-                            }
+                        let exited = match slot.as_mut() {
+                            Some(worker) => worker
+                                .child
+                                .try_wait()
+                                .map_err(|_| ScientificCpythonUnavailable::ProcessFailed)?
+                                .is_some(),
                             None => false,
                         };
-                        if expired {
+                        if exited {
                             slot.take();
                         }
                         if slot.is_none() {
-                            let mut worker = Worker::spawn(host, callable, runtime)?;
-                            worker.generation = generation;
-                            *slot = Some(worker);
+                            *slot = Some(Worker::spawn(host)?);
                         }
                         let remaining = timeout
                             .checked_sub(start.elapsed())
@@ -628,17 +313,13 @@ impl CpythonScientificJobExecutor {
                                 .expect("created worker")
                                 .exchange(input, remaining)?
                         };
-                        if self.interactive_generation(host, callable, runtime)? != generation {
-                            // Refuse a response produced across an installation change.
-                            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                        }
                         if output.len() > output_limit {
                             return Err(ScientificCpythonUnavailable::StdoutTooLarge);
                         }
                         validate_worker_response(&request, &output, expected_id)
                     })();
                     // Never retry an executed request: mutations may have completed.
-                    // A later request receives a fresh, independently attested worker.
+                    // A later request receives a fresh worker.
                     if let Err(error) = result.as_ref() {
                         // Match the one-shot host: disposable CI retains a bounded
                         // diagnostic; the public response remains a stable refusal.
@@ -661,7 +342,7 @@ impl CpythonScientificJobExecutor {
                         }
                         slot.take();
                     } else {
-                        self.start_spare_worker(host, callable, runtime);
+                        self.start_spare_worker(host);
                     }
                     return result;
                 }
@@ -678,25 +359,13 @@ impl CpythonScientificJobExecutor {
     /// a process is quick; the child imports the library on its own while this
     /// request's response is returned. The pool stays at two workers, and a slot
     /// that is busy or already populated is left alone.
-    fn start_spare_worker(
-        &self,
-        host: &HostIdentity,
-        callable: &HostIdentity,
-        runtime: Option<&PackagedRuntimeIdentity>,
-    ) {
+    fn start_spare_worker(&self, host: &ScientificHost) {
         for spare in &self.warm_workers {
             let Ok(mut spare) = spare.try_lock() else {
                 continue;
             };
-            if spare.is_some() {
-                continue;
-            }
-            let Ok(generation) = self.interactive_generation(host, callable, runtime) else {
-                return;
-            };
-            if let Ok(mut worker) = Worker::spawn(host, callable, runtime) {
-                worker.generation = generation;
-                *spare = Some(worker);
+            if spare.is_none() {
+                *spare = Worker::spawn(host).ok();
             }
         }
     }
@@ -753,41 +422,34 @@ mod tests {
         assert_eq!(worker.completed, 20);
     }
 
-    #[test]
-    fn executed_interactive_failure_is_not_replayed_and_discards_worker() {
-        let root = tempfile::tempdir().unwrap();
-        let site = root.path().join("site-packages");
-        std::fs::create_dir_all(site.join("nirs4all")).unwrap();
-        std::fs::create_dir_all(site.join("nirs4all-1.4.13.dist-info")).unwrap();
-        let callable_path = site.join("nirs4all/source.py");
-        std::fs::write(&callable_path, b"source").unwrap();
-        std::fs::write(site.join("nirs4all-1.4.13.dist-info/RECORD"), b"record").unwrap();
-        let host = super::super::host_identity_with_limit(
-            Path::new("/usr/bin/python3"),
-            super::super::MAX_SCIENTIFIC_CPYTHON_HOST_BYTES,
-        )
-        .unwrap();
-        let marker = root.path().join("executions");
-        let script = format!("import sys,json\nfor line in sys.stdin.buffer:\n with open({},'a') as f: f.write('executed\\n')\n sys.stdout.buffer.write((2).to_bytes(4,'little')+b'{{}}')\n sys.stdout.buffer.flush()\n", serde_json::to_string(marker.to_str().unwrap()).unwrap());
-        let mut executor = CpythonScientificJobExecutor::unavailable(
+    /// An admitted host whose workers are supplied by each test.
+    fn selected_executor(
+        root: &tempfile::TempDir,
+    ) -> (CpythonScientificJobExecutor, ScientificHost) {
+        let host = ScientificHost {
+            python: "/usr/bin/python3".into(),
+            site_packages: root.path().join("site-packages"),
+            adapters: root.path().join("adapters"),
+            distribution_version: "2.3.4".into(),
+        };
+        let executor = CpythonScientificJobExecutor::unavailable(
             ScientificCpythonUnavailable::RequestResolverUnavailable,
             root.path().join("config"),
         );
-        executor.selected_library = Some(
-            super::super::selected_library_identity::SelectedLibraryIdentity::capture(&host, &site)
-                .unwrap(),
-        );
-        executor.warm_workers[0] = Mutex::new(Some(worker(&script)));
-        let callable = super::super::host_identity(&callable_path).unwrap();
-        let input = serde_json::json!({"schema":"nirs4all.studio-document-request.v1",
-            "job_id":"document-translation", "operation":"dataset.preview", "payload":{}})
-        .to_string();
+        (executor, host)
+    }
+
+    #[test]
+    fn executed_interactive_failure_is_not_replayed_and_discards_worker() {
+        let root = tempfile::tempdir().unwrap();
+        let marker = root.path().join("executions");
+        let script = format!("import sys,json\nfor line in sys.stdin.buffer:\n with open({},'a') as f: f.write('executed\\n')\n sys.stdout.buffer.write((2).to_bytes(4,'little')+b'{{}}')\n sys.stdout.buffer.flush()\n", serde_json::to_string(marker.to_str().unwrap()).unwrap());
+        let (executor, host) = selected_executor(&root);
+        *executor.warm_workers[0].lock().unwrap() = Some(worker(&script));
         assert_eq!(
             executor.run_interactive_request(
                 &host,
-                &callable,
-                None,
-                input.as_bytes(),
+                DOCUMENT_REQUEST.as_bytes(),
                 Duration::from_secs(2)
             ),
             Err(ScientificCpythonUnavailable::MalformedResponse)
@@ -797,38 +459,12 @@ mod tests {
         assert!(executor.warm_workers[1].lock().unwrap().is_none());
     }
 
-    fn selected_executor(
-        root: &tempfile::TempDir,
-    ) -> (CpythonScientificJobExecutor, HostIdentity, HostIdentity) {
-        let site = root.path().join("site-packages");
-        std::fs::create_dir_all(site.join("nirs4all")).unwrap();
-        std::fs::create_dir_all(site.join("nirs4all-1.4.13.dist-info")).unwrap();
-        let callable_path = site.join("nirs4all/source.py");
-        std::fs::write(&callable_path, b"source").unwrap();
-        std::fs::write(site.join("nirs4all-1.4.13.dist-info/RECORD"), b"record").unwrap();
-        let host = super::super::host_identity_with_limit(
-            Path::new("/usr/bin/python3"),
-            super::super::MAX_SCIENTIFIC_CPYTHON_HOST_BYTES,
-        )
-        .unwrap();
-        let callable = super::super::host_identity(&callable_path).unwrap();
-        let mut executor = CpythonScientificJobExecutor::unavailable(
-            ScientificCpythonUnavailable::RequestResolverUnavailable,
-            root.path().join("config"),
-        );
-        executor.selected_library = Some(
-            super::super::selected_library_identity::SelectedLibraryIdentity::capture(&host, &site)
-                .unwrap(),
-        );
-        (executor, host, callable)
-    }
-
     const DOCUMENT_REQUEST: &str = r#"{"schema":"nirs4all.studio-document-request.v1","job_id":"document-translation","operation":"dataset.preview","payload":{}}"#;
 
     #[test]
     fn queue_wait_does_not_consume_the_execution_budget() {
         let root = tempfile::tempdir().unwrap();
-        let (executor, host, callable) = selected_executor(&root);
+        let (executor, host) = selected_executor(&root);
         let reply = r#"{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":{},"error":null}"#;
         let script = format!("import sys,time\nfor line in sys.stdin.buffer:\n time.sleep(0.4)\n v={reply:?}.encode()\n sys.stdout.buffer.write(len(v).to_bytes(4,'little')+v)\n sys.stdout.buffer.flush()\n");
         *executor.warm_workers[0].lock().unwrap() = Some(worker(&script));
@@ -842,8 +478,6 @@ mod tests {
             std::thread::spawn(move || {
                 executor.run_interactive_request(
                     &host,
-                    &callable,
-                    None,
                     DOCUMENT_REQUEST.as_bytes(),
                     Duration::from_millis(700),
                 )
@@ -859,15 +493,13 @@ mod tests {
     #[test]
     fn queue_wait_is_still_bounded() {
         let root = tempfile::tempdir().unwrap();
-        let (executor, host, callable) = selected_executor(&root);
+        let (executor, host) = selected_executor(&root);
         let _first = executor.warm_workers[0].lock().unwrap();
         let _second = executor.warm_workers[1].lock().unwrap();
         let started = Instant::now();
         assert_eq!(
             executor.run_interactive_request(
                 &host,
-                &callable,
-                None,
                 DOCUMENT_REQUEST.as_bytes(),
                 Duration::from_millis(100),
             ),
@@ -879,35 +511,23 @@ mod tests {
     #[test]
     fn spare_worker_starts_after_a_successful_request_but_not_after_a_failure() {
         let root = tempfile::tempdir().unwrap();
-        let (executor, host, callable) = selected_executor(&root);
+        let (executor, host) = selected_executor(&root);
         let reply = r#"{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":{},"error":null}"#;
         let script = format!("import sys\nfor line in sys.stdin.buffer:\n v={reply:?}.encode()\n sys.stdout.buffer.write(len(v).to_bytes(4,'little')+v)\n sys.stdout.buffer.flush()\n");
         *executor.warm_workers[0].lock().unwrap() = Some(worker(&script));
         executor
-            .run_interactive_request(
-                &host,
-                &callable,
-                None,
-                DOCUMENT_REQUEST.as_bytes(),
-                Duration::from_secs(2),
-            )
+            .run_interactive_request(&host, DOCUMENT_REQUEST.as_bytes(), Duration::from_secs(2))
             .unwrap();
         assert!(executor.warm_workers[0].lock().unwrap().is_some());
         assert!(executor.warm_workers[1].lock().unwrap().is_some());
 
         let failing = tempfile::tempdir().unwrap();
-        let (executor, host, callable) = selected_executor(&failing);
+        let (executor, host) = selected_executor(&failing);
         *executor.warm_workers[0].lock().unwrap() = Some(worker(
             "import sys\nsys.stdin.buffer.readline()\nraise SystemExit(1)",
         ));
         assert!(executor
-            .run_interactive_request(
-                &host,
-                &callable,
-                None,
-                DOCUMENT_REQUEST.as_bytes(),
-                Duration::from_secs(2)
-            )
+            .run_interactive_request(&host, DOCUMENT_REQUEST.as_bytes(), Duration::from_secs(2))
             .is_err());
         assert!(executor.warm_workers[0].lock().unwrap().is_none());
         assert!(executor.warm_workers[1].lock().unwrap().is_none());
@@ -948,13 +568,14 @@ mod tests {
     }
 
     #[test]
-    fn interactive_dispatcher_retains_bootstrap_attestation_and_protocol_limits() {
+    fn interactive_dispatcher_retains_the_bootstrap_and_protocol_limits() {
         let script = worker_script();
-        let distribution = script
-            .find("distribution=importlib.metadata.distribution")
+        let admitted = script
+            .find("importlib.metadata.version(\"nirs4all\") != sys.argv[3]")
             .unwrap();
         let loop_start = script.find("while True:").unwrap();
-        assert!(distribution < loop_start);
+        assert!(admitted < script.find("import nirs4all\n").unwrap());
+        assert!(script.find("import nirs4all\n").unwrap() < loop_start);
         assert!(script.contains("sys.stdout.buffer.flush()"));
         assert!(script.contains("len(encoded).to_bytes(4, 'little')"));
         assert!(!script.contains("sys.stdin.buffer.read(33554433)"));
@@ -965,195 +586,5 @@ mod tests {
                 Duration::from_secs(2),
             )
             .unwrap();
-    }
-}
-
-#[cfg(test)]
-mod admission_tests {
-    use super::*;
-
-    #[test]
-    fn only_existing_prediction_reads_defer_availability_scans() {
-        for operation in [
-            "results.chains",
-            "results.chain",
-            "results.arrays",
-            "results.page",
-        ] {
-            assert!(is_foreground_prediction_read(&serde_json::json!({
-                "schema": crate::document_cpython::REQUEST_SCHEMA, "operation": operation
-            })));
-        }
-        for operation in [
-            "predictions.run",
-            "workspace.upgrade",
-            "documents.batch",
-            "dataset.preview",
-        ] {
-            assert!(!is_foreground_prediction_read(&serde_json::json!({
-                "schema": crate::document_cpython::REQUEST_SCHEMA, "operation": operation
-            })));
-        }
-        assert!(!is_foreground_prediction_read(&serde_json::json!({
-            "schema": "nirs4all.studio-playground-job.v1", "operation": "results.page"
-        })));
-    }
-
-    #[test]
-    fn background_waits_for_all_foreground_boundaries_and_resumes_after_release() {
-        let admission = Arc::new(RuntimeAdmission::default());
-        let first = admission.foreground(Duration::from_secs(1)).unwrap();
-        let second = admission.foreground(Duration::from_secs(1)).unwrap();
-        let (entered, receive) = mpsc::channel();
-        let pending = Arc::clone(&admission);
-        let task = std::thread::spawn(move || {
-            let _background = pending.background(Duration::from_secs(2)).unwrap();
-            entered.send(()).unwrap();
-        });
-        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
-        drop(first);
-        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
-        drop(second);
-        receive.recv_timeout(Duration::from_secs(2)).unwrap();
-        task.join().unwrap();
-        assert!(admission.foreground(Duration::from_secs(1)).is_ok());
-    }
-
-    #[test]
-    fn admission_is_bounded_and_does_not_leave_failed_background_waiters() {
-        let admission = RuntimeAdmission::default();
-        let foreground = admission.foreground(Duration::from_secs(1)).unwrap();
-        assert!(matches!(
-            admission.background(Duration::ZERO),
-            Err(ScientificCpythonUnavailable::TimedOut)
-        ));
-        drop(foreground);
-        let background = admission.background(Duration::from_secs(1)).unwrap();
-        assert!(matches!(
-            admission.foreground(Duration::ZERO),
-            Err(ScientificCpythonUnavailable::TimedOut)
-        ));
-        drop(background);
-        assert!(admission.foreground(Duration::from_secs(1)).is_ok());
-    }
-
-    #[test]
-    fn poisoned_admission_refuses_both_paths_instead_of_skipping_validation() {
-        let admission = Arc::new(RuntimeAdmission::default());
-        let poison = Arc::clone(&admission);
-        assert!(std::thread::spawn(move || {
-            let _held = poison.background(Duration::from_secs(1)).unwrap();
-            panic!("test admission panic");
-        })
-        .join()
-        .is_err());
-        assert!(matches!(
-            admission.foreground(Duration::from_secs(1)),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        ));
-        assert!(matches!(
-            admission.background(Duration::from_secs(1)),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        ));
-    }
-
-    #[test]
-    fn cold_background_validation_has_no_quiet_delay() {
-        let admission = RuntimeAdmission::default();
-        let _validation = admission.background(Duration::ZERO).unwrap();
-    }
-
-    #[test]
-    fn read_activity_covers_post_exchange_work_without_a_second_readlock() {
-        let admission = Arc::new(RuntimeAdmission {
-            quiet_period: Duration::from_millis(40),
-            ..RuntimeAdmission::default()
-        });
-        let activity = admission.read_activity().unwrap();
-        let exchange = admission.foreground(Duration::ZERO).unwrap();
-        let (entered, receive) = mpsc::channel();
-        let pending = Arc::clone(&admission);
-        let background = std::thread::spawn(move || {
-            let _validation = pending.background(Duration::from_secs(2)).unwrap();
-            entered.send(()).unwrap();
-        });
-        drop(exchange);
-        // Adapter post-verification and response serialization are still active.
-        assert!(receive.recv_timeout(Duration::from_millis(60)).is_err());
-        // A next foreground exchange must not deadlock on a queued writer.
-        drop(admission.foreground(Duration::ZERO).unwrap());
-        drop(activity);
-        assert!(receive.recv_timeout(Duration::from_millis(10)).is_err());
-        receive.recv_timeout(Duration::from_secs(2)).unwrap();
-        background.join().unwrap();
-    }
-
-    #[test]
-    fn background_waits_for_complete_read_burst_and_overlapping_responses() {
-        let admission = Arc::new(RuntimeAdmission {
-            quiet_period: Duration::from_millis(60),
-            ..RuntimeAdmission::default()
-        });
-        let first = admission.read_activity().unwrap();
-        let second = admission.read_activity().unwrap();
-        let (entered, receive) = mpsc::channel();
-        let pending = Arc::clone(&admission);
-        let background = std::thread::spawn(move || {
-            let _validation = pending.background(Duration::from_secs(2)).unwrap();
-            entered.send(()).unwrap();
-        });
-        drop(first);
-        assert!(receive.recv_timeout(Duration::from_millis(80)).is_err());
-        drop(second);
-        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
-        // The client submits another read during the ordinary polling interval.
-        let third = admission.read_activity().unwrap();
-        assert!(receive.recv_timeout(Duration::from_millis(80)).is_err());
-        drop(third);
-        assert!(receive.recv_timeout(Duration::from_millis(20)).is_err());
-        receive.recv_timeout(Duration::from_secs(2)).unwrap();
-        background.join().unwrap();
-    }
-
-    #[test]
-    fn failed_read_releases_activity_but_does_not_bypass_background_validation() {
-        let admission = RuntimeAdmission {
-            quiet_period: Duration::from_millis(10),
-            ..RuntimeAdmission::default()
-        };
-        let failed_read = || -> Result<(), &'static str> {
-            let _activity = admission.read_activity().unwrap();
-            Err("response construction failed")
-        };
-        assert!(failed_read().is_err());
-        assert!(matches!(
-            admission.background(Duration::ZERO),
-            Err(ScientificCpythonUnavailable::TimedOut)
-        ));
-        let _validation = admission.background(Duration::from_secs(1)).unwrap();
-    }
-
-    #[test]
-    fn poisoned_read_activity_refuses_foreground_and_background_admission() {
-        let admission = Arc::new(RuntimeAdmission::default());
-        let poison = Arc::clone(&admission);
-        assert!(std::thread::spawn(move || {
-            let _state = poison.reads.lock().unwrap();
-            panic!("test activity panic");
-        })
-        .join()
-        .is_err());
-        assert!(matches!(
-            admission.read_activity(),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        ));
-        assert!(matches!(
-            admission.foreground(Duration::ZERO),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        ));
-        assert!(matches!(
-            admission.background(Duration::ZERO),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        ));
     }
 }

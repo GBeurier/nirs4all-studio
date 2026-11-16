@@ -1,9 +1,9 @@
 //! Reuse Python-host diagnostic probes until the selected interpreter or its
 //! installed packages change.
 //!
-//! Each probe spawns a fresh interpreter (cold `torch`/`tensorflow` imports cost
-//! seconds), yet its answer only depends on which interpreter runs and what is
-//! installed beside it. A probe result is therefore keyed on a cheap filesystem
+//! Each probe spawns a fresh interpreter (the GPU probe's cold `torch` import
+//! costs seconds), yet its answer only depends on which interpreter runs and
+//! what is installed beside it. A probe result is therefore keyed on a cheap filesystem
 //! fingerprint: the interpreter file plus the entry count and mtime of every
 //! `site-packages` directory next to it. Installing, upgrading or removing a
 //! distribution changes that directory, and selecting another interpreter
@@ -31,12 +31,11 @@ pub enum ProbeKind {
     Capabilities,
     SystemInfo,
     UpdatesVersion,
-    RuntimeStatus,
-    SystemBuild,
+    Gpu,
     EnvCoherence,
 }
 
-const PROBE_KINDS: usize = 6;
+const PROBE_KINDS: usize = 5;
 
 #[derive(Debug, Eq, PartialEq)]
 struct RuntimeFingerprint {
@@ -266,14 +265,14 @@ mod tests {
         let env = environment("venv");
         let cache = PythonProbeCache::default();
         let runs = Cell::new(0);
-        probe(&cache, ProbeKind::SystemBuild, &env.python, &runs).unwrap();
+        probe(&cache, ProbeKind::Gpu, &env.python, &runs).unwrap();
         fs::create_dir(env.site.join("torch-2.0.0.dist-info")).unwrap();
-        probe(&cache, ProbeKind::SystemBuild, &env.python, &runs).unwrap();
+        probe(&cache, ProbeKind::Gpu, &env.python, &runs).unwrap();
         assert_eq!(runs.get(), 2);
-        probe(&cache, ProbeKind::SystemBuild, &env.python, &runs).unwrap();
+        probe(&cache, ProbeKind::Gpu, &env.python, &runs).unwrap();
         assert_eq!(runs.get(), 2);
         fs::remove_dir(env.site.join("torch-2.0.0.dist-info")).unwrap();
-        probe(&cache, ProbeKind::SystemBuild, &env.python, &runs).unwrap();
+        probe(&cache, ProbeKind::Gpu, &env.python, &runs).unwrap();
         assert_eq!(runs.get(), 3);
     }
 
@@ -323,15 +322,10 @@ mod tests {
         let cache = PythonProbeCache::default();
         let attempts = Cell::new(0);
         let outcome = |result: Result<Value, &'static str>| {
-            cache.get_or_probe_retrying_after(
-                ProbeKind::RuntimeStatus,
-                &env.python,
-                Duration::ZERO,
-                || {
-                    attempts.set(attempts.get() + 1);
-                    result
-                },
-            )
+            cache.get_or_probe_retrying_after(ProbeKind::Gpu, &env.python, Duration::ZERO, || {
+                attempts.set(attempts.get() + 1);
+                result
+            })
         };
         assert_eq!(outcome(Err("timed_out")), Err("timed_out"));
         assert_eq!(

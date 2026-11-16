@@ -405,7 +405,7 @@ pub fn adapt_dataset_document(
     payload: &Value,
 ) -> Result<Value, (u16, String)> {
     let host = host
-        .filter(|host| host.library_facades_available_background())
+        .filter(|host| host.library_facades_available())
         .ok_or_else(|| (503, "Attested dataset document adapter unavailable".into()))?;
     crate::dataset_inspection::cache::adapt(
         host.dataset_cache_scope(),
@@ -873,8 +873,10 @@ mod tests {
             json!({"path":dataset,"config":{"files":[{"path":"Xtrain.csv","type":"X","split":"train"}],"aggregation":{"enabled":false,"method":"mean"}}}),
         );
         let id = linked["dataset"]["id"].as_str().unwrap();
-        let unavailable = CpythonScientificJobExecutor::acquire_with_config_dir(
+        let unavailable = CpythonScientificJobExecutor::acquire(
             root.path().join("missing-python"),
+            root.path().join("missing-packages"),
+            root.path().join("missing-adapters"),
             &settings,
         );
         assert!(!unavailable.library_facades_available());

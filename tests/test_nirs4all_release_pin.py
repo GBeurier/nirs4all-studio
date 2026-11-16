@@ -89,42 +89,49 @@ def test_release_workflow_uses_the_exact_public_sdk_wheel() -> None:
     assert "NIRS4ALL_TOOLS" not in workflow
 
 
-def test_reused_environment_range_is_shared_with_the_sidecar() -> None:
+def _required_nirs4all() -> dict[str, str]:
+    """The catalogue entry that owns the accepted nirs4all range and the installed version."""
+    config = json.loads((ROOT / "recommended-config.json").read_text(encoding="utf-8"))
+    return next(package for package in config["required"] if package["name"] == "nirs4all")
+
+
+def test_nirs4all_range_has_a_single_source() -> None:
+    config = json.loads((ROOT / "recommended-config.json").read_text(encoding="utf-8"))
+    nirs4all = _required_nirs4all()
+    assert nirs4all["range"] and nirs4all["install"]
     script = ("const c=require('./scripts/python-runtime-config.cjs');"
-              "console.log(JSON.stringify([c.PLUGIN_DISTRIBUTION_VERSION,c.PLUGIN_DISTRIBUTION_REQUIREMENT,c.REUSABLE_RUNTIME_PACKAGES]))")
+              "console.log(JSON.stringify([c.PLUGIN_DISTRIBUTION_VERSION,c.PLUGIN_DISTRIBUTION_REQUIREMENT,c.REQUIRED_PACKAGES]))")
     result = subprocess.run(["node", "-e", script], cwd=ROOT, capture_output=True, text=True, check=True)
     version, requirement, packages = json.loads(result.stdout)
-    source = (ROOT / "sidecar/src/scientific_cpython.rs").read_text(encoding="utf-8")
-    rust_requirement = re.search(r'pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = "([^"]+)";', source)
-    assert rust_requirement is not None
-    assert f'pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "{version}";' in source
-    # Custom/managed: the required nirs4all release up to the next minor; the
-    # bundled runtime alone keeps the exact attested identity.
-    assert version == "1.4.16"
-    assert requirement == rust_requirement.group(1) == ">=1.4.16,<1.5"
-    assert packages[0] == f"nirs4all{requirement}"
-    # nirs4all's own declared ranges for its native dependencies.
-    assert "nirs4all-io>=0.3.0,<0.4" in packages
-    assert "nirs4all-methods>=1.3.15,<2" in packages
-    assert not any("==" in package for package in packages)
+    assert (version, requirement) == (nirs4all["install"], nirs4all["range"])
+    assert packages == config["required"]
+    # The sidecar embeds the same catalogue: no Rust source, embedded host
+    # script or Rust test repeats the range or the installed version.
+    assert 'include_str!("../../recommended-config.json")' in (ROOT / "sidecar/src/recommended_config.rs").read_text(encoding="utf-8")
+    sources = [*(ROOT / "sidecar/src").rglob("*.rs"), *(ROOT / "sidecar/tests").glob("*.rs")]
+    assert len(sources) > 40
+    for path in sources:
+        source = path.read_text(encoding="utf-8")
+        assert nirs4all["range"] not in source, path
+        assert nirs4all["install"] not in source, path
 
 
 def test_recommended_profiles_use_single_nirs4all_version() -> None:
     config = json.loads((ROOT / "recommended-config.json").read_text(encoding="utf-8"))
-    version = config["nirs4all"]
+    nirs4all = _required_nirs4all()
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     app_version = json.loads((ROOT / "version.json").read_text(encoding="utf-8"))
 
     # The remote-config resolver compares app_version with its cached copy.
     assert config["app_version"] == package["version"] == app_version["version"]
+    assert config["nirs4all"] == nirs4all["install"]
 
     for profile in config["profiles"].values():
         package = profile.get("packages", {}).get("nirs4all")
         if package is None:
             continue
-        assert package["recommended"] == version
-        # Root chose the coherent current cohort floor; this is not an API-origin claim.
-        assert package["min"] == ">=1.4.16,<1.5"
+        assert package["recommended"] == nirs4all["install"]
+        assert package["min"] == nirs4all["range"]
 
 
 def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> None:
@@ -277,7 +284,7 @@ def test_current_shipping_constraints_select_the_public_sdk_and_owner_cohort() -
     ]:
         assert requirement in constraints.splitlines()
     cohort = json.loads((ROOT / "sidecar/contracts/studio_native_source_cohort_v2.json").read_text())
-    assert cohort["sdk_selection"]["requirement"] == ">=1.4.16,<1.5"
+    assert cohort["sdk_selection"]["requirement"] == _required_nirs4all()["range"]
     assert cohort["sdk_selection"]["publication_status"] == "published-registry"
     assert cohort["packaged_methods_identity"] == {
         "commit": "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
@@ -305,12 +312,17 @@ def test_current_public_wheel_identity_is_shared_by_shipping_consumers() -> None
     constraints = ROOT / marker["constraints"]["path"]
     assert constraints.name == "plugin-runtime-cpython311-sdk1416.txt"
     assert hashlib.sha256(constraints.read_bytes()).hexdigest() == marker["constraints"]["sha256"]
-    for path in ["scripts/setup-python-env.cjs", "electron/packaged-runtime-contract.ts", "sidecar/src/scientific_cpython.rs"]:
+    for path in ["scripts/setup-python-env.cjs", "electron/packaged-runtime-contract.ts"]:
         source = (ROOT / path).read_text()
         for field in ["selected_source_commit", "selected_wheel_sha256"]:
             assert contract[field] in source
-    rust = (ROOT / "sidecar/src/scientific_cpython.rs").read_text()
-    assert 'include_str!("../contracts/studio_scientific_cpython_host_sdk1416_v1.json")' in rust
+    # The sidecar admits an environment by Python version, nirs4all range and
+    # importability: it embeds no wheel, commit, manifest or callable digest.
+    for path in (ROOT / "sidecar/src").rglob("*.rs"):
+        rust = path.read_text(encoding="utf-8")
+        assert "studio_scientific_cpython_host" not in rust, path
+        for field in ["selected_source_commit", "selected_wheel_sha256", "selected_installed_manifest_sha256", "selected_callable_sha256"]:
+            assert contract[field] not in rust, path
     policy = json.loads((ROOT / "qualification/policy.json").read_text())
     for gate in policy["gates"]:
         if "packaged" in gate["id"] or "application-migration" in gate["id"]:

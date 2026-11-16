@@ -37,6 +37,7 @@ mod document_cpython;
 mod error_logs;
 pub mod execution_job_records;
 mod general_prediction;
+mod gpu_detection;
 mod http_access;
 mod inspector_views;
 pub mod job_http;
@@ -54,7 +55,6 @@ mod prediction_results;
 mod prediction_upload;
 mod python_probe_cache;
 mod recommended_config;
-mod recommended_config_http;
 mod results_summary;
 mod run_deletion;
 pub mod run_detail;
@@ -141,31 +141,25 @@ pub fn read_dataset_links(
     AppSettingsStore::new(config_dir).dataset_links()
 }
 
+/// The interpreter of the Python environment the application selected.
 pub const PYTHON_PLUGIN_HOST_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST";
-pub const PYTHON_PLUGIN_HOST_BUNDLED_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
-pub const PYTHON_PLUGIN_CLOSURE_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_CLOSURE";
-pub const PYTHON_PLUGIN_RUNTIME_ROOT_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_RUNTIME_ROOT";
+/// That environment's site-packages directory.
 pub const PYTHON_PLUGIN_SITE_PACKAGES_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES";
+/// The application directory that contains the `studio_document_adapters` package.
+pub const STUDIO_ADAPTERS_DIR_ENV: &str = "NIRS4ALL_STUDIO_ADAPTERS_DIR";
 pub const SCIENTIFIC_EXECUTOR_ENV: &str = "NIRS4ALL_SCIENTIFIC_EXECUTOR";
-pub const RUNTIME_MODE_ENV: &str = "NIRS4ALL_RUNTIME_MODE";
-pub const RUNTIME_KIND_ENV: &str = "NIRS4ALL_RUNTIME_KIND";
 pub const BUILD_INFO_PATH_ENV: &str = "NIRS4ALL_BUILD_INFO_PATH";
 pub const APP_VERSION_ENV: &str = "NIRS4ALL_APP_VERSION";
 pub const OFFLINE_ENV: &str = "NIRS4ALL_OFFLINE";
 pub const BACKEND_DATA_DIR_ENV: &str = "NIRS4ALL_BACKEND_DATA_DIR";
 pub const UPDATE_SETTINGS_FILE: &str = "update_settings.yaml";
 pub const MAX_UPDATE_SETTINGS_BYTES: u64 = 16 * 1024;
-pub const VENV_METADATA_FILE: &str = "venv_metadata.json";
-pub const MAX_VENV_METADATA_BYTES: u64 = 16 * 1024;
+/// The coherence probe imports nirs4all in a fresh interpreter.
 pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(60);
-/// Diagnostic probes import optional stacks (torch, tensorflow, jax, shap, ...)
-/// in a fresh interpreter; a cold start after an update needs the same budget
-/// as the scientific preflight.
-pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration =
-    scientific_cpython::SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT;
+/// Budget of a diagnostic probe in a fresh interpreter. Package probes read
+/// distribution metadata; only the on-demand GPU probe imports torch.
+pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration = Duration::from_secs(45);
 pub const MAX_PYTHON_PLUGIN_OUTPUT_BYTES: usize = 8 * 1024;
-pub const MAX_PYTHON_PLUGIN_RUNTIME_STATUS_OUTPUT_BYTES: usize = 256 * 1024;
-pub const MAX_PYTHON_PLUGIN_RUNTIME_PACKAGES: usize = 4 * 1024;
 const DEFAULT_UPDATE_CHECK_INTERVAL_HOURS: i64 = 24;
 const DEFAULT_UPDATE_GITHUB_REPO: &str = "GBeurier/nirs4all-studio";
 const DEFAULT_UPDATE_PYPI_PACKAGE: &str = "nirs4all";
@@ -202,7 +196,6 @@ pub enum ErrorCode {
     WebSocketUpgradeRequired,
     PythonPluginUnavailable,
     PythonPluginPreflightFailed,
-    UpdateCheckUnavailable,
     ScientificExecutorUnavailable,
     ArchiveV2PredictionUnavailable,
     ArchiveV2PredictionInvalid,
@@ -229,7 +222,6 @@ impl ErrorCode {
             Self::WebSocketUpgradeRequired => "websocket_upgrade_required",
             Self::PythonPluginUnavailable => "python_plugin_unavailable",
             Self::PythonPluginPreflightFailed => "python_plugin_preflight_failed",
-            Self::UpdateCheckUnavailable => "update_check_unavailable",
             Self::ScientificExecutorUnavailable => "scientific_executor_unavailable",
             Self::ArchiveV2PredictionUnavailable => "archive_v2_prediction_unavailable",
             Self::ArchiveV2PredictionInvalid => "archive_v2_prediction_invalid",
@@ -432,9 +424,6 @@ pub struct SidecarState {
     job_limit: usize,
     job_ttl: Duration,
     python_plugin_host: Option<PathBuf>,
-    python_plugin_host_bundled: bool,
-    runtime_mode: String,
-    runtime_kind: String,
     build_info_path: Option<PathBuf>,
     app_settings: AppSettingsStore,
     update_settings: UpdateSettingsStore,
@@ -447,41 +436,22 @@ pub struct SidecarState {
     python_probes: PythonProbes,
 }
 
-/// How to acquire the configured scientific host.
+/// The scientific host hand-off: the selected interpreter, its site-packages
+/// and the adapters shipped with the application.
 #[derive(Clone, Debug)]
 struct ScientificHostPlan {
     host: PathBuf,
-    /// A custom or managed environment rather than the packaged runtime.
-    selected: bool,
-    bundled: bool,
-    closure: PathBuf,
-    runtime_root: PathBuf,
     site_packages: PathBuf,
+    adapters_dir: PathBuf,
     config_dir: PathBuf,
 }
 
 impl ScientificHostPlan {
     fn acquire(&self) -> scientific_cpython::CpythonScientificJobExecutor {
-        if self.selected {
-            return scientific_cpython::CpythonScientificJobExecutor::acquire_existing_with_config_dir(
-                &self.host,
-                self.site_packages.clone(),
-                self.config_dir.clone(),
-            );
-        }
-        // Only the packaged runtime Electron attested may be acquired here.
-        let packaged = |path: &Path| {
-            if self.bundled {
-                path.to_path_buf()
-            } else {
-                PathBuf::new()
-            }
-        };
-        scientific_cpython::CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
-            packaged(&self.host),
-            packaged(&self.closure),
-            packaged(&self.runtime_root),
-            packaged(&self.site_packages),
+        scientific_cpython::CpythonScientificJobExecutor::acquire(
+            &self.host,
+            &self.site_packages,
+            &self.adapters_dir,
             self.config_dir.clone(),
         )
     }
@@ -555,8 +525,7 @@ fn retry_timed_out_scientific_acquisition(state: &Arc<Mutex<SidecarState>>) {
     }
 }
 
-/// Clone owners while holding the route lock, then validate the same runtime
-/// outside it. Scientific requests retain their own before/after attestation.
+/// Owners cloned while holding the route lock and rendered outside it.
 struct ReadinessSnapshot {
     started_at: Instant,
     app_settings: AppSettingsStore,
@@ -587,7 +556,7 @@ impl ReadinessSnapshot {
         let ml_ready = !ml_loading
             && self.scientific_host.as_deref().map_or_else(
                 || self.native_jobs.execution_selected(),
-                scientific_cpython::CpythonScientificJobExecutor::library_facades_available_background,
+                scientific_cpython::CpythonScientificJobExecutor::library_facades_available,
             );
         json!({
             "core_ready": true,
@@ -603,7 +572,7 @@ impl ReadinessSnapshot {
     }
 }
 
-/// Capture capability owners without validating under the product route lock.
+/// Capability owners captured under the product route lock.
 struct CapabilitiesSnapshot {
     capabilities: Value,
     scientific_host: Option<Arc<scientific_cpython::CpythonScientificJobExecutor>>,
@@ -631,7 +600,7 @@ impl CapabilitiesSnapshot {
         capabilities["features"]["pipeline_library_routes"] = json!(true);
         capabilities["features"]["dataset_catalogue_routes"] = json!(true);
         capabilities["features"]["dataset_inspection_routes"] = json!(true);
-        capabilities["features"]["recommended_config_routes"] = json!(true);
+        capabilities["features"]["gpu_detection_route"] = json!(true);
         capabilities["features"]["general_prediction_routes"] = json!(true);
         capabilities["features"]["workspace_run_history_route"] = json!(true);
         capabilities["features"]["workspace_run_listing_routes"] = json!(true);
@@ -652,22 +621,14 @@ impl CapabilitiesSnapshot {
             "prediction_export_routes",
             "library_analysis_routes",
         ];
+        let available = self.scientific_host.as_deref().is_some_and(
+            scientific_cpython::CpythonScientificJobExecutor::library_facades_available,
+        );
         for feature in scientific_features {
-            capabilities["features"][feature] = json!(false);
+            capabilities["features"][feature] = json!(available);
         }
         if selected.is_some_and(|feature| !capabilities["features"][feature].is_boolean()) {
             return None;
-        }
-        // The complete discovery response and every scientific projection
-        // retain the same real runtime validation. Rust polling only needs its
-        // own capability: do not scan an unrelated optional scientific host.
-        if selected.is_none_or(|feature| scientific_features.contains(&feature)) {
-            let available = self.scientific_host.as_deref().is_some_and(
-                scientific_cpython::CpythonScientificJobExecutor::library_facades_available,
-            );
-            for feature in scientific_features {
-                capabilities["features"][feature] = json!(available);
-            }
         }
         if let Some(selected) = selected {
             let transport_guards = [
@@ -724,9 +685,6 @@ impl Default for SidecarState {
             job_limit: MAX_CONTROL_JOBS,
             job_ttl: CONTROL_JOB_TTL,
             python_plugin_host: None,
-            python_plugin_host_bundled: false,
-            runtime_mode: "development".into(),
-            runtime_kind: "python_plugin_host".into(),
             build_info_path: None,
             app_settings: AppSettingsStore::from_environment(),
             update_settings: UpdateSettingsStore::from_environment(),
@@ -780,32 +738,16 @@ impl SidecarState {
         }
     }
 
-    /// Capture the product-owned Python plugin host at sidecar startup. The
-    /// library host is attested before execution and never owns an HTTP port.
+    /// Capture the Python environment handed over by the application. The
+    /// library host is admitted before execution and never owns an HTTP port.
     #[must_use]
     pub fn from_environment() -> Self {
-        let python_plugin_host = env::var_os(PYTHON_PLUGIN_HOST_ENV)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from);
-        let python_plugin_host_bundled = env::var(PYTHON_PLUGIN_HOST_BUNDLED_ENV)
-            .is_ok_and(|value| value.eq_ignore_ascii_case("true"));
-        let python_plugin_closure = env::var_os(PYTHON_PLUGIN_CLOSURE_ENV)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from);
-        let python_plugin_runtime_root = env::var_os(PYTHON_PLUGIN_RUNTIME_ROOT_ENV)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from);
-        let python_plugin_site_packages = env::var_os(PYTHON_PLUGIN_SITE_PACKAGES_ENV)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from);
-        let runtime_mode = env::var(RUNTIME_MODE_ENV)
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "development".into());
-        let runtime_kind = env::var(RUNTIME_KIND_ENV)
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "python_plugin_host".into());
+        let path = |name: &str| {
+            env::var_os(name)
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+        };
+        let python_plugin_host = path(PYTHON_PLUGIN_HOST_ENV);
         let app_settings = AppSettingsStore::from_environment();
         // Acquiring the scientific host imports nirs4all and can take minutes on
         // a cold first launch: it runs after the sidecar reports ready.
@@ -813,24 +755,15 @@ impl SidecarState {
             == Ok(scientific_cpython::SCIENTIFIC_CPYTHON_EXECUTOR_ID))
         .then(|| ScientificHostPlan {
             host: python_plugin_host.clone().unwrap_or_default(),
-            selected: !python_plugin_host_bundled
-                && matches!(runtime_kind.as_str(), "custom" | "managed"),
-            bundled: python_plugin_host_bundled,
-            closure: python_plugin_closure.unwrap_or_default(),
-            runtime_root: python_plugin_runtime_root.unwrap_or_default(),
-            site_packages: python_plugin_site_packages.unwrap_or_default(),
+            site_packages: path(PYTHON_PLUGIN_SITE_PACKAGES_ENV).unwrap_or_default(),
+            adapters_dir: path(STUDIO_ADAPTERS_DIR_ENV).unwrap_or_default(),
             config_dir: app_settings.config_dir().into(),
         });
         let native_archive_training =
             NativeArchiveTrainingExecutor::acquire(app_settings.config_dir()).map(Arc::new);
         Self {
             python_plugin_host,
-            python_plugin_host_bundled,
-            runtime_mode,
-            runtime_kind,
-            build_info_path: env::var_os(BUILD_INFO_PATH_ENV)
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from),
+            build_info_path: path(BUILD_INFO_PATH_ENV),
             scientific_acquisition: Arc::new(ScientificAcquisition::planned(plan)),
             native_archive_training,
             app_settings,
@@ -961,7 +894,7 @@ impl SidecarState {
         let python_plugin_configured = self.python_plugin_host.is_some();
         let scientific_execution = self.native_jobs.execution_selected();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"native_archive_v2_training\":{},\"native_conformal_presentation_v2\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_format_status_route\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_error_log_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_status_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"dataset_synthetic_generation_routes\":false,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"native_archive_v2_training\":{},\"native_conformal_presentation_v2\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_format_status_route\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_error_log_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_status_route\":true,\"updates_version_route\":true,\"updates_settings_routes\":true,\"dataset_synthetic_generation_routes\":false,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -1157,9 +1090,6 @@ pub fn route_request_with_body(
         ("GET", "/api/system/status") => system_status_response(state),
         ("GET", "/api/app/settings") => app_settings_response(state),
         ("PUT", "/api/app/settings") => update_app_settings_response(state, body),
-        ("GET", "/api/config/setup-status") => setup_status_response(state),
-        ("POST", "/api/config/skip-setup") => complete_setup_response(state, "cpu"),
-        ("POST", "/api/config/complete-setup") => complete_setup_request_response(state, body),
         ("GET", "/api/app/favorites") => app_favourites_response(state),
         ("POST", "/api/app/favorites") => add_app_favourite_response(state, body),
         ("GET", "/api/app/config-path") => app_config_path_response(state),
@@ -1169,21 +1099,12 @@ pub fn route_request_with_body(
         ("GET", WORKSPACE_FORMAT_STATUS_ROUTE) => workspace_format_status_response(state),
         ("GET", "/sidecar/v1/health") => HttpResponse::json(200, state.health_json()),
         ("GET", "/sidecar/v1/readiness") => HttpResponse::json(200, state.readiness_json()),
-        ("GET", "/sidecar/v1/python/preflight") => python_plugin_preflight_response(state),
         ("GET", "/api/system/capabilities") => python_capabilities_response(state),
         ("GET", "/api/system/info") => python_system_info_response(state),
-        ("GET", "/api/system/build") => python_system_build_response(state),
+        ("GET", "/api/system/build") => system_build_response(state),
         ("GET", "/api/system/network") => system_network_response(),
         ("GET", "/api/system/env-coherence") => python_env_coherence_response(state),
-        ("GET", "/api/updates/status") => native_update_status_response(state),
-        ("POST", "/api/updates/check") => error_response(
-            501,
-            ErrorCode::UpdateCheckUnavailable,
-            "Network update checks are not implemented by this native build",
-            BTreeMap::from([("status_source".into(), "local_offline".into())]),
-        ),
         ("GET", "/api/updates/version") => python_updates_version_response(state),
-        ("GET", "/api/updates/runtime/status") => python_updates_runtime_status_response(state),
         ("GET", "/api/updates/settings") => update_settings_response(state),
         ("PUT", "/api/updates/settings") => save_update_settings_response(state, body),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
@@ -1196,21 +1117,17 @@ pub fn route_request_with_body(
         (
             _,
             "/api/health"
-            | "/api/config/setup-status"
             | "/api/system/readiness"
             | "/api/system/status"
             | "/sidecar/v1/health"
             | "/sidecar/v1/readiness"
             | "/sidecar/v1/capabilities"
-            | "/sidecar/v1/python/preflight"
             | "/api/system/capabilities"
             | "/api/system/info"
             | "/api/system/build"
             | "/api/system/network"
             | "/api/system/env-coherence"
-            | "/api/updates/status"
             | "/api/updates/version"
-            | "/api/updates/runtime/status"
             | "/api/workspaces"
             | WORKSPACE_FORMAT_STATUS_ROUTE
             | "/sidecar/v1/ws",
@@ -1218,13 +1135,7 @@ pub fn route_request_with_body(
         (_, "/api/updates/settings" | "/api/app/settings") => {
             method_not_allowed(method, path, "GET, PUT")
         }
-        (
-            _,
-            "/api/updates/check"
-            | "/api/config/skip-setup"
-            | "/api/config/complete-setup"
-            | "/sidecar/v1/jobs",
-        ) => method_not_allowed(method, path, "POST"),
+        (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
         (_, "/api/app/favorites") => method_not_allowed(method, path, "GET, POST"),
         (_, "/api/app/config-path") => method_not_allowed(method, path, "GET, POST, DELETE"),
         _ if workspace_run_detail_preselection_path(path) => {
@@ -1611,32 +1522,6 @@ fn app_settings_response(state: &SidecarState) -> HttpResponse {
     match state.app_settings.response() {
         Ok(settings) => HttpResponse::json(200, settings.to_string()),
         Err(error) => app_settings_storage_error("get app settings", &error),
-    }
-}
-
-fn setup_status_response(state: &SidecarState) -> HttpResponse {
-    match state.app_settings.setup_status() {
-        Ok(status) => HttpResponse::json(200, status.to_string()),
-        Err(error) => app_settings_storage_error("get setup status", &error),
-    }
-}
-
-fn complete_setup_request_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
-    let request = match app_settings_request_body(body) {
-        Ok(request) => request,
-        Err(response) => return response,
-    };
-    let Some(profile) = request.get("profile").and_then(Value::as_str) else {
-        return app_settings_validation_error("request body must contain a string profile");
-    };
-    complete_setup_response(state, profile)
-}
-
-fn complete_setup_response(state: &SidecarState, profile: &str) -> HttpResponse {
-    match state.app_settings.complete_setup(profile) {
-        Ok(status) => HttpResponse::json(200, status.to_string()),
-        Err(error) if profile.trim().is_empty() => app_settings_validation_error(&error),
-        Err(error) => app_settings_storage_error("complete setup", &error),
     }
 }
 
@@ -2109,8 +1994,8 @@ fn route_workspace_workflows_without_global_lock(
 ) -> Option<HttpResponse> {
     route_readiness_without_global_lock(state, request)
         .or_else(|| route_capabilities_without_global_lock(state, request))
-        .or_else(|| route_runtime_diagnostics_without_global_lock(state, request))
-        .or_else(|| recommended_config_http::route(state, request))
+        .or_else(|| route_env_coherence_without_global_lock(state, request))
+        .or_else(|| gpu_detection::route(state, request))
         .or_else(|| dataset_synthesis::route(state, request))
         .or_else(|| playground::route(state, request))
         .or_else(|| dataset_scores::route(state, request))
@@ -2811,21 +2696,18 @@ fn update_settings_response(state: &SidecarState) -> HttpResponse {
 
 fn native_update_status_response(state: &SidecarState) -> HttpResponse {
     let settings = state.update_settings.load();
-    let runtime_root = env::var(PYTHON_PLUGIN_RUNTIME_ROOT_ENV).ok();
     let executable = state
         .python_plugin_host
         .as_deref()
         .and_then(Path::to_str)
         .map(str::to_owned);
-    let runtime_path = runtime_root.or_else(|| {
-        state
-            .python_plugin_host
-            .as_deref()
-            .and_then(Path::parent)
-            .and_then(Path::parent)
-            .and_then(Path::to_str)
-            .map(str::to_owned)
-    });
+    let runtime_path = state
+        .python_plugin_host
+        .as_deref()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .and_then(Path::to_str)
+        .map(str::to_owned);
     let runtime_ready = state
         .scientific_host
         .as_deref()
@@ -3145,187 +3027,10 @@ fn native_updates_version_json(
     .to_string())
 }
 
-/// Return runtime and installed-package diagnostics through the native HTTP
-/// route. Rust owns response assembly, metadata loading, and optional runtime
-/// size calculation; the Python host only reports its interpreter facts and
-/// installed distributions.
-fn python_updates_runtime_status_response(state: &SidecarState) -> HttpResponse {
-    python_updates_runtime_status_response_for_host(
-        state.python_plugin_host.as_deref(),
-        &state.python_probes,
-    )
-}
-
-fn python_updates_runtime_status_response_for_host(
-    host: Option<&Path>,
-    probes: &PythonProbes,
-) -> HttpResponse {
-    let Some(python_plugin_host) = host else {
-        return error_response(
-            503,
-            ErrorCode::PythonPluginUnavailable,
-            "No Python plugin host is configured for this native sidecar",
-            BTreeMap::from([("reason".into(), "not_configured".into())]),
-        );
-    };
-    match probes
-        .get_or_probe(ProbeKind::RuntimeStatus, python_plugin_host, || {
-            read_python_updates_runtime_status(python_plugin_host)
-        })
-        .and_then(|probe| native_updates_runtime_status_json(&probe))
-    {
-        Ok(body) => HttpResponse::json(200, body),
-        Err(reason) => error_response(
-            503,
-            ErrorCode::PythonPluginPreflightFailed,
-            "The configured Python plugin host could not report runtime status",
-            BTreeMap::from([("reason".into(), reason.as_str().into())]),
-        ),
-    }
-}
-
-fn native_updates_runtime_status_json(probe: &Value) -> Result<String, PythonPluginBridgeFailure> {
-    let runtime_path = probe
-        .get("path")
-        .and_then(Value::as_str)
-        .filter(|path| !path.is_empty())
-        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
-    let base_prefix = probe
-        .get("base_prefix")
-        .and_then(Value::as_str)
-        .filter(|path| !path.is_empty())
-        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
-    let python_executable = probe
-        .get("python_executable")
-        .and_then(Value::as_str)
-        .filter(|path| !path.is_empty())
-        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
-    let python_version = probe
-        .get("python_version")
-        .and_then(Value::as_str)
-        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
-    let pip_version = nullable_string(probe.get("pip_version"))?;
-    let nirs4all_version = nullable_string(probe.get("nirs4all_version"))?;
-    let packages = probe
-        .get("packages")
-        .and_then(Value::as_array)
-        .filter(|packages| packages.len() <= MAX_PYTHON_PLUGIN_RUNTIME_PACKAGES)
-        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
-    let packages = packages
-        .iter()
-        .map(native_runtime_package_json)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let path = Path::new(runtime_path);
-    let exists = path.is_dir();
-    let is_valid = exists && Path::new(python_executable).is_file();
-    let metadata = native_runtime_metadata(path);
-    let should_measure_size = path.join("pyvenv.cfg").exists()
-        || path != Path::new(base_prefix)
-        || matches!(
-            env::var(RUNTIME_MODE_ENV)
-                .ok()
-                .as_deref()
-                .map(str::to_ascii_lowercase)
-                .as_deref(),
-            Some("bundled" | "portable" | "standalone")
-        );
-    let size_bytes = if is_valid && should_measure_size {
-        runtime_directory_size(path)
-    } else {
-        0
-    };
-    let runtime = json!({
-        "path": runtime_path,
-        "exists": exists,
-        "is_valid": is_valid,
-        "python_executable": python_executable,
-        "python_version": if is_valid { Value::String(python_version.into()) } else { Value::Null },
-        "pip_version": if is_valid { pip_version } else { Value::Null },
-        "created_at": metadata.get("created_at").cloned().unwrap_or(Value::Null),
-        "last_updated": metadata.get("last_updated").cloned().unwrap_or(Value::Null),
-        "size_bytes": size_bytes,
-    });
-    Ok(json!({
-        "runtime": runtime,
-        "venv": runtime,
-        "packages": packages,
-        "nirs4all_version": nirs4all_version,
-    })
-    .to_string())
-}
-
-fn nullable_string(value: Option<&Value>) -> Result<Value, PythonPluginBridgeFailure> {
-    match value {
-        Some(Value::String(value)) => Ok(Value::String(value.clone())),
-        Some(Value::Null) => Ok(Value::Null),
-        _ => Err(PythonPluginBridgeFailure::MalformedResponse),
-    }
-}
-
-fn native_runtime_package_json(package: &Value) -> Result<Value, PythonPluginBridgeFailure> {
-    let package = package
-        .as_object()
-        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
-    let name = package
-        .get("name")
-        .and_then(Value::as_str)
-        .filter(|name| !name.is_empty())
-        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
-    let version = package
-        .get("version")
-        .and_then(Value::as_str)
-        .filter(|version| !version.is_empty())
-        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
-    Ok(json!({"name": name, "version": version, "location": null}))
-}
-
-fn native_runtime_metadata(runtime_path: &Path) -> Value {
-    let metadata_path = runtime_path.join(VENV_METADATA_FILE);
-    let Ok(metadata) = fs::metadata(&metadata_path) else {
-        return json!({});
-    };
-    if metadata.len() > MAX_VENV_METADATA_BYTES {
-        return json!({});
-    }
-    fs::read(&metadata_path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}))
-}
-
-fn runtime_directory_size(runtime_path: &Path) -> u64 {
-    let mut total = 0_u64;
-    let mut pending = vec![runtime_path.to_path_buf()];
-    while let Some(directory) = pending.pop() {
-        let Ok(entries) = fs::read_dir(directory) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let Ok(file_type) = entry.file_type() else {
-                continue;
-            };
-            if file_type.is_dir() {
-                pending.push(entry.path());
-            } else if file_type.is_file() {
-                if let Ok(metadata) = entry.metadata() {
-                    total = total.saturating_add(metadata.len());
-                }
-            }
-        }
-    }
-    total
-}
-
 /// Immutable runtime facts used while diagnostics run outside the route mutex.
 struct RuntimeDiagnosticsSnapshot {
     python_plugin_host: Option<PathBuf>,
     scientific_host: Option<Arc<scientific_cpython::CpythonScientificJobExecutor>>,
-    runtime_mode: String,
-    runtime_kind: String,
-    python_plugin_host_bundled: bool,
-    build_info: Value,
     probes: PythonProbes,
 }
 
@@ -3334,101 +3039,17 @@ impl RuntimeDiagnosticsSnapshot {
         Self {
             python_plugin_host: state.python_plugin_host.clone(),
             scientific_host: state.scientific_host.clone(),
-            runtime_mode: state.runtime_mode.clone(),
-            runtime_kind: state.runtime_kind.clone(),
-            python_plugin_host_bundled: state.python_plugin_host_bundled,
-            build_info: native_build_info(state),
             probes: state.python_probes.clone(),
         }
     }
 }
 
-/// Return build metadata from the Rust-owned launch configuration and a
-/// bounded Python-library probe for optional GPU runtime facts.  The sidecar
-/// owns the HTTP route and response assembly; the configured interpreter is
-/// only a library host for `torch` inspection and never serves HTTP or starts
-/// scientific execution.
-fn python_system_build_response(state: &SidecarState) -> HttpResponse {
-    python_system_build_response_from_snapshot(&RuntimeDiagnosticsSnapshot::from_state(state))
-}
-
-fn python_system_build_response_from_snapshot(state: &RuntimeDiagnosticsSnapshot) -> HttpResponse {
-    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
-        return error_response(
-            503,
-            ErrorCode::PythonPluginUnavailable,
-            "No Python plugin host is configured for this native sidecar",
-            BTreeMap::from([("reason".into(), "not_configured".into())]),
-        );
-    };
-    match cached_python_system_build(&state.probes, python_plugin_host) {
-        Ok(probe) => HttpResponse::json(200, native_system_build_json(state, &probe)),
-        Err(reason) => error_response(
-            503,
-            ErrorCode::PythonPluginPreflightFailed,
-            "The configured Python plugin host could not report build GPU availability",
-            BTreeMap::from([("reason".into(), reason.as_str().into())]),
-        ),
-    }
-}
-
-fn cached_python_system_build(
-    probes: &PythonProbes,
-    python_plugin_host: &Path,
-) -> Result<Value, PythonPluginBridgeFailure> {
-    probes.get_or_probe(ProbeKind::SystemBuild, python_plugin_host, || {
-        read_python_system_build(python_plugin_host)
-    })
-}
-
-fn native_system_build_json(state: &RuntimeDiagnosticsSnapshot, probe: &Value) -> String {
-    let gpu = probe
-        .get("gpu")
-        .cloned()
-        .expect("read_python_system_build validates gpu");
-    let is_frozen = probe
-        .get("is_frozen")
-        .and_then(Value::as_bool)
-        .expect("read_python_system_build validates is_frozen");
-    let cuda_available = gpu["cuda_available"]
-        .as_bool()
-        .expect("read_python_system_build validates cuda_available");
-    let metal_available = gpu["metal_available"]
-        .as_bool()
-        .expect("read_python_system_build validates metal_available");
-    let gpu_type = if metal_available {
-        Value::String("metal".into())
-    } else if cuda_available {
-        Value::String("cuda".into())
-    } else {
-        Value::Null
-    };
-    let gpu_device = gpu.get("device_name").cloned().unwrap_or(Value::Null);
-    let build = state.build_info.clone();
-    let flavor = build
-        .get("flavor")
-        .cloned()
-        .expect("native_build_info always provides flavor");
-    let gpu_build = build
-        .get("gpu_enabled")
-        .cloned()
-        .expect("native_build_info always provides gpu_enabled");
-
-    json!({
-        "build": build,
-        "gpu": gpu,
-        "runtime_mode": state.runtime_mode.clone(),
-        "is_frozen": is_frozen,
-        "summary": {
-            "flavor": flavor,
-            "gpu_build": gpu_build,
-            "gpu_available": cuda_available || metal_available,
-            "gpu_type": gpu_type,
-            "gpu_device": gpu_device,
-            "runtime_mode": state.runtime_mode.clone(),
-        },
-    })
-    .to_string()
+/// Build metadata from the Rust-owned launch configuration. GPU availability
+/// is reported only by the on-demand `/api/config/detect-gpu` probe.
+fn system_build_response(state: &SidecarState) -> HttpResponse {
+    let build = native_build_info(state);
+    let summary = json!({"flavor": build["flavor"], "gpu_build": build["gpu_enabled"]});
+    HttpResponse::json(200, json!({"build": build, "summary": summary}).to_string())
 }
 
 fn native_build_info(state: &SidecarState) -> Value {
@@ -3488,77 +3109,6 @@ fn python_env_coherence_response_from_snapshot(state: &RuntimeDiagnosticsSnapsho
     }
 }
 
-fn python_plugin_preflight_response(state: &SidecarState) -> HttpResponse {
-    python_plugin_preflight_response_for_host(state.python_plugin_host.as_deref())
-}
-
-fn python_plugin_preflight_response_for_host(python_plugin_host: Option<&Path>) -> HttpResponse {
-    let Some(python_plugin_host) = python_plugin_host else {
-        return error_response(
-            503,
-            ErrorCode::PythonPluginUnavailable,
-            "No Python plugin host is configured for this native sidecar",
-            BTreeMap::from([("reason".into(), "not_configured".into())]),
-        );
-    };
-
-    match preflight_python_plugin_host(python_plugin_host) {
-        Ok(()) => HttpResponse::json(
-            200,
-            "{\"bridge\":\"python-subprocess\",\"python_plugin_host\":\"ready\",\"nirs4all_import\":true,\"scientific_execution\":\"unavailable\"}",
-        ),
-        Err(reason) => error_response(
-            503,
-            ErrorCode::PythonPluginPreflightFailed,
-            "The configured Python plugin host did not pass the nirs4all import preflight",
-            BTreeMap::from([("reason".into(), reason.as_str().into())]),
-        ),
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PythonPluginPreflightFailure {
-    SpawnFailed,
-    TimedOut,
-    ImportFailed,
-}
-
-impl PythonPluginPreflightFailure {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::SpawnFailed => "spawn_failed",
-            Self::TimedOut => "timed_out",
-            Self::ImportFailed => "nirs4all_import_failed",
-        }
-    }
-}
-
-fn preflight_python_plugin_host(
-    python_plugin_host: &Path,
-) -> Result<(), PythonPluginPreflightFailure> {
-    let mut child = Command::new(python_plugin_host)
-        .args(["-I", "-B", "-c", "import nirs4all"])
-        .env("PYTHONDONTWRITEBYTECODE", "1")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| PythonPluginPreflightFailure::SpawnFailed)?;
-    let started_at = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) if status.success() => return Ok(()),
-            Ok(Some(_)) | Err(_) => return Err(PythonPluginPreflightFailure::ImportFailed),
-            Ok(None) if started_at.elapsed() >= PYTHON_PLUGIN_PREFLIGHT_TIMEOUT => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(PythonPluginPreflightFailure::TimedOut);
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
-        }
-    }
-}
-
 type PythonProbes = PythonProbeCache<PythonPluginBridgeFailure>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3584,17 +3134,19 @@ impl PythonPluginBridgeFailure {
     }
 }
 
+/// Report which capability packages are installed, without importing them:
+/// a module spec lookup for single modules, distribution metadata for the
+/// `autogluon` namespace. Importing torch, tensorflow or jax here would add
+/// seconds to every application start.
+const PYTHON_CAPABILITIES_SCRIPT: &str = "import importlib.util,json,sys\nfrom importlib import metadata\nowners=metadata.packages_distributions()\ndef installed(name):\n try:\n  spec=importlib.util.find_spec(name)\n except Exception: return False\n if spec is None: return False\n return spec.origin is not None or bool(owners.get(name))\nprint(json.dumps({'capabilities':{name:installed(name) for name in json.loads(sys.argv[1])}}, separators=(',',':'), sort_keys=True))";
+
 fn read_python_capabilities(python_plugin_host: &Path) -> Result<Value, PythonPluginBridgeFailure> {
     let module_names = serde_json::to_string(PYTHON_CAPABILITY_MODULES)
         .map_err(|_| PythonPluginBridgeFailure::ScriptFailed)?;
-    // Each capability means "imports cleanly": an installed but broken package
-    // is unavailable. Only the spec lookup shortcuts absent packages.
-    let script = format!(
-        "import importlib,importlib.util,json; names={module_names}; capabilities={{}}\nfor name in names:\n try:\n  if importlib.util.find_spec(name) is None: capabilities[name]=False; continue\n except Exception: pass\n try: importlib.import_module(name); capabilities[name]=True\n except Exception: capabilities[name]=False\nprint(json.dumps({{'capabilities':capabilities}}, separators=(',',':'), sort_keys=True))"
-    );
-    let output = run_python_plugin_json(
+    let output = run_python_plugin_json_with_arguments(
         python_plugin_host,
-        &script,
+        PYTHON_CAPABILITIES_SCRIPT,
+        &[&module_names],
         PYTHON_PLUGIN_CAPABILITIES_TIMEOUT,
     )?;
     let capabilities = output
@@ -3654,7 +3206,8 @@ fn read_python_system_info(python_plugin_host: &Path) -> Result<Value, PythonPlu
 fn read_python_updates_version(
     python_plugin_host: &Path,
 ) -> Result<Value, PythonPluginBridgeFailure> {
-    let script = "import json,os,platform,sys\ncwd=os.getcwd(); sys.path=[entry for entry in sys.path if entry not in ('',cwd)]\nversion=None\ntry:\n import nirs4all; version=getattr(nirs4all,'__version__',None)\nexcept Exception: pass\nif not version:\n try:\n  from importlib import metadata; version=metadata.version('nirs4all')\n except Exception: pass\nprint(json.dumps({'nirs4all_version':version,'python_version':sys.version,'platform':platform.system(),'machine':platform.machine()}, separators=(',',':'), sort_keys=True))";
+    // The installed release comes from distribution metadata, without importing nirs4all.
+    let script = "import json,platform,sys\nfrom importlib import metadata\ntry: version=metadata.version('nirs4all')\nexcept Exception: version=None\nprint(json.dumps({'nirs4all_version':version,'python_version':sys.version,'platform':platform.system(),'machine':platform.machine()}, separators=(',',':'), sort_keys=True))";
     let output = run_python_plugin_json(
         python_plugin_host,
         script,
@@ -3667,69 +3220,6 @@ fn read_python_updates_version(
             output.get("nirs4all_version"),
             Some(Value::String(_) | Value::Null)
         )
-    {
-        return Err(PythonPluginBridgeFailure::MalformedResponse);
-    }
-    Ok(output)
-}
-
-fn read_python_updates_runtime_status(
-    python_plugin_host: &Path,
-) -> Result<Value, PythonPluginBridgeFailure> {
-    let script = "import importlib.metadata as metadata,json,sys\npackages=[]\nfor distribution in metadata.distributions():\n try:\n  name=distribution.metadata.get('Name') or distribution.name; version=distribution.version\n  if name and version: packages.append({'name':str(name),'version':str(version)})\n except Exception: pass\npackages.sort(key=lambda package:package['name'].lower())\ndef version_of(name):\n try: return metadata.version(name)\n except Exception: return None\nprint(json.dumps({'path':sys.prefix,'base_prefix':getattr(sys,'base_prefix',sys.prefix),'python_executable':sys.executable,'python_version':'.'.join(map(str,sys.version_info[:3])),'pip_version':version_of('pip'),'nirs4all_version':version_of('nirs4all'),'packages':packages}, separators=(',',':'), sort_keys=True))";
-    let output = run_python_plugin_json_with_limit(
-        python_plugin_host,
-        script,
-        PYTHON_PLUGIN_CAPABILITIES_TIMEOUT,
-        MAX_PYTHON_PLUGIN_RUNTIME_STATUS_OUTPUT_BYTES,
-    )?;
-    if !["path", "base_prefix", "python_executable", "python_version"]
-        .iter()
-        .all(|key| output.get(*key).is_some_and(Value::is_string))
-        || !["pip_version", "nirs4all_version"]
-            .iter()
-            .all(|key| matches!(output.get(*key), Some(Value::String(_) | Value::Null)))
-        || !output.get("packages").is_some_and(Value::is_array)
-    {
-        return Err(PythonPluginBridgeFailure::MalformedResponse);
-    }
-    Ok(output)
-}
-
-fn read_python_system_build(python_plugin_host: &Path) -> Result<Value, PythonPluginBridgeFailure> {
-    const GPU_BOOLEAN_FIELDS: &[&str] = &[
-        "cuda_available",
-        "mps_available",
-        "metal_available",
-        "torch_cuda_available",
-    ];
-    const GPU_NULLABLE_STRING_FIELDS: &[&str] = &[
-        "device_name",
-        "cuda_version",
-        "driver_version",
-        "torch_version",
-    ];
-    let script = "import json,sys\ngpu={'cuda_available':False,'mps_available':False,'metal_available':False,'device_name':None,'device_count':0,'cuda_version':None,'driver_version':None,'torch_cuda_available':False,'torch_version':None,'detection_source':'python_plugin_no_torch','backends':{}}\ntry:\n import torch\n gpu['detection_source']='python_plugin_torch'\n gpu['torch_version']=str(getattr(torch,'__version__','unknown'))\n gpu['cuda_version']=getattr(getattr(torch,'version',None),'cuda',None)\n cuda=bool(torch.cuda.is_available())\n mps=bool(getattr(getattr(torch,'backends',None),'mps',None) and torch.backends.mps.is_available())\n gpu['cuda_available']=cuda\n gpu['torch_cuda_available']=cuda\n gpu['mps_available']=mps\n gpu['metal_available']=mps\n if cuda:\n  count=int(torch.cuda.device_count()); gpu['device_count']=count\n  device=str(torch.cuda.get_device_name(0)) if count else None\n  gpu['device_name']=device\n  gpu['backends']['pytorch_cuda']={'available':True,'device_name':device,'cuda_version':gpu['cuda_version']}\n if mps: gpu['backends']['pytorch_mps']={'available':True}\nexcept Exception: pass\nprint(json.dumps({'gpu':gpu,'is_frozen':bool(hasattr(sys,'_MEIPASS'))}, separators=(',',':'), sort_keys=True))";
-    let output = run_python_plugin_json(
-        python_plugin_host,
-        script,
-        PYTHON_PLUGIN_CAPABILITIES_TIMEOUT,
-    )?;
-    let gpu = output
-        .get("gpu")
-        .and_then(Value::as_object)
-        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
-    if GPU_BOOLEAN_FIELDS
-        .iter()
-        .any(|key| !gpu.get(*key).is_some_and(Value::is_boolean))
-        || GPU_NULLABLE_STRING_FIELDS.iter().any(|key| {
-            !gpu.get(*key)
-                .is_some_and(|value| value.is_null() || value.is_string())
-        })
-        || !gpu.get("device_count").is_some_and(Value::is_u64)
-        || !gpu.get("detection_source").is_some_and(Value::is_string)
-        || !gpu.get("backends").is_some_and(Value::is_object)
-        || !output.get("is_frozen").is_some_and(Value::is_boolean)
     {
         return Err(PythonPluginBridgeFailure::MalformedResponse);
     }
@@ -3775,9 +3265,6 @@ fn read_python_env_coherence(
         "configured_python": configured_python,
         "running_python": runtime_python,
         "running_prefix": runtime_prefix,
-        "runtime_kind": state.runtime_kind,
-        "is_bundled_default": state.python_plugin_host_bundled,
-        "bundled_runtime_available": state.python_plugin_host_bundled,
         "configured_matches_running": configured_matches_running,
         "core_ready": nirs4all_import,
         "runtime_engine_capabilities": run_management::engine_capabilities(state.scientific_host.as_deref()),
@@ -3805,22 +3292,18 @@ fn run_python_plugin_json(
     script: &str,
     timeout: Duration,
 ) -> Result<Value, PythonPluginBridgeFailure> {
-    run_python_plugin_json_with_limit(
-        python_plugin_host,
-        script,
-        timeout,
-        MAX_PYTHON_PLUGIN_OUTPUT_BYTES,
-    )
+    run_python_plugin_json_with_arguments(python_plugin_host, script, &[], timeout)
 }
 
-fn run_python_plugin_json_with_limit(
+fn run_python_plugin_json_with_arguments(
     python_plugin_host: &Path,
     script: &str,
+    arguments: &[&str],
     timeout: Duration,
-    output_limit: usize,
 ) -> Result<Value, PythonPluginBridgeFailure> {
     let mut child = Command::new(python_plugin_host)
         .args(["-I", "-B", "-c", script])
+        .args(arguments)
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -3831,7 +3314,8 @@ fn run_python_plugin_json_with_limit(
         .stdout
         .take()
         .ok_or(PythonPluginBridgeFailure::OutputReadFailed)?;
-    let reader = std::thread::spawn(move || read_bounded_stdout(stdout, output_limit));
+    let reader =
+        std::thread::spawn(move || read_bounded_stdout(stdout, MAX_PYTHON_PLUGIN_OUTPUT_BYTES));
     let started_at = Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -4476,31 +3960,22 @@ fn route_documents_without_global_lock(
     })
 }
 
-fn route_runtime_diagnostics_without_global_lock(
+fn route_env_coherence_without_global_lock(
     state: &Arc<Mutex<SidecarState>>,
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
-    if request.method != "GET"
-        || !matches!(
-            request.path.as_str(),
-            "/api/system/build" | "/api/system/env-coherence"
-        )
-    {
+    if request.method != "GET" || request.path != "/api/system/env-coherence" {
         return None;
     }
-    // Settings mounts both probes together. Their cold imports must not block
-    // capabilities, preference writes or health behind the global route lock.
+    // The probe imports nirs4all: it must not block capabilities, preference
+    // writes or health behind the global route lock.
     let snapshot = {
         let state = state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         RuntimeDiagnosticsSnapshot::from_state(&state)
     };
-    Some(if request.path == "/api/system/build" {
-        python_system_build_response_from_snapshot(&snapshot)
-    } else {
-        python_env_coherence_response_from_snapshot(&snapshot)
-    })
+    Some(python_env_coherence_response_from_snapshot(&snapshot))
 }
 
 fn route_scientific_without_global_lock(
@@ -4513,8 +3988,8 @@ fn route_scientific_without_global_lock(
     {
         return None;
     }
-    // Admission, closure verification and normalization precede execution,
-    // without blocking health/progress/cancellation on the route mutex.
+    // Admission and normalization precede execution, without blocking
+    // health/progress/cancellation on the route mutex.
     let (settings, jobs) = {
         let state = state.lock().expect("sidecar state mutex poisoned");
         (state.app_settings.clone(), Arc::clone(&state.native_jobs))
@@ -4609,16 +4084,11 @@ fn handle_connection_with_access(
             if request.method == "GET"
                 && matches!(
                     request.path.as_str(),
-                    "/sidecar/v1/python/preflight"
-                        | "/api/system/capabilities"
-                        | "/api/system/info"
-                        | "/api/updates/version"
-                        | "/api/updates/runtime/status"
+                    "/api/system/capabilities" | "/api/system/info" | "/api/updates/version"
                 )
             {
-                // A cold packaged import can take tens of seconds on the Intel
-                // macOS runner. Snapshot the immutable host path so health and
-                // readiness requests never queue behind that subprocess.
+                // Snapshot the immutable host path so health and readiness
+                // requests never queue behind the probe subprocess.
                 let (python_plugin_host, probes) = {
                     let state = state
                         .lock()
@@ -4634,13 +4104,7 @@ fn handle_connection_with_access(
                         python_capabilities_response_for_host(host, &probes)
                     }
                     "/api/system/info" => python_system_info_response_for_host(host, &probes),
-                    "/api/updates/version" => {
-                        python_updates_version_response_for_host(host, &probes)
-                    }
-                    "/api/updates/runtime/status" => {
-                        python_updates_runtime_status_response_for_host(host, &probes)
-                    }
-                    _ => python_plugin_preflight_response_for_host(host),
+                    _ => python_updates_version_response_for_host(host, &probes),
                 };
                 return write_access_response(&mut stream, response, &response_context);
             }
@@ -5950,11 +5414,8 @@ mod tests {
     fn planned_missing_host(config_dir: &Path) -> ScientificHostPlan {
         ScientificHostPlan {
             host: config_dir.join("missing-python"),
-            selected: false,
-            bundled: true,
-            closure: config_dir.join("PYTHON_PLUGIN_CLOSURE.json"),
-            runtime_root: config_dir.join("python"),
             site_packages: config_dir.join("site-packages"),
+            adapters_dir: config_dir.join("adapters"),
             config_dir: config_dir.to_path_buf(),
         }
     }
@@ -5982,12 +5443,12 @@ mod tests {
         let acquired = readiness(&state);
         assert_eq!(acquired["ml_loading"], false);
         assert_eq!(acquired["ml_ready"], false);
-        assert_eq!(acquired["ml_error"], "python_runtime_contract_unavailable");
+        assert_eq!(acquired["ml_error"], "python_host_unavailable");
         let guard = state.lock().unwrap();
         // Job submission reports the acquired host, not the startup placeholder.
         assert_eq!(
             guard.native_jobs.execution_unavailability_reason(),
-            Some("python_runtime_contract_unavailable")
+            Some("python_host_unavailable")
         );
         assert!(guard.scientific_host.is_some());
         drop(guard);
@@ -6038,10 +5499,7 @@ mod tests {
         }
         let host = state.lock().unwrap().scientific_host.clone().unwrap();
         assert!(!host.acquisition_timed_out());
-        assert_eq!(
-            host.unavailable_reason(),
-            "python_runtime_contract_unavailable"
-        );
+        assert_eq!(host.unavailable_reason(), "python_host_unavailable");
         // A host that is unusable for another reason is not retried.
         route_readiness_without_global_lock(&state, &request).unwrap();
         assert!(!state.lock().unwrap().scientific_acquisition.is_pending());
@@ -6097,7 +5555,7 @@ mod tests {
         for feature in [
             "app_settings_routes",
             "dataset_inspection_routes",
-            "recommended_config_routes",
+            "gpu_detection_route",
             "general_prediction_routes",
             "app_config_path_routes",
             "linked_workspace_catalog_route",
@@ -6147,21 +5605,9 @@ mod tests {
     }
 
     #[test]
-    fn python_plugin_preflight_is_explicit_and_never_enables_scientific_execution() {
+    fn python_probe_routes_are_explicit_and_never_enable_scientific_execution() {
         let mut unconfigured = SidecarState::default();
         assert_python_plugin_capabilities(&unconfigured, false);
-
-        let unavailable = route_request(&mut unconfigured, "GET", "/sidecar/v1/python/preflight");
-        assert_eq!(unavailable.status, 503);
-        let unavailable_body: Value = serde_json::from_str(&unavailable.body).unwrap();
-        assert_eq!(
-            unavailable_body["error"]["code"],
-            "python_plugin_unavailable"
-        );
-        assert_eq!(
-            unavailable_body["error"]["details"]["reason"],
-            "not_configured"
-        );
 
         let unavailable_capabilities =
             route_request(&mut unconfigured, "GET", "/api/system/capabilities");
@@ -6172,6 +5618,10 @@ mod tests {
             unavailable_capabilities_body["error"]["code"],
             "python_plugin_unavailable"
         );
+        assert_eq!(
+            unavailable_capabilities_body["error"]["details"]["reason"],
+            "not_configured"
+        );
 
         let unavailable_info = route_request(&mut unconfigured, "GET", "/api/system/info");
         assert_eq!(unavailable_info.status, 200);
@@ -6181,8 +5631,16 @@ mod tests {
         assert_eq!(info["system"]["machine"], std::env::consts::ARCH);
         assert_eq!(info["packages"], json!({}));
 
-        let unavailable_build = route_request(&mut unconfigured, "GET", "/api/system/build");
-        assert_eq!(unavailable_build.status, 503);
+        // Build metadata is Rust-owned: it needs no Python environment.
+        let build = route_request(&mut unconfigured, "GET", "/api/system/build");
+        assert_eq!(build.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&build.body).unwrap(),
+            json!({
+                "build": {"flavor": "development", "gpu_enabled": false},
+                "summary": {"flavor": "development", "gpu_build": false},
+            })
+        );
 
         let unavailable_runtime =
             route_request(&mut unconfigured, "GET", "/api/system/env-coherence");
@@ -6195,7 +5653,7 @@ mod tests {
         let mut configured = SidecarState::with_python_plugin_host(missing_host);
         assert_python_plugin_capabilities(&configured, true);
 
-        let failed = route_request(&mut configured, "GET", "/sidecar/v1/python/preflight");
+        let failed = route_request(&mut configured, "GET", "/api/system/capabilities");
         assert_eq!(failed.status, 503);
         let failed_body: Value = serde_json::from_str(&failed.body).unwrap();
         assert_eq!(
@@ -6205,10 +5663,118 @@ mod tests {
         assert_eq!(failed_body["error"]["details"]["reason"], "spawn_failed");
     }
 
+    #[test]
+    fn routes_owned_by_the_application_shell_are_not_served() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut state = SidecarState::with_app_settings_dir(directory.path());
+        for (method, path) in [
+            ("GET", "/api/config/recommended"),
+            ("GET", "/api/config/diff"),
+            ("GET", "/api/config/setup-status"),
+            ("POST", "/api/config/complete-setup"),
+            ("POST", "/api/config/skip-setup"),
+            ("GET", "/api/updates/dependencies"),
+            ("POST", "/api/updates/dependencies/refresh"),
+            ("POST", "/api/updates/dependencies/install"),
+            ("POST", "/api/updates/dependencies/update"),
+            ("POST", "/api/updates/dependencies/revert"),
+            ("POST", "/api/updates/dependencies/uninstall"),
+            ("GET", "/api/updates/runtime/status"),
+            ("GET", "/api/updates/runtime/snapshots"),
+            ("GET", "/sidecar/v1/python/preflight"),
+        ] {
+            let response = route_request_with_body(&mut state, method, path, b"{}");
+            assert_eq!(response.status, 404, "{method} {path}");
+            assert_eq!(
+                serde_json::from_str::<Value>(&response.body).unwrap()["error"]["code"],
+                "route_not_found"
+            );
+        }
+        assert!(!directory.path().join("setup_status.json").exists());
+        // Nor by the routes served outside the global state lock.
+        let state = Arc::new(Mutex::new(state));
+        for path in [
+            "/api/config/recommended",
+            "/api/config/diff",
+            "/api/updates/dependencies",
+        ] {
+            let request = parse_http_request(
+                format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes(),
+            )
+            .unwrap();
+            assert!(route_workspace_workflows_without_global_lock(&state, &request).is_none());
+        }
+    }
+
+    /// A virtual environment without pip, for probes that read real metadata.
+    #[cfg(unix)]
+    fn virtual_environment(root: &Path) -> Option<(PathBuf, PathBuf)> {
+        let venv = root.join("venv");
+        if !Command::new("python3")
+            .args(["-I", "-m", "venv", "--without-pip"])
+            .arg(&venv)
+            .status()
+            .is_ok_and(|status| status.success())
+        {
+            return None;
+        }
+        let site_packages = fs::read_dir(venv.join("lib"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path()
+            .join("site-packages");
+        Some((venv.join("bin/python"), site_packages))
+    }
+
     #[cfg(unix)]
     #[test]
-    fn live_python_preflight_releases_the_route_mutex_during_cold_import() {
-        assert_python_probe_releases_route_mutex("/sidecar/v1/python/preflight", 200);
+    fn capabilities_report_installed_packages_without_importing_them() {
+        let root = tempfile::tempdir().unwrap();
+        let Some((python, site_packages)) = virtual_environment(root.path()) else {
+            return;
+        };
+        let imported = root.path().join("imported");
+        // Importing any of these would leave a marker and fail.
+        for package in ["torch", "tensorflow", "shap"] {
+            fs::create_dir(site_packages.join(package)).unwrap();
+            fs::write(
+                site_packages.join(package).join("__init__.py"),
+                format!(
+                    "open({:?}, 'a').write('{package}')\nraise RuntimeError('{package} was imported')\n",
+                    imported.display().to_string()
+                ),
+            )
+            .unwrap();
+        }
+        // A namespace package is installed only when a distribution owns it;
+        // a directory left behind by an uninstall is not a package.
+        fs::create_dir_all(site_packages.join("autogluon/core")).unwrap();
+        fs::write(site_packages.join("autogluon/core/__init__.py"), "").unwrap();
+        fs::create_dir(site_packages.join("autogluon.core-1.2.dist-info")).unwrap();
+        fs::write(
+            site_packages.join("autogluon.core-1.2.dist-info/METADATA"),
+            "Metadata-Version: 2.1\nName: autogluon.core\nVersion: 1.2\n",
+        )
+        .unwrap();
+        fs::write(
+            site_packages.join("autogluon.core-1.2.dist-info/top_level.txt"),
+            "autogluon\n",
+        )
+        .unwrap();
+        fs::create_dir_all(site_packages.join("jax/__pycache__")).unwrap();
+
+        let capabilities = read_python_capabilities(&python).unwrap();
+        assert_eq!(
+            capabilities,
+            json!({"capabilities": {
+                "nirs4all": false, "tensorflow": true, "torch": true, "jax": false,
+                "shap": true, "umap": false, "autogluon": true,
+            }})
+        );
+        assert!(!imported.exists(), "a capability package was imported");
+        assert!(!PYTHON_CAPABILITIES_SCRIPT.contains("import_module"));
     }
 
     #[test]
@@ -6290,10 +5856,9 @@ mod tests {
         for route in [
             "/api/system/capabilities",
             "/api/system/info",
-            "/api/system/build",
+            "/api/config/detect-gpu",
             "/api/system/env-coherence",
             "/api/updates/version",
-            "/api/updates/runtime/status",
         ] {
             // A slow failed probe must not delay the independent health route.
             assert_python_probe_releases_route_mutex(
@@ -6407,13 +5972,10 @@ mod tests {
 
         let mut state = SidecarState::with_python_plugin_host(host);
         for route in [
-            "/sidecar/v1/python/preflight",
             "/api/system/capabilities",
             "/api/system/info",
-            "/api/system/build",
             "/api/system/env-coherence",
             "/api/updates/version",
-            "/api/updates/runtime/status",
         ] {
             let response = route_request(&mut state, "GET", route);
             assert_ne!(response.status, 404, "{route}");
@@ -6505,7 +6067,6 @@ mod tests {
         let valid = directory.join("build_info.json");
         fs::write(&valid, r#"{"flavor":"gpu-metal","profile":"gpu"}"#).unwrap();
         let mut state = SidecarState {
-            runtime_mode: "bundled".into(),
             build_info_path: Some(valid),
             ..SidecarState::default()
         };
@@ -6574,66 +6135,6 @@ mod tests {
         );
         assert_eq!(
             route_request_with_body(&mut state, "PUT", "/api/app/settings", b"[]").status,
-            422
-        );
-
-        fs::remove_dir_all(directory).unwrap();
-    }
-
-    #[test]
-    fn setup_routes_persist_without_acquiring_a_python_http_backend() {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let directory = std::env::temp_dir().join(format!(
-            "studio-sidecar-setup-routes-{}-{nonce}",
-            std::process::id()
-        ));
-        let mut state = SidecarState::with_app_settings_dir(&directory);
-
-        let initial = route_request(&mut state, "GET", "/api/config/setup-status");
-        assert_eq!(initial.status, 200);
-        assert_eq!(
-            serde_json::from_str::<Value>(&initial.body).unwrap(),
-            json!({
-                "setup_completed": false,
-                "selected_profile": null,
-                "completed_at": null,
-            })
-        );
-
-        let skipped = route_request(&mut state, "POST", "/api/config/skip-setup");
-        assert_eq!(skipped.status, 200);
-        assert_eq!(
-            serde_json::from_str::<Value>(&skipped.body).unwrap()["selected_profile"],
-            "cpu"
-        );
-        let persisted = route_request(&mut state, "GET", "/api/config/setup-status");
-        assert_eq!(
-            serde_json::from_str::<Value>(&persisted.body).unwrap()["setup_completed"],
-            true
-        );
-
-        let completed = route_request_with_body(
-            &mut state,
-            "POST",
-            "/api/config/complete-setup",
-            br#"{"profile":"gpu-cuda-torch"}"#,
-        );
-        assert_eq!(completed.status, 200);
-        assert_eq!(
-            serde_json::from_str::<Value>(&completed.body).unwrap()["selected_profile"],
-            "gpu-cuda-torch"
-        );
-        assert_eq!(
-            route_request_with_body(
-                &mut state,
-                "POST",
-                "/api/config/complete-setup",
-                br#"{"profile":""}"#,
-            )
-            .status,
             422
         );
 
@@ -7382,69 +6883,6 @@ mod tests {
     }
 
     #[test]
-    fn native_runtime_status_preserves_the_legacy_response_shape() {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let runtime = std::env::temp_dir().join(format!(
-            "studio-sidecar-runtime-status-{}-{nonce}",
-            std::process::id()
-        ));
-        let executable = runtime.join("bin/python");
-        fs::create_dir_all(executable.parent().unwrap()).unwrap();
-        fs::write(&executable, "placeholder runtime executable").unwrap();
-        fs::write(runtime.join("pyvenv.cfg"), "home = /base\n").unwrap();
-        fs::write(
-            runtime.join(VENV_METADATA_FILE),
-            r#"{"created_at":"2026-08-20T12:00:00","last_updated":"2026-08-30T12:00:00"}"#,
-        )
-        .unwrap();
-
-        let response = native_updates_runtime_status_json(&json!({
-            "path": runtime,
-            "base_prefix": "/base",
-            "python_executable": executable,
-            "python_version": "3.11.9",
-            "pip_version": "24.0",
-            "nirs4all_version": null,
-            "packages": [{"name": "nirs4all", "version": "0.12.0"}],
-        }))
-        .unwrap();
-        let response: Value = serde_json::from_str(&response).unwrap();
-        assert_eq!(response["runtime"], response["venv"]);
-        assert_eq!(
-            response["runtime"]["path"],
-            runtime.to_string_lossy().as_ref()
-        );
-        assert_eq!(
-            response["runtime"]["python_executable"],
-            executable.to_string_lossy().as_ref()
-        );
-        assert_eq!(response["runtime"]["python_version"], "3.11.9");
-        assert_eq!(response["runtime"]["pip_version"], "24.0");
-        assert_eq!(response["runtime"]["created_at"], "2026-08-20T12:00:00");
-        assert_eq!(response["runtime"]["last_updated"], "2026-08-30T12:00:00");
-        assert!(response["runtime"]["size_bytes"].as_u64().unwrap() > 0);
-        assert_eq!(
-            response["packages"],
-            json!([{"name": "nirs4all", "version": "0.12.0", "location": null}])
-        );
-        assert_eq!(response["nirs4all_version"], Value::Null);
-        fs::remove_dir_all(runtime).unwrap();
-
-        let mut state = SidecarState::default();
-        assert_eq!(
-            route_request(&mut state, "GET", "/api/updates/runtime/status").status,
-            503
-        );
-        assert_eq!(
-            route_request(&mut state, "POST", "/api/updates/runtime/status").status,
-            405
-        );
-    }
-
-    #[test]
     fn live_http_body_is_routed_to_native_app_settings() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -7592,7 +7030,6 @@ mod tests {
             ("POST", "/sidecar/v1/health", "GET"),
             ("DELETE", "/sidecar/v1/readiness", "GET"),
             ("POST", "/sidecar/v1/capabilities", "GET"),
-            ("POST", "/sidecar/v1/python/preflight", "GET"),
             ("POST", "/api/system/capabilities", "GET"),
             ("POST", "/api/system/info", "GET"),
             ("POST", "/api/system/build", "GET"),

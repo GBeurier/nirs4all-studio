@@ -65,9 +65,6 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["POST /pipelines/count-variants", { name: "pipeline-library", capability: "pipeline_library_routes", requiresPythonHost: true }],
   ["GET /datasets", { name: "dataset-catalogue", capability: "dataset_catalogue_routes" }],
   ["POST /datasets/link", { name: "dataset-catalogue", capability: "dataset_catalogue_routes" }],
-  ["GET /config/setup-status", { name: "setup", capability: "app_settings_routes" }],
-  ["POST /config/skip-setup", { name: "setup", capability: "app_settings_routes" }],
-  ["POST /config/complete-setup", { name: "setup", capability: "app_settings_routes" }],
   ["GET /workspace/format-status", { name: "workspace-format-status", capability: "workspace_format_status_route" }],
   ["GET /system/network", { name: "system-network", capability: "system_network_route" }],
   ["GET /updates/status", { name: "updates-status", capability: "updates_status_route" }],
@@ -93,10 +90,9 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
 const pythonHostRoutes = new Map<string, NativeSurface>([
   ["GET /system/capabilities", { name: "system-capabilities", capability: "system_capabilities_route", requiresPythonHost: true }],
   ["GET /system/info", { name: "system-info", capability: "system_info_route" }],
-  ["GET /system/build", { name: "system-build", capability: "system_build_route", requiresPythonHost: true }],
+  ["GET /system/build", { name: "system-build", capability: "system_build_route" }],
   ["GET /system/env-coherence", { name: "system-env-coherence", capability: "system_env_coherence_route", requiresPythonHost: true }],
   ["GET /updates/version", { name: "updates-version", capability: "updates_version_route", requiresPythonHost: true }],
-  ["GET /updates/runtime/status", { name: "updates-runtime-status", capability: "updates_runtime_status_route", requiresPythonHost: true }],
 ]);
 
 function isValidIdentifier(value: string): boolean {
@@ -431,17 +427,9 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
       (method === "POST" && ["/predict", "/predict/file"].includes(pathname)))) {
     return { name: "general-prediction", capability: "general_prediction_routes", requiresPythonHost: true };
   }
-  if (method === "GET" && pathname === "/config/recommended" && validQuery({ force_refresh: bool })) {
-    return { name: "recommended-config", capability: "recommended_config_routes" };
-  }
-  if (method === "GET" && ((pathname === "/config/detect-gpu" && !query) ||
-      (pathname === "/config/diff" && validQuery({ profile: isValidIdentifier, include_optional: bool, include_latest: bool })))) {
-    return { name: "runtime-config", capability: "recommended_config_routes", requiresPythonHost: true };
-  }
-  if ((method === "GET" && pathname === "/updates/dependencies" && validQuery({ force_refresh: bool })) ||
-      (method === "POST" && ["/updates/dependencies/refresh", "/updates/dependencies/install",
-        "/updates/dependencies/revert", "/updates/dependencies/update", "/updates/dependencies/uninstall"].includes(pathname) && !query)) {
-    return { name: "runtime-dependencies", capability: "recommended_config_routes", requiresPythonHost: true };
+  // The only route that imports torch: an explicit, on-demand probe.
+  if (method === "GET" && pathname === "/config/detect-gpu" && !query) {
+    return { name: "gpu-detection", capability: "gpu_detection_route", requiresPythonHost: true };
   }
   const inspection = ["detect-files", "detect-unified", "detect-files-list", "scan-folder", "detect-format", "auto-detect", "validate-files", "preview"];
   if (method === "POST" && !query && inspection.some((operation) => pathname === `/datasets/${operation}`)) {

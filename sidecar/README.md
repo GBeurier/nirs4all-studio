@@ -71,8 +71,6 @@ transport, and registered read/cancel aliases for native jobs:
 - `GET /sidecar/v1/health`
 - `GET /sidecar/v1/readiness`
 - `GET /sidecar/v1/capabilities`
-- `GET /sidecar/v1/python/preflight` (only checks a configured local Python
-  host can `import nirs4all`; it does not run a scientific job)
 - `GET /sidecar/v1/workspaces/:id/run-detail-preselection` (read-only Store-v5
   eligibility proof; it cannot select the unregistered run-detail target)
 - `POST /sidecar/v1/jobs` (creates a non-scientific, in-memory control record)
@@ -111,13 +109,16 @@ transport, and registered read/cancel aliases for native jobs:
   fusion, N-D payloads, HPO, CPython, and fallback are refused.
 - `GET /api/health` and `GET /api/system/readiness` (the frozen
   post-lifespan bootstrap responses only)
-- `GET /api/system/capabilities` (an explicit Rust-owned route which invokes
-  the configured Python plugin host only to inspect optional imports)
+- `GET /api/system/capabilities` (an explicit Rust-owned route; the configured
+  Python host reports which optional packages are installed from module specs
+  and distribution metadata, without importing torch, tensorflow, jax, shap,
+  umap or autogluon)
 - `GET /api/system/info` (the same bounded host bridge for the Settings system
   inventory; it does not create or run a job)
-- `GET /api/system/build` (Rust-owned build metadata plus a bounded optional
-  `torch` probe in the configured Python library host; it does not create or
-  run a job)
+- `GET /api/system/build` (Rust-owned build metadata; it never invokes Python)
+- `GET /api/config/detect-gpu` (the only route that imports `torch`: an
+  explicit, on-demand, bounded probe of the selected environment, never run at
+  application startup)
 - `GET /api/system/network` (Rust-owned offline preference state; it reads the
   established bounded `update_settings.yaml` preference file and never probes
   a host or invokes Python)
@@ -126,9 +127,6 @@ transport, and registered read/cancel aliases for native jobs:
 - `GET /api/updates/version` (Rust-owned version inventory; Electron provides
   the application version and the bounded Python library host reports only the
   installed `nirs4all` version and interpreter facts)
-- `GET /api/updates/runtime/status` (Rust-owned runtime diagnostics; it reads
-  runtime metadata and measures the runtime locally while a bounded Python host
-  reports only its installed distributions)
 - `GET` / `PUT /api/updates/settings` (Rust-owned update preferences; it
   preserves the legacy YAML file and PATCH-compatible update shape)
 - `GET /api/system/env-coherence` (Rust-owned Settings runtime alignment; the
@@ -299,48 +297,61 @@ require it to be false: `true` means the Rust-owned executor has selected its
 bounded library host, never that CPython owns an HTTP or WebSocket route.
 The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. Every product-owned CPython launch uses `-B` plus
-`PYTHONDONTWRITEBYTECODE=1`, so probing cannot add bytecode to the attested
-runtime closure. Startup acquisition of the scientific host bounds its one-time
-cold import and RECORD verification to 45 seconds (inside the 75-second
-all-in-one smoke budget). `GET /sidecar/v1/python/preflight` separately uses
-`-I`, bounds `import nirs4all` to 60 seconds, and never selects execution.
-`GET /api/system/capabilities` and `GET /api/system/info` use the same bridge
-with a bounded 15-second optional-import probe. `GET /api/system/env-coherence`
-uses a bounded 15-second import/runtime probe and reports `python_plugin_host`
-as the runtime kind. `GET /api/system/build` assembles the product-selected
-build metadata in Rust and uses the same bounded host only to inspect optional
-`torch` GPU availability. `GET /api/updates/version` combines the
-Electron-supplied application version with a bounded `nirs4all` distribution
-inspection. `GET /api/updates/runtime/status` obtains runtime metadata and size
-in Rust, then accepts a bounded (256 KiB) distribution inventory from the
-configured host. `GET` / `PUT /api/updates/settings` are fully native: Rust
-reads and atomically writes the legacy-compatible YAML file, with no network
-probe or Python process. These seven return their legacy response shapes
-without launching a scientific job. `GET /api/system/network` is fully native:
-it reads only the established offline preference and the `NIRS4ALL_OFFLINE`
-process override, matching the legacy route without a network probe. All bridge
-routes are capability evidence, never transparent Python fallback.
+`PYTHONDONTWRITEBYTECODE=1`. `GET /api/system/capabilities`,
+`GET /api/system/info` and `GET /api/updates/version` read module specs and
+distribution metadata within a bounded 45-second probe and import no package.
+`GET /api/system/env-coherence` uses a bounded 60-second probe that imports
+`nirs4all` and reports the running interpreter. `GET /api/system/build` is
+assembled in Rust without Python. `GET /api/config/detect-gpu` is the single
+on-demand probe that imports `torch`. `GET` / `PUT /api/updates/settings` are
+fully native: Rust reads and atomically writes the legacy-compatible YAML file,
+with no network probe or Python process. `GET /api/system/network` is fully
+native: it reads only the established offline preference and the
+`NIRS4ALL_OFFLINE` process override. All bridge routes are capability evidence,
+never transparent Python fallback. Probe results are cached until the selected
+interpreter or its installed packages change.
 
-Electron explicitly selects the bounded scientific-host acquisition candidate
-with `NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1` only when it also supplies
-the bundled marker plus host, closure manifest, runtime root, and unique
-site-packages paths obtained from the verified packaged contract. The sidecar
-rejects user/managed venv and PATH discovery. It fingerprints that executable with
-SHA-256 and runs one fresh, isolated JSON-stdio preflight under a five-second,
-8 KiB stdout, and 64 KiB stderr budget. It also fingerprints the exact source
-file behind `nirs4all.studio_scientific_job_v1`; both identities are sticky and
-reverified before execution, including a child-side callable check. The full
-packaged closure is hashed once at acquisition, then guarded around every child
-by path/inode/size/mtime/ctime snapshots with full re-hashing on drift. The
-optimization is enabled only where the platform exposes a trustworthy inode
-change marker; other targets keep full re-hashing at each boundary. The
-response must identify CPython 3.11 or newer with `-I -S -B` isolation active and
-pass a real negative bind self-test. A Python audit hook rejects `socket.bind`,
-including `http.server` listener creation, and rejects subprocess, system,
-posix-spawn, fork/forkpty, exec, and pty-spawn audit events (covering
-`os.spawnv` and multiprocessing's platform process paths). This host cannot become the
-HTTP/WS product backend. The closed contract is
-`contracts/studio_scientific_cpython_host_v1.json`.
+### Python environment hand-off
+
+The application shell (Electron) owns environment selection, package
+installation and updates. The sidecar only uses the interpreter it is given:
+
+| Variable | Meaning |
+| --- | --- |
+| `NIRS4ALL_PYTHON_PLUGIN_HOST` | Interpreter of the selected environment (a venv link is used as given, never resolved). |
+| `NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES` | That environment's site-packages directory. |
+| `NIRS4ALL_STUDIO_ADAPTERS_DIR` | Application directory that contains the `studio_document_adapters/` package. |
+| `NIRS4ALL_SCIENTIFIC_EXECUTOR` | `cpython-stdio-v1` selects the bounded scientific host. |
+
+Acquisition runs once, after the sidecar reports ready (readiness shows
+`ml_loading`), within one 180-second budget; a timeout is retried on the next
+readiness poll. The adapters are the application's own files: they are verified
+against the compiled `contracts/studio_document_adapters_v1.json` manifest once
+at acquisition and are imported from that directory, ahead of the environment's
+site-packages. The admission probe then requires, in this order:
+
+1. CPython 3.11 or newer, with `-I -S -B` isolation active and a real negative
+   bind self-test;
+2. a `nirs4all` distribution whose metadata version is within the range of the
+   embedded `recommended-config.json` (`required` entry `nirs4all`, field
+   `range`) -- editable and development installs are admitted like wheels;
+3. `import nirs4all` and its Studio callables (`studio_scientific_job_v1`,
+   `studio_scientific_job_v2`).
+
+The probe process becomes the first interactive worker. Later workers receive
+the admitted version as an argument and refuse to start if the installed
+distribution metadata no longer matches it. Nothing is hashed or walked on a
+readiness poll or around a request. Refusals are typed
+(`python_host_unavailable`, `studio_adapters_unavailable`,
+`python_host_not_cpython`, `python_host_version_unsupported`,
+`scientific_distribution_missing`,
+`scientific_distribution_version_unsupported`,
+`scientific_library_import_failed`, `scientific_callable_unavailable`, ...) and
+logged once per acquisition on stderr. A Python audit hook rejects
+`socket.bind`, including `http.server` listener creation, and rejects
+subprocess, system, posix-spawn, fork/forkpty, exec, and pty-spawn audit events
+(covering `os.spawnv` and multiprocessing's platform process paths). This host
+cannot become the HTTP/WS product backend.
 
 The fresh-process execution bridge accepts only the callable's already-resolved
 path-free matrix request (64 KiB stdin), validates its exact PLS/KFold shape in
@@ -448,10 +459,9 @@ read through the selected Core/DAG-ML contract; it neither computes nor
 alters intervals. This is a native persistence primitive, not an execution or
 HTTP API claim.
 
-All-in-one packaging builds the sidecar as
-`resources/backend/native/studio-sidecar` next to the embedded
-`resources/backend/python-runtime/`. Packaged Electron starts the sidecar and
-passes the matching embedded Python as its explicit plugin host. Neither choice
+Packaging builds the sidecar as `resources/backend/native/studio-sidecar`.
+Electron starts it and passes the selected environment and the application's
+adapters directory as described under "Python environment hand-off". No choice
 selects Python as an HTTP fallback.
 
 Sidecar control routes use:
@@ -516,7 +526,7 @@ requests is selected native, neither Uvicorn nor FastAPI may be retried.
 
 Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
-idempotent cancellation, bounded Python plugin-host preflight, four
+idempotent cancellation, bounded Python plugin-host admission, the
 Rust-owned Python-bridge system routes plus native network state, native app preferences/favorites
 and config-path selection, native system-status catalogue state, plus the linked-workspace catalogue and its native
 activation/unlink mutations,
