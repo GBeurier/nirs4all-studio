@@ -1,4 +1,4 @@
-"""Prove that a baked Python runtime contains the exact candidate wheel files."""
+"""Prove that a Python environment contains the exact candidate wheel files."""
 
 from __future__ import annotations
 

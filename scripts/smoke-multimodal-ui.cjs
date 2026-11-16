@@ -10,6 +10,7 @@ const ui = require('./smoke-first-launch-ui.cjs');
 const { resolvePerformancePolicy, timed, functionalTimeout } = require('./qualification-performance.cjs');
 
 const fixtures = path.join(__dirname, 'fixtures', 'multimodal-ui');
+const SCIENTIFIC_HOST_TIMEOUT_MS = 120000;
 
 async function api(env, route, method = 'GET', body) {
   const response = await fetch(`http://127.0.0.1:${env.NIRS4ALL_NATIVE_SIDECAR_PORT}/api${route}`, {
@@ -25,9 +26,12 @@ async function api(env, route, method = 'GET', body) {
   return response.json();
 }
 
-async function journey({ page, env }, workspace, proof) {
+async function journey({ page, app, env }, workspace, proof) {
   const uiWait = (phase, assertion) => timed(proof, phase, 5000,
     () => assertion({ timeout: functionalTimeout(proof, 5000) }));
+  // After the restart the renderer is ready before the scientific host of the created environment.
+  await archive.waitForReady(env.NIRS4ALL_NATIVE_SIDECAR_PORT, SCIENTIFIC_HOST_TIMEOUT_MS, app.process(), [],
+    env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN);
   await api(env, '/workspace/create', 'POST', {
     path: workspace, name: 'Multimodal package smoke', create_dir: true,
   });
@@ -55,7 +59,7 @@ async function journey({ page, env }, workspace, proof) {
   await uiWait('multimodal_pipeline_visible', options =>
     expect(page.getByText('Four modality fixed (Imported)', { exact: true }).first()).toBeVisible(options));
 
-  await page.getByRole('link', { name: 'Run', exact: true }).click();
+  await page.getByRole('link', { name: 'New Experiment', exact: true }).click();
   await uiWait('multimodal_experiment_visible', options =>
     expect(page.getByRole('heading', { name: 'New Experiment' })).toBeVisible(options));
   await page.locator('[data-experiment-pipeline-id]').filter({ hasText: 'Four modality fixed' }).click();
@@ -65,8 +69,8 @@ async function journey({ page, env }, workspace, proof) {
   await uiWait('multimodal_groups_visible', options => expect(page.getByText('Using cohort groups')).toBeVisible(options));
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await uiWait('multimodal_native_api_visible', options => expect(page.getByText('Native local run API')).toBeVisible(options));
-  await page.getByRole('button', { name: 'Submit Native Payload' }).click();
+  await uiWait('multimodal_native_api_visible', options => expect(page.getByText('Local analysis')).toBeVisible(options));
+  await page.getByRole('button', { name: 'Launch Experiment' }).click();
   await expect.poll(async () => (await api(env, '/runs')).runs?.[0]?.status,
     { timeout: 180000, intervals: [1000, 2000, 3000] }).toBe('completed');
   // The renderer refreshes its run list every 10 seconds after the API reports completion.

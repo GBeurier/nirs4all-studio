@@ -1,10 +1,50 @@
 name: Multimodal package candidate (nonpublishing)
 
-# Historical manual reproducer: build the three Python development candidates
-# from the retained immutable commits in a disposable Studio checkout.
-# Current stable release qualification and publication use release-unified.yml.
+# Manual qualification of unpublished Python candidates inside the real
+# product, before their publication and before Studio pins them.
+#
+# The lane builds candidate wheels of nirs4all, nirs4all-io and dag-ml from
+# immutable source commits, then makes a disposable Studio checkout ship them
+# the way the product ships its required packages:
+#   - scripts/prepare-multimodal-package-candidate.cjs selects each candidate
+#     in recommended-config.json (`required`, `install`) and in the target's
+#     wheel lock (file name and SHA-256), and copies it to backend-dist/wheels/;
+#   - scripts/build-wheelhouse.cjs keeps a staged wheel only when its SHA-256
+#     is the locked one and downloads the other required wheels;
+#   - the installer is built from the current build inputs and its runtime
+#     contract is verified with the Python payload.
+# An environment made from the shipped payload must then hold the exact
+# candidate files and pass the candidate SDK's installed provider
+# qualification. Finally the application creates its environment itself on a
+# fresh profile, installing the candidates from its shipped `wheels/`, and the
+# multimodal journey (four-source import, run, archive, replay) runs in its
+# renderer; that environment is checked for the exact candidate files too.
+#
+# Windows and Linux only: a macOS application embeds no wheels and installs
+# its required packages from the package index, so it cannot ship an
+# unpublished candidate.
+#
+# Nothing is published: no release, no tag, no registry. Installers and
+# identity files are kept as workflow artifacts for seven days. Release
+# qualification and publication use release-unified.yml.
 on:
   workflow_dispatch:
+    inputs:
+      nirs4all_ref:
+        description: 'nirs4all commit (40-character SHA) of the candidate SDK. Empty: the commit of the published cohort (build/runtime-cohort.json)'
+        required: false
+        default: ''
+        type: string
+      nirs4all_io_ref:
+        description: 'nirs4all-io commit (40-character SHA) of the candidate. Empty: the commit of the published cohort'
+        required: false
+        default: ''
+        type: string
+      dag_ml_ref:
+        description: 'dag-ml commit (40-character SHA) of the candidate. Empty: the commit of the published cohort'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -14,8 +54,77 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  candidate-sources:
+    name: Candidate sources and SDK wheel
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    outputs:
+      nirs4all_ref: ${{ steps.sources.outputs.nirs4all_ref }}
+      nirs4all_io_ref: ${{ steps.sources.outputs.nirs4all_io_ref }}
+      dag_ml_ref: ${{ steps.sources.outputs.dag_ml_ref }}
+      app_version: ${{ steps.sources.outputs.app_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Resolve candidate sources and the disposable app version
+        id: sources
+        shell: bash
+        env:
+          NIRS4ALL_REF: ${{ inputs.nirs4all_ref }}
+          NIRS4ALL_IO_REF: ${{ inputs.nirs4all_io_ref }}
+          DAG_ML_REF: ${{ inputs.dag_ml_ref }}
+        run: |
+          set -euo pipefail
+          # An empty input selects the source commit of the published cohort member.
+          resolve() {
+            local ref="${1:-$(node -p "require('./build/runtime-cohort.json').$2.source_sha")}"
+            if [[ ! "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Candidate sources must be immutable 40-character commit SHAs, got '$ref'" >&2
+              return 1
+            fi
+            echo "$ref"
+          }
+          nirs4all_ref="$(resolve "$NIRS4ALL_REF" sdk)"
+          nirs4all_io_ref="$(resolve "$NIRS4ALL_IO_REF" io)"
+          dag_ml_ref="$(resolve "$DAG_ML_REF" dag)"
+          app_version="$(node -p "require('./package.json').version")-dev.0"
+          {
+            echo "nirs4all_ref=$nirs4all_ref"
+            echo "nirs4all_io_ref=$nirs4all_io_ref"
+            echo "dag_ml_ref=$dag_ml_ref"
+            echo "app_version=$app_version"
+          } | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all
+          ref: ${{ steps.sources.outputs.nirs4all_ref }}
+          path: candidate-nirs
+      - name: Build the candidate SDK wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install setuptools==84.0.0 wheel==0.48.0 packaging==26.3 build==1.6.1
+          cd candidate-nirs
+          python -m build --wheel --no-isolation --outdir ../candidate-wheels
+      - name: Retain canonical nirs4all wheel for the candidate installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: multimodal-nirs-wheel
+          path: candidate-wheels/nirs4all-*.whl
+          if-no-files-found: error
+          retention-days: 7
+
   linux-package:
-    runs-on: ubuntu-latest
+    name: Candidate installer — Linux x64
+    needs: candidate-sources
+    runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -24,17 +133,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 22902524078669c99eb5b9070a0498c058fc3cc3
+          ref: ${{ needs.candidate-sources.outputs.nirs4all_ref }}
           path: candidate-nirs
       - uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all-io
-          ref: 5a887788089568955e7011ad0036264dd3f6e979
+          ref: ${{ needs.candidate-sources.outputs.nirs4all_io_ref }}
           path: candidate-io
       - uses: actions/checkout@v4
         with:
           repository: GBeurier/dag-ml
-          ref: 9d7273a718aff7c1e511dc8708b13e7bfe8f5613
+          ref: ${{ needs.candidate-sources.outputs.dag_ml_ref }}
           path: candidate-dag
       - uses: actions/setup-node@v4
         with:
@@ -49,238 +158,7 @@ jobs:
       - name: Install product build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgirepository1.0-dev libcairo2-dev gir1.2-gtk-3.0 gir1.2-webkit2-4.1 upx-ucl xvfb
-          npm ci
-          python -m pip install setuptools==84.0.0 wheel==0.48.0 packaging==26.3 build==1.6.1 maturin==1.14.1
-      - name: Build exact candidate wheels
-        shell: bash
-        run: |
-          mkdir candidate-wheels
-          cd candidate-nirs
-          python -m build --wheel --no-isolation --outdir ../candidate-wheels
-          cd ../candidate-io
-          python -m maturin build --locked --release -m bindings/python/Cargo.toml --interpreter python --out ../candidate-wheels
-          cd ../candidate-dag
-          python scripts/prepare_python_candidate.py
-          python scripts/validate_release_metadata.py
-          python -m maturin build --locked --release -m crates/dag-ml-py/Cargo.toml --interpreter python --out ../candidate-wheels
-      - name: Prepare disposable Studio version and exact plugin pins
-        shell: bash
-        run: |
-          python -m unittest discover -s scripts -p 'test_candidate_wheel_manifest.py'
-          test "$(git -C candidate-nirs rev-parse HEAD)" = 22902524078669c99eb5b9070a0498c058fc3cc3
-          mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
-          mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
-          mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
-          test "${#nirs_wheels[@]}" -eq 1
-          test "${#dag_wheels[@]}" -eq 1
-          test "${#io_wheels[@]}" -eq 1
-          nirs_manifest="$(python scripts/candidate_wheel_manifest.py "${nirs_wheels[0]}")"
-          node scripts/prepare-multimodal-package-candidate.cjs \
-            --nirs-wheel "${nirs_wheels[0]}" \
-            --nirs-source-commit 22902524078669c99eb5b9070a0498c058fc3cc3 \
-            --nirs-installed-manifest-sha256 "$nirs_manifest" \
-            --dag-version 0.3.31.dev0 --io-version 0.2.1.dev0 \
-            --app-version 0.14.1-dev.0 | tee "$RUNNER_TEMP/candidate-pins.json"
-          sha256sum "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}" | tee "$RUNNER_TEMP/candidate-wheels.sha256"
-          git -C candidate-dag rev-parse HEAD | tee "$RUNNER_TEMP/candidate-dag-commit.txt"
-          git -C candidate-io rev-parse HEAD | tee "$RUNNER_TEMP/candidate-io-commit.txt"
-      - name: Build exact native Methods runtime
-        uses: ./.github/actions/build-native-methods
-        with:
-          platform: linux
-          arch: x64
-      - name: Retain canonical nirs4all wheel for desktop candidates
-        uses: actions/upload-artifact@v4
-        with:
-          name: multimodal-nirs-wheel
-          path: candidate-wheels/nirs4all-*.whl
-          if-no-files-found: error
-          retention-days: 7
-      - name: Bake candidate Python and native Rust runtime
-        shell: bash
-        env:
-          PIP_FIND_LINKS: ${{ github.workspace }}/candidate-wheels
-        run: |
-          mapfile -t nirs_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all-*.whl' -print)
-          mapfile -t dag_wheels < <(find candidate-wheels -maxdepth 1 -name 'dag_ml-*.whl' -print)
-          mapfile -t io_wheels < <(find candidate-wheels -maxdepth 1 -name 'nirs4all_io-*.whl' -print)
-          test "${#nirs_wheels[@]}" -eq 1
-          test "${#dag_wheels[@]}" -eq 1
-          test "${#io_wheels[@]}" -eq 1
-          node scripts/bake-python-plugin-runtime.cjs --plugin-wheel "${nirs_wheels[0]}" --dag-wheel "${dag_wheels[0]}" --io-wheel "${io_wheels[0]}"
-          python scripts/verify-installed-candidate-wheels.py backend-dist/python-runtime/python/lib/python3.11/site-packages "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
-          node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
-      - name: Build nonpublishing DEB
-        run: |
-          npm run build:electron
-          npx electron-builder --config electron-builder.installer.yml --linux deb --publish never
-      - name: Verify exact packaged plugin and first launch
-        shell: bash
-        timeout-minutes: 20
-        run: |
-          mapfile -t debs < <(find release -maxdepth 1 -name '*.deb' -print)
-          test "${#debs[@]}" -eq 1
-          mkdir -p "$RUNNER_TEMP/candidate-extracted"
-          dpkg-deb -x "${debs[0]}" "$RUNNER_TEMP/candidate-extracted"
-          candidate_root="$RUNNER_TEMP/candidate-extracted/opt/nirs4all Studio"
-          test -f "$candidate_root/resources/app.asar"
-          node scripts/verify-packaged-plugin-identity.cjs "$candidate_root/resources"
-          node scripts/native-runtime-contract.cjs --backend-root "$candidate_root/resources/backend" --artifact-boundary-root "$candidate_root" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
-          env -u PYTHONPATH N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-extracted" N4A_FULL_HPO_MATRIX=1 \
-            "$candidate_root/resources/backend/python-runtime/python/bin/python3" -I -B \
-            "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
-          sudo chown root:root "$candidate_root/chrome-sandbox"
-          sudo chmod 4755 "$candidate_root/chrome-sandbox"
-          N4A_SMOKE_ELECTRON_NO_SANDBOX=1 xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$candidate_root" --platform linux
-          xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$candidate_root" --platform linux
-          sha256sum "${debs[0]}" | tee "$RUNNER_TEMP/candidate-deb.sha256"
-      - name: Install the actual candidate DEB and repeat first launch
-        shell: bash
-        timeout-minutes: 20
-        run: |
-          set -euo pipefail
-          mapfile -t debs < <(find release -maxdepth 1 -name '*.deb' -print)
-          test "${#debs[@]}" -eq 1
-          candidate_version="$(dpkg-deb -f "${debs[0]}" Version)"
-          dpkg --compare-versions "$candidate_version" gt 0.14.0
-          sudo apt-get install -y "$(realpath "${debs[0]}")"
-          package_name="$(dpkg-deb -f "${debs[0]}" Package)"
-          test "$(dpkg-query -W -f='${Version}' "$package_name")" = "$candidate_version"
-          installed_root='/opt/nirs4all Studio'
-          test -x "$installed_root/nirs4all-webapp"
-          node scripts/verify-packaged-plugin-identity.cjs "$installed_root/resources"
-          node scripts/native-runtime-contract.cjs --backend-root "$installed_root/resources/backend" --artifact-boundary-root "$installed_root" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
-          env -u PYTHONPATH N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-installed" N4A_FULL_HPO_MATRIX=1 \
-            "$installed_root/resources/backend/python-runtime/python/bin/python3" -I -B \
-            "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
-          N4A_SMOKE_ELECTRON_NO_SANDBOX=1 xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
-          xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root "$installed_root" --platform linux --timeout-ms 360000
-      - name: Qualify four-source import, run, archive and replay in installed UI
-        timeout-minutes: 20
-        run: |
-          xvfb-run -a node scripts/smoke-multimodal-ui.cjs \
-            --extracted-root '/opt/nirs4all Studio' --platform linux --timeout-ms 360000
-      - name: Resolve the latest public Linux installer for upgrade qualification
-        id: baseline
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { installerBaselines } = require('./scripts/installer-baselines.cjs');
-            const releases = await github.paginate(github.rest.repos.listReleases, {
-              owner: context.repo.owner, repo: context.repo.repo, per_page: 100,
-            });
-            const baseline = installerBaselines(releases, '0.14.1-dev.0')['linux-x64'];
-            if (!baseline) throw new Error('No public Linux installer to test the upgrade');
-            core.setOutput('plan', JSON.stringify(baseline));
-            core.setOutput('version', baseline.version);
-      - name: Qualify populated upgrade from the public Linux installer
-        shell: bash
-        timeout-minutes: 45
-        env:
-          INSTALLER_BASELINE: ${{ steps.baseline.outputs.plan }}
-          BASELINE_VERSION: ${{ steps.baseline.outputs.version }}
-          BASELINE_GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_SOURCE_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          mapfile -t debs < <(find release -maxdepth 1 -name '*.deb' -print)
-          test "${#debs[@]}" -eq 1
-          sha256sum "${debs[0]}" > "${debs[0]}.sha256"
-          xvfb-run -a node scripts/qualify-installer.cjs \
-            --installer "${debs[0]}" --platform linux \
-            --previous-version "$BASELINE_VERSION" \
-            --output "$RUNNER_TEMP/multimodal-installer-upgrade-proof.json"
-      - name: Retain nonpublishing candidate and identity proof
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: multimodal-linux-deb-candidate
-          path: |
-            release/*.deb
-            ${{ runner.temp }}/candidate-pins.json
-            ${{ runner.temp }}/candidate-wheels.sha256
-            ${{ runner.temp }}/candidate-dag-commit.txt
-            ${{ runner.temp }}/candidate-io-commit.txt
-            ${{ runner.temp }}/candidate-deb.sha256
-            ${{ runner.temp }}/multimodal-installer-upgrade-proof.json
-          retention-days: 7
-
-  desktop-package:
-    name: Candidate installer — ${{ matrix.label }}
-    needs: linux-package
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: Windows x64
-            runner: windows-2022
-            platform: win32
-            arch: x64
-            target: x86_64-pc-windows-msvc
-            builder: win
-            extension: exe
-            baseline: windows-x64
-            site_packages: backend-dist/python-runtime/python/Lib/site-packages
-            packaged_site_packages: python-runtime/python/Lib/site-packages
-            python_host: backend-dist/python-runtime/python/python.exe
-          - label: macOS x64
-            runner: macos-15-intel
-            platform: darwin
-            arch: x64
-            target: x86_64-apple-darwin
-            builder: mac
-            extension: dmg
-            baseline: macos-x64
-            site_packages: backend-dist/python-runtime/python/lib/python3.11/site-packages
-            packaged_site_packages: python-runtime/python/lib/python3.11/site-packages
-            python_host: backend-dist/python-runtime/python/bin/python3
-          - label: macOS arm64
-            runner: macos-14
-            platform: darwin
-            arch: arm64
-            target: aarch64-apple-darwin
-            builder: mac
-            extension: dmg
-            baseline: macos-arm64
-            site_packages: backend-dist/python-runtime/python/lib/python3.11/site-packages
-            packaged_site_packages: python-runtime/python/lib/python3.11/site-packages
-            python_host: backend-dist/python-runtime/python/bin/python3
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-      - uses: actions/checkout@v4
-        with:
-          repository: GBeurier/nirs4all
-          ref: 22902524078669c99eb5b9070a0498c058fc3cc3
-          path: candidate-nirs
-      - uses: actions/checkout@v4
-        with:
-          repository: GBeurier/nirs4all-io
-          ref: 5a887788089568955e7011ad0036264dd3f6e979
-          path: candidate-io
-      - uses: actions/checkout@v4
-        with:
-          repository: GBeurier/dag-ml
-          ref: 9d7273a718aff7c1e511dc8708b13e7bfe8f5613
-          path: candidate-dag
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - name: Install build dependencies
-        shell: bash
-        run: |
+          sudo apt-get install -y libgirepository1.0-dev libcairo2-dev gir1.2-gtk-3.0 gir1.2-webkit2-4.1 xvfb
           npm ci
           python -m pip install setuptools==84.0.0 wheel==0.48.0 packaging==26.3 build==1.6.1 maturin==1.14.1
       - name: Retrieve canonical nirs4all wheel
@@ -292,161 +170,264 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          nirs_wheels=(candidate-wheels/nirs4all-*.whl)
-          test "${#nirs_wheels[@]}" -eq 1
           cd candidate-io
           python -m maturin build --locked --release -m bindings/python/Cargo.toml --interpreter python --out ../candidate-wheels
           cd ../candidate-dag
           python scripts/prepare_python_candidate.py
           python scripts/validate_release_metadata.py
           python -m maturin build --locked --release -m crates/dag-ml-py/Cargo.toml --interpreter python --out ../candidate-wheels
-      - name: Prepare disposable candidate version and verify wheel identity
+      - name: Select the candidates in the disposable Studio checkout
         shell: bash
+        env:
+          APP_VERSION: ${{ needs.candidate-sources.outputs.app_version }}
         run: |
           set -euo pipefail
-          python -m unittest discover -s scripts -p 'test_candidate_wheel_manifest.py'
           python -m unittest discover -s scripts -p 'test_verify_installed_candidate_wheels.py'
-          test "$(git -C candidate-nirs rev-parse HEAD)" = 22902524078669c99eb5b9070a0498c058fc3cc3
           shopt -s nullglob
-          nirs_wheels=(candidate-wheels/nirs4all-*.whl)
-          dag_wheels=(candidate-wheels/dag_ml-*.whl)
-          io_wheels=(candidate-wheels/nirs4all_io-*.whl)
-          test "${#nirs_wheels[@]}" -eq 1
-          test "${#dag_wheels[@]}" -eq 1
-          test "${#io_wheels[@]}" -eq 1
-          nirs_manifest="$(python scripts/candidate_wheel_manifest.py "${nirs_wheels[0]}")"
+          wheels=(candidate-wheels/nirs4all-*.whl candidate-wheels/nirs4all_io-*.whl candidate-wheels/dag_ml-*.whl)
+          test "${#wheels[@]}" -eq 3
           node scripts/prepare-multimodal-package-candidate.cjs \
-            --nirs-wheel "${nirs_wheels[0]}" \
-            --nirs-source-commit 22902524078669c99eb5b9070a0498c058fc3cc3 \
-            --nirs-installed-manifest-sha256 "$nirs_manifest" \
-            --dag-version 0.3.31.dev0 --io-version 0.2.1.dev0 \
-            --app-version 0.14.1-dev.0
-          python - <<'PY'
-          import hashlib
-          from pathlib import Path
-          for wheel in sorted(Path('candidate-wheels').glob('*.whl')):
-              print(hashlib.sha256(wheel.read_bytes()).hexdigest(), wheel)
-          PY
+            --wheel "${wheels[0]}" --wheel "${wheels[1]}" --wheel "${wheels[2]}" \
+            --app-version "$APP_VERSION" | tee "$RUNNER_TEMP/candidate-pins.json"
+          sha256sum "${wheels[@]}" | tee "$RUNNER_TEMP/candidate-wheels.sha256"
+          for source in candidate-nirs candidate-io candidate-dag; do
+            echo "$source $(git -C "$source" rev-parse HEAD)"
+          done | tee "$RUNNER_TEMP/candidate-sources.txt"
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
         with:
-          platform: ${{ matrix.platform }}
-          arch: ${{ matrix.arch }}
-      - name: Bake and verify candidate runtime
+          platform: linux
+          arch: x64
+      # Installers ship no Python: uv, the wheels of the required packages
+      # (here with the candidates) and the document adapters let Studio create
+      # the user's environment.
+      - name: Stage uv, required wheels and document adapters
+        run: |
+          node scripts/fetch-uv.cjs
+          node scripts/build-wheelhouse.cjs
+          node scripts/studio-document-adapters.cjs --install backend-dist/adapters
+      - name: Build and smoke native sidecar
+        run: |
+          node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
+          test -x backend-dist/native/studio-sidecar
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-python-payload --require-bundled-methods
+          backend-dist/native/studio-sidecar --smoke-readiness
+      - name: Build nonpublishing DEB
+        run: |
+          npm run build:electron
+          npx electron-builder --config electron-builder.installer.yml --linux deb --publish never
+      - name: Install the candidate DEB and verify its exact payload
         shell: bash
-        env:
-          PIP_FIND_LINKS: ${{ github.workspace }}/candidate-wheels
         run: |
           set -euo pipefail
           shopt -s nullglob
-          nirs_wheels=(candidate-wheels/nirs4all-*.whl)
-          dag_wheels=(candidate-wheels/dag_ml-*.whl)
-          io_wheels=(candidate-wheels/nirs4all_io-*.whl)
-          test "${#nirs_wheels[@]}" -eq 1
-          test "${#dag_wheels[@]}" -eq 1
-          test "${#io_wheels[@]}" -eq 1
-          node scripts/bake-python-plugin-runtime.cjs --plugin-wheel "${nirs_wheels[0]}" --dag-wheel "${dag_wheels[0]}" --io-wheel "${io_wheels[0]}"
-          python scripts/verify-installed-candidate-wheels.py "${{ matrix.site_packages }}" "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
-          node scripts/build-native-sidecar.cjs --target "${{ matrix.target }}"
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" --require-bundled-python-plugin --require-bundled-methods
-          N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-${{ matrix.baseline }}" N4A_FULL_HPO_MATRIX=1 \
-            "${{ matrix.python_host }}" -I -B \
-            "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
-      - name: Build nonpublishing installer
+          debs=(release/*.deb)
+          test "${#debs[@]}" -eq 1
+          sha256sum "${debs[0]}" | tee "$RUNNER_TEMP/candidate-deb.sha256"
+          sudo apt-get install -y "$(realpath "${debs[0]}")"
+          installed_root='/opt/nirs4all Studio'
+          test -x "$installed_root/nirs4all-webapp"
+          node scripts/native-runtime-contract.cjs --backend-root "$installed_root/resources/backend" --artifact-boundary-root "$installed_root" --platform linux --arch x64 --require-python-payload --require-bundled-methods
+          for wheel in candidate-wheels/*.whl; do
+            cmp "$wheel" "$installed_root/resources/backend/wheels/$(basename "$wheel")"
+          done
+      # Payload: a script creates an environment with the shipped uv from the
+      # shipped wheels and the installed application starts on it. That
+      # environment must hold the exact candidate files and pass the candidate
+      # SDK's provider qualification.
+      - name: Smoke the installed payload and qualify the multimodal provider
         shell: bash
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          N4A_SMOKE_ELECTRON_NO_SANDBOX=1 xvfb-run -a node scripts/smoke-archive-standalone.cjs \
+            --extracted-root '/opt/nirs4all Studio' --platform linux --timeout-ms 360000 \
+            --sandbox-root "$RUNNER_TEMP/mm-payload"
+          environment="$RUNNER_TEMP/mm-payload/electron-user-data/python-env/venv"
+          python scripts/verify-installed-candidate-wheels.py "$environment/lib/python3.11/site-packages" candidate-wheels/*.whl
+          env -u PYTHONPATH N4A_SMOKE_ROOT="$RUNNER_TEMP/mm-provider" N4A_FULL_HPO_MATRIX=1 \
+            "$environment/bin/python" -I -B \
+            "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
+      # Application: on a fresh profile Studio opens its setup page and creates
+      # the environment itself, then the multimodal journey runs in its renderer.
+      - name: Qualify four-source import, run, archive and replay in installed UI
+        id: journey
+        timeout-minutes: 60
+        env:
+          NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY: github-observational
+        run: |
+          xvfb-run -a node scripts/smoke-multimodal-ui.cjs \
+            --extracted-root '/opt/nirs4all Studio' --platform linux --timeout-ms 360000 \
+            --sandbox-root "$RUNNER_TEMP/mm-ui"
+      # Independent of the journey's outcome: which files did the application install?
+      - name: Verify the exact candidate files in the environment Studio created
+        if: ${{ !cancelled() && steps.journey.outcome != 'skipped' }}
+        run: |
+          python scripts/verify-installed-candidate-wheels.py \
+            "$RUNNER_TEMP/mm-ui/electron-user-data/python-env/venv/lib/python3.11/site-packages" candidate-wheels/*.whl
+      - name: Retain nonpublishing candidate and identity proof
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multimodal-linux-deb-candidate
+          path: |
+            release/*.deb
+            ${{ runner.temp }}/candidate-pins.json
+            ${{ runner.temp }}/candidate-wheels.sha256
+            ${{ runner.temp }}/candidate-sources.txt
+            ${{ runner.temp }}/candidate-deb.sha256
+          retention-days: 7
+
+  windows-package:
+    name: Candidate installer — Windows x64
+    needs: candidate-sources
+    # Methods' release preset is intentionally bound to VS 17 / 2022.
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all
+          ref: ${{ needs.candidate-sources.outputs.nirs4all_ref }}
+          path: candidate-nirs
+      - uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-io
+          ref: ${{ needs.candidate-sources.outputs.nirs4all_io_ref }}
+          path: candidate-io
+      - uses: actions/checkout@v4
+        with:
+          repository: GBeurier/dag-ml
+          ref: ${{ needs.candidate-sources.outputs.dag_ml_ref }}
+          path: candidate-dag
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Install build dependencies
+        run: |
+          npm ci
+          python -m pip install setuptools==84.0.0 wheel==0.48.0 packaging==26.3 build==1.6.1 maturin==1.14.1
+      - name: Retrieve canonical nirs4all wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: multimodal-nirs-wheel
+          path: candidate-wheels
+      - name: Build exact native candidate wheels
+        run: |
+          set -euo pipefail
+          cd candidate-io
+          python -m maturin build --locked --release -m bindings/python/Cargo.toml --interpreter python --out ../candidate-wheels
+          cd ../candidate-dag
+          python scripts/prepare_python_candidate.py
+          python scripts/validate_release_metadata.py
+          python -m maturin build --locked --release -m crates/dag-ml-py/Cargo.toml --interpreter python --out ../candidate-wheels
+      - name: Select the candidates in the disposable Studio checkout
+        env:
+          APP_VERSION: ${{ needs.candidate-sources.outputs.app_version }}
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s scripts -p 'test_verify_installed_candidate_wheels.py'
+          shopt -s nullglob
+          wheels=(candidate-wheels/nirs4all-*.whl candidate-wheels/nirs4all_io-*.whl candidate-wheels/dag_ml-*.whl)
+          test "${#wheels[@]}" -eq 3
+          temp="$(cygpath -m "$RUNNER_TEMP")"
+          node scripts/prepare-multimodal-package-candidate.cjs \
+            --wheel "${wheels[0]}" --wheel "${wheels[1]}" --wheel "${wheels[2]}" \
+            --app-version "$APP_VERSION" | tee "$temp/candidate-pins.json"
+          sha256sum "${wheels[@]}" | tee "$temp/candidate-wheels.sha256"
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: win32
+          arch: x64
+      # Installers ship no Python: uv, the wheels of the required packages
+      # (here with the candidates) and the document adapters let Studio create
+      # the user's environment.
+      - name: Stage uv, required wheels and document adapters
+        run: |
+          set -euo pipefail
+          node scripts/fetch-uv.cjs
+          node scripts/build-wheelhouse.cjs
+          node scripts/studio-document-adapters.cjs --install backend-dist/adapters
+      - name: Build and smoke native sidecar
+        run: |
+          set -euo pipefail
+          node scripts/build-native-sidecar.cjs --target x86_64-pc-windows-msvc
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform win32 --arch x64 --require-python-payload --require-bundled-methods
+          backend-dist/native/studio-sidecar.exe --smoke-readiness
+      - name: Build nonpublishing installer
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
           set -euo pipefail
           npm run build:electron
-          npx electron-builder --config electron-builder.installer.yml --${{ matrix.builder }} --publish never
-      - name: Verify exact packaged wheel bytes and native identities
-        shell: bash
-        run: |
-          set -euo pipefail
-          marker="$(python -c 'from pathlib import Path; paths = list(Path("release").rglob("PLUGIN_RUNTIME_READY.json")); assert len(paths) == 1, paths; print(paths[0].as_posix())')"
-          resources="$(dirname "$(dirname "$(dirname "$marker")")")"
-          test -f "$resources/app.asar"
-          node scripts/verify-packaged-plugin-identity.cjs "$resources"
-          node scripts/native-runtime-contract.cjs \
-            --backend-root "$resources/backend" --artifact-boundary-root "$(dirname "$resources")" \
-            --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" \
-            --require-bundled-python-plugin --require-bundled-methods
-          shopt -s nullglob
-          nirs_wheels=(candidate-wheels/nirs4all-*.whl)
-          dag_wheels=(candidate-wheels/dag_ml-*.whl)
-          io_wheels=(candidate-wheels/nirs4all_io-*.whl)
-          test "${#nirs_wheels[@]}" -eq 1
-          test "${#dag_wheels[@]}" -eq 1
-          test "${#io_wheels[@]}" -eq 1
-          if [ "${{ matrix.platform }}" = darwin ] && [ -f "$resources/backend/native/macos-signing-attestation.json" ]; then
-            python scripts/verify-installed-candidate-wheels.py \
-              --macos-signing-attestation "$resources/backend/native/macos-signing-attestation.json" \
-              "$resources/backend/${{ matrix.packaged_site_packages }}" \
-              "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
-          elif [ "${{ matrix.arch }}" = arm64 ]; then
-            echo 'macOS arm64 candidate is missing its native signing attestation' >&2
-            exit 1
-          else
-            python scripts/verify-installed-candidate-wheels.py \
-              "$resources/backend/${{ matrix.packaged_site_packages }}" \
-              "${nirs_wheels[0]}" "${dag_wheels[0]}" "${io_wheels[0]}"
-          fi
-          host_python="${{ matrix.python_host }}"
-          packaged_python="$resources/backend/${host_python#backend-dist/}"
-          N4A_SMOKE_ROOT="$RUNNER_TEMP/multimodal-packaged-${{ matrix.baseline }}" N4A_FULL_HPO_MATRIX=1 \
-            "$packaged_python" -I -B \
-            "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
-      - name: Resolve public installer for populated upgrade
-        id: baseline
-        uses: actions/github-script@v7
-        env:
-          BASELINE_PLATFORM: ${{ matrix.baseline }}
-        with:
-          script: |
-            const { installerBaselines } = require('./scripts/installer-baselines.cjs');
-            const releases = await github.paginate(github.rest.repos.listReleases, {
-              owner: context.repo.owner, repo: context.repo.repo, per_page: 100,
-            });
-            const baseline = installerBaselines(releases, '0.14.1-dev.0')[process.env.BASELINE_PLATFORM];
-            if (!baseline) throw new Error(`No public ${process.env.BASELINE_PLATFORM} installer to test the upgrade`);
-            core.setOutput('plan', JSON.stringify(baseline));
-            core.setOutput('version', baseline.version);
-      - name: Install exact candidate and qualify populated upgrade and user journeys
-        shell: bash
-        timeout-minutes: 45
-        env:
-          INSTALLER_BASELINE: ${{ steps.baseline.outputs.plan }}
-          BASELINE_VERSION: ${{ steps.baseline.outputs.version }}
-          BASELINE_GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_SOURCE_SHA: ${{ github.sha }}
+          npx electron-builder --config electron-builder.installer.yml --win --publish never
+      - name: Verify the exact packaged payload
         run: |
           set -euo pipefail
           shopt -s nullglob
-          installers=(release/*.${{ matrix.extension }})
+          installers=(release/*.exe)
           test "${#installers[@]}" -eq 1
-          python - "${installers[0]}" <<'PY'
-          import hashlib
-          from pathlib import Path
-          import sys
-          installer = Path(sys.argv[1])
-          digest = hashlib.sha256(installer.read_bytes()).hexdigest()
-          Path(f'{installer}.sha256').write_text(f'{digest}  {installer.name}\n', encoding='ascii')
-          PY
-          node scripts/qualify-installer.cjs \
-            --installer "${installers[0]}" --platform "${{ matrix.platform }}" \
-            --previous-version "$BASELINE_VERSION" \
-            --multimodal-provider-script "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py" \
-            --output "$RUNNER_TEMP/multimodal-installer-upgrade-proof.json"
-      - name: Retain nonpublishing candidate and product proof
-        if: always()
+          sha256sum "${installers[0]}" | tee "$(cygpath -m "$RUNNER_TEMP")/candidate-installer.sha256"
+          node scripts/native-runtime-contract.cjs --backend-root release/win-unpacked/resources/backend --artifact-boundary-root release/win-unpacked --platform win32 --arch x64 --require-python-payload --require-bundled-methods
+          for wheel in candidate-wheels/*.whl; do
+            cmp "$wheel" "release/win-unpacked/resources/backend/wheels/$(basename "$wheel")"
+          done
+      # Payload: a script creates an environment with the shipped uv from the
+      # shipped wheels and the packaged application starts on it. That
+      # environment must hold the exact candidate files and pass the candidate
+      # SDK's provider qualification.
+      - name: Smoke the packaged payload and qualify the multimodal provider
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          temp="$(cygpath -m "$RUNNER_TEMP")"
+          node scripts/smoke-archive-standalone.cjs \
+            --extracted-root release/win-unpacked --platform win32 --timeout-ms 360000 \
+            --sandbox-root "$temp/mm-payload"
+          environment="$temp/mm-payload/electron-user-data/python-env/venv"
+          python scripts/verify-installed-candidate-wheels.py "$environment/Lib/site-packages" candidate-wheels/*.whl
+          env -u PYTHONPATH N4A_SMOKE_ROOT="$temp/mm-provider" N4A_FULL_HPO_MATRIX=1 \
+            "$environment/Scripts/python.exe" -I -B \
+            "$GITHUB_WORKSPACE/candidate-nirs/tests/qualification/installed_multimodal_provider.py"
+      # Application: on a fresh profile Studio opens its setup page and creates
+      # the environment itself, then the multimodal journey runs in its renderer.
+      - name: Qualify four-source import, run, archive and replay in packaged UI
+        id: journey
+        timeout-minutes: 60
+        env:
+          NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY: github-observational
+        run: |
+          node scripts/smoke-multimodal-ui.cjs \
+            --extracted-root release/win-unpacked --platform win32 --timeout-ms 360000 \
+            --sandbox-root "$(cygpath -m "$RUNNER_TEMP")/mm-ui"
+      # Independent of the journey's outcome: which files did the application install?
+      - name: Verify the exact candidate files in the environment Studio created
+        if: ${{ !cancelled() && steps.journey.outcome != 'skipped' }}
+        run: |
+          python scripts/verify-installed-candidate-wheels.py \
+            "$(cygpath -m "$RUNNER_TEMP")/mm-ui/electron-user-data/python-env/venv/Lib/site-packages" candidate-wheels/*.whl
+      - name: Retain nonpublishing candidate and identity proof
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: multimodal-${{ matrix.baseline }}-candidate
+          name: multimodal-windows-x64-candidate
           path: |
-            release/*.${{ matrix.extension }}
-            release/*.sha256
-            ${{ runner.temp }}/multimodal-installer-upgrade-proof.json
-          if-no-files-found: warn
+            release/*.exe
+            ${{ runner.temp }}/candidate-pins.json
+            ${{ runner.temp }}/candidate-wheels.sha256
+            ${{ runner.temp }}/candidate-installer.sha256
           retention-days: 7

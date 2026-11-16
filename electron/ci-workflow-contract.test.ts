@@ -111,6 +111,36 @@ describe("CI release protection graph", () => {
     }
   });
 
+  it("keeps the multimodal candidate lane manual, nonpublishing and on the product's own wheel mechanism", () => {
+    const source = fs.readFileSync(".github/workflows/multimodal-package-candidate.yml", "utf8");
+    const lane = yaml.load(source) as Workflow & { permissions: unknown };
+    expect(Object.keys(lane.on)).toEqual(["workflow_dispatch"]);
+    expect(lane.permissions).toEqual({ contents: "read" });
+    const commands = Object.values(lane.jobs).flatMap(job => job.steps ?? []).map(step => step.run ?? "").join("\n");
+    for (const publication of ["gh release", "docker push", "git push", "git tag", "npm publish", "twine", "--publish always"]) {
+      expect(commands).not.toContain(publication);
+    }
+    // Every Studio script the lane runs exists: it once outlived the scripts it called.
+    const scripts = [...source.matchAll(/(?:node|python) (scripts\/[\w.-]+\.(?:cjs|py))/g)].map(match => match[1]);
+    expect(scripts).toEqual(expect.arrayContaining(["scripts/prepare-multimodal-package-candidate.cjs", "scripts/smoke-multimodal-ui.cjs"]));
+    const candidateRepositoryScripts = ["scripts/prepare_python_candidate.py", "scripts/validate_release_metadata.py"];
+    for (const script of new Set(scripts)) {
+      if (!candidateRepositoryScripts.includes(script)) expect(fs.existsSync(script), script).toBe(true);
+    }
+    for (const name of ["linux-package", "windows-package"]) {
+      const steps = lane.jobs[name].steps!;
+      const order = [
+        "scripts/prepare-multimodal-package-candidate.cjs", "scripts/build-wheelhouse.cjs",
+        "--require-python-payload", "--publish never", "scripts/smoke-archive-standalone.cjs", "scripts/smoke-multimodal-ui.cjs",
+      ].map(marker => steps.findIndex(step => step.run?.includes(marker)));
+      expect(order.every(index => index >= 0), `${name}: ${order}`).toBe(true);
+      expect(order, name).toEqual([...order].sort((left, right) => left - right));
+      expect(steps.filter(step => step.run?.includes("electron-builder")).every(step => step.run!.includes("--publish never")), name).toBe(true);
+      // The environment made from the shipped payload and the one Studio creates are both compared with the candidates.
+      expect(steps.filter(step => step.run?.includes("scripts/verify-installed-candidate-wheels.py")), name).toHaveLength(2);
+    }
+  });
+
   it("publishes only after mandatory build and package smoke jobs succeed", () => {
     const steps = release.jobs.release.steps!;
     const required = ["prepare", "quality", "installer-linux", "installer-windows", "installer-macos-arm64", "docker"];

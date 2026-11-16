@@ -43,7 +43,7 @@ function harness(t, { importDuration = 10, importError, exported = true } = {}) 
   let launchOptions;
   const ui = { sanitizeDiagnostic: value => String(value), main: async options => {
     launchOptions = options;
-    const context = { page, env: {
+    const context = { page, app: { process: () => 'electron' }, env: {
       NIRS4ALL_NATIVE_SIDECAR_PORT: '18443', NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN: 'test-session',
     } };
     if (options.inspectProfile) await options.inspectProfile(context);
@@ -54,7 +54,10 @@ function harness(t, { importDuration = 10, importError, exported = true } = {}) 
   const localRequire = name => {
     if (name === '@playwright/test') return { expect };
     if (name === './smoke-first-launch-ui.cjs') return ui;
-    if (name === './smoke-archive-standalone.cjs') return { cleanupSandboxRoot: async profile => cleanup.push(profile) };
+    if (name === './smoke-archive-standalone.cjs') return {
+      cleanupSandboxRoot: async profile => cleanup.push(profile),
+      waitForReady: async (port, timeout, child, output, token) => calls.push({ method: 'host', port, timeout, child, token }),
+    };
     if (name === 'node:os') return { tmpdir: () => root };
     if (name.startsWith('./')) return require(path.resolve(path.dirname(script), name));
     return require(name);
@@ -110,6 +113,8 @@ test('actual multimodal helper records an observed import overrun and retains al
   assert.equal(proof.timings.length, 9);
   assert.equal(h.launchOptions().performancePolicy, proof.performance_policy);
   assert.equal(h.launchOptions().timings, proof.timings);
+  // The scientific host of the restarted application is awaited before the first scientific request.
+  assert.deepEqual(h.calls[0], { method: 'host', port: '18443', timeout: 120000, child: 'electron', token: 'test-session' });
   assert.equal(h.calls.find(call => call.method === 'hidden').options.timeout, 120000);
   assert.equal(h.calls.find(call => call.method === 'poll').options.timeout, 180000);
   assert.equal(h.calls.find(call => call.method === 'count').options.timeout, 30000);
