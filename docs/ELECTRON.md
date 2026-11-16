@@ -228,9 +228,9 @@ it is given. Detailed model:
   `range`, exact `install` version) and `optional` recommended packages.
 - **uv.** Environments are created and packages installed with the shipped
   `uv` (`resources/backend/tools/uv[.exe]`), with the required wheels as a
-  `--find-links` source: `resources/backend/wheels/` on Windows and Linux; on
-  macOS the archive named by `resources/backend/wheelhouse.json`, downloaded
-  once, verified and kept in `userData/wheelhouse/`. `torch` is installed with
+  `--find-links` source on Windows and Linux (`resources/backend/wheels/`);
+  on macOS the required packages come from the package index. PyTorch is not
+  part of a new environment: it is installed on request, with
   `--torch-backend auto`.
 - **First launch.** The phase is `unconfigured`; the renderer shows one page
   that lists detected environments. The user picks one or creates a new one
@@ -425,9 +425,7 @@ npm run release -- --platform linux --flavor cpu --offline
 This runs:
 1. staging of the installer payload in `backend-dist/`: `uv`, the wheels of
    the required packages, the document adapters and the Rust sidecar (plus the
-   offline payload with `--offline`). On macOS the wheels are packed as the
-   release asset `nirs4all.Studio-<version>-mac-arm64-wheels.tar.gz` and
-   replaced in the payload by `wheelhouse.json`
+   offline payload with `--offline`). On macOS no wheels are staged
 2. verification of the runtime contract and of that payload
 3. `npm run build:electron` (React frontend and Electron main process)
 4. electron-builder packaging plus fresh-output/runtime verification
@@ -441,8 +439,8 @@ Builder signs them and the outer `.app` normally. See
 [PACKAGING.md](PACKAGING.md) for the build inputs, the wheel locks, the
 fail-closed signing order and its notarization limits.
 
-The installer helper rejects non-CPU flavors, cross-host targets,
-`--platform all`, and standalone mode.
+The installer helper rejects non-CPU flavors, cross-host targets and
+`--platform all`.
 
 ---
 

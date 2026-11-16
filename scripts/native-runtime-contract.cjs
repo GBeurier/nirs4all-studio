@@ -286,32 +286,13 @@ function assertMember(backendRoot, label, member, platform, allowPlatformSignatu
   return memberPath;
 }
 
-/** The macOS application names its required wheels instead of embedding them. */
-function verifyRemoteWheelhouse(backendRoot) {
-  const manifestPath = path.join(backendRoot, "wheelhouse.json");
-  if (fs.existsSync(path.join(backendRoot, "wheels"))) {
-    throw new Error("A macOS application must not embed wheels: unsigned binaries inside archives fail notarisation");
-  }
-  if (!fs.existsSync(manifestPath)) throw new Error(`Packaged wheelhouse description not found: ${manifestPath}`);
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  const { url, sha256, filename } = manifest;
-  if (
-    Object.keys(manifest).sort().join() !== "filename,sha256,url" ||
-    !/^[0-9a-f]{64}$/.test(sha256) ||
-    !/^nirs4all\.Studio-[0-9A-Za-z.-]+-mac-arm64-wheels\.tar\.gz$/.test(filename) ||
-    typeof url !== "string" ||
-    !url.startsWith("https://github.com/GBeurier/nirs4all-studio/releases/download/") ||
-    !url.endsWith(`/${filename}`)
-  ) {
-    throw new Error(`Invalid packaged wheelhouse description: ${manifestPath}`);
-  }
-}
-
 /**
  * What Studio needs to create and use a Python environment: the shipped uv,
- * the document adapters exactly as attested in the source tree, and the
- * required packages: one embedded wheel per package at its catalogue version,
- * or on macOS the description of the release asset that carries them.
+ * the document adapters exactly as attested in the source tree, and on
+ * Windows and Linux the required packages, one embedded wheel per package at
+ * its catalogue version. A macOS application embeds no wheels (unsigned
+ * binaries inside archives fail notarisation): Studio installs its required
+ * packages from the package index.
  */
 function verifyPythonPayload(backendRoot, platform = process.platform) {
   const uvPath = path.join(backendRoot, "tools", platform === "win32" ? "uv.exe" : "uv");
@@ -319,7 +300,9 @@ function verifyPythonPayload(backendRoot, platform = process.platform) {
     throw new Error(`Packaged uv not found: ${uvPath}`);
   }
   if (platform === "darwin") {
-    verifyRemoteWheelhouse(backendRoot);
+    if (fs.existsSync(path.join(backendRoot, "wheels"))) {
+      throw new Error("A macOS application must not embed wheels: unsigned binaries inside archives fail notarisation");
+    }
   } else {
     const wheelhouse = path.join(backendRoot, "wheels");
     const wheels = fs.existsSync(wheelhouse) ? fs.readdirSync(wheelhouse).filter((name) => name.endsWith(".whl")) : [];

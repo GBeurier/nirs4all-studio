@@ -6,8 +6,7 @@
     "platform": "aarch64-apple-darwin",
     "macos_deployment_target": "12.0",
     "source_builds": [
-      "pyopls",
-      "nirs4all-formats"
+      "pyopls"
     ]
   },
   "requirements": {
@@ -17,8 +16,7 @@
       "dag-ml==0.4.0",
       "dag-ml-data==0.2.16",
       "nirs4all-io==0.3.1",
-      "nirs4all-methods==1.3.15",
-      "nirs4all-formats==0.2.16"
+      "nirs4all-methods==1.3.15"
     ]
   },
   "packages": [
@@ -49,13 +47,6 @@
       "filename": "nirs4all_core-0.5.0-cp311-abi3-macosx_11_0_arm64.whl",
       "url": "https://files.pythonhosted.org/packages/15/af/e7d28375e69f1eafdbae5eef9088f764f5c60ca3e000855001d56264a06c/nirs4all_core-0.5.0-cp311-abi3-macosx_11_0_arm64.whl",
       "sha256": "946d04053d73a5312dde5c0c74644ab3aafdfb22675400e15a40880d6ab55ba9"
-    },
-    {
-      "name": "nirs4all-formats",
-      "version": "0.2.16",
-      "filename": "nirs4all_formats-0.2.16.tar.gz",
-      "url": "https://files.pythonhosted.org/packages/c2/5f/28602cb0d40fbca9389dccd57085f0bf6d83879c95b6966088b27131e17e/nirs4all_formats-0.2.16.tar.gz",
-      "sha256": "df24c7383bb794cc743916589ac3d3770f821a80bf72c93fb4629c91690b3a8b"
     },
     {
       "name": "nirs4all-io",

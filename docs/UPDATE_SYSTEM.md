@@ -17,7 +17,7 @@ Two things are kept up to date, by two different owners:
 
 An application update replaces the installed application only: everything
 under the installation directory, including `resources/backend/` (`native/`,
-`tools/`, `adapters/`, and `wheels/` or on macOS `wheelhouse.json`). Installers ship no Python, so an update
+`tools/`, `adapters/`, and on Windows and Linux `wheels/`). Installers ship no Python, so an update
 downloads and rewrites about 150 MB of backend resources instead of a complete
 Python runtime.
 
@@ -38,8 +38,8 @@ selected environment and compares it with the `required` block of the new
 - a required package missing or out of range, in a writable environment with
   no editable required package: the required set is installed at its exact
   `install` versions from the shipped wheels before the sidecar starts (the
-  splash shows one progress line). On macOS the wheels of the new version are
-  first downloaded from its release, which needs an internet connection
+  splash shows one progress line). On macOS they are installed from the
+  package index, which needs an internet connection
 - otherwise Studio opens with the phase `needs_attention` and explains what to
   do
 
@@ -63,7 +63,7 @@ React Settings UI
 
 Rust sidecar (sidecar/src/native_updates.rs)
   ├─ /api/updates/status, /check, /settings, /version
-  ├─ /api/updates/webapp/*
+  ├─ /api/updates/webapp/changelog, /webapp/restart
   └──> GitHub Releases (release discovery, checksum sidecar)
 
 Electron main (electron/env-manager.ts, electron/env/)
@@ -80,26 +80,24 @@ Responsibilities:
 - query GitHub Releases for the configured repository and channel
 - select the release asset for the current platform and architecture
 - bind the asset to its `.sha256` sidecar
-- report the update capability of the installation (`update_capability`)
-- refuse checks and downloads in offline mode
+- report how the installation is updated (`update_capability`)
+- refuse checks in offline mode
 
-The update capability of an installed application is:
+The sidecar never downloads or installs the application. Every installation
+is updated through its installer, so `update_capability` is constant apart
+from `install_kind` (`windows-installer`, `dmg` or `deb`):
 
 ```json
 {
   "can_apply_in_place": false,
   "channel": "installer",
-  "reason": "installer_release",
+  "reason": "managed_install",
   "install_kind": "windows-installer"
 }
 ```
 
-`install_kind` is `windows-installer`, `dmg` or `deb`. `reason` is
-`installer_release` once a release has been discovered, `managed_install`
-before. With
-`channel: "installer"` the Updates tab offers the installer download
-(`installer_download_url`) and opens it in the system browser; the
-`download-start` and `apply` routes answer `400`.
+The Updates tab offers the installer download (`installer_download_url`) and
+opens it in the system browser.
 
 ### Electron environment manager
 
@@ -123,7 +121,7 @@ The sidecar selects one asset per release, by platform and architecture.
 | Platform | Selected asset suffix |
 |---|---|
 | Windows | `-win-{arch}.exe` |
-| macOS | `-mac-arm64.dmg` (or `-mac-universal.dmg`) |
+| macOS | `-mac-arm64.dmg` |
 | Linux | `-linux-amd64.deb` (or `-linux-{arch}.deb`) |
 
 Rules:
@@ -131,18 +129,13 @@ Rules:
 - An asset whose name contains `-offline` is never selected. The offline
   installer carries a Python payload that an installed application does not
   need.
-- The macOS wheel archive (`-mac-arm64-wheels.tar.gz`) matches no selected
-  suffix: the application fetches it by the exact URL in its own
-  `wheelhouse.json`, never through the update check.
 - macOS is published for Apple Silicon only. On an Intel Mac the selection
-  finds no asset and the check reports that no update is available for the
-  platform.
+  finds no asset.
 - For a published release the selection resolves to the light installer of
   the platform, for example `nirs4all.Studio-{version}-win-x64.exe`.
-- When a release carries no installer for the platform, the selection looks
-  for an `-all-in-one-{os}-{arch}` archive name; published releases carry
-  none. A release with neither fails the check with
-  `No matching installer or legacy archive for this platform and architecture`.
+- Nothing but an installer is ever selected. A release that carries no
+  installer for the platform fails the check with
+  `No matching installer for this platform and architecture`.
 
 ### Checksums
 
@@ -173,17 +166,12 @@ Base path:
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/webapp/download-info` | `GET` | Resolve the release asset for this platform and the update channel |
 | `/webapp/changelog` | `GET` | Release notes of the discovered release |
-| `/webapp/download-start` | `POST` | Start an in-place download; `400` on an installed application |
-| `/webapp/download-status/{job_id}` | `GET` | Poll a download job |
-| `/webapp/download-cancel/{job_id}` | `POST` | Cancel a download job |
-| `/webapp/staged-update` | `GET` | Inspect the staged update, if any |
-| `/webapp/staged-update` | `DELETE` | Remove the staged update |
-| `/webapp/apply` | `POST` | Apply a staged update; `400` on an installed application |
-| `/webapp/cleanup` | `POST` | Remove stale update artifacts |
-| `/webapp/last-apply-result` | `GET`, `DELETE` | Read or dismiss the result of the last apply attempt |
 | `/webapp/restart` | `POST` | Request application restart |
+
+The installer to download is part of the status: `webapp.installer_download_url`
+and `webapp.installer_asset_name`. There is no route that downloads, stages or
+applies an update.
 
 The Python environment has no route under `/api/updates`. It is managed
 through the `PythonEnvApi` IPC contract (`src/types/pythonEnvironment.ts`), and
@@ -193,35 +181,29 @@ its state is visible on the sidecar through `/api/system/readiness`,
 
 ## Key Response Shapes
 
-### `GET /api/updates/webapp/download-info`
+### `webapp` in `GET /api/updates/status` and `POST /api/updates/check`
 
 ```json
 {
-  "update_available": true,
   "current_version": "0.15.11",
   "latest_version": "0.16.0",
+  "update_available": true,
+  "release_url": "https://github.com/.../releases/tag/0.16.0",
+  "release_notes": "...",
+  "published_at": "2026-11-16T00:00:00Z",
+  "download_size_bytes": 123456789,
   "download_url": "https://github.com/.../nirs4all.Studio-0.16.0-win-x64.exe",
   "asset_name": "nirs4all.Studio-0.16.0-win-x64.exe",
-  "download_size_bytes": 123456789,
-  "release_notes": "...",
-  "release_url": "https://github.com/.../releases/tag/0.16.0",
+  "checksum_sha256": "...",
+  "is_prerelease": false,
   "installer_download_url": "https://github.com/.../nirs4all.Studio-0.16.0-win-x64.exe",
-  "installer_asset_name": "nirs4all.Studio-0.16.0-win-x64.exe",
-  "can_apply_in_place": false,
-  "update_channel": "installer",
-  "install_kind": "windows-installer"
+  "installer_asset_name": "nirs4all.Studio-0.16.0-win-x64.exe"
 }
 ```
 
-The version numbers are illustrative.
-
-### `GET /api/updates/webapp/staged-update`
-
-```json
-{
-  "has_staged_update": false
-}
-```
+The version numbers are illustrative. The selected asset is always an
+installer, so `installer_download_url` and `installer_asset_name` repeat
+`download_url` and `asset_name`.
 
 ## Update Flows
 
@@ -244,7 +226,7 @@ The version numbers are illustrative.
 1. Electron reads `env-settings.json` and takes the inventory of the selected
    environment
 2. required packages that left their range are installed from the wheels of
-   the new version (shipped with it, or on macOS downloaded from its release)
+   the new version (shipped with it, or on macOS from the package index)
 3. the sidecar starts on the environment and the window opens
 
 ### 4. Environment maintenance
@@ -261,7 +243,6 @@ go through `PythonEnvApi` and are independent of application updates.
 <userData>/
 ├── env-settings.json        selected interpreter: { "pythonPath": "..." }
 ├── python-inventory.json    cached package listing of the selected environment
-├── wheelhouse/              macOS: required wheels downloaded from the release
 └── python-env/              environment created by Studio, when the user chose that
     ├── python/
     └── venv/
@@ -277,7 +258,6 @@ resources/backend/
 ├── native/
 ├── tools/
 ├── wheels/            (Windows and Linux)
-├── wheelhouse.json    (macOS)
 └── adapters/
 ```
 
@@ -291,13 +271,13 @@ an application update. The offline installer (Windows and Linux) adds
 - application updates are explicit, not silent
 - the selected asset must have a matching `.sha256` sidecar
 - offline mode (`offline_mode` setting, `NIRS4ALL_OFFLINE`, or the `--offline`
-  application switch) disables update checks and downloads
+  application switch) disables update checks
 - the user's Python environment is never replaced by an application update;
   Studio never modifies editable installs
 
 ## Troubleshooting
 
-### "No matching installer or legacy archive for this platform and architecture"
+### "No matching installer for this platform and architecture"
 
 The latest GitHub Release does not contain an installer for the current
 platform. Check asset naming first.
@@ -310,7 +290,7 @@ downloadable artifact must ship with one.
 ### The update check proposes nothing while a newer release exists
 
 Check that offline mode is off, that the release channel matches (the
-prerelease setting), and `GET /api/updates/webapp/download-info`.
+prerelease setting), and the `webapp` block of `POST /api/updates/check`.
 
 ### Studio opens the setup page after an update
 

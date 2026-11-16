@@ -4,9 +4,10 @@
  * The goal is to validate what a packaged application ships and that it runs
  * on an environment made from it:
  *   - create the Python environment with the shipped uv from the shipped
- *     wheels. With the offline payload nothing comes from the network, and
- *     the default recommended packages are installed too: the payload must
- *     be complete on this platform
+ *     wheels. With the offline payload nothing comes from the network, the
+ *     default recommended packages are installed too, and then the packages
+ *     the payload carries for installation on request (PyTorch): the payload
+ *     must be complete on this platform
  *   - launch the packaged Electron app on that environment in a private profile
  *   - force a deterministic Rust control-plane port
  *   - wait for the sidecar and for the scientific host to be ready, then
@@ -25,7 +26,7 @@ const { createServer } = require("net");
 const packageJson = require("../package.json");
 const { verifyRuntimeContract } = require("./native-runtime-contract.cjs");
 const { provisionEnvironment } = require("./provision-environment.cjs");
-const { lockedRecommendedNames, readLock, targetKey } = require("./python-wheel-lock.cjs");
+const { lockedOfflineNames, readLock, targetKey } = require("./python-wheel-lock.cjs");
 
 const DEFAULT_APP_NAME = "nirs4all Studio";
 const DEFAULT_TIMEOUT_MS = 180000;
@@ -356,14 +357,17 @@ async function cleanupSandboxRoot(sandboxRoot, options = {}) {
 /**
  * Create the environment where Studio creates its own and record it as the
  * selection that the application reads at startup from its data directory.
- * An offline payload must also provide every default recommended package.
+ * An offline payload must also provide every default recommended package
+ * and, added to that environment afterwards, every package it carries for
+ * installation on request.
  */
 async function provisionSelectedEnvironment(backendRoot, userDataDir) {
-  const offlinePayload = fs.existsSync(path.join(backendRoot, "offline"));
+  const lock = fs.existsSync(path.join(backendRoot, "offline")) ? readLock(targetKey(process.platform, process.arch)) : null;
   const environment = await provisionEnvironment({
     backendRoot,
     envDir: path.join(userDataDir, "python-env"),
-    recommended: offlinePayload ? lockedRecommendedNames(readLock(targetKey(process.platform, process.arch))) : [],
+    recommended: lock ? lockedOfflineNames(lock, "recommended") : [],
+    onRequest: lock ? lockedOfflineNames(lock, "offline_extras") : [],
   });
   fs.writeFileSync(
     path.join(userDataDir, "env-settings.json"),
@@ -613,7 +617,7 @@ async function smokeArchiveStandalone(rawConfig) {
 
     console.log("Smoke check passed.");
     console.log(`  product backend:  Rust sidecar (${healthPayload.protocol_version})`);
-    console.log(`  Python:           environment created by the shipped uv${environment.offline ? " from the offline payload alone, with the default recommended packages" : ""}`);
+    console.log(`  Python:           environment created by the shipped uv${environment.offline ? " from the offline payload alone, with the default recommended packages and then the on-request ones" : ""}`);
     console.log("  Scientific probe: native training ready + inline Playground facade executed");
   } finally {
     await terminateApp(child);

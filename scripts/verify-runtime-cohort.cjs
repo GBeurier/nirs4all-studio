@@ -5,7 +5,7 @@ const path = require('node:path');
 const { TARGETS, readLock } = require('./python-wheel-lock.cjs');
 const distributions = {
   sdk: 'nirs4all', dag: 'dag-ml', dag_data: 'dag-ml-data', core: 'nirs4all-core',
-  io: 'nirs4all-io', formats: 'nirs4all-formats', methods: 'nirs4all-methods',
+  io: 'nirs4all-io', methods: 'nirs4all-methods',
 };
 
 function verifyRuntimeCohort(env = process.env, root = path.resolve(__dirname, '..')) {

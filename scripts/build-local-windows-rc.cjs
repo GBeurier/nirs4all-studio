@@ -2,8 +2,8 @@
  * Native Windows helper for a local Studio RC installer build.
  *
  * This intentionally refuses to run outside Windows: electron-builder can
- * validate config cross-platform, but the RC installer/portable artifacts must
- * be produced on the target host.
+ * validate config cross-platform, but the RC installer must be produced on the
+ * target host.
  */
 
 const { spawn } = require("child_process");

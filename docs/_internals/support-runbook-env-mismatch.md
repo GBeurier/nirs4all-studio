@@ -97,7 +97,7 @@ GET /api/system/env-coherence
 | System Python on Linux (externally managed) | `required_not_installable` | Create a Studio environment or use a virtual environment. |
 | Developer with an editable `nirs4all` out of range | `required_not_installable` | Update the checkout; Studio never modifies editable installs. |
 | No network on first launch with the standard installer | Creation fails while downloading the Python runtime or packages | On Windows or Linux install the offline variant, or connect once. On macOS there is no offline variant: connect once. |
-| macOS: "Studio could not download its required packages" | The wheel archive of the release could not be downloaded or did not match its SHA-256 | Check the connection and retry; the archive is the release asset `nirs4all.Studio-<version>-mac-arm64-wheels.tar.gz`. |
+| macOS: the required packages cannot be installed | The package index could not be reached: a macOS application embeds no wheels | Check the connection (and the proxy or certificate settings) and retry. |
 | macOS blocks the first opening of the application | The build is not signed | System Settings > Privacy & Security > Open Anyway. |
 | Intel Mac | No installer exists | macOS is supported on Apple Silicon only. |
 | Corporate proxy with a private certificate authority | `required_update_failed` with a certificate message | Add the authority to the system certificate store; `uv` and Studio use the system store. |

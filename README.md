@@ -15,18 +15,12 @@ A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis
 [![Node 20+](https://img.shields.io/badge/node-20+-green.svg)](https://nodejs.org/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-[Historical 0.10.1 downloads](https://github.com/GBeurier/nirs4all-studio/releases/tag/0.10.1) •
+[Download](https://github.com/GBeurier/nirs4all-studio/releases/latest) •
 [User Guide](docs/user-guide/) •
 [nirs4all Library](https://github.com/GBeurier/nirs4all) •
 [Website](https://nirs4all.org)
 
 </div>
-
-> **Release status:** the Phase 2/R4/V1 Rust-only product is a local,
-> unpublished candidate. There is currently no candidate installer, portable
-> archive, container image, or update channel to download. The public `0.10.1`
-> release is retained for historical rollback/support only and does not attest
-> the architecture or platform support described for the candidate below.
 
 ---
 
@@ -45,7 +39,7 @@ nirs4all comes in two flavors — pick the one that fits your workflow:
 |---|---|---|
 | **Best for** | Researchers, technicians, and anyone who prefers a visual interface | Developers, data scientists, and anyone who writes Python scripts |
 | **What it is** | A Rust-owned desktop product with drag-and-drop pipelines, interactive charts, and bounded native training; CPython is a stdio library/plugin host only | A `pip install` Python package with a declarative API for building NIRS pipelines in code |
-| **Install** | Candidate unavailable; [historical 0.10.1 assets](https://github.com/GBeurier/nirs4all-studio/releases/tag/0.10.1) remain available for rollback/support | `pip install nirs4all` |
+| **Install** | [Download the installer](https://github.com/GBeurier/nirs4all-studio/releases/latest) for Windows, macOS (Apple Silicon) or Linux | `pip install nirs4all` |
 | **Repository** | **You are here** | [GBeurier/nirs4all](https://github.com/GBeurier/nirs4all) |
 
 > **Not sure?** If you've never written Python code, start here with **nirs4all Studio**.
@@ -54,16 +48,16 @@ nirs4all comes in two flavors — pick the one that fits your workflow:
 
 ---
 
-## Candidate Installation Targets
+## Installation
 
-The following formats describe the intended candidate distribution contract.
-They are not download links and do not claim that the candidate has been
-published or qualified on every platform.
+Studio is distributed as installers, attached to each
+[release](https://github.com/GBeurier/nirs4all-studio/releases/latest).
+Download the one for your platform and run it.
 
-### Installer target (unpublished)
+### Installers
 
-| Target platform | Installer | Offline installer |
-|-----------------|-----------|-------------------|
+| Platform | Installer | Offline installer |
+|----------|-----------|-------------------|
 | **Windows x64** | `nirs4all.Studio-<version>-win-x64.exe` | `nirs4all.Studio-<version>-win-x64-offline.exe` |
 | **macOS** (Apple Silicon) | `nirs4all.Studio-<version>-mac-arm64.dmg` | none |
 | **Linux x64** | `nirs4all.Studio-<version>-linux-amd64.deb` | `nirs4all.Studio-<version>-linux-amd64-offline.deb` |
@@ -77,31 +71,32 @@ you either pick one or let Studio create one for you.
   environment. When it creates one, it downloads a pinned Python runtime and
   builds the environment with the `uv` tool shipped in the installer.
 - **Required packages are automatic.** `nirs4all` and its companion packages
-  are installed from wheels shipped in the installer (on macOS, downloaded by
-  Studio the first time) and kept up to date at each launch.
+  are installed from wheels shipped in the installer (on macOS, from the
+  package index) and kept up to date at each launch.
 - **Recommended packages are your choice.** Deep-learning, boosting,
   explainability and other optional packages are installed one by one, on
-  request. `torch` is installed in the build that matches your machine (CPU,
-  CUDA or Apple Metal).
-- **Application updates are small.** An update replaces the application only;
-  your environment stays in place.
+  request. PyTorch is not installed when the environment is created, which
+  keeps the first setup short: Studio offers to install it when you select a
+  neural-network model, in the build that matches your machine (CPU, CUDA or
+  Apple Metal).
+- **Application updates are small.** To update, download the installer of the
+  newer version (**Settings > Updates** offers it), close Studio and run it.
+  It replaces the application only; your environment stays in place.
 
 On Windows and Linux, pick the **offline installer** (file name ending in
 `-offline`) for machines without network access: it also carries the Python
 runtime and the wheels of the default package set, so the environment is
-created without downloading anything. In-app updates always use the standard
-installer.
+created without downloading anything, and the CPU build of PyTorch, which can
+then be installed on request without network access too. Updates always use
+the standard installer.
 
 macOS is supported on Apple Silicon only and needs an internet connection at
 first launch: Studio downloads the Python runtime and its required packages.
-When macOS blocks the first opening of the application, open **System
-Settings > Privacy & Security** and choose **Open Anyway**.
+The macOS application is not signed: when macOS blocks its first opening, open
+**System Settings > Privacy & Security** and choose **Open Anyway**.
 
 You can switch environment at any time in **Settings > Python**. Development
 (editable) installs are never modified by Studio.
-
-The all-in-one archive lane is not part of the published release and has not
-been converted to this model.
 
 ### Developer setup from source
 
@@ -128,7 +123,7 @@ HTTP process as a product route or fallback.
 | **Updates** | Standard installer of the newer version | Standard installer of the newer version | git pull |
 | **Best for** | End users | Machines without network access | Contributors |
 
-### Native Docker candidate
+### Docker image
 
 The product container serves the compiled frontend with nginx on port `8000`.
 Requests under `/api` and `/ws` are proxied to the Rust sidecar bound only to
@@ -142,9 +137,7 @@ the Rust/Core Archive V2 prediction path, and a Python environment built at
 image build time with `uv` from the same package catalogue as the desktop
 product (the required packages plus `shap`, `matplotlib` and `lightgbm`).
 
-No candidate container tag is published. Build and tag the image locally for
-development; do not treat `ghcr.io/...:latest` or the historical `0.10.1`
-release as evidence for this Rust-only candidate.
+The image is tagged `ghcr.io/gbeurier/nirs4all-studio:<version>`.
 
 The image's Python environment is used only for bounded Rust-to-Python stdio
 calls. It never owns an HTTP port, scheduler, store, or fallback route. See
@@ -157,7 +150,7 @@ calls. It never owns an HTTP port, scheduler, store, or fallback route. See
 > This section is strictly for **developers running from source**. Python and
 > FastAPI commands below start the transitional browser-development or explicit
 > diagnostic stack only. They are not installation instructions for the
-> unpublished desktop candidate and cannot become its backend or fallback.
+> desktop product and cannot become its backend or fallback.
 
 ### Prerequisites
 
@@ -429,7 +422,7 @@ route.
 - **Transfer Analysis** — Instrument transfer and domain adaptation tools
 - **Workspace Management** — Organize datasets, pipelines, and results
 - **Native Desktop Experience** — Runs as a standalone desktop app via Electron
-- **GPU experimentation** — available in contributor/diagnostic Python workflows; GPU packaging is not qualified for the unpublished product candidate
+- **Neural-network models** — PyTorch is installed on request, in the build that matches your machine (CPU, CUDA or Apple Metal)
 
 ---
 
@@ -489,7 +482,6 @@ nirs4all_webapp/
 ├── scripts/                # Build and utility scripts
 │   ├── fetch-uv.cjs        # Stages the pinned uv release
 │   ├── build-wheelhouse.cjs # Stages the wheels of the required packages
-│   ├── pack-remote-wheelhouse.cjs # macOS: packs those wheels as a release asset
 │   ├── build-offline-payload.cjs # Stages the offline installer payload
 │   └── build-release.cjs   # Installer build on the matching host
 ├── build/                  # Build configuration
@@ -540,38 +532,38 @@ session.
 | `npm run test:parallel` | Run Vitest and pytest together |
 | `npm run test:e2e` | Run Playwright web Chromium tests |
 
-### npm Scripts - Local Candidate Builds
+### npm Scripts - Local Builds
 
 | Command | Description |
 |---------|-------------|
 | `npm run build` | Build frontend for production |
 | `npm run build:electron` | Build Electron app |
 | `npm run electron:preview` | Preview Electron production build |
-| `npm run release` | Build an unpublished installer candidate locally |
-| `npm run release:clean` | Clean and rebuild an unpublished installer candidate |
+| `npm run release` | Build an installer locally |
+| `npm run release:clean` | Clean and rebuild an installer locally |
 
 ### Desktop Release Profiles
 
-`npm run release` builds an unpublished installer candidate on the current
-host only; it does not publish or qualify the target platform. There are two
-profiles of the same application:
+`npm run release` builds an installer on the current host only; it publishes
+nothing. There are two profiles of the same application:
 
 | Profile | Command | Contents beside the application |
 |---------|---------|---------------------------------|
-| Installer | `npm run release -- --platform linux` | Rust sidecar, native Methods library, `uv`, Studio's document adapters, and the wheels of the required packages (on macOS: the description of the release asset that carries them) |
-| Offline installer (Windows, Linux) | `npm run release -- --platform linux --offline` | The same, plus the pinned Python runtime archive and the wheels of the default package set; artifact name ends in `-offline` |
+| Installer | `npm run release -- --platform linux` | Rust sidecar, native Methods library, `uv`, Studio's document adapters, and, on Windows and Linux, the wheels of the required packages (a macOS application embeds none and installs them from the package index) |
+| Offline installer (Windows, Linux) | `npm run release -- --platform linux --offline` | The same, plus the pinned Python runtime archive and the wheels of the default package set and of PyTorch (CPU); artifact name ends in `-offline` |
 
 Neither profile installs a Python runtime with the application: Studio
 creates or selects the user's environment at first launch. The offline
 installer carries the Python runtime as an archive that Studio extracts into
 that environment. The wheels come from
 hash-pinned locks under `build/constraints/`; after changing the required
-packages or a default recommended package in `recommended-config.json`,
+packages, or a recommended package that is installed by default or kept in the
+offline payload, in `recommended-config.json`,
 regenerate them with `node scripts/python-wheel-lock.cjs` (needs `uv` and
 network access). See [docs/PACKAGING.md](docs/PACKAGING.md#build-entry-points).
 
-Portable and all-in-one releases are disabled. `--standalone`, non-CPU
-flavors, `--platform all`, and cross-host installer builds are rejected.
+Installers are the only desktop product. Non-CPU flavors, `--platform all`
+and cross-host installer builds are rejected.
 
 ### npm Scripts - Packaging
 
@@ -619,7 +611,7 @@ When `SENTRY_DSN` is not set, crash reporting is completely disabled with zero o
 |----------|-------------|
 | [docs/ELECTRON.md](docs/ELECTRON.md) | Electron architecture, logging, and crash reporting |
 | [docs/PACKAGING.md](docs/PACKAGING.md) | Build system, CI/CD, and release process |
-| [docs/UPDATE_SYSTEM.md](docs/UPDATE_SYSTEM.md) | Auto-updater implementation |
+| [docs/UPDATE_SYSTEM.md](docs/UPDATE_SYSTEM.md) | Application update check and Python package updates |
 | [docs/sources/custom-nodes-guide.md](docs/sources/custom-nodes-guide.md) | Custom node development |
 
 ---

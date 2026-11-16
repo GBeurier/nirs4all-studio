@@ -5,8 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const { EventEmitter } = require('node:events');
-const { sha256File } = require('../finalize-release-assets.cjs');
-const source = fs.readFileSync(path.join(__dirname, '../qualify-local-packaged.cjs'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../smoke-owned-profile.cjs'), 'utf8');
 
 function windowsPaths() {
   const win = path.win32, nodes = new Map(), calls = [];
@@ -43,10 +42,7 @@ function windowsPaths() {
     const node = nodes.get(key(value)); assert(node, `Missing fake filesystem member: ${value}`);
     return node.target || node.path;
   };
-  const module = { exports: {} }, mocks = { 'node:path': win, 'node:fs': fakeFs,
-    '@electron/asar': {}, './smoke-archive-standalone.cjs': {}, './smoke-first-launch-ui.cjs': {},
-    './qualify-scientific-journey.cjs': {}, './qualify-installer.cjs': {},
-    './finalize-release-assets.cjs': {}, './qualification-performance.cjs': {}, './verify-runtime-cohort.cjs': {} };
+  const module = { exports: {} }, mocks = { 'node:path': win, 'node:fs': fakeFs, './smoke-archive-standalone.cjs': {} };
   vm.runInNewContext(source, { module, exports: module.exports, __dirname: 'D:\\source\\scripts',
     process: { platform: 'win32', env: {} }, require: name => Object.hasOwn(mocks, name) ? mocks[name] : require(name) });
   return { harness: module.exports, calls, win };
@@ -93,7 +89,7 @@ test('Windows namespace aliases cannot hide outside, equal-root, drive or share 
 test('Windows namespace guards still reject links and unrecognized device namespaces', () => {
   const f = windowsPaths();
   for (const link of ['D:\\owned\\link', 'D:\\owned\\inside-link', 'D:\\owned\\link\\child']) {
-    assert.throws(() => f.harness.plainAncestors(f.win.toNamespacedPath(link)), /Link in local qualification path/);
+    assert.throws(() => f.harness.plainAncestors(f.win.toNamespacedPath(link)), /Link in smoke profile path/);
   }
   for (const unsupported of ['\\\\.\\pipe\\arbitrary', '\\\\?\\GLOBALROOT\\Device\\HarddiskVolume1',
     '\\\\?\\Volume{abc}\\owned', '\\\\?\\D:relative', '\\\\?\\UNC\\server']) {
@@ -113,10 +109,6 @@ function fixture() {
   const mocks = {
     './smoke-archive-standalone.cjs': { buildSandboxEnv: (_platform, _profile, port) => ({ ...env,
       NIRS4ALL_NATIVE_SIDECAR_PORT: String(port), NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN: 'fresh-test-token' }) },
-    './smoke-first-launch-ui.cjs': { sanitizeDiagnostic: String },
-    './qualify-scientific-journey.cjs': {}, './qualify-installer.cjs': {},
-    './qualification-performance.cjs': {}, './verify-runtime-cohort.cjs': {}, '@electron/asar': {},
-    './finalize-release-assets.cjs': { sha256File },
     'node:net': { createServer: () => {
       const server = new EventEmitter();
       server.listen = (_port, _host, callback) => callback();
@@ -146,30 +138,6 @@ function fixture() {
   return { root, owned, profile, env, calls, context, mocks, harness: module.exports, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 }
 
-test('observed CV score vector is preserved without filtering valid values', () => {
-  const f = fixture();
-  try {
-    const scores = [0.25, 0, -0.5];
-    assert.equal(f.harness.checkedCvScores(scores), scores);
-  } finally { f.cleanup(); }
-});
-test('one invalid score refuses the entire observed CV vector', () => {
-  const f = fixture();
-  try {
-    for (const invalid of [null, NaN, Infinity, -Infinity, undefined, '0.5', true]) {
-      assert.throws(() => f.harness.checkedCvScores([0.25, invalid]), /Every observed CV score/);
-    }
-    assert.throws(() => f.harness.checkedCvScores([0.25, , 0.5]), /Every observed CV score/);
-  } finally { f.cleanup(); }
-});
-test('empty or non-array CV observations cannot qualify', () => {
-  const f = fixture();
-  try {
-    for (const invalid of [[], null, undefined, {}, 0.25, '0.25']) {
-      assert.throws(() => f.harness.checkedCvScores(invalid), /nonempty array/);
-    }
-  } finally { f.cleanup(); }
-});
 test('explicit owned profile environment is restored even after a failed journey', async () => {
   const f = fixture();
   try {
@@ -226,15 +194,7 @@ test('linked profile is refused before process launch', async () => {
   try {
     const link = path.join(f.owned, 'linked-profile'); fs.symlinkSync(f.profile, link, 'dir');
     await assert.rejects(f.harness.bootstrapOwnedWorkspace({ nativeSidecarPath: '/verified/sidecar', appRoot: f.owned },
-      link, f.owned), /Link in local qualification path/);
-    assert.equal(f.calls.length, 0);
-  } finally { f.cleanup(); }
-});
-test('hosted full qualification fails before reading config or launching binaries', () => {
-  const f = fixture();
-  try {
-    f.env.GITHUB_ACTIONS = 'true';
-    assert.throws(() => f.harness.prepare('/missing/config.json', 'packaged-journeys'), /Full journeys run locally/);
+      link, f.owned), /Link in smoke profile path/);
     assert.equal(f.calls.length, 0);
   } finally { f.cleanup(); }
 });

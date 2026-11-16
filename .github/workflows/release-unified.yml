@@ -1,16 +1,17 @@
 # Unified Release Workflow
 # One installer format per OS: NSIS (Windows x64), DMG (macOS arm64), DEB
 # (Linux x64). Windows and Linux are built twice: the standard installer and
-# its offline variant (`-offline`), which also carries the Python runtime and
-# the default package set. The macOS application embeds no wheels: its job
-# publishes the required wheels as `…-mac-arm64-wheels.tar.gz`, which Studio
-# downloads on first use, and there is no macOS offline installer.
+# its offline variant (`-offline`), which also carries the Python runtime,
+# the default package set and PyTorch (CPU). The macOS application embeds no
+# wheels: Studio installs its required packages from the package index, and
+# there is no macOS offline installer.
 # Full E2E and application migration qualify locally. Each hosted installer
 # leg runs two smokes on the unpacked application:
 #   1. scripts/smoke-archive-standalone.cjs checks the payload: a script
 #      creates an environment with the shipped uv from the shipped wheels
-#      (offline leg: with the default recommended packages, and nothing from
-#      the network), then the application starts on it and serves its
+#      (offline leg: with the default recommended packages, then PyTorch,
+#      and nothing from the network; macOS: from the package index), then
+#      the application starts on it and serves its
 #      Playground and dataset routes.
 #   2. scripts/smoke-packaged-ui.cjs checks the application: on a fresh
 #      profile Studio opens its setup page and creates the environment itself
@@ -633,15 +634,12 @@ jobs:
           EOF
 
       # The macOS application ships no Python and no wheels (archives with
-      # unsigned binaries fail notarisation): the required wheels become a
-      # release asset that Studio downloads on first use, named by
-      # backend-dist/wheelhouse.json.
-      - name: Stage uv and document adapters, and pack the required wheels as a release asset
+      # unsigned binaries fail notarisation): Studio installs its required
+      # packages from the package index.
+      - name: Stage uv and document adapters
         run: |
           node scripts/fetch-uv.cjs
-          node scripts/build-wheelhouse.cjs
           node scripts/studio-document-adapters.cjs --install backend-dist/adapters
-          node scripts/pack-remote-wheelhouse.cjs --tag '${{ needs.prepare.outputs.tag }}' --version '${{ needs.prepare.outputs.version }}'
           test ! -e backend-dist/wheels
 
       - name: Build and smoke native sidecar
@@ -770,8 +768,7 @@ jobs:
           done
 
       # Payload, then application: see the two smokes described at the top of
-      # this file. The release that will carry the wheels does not exist yet:
-      # both smokes take the archive built above, verified against wheelhouse.json.
+      # this file. Both install the required packages from the package index.
       - name: Smoke the packaged payload and the application's first launch
         timeout-minutes: 60
         env:
@@ -782,8 +779,6 @@ jobs:
           installers=(release/*.dmg)
           test "${#installers[@]}" = 1
           export TMPDIR="$(cd "$RUNNER_TEMP" && pwd -P)"
-          export NIRS4ALL_WHEELHOUSE_ARCHIVE="$PWD/release/nirs4all.Studio-${RELEASE_VERSION}-mac-arm64-wheels.tar.gz"
-          test -f "$NIRS4ALL_WHEELHOUSE_ARCHIVE"
           node scripts/smoke-archive-standalone.cjs --extracted-root release/mac-arm64 --platform darwin --timeout-ms 240000
           node scripts/smoke-packaged-ui.cjs --extracted-root release/mac-arm64 --platform darwin --timeout-ms 240000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
 
@@ -803,7 +798,6 @@ jobs:
           name: installer-macos-arm64-payload
           path: |
             release/*.dmg
-            release/*-wheels.tar.gz
             release/*.sha256
             release/*.yml
           retention-days: 5
@@ -916,7 +910,6 @@ jobs:
           find artifacts -type f \( \
             -name "*.deb" -o -name "*.exe" \
             -o -name "*.dmg" \
-            -o -name "*-wheels.tar.gz" \
             -o -name "*.sha256" \
           \) -exec cp {} release/ \; 2>/dev/null || true
 
@@ -926,10 +919,7 @@ jobs:
           # basename so `sha256sum -c` works after download.
           node scripts/finalize-release-assets.cjs \
             release \
-            '${{ needs.prepare.outputs.version }}' \
-            false \
-            false \
-            true
+            '${{ needs.prepare.outputs.version }}'
 
           echo "## Release Assets" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -965,16 +955,17 @@ jobs:
           | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-linux-amd64.deb\` | ${INSTALLER_LINUX} |
 
           On macOS the first launch needs an internet connection: Studio downloads
-          the Python runtime and its required packages
-          (\`nirs4all.Studio-${VERSION}-mac-arm64-wheels.tar.gz\`, fetched by the
-          application; you do not need to download it yourself). When macOS blocks
-          the first opening of the application, allow it in System Settings >
+          the Python runtime and its required packages. When macOS blocks the
+          first opening of the application, allow it in System Settings >
           Privacy & Security > Open Anyway.
+
+          PyTorch is not installed when the environment is created: Studio offers
+          to install it when you select a neural-network model.
 
           ### Offline installers (Windows and Linux)
 
-          The same application with the Python runtime and the default package set
-          included, for computers without network access.
+          The same application with the Python runtime, the default package set
+          and PyTorch (CPU build) included, for computers without network access.
 
           | Platform | Architecture | File | Status |
           |----------|-------------|------|--------|
@@ -1069,10 +1060,7 @@ jobs:
         run: |
           node scripts/publish-qualified-release.cjs \
             release \
-            '${{ needs.prepare.outputs.version }}' \
-            false \
-            false \
-            true
+            '${{ needs.prepare.outputs.version }}'
 
       - name: Release summary
         run: |

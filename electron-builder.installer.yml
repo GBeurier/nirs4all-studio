@@ -20,10 +20,10 @@ files:
 
 # Installers ship no Python. Beside the Rust sidecar they carry what Studio
 # needs to create and use the user's environment: uv, the document adapters
-# and the required packages. Windows and Linux embed their wheels (wheels/);
-# the macOS build stages wheelhouse.json instead, which names the release
-# asset Studio downloads, because wheels cannot be notarised inside the
-# application. electron-builder.offline.yml adds the offline payload.
+# and, on Windows and Linux, the wheels of the required packages (wheels/).
+# The macOS build stages no wheels, because wheels cannot be notarised inside
+# the application: Studio installs its required packages from the package
+# index. electron-builder.offline.yml adds the offline payload.
 extraResources:
   - from: LICENSE
     to: LICENSE
@@ -39,7 +39,6 @@ extraResources:
       - "native/**/*"
       - "tools/**/*"
       - "wheels/**/*"
-      - "wheelhouse.json"
       - "adapters/**/*"
 
 asar: true

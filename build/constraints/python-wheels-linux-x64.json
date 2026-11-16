@@ -15,14 +15,15 @@
       "dag-ml==0.4.0",
       "dag-ml-data==0.2.16",
       "nirs4all-io==0.3.1",
-      "nirs4all-methods==1.3.15",
-      "nirs4all-formats==0.2.16"
+      "nirs4all-methods==1.3.15"
     ],
     "recommended": [
       "pyopls==20.3.post1",
       "trendfitter==0.0.6",
       "xgboost==3.0.0",
-      "umap-learn==0.5.7",
+      "umap-learn==0.5.7"
+    ],
+    "offline_extras": [
       "torch==2.6.0"
     ],
     "image_extras": [
@@ -208,13 +209,6 @@
       "sha256": "46921c79918f3e55374d1bcceb560872cd8238ebde8af45b6bfdc534f6655d8e"
     },
     {
-      "name": "nirs4all-formats",
-      "version": "0.2.16",
-      "filename": "nirs4all_formats-0.2.16-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/2e/3e/f0e5e641f3b8a3318d4f32c8f75046b598a9218aadbd1c39a82b0f589fa7/nirs4all_formats-0.2.16-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "sha256": "394214f46f530648c724268d48e72fe775f28c3d20a14f965d5a3cb0e5deb8d1"
-    },
-    {
       "name": "nirs4all-io",
       "version": "0.3.1",
       "filename": "nirs4all_io-0.3.1-cp311-abi3-manylinux_2_34_x86_64.whl",
@@ -272,10 +266,10 @@
     },
     {
       "name": "pls4all",
-      "version": "1.3.17",
-      "filename": "pls4all-1.3.17-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/35/89/4f18eaae8f9fe08e4f4d9fc9a7fdfb1b1dae671d1a3207af09660a6bea8e/pls4all-1.3.17-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
-      "sha256": "201a2f3a4d212480efde756b15403bd1d7775f24aa65dc6c06c61feff2abca3c"
+      "version": "1.3.18",
+      "filename": "pls4all-1.3.18-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/61/1a/34d6b6ee4a293265973df45b66970d49ca544f6466d7918ee86dc78ecdd6/pls4all-1.3.18-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "4ef7accac1a4ed53810f94d7f5b4fdaffb1b9ba4ffc3921fa0a1890117cfb62d"
     },
     {
       "name": "polars",
@@ -644,13 +638,6 @@
       "sha256": "46921c79918f3e55374d1bcceb560872cd8238ebde8af45b6bfdc534f6655d8e"
     },
     {
-      "name": "nirs4all-formats",
-      "version": "0.2.16",
-      "filename": "nirs4all_formats-0.2.16-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/2e/3e/f0e5e641f3b8a3318d4f32c8f75046b598a9218aadbd1c39a82b0f589fa7/nirs4all_formats-0.2.16-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-      "sha256": "394214f46f530648c724268d48e72fe775f28c3d20a14f965d5a3cb0e5deb8d1"
-    },
-    {
       "name": "nirs4all-io",
       "version": "0.3.1",
       "filename": "nirs4all_io-0.3.1-cp311-abi3-manylinux_2_34_x86_64.whl",
@@ -708,10 +695,10 @@
     },
     {
       "name": "pls4all",
-      "version": "1.3.17",
-      "filename": "pls4all-1.3.17-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
-      "url": "https://files.pythonhosted.org/packages/35/89/4f18eaae8f9fe08e4f4d9fc9a7fdfb1b1dae671d1a3207af09660a6bea8e/pls4all-1.3.17-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
-      "sha256": "201a2f3a4d212480efde756b15403bd1d7775f24aa65dc6c06c61feff2abca3c"
+      "version": "1.3.18",
+      "filename": "pls4all-1.3.18-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/61/1a/34d6b6ee4a293265973df45b66970d49ca544f6466d7918ee86dc78ecdd6/pls4all-1.3.18-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "4ef7accac1a4ed53810f94d7f5b4fdaffb1b9ba4ffc3921fa0a1890117cfb62d"
     },
     {
       "name": "polars",

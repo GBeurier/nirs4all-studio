@@ -3,38 +3,25 @@ const fs = require("fs");
 const path = require("path");
 
 const PAYLOAD_SUFFIXES = Object.freeze([
-  ".AppImage",
   ".deb",
   ".dmg",
   ".exe",
-  ".tar.gz",
-  ".zip",
 ]);
 
 /**
- * Assets of a release. `includePythonPayloads` adds what releases publish
- * since installers stopped carrying a Python runtime: the offline installers
- * for Windows and Linux, and the required wheels of the macOS application,
- * which embeds none. Releases published before that pass false.
+ * Assets of a release: the installer of each platform and the offline
+ * installers for Windows and Linux.
  */
-function expectedPublishedNames(version, includeAllInOne = false, includeMacosX64 = false, includePythonPayloads = false) {
+function expectedPublishedNames(version) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`Release version is invalid: ${version}`);
   }
-  if (includeAllInOne) throw new Error("All-in-one publication is disabled; publish installers only");
-  if (typeof includeMacosX64 !== "boolean" || typeof includePythonPayloads !== "boolean") {
-    throw new Error("Explicit macOS Intel and Python payload inclusion flags must be boolean");
-  }
-  if (includeMacosX64) throw new Error("macOS Intel installers are not published; macOS is supported on Apple Silicon only");
   return [
+    `nirs4all.Studio-${version}-linux-amd64-offline.deb`,
     `nirs4all.Studio-${version}-linux-amd64.deb`,
     `nirs4all.Studio-${version}-mac-arm64.dmg`,
+    `nirs4all.Studio-${version}-win-x64-offline.exe`,
     `nirs4all.Studio-${version}-win-x64.exe`,
-    ...(includePythonPayloads ? [
-      `nirs4all.Studio-${version}-linux-amd64-offline.deb`,
-      `nirs4all.Studio-${version}-mac-arm64-wheels.tar.gz`,
-      `nirs4all.Studio-${version}-win-x64-offline.exe`,
-    ] : []),
   ].sort();
 }
 
@@ -181,15 +168,10 @@ function finalizeReleaseAssets(releaseRoot, expectedNames = null) {
 }
 
 function main(argv = process.argv.slice(2)) {
-  if (![3, 4, 5].includes(argv.length) || argv.slice(2).some((flag) => !["true", "false"].includes(flag))) {
-    throw new Error(
-      "Usage: node scripts/finalize-release-assets.cjs <release-root> <version> <include-all-in-one:true|false> [include-macos-x64:true|false] [include-python-payloads:true|false]",
-    );
+  if (argv.length !== 2) {
+    throw new Error("Usage: node scripts/finalize-release-assets.cjs <release-root> <version>");
   }
-  const records = finalizeReleaseAssets(
-    path.resolve(argv[0]),
-    expectedPublishedNames(argv[1], argv[2] === "true", argv[3] === "true", argv[4] === "true"),
-  );
+  const records = finalizeReleaseAssets(path.resolve(argv[0]), expectedPublishedNames(argv[1]));
   for (const record of records) {
     process.stdout.write(`${record.digest}  ${record.publishedName}\n`);
   }

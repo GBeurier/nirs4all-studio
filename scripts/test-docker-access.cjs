@@ -120,18 +120,31 @@ async function main() {
     try {
       const context = await browser.newContext({ httpCredentials: { username: "tester", password: credential } });
       const page = await context.newPage();
-      assert.equal((await page.goto(securedUrl)).status(), 200);
-      assert.equal(await page.evaluate(() => fetch("/api/health").then((response) => response.status)), 200);
-      assert.equal(await page.evaluate(() => fetch("/api/app/favorites", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pipeline_id: "browser-auth-probe" }),
-      }).then((response) => response.status)), 200);
-      assert.equal(await page.evaluate(() => new Promise((resolve, reject) => {
-        const socket = new WebSocket(`${location.origin.replace("http:", "ws:")}/ws`);
-        const timeout = setTimeout(() => reject(new Error("Browser WebSocket timeout")), 5000);
-        socket.onopen = () => { clearTimeout(timeout); socket.close(); resolve("connected"); };
-        socket.onerror = () => { clearTimeout(timeout); reject(new Error("Browser WebSocket refused")); };
-      })), "connected");
+      // A probe that fails only says "Failed to fetch": keep the browser's own reason for every failed request.
+      const failedRequests = [];
+      page.on("requestfailed", (request) => failedRequests.push(
+        `${request.method()} ${new URL(request.url()).pathname}: ${request.failure()?.errorText ?? "unknown"}`));
+      try {
+        assert.equal((await page.goto(securedUrl)).status(), 200);
+        // `goto` returns at the load event, when the renderer starts its own burst of API requests and opens
+        // its WebSocket. The probes below are about access control, not about that startup: run them once
+        // the page has no request in flight, so they never share connections with it.
+        await page.waitForLoadState("networkidle");
+        assert.equal(await page.evaluate(() => fetch("/api/health").then((response) => response.status)), 200);
+        assert.equal(await page.evaluate(() => fetch("/api/app/favorites", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pipeline_id: "browser-auth-probe" }),
+        }).then((response) => response.status)), 200);
+        assert.equal(await page.evaluate(() => new Promise((resolve, reject) => {
+          const socket = new WebSocket(`${location.origin.replace("http:", "ws:")}/ws`);
+          const timeout = setTimeout(() => reject(new Error("Browser WebSocket timeout")), 5000);
+          socket.onopen = () => { clearTimeout(timeout); socket.close(); resolve("connected"); };
+          socket.onerror = () => { clearTimeout(timeout); reject(new Error("Browser WebSocket refused")); };
+        })), "connected");
+      } catch (error) {
+        error.message += `\nFailed browser requests: ${failedRequests.join("; ") || "none recorded"}`;
+        throw error;
+      }
       console.log("PASS actual Chromium authenticated navigation, fetch, JSON mutation and WebSocket");
     } finally {
       await browser.close();

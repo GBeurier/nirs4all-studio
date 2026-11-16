@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- PyTorch is no longer installed when Studio creates its Python environment.
+  The first setup is much shorter and the environment much smaller: on a
+  machine with an NVIDIA GPU, PyTorch alone was a download of about 2.5 GB
+  and 4.5 GB on disk. Studio offers to install PyTorch when you select a
+  neural-network model; you can also add it at any time in Settings > Python.
+- The offline installers (Windows and Linux) still carry PyTorch (CPU build):
+  on a machine without network access it is installed on request from the
+  installer's own files, like the default packages.
+- On macOS, Studio installs the packages it requires from the package index.
+  The first launch needs an internet connection, as before; the separate
+  wheel archive that accompanied the macOS release no longer exists.
+- `nirs4all-formats` is no longer installed as a required package. Nothing in
+  Studio used that Python package: files are read exactly as before.
+- An application update is always the installer of the newer version, which
+  the Updates tab offers to download. The backend routes that downloaded and
+  applied all-in-one archives in place, unused since installers became the
+  only product, are removed.
+
+### Removed
+
+- Build and qualification lanes that could no longer work with installers
+  that ship no Python runtime: the all-in-one archive build and its
+  self-update smoke, the update and promotion workflows of past releases, and
+  the local qualification policy that ran them.
+
 ## [0.16.0] — 2026-11-16
 
 ### Changed

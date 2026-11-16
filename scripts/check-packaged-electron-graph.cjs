@@ -136,11 +136,10 @@ function assertPackagedElectronGraph(options = {}) {
     assertNoForbiddenContent(root, distFiles, "Production Electron bundle");
   }
 
-  for (const builderConfig of ["electron-builder.installer.yml", "electron-builder.archive.yml"]) {
-    const source = fs.readFileSync(path.join(root, builderConfig), "utf8");
-    if (/python-http-runtime-config/i.test(source)) {
-      throw new Error(`${builderConfig} packages the transitional Python HTTP config`);
-    }
+  // The offline configuration extends this one and adds resources only.
+  const builderConfig = "electron-builder.installer.yml";
+  if (/python-http-runtime-config/i.test(fs.readFileSync(path.join(root, builderConfig), "utf8"))) {
+    throw new Error(`${builderConfig} packages the transitional Python HTTP config`);
   }
 
   return { sourceFiles, distFiles };

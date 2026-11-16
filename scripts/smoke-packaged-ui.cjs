@@ -13,16 +13,19 @@ const ui = require('./smoke-first-launch-ui.cjs');
 const { resolvePerformancePolicy } = require('./qualification-performance.cjs');
 const { sha256File, parseChecksumSidecar } = require('./finalize-release-assets.cjs');
 const { verifyRuntimeCohort } = require('./verify-runtime-cohort.cjs');
-const { withOwnedProfile, bootstrapOwnedWorkspace, assertOwnedWorkspace } = require('./qualify-local-packaged.cjs');
+const { withOwnedProfile, bootstrapOwnedWorkspace, assertOwnedWorkspace } = require('./smoke-owned-profile.cjs');
 const { shapJourney } = require('./smoke-shap-journey.cjs');
 
 // The journey explains a model and renders its figures: neither package is installed by default.
 const JOURNEY_PACKAGES = ['shap', 'matplotlib'];
 
-/** The SDK wheel an installer embeds must be the fingerprinted public one; macOS names its wheels instead. */
-function shippedSdk(backendRoot, cohort) {
+/** The SDK wheel an installer embeds must be the fingerprinted public one; a macOS application embeds none. */
+function shippedSdk(backendRoot, cohort, platform) {
   const wheelhouse = path.join(backendRoot, 'wheels');
-  if (!fs.existsSync(wheelhouse)) return { wheelhouse: JSON.parse(fs.readFileSync(path.join(backendRoot, 'wheelhouse.json'), 'utf8')) };
+  if (platform === 'darwin') {
+    assert(!fs.existsSync(wheelhouse), 'A macOS application must not embed wheels');
+    return { source: 'package-index', version: cohort.sdk.version };
+  }
   const wheel = path.join(wheelhouse, `nirs4all-${cohort.sdk.version}-py3-none-any.whl`);
   assert.equal(sha256File(wheel), cohort.sdk.wheel_sha256, 'Embedded SDK wheel mismatch');
   return { version: cohort.sdk.version, wheel_sha256: cohort.sdk.wheel_sha256 };
@@ -60,7 +63,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     assert.equal(proof.packaged_version.commit, proof.source_sha, 'Packaged application source mismatch');
     assert.equal(proof.packaged_version.version, env.RELEASE_VERSION, 'Packaged application version mismatch');
     proof.runtime_contract = archive.verifyLaunchRuntimeContract(layout, config.platform);
-    proof.shipped_sdk = shippedSdk(layout.backendRoot, verifyRuntimeCohort(env));
+    proof.shipped_sdk = shippedSdk(layout.backendRoot, verifyRuntimeCohort(env), config.platform);
     // A small real training run and its SHAP regression qualify the created environment and the renderer.
     const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-packaged-ui-'));
     const profile = path.join(sandbox, 'profile'); fs.mkdirSync(profile);

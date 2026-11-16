@@ -53,9 +53,13 @@ This document is the working specification for the branch
     specifier (may be empty); `install` is the exact version of the qualified
     cohort that Studio installs. The required set is nirs4all and its owner
     packages (nirs4all-core, dag-ml, dag-ml-data, nirs4all-io,
-    nirs4all-methods, nirs4all-formats).
+    nirs4all-methods). The Python distribution `nirs4all-formats` is not
+    required: nothing imports it (`nirs4all-io` compiles the formats crate
+    into its own extension).
   - `optional`: the recommended catalogue (`min`, `recommended`, `category`,
-    `description`, `default_install`, optional `python`).
+    `description`, `default_install`, optional `python`, optional
+    `offline_payload`). PyTorch is not installed by default; it stays in the
+    offline payload (`offline_payload`).
   - `profiles` are removed at the end of the work (the GPU choice is handled by
     `uv --torch-backend auto`); until then nothing new may depend on them.
   `scripts/python-runtime-config.cjs` and the Rust sidecar derive their values
@@ -81,11 +85,12 @@ This document is the working specification for the branch
   then `backend-dist/tools/`, then `PATH` (development). Always invoked with
   `--python <interpreter>`, `UV_LINK_MODE=copy`, the system certificate store
   (`UV_NATIVE_TLS=1`) and output streamed to the existing install log.
-- Wheelhouse: `resources/backend/wheels/` is passed as `--find-links`. The
-  offline installer also carries `resources/backend/offline/` (Python archive
-  and the full wheel closure of the required packages and default recommended
-  packages); when present, creation and required installs run with
-  `--offline --no-index`.
+- Wheelhouse: `resources/backend/wheels/` is passed as `--find-links`
+  (Windows and Linux). The macOS application embeds no wheels and installs the
+  required packages from the package index. The offline installer also carries
+  `resources/backend/offline/` (Python archive and the full wheel closure of
+  the required packages, the default recommended packages and PyTorch); when
+  present, creation and required installs run with `--offline --no-index`.
 - Create: obtain the pinned python-build-standalone archive (offline payload,
   else the existing hardened download), extract into
   `userData/python-env/python`, `uv venv userData/python-env/venv`, install the
