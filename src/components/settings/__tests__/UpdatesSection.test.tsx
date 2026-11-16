@@ -38,7 +38,6 @@ function status(updateAvailable: boolean) {
       installer_download_url: updateAvailable ? INSTALLER_URL : null,
       installer_asset_name: null,
     },
-    update_capability: { can_apply_in_place: false, channel: "installer", reason: "managed_install", install_kind: "deb" },
     last_check: null,
     check_interval_hours: 24,
   };

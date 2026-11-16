@@ -288,9 +288,6 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
     if (identifierPath("/automl/").test(path) && !path.endsWith("/jobs")) {
       return { name: "job-status", capability: "native_job_status_routes" };
     }
-    if (identifierPath("/updates/webapp/download-status/").test(path)) {
-      return { name: "webapp-update", capability: "native_webapp_update_routes" };
-    }
     if (identifierPath("/runs/execution-job-records/").test(path) || identifierPath("/runs/", "/execution-job-record").test(path)) {
       return { name: "durable-job-record", capability: "durable_execution_job_record_reads" };
     }
@@ -300,12 +297,9 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
       identifierPath("/training/", "/stop").test(path) ||
       identifierPath("/automl/", "/stop").test(path) ||
       identifierPath("/runs/execution-job-records/", "/cancel").test(path) ||
-      identifierPath("/runs/", "/stop").test(path) ||
-      identifierPath("/updates/webapp/download-cancel/").test(path)
+      identifierPath("/runs/", "/stop").test(path)
     ) {
-      return path.startsWith("/updates/webapp/")
-        ? { name: "webapp-update", capability: "native_webapp_update_routes" }
-        : { name: "job-cancellation", capability: "native_job_cancellation_routes" };
+      return { name: "job-cancellation", capability: "native_job_cancellation_routes" };
     }
   }
   return null;
@@ -465,7 +459,6 @@ function isNativeShapedCandidate(request: RendererTransportRequest): boolean {
     /^\/workspaces\/[^/]+\/(?:activate|archive-v2|runs|results(?:\/summary)?)\/?$/.test(pathname) ||
     /^\/training\/(?!start$|jobs$)[^/]+(?:\/stop)?$/.test(pathname) ||
     /^\/automl\/(?!jobs$)[^/]+(?:\/stop)?$/.test(pathname) ||
-    /^\/updates\/webapp\/(?:download-status|download-cancel)\/[^/]*$/.test(pathname) ||
     /^\/runs\/run-groups\/?$/.test(pathname) ||
     /^\/runs\/execution-job-records\/[^/]+(?:\/cancel)?$/.test(pathname) ||
     /^\/runs\/[^/]+\/(?:execution-job-record|stop)$/.test(pathname);

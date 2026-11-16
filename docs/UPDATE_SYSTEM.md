@@ -61,10 +61,15 @@ React Settings UI
   ├─ Updates tab  (UpdatesSection)          ── HTTP ──> Rust sidecar
   └─ Python tab   (PythonEnvironmentPage)   ── IPC ───> Electron main
 
-Rust sidecar (sidecar/src/native_updates.rs)
-  ├─ /api/updates/status, /check, /settings, /version
-  ├─ /api/updates/webapp/changelog, /webapp/restart
-  └──> GitHub Releases (release discovery, checksum sidecar)
+Rust sidecar
+  ├─ sidecar/src/native_updates.rs
+  │    ├─ /api/updates/status, /check
+  │    ├─ /api/updates/webapp/changelog, /webapp/restart
+  │    └──> GitHub Releases (release discovery, checksum sidecar)
+  └─ sidecar/src/lib.rs
+       ├─ /api/updates/settings (update preferences file)
+       └─ /api/updates/version (application version, and the Python and
+          nirs4all versions read from the Python host)
 
 Electron main (electron/env-manager.ts, electron/env/)
   ├─ PythonEnvApi (window.electronApi.pythonEnv)
@@ -82,6 +87,10 @@ Responsibilities:
 - bind the asset to its `.sha256` sidecar
 - report how the installation is updated (`update_capability`)
 - refuse checks in offline mode
+
+`/api/updates/status` and `/api/updates/check` answer with the `webapp` block,
+`update_capability`, `last_check` and `check_interval_hours` only: nothing
+about the Python environment is part of the update status.
 
 The sidecar never downloads or installs the application. Every installation
 is updated through its installer, so `update_capability` is constant apart

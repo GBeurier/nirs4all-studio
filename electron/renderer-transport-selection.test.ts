@@ -319,8 +319,6 @@ describe("renderer transport preselection", () => {
     const info = () => ({ ...running(), pythonPluginHostConfigured: false });
     for (const [method, path] of [
       ["GET", "/updates/webapp/changelog?current_version=0.11.1"],
-      ["GET", "/updates/webapp/download-status/update-1"],
-      ["POST", "/updates/webapp/download-cancel/update-1"],
       ["POST", "/updates/webapp/restart"],
     ]) {
       await expect(preselectRendererTransport({ kind: "http", method, path }, info, request))
@@ -331,14 +329,11 @@ describe("renderer transport preselection", () => {
       info,
       async () => capabilityResponse(),
     )).resolves.toMatchObject({ target: "reject", reason: "native_capability_mismatch" });
-    for (const path of [
-      "/updates/webapp/changelog?current_version=0.11.1&extra=true",
-      "/updates/webapp/download-status/../escape",
-      "/updates/webapp/download-cancel/%2e%2e",
-    ]) {
-      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, info, request))
-        .resolves.toMatchObject({ target: "reject" });
-    }
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/updates/webapp/changelog?current_version=0.11.1&extra=true" },
+      info,
+      request,
+    )).resolves.toMatchObject({ target: "reject" });
   });
 
   it("rejects the removed in-place application-update routes", async () => {
@@ -353,6 +348,8 @@ describe("renderer transport preselection", () => {
       ["POST", "/updates/webapp/cleanup"],
       ["GET", "/updates/webapp/last-apply-result"],
       ["DELETE", "/updates/webapp/last-apply-result"],
+      ["GET", "/updates/webapp/download-status/update-1"],
+      ["POST", "/updates/webapp/download-cancel/update-1"],
     ]) {
       await expect(preselectRendererTransport({ kind: "http", method, path }, info, request))
         .resolves.toMatchObject({ target: "reject" });

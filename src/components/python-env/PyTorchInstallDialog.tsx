@@ -46,15 +46,16 @@ export function PyTorchInstallDialog({
   const { t } = useTranslation();
   const name = need.kind === "model" ? need.name : undefined;
   const installing = status === "installing";
+  const reason = need.kind === "model"
+    ? t("pythonEnv.pytorch.needModel", { name })
+    : t("pythonEnv.pytorch.needExperiment", { count: need.pipelines.length, pipelines: need.pipelines.join(", ") });
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onDismiss(); }}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>{t(installing ? "pythonEnv.pytorch.installingTitle" : "pythonEnv.pytorch.title")}</DialogTitle>
-          <DialogDescription>
-            {t(need.kind === "model" ? "pythonEnv.pytorch.needModel" : "pythonEnv.pytorch.needExperiment", { name })}
-          </DialogDescription>
+          <DialogDescription>{reason}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 text-sm">
@@ -75,6 +76,9 @@ export function PyTorchInstallDialog({
           <p className="text-muted-foreground">
             {t(need.kind === "model" ? "pythonEnv.pytorch.thenModel" : "pythonEnv.pytorch.thenExperiment", { name })}
           </p>
+          {need.kind === "experiment" && !installing && (
+            <p className="text-muted-foreground">{t("pythonEnv.pytorch.declineExperiment")}</p>
+          )}
           {status === "failed" && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />

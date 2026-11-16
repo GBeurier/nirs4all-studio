@@ -92,8 +92,13 @@ fn native_job_lifecycle_contract_is_fail_closed_and_complete() {
                 .expect("oracle cancellation path must be a string")
         })
         .collect::<BTreeSet<_>>();
+    // The native adapter maps the frozen cancellation endpoints it can
+    // serve and names the ones it retired: together they are the oracle.
+    let mapped = strings(&contract["job"]["cancellation"]["legacy_endpoints"]);
+    let retired = strings(&contract["job"]["cancellation"]["retired_legacy_endpoints"]);
+    assert!(mapped.is_disjoint(&retired));
     assert_eq!(
-        strings(&contract["job"]["cancellation"]["legacy_endpoints"]),
+        mapped.union(&retired).copied().collect::<BTreeSet<_>>(),
         cancellation_paths
     );
     let terminal = strings(&contract["job"]["terminal_statuses"]);
@@ -177,7 +182,7 @@ fn websocket_cutover_contract_is_anchored_to_the_frozen_studio_v1_oracle() {
     );
     assert_eq!(
         contract["cutover"]["sidecar_http_registration"],
-        "native_for_one_scientific_submission_three_status_five_cancellation_and_two_durable_read_aliases"
+        "native_for_one_scientific_submission_two_status_four_cancellation_and_two_durable_read_aliases"
     );
     assert_eq!(
         contract["cutover"]["scientific_submission_route_selection"],

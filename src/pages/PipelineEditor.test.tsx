@@ -590,9 +590,22 @@ describe("PipelineEditor PyTorch models", () => {
     expect(mocks.handleDrop).not.toHaveBeenCalled();
     expect(mocks.toastSuccess).not.toHaveBeenCalled();
 
+    mocks.handleDrop.mockReturnValueOnce(true);
     act(() => request.mock.calls[0][1]());
     expect(mocks.handleDrop).toHaveBeenCalledWith(data, indicator);
     expect(mocks.toastSuccess).toHaveBeenCalledWith("NICoN added to pipeline");
+
+    await view.unmount();
+  });
+
+  it("does not announce a dropped step that the pipeline did not take", async () => {
+    const view = await renderEditor(true);
+
+    mocks.handleDrop.mockReturnValueOnce(false);
+    act(() => mocks.entryPoints.onDrop!({ type: "palette-item", stepType: "model", option: pls }, { path: [], index: 0 }));
+
+    expect(mocks.handleDrop).toHaveBeenCalledTimes(1);
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
 
     await view.unmount();
   });

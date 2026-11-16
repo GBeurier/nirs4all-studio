@@ -34,27 +34,10 @@ export interface WebappUpdateInfo {
   installer_asset_name?: string | null;
 }
 
-/** Constant reported by the backend: every build is updated through its installer. */
-export interface UpdateCapability {
-  can_apply_in_place: false;
-  channel: "installer";
-  reason: string;
-  install_kind: string;
-}
-
 export interface UpdateStatus {
   webapp: WebappUpdateInfo;
-  update_capability?: UpdateCapability | null;
   last_check: string | null;
   check_interval_hours: number;
-}
-
-export interface VersionInfo {
-  webapp_version: string;
-  nirs4all_version: string | null;
-  python_version: string;
-  platform: string;
-  machine: string;
 }
 
 /**
@@ -115,11 +98,4 @@ export async function requestRestart(): Promise<{
   restart_required: boolean;
 }> {
   return api.post("/updates/webapp/restart");
-}
-
-/**
- * Get current version information
- */
-export async function getVersionInfo(): Promise<VersionInfo> {
-  return api.get("/updates/version");
 }

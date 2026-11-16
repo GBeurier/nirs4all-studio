@@ -92,7 +92,7 @@ the standard installer.
 
 macOS is supported on Apple Silicon only and needs an internet connection at
 first launch: Studio downloads the Python runtime and its required packages.
-The macOS application is not signed: when macOS blocks its first opening, open
+If macOS blocks the first opening of the application, open
 **System Settings > Privacy & Security** and choose **Open Anyway**.
 
 You can switch environment at any time in **Settings > Python**. Development

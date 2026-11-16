@@ -155,8 +155,9 @@ export default function PipelineEditor() {
   // Handle drop from DnD context
   const onDrop = usePyTorchGate(
     useCallback((data: DragData, indicator: DropIndicator) => {
-      handleDrop(data, indicator);
-      if (data.type === "palette-item" && data.option) {
+      // After a PyTorch installation the drop is replayed on the pipeline as it is now.
+      const dropped = handleDrop(data, indicator);
+      if (dropped && data.type === "palette-item" && data.option) {
         toast.success(t("pipelineEditor.page.stepAdded", { name: data.option.name }));
       }
     }, [handleDrop, t]),

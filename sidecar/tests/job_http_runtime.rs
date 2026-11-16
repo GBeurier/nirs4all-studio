@@ -89,11 +89,21 @@ fn route_mapping_matches_the_frozen_oracle_and_excludes_durable_reads() {
         );
     }
 
-    let mapped_cancellations = JOB_HTTP_ROUTES
+    // Every frozen cancellation endpoint is either mapped here or declared
+    // retired by the contract; nothing is dropped silently.
+    let mut mapped_cancellations = JOB_HTTP_ROUTES
         .iter()
         .filter(|route| route.method == "POST")
         .map(|route| route.path)
         .collect::<BTreeSet<_>>();
+    let retired_cancellations = contract["job"]["cancellation"]["retired_legacy_endpoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    assert!(mapped_cancellations.is_disjoint(&retired_cancellations));
+    mapped_cancellations.extend(retired_cancellations);
     let oracle_cancellations = oracle["jobs"]["cancellation_endpoints"]
         .as_array()
         .unwrap()
@@ -129,18 +139,16 @@ fn route_mapping_matches_the_frozen_oracle_and_excludes_durable_reads() {
     assert!(JOB_HTTP_ROUTES
         .iter()
         .all(|route| { !DURABLE_WORKSPACE_JOB_READ_ROUTES.contains(&route.path) }));
-    assert_eq!(JOB_HTTP_ROUTES.len(), 8);
+    assert_eq!(JOB_HTTP_ROUTES.len(), 6);
     assert_eq!(
         JOB_HTTP_ROUTES
             .iter()
             .filter(|route| matches!(
                 route.surface,
-                JobHttpSurface::TrainingStatus
-                    | JobHttpSurface::AutomlStatus
-                    | JobHttpSurface::UpdateDownloadStatus
+                JobHttpSurface::TrainingStatus | JobHttpSurface::AutomlStatus
             ))
             .count(),
-        3
+        2
     );
     for durable in DURABLE_WORKSPACE_JOB_READ_ROUTES {
         let frozen = frozen_routes
@@ -192,15 +200,6 @@ fn three_status_aliases_project_the_frozen_legacy_shapes() {
             now,
         )
         .unwrap();
-    runtime
-        .register_with_id_at(
-            "download-1",
-            JobType::UpdateDownload,
-            json!({"asset_name": "studio.zip"}),
-            CREATED,
-            now,
-        )
-        .unwrap();
 
     let training = route_native_job_request(&runtime, "GET", "/api/training/training-1");
     assert_eq!(training.status, 200);
@@ -246,26 +245,6 @@ fn three_status_aliases_project_the_frozen_legacy_shapes() {
             "elapsed_seconds",
             "created_at",
         ])
-    );
-    let download = body(&route_native_job_request(
-        &runtime,
-        "GET",
-        "/api/updates/webapp/download-status/download-1",
-    ));
-    assert_eq!(download["job_id"], "download-1");
-    assert_eq!(download["result"], Value::Null);
-    assert_eq!(
-        keys(&download),
-        BTreeSet::from(["job_id", "status", "progress", "message", "result", "error"])
-    );
-    assert_eq!(
-        route_native_job_request(
-            &runtime,
-            "GET",
-            "/api/updates/webapp/download-status/training-1",
-        )
-        .status,
-        400,
     );
 
     assert_eq!(
@@ -340,7 +319,7 @@ fn pending_and_running_cancellation_have_exact_cooperative_semantics() {
 }
 
 #[test]
-fn all_five_cancellation_aliases_reach_the_same_authoritative_registry() {
+fn all_four_cancellation_aliases_reach_the_same_authoritative_registry() {
     let runtime = NativeJobRuntime::with_executor(Arc::new(RecordingExecutor::default()));
     let now = Instant::now();
     for (id, job_type, config) in [
@@ -356,7 +335,6 @@ fn all_five_cancellation_aliases_reach_the_same_authoritative_registry() {
             JobType::Training,
             json!({"run_id": "run-cancel"}),
         ),
-        ("download-cancel", JobType::UpdateDownload, json!({})),
     ] {
         runtime
             .register_with_id_at(id, job_type, config, CREATED, now)
@@ -386,11 +364,6 @@ fn all_five_cancellation_aliases_reach_the_same_authoritative_registry() {
             "run-cancel",
             &["success", "message", "run_id"][..],
         ),
-        (
-            "/api/updates/webapp/download-cancel/download-cancel",
-            "download-cancel",
-            &["success", "message"][..],
-        ),
     ];
     for (path, id, expected_keys) in cases {
         let response = route_native_job_request(&runtime, "POST", path);
@@ -415,12 +388,6 @@ fn all_five_cancellation_aliases_reach_the_same_authoritative_registry() {
     assert_eq!(execution["success"], false);
     assert_eq!(execution["backend"], "native-rust");
     assert_eq!(execution["run_id"], "run-a");
-    let download = body(&route_native_job_request(
-        &runtime,
-        "POST",
-        "/api/updates/webapp/download-cancel/download-cancel",
-    ));
-    assert_eq!(download["success"], false);
 }
 
 #[test]

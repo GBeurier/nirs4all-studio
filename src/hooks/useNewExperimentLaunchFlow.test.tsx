@@ -652,7 +652,8 @@ describe("useNewExperimentLaunchFlow", () => {
       await flushMutation();
 
       expect(request).toHaveBeenCalledTimes(1);
-      expect(request).toHaveBeenCalledWith({ kind: "experiment" }, expect.any(Function));
+      // Only the pipeline that needs PyTorch is named; the whole launch waits for the answer.
+      expect(request).toHaveBeenCalledWith({ kind: "experiment", pipelines: ["Deep pipeline"] }, expect.any(Function));
       expect(apiMocks.runPreflight).not.toHaveBeenCalled();
       expect(apiMocks.createRun).not.toHaveBeenCalled();
 

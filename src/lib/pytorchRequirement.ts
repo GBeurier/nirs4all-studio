@@ -15,8 +15,8 @@ export const PYTORCH_PACKAGE = "torch";
 export type PyTorchNeed =
   /** A neural-network model is being added to a pipeline. */
   | { kind: "model"; name: string }
-  /** An experiment whose pipelines contain neural-network models is being launched. */
-  | { kind: "experiment" };
+  /** An experiment is being launched; `pipelines` names those that contain neural-network models. */
+  | { kind: "experiment"; pipelines: readonly string[] };
 
 /** True when PyTorch is the only optional package the operator declares. */
 export function requiresPyTorch(requires: readonly string[] | undefined): boolean {

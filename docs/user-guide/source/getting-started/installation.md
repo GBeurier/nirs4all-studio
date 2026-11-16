@@ -25,9 +25,8 @@ downloaded at first launch.
 
 ```{note}
 macOS is supported on Apple Silicon only and needs an internet connection at
-first launch. The application is not signed: when macOS blocks its first
-opening, open **System Settings > Privacy & Security** and choose **Open
-Anyway**.
+first launch. If macOS blocks the first opening of the application, open
+**System Settings > Privacy & Security** and choose **Open Anyway**.
 ```
 
 ## First launch: the Python environment
@@ -39,8 +38,9 @@ automatically and keeps them up to date at each launch.
 
 Other packages are optional and installed on request. PyTorch is one of them:
 Studio offers to install it when you select a neural-network model, in the
-build that matches your machine (CPU, CUDA or Apple Metal). With the offline
-installer it is installed from the installer's own files, as the CPU build.
+build that matches your machine (CPU, CUDA or Apple Metal). The offline
+installer does the same when the machine has network access; without it,
+PyTorch is installed from the installer's own files, as the CPU build.
 
 You can switch environment or add packages at any time in **Settings >
 Python**.

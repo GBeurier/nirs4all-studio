@@ -36,12 +36,6 @@ function createStatus(webapp: Partial<UpdateStatus["webapp"]> = {}): UpdateStatu
       is_prerelease: false,
       ...webapp,
     },
-    update_capability: {
-      can_apply_in_place: false,
-      channel: "installer",
-      reason: "managed_install",
-      install_kind: "deb",
-    },
     last_check: null,
     check_interval_hours: 24,
   };

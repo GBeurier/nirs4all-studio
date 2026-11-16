@@ -122,9 +122,22 @@ describe("PyTorch installation prompt", () => {
 
   it("words the request for an experiment launch", async () => {
     await mount(envState());
-    await ask(vi.fn(), { kind: "experiment" });
-    expect(dialog()!.textContent).toContain("This experiment uses neural-network models.");
+    await ask(vi.fn(), { kind: "experiment", pipelines: ["Deep pipeline"] });
+    expect(dialog()!.textContent).toContain("The pipeline Deep pipeline uses a neural-network model. It needs PyTorch");
     expect(dialog()!.textContent).toContain("The experiment starts once PyTorch is installed.");
+    expect(dialog()!.textContent).toContain("If you choose “Not now”, nothing is launched: the pipelines that do not need PyTorch do not start either.");
+  });
+
+  it("names every pipeline that needs PyTorch, and drops the \"Not now\" warning once the installation runs", async () => {
+    const api = await mount(envState());
+    const finish = holdInstallation(api!);
+    await ask(vi.fn(), { kind: "experiment", pipelines: ["Deep pipeline", "Transformer sweep"] });
+    expect(dialog()!.textContent).toContain("2 pipelines of this experiment use neural-network models: Deep pipeline, Transformer sweep.");
+
+    await click("Install PyTorch");
+    expect(dialog()!.textContent).toContain("The experiment starts once PyTorch is installed.");
+    expect(dialog()!.textContent).not.toContain("nothing is launched");
+    await finish(succeeded);
   });
 
   it("closes on \"Not now\" without installing or proceeding", async () => {
@@ -253,10 +266,10 @@ describe("PyTorch installation prompt", () => {
     const finish = holdInstallation(api!);
     const firstLaunch = vi.fn();
     const secondLaunch = vi.fn();
-    await ask(firstLaunch, { kind: "experiment" });
+    await ask(firstLaunch, { kind: "experiment", pipelines: ["Deep pipeline"] });
     await click("Install PyTorch");
     await click("Continue in the background");
-    await ask(secondLaunch, { kind: "experiment" });
+    await ask(secondLaunch, { kind: "experiment", pipelines: ["Deep pipeline"] });
 
     await finish(succeeded);
     expect(api!.installPackages).toHaveBeenCalledTimes(1);

@@ -84,9 +84,10 @@ arm64 wheel. When the installation
 carries the offline payload (`resources/backend/offline/`), its `wheels/`
 directory is a second `--find-links` source and installs are first attempted
 with `--offline --no-index`; what the shipped wheels cannot satisfy is then
-requested from the package index. `torch` is installed with
-`--torch-backend auto` when it comes from the package index; offline wheels
-are used as shipped.
+requested from the package index. `torch` is the exception, because the
+payload carries its CPU build only: it is resolved on its own, from the
+package index first with `--torch-backend auto`, and from the offline wheels,
+used as shipped, when that attempt fails.
 
 ### Rust sidecar
 

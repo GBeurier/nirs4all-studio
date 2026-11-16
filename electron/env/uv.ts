@@ -75,9 +75,13 @@ function wheelDirectories(payload: UvPayload): string[] {
   return [payload.wheelhouse, offlineWheels].filter((directory): directory is string => directory !== null);
 }
 
+function isTorchSpec(spec: string): boolean {
+  return normalizePackageName(spec.split("==")[0]) === "torch";
+}
+
 /** `uv pip install` arguments. `offline` restricts resolution to the shipped wheels. */
 export function pipInstallArgs(pythonPath: string, specs: readonly string[], payload: UvPayload, offline: boolean): string[] {
-  const installsTorch = specs.some((spec) => normalizePackageName(spec.split("==")[0]) === "torch");
+  const installsTorch = specs.some(isTorchSpec);
   return [
     "pip", "install", "--python", pythonPath,
     ...(offline ? ["--offline", "--no-index"] : []),
@@ -121,26 +125,33 @@ export function createVenv(venvDir: string, basePython: string): Promise<void> {
 
 /**
  * One resolver call for `specs`. With an offline payload the shipped wheels
- * are tried first; what they cannot satisfy then needs the package index.
+ * are tried first and what they cannot satisfy then needs the package index;
+ * `indexFirst` asks the index first and keeps the shipped wheels as the
+ * fallback.
  */
-async function install(pythonPath: string, specs: readonly string[], payload: UvPayload): Promise<void> {
-  let offlineFailure: Error | null = null;
-  if (payload.offline) {
-    try {
-      await runUv(pipInstallArgs(pythonPath, specs, payload, true), UV_INSTALL_TIMEOUT_MS, 0);
-      return;
-    } catch (error) {
-      offlineFailure = error as Error;
-      appendInstallLog("Not available in the offline package set; trying the package index.");
-    }
+async function install(pythonPath: string, specs: readonly string[], payload: UvPayload, indexFirst = false): Promise<void> {
+  const fromIndex = (retries: number) => runUv(pipInstallArgs(pythonPath, specs, payload, false), UV_INSTALL_TIMEOUT_MS, retries);
+  const fromOfflineSet = () => runUv(pipInstallArgs(pythonPath, specs, payload, true), UV_INSTALL_TIMEOUT_MS, 0);
+  if (!payload.offline) return fromIndex(1);
+
+  let firstFailure: Error;
+  try {
+    // An index that cannot be reached is not asked twice when the shipped wheels can still answer.
+    await (indexFirst ? fromIndex(0) : fromOfflineSet());
+    return;
+  } catch (error) {
+    firstFailure = error as Error;
+    appendInstallLog(indexFirst
+      ? "Not available from the package index; trying the offline package set."
+      : "Not available in the offline package set; trying the package index.");
   }
   try {
-    await runUv(pipInstallArgs(pythonPath, specs, payload, false), UV_INSTALL_TIMEOUT_MS, 1);
+    await (indexFirst ? fromOfflineSet() : fromIndex(1));
   } catch (error) {
-    const message = (error as Error).message;
+    const [indexFailure, offlineFailure] = indexFirst ? [firstFailure, error as Error] : [error as Error, firstFailure];
     // A conflict is the same from both sources; a missing wheel and a network failure are two reasons.
-    if (!offlineFailure || offlineFailure.message === message) throw error;
-    throw new Error(`${message} (Offline package set: ${offlineFailure.message})`, { cause: error });
+    if (indexFailure.message === offlineFailure.message) throw error;
+    throw new Error(`${indexFailure.message} (Offline package set: ${offlineFailure.message})`, { cause: error });
   }
 }
 
@@ -157,8 +168,17 @@ export async function installRequiredPackages(pythonPath: string): Promise<void>
  * (`name==installed version` of the required packages already present) join
  * the same resolver call: a recommended package that conflicts with them
  * fails the resolution instead of silently changing nirs4all or its owners.
+ *
+ * The offline payload carries the CPU build of PyTorch only. With that payload
+ * PyTorch is therefore resolved on its own, from the package index first, so
+ * that a machine with a network gets the build for its hardware as it does
+ * from the standard installer; the shipped CPU build is the fallback.
  */
 export async function installRecommendedPackages(pythonPath: string, names: readonly string[], requiredPins: readonly string[]): Promise<void> {
+  const payload = resolveUvPayload();
   const specs = recommendedInstallSpecs(names);
-  if (specs.length > 0) await install(pythonPath, [...specs, ...requiredPins], resolveUvPayload());
+  const torch = payload.offline ? specs.filter(isTorchSpec) : [];
+  const others = specs.filter((spec) => !torch.includes(spec));
+  if (torch.length > 0) await install(pythonPath, [...torch, ...requiredPins], payload, true);
+  if (others.length > 0) await install(pythonPath, [...others, ...requiredPins], payload);
 }

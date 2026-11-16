@@ -250,6 +250,47 @@ describe("uv installations", () => {
     ]);
   });
 
+  it("asks the package index first for PyTorch on an offline installer, so that a GPU machine gets its own build", async () => {
+    const offline = shipped(resources, "backend", "offline");
+    const links = ["--find-links", path.join(offline, "wheels")];
+    const fromIndex = ["pip", "install", "--python", PYTHON, ...links, "--torch-backend", "auto", "torch==2.6.0", ...PINS];
+    const fromPayload = ["pip", "install", "--python", PYTHON, "--offline", "--no-index", ...links, "torch==2.6.0", ...PINS];
+
+    await installRecommendedPackages(PYTHON, ["torch"], PINS);
+    expect(vi.mocked(runCommand).mock.calls.map((call) => call[1])).toEqual([fromIndex]);
+
+    // Without a network the CPU build shipped with the installer is used.
+    vi.mocked(runCommand).mockClear();
+    vi.mocked(runCommand).mockRejectedValueOnce(commandFailure("error: Failed to fetch: `https://pypi.org/simple/torch/`\n  Caused by: dns error"));
+    await installRecommendedPackages(PYTHON, ["torch"], PINS);
+    expect(vi.mocked(runCommand).mock.calls.map((call) => call[1])).toEqual([fromIndex, fromPayload]);
+    // The unreachable index is asked once: the shipped wheels are the retry.
+    expect(vi.mocked(runCommand).mock.calls[0][2]?.retries).toBe(0);
+  });
+
+  it("keeps the offline payload first for every other package installed with PyTorch", async () => {
+    const offline = shipped(resources, "backend", "offline");
+    const links = ["--find-links", path.join(offline, "wheels")];
+
+    await installRecommendedPackages(PYTHON, ["torch", "xgboost"], PINS);
+
+    expect(vi.mocked(runCommand).mock.calls.map((call) => call[1])).toEqual([
+      ["pip", "install", "--python", PYTHON, ...links, "--torch-backend", "auto", "torch==2.6.0", ...PINS],
+      ["pip", "install", "--python", PYTHON, "--offline", "--no-index", ...links, "xgboost==3.0.0", ...PINS],
+    ]);
+  });
+
+  it("reports both failures when PyTorch can be installed neither from the index nor from the offline payload", async () => {
+    shipped(resources, "backend", "offline");
+    vi.mocked(runCommand)
+      .mockRejectedValueOnce(commandFailure("error: Failed to fetch: `https://pypi.org/simple/torch/`\n  Caused by: dns error"))
+      .mockRejectedValue(commandFailure("  × No solution found: torch was not found in the provided package locations"));
+
+    await expect(installRecommendedPackages(PYTHON, ["torch"], PINS)).rejects.toThrow(
+      "error: Failed to fetch: `https://pypi.org/simple/torch/` Caused by: dns error (Offline package set: No solution found: torch was not found in the provided package locations)",
+    );
+  });
+
   it("creates the virtual environment through uv", async () => {
     await createVenv("/data/python-env/venv", "/data/python-env/python/bin/python3");
     expect(runCommand).toHaveBeenCalledWith(

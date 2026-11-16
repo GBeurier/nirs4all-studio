@@ -1,6 +1,6 @@
 //! Native HTTP adapters and execution seam for Studio's frozen job surface.
 //!
-//! The registry is authoritative for the three legacy polling routes and five
+//! The registry is authoritative for the two legacy polling routes and four
 //! cancellation aliases listed in [`JOB_HTTP_ROUTES`]. Durable execution-job
 //! record reads remain a `WorkspaceStore` concern and are deliberately excluded.
 
@@ -33,12 +33,10 @@ use crate::{
 pub enum JobHttpSurface {
     TrainingStatus,
     AutomlStatus,
-    UpdateDownloadStatus,
     TrainingCancel,
     AutomlCancel,
     ExecutionRecordCancel,
     RunCancel,
-    UpdateDownloadCancel,
 }
 
 /// One reviewed mapping from a frozen HTTP path template to native job state.
@@ -50,7 +48,7 @@ pub struct JobHttpRouteMapping {
 }
 
 /// The only legacy job-manager routes selected by this native adapter.
-pub const JOB_HTTP_ROUTES: [JobHttpRouteMapping; 8] = [
+pub const JOB_HTTP_ROUTES: [JobHttpRouteMapping; 6] = [
     JobHttpRouteMapping {
         method: "GET",
         path: "/api/training/{job_id}",
@@ -60,11 +58,6 @@ pub const JOB_HTTP_ROUTES: [JobHttpRouteMapping; 8] = [
         method: "GET",
         path: "/api/automl/{job_id}",
         surface: JobHttpSurface::AutomlStatus,
-    },
-    JobHttpRouteMapping {
-        method: "GET",
-        path: "/api/updates/webapp/download-status/{job_id}",
-        surface: JobHttpSurface::UpdateDownloadStatus,
     },
     JobHttpRouteMapping {
         method: "POST",
@@ -85,11 +78,6 @@ pub const JOB_HTTP_ROUTES: [JobHttpRouteMapping; 8] = [
         method: "POST",
         path: "/api/runs/{run_id}/stop",
         surface: JobHttpSurface::RunCancel,
-    },
-    JobHttpRouteMapping {
-        method: "POST",
-        path: "/api/updates/webapp/download-cancel/{job_id}",
-        surface: JobHttpSurface::UpdateDownloadCancel,
     },
 ];
 
@@ -586,22 +574,6 @@ impl NativeJobRuntime {
             .map_err(Into::into)
     }
 
-    /// Request cancellation of a local Rust worker without consulting the
-    /// scientific executor seam.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the job is absent or cannot transition to the
-    /// cancellation-requested state.
-    pub fn request_local_cancel_at(
-        &self,
-        id: &str,
-        timestamp: &str,
-        now: Instant,
-    ) -> Result<JobSnapshot, NativeJobRuntimeError> {
-        self.mutate_terminal_or_running(|registry| registry.request_cancel_at(id, timestamp, now))
-    }
-
     fn register_with_selected_executor_at(
         &self,
         executor_selected: bool,
@@ -909,19 +881,6 @@ impl NativeJobRuntime {
         self.publish(mutation)
     }
 
-    fn mutate_terminal_or_running(
-        &self,
-        operation: impl FnOnce(&mut JobRegistry) -> Result<JobMutation, JobLifecycleError>,
-    ) -> Result<JobSnapshot, NativeJobRuntimeError> {
-        let mutation = operation(
-            &mut self
-                .registry
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        )?;
-        self.publish(mutation)
-    }
-
     fn publish(&self, mutation: JobMutation) -> Result<JobSnapshot, NativeJobRuntimeError> {
         if let Some(event) = mutation.event {
             self.websocket
@@ -1105,7 +1064,7 @@ struct MatchedJobRoute {
     job_id: String,
 }
 
-/// Whether this path is one of the eight selected native job aliases.
+/// Whether this path is one of the six selected native job aliases.
 #[must_use]
 pub fn is_native_job_http_path(path: &str) -> bool {
     match_job_route(path).is_some()
@@ -1128,12 +1087,10 @@ pub fn route_native_job_request(
     match route.surface {
         JobHttpSurface::TrainingStatus => status_training(runtime, &route.job_id),
         JobHttpSurface::AutomlStatus => status_automl(runtime, &route.job_id),
-        JobHttpSurface::UpdateDownloadStatus => status_download(runtime, &route.job_id),
         JobHttpSurface::TrainingCancel => cancel_training(runtime, &route.job_id),
         JobHttpSurface::AutomlCancel => cancel_automl(runtime, &route.job_id),
         JobHttpSurface::ExecutionRecordCancel => cancel_execution_record(runtime, &route.job_id),
         JobHttpSurface::RunCancel => cancel_run(runtime, &route.job_id),
-        JobHttpSurface::UpdateDownloadCancel => cancel_download(runtime, &route.job_id),
     }
 }
 
@@ -1217,27 +1174,6 @@ fn status_automl(runtime: &NativeJobRuntime, job_id: &str) -> HttpResponse {
 
 fn is_json_integer(value: &Value) -> bool {
     value.as_i64().is_some() || value.as_u64().is_some()
-}
-
-fn status_download(runtime: &NativeJobRuntime, job_id: &str) -> HttpResponse {
-    let Some(job) = runtime.get_at(job_id, Instant::now()) else {
-        return legacy_detail(404, "Job not found");
-    };
-    if job.job_type != JobType::UpdateDownload {
-        return legacy_detail(400, format!("Job '{job_id}' is not an update download job"));
-    }
-    HttpResponse::json(
-        200,
-        json!({
-            "job_id": job.id,
-            "status": job.status.as_str(),
-            "progress": job.progress,
-            "message": job.progress_message,
-            "result": job.result,
-            "error": job.error,
-        })
-        .to_string(),
-    )
 }
 
 fn cancel_training(runtime: &NativeJobRuntime, job_id: &str) -> HttpResponse {
@@ -1353,29 +1289,6 @@ fn cancel_run(runtime: &NativeJobRuntime, run_id: &str) -> HttpResponse {
     }
 }
 
-fn cancel_download(runtime: &NativeJobRuntime, job_id: &str) -> HttpResponse {
-    let Some(job) = runtime.get_at(job_id, Instant::now()) else {
-        return legacy_detail(404, "Job not found");
-    };
-    if job.job_type != JobType::UpdateDownload {
-        return legacy_detail(400, format!("Job '{job_id}' is not an update download job"));
-    }
-    if job.status.is_terminal() {
-        return HttpResponse::json(
-            200,
-            json!({"success": false, "message": "Job is already completed or cannot be cancelled"})
-                .to_string(),
-        );
-    }
-    match runtime.request_local_cancel_at(job_id, &rfc3339_now(), Instant::now()) {
-        Ok(_) => HttpResponse::json(
-            200,
-            json!({"success": true, "message": "Cancellation requested"}).to_string(),
-        ),
-        Err(error) => cancellation_failure(job_id, &error),
-    }
-}
-
 fn cancel_now(
     runtime: &NativeJobRuntime,
     job_id: &str,
@@ -1430,14 +1343,11 @@ fn legacy_detail(status: u16, detail: impl Into<String>) -> HttpResponse {
 
 const fn route_method(surface: JobHttpSurface) -> &'static str {
     match surface {
-        JobHttpSurface::TrainingStatus
-        | JobHttpSurface::AutomlStatus
-        | JobHttpSurface::UpdateDownloadStatus => "GET",
+        JobHttpSurface::TrainingStatus | JobHttpSurface::AutomlStatus => "GET",
         JobHttpSurface::TrainingCancel
         | JobHttpSurface::AutomlCancel
         | JobHttpSurface::ExecutionRecordCancel
-        | JobHttpSurface::RunCancel
-        | JobHttpSurface::UpdateDownloadCancel => "POST",
+        | JobHttpSurface::RunCancel => "POST",
     }
 }
 
@@ -1452,9 +1362,6 @@ fn match_job_route(path: &str) -> Option<MatchedJobRoute> {
             return matched(JobHttpSurface::AutomlStatus, job_id);
         }
     }
-    if let Some(job_id) = single_segment(path, "/api/updates/webapp/download-status/", "") {
-        return matched(JobHttpSurface::UpdateDownloadStatus, job_id);
-    }
     if let Some(job_id) = single_segment(path, "/api/training/", "/stop") {
         return matched(JobHttpSurface::TrainingCancel, job_id);
     }
@@ -1466,9 +1373,6 @@ fn match_job_route(path: &str) -> Option<MatchedJobRoute> {
     }
     if let Some(run_id) = single_segment(path, "/api/runs/", "/stop") {
         return matched(JobHttpSurface::RunCancel, run_id);
-    }
-    if let Some(job_id) = single_segment(path, "/api/updates/webapp/download-cancel/", "") {
-        return matched(JobHttpSurface::UpdateDownloadCancel, job_id);
     }
     None
 }

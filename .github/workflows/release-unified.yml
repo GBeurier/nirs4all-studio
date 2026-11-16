@@ -39,7 +39,7 @@ on:
         default: false
         type: boolean
       macos_arm64_only:
-        description: 'Retry only the macOS ARM installer; other existing artifacts remain unchanged'
+        description: 'Build and smoke only the macOS ARM installer. Publishes nothing: the release job needs the jobs this input skips'
         required: false
         default: false
         type: boolean

@@ -57,8 +57,7 @@
     "http_status": {
       "legacy_endpoints": [
         "/api/training/{job_id}",
-        "/api/automl/{job_id}",
-        "/api/updates/webapp/download-status/{job_id}"
+        "/api/automl/{job_id}"
       ],
       "authoritative_source": "native_in_memory_job_registry",
       "durable_workspace_reads_excluded": [
@@ -74,7 +73,9 @@
         "/api/training/{job_id}/stop",
         "/api/automl/{job_id}/stop",
         "/api/runs/execution-job-records/{job_id}/cancel",
-        "/api/runs/{run_id}/stop",
+        "/api/runs/{run_id}/stop"
+      ],
+      "retired_legacy_endpoints": [
         "/api/updates/webapp/download-cancel/{job_id}"
       ],
       "accepted_from": ["pending", "running"],
@@ -130,7 +131,7 @@
   "cutover": {
     "route_selection": "electron_renderer_preflight_per_request_or_connection",
     "renderer_transport_contract": "studio_renderer_transport_selection_v1",
-    "sidecar_http_registration": "native_for_one_scientific_submission_three_status_five_cancellation_and_two_durable_read_aliases",
+    "sidecar_http_registration": "native_for_one_scientific_submission_two_status_four_cancellation_and_two_durable_read_aliases",
     "scientific_submission_route_selection": "renderer_selected_native_transport_default_unselected_executor",
     "scientific_submission_contract": "studio_scientific_submission_v1",
     "submission_transport_capability": true,

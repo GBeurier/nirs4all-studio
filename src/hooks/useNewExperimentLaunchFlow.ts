@@ -160,12 +160,14 @@ export function useNewExperimentLaunchFlow({
   ]);
 
   // A run in the local Python environment fails at its first PyTorch model when PyTorch is missing.
-  const checkAndSubmitWithPyTorch = usePyTorchGate(checkAndSubmit, (): PyTorchNeed | null => (
-    executionAdapter.nativeBackends.includes("local-python")
-      && selectedPipelineConfigs.some((pipeline) => stepsNeedPyTorch(pipeline.steps))
-      ? { kind: "experiment" }
-      : null
-  ));
+  // The experiment is launched as a whole or not at all: declining PyTorch launches none of its pipelines.
+  const checkAndSubmitWithPyTorch = usePyTorchGate(checkAndSubmit, (): PyTorchNeed | null => {
+    if (!executionAdapter.nativeBackends.includes("local-python")) return null;
+    const pipelines = selectedPipelineConfigs
+      .filter((pipeline) => stepsNeedPyTorch(pipeline.steps))
+      .map((pipeline) => pipeline.name);
+    return pipelines.length > 0 ? { kind: "experiment", pipelines } : null;
+  });
 
   const handleLaunch = useCallback(async () => {
     if (hasGroupingBlockingError) {

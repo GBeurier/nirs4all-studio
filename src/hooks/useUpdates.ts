@@ -14,7 +14,6 @@ import {
   checkForUpdates,
   getUpdateSettings,
   updateUpdateSettings,
-  getVersionInfo,
   type UpdateStatus,
   type UpdateSettings,
 } from "@/api/updates";
@@ -24,7 +23,6 @@ export const updateKeys = {
   all: ["updates"] as const,
   status: () => [...updateKeys.all, "status"] as const,
   settings: () => [...updateKeys.all, "settings"] as const,
-  version: () => [...updateKeys.all, "version"] as const,
 };
 
 /**
@@ -82,17 +80,6 @@ export function useUpdateUpdateSettings() {
     onSuccess: (data: UpdateSettings) => {
       queryClient.setQueryData(updateKeys.settings(), data);
     },
-  });
-}
-
-/**
- * Hook to fetch version information
- */
-export function useVersionInfo() {
-  return useQuery({
-    queryKey: updateKeys.version(),
-    queryFn: getVersionInfo,
-    staleTime: Infinity, // Version info doesn't change during runtime
   });
 }
 

@@ -16,6 +16,7 @@ import { getAdjustedInsertIndex } from "@/components/pipeline-editor/dnd-utils";
 import {
   findPipelineStepById,
   getPipelineStepsAtPath,
+  insertPipelineStepAtPath,
   removePipelineStepById,
   updatePipelineStepsAtPath,
 } from "@/lib/pipelineGraphReducer";
@@ -41,7 +42,8 @@ export interface UsePipelineEditorStepOperationsReturn {
   addChild: (stepId: string, path?: string[]) => void;
   removeChild: (stepId: string, childId: string, path?: string[]) => void;
   updateChild: (stepId: string, childId: string, updates: Partial<PipelineStep>, path?: string[]) => void;
-  handleDrop: (data: DragData, indicator: DropIndicator) => void;
+  /** Returns whether the drop added or moved a step. */
+  handleDrop: (data: DragData, indicator: DropIndicator) => boolean;
   handleReorder: (activeId: string, overId: string, data: DragData) => void;
 }
 
@@ -66,12 +68,7 @@ export function usePipelineEditorStepOperations({
   const addStepAtPath = useCallback(
     (type: StepType, option: StepOption, path: string[], index: number) => {
       const newStep = createStepFromOption(type, option);
-
-      const newSteps = updatePipelineStepsAtPath(steps, path, (targetSteps) => {
-        const result = [...targetSteps];
-        result.splice(index, 0, newStep);
-        return result;
-      });
+      const newSteps = insertPipelineStepAtPath(steps, path, index, newStep);
 
       setSteps(newSteps);
       pushToHistory(newSteps);
@@ -326,12 +323,14 @@ export function usePipelineEditorStepOperations({
     (data: DragData, indicator: DropIndicator) => {
       if (data.type === "palette-item" && data.stepType && data.option) {
         addStepAtPath(data.stepType, data.option, indicator.path, indicator.index);
-      } else if (data.type === "pipeline-step" && data.stepId && data.step) {
+        return true;
+      }
+      if (data.type === "pipeline-step" && data.stepId && data.step) {
         const stepId = data.stepId;
         const draggedStep = data.step;
 
         if (indicator.path.includes(stepId)) {
-          return;
+          return false;
         }
 
         const sourcePath = data.sourcePath ?? [];
@@ -347,7 +346,9 @@ export function usePipelineEditorStepOperations({
 
         setSteps(newSteps);
         pushToHistory(newSteps);
+        return true;
       }
+      return false;
     },
     [steps, pushToHistory, addStepAtPath, setSteps]
   );

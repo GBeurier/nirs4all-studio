@@ -70,7 +70,7 @@ After CI completes:
    - macOS arm64 installer (`-mac-arm64.dmg`)
 3. Verify checksums: download an asset and its `.sha256` file, then:
    ```bash
-   sha256sum -c nirs4all-Studio-1.1.0-win-x64.exe.sha256
+   sha256sum -c nirs4all.Studio-1.1.0-win-x64.exe.sha256
    ```
 
 ### 5. Edit release notes (optional)
@@ -88,7 +88,7 @@ The webapp's update dialog will display these notes to users via the changelog v
 
 On a machine running the **previous** version:
 
-1. Open the app, go to **Settings > Advanced > Updates**
+1. Open the app, go to **Settings > Updates**
 2. Click **Check Now** — the new version should appear
 3. Verify the "What's New" changelog shows correctly
 4. Use the installer download action — the browser downloads the installer of the new version

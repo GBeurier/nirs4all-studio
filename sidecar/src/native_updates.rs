@@ -232,16 +232,6 @@ impl NativeUpdater {
                 }),
                 |release| self.release_json(release),
             ),
-            "nirs4all": {
-                "current_version": null,
-                "latest_version": null,
-                "update_available": false,
-                "pypi_url": null,
-                "release_notes": null,
-                "requires_restart": false,
-            },
-            "runtime": empty_runtime(),
-            "venv": empty_runtime(),
             "update_capability": update_capability(),
             "last_check": self.last_check.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone(),
             "check_interval_hours": self.preferences.lock().unwrap_or_else(std::sync::PoisonError::into_inner).check_interval_hours,
@@ -289,9 +279,8 @@ impl NativeUpdater {
 
 /// Serve the application-update routes.
 ///
-/// The download status and cancellation paths are answered by the job
-/// lifecycle routes, so they fall through here. Any other path below
-/// `/api/updates/webapp/` that is not listed is refused with 404.
+/// Any path below `/api/updates/webapp/` that is not listed is refused with
+/// 404.
 #[must_use]
 pub fn route(state: &SidecarState, method: &str, path: &str) -> Option<HttpResponse> {
     if method == "GET" && path.starts_with("/api/updates/webapp/changelog") {
@@ -315,8 +304,6 @@ pub fn route(state: &SidecarState, method: &str, path: &str) -> Option<HttpRespo
     let expected = match path {
         "/api/updates/status" => "GET",
         "/api/updates/check" | "/api/updates/webapp/restart" => "POST",
-        _ if path.starts_with("/api/updates/webapp/download-status/") => "GET",
-        _ if path.starts_with("/api/updates/webapp/download-cancel/") => "POST",
         _ => return Some(detail(404, "Update route not found")),
     };
     if method != expected {
@@ -325,14 +312,14 @@ pub fn route(state: &SidecarState, method: &str, path: &str) -> Option<HttpRespo
     let updater = state.native_updater.clone();
     updater.sync_preferences(&state.update_settings.load());
     let result = match path {
-        "/api/updates/status" => status_with_runtime(state, &updater, false),
-        "/api/updates/check" => status_with_runtime(state, &updater, true),
-        "/api/updates/webapp/restart" => Ok(json!({
+        "/api/updates/status" => updater.status_json(false),
+        "/api/updates/check" => updater.status_json(true),
+        // The restart request is the only other path admitted above.
+        _ => Ok(json!({
             "success": true,
             "message": "Restart requested; Electron will restart the native backend",
             "restart_required": true,
         })),
-        _ => return None,
     };
     Some(result.map_or_else(
         |error| detail(400, error),
@@ -368,20 +355,6 @@ fn parse_changelog_query(path: &str) -> Result<Option<String>, String> {
         return Err("Changelog accepts only one bounded current_version query".into());
     }
     Ok(Some(fields[0].1.clone()))
-}
-
-fn status_with_runtime(
-    state: &SidecarState,
-    updater: &NativeUpdater,
-    refresh: bool,
-) -> Result<Value, String> {
-    let mut status = updater.status_json(refresh)?;
-    let legacy = serde_json::from_str::<Value>(&crate::native_update_status_response(state).body)
-        .map_err(|error| format!("Could not compose native runtime status: {error}"))?;
-    for field in ["nirs4all", "runtime", "venv"] {
-        status[field] = legacy[field].clone();
-    }
-    Ok(status)
 }
 
 fn parse_release(
@@ -678,10 +651,6 @@ fn env_truthy(name: &str) -> bool {
             "1" | "true" | "yes"
         )
     })
-}
-
-fn empty_runtime() -> Value {
-    json!({"path":"","exists":false,"is_valid":false,"python_executable":null,"python_version":null,"pip_version":null,"created_at":null,"last_updated":null,"size_bytes":0})
 }
 
 fn detail(status: u16, message: impl Into<String>) -> HttpResponse {
@@ -1044,10 +1013,22 @@ mod tests {
                 assert!(webapp.contains_key(key), "{key}");
             }
             assert_eq!(webapp["update_available"], update_available);
-            for block in ["nirs4all", "runtime", "venv"] {
-                assert!(status[block].is_object(), "{block}");
-            }
-            assert!(status.get("last_check").is_some());
+            // The Python environment is not an application update: its
+            // state is served by the environment manager, never here.
+            assert_eq!(
+                status
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<std::collections::BTreeSet<_>>(),
+                std::collections::BTreeSet::from([
+                    "check_interval_hours",
+                    "last_check",
+                    "update_capability",
+                    "webapp",
+                ])
+            );
             assert_eq!(status["check_interval_hours"], 24);
             assert_eq!(
                 status["update_capability"],
@@ -1074,6 +1055,8 @@ mod tests {
             ("POST", "/api/updates/webapp/cleanup"),
             ("GET", "/api/updates/webapp/last-apply-result"),
             ("DELETE", "/api/updates/webapp/last-apply-result"),
+            ("GET", "/api/updates/webapp/download-status/update-1"),
+            ("POST", "/api/updates/webapp/download-cancel/update-1"),
             ("GET", "/api/updates/webapp/unknown"),
         ] {
             let response = route(&state, method, path).unwrap();
@@ -1087,7 +1070,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_is_served_and_download_job_paths_fall_through() {
+    fn restart_is_served_and_other_update_paths_fall_through() {
         let temp = TempDir::new().unwrap();
         let state = state_with(&temp, updater("1.0.0", "http://127.0.0.1:9"));
         let restart = route(&state, "POST", "/api/updates/webapp/restart").unwrap();
@@ -1102,18 +1085,7 @@ mod tests {
                 .status,
             405
         );
-        assert!(route(
-            &state,
-            "GET",
-            "/api/updates/webapp/download-status/update-1"
-        )
-        .is_none());
-        assert!(route(
-            &state,
-            "POST",
-            "/api/updates/webapp/download-cancel/update-1"
-        )
-        .is_none());
         assert!(route(&state, "GET", "/api/updates/settings").is_none());
+        assert!(route(&state, "GET", "/api/updates/version").is_none());
     }
 }

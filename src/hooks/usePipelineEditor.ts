@@ -98,7 +98,7 @@ interface UsePipelineEditorReturn {
   updateChild: (stepId: string, childId: string, updates: Partial<PipelineStep>, path?: string[]) => void;
 
   // DnD handlers
-  handleDrop: (data: DragData, indicator: DropIndicator) => void;
+  handleDrop: (data: DragData, indicator: DropIndicator) => boolean;
   handleReorder: (activeId: string, overId: string, data: DragData) => void;
 
   // History

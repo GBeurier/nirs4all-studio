@@ -129,10 +129,18 @@ later installs PyTorch the same way when the user asks for it: the payload is
 the closure that `uv` resolved for exactly that set, and the release workflow
 installs it with `--offline --no-index` on each platform before publication,
 the default packages first and PyTorch afterwards into the same environment.
-Studio tries the payload first for every installation; a package that is not
-in it (any other recommended package) is then requested from the package
-index. PyTorch installed from the payload is the CPU build; with the standard
-installer `uv` selects the CPU, CUDA or Metal build for the machine.
+Studio tries the payload first for every installation except PyTorch; a
+package that is not in it (any other recommended package) is then requested
+from the package index.
+
+PyTorch is the exception because the payload carries its CPU build only.
+Studio asks the package index first, with `--torch-backend auto` as on the
+standard installer, so that `uv` selects the CPU or CUDA build for the
+machine; when the index cannot be reached, or cannot satisfy the request,
+Studio installs the CPU build from the payload instead. Both attempts keep the
+installed required packages pinned. When PyTorch is requested together with
+other packages it is resolved first and on its own, and the other packages
+then follow the payload-first order.
 
 It is built with `electron-builder.offline.yml`, which `extends`
 `electron-builder.installer.yml` and adds `offline/**/*` to the packaged
@@ -230,17 +238,21 @@ an empty `uv` cache:
 
 | Source | Default environment | Adding PyTorch afterwards |
 |---|---|---|
-| Offline payload, no network | 7 s, 2.0 GB on disk | 2 s, CPU build, 0.7 GB more |
+| Offline installer, no network | 7 s, 2.0 GB on disk | 2 s, CPU build from the payload, 0.7 GB more |
 | Standard installer, package index | 4 min 22 s, 2.0 GB on disk | 6 min 22 s on a machine with an NVIDIA GPU (CUDA build), 4.5 GB more |
 
 The second row is download time on that machine's connection (about 1 GB,
-then about 2.5 GB); it varies with the network.
+then about 2.5 GB); it varies with the network. An offline installer on a
+machine with a network installs PyTorch like the second row.
 
 A `resources/backend/` that carries a complete Python runtime weighs about
 1.5 GB.
 
-Not measured on their platforms: the following are the download sizes of the
-locked files, summed from the locks.
+The Windows and macOS payloads were not measured on their platforms. The
+following are download sizes: the sum of the sizes that the package index and
+the python-build-standalone release report for the files named in the wheel
+locks and in `scripts/python-runtime-config.cjs`, queried on 2026-11-16. The
+locks record names, URLs and hashes, not sizes.
 
 | Target | Required cohort | Offline wheels | Python archive |
 |---|---|---|---|
@@ -417,7 +429,9 @@ The release workflow is `.github/workflows/release-unified.yml`.
 
 - `tag`
 - `publish_existing_tag`
-- `macos_arm64_only`
+- `macos_arm64_only`: builds and smokes the macOS installer only. It
+  publishes nothing: the `release` job needs the quality, Linux and Windows
+  jobs, which this input skips.
 - `skip_docker`
 
 ### Jobs

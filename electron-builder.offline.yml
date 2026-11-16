@@ -1,7 +1,8 @@
 # Offline installer (Windows and Linux): the standard installer plus the
-# offline payload (the pinned Python runtime archive and the wheels of the
-# default package set), so that Studio can create its environment without
-# network access. Artifacts carry the `-offline` suffix; the in-app update
+# offline payload (the pinned Python runtime archive, the wheels of the
+# default package set and those of the CPU build of PyTorch), so that Studio
+# can create its environment, and add PyTorch on request, without network
+# access. Artifacts carry the `-offline` suffix; the in-app update
 # check never selects them. There is no macOS offline installer: a macOS
 # application cannot embed wheels.
 extends: electron-builder.installer.yml
