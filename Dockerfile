@@ -61,7 +61,12 @@ RUN node scripts/fetch-uv.cjs --platform linux --arch x64 \
     && node scripts/provision-environment.cjs \
       --backend-root /build/backend-dist \
       --env-dir /opt/nirs4all/python-env \
-      --recommended shap,matplotlib,lightgbm
+      --recommended shap,matplotlib,lightgbm \
+    # The image has no display: drop the Tk binding, whose Tcl/Tk libraries are not in the runtime image.
+    && rm -rf /opt/nirs4all/python-env/python/lib/python3.11/lib-dynload/_tkinter.*.so \
+      /opt/nirs4all/python-env/python/lib/python3.11/tkinter \
+      /opt/nirs4all/python-env/python/lib/python3.11/idlelib \
+      /opt/nirs4all/python-env/python/lib/python3.11/turtledemo
 
 FROM ${NODE_IMAGE} AS native-runtime-contract
 ARG NIRS4ALL_METHODS_SHA256

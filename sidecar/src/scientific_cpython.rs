@@ -2778,7 +2778,7 @@ done"#,
             .unwrap();
         let range = crate::recommended_config::nirs4all_range().unwrap();
         assert_eq!(required["range"], range.as_str());
-        assert!(!range.is_empty());
+        assert_ne!(range, "");
         // The version Studio installs is one it admits.
         let install = required["install"].as_str().unwrap();
         assert_eq!(

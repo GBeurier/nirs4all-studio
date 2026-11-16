@@ -309,9 +309,7 @@ function DesktopPythonEnvironment({ api, context }: { api: PythonEnvApi; context
             <h1 className="text-2xl font-bold tracking-tight">{t("pythonEnv.setup.title")}</h1>
             <p className="max-w-2xl text-muted-foreground">{t("pythonEnv.setup.description")}</p>
           </div>
-          {ready ? (
-            <Button type="button" onClick={openStudio}>{t("pythonEnv.setup.open")}</Button>
-          ) : (
+          {!ready && (
             <Button
               type="button"
               variant="outline"
