@@ -46,6 +46,8 @@ import { useNodeRegistryOptional } from "./contexts/useNodeRegistry";
 import { usePipelineEditorPreferencesOptional, type TierLevel } from "./contexts/usePipelineEditorPreferences";
 import { useOperatorAvailabilityOptional } from "./contexts/useOperatorAvailability";
 import { useStepMetadataCatalog } from "./shared/stepMetadata";
+import { usePyTorchInstallPrompt } from "@/context/usePyTorchInstallPrompt";
+import { requiresPyTorch } from "@/lib/pytorchRequirement";
 import { stepIcons } from "./StepPaletteIcons";
 import { DraggableStep } from "./StepPaletteItem";
 
@@ -59,6 +61,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [openSections, setOpenSections] = useState<Set<PaletteGroupKey>>(new Set());
   const prefs = usePipelineEditorPreferencesOptional();
   const availability = useOperatorAvailabilityOptional();
+  const { canInstall: pyTorchInstallable } = usePyTorchInstallPrompt();
   const [tierLevelFallback, setTierLevelFallback] = useState<TierLevel>("standard");
   const [showUnavailableFallback, setShowUnavailableFallback] = useState(true);
 
@@ -184,10 +187,11 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
           isCompact={isCompact}
           isUnavailable={availabilityDisplay.isUnavailable}
           unavailableReason={availabilityDisplay.unavailableReason}
+          offersPyTorchInstall={pyTorchInstallable && requiresPyTorch(option.requires)}
         />
       );
     },
-    [getOptionAvailability, onAddStep]
+    [getOptionAvailability, onAddStep, pyTorchInstallable]
   );
 
   return (

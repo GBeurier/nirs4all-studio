@@ -25,6 +25,8 @@ export interface NodeDefinition {
   category?: string;
   /** Whether this is a deep learning model */
   isDeepLearning?: boolean;
+  /** Optional Python distributions the operator imports, e.g. ["torch"] */
+  requires?: string[];
   /** Whether this is an advanced/expert option */
   isAdvanced?: boolean;
   /** Searchable tags */

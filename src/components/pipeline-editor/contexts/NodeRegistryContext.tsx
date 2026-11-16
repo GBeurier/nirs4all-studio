@@ -56,6 +56,7 @@ function jsonNodeToNodeDefinition(node: JsonNodeDefinition): NodeDefinition {
     description: node.description,
     category: node.category,
     isDeepLearning: node.isDeepLearning,
+    requires: node.requires,
     isAdvanced: node.isAdvanced,
     tags: node.tags,
     classPath: node.classPath,

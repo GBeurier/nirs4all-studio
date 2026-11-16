@@ -24,6 +24,8 @@ import {
 } from "@/lib/experimentLaunchFlowState";
 import { resolveExperimentLaunchPreflightDecision } from "@/lib/experimentLaunchPreflight";
 import type { MissingOperatorIssue } from "@/lib/pipelineOperatorAvailability";
+import { stepsNeedPyTorch, type PyTorchNeed } from "@/lib/pytorchRequirement";
+import { usePyTorchGate } from "@/context/usePyTorchInstallPrompt";
 import type { MissingTargetPolicy } from "@/types/runs";
 import { useNewExperimentLaunchSubmissionMutation } from "./useNewExperimentLaunchSubmissionMutation";
 
@@ -106,13 +108,7 @@ export function useNewExperimentLaunchFlow({
   ]);
   const launchPayloadPlan = useMemo(() => buildLaunchPayloadPlan(), [buildLaunchPayloadPlan]);
 
-  const handleLaunch = useCallback(async () => {
-    if (hasGroupingBlockingError) {
-      toast.error(experimentLaunchMessages.groupingBlocked);
-      onGroupingBlockingError();
-      return;
-    }
-
+  const checkAndSubmit = useCallback(async () => {
     if (!executionAdapter.buildPreflightRequest) {
       submitLaunchPayloadPlan(buildLaunchPayloadPlan());
       return;
@@ -159,11 +155,26 @@ export function useNewExperimentLaunchFlow({
   }, [
     buildLaunchPayloadPlan,
     executionAdapter,
-    hasGroupingBlockingError,
-    onGroupingBlockingError,
     singlePairSplitSpecResult,
     submitLaunchPayloadPlan,
   ]);
+
+  // A run in the local Python environment fails at its first PyTorch model when PyTorch is missing.
+  const checkAndSubmitWithPyTorch = usePyTorchGate(checkAndSubmit, (): PyTorchNeed | null => (
+    executionAdapter.nativeBackends.includes("local-python")
+      && selectedPipelineConfigs.some((pipeline) => stepsNeedPyTorch(pipeline.steps))
+      ? { kind: "experiment" }
+      : null
+  ));
+
+  const handleLaunch = useCallback(async () => {
+    if (hasGroupingBlockingError) {
+      toast.error(experimentLaunchMessages.groupingBlocked);
+      onGroupingBlockingError();
+      return;
+    }
+    await checkAndSubmitWithPyTorch();
+  }, [checkAndSubmitWithPyTorch, hasGroupingBlockingError, onGroupingBlockingError]);
 
   const handleConfirmPrunedLaunch = useCallback(() => {
     if (!missingNodesDialogState.launchConfig) return;

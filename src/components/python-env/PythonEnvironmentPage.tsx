@@ -26,7 +26,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InstallationLogPanel } from "@/components/setup/InstallationLogPanel";
 import { usePythonEnv } from "@/context/usePythonEnv";
@@ -36,6 +35,7 @@ import type {
   PythonEnvReport,
   PythonEnvState,
 } from "@/types/pythonEnvironment";
+import { PythonEnvActivityStatus } from "./PythonEnvActivityStatus";
 import { PythonEnvDeploymentSummary } from "./PythonEnvDeploymentSummary";
 import { NEW_ENVIRONMENT, PythonEnvList } from "./PythonEnvList";
 import { PythonEnvPackageTable } from "./PythonEnvPackageTable";
@@ -448,25 +448,7 @@ function DesktopPythonEnvironment({ api, context }: { api: PythonEnvApi; context
           {/* Stays reachable under the long package list; the offsets cancel the page padding. */}
           <div className="sticky -bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-b-xl border-t bg-card px-6 py-3 md:-bottom-6">
             {state?.phase === "busy" ? (
-              <div className="min-w-0 flex-1 space-y-1.5" role="status" aria-live="polite">
-                <p className="flex items-center gap-2 text-sm font-medium">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  {t(`pythonEnv.activity.${state.activity?.kind ?? "installing"}`)}
-                  {typeof state.activity?.percent === "number" && (
-                    <span className="font-normal text-muted-foreground">{Math.round(state.activity.percent)}%</span>
-                  )}
-                </p>
-                {typeof state.activity?.percent === "number" ? (
-                  <Progress value={state.activity.percent} aria-label={t(`pythonEnv.activity.${state.activity.kind}`)} />
-                ) : (
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-primary/20">
-                    <div className="h-full w-1/3 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
-                  </div>
-                )}
-                {state.activity?.detail && (
-                  <p className="truncate text-xs text-muted-foreground" title={state.activity.detail}>{state.activity.detail}</p>
-                )}
-              </div>
+              <PythonEnvActivityStatus activity={state.activity} className="min-w-0 flex-1" />
             ) : (
               <p className="min-w-0 flex-1 text-sm text-muted-foreground">{summary}</p>
             )}

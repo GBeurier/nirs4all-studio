@@ -4,7 +4,9 @@
 
 import { act, type HTMLAttributes, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import i18n from "i18next";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import "@/lib/i18n";
 import { DraggableStep } from "../StepPaletteItem";
 import { PipelineDndContext } from "../usePipelineDnd";
 
@@ -40,6 +42,10 @@ const option = {
   defaultParams: {},
 };
 
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
+
 afterEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = "";
@@ -72,6 +78,38 @@ describe("DraggableStep", () => {
     expect(item).not.toBeNull();
     item?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     expect(onDoubleClick).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
+  });
+
+  it("hints that PyTorch will be offered without disabling the model", async () => {
+    mocks.useDraggable.mockReturnValue({ attributes: {}, listeners: {}, setNodeRef: vi.fn(), isDragging: false });
+    const onDoubleClick = vi.fn();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const hint = "PyTorch is not installed. Studio offers to install it when you add this model.";
+
+    await act(async () => {
+      root.render(
+        <PipelineDndContext.Provider value={dnd}>
+          <DraggableStep
+            stepType="model"
+            option={{ name: "NICoN", description: "CNN for spectra", defaultParams: {}, isDeepLearning: true, requires: ["torch"] }}
+            onDoubleClick={onDoubleClick}
+            offersPyTorchInstall
+          />
+        </PipelineDndContext.Provider>,
+      );
+    });
+
+    expect(mocks.useDraggable).toHaveBeenCalledWith(expect.objectContaining({ disabled: false }));
+    const item = container.querySelector('[aria-disabled="false"]')!;
+    expect(item.querySelector(`[aria-label="${hint}"]`)).not.toBeNull();
+    expect(item.textContent).not.toContain("Unavailable");
+    expect(container.textContent).toContain(hint);
+    item.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    expect(onDoubleClick).toHaveBeenCalledTimes(1);
 
     await act(async () => root.unmount());
   });

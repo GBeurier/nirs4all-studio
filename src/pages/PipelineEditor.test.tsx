@@ -28,6 +28,14 @@ const mocks = vi.hoisted(() => ({
   loadPipeline: vi.fn(),
   setIsFavorite: vi.fn(),
   hasPersistedPipelineState: vi.fn(() => false),
+  addStep: vi.fn(),
+  handleDrop: vi.fn(),
+  // Props the page hands to the components that offer steps.
+  entryPoints: {} as {
+    paletteAddStep?: (type: string, option: unknown) => void;
+    commandPaletteAddStep?: (type: string, option: unknown) => void;
+    onDrop?: (data: unknown, indicator: unknown) => void;
+  },
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   toastInfo: vi.fn(),
@@ -83,7 +91,7 @@ vi.mock("@/hooks/usePipelineEditor", () => ({
     setPipelineConfig: vi.fn(),
     setSelectedStepId: vi.fn(),
     setIsFavorite: mocks.setIsFavorite,
-    addStep: vi.fn(),
+    addStep: mocks.addStep,
     addStepAtPath: vi.fn(),
     removeStep: vi.fn(),
     duplicateStep: vi.fn(),
@@ -95,7 +103,7 @@ vi.mock("@/hooks/usePipelineEditor", () => ({
     addChild: vi.fn(),
     removeChild: vi.fn(),
     updateChild: vi.fn(),
-    handleDrop: vi.fn(),
+    handleDrop: mocks.handleDrop,
     handleReorder: vi.fn(),
     undo: vi.fn(),
     redo: vi.fn(),
@@ -154,10 +162,19 @@ vi.mock("@/components/pipeline-editor", () => {
     StepPalette: () => <div data-testid="step-palette" />,
     PipelineTree: () => <div data-testid="pipeline-tree" />,
     StepConfigPanel: () => <div data-testid="step-config" />,
-    PipelineDndProvider: PassThrough,
+    PipelineDndProvider: ({ children, onDrop }: { children?: ReactNode; onDrop: typeof mocks.entryPoints.onDrop }) => {
+      mocks.entryPoints.onDrop = onDrop;
+      return <>{children}</>;
+    },
     PipelineEditorHeader: () => null,
-    PipelineEditorRouteOverlays: () => null,
-    PipelineEditorWorkspace: () => null,
+    PipelineEditorRouteOverlays: ({ onAddStep }: { onAddStep: typeof mocks.entryPoints.commandPaletteAddStep }) => {
+      mocks.entryPoints.commandPaletteAddStep = onAddStep;
+      return null;
+    },
+    PipelineEditorWorkspace: ({ onAddStep }: { onAddStep: typeof mocks.entryPoints.paletteAddStep }) => {
+      mocks.entryPoints.paletteAddStep = onAddStep;
+      return null;
+    },
     CommandPalette: () => null,
     KeyboardShortcutsDialog: () => null,
     ExecutionPreviewCompact: () => null,
@@ -256,6 +273,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
+import { PyTorchInstallPromptContext } from "@/context/usePyTorchInstallPrompt";
 import PipelineEditor from "./PipelineEditor";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -288,7 +306,7 @@ async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise
   }
 }
 
-async function renderPage(route: string) {
+async function renderPage(route: string, wrap: (page: ReactNode) => ReactNode = (page) => page) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -299,7 +317,7 @@ async function renderPage(route: string) {
       <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={[route]}>
           <Routes>
-            <Route path="/pipelines/:id" element={<PipelineEditor />} />
+            <Route path="/pipelines/:id" element={wrap(<PipelineEditor />)} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>,
@@ -529,6 +547,78 @@ describe("PipelineEditor route loading", () => {
         description: "3 steps loaded from an expanded executed snapshot, not the original template.",
       });
     });
+
+    await view.unmount();
+  });
+});
+
+describe("PipelineEditor PyTorch models", () => {
+  const nicon = { name: "NICoN", description: "CNN for spectra", defaultParams: {}, requires: ["torch"] };
+  const pls = { name: "PLSRegression", description: "PLS", defaultParams: {} };
+  const request = vi.fn<(need: unknown, proceed: () => void) => void>();
+
+  const renderEditor = (canInstall: boolean) => renderPage("/pipelines/new", (page) => (
+    <PyTorchInstallPromptContext.Provider value={{ canInstall, request }}>{page}</PyTorchInstallPromptContext.Provider>
+  ));
+
+  it("asks for PyTorch from the step palette and the command palette before adding the model", async () => {
+    const view = await renderEditor(true);
+    const { paletteAddStep, commandPaletteAddStep } = mocks.entryPoints;
+
+    for (const addStep of [paletteAddStep!, commandPaletteAddStep!]) {
+      request.mockClear();
+      mocks.addStep.mockClear();
+      act(() => addStep("model", nicon));
+      expect(request).toHaveBeenCalledWith({ kind: "model", name: "NICoN" }, expect.any(Function));
+      expect(mocks.addStep).not.toHaveBeenCalled();
+
+      // The installation succeeded.
+      act(() => request.mock.calls[0][1]());
+      expect(mocks.addStep).toHaveBeenCalledWith("model", nicon);
+    }
+
+    await view.unmount();
+  });
+
+  it("asks for PyTorch when a model is dropped from the palette, and confirms the step only once added", async () => {
+    const view = await renderEditor(true);
+    const data = { type: "palette-item", stepType: "model", option: nicon };
+    const indicator = { path: [], index: 0 };
+
+    act(() => mocks.entryPoints.onDrop!(data, indicator));
+    expect(request).toHaveBeenCalledWith({ kind: "model", name: "NICoN" }, expect.any(Function));
+    expect(mocks.handleDrop).not.toHaveBeenCalled();
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+
+    act(() => request.mock.calls[0][1]());
+    expect(mocks.handleDrop).toHaveBeenCalledWith(data, indicator);
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("NICoN added to pipeline");
+
+    await view.unmount();
+  });
+
+  it("adds other steps, and moves existing ones, without asking", async () => {
+    const view = await renderEditor(true);
+    const moved = { type: "pipeline-step", stepId: "s1", step: { id: "s1", type: "model", name: "NICoN", params: {} } };
+
+    act(() => mocks.entryPoints.paletteAddStep!("model", pls));
+    act(() => mocks.entryPoints.onDrop!({ type: "palette-item", stepType: "model", option: pls }, { path: [], index: 0 }));
+    act(() => mocks.entryPoints.onDrop!(moved, { path: [], index: 1 }));
+
+    expect(request).not.toHaveBeenCalled();
+    expect(mocks.addStep).toHaveBeenCalledWith("model", pls);
+    expect(mocks.handleDrop).toHaveBeenCalledTimes(2);
+
+    await view.unmount();
+  });
+
+  it("adds a PyTorch model at once where Studio cannot install PyTorch", async () => {
+    const view = await renderEditor(false);
+
+    act(() => mocks.entryPoints.paletteAddStep!("model", nicon));
+
+    expect(request).not.toHaveBeenCalled();
+    expect(mocks.addStep).toHaveBeenCalledWith("model", nicon);
 
     await view.unmount();
   });

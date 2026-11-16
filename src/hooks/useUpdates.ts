@@ -4,10 +4,8 @@
  * Provides hooks for:
  * - Checking for application updates
  * - Managing update settings
- * - Downloading and applying application updates
  */
 
-import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import i18n from "i18next";
 import { formatBytes as formatByteSize } from "@/utils/formatters";
@@ -17,17 +15,8 @@ import {
   getUpdateSettings,
   updateUpdateSettings,
   getVersionInfo,
-  startWebappDownload,
-  getDownloadStatus,
-  cancelDownload,
-  getStagedUpdateInfo,
-  applyWebappUpdate,
-  cancelStagedUpdate,
-  requestRestart,
   type UpdateStatus,
   type UpdateSettings,
-  type VersionInfo,
-  type DownloadStatusResponse,
 } from "@/api/updates";
 
 // Query keys
@@ -132,175 +121,4 @@ export function useHasUpdates() {
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined) return i18n.t("common.format.unknownSize");
   return formatByteSize(bytes);
-}
-
-// ============= Auto-Update Hooks =============
-
-/**
- * Hook to manage webapp update download and apply process
- *
- * Provides:
- * - Download state tracking with progress
- * - Apply update functionality
- * - Cancel operations
- */
-export function useUpdateDownload() {
-  const queryClient = useQueryClient();
-  const [downloadJobId, setDownloadJobId] = useState<string | null>(null);
-  const [downloadStatus, setDownloadStatus] =
-    useState<DownloadStatusResponse | null>(null);
-  const [isPolling, setIsPolling] = useState(false);
-
-  // Start download mutation
-  const startDownloadMutation = useMutation({
-    mutationFn: startWebappDownload,
-    onSuccess: (data) => {
-      setDownloadJobId(data.job_id);
-      setIsPolling(true);
-    },
-    onError: () => {
-      setDownloadJobId(null);
-      setIsPolling(false);
-    },
-  });
-
-  // Poll for download status
-  useEffect(() => {
-    if (!downloadJobId || !isPolling) return;
-
-    const pollInterval = setInterval(async () => {
-      try {
-        const status = await getDownloadStatus(downloadJobId);
-        setDownloadStatus(status);
-
-        // Stop polling when complete, failed, or cancelled
-        if (["completed", "failed", "cancelled"].includes(status.status)) {
-          setIsPolling(false);
-        }
-      } catch (error) {
-        console.error("Failed to get download status:", error);
-        setIsPolling(false);
-      }
-    }, 500); // Poll every 500ms
-
-    return () => clearInterval(pollInterval);
-  }, [downloadJobId, isPolling]);
-
-  // Cancel download mutation
-  const cancelDownloadMutation = useMutation({
-    mutationFn: () => {
-      if (!downloadJobId) throw new Error(i18n.t("common.updates.noDownloadInProgress"));
-      return cancelDownload(downloadJobId);
-    },
-    onSuccess: () => {
-      setIsPolling(false);
-      setDownloadStatus(null);
-      setDownloadJobId(null);
-    },
-  });
-
-  // Apply update mutation
-  const applyMutation = useMutation({
-    mutationFn: () => applyWebappUpdate(true),
-    onSuccess: () => {
-      // Updater script is now running and waiting for our PID to die.
-      // Quit the app so it can proceed with file copy and relaunch.
-      // Brief delay so the user sees the "restarting" message.
-      setTimeout(() => {
-        const electronApi = (window as unknown as {
-          electronApi?: { quitForUpdate?: () => Promise<{ success: boolean }> };
-        }).electronApi;
-        if (electronApi?.quitForUpdate) {
-          electronApi.quitForUpdate();
-        } else {
-          // Web/browser mode: tell the backend to shut down so the updater
-          // script sees the PID exit and can proceed with the file copy.
-          requestRestart().catch(() => {});
-        }
-      }, 1500);
-    },
-  });
-
-  // Cancel staged update mutation
-  const cancelStagedMutation = useMutation({
-    mutationFn: cancelStagedUpdate,
-    onSuccess: () => {
-      setDownloadStatus(null);
-      setDownloadJobId(null);
-      queryClient.invalidateQueries({ queryKey: updateKeys.status() });
-    },
-  });
-
-  // Query for staged update info
-  const stagedUpdateQuery = useQuery({
-    queryKey: [...updateKeys.all, "staged"],
-    queryFn: getStagedUpdateInfo,
-    staleTime: 10 * 1000, // 10 seconds
-    enabled:
-      downloadStatus?.status === "completed" ||
-      downloadStatus?.result?.ready_to_apply === true,
-  });
-
-  // Reset state
-  const reset = useCallback(() => {
-    setDownloadJobId(null);
-    setDownloadStatus(null);
-    setIsPolling(false);
-  }, []);
-
-  // Derived state — isPolling is set immediately on mutation success (before
-  // the first poll returns), so using it alone avoids a brief false gap that
-  // would flash the "Update Available" dialog content.
-  const isDownloading = startDownloadMutation.isPending || isPolling;
-  const downloadProgress = downloadStatus?.progress ?? 0;
-  const downloadMessage = downloadStatus?.message ?? "";
-  const downloadError =
-    downloadStatus?.error ?? startDownloadMutation.error?.message;
-  const downloadComplete = downloadStatus?.status === "completed";
-  const readyToApply =
-    downloadStatus?.result?.ready_to_apply ??
-    stagedUpdateQuery.data?.has_staged_update ??
-    false;
-  const stagedVersion =
-    downloadStatus?.result?.version ?? stagedUpdateQuery.data?.version;
-
-  return {
-    // Download state
-    isDownloading,
-    downloadProgress,
-    downloadMessage,
-    downloadError,
-    downloadComplete,
-    readyToApply,
-    stagedVersion,
-    downloadJobId,
-
-    // Actions
-    startDownload: startDownloadMutation.mutate,
-    cancelDownload: cancelDownloadMutation.mutate,
-    applyUpdate: applyMutation.mutate,
-    cancelStagedUpdate: cancelStagedMutation.mutate,
-    reset,
-
-    // Apply state
-    isApplying: applyMutation.isPending,
-    applyError: applyMutation.error?.message,
-    applySuccess: applyMutation.isSuccess,
-
-    // Loading states
-    isStartingDownload: startDownloadMutation.isPending,
-    isCancellingDownload: cancelDownloadMutation.isPending,
-    isCancellingStagedUpdate: cancelStagedMutation.isPending,
-  };
-}
-
-/**
- * Hook to check for staged updates on mount
- */
-export function useStagedUpdate() {
-  return useQuery({
-    queryKey: [...updateKeys.all, "staged"],
-    queryFn: getStagedUpdateInfo,
-    staleTime: 30 * 1000, // 30 seconds
-  });
 }

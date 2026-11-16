@@ -18,6 +18,8 @@ import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation";
 import { usePipelineEditorRouteActions } from "@/hooks/usePipelineEditorRouteActions";
 import { usePipelineEditorRouteImports } from "@/hooks/usePipelineEditorRouteImports";
 import { usePipelineEditorSamples } from "@/hooks/usePipelineEditorSamples";
+import { usePyTorchGate } from "@/context/usePyTorchInstallPrompt";
+import { pyTorchNeedOfOperator } from "@/lib/pytorchRequirement";
 import type { DragData, DropIndicator } from "@/components/pipeline-editor/types";
 
 export default function PipelineEditor() {
@@ -147,13 +149,19 @@ export default function PipelineEditor() {
     if (!open) closeShortcutsHelp();
   }, [closeShortcutsHelp]);
 
+  // A PyTorch model is added only once PyTorch is installed, whichever way it was picked.
+  const addStepWithPyTorch = usePyTorchGate(addStep, (_type, option) => pyTorchNeedOfOperator(option));
+
   // Handle drop from DnD context
-  const onDrop = useCallback((data: DragData, indicator: DropIndicator) => {
-    handleDrop(data, indicator);
-    if (data.type === "palette-item" && data.option) {
-      toast.success(t("pipelineEditor.page.stepAdded", { name: data.option.name }));
-    }
-  }, [handleDrop, t]);
+  const onDrop = usePyTorchGate(
+    useCallback((data: DragData, indicator: DropIndicator) => {
+      handleDrop(data, indicator);
+      if (data.type === "palette-item" && data.option) {
+        toast.success(t("pipelineEditor.page.stepAdded", { name: data.option.name }));
+      }
+    }, [handleDrop, t]),
+    (data) => (data.type === "palette-item" && data.option ? pyTorchNeedOfOperator(data.option) : null),
+  );
 
   // Handle reorder from DnD context
   const onReorder = useCallback((activeId: string, overId: string, data: DragData) => {
@@ -254,7 +262,7 @@ export default function PipelineEditor() {
             focusedPanel={focusedPanel}
             panelRefs={panelRefs}
             onFocusPanel={setFocusedPanel}
-            onAddStep={addStep}
+            onAddStep={addStepWithPyTorch}
             onSelectStep={setSelectedStepId}
             onRemoveStep={removeStep}
             onDuplicateStep={duplicateStep}
@@ -295,7 +303,7 @@ export default function PipelineEditor() {
         selectedStepId={selectedStepId}
         steps={steps}
         onSelectStep={setSelectedStepId}
-        onAddStep={addStep}
+        onAddStep={addStepWithPyTorch}
         onRemoveStep={removeStep}
         onDuplicateStep={duplicateStep}
         onSave={handleSave}

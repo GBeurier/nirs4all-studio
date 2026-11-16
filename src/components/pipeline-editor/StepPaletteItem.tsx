@@ -1,6 +1,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { useTranslation } from "react-i18next";
 import {
+  Download,
   GripVertical,
   Star,
 } from "lucide-react";
@@ -28,6 +29,8 @@ interface DraggableStepProps {
   isCompact?: boolean;
   isUnavailable?: boolean;
   unavailableReason?: string;
+  /** PyTorch is not installed; Studio offers to install it when the model is added. */
+  offersPyTorchInstall?: boolean;
 }
 
 export function DraggableStep({
@@ -37,6 +40,7 @@ export function DraggableStep({
   isCompact = false,
   isUnavailable = false,
   unavailableReason,
+  offersPyTorchInstall = false,
 }: DraggableStepProps) {
   const { t } = useTranslation();
   const { isDragging: globalIsDragging } = usePipelineDnd();
@@ -99,6 +103,12 @@ export function DraggableStep({
               {option.isDeepLearning && (
                 <Star className="h-2.5 w-2.5 text-violet-500 flex-shrink-0" />
               )}
+              {offersPyTorchInstall && (
+                <Download
+                  className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0"
+                  aria-label={t("pythonEnv.pytorch.paletteHint")}
+                />
+              )}
             </div>
             {!isCompact && (
               <p className="text-[10px] text-muted-foreground truncate leading-tight">{option.description}</p>
@@ -128,6 +138,12 @@ export function DraggableStep({
             <div className="flex items-center gap-1.5 pt-1">
               <div className="h-1.5 w-1.5 rounded-full bg-violet-500" />
               <span className="text-[10px] text-muted-foreground">{t("pipelineEditor.palette.deepLearningModel")}</span>
+            </div>
+          )}
+          {offersPyTorchInstall && (
+            <div className="flex items-start gap-1.5">
+              <Download className="mt-0.5 h-2.5 w-2.5 flex-shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="text-[10px] text-muted-foreground leading-relaxed">{t("pythonEnv.pytorch.paletteHint")}</span>
             </div>
           )}
         </div>
