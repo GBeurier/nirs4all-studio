@@ -188,6 +188,39 @@ describe("build-native-sidecar", () => {
     }
   });
 
+  it("requires a macOS application to name its required wheels instead of embedding them", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-build-contract-"));
+    try {
+      const backendRoot = path.join(root, "backend-dist");
+      fs.mkdirSync(path.join(backendRoot, "native"), { recursive: true });
+      fs.writeFileSync(path.join(backendRoot, "native", "studio-sidecar"), "rust-sidecar");
+      fs.mkdirSync(path.join(backendRoot, "tools"));
+      fs.writeFileSync(path.join(backendRoot, "tools", "uv"), "uv");
+      adapters.installRuntimeAdapters(projectRoot, path.join(backendRoot, "adapters"));
+      runtimeContract.writeRuntimeContract({ backendRoot, platform: "darwin", arch: "arm64" });
+      const verify = () => runtimeContract.verifyRuntimeContract({
+        backendRoot, artifactBoundaryRoot: backendRoot, platform: "darwin", arch: "arm64", requirePythonPayload: true,
+      });
+      const filename = "nirs4all.Studio-1.2.3-mac-arm64-wheels.tar.gz";
+      const manifest = { url: `https://github.com/GBeurier/nirs4all-studio/releases/download/1.2.3/${filename}`, sha256: "a".repeat(64), filename };
+      const manifestPath = path.join(backendRoot, "wheelhouse.json");
+      expect(verify).toThrow(/Packaged wheelhouse description not found/);
+      for (const invalid of [
+        { ...manifest, sha256: "A".repeat(64) }, { ...manifest, filename: "wheels.tar.gz" },
+        { ...manifest, url: `https://example.org/${filename}` }, { ...manifest, extra: true },
+      ]) {
+        fs.writeFileSync(manifestPath, JSON.stringify(invalid));
+        expect(verify).toThrow(/Invalid packaged wheelhouse description/);
+      }
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+      expect(verify().sidecarPath).toBe(path.join(backendRoot, "native", "studio-sidecar"));
+      fs.mkdirSync(path.join(backendRoot, "wheels"));
+      expect(verify).toThrow(/must not embed wheels/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("attests an explicitly staged ABI 2.22 native Methods closure", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-methods-contract-"));
     try {

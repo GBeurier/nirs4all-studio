@@ -81,9 +81,7 @@ describe("native Methods product build", () => {
       buildExtra: ["--config", "Release"],
       ctestExtra: ["-C", "Release"],
     });
-    expect(methodsBuild.targetConfig("darwin", "x64").configureExtra).toContain(
-      "-DCMAKE_OSX_ARCHITECTURES=x86_64",
-    );
+    expect(() => methodsBuild.targetConfig("darwin", "x64")).toThrow("Unsupported native Methods target: darwin-x64");
     expect(methodsBuild.targetConfig("darwin", "arm64").configureExtra).toContain(
       "-DCMAKE_OSX_ARCHITECTURES=arm64",
     );

@@ -8,7 +8,7 @@ orjson>=3.10.0
 msgpack>=1.0.0
 
 # nirs4all core (optional - can run without for UI development)
-# Published runtime: pip install nirs4all==1.4.15
+# Published runtime: pip install nirs4all (version: the `required` block of recommended-config.json)
 # Local development: pip install -e ../nirs4all --no-deps --no-build-isolation
 
 # Additional utilities

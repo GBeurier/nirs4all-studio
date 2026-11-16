@@ -17,7 +17,7 @@ const transitionalHttpConfig = require("../scripts/python-http-runtime-config.cj
 describe("python-runtime-config", () => {
   it("pins one python-build-standalone archive and its SHA-256 per supported target", () => {
     expect(runtimeConfig.PYTHON_VERSION).toBe("3.11.13");
-    expect(runtimeConfig.listSupportedPlatformArchKeys()).toEqual(["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]);
+    expect(runtimeConfig.listSupportedPlatformArchKeys()).toEqual(["darwin-arm64", "linux-x64", "win32-x64"]);
     expect(runtimeConfig.getArchiveFilename("linux", "x64")).toBe(
       "cpython-3.11.13+20250828-x86_64-unknown-linux-gnu-install_only.tar.gz",
     );
@@ -30,13 +30,14 @@ describe("python-runtime-config", () => {
       return runtimeConfig.getArchiveSha256(platform, arch);
     });
     expect(digests.every((digest) => /^[0-9a-f]{64}$/.test(digest))).toBe(true);
-    expect(new Set(digests).size).toBe(4);
+    expect(new Set(digests).size).toBe(3);
   });
 
   it("refuses a target without a pinned archive", () => {
     expect(() => runtimeConfig.getArchiveFilename("linux", "arm64")).toThrow(
       "Unsupported python-build-standalone target 'linux-arm64'",
     );
+    expect(() => runtimeConfig.getDownloadUrl("darwin", "x64")).toThrow("Unsupported python-build-standalone target 'darwin-x64'");
     expect(() => runtimeConfig.getArchiveSha256("win32", "arm64")).toThrow("Unsupported python-build-standalone target");
   });
 

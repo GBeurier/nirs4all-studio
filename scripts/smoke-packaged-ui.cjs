@@ -1,4 +1,8 @@
-/** Hosted smoke: exact packaged contract, renderer, readiness and real SHAP. */
+/**
+ * Hosted smoke: exact packaged contract, an environment created by the
+ * application from its setup page, renderer, readiness, then a real training
+ * run and its SHAP analysis.
+ */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -8,9 +12,21 @@ const archive = require('./smoke-archive-standalone.cjs');
 const ui = require('./smoke-first-launch-ui.cjs');
 const { resolvePerformancePolicy } = require('./qualification-performance.cjs');
 const { sha256File, parseChecksumSidecar } = require('./finalize-release-assets.cjs');
-const { verifyRuntimeCohort, verifyInstalledCohort } = require('./verify-runtime-cohort.cjs');
+const { verifyRuntimeCohort } = require('./verify-runtime-cohort.cjs');
 const { withOwnedProfile, bootstrapOwnedWorkspace, assertOwnedWorkspace } = require('./qualify-local-packaged.cjs');
 const { shapJourney } = require('./smoke-shap-journey.cjs');
+
+// The journey explains a model and renders its figures: neither package is installed by default.
+const JOURNEY_PACKAGES = ['shap', 'matplotlib'];
+
+/** The SDK wheel an installer embeds must be the fingerprinted public one; macOS names its wheels instead. */
+function shippedSdk(backendRoot, cohort) {
+  const wheelhouse = path.join(backendRoot, 'wheels');
+  if (!fs.existsSync(wheelhouse)) return { wheelhouse: JSON.parse(fs.readFileSync(path.join(backendRoot, 'wheelhouse.json'), 'utf8')) };
+  const wheel = path.join(wheelhouse, `nirs4all-${cohort.sdk.version}-py3-none-any.whl`);
+  assert.equal(sha256File(wheel), cohort.sdk.wheel_sha256, 'Embedded SDK wheel mismatch');
+  return { version: cohort.sdk.version, wheel_sha256: cohort.sdk.wheel_sha256 };
+}
 
 async function main(argv = process.argv.slice(2), env = process.env) {
   const index = argv.indexOf('--output');
@@ -23,7 +39,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const args = [...rest.slice(0, installerIndex), ...rest.slice(installerIndex + 2)];
   const config = archive.assertValidConfig(archive.parseArgs(args));
   const proof = { schema: 'nirs4all.studio.packaged-ui-smoke.v1', success: false,
-    scope: 'unpacked-build-startup-renderer-readiness-shap', full_local_qualification: false,
+    scope: 'unpacked-build-application-created-environment-renderer-readiness-training-shap', full_local_qualification: false,
     installed_cycle: false,
     platform: config.platform, arch: process.arch, source_sha: env.RELEASE_SOURCE_SHA,
     performance_policy: resolvePerformancePolicy(env), timings: [] };
@@ -44,18 +60,14 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     assert.equal(proof.packaged_version.commit, proof.source_sha, 'Packaged application source mismatch');
     assert.equal(proof.packaged_version.version, env.RELEASE_VERSION, 'Packaged application version mismatch');
     proof.runtime_contract = archive.verifyLaunchRuntimeContract(layout, config.platform);
-    proof.installed_distributions = verifyInstalledCohort(proof.runtime_contract, verifyRuntimeCohort(env));
-    const marker = JSON.parse(fs.readFileSync(layout.runtimeReadyPath, 'utf8'));
-    assert.equal(marker.source_commit, env.NIRS4ALL_LIBRARY_REF, 'Embedded SDK source mismatch');
-    proof.embedded_sdk = { source_sha: marker.source_commit, version: marker.distribution_version,
-      wheel_sha256: marker.wheel_sha256, constraints_sha256: marker.constraints.sha256 };
-    // A small real SHAP regression qualifies the shipped host and renderer.
+    proof.shipped_sdk = shippedSdk(layout.backendRoot, verifyRuntimeCohort(env));
+    // A small real training run and its SHAP regression qualify the created environment and the renderer.
     const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-packaged-ui-'));
     const profile = path.join(sandbox, 'profile'); fs.mkdirSync(profile);
     proof.isolated_profile = profile;
     await withOwnedProfile(profile, async () => {
       await bootstrapOwnedWorkspace(layout, profile, sandbox);
-      await ui.main({ config, sandboxRoot: profile, consent: 'decline', timings: proof.timings,
+      await ui.main({ config, sandboxRoot: profile, consent: 'decline', extraPackages: JOURNEY_PACKAGES, timings: proof.timings,
         performancePolicy: proof.performance_policy,
         inspectProfile: async ({ env: actualEnv }) => assertOwnedWorkspace(actualEnv, sandbox),
         journeys: async context => shapJourney(context, proof, await assertOwnedWorkspace(context.env, sandbox)) });

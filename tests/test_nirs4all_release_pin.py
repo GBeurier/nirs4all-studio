@@ -13,7 +13,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-WHEEL_LOCK_TARGETS = ["linux-x64", "win32-x64", "darwin-arm64", "darwin-x64"]
+WHEEL_LOCK_TARGETS = ["linux-x64", "win32-x64", "darwin-arm64"]
 
 
 def _wheel_lock(target: str) -> dict:
@@ -139,19 +139,30 @@ def test_release_installers_stage_the_locked_payload_instead_of_a_python_runtime
     assert "pinned-plugin-wheels" not in parsed["jobs"]
     for forbidden in ["--plugin-wheel", "pip wheel", "pip install", "python-runtime", "bake-python-plugin-runtime"]:
         assert forbidden not in workflow
-    for name in ["installer-linux", "installer-windows", "installer-macos-x64", "installer-macos-arm64"]:
+    staging = [
+        "node scripts/fetch-uv.cjs",
+        "node scripts/build-wheelhouse.cjs",
+        "node scripts/studio-document-adapters.cjs --install backend-dist/adapters",
+    ]
+    for name in ["installer-linux", "installer-windows"]:
         job = parsed["jobs"][name]
         assert job["needs"] == "prepare"
         assert [leg["variant"] for leg in job["strategy"]["matrix"]["include"]] == ["standard", "offline"]
         staged = next(step["run"] for step in job["steps"] if step.get("name") == "Stage uv, required wheels and document adapters")
-        assert staged.splitlines() == [
-            "node scripts/fetch-uv.cjs",
-            "node scripts/build-wheelhouse.cjs",
-            "node scripts/studio-document-adapters.cjs --install backend-dist/adapters",
-        ]
+        assert staged.splitlines() == staging
         offline = next(step for step in job["steps"] if step.get("name") == "Stage offline payload")
         assert offline["if"] == "matrix.variant == 'offline'"
         assert offline["run"] == "node scripts/build-offline-payload.cjs"
+    # The macOS application embeds no wheels: they become a release asset, and there is no offline variant.
+    macos = parsed["jobs"]["installer-macos-arm64"]
+    assert "strategy" not in macos
+    assert not any("build-offline-payload" in step.get("run", "") for step in macos["steps"])
+    staged = next(step["run"] for step in macos["steps"] if "build-wheelhouse.cjs" in step.get("run", ""))
+    assert staged.splitlines() == [
+        *staging,
+        "node scripts/pack-remote-wheelhouse.cjs --tag '${{ needs.prepare.outputs.tag }}' --version '${{ needs.prepare.outputs.version }}'",
+        "test ! -e backend-dist/wheels",
+    ]
 
 
 def test_generated_operator_registries_are_from_the_published_runtime() -> None:
@@ -226,7 +237,7 @@ def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() ->
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8"))
 
     installers = {name: job for name, job in workflow["jobs"].items() if name.startswith("installer-")}
-    assert set(installers) == {"installer-linux", "installer-windows", "installer-macos-x64", "installer-macos-arm64"}
+    assert set(installers) == {"installer-linux", "installer-windows", "installer-macos-arm64"}
     release = workflow["jobs"]["release"]
     for name, job in installers.items():
         assert name in release["needs"]
@@ -236,11 +247,13 @@ def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() ->
         upload = next(i for i, step in enumerate(steps) if step.get("name") == "Upload artifacts")
         assert qualification < upload
         qualifier = steps[qualification]["run"]
-        assert "scripts/smoke-first-launch-ui.cjs" in qualifier
+        assert "scripts/smoke-packaged-ui.cjs" in qualifier
+        assert "--installer" in qualifier
         assert qualifier.count("--timeout-ms 240000") == 2
         assert "if" not in steps[qualification]
         assert not steps[qualification].get("continue-on-error", False)
-        assert steps[upload]["with"]["name"].endswith("-${{ matrix.variant }}-payload")
+        assert "checkout_ref" in steps[qualification]["env"]["RELEASE_SOURCE_SHA"]
+        assert steps[upload]["with"]["name"].endswith("-payload")
         checksum = next(step["run"] for step in steps if step.get("name") == "Generate checksums")
         if name == "installer-windows":
             assert "$($_.Name)" in checksum

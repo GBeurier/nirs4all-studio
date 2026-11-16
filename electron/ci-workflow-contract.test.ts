@@ -31,7 +31,7 @@ function dependencies(job: Job): string[] { return typeof job.needs === "string"
 function releaseGate(job: string, results: Record<string, string> = {}, flags: Record<string, string> = {}): boolean {
   const expression = release.jobs[job].if!
     .replace(/always\(\)/g, "true")
-    .replace(/needs\.prepare\.outputs\.([\w_]+)/g, (_, flag: string) => JSON.stringify(flags[flag] ?? (flag === "include_macos_x64" ? "true" : "false")))
+    .replace(/needs\.prepare\.outputs\.([\w_]+)/g, (_, flag: string) => JSON.stringify(flags[flag] ?? "false"))
     .replace(/needs\.([\w-]+)\.result/g, (_, dependency: string) => {
       expect(dependencies(release.jobs[job])).toContain(dependency);
       return JSON.stringify(results[dependency] ?? "success");
@@ -84,28 +84,47 @@ describe("CI release protection graph", () => {
     }
   });
 
-  it("keeps full E2E and scientific journeys local while smoking the first launch of every built installer", () => {
+  it("keeps full E2E local while smoking the payload, the first launch and a SHAP journey of every built installer", () => {
     expect(fs.existsSync(".github/workflows/playwright.yml")).toBe(false);
-    for (const name of ["installer-linux", "installer-windows", "installer-macos-x64", "installer-macos-arm64"]) {
+    for (const name of ["installer-linux", "installer-windows", "installer-macos-arm64"]) {
       const steps = release.jobs[name].steps!;
       const smoke = steps.filter(step => step.run?.includes("scripts/smoke-archive-standalone.cjs"));
       expect(smoke, name).toHaveLength(1);
-      // Both variants are smoked: the offline leg proves an environment created from the payload alone.
+      // Every leg is smoked: the offline one proves an environment created from the payload alone.
       expect(smoke[0].if, name).toBeUndefined();
       expect(smoke[0]["continue-on-error"], name).not.toBe(true);
-      expect(smoke[0].run).toContain("scripts/smoke-first-launch-ui.cjs");
+      expect(smoke[0].run).toContain("scripts/smoke-packaged-ui.cjs");
+      expect(smoke[0].run).toContain("--installer");
       expect(smoke[0].run?.match(/--timeout-ms 240000/g), name).toHaveLength(2);
+      expect(smoke[0].env?.RELEASE_SOURCE_SHA).toBe("${{ needs.prepare.outputs.checkout_ref }}");
+      expect(smoke[0].env?.RELEASE_VERSION).toBe("${{ needs.prepare.outputs.version }}");
+      expect(smoke[0].env?.NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY).toBe("github-observational");
       const staged = steps.findIndex(step => step.run?.includes("scripts/build-wheelhouse.cjs"));
-      const offline = steps.findIndex(step => step.run?.includes("scripts/build-offline-payload.cjs"));
-      const packaged = steps.findIndex(step => step.run?.includes("npx electron-builder --config ${{ matrix.builder_config }}"));
+      const packaged = steps.findIndex(step => step.run?.includes("npx electron-builder --config"));
       expect(staged, name).toBeGreaterThan(0);
       expect(steps[staged].run).toContain("scripts/fetch-uv.cjs");
       expect(steps[staged].run).toContain("scripts/studio-document-adapters.cjs --install backend-dist/adapters");
-      expect(steps[offline].if, name).toBe("matrix.variant == 'offline'");
-      expect(offline, name).toBeGreaterThan(staged);
-      expect(packaged, name).toBeGreaterThan(offline);
+      expect(packaged, name).toBeGreaterThan(staged);
       expect(steps.indexOf(smoke[0]), name).toBeGreaterThan(packaged);
+      const offline = steps.findIndex(step => step.run?.includes("scripts/build-offline-payload.cjs"));
+      if (name === "installer-macos-arm64") {
+        // A macOS application embeds no wheels: no offline leg, and its required wheels become a release asset.
+        expect(offline, name).toBe(-1);
+        expect(release.jobs[name].strategy, name).toBeUndefined();
+        expect(steps[staged].run).toContain("scripts/pack-remote-wheelhouse.cjs --tag '${{ needs.prepare.outputs.tag }}' --version '${{ needs.prepare.outputs.version }}'");
+        expect(steps[packaged].run).toContain("--config electron-builder.installer.yml --mac --arm64");
+        expect(smoke[0].run).toContain('NIRS4ALL_WHEELHOUSE_ARCHIVE="$PWD/release/nirs4all.Studio-${RELEASE_VERSION}-mac-arm64-wheels.tar.gz"');
+        expect(steps.find(step => step.name === "Upload artifacts")!.with?.path).toContain("release/*-wheels.tar.gz");
+      } else {
+        expect(steps[offline].if, name).toBe("matrix.variant == 'offline'");
+        expect(offline, name).toBeGreaterThan(staged);
+        expect(packaged, name).toBeGreaterThan(offline);
+        expect(steps[packaged].run).toContain("--config ${{ matrix.builder_config }}");
+      }
     }
+    const assets = release.jobs.release.steps!.find(step => step.name === "Prepare release assets")!.run!;
+    expect(assets).toContain('-o -name "*-wheels.tar.gz"');
+    expect(assets).toMatch(/finalize-release-assets\.cjs \\\n\s+release \\\n\s+'\$\{\{ needs\.prepare\.outputs\.version \}\}' \\\n\s+false \\\n\s+false \\\n\s+true\n/);
     const remoteCommands = Object.values(release.jobs).flatMap(job => job.steps ?? []).map(step => step.run ?? "").join("\n");
     for (const fullJourney of ["scripts/qualify-installer.cjs", "installed_multimodal_provider.py", "test:native-archive-v2", "npx playwright test"]) {
       expect(remoteCommands).not.toContain(fullJourney);
@@ -181,7 +200,7 @@ describe("CI release protection graph", () => {
     const writers = Object.entries(release.jobs).flatMap(([name, job]) =>
       (job.steps ?? []).filter(step => step.name === "Write version.json").map(step => ({ name, step })),
     );
-    expect(writers).toHaveLength(4);
+    expect(writers).toHaveLength(3);
     for (const { name, step } of writers) {
       const script = step.run!
         .replaceAll("${{ needs.prepare.outputs.checkout_ref }}", product)
@@ -232,14 +251,18 @@ describe("CI release protection graph", () => {
       expect(dependencies(release.jobs[publisher])).toContain("quality");
     }
     const installers = Object.entries(release.jobs).filter(([name]) => name.startsWith("installer-"));
-    expect(installers).toHaveLength(4);
+    expect(installers.map(([name]) => name)).toEqual(["installer-linux", "installer-windows", "installer-macos-arm64"]);
     for (const [name, job] of installers) {
       expect(dependencies(job), name).toEqual(["prepare"]);
+      const upload = job.steps!.find(step => step.name === "Upload artifacts")!;
+      if (name === "installer-macos-arm64") {
+        expect(upload.with?.name, name).toBe("installer-macos-arm64-payload");
+        continue;
+      }
       expect(job.strategy?.matrix?.include, name).toEqual([
         { variant: "standard", builder_config: "electron-builder.installer.yml" },
         { variant: "offline", builder_config: "electron-builder.offline.yml" },
       ]);
-      const upload = job.steps!.find(step => step.name === "Upload artifacts")!;
       expect(upload.with?.name, name).toMatch(/^installer-[a-z0-9-]+-\$\{\{ matrix\.variant \}\}-payload$/);
     }
     expect(Object.keys(release.jobs)).not.toContain("pinned-plugin-wheels");
@@ -257,10 +280,6 @@ describe("CI release protection graph", () => {
     }
     expect(releaseGate("docker", {}, { skip_docker: "true" })).toBe(false);
     expect(releaseGate("release", { docker: "skipped" }, { skip_docker: "true" })).toBe(true);
-    expect(releaseGate("release", { "installer-macos-x64": "skipped" }, { include_macos_x64: "false" })).toBe(true);
-    for (const outcome of ["failure", "cancelled", "success"]) {
-      expect(releaseGate("release", { "installer-macos-x64": outcome }, { include_macos_x64: "false" })).toBe(false);
-    }
   });
 
   it.skipIf(process.platform === "win32")("promotes the exact tested Docker candidate and reserves latest for stable releases", () => {

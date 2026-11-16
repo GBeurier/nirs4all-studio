@@ -9,7 +9,10 @@
  *   node scripts/provision-environment.cjs --backend-root <directory> --env-dir <directory> [--recommended <name,...>]
  *
  * `--backend-root` is the application's `resources/backend` (or backend-dist/):
- * it holds tools/uv, wheels/ and, for the offline variant, offline/.
+ * it holds tools/uv, wheels/ and, for the offline variant, offline/. A macOS
+ * application holds wheelhouse.json instead of wheels/: the archive it names
+ * is taken from `NIRS4ALL_WHEELHOUSE_ARCHIVE` (a local copy, for a release
+ * that is not published yet) or downloaded, and verified either way.
  */
 
 const { spawnSync } = require("node:child_process");
@@ -18,7 +21,7 @@ const path = require("node:path");
 const catalogue = require("../recommended-config.json");
 const { uvExecutableName } = require("./fetch-uv.cjs");
 const { getArchiveFilename, getArchiveSha256, getDownloadUrl } = require("./python-runtime-config.cjs");
-const { downloadVerified } = require("./verified-download.cjs");
+const { downloadVerified, sha256File } = require("./verified-download.cjs");
 
 const COMMAND_TIMEOUT_MS = 20 * 60_000;
 
@@ -29,12 +32,28 @@ function run(command, args, env = process.env) {
   }
 }
 
-function extractPython(archive, destination) {
+function extractTarball(archive, destination) {
   const args = ["-xzf", archive.replace(/\\/g, "/"), "-C", destination.replace(/\\/g, "/")];
   // GNU tar reads a Windows drive letter as a remote host; bsdtar has no such option.
   const gnuTarOnWindows = process.platform === "win32"
     && spawnSync("tar", ["--version"], { encoding: "utf8", windowsHide: true }).stdout?.includes("GNU tar");
   run("tar", gnuTarOnWindows ? [...args, "--force-local"] : args);
+}
+
+/** The required wheels: shipped in `wheels/`, or the verified archive named by `wheelhouse.json`. */
+async function requiredWheelhouse(backendRoot, workDir) {
+  const shipped = path.join(backendRoot, "wheels");
+  if (fs.existsSync(shipped)) return shipped;
+  const manifestPath = path.join(backendRoot, "wheelhouse.json");
+  if (!fs.existsSync(manifestPath)) throw new Error(`Missing ${shipped} and ${manifestPath}`);
+  const { url, sha256, filename } = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const local = process.env.NIRS4ALL_WHEELHOUSE_ARCHIVE?.trim();
+  const extracted = path.join(workDir, ".wheelhouse");
+  fs.mkdirSync(extracted, { recursive: true });
+  const archive = local || await downloadVerified(url, path.join(extracted, filename), sha256);
+  if (sha256File(archive) !== sha256) throw new Error(`${archive} is not the wheelhouse named by ${manifestPath}`);
+  extractTarball(archive, extracted);
+  return path.join(extracted, "wheels");
 }
 
 function recommendedSpecs(names) {
@@ -58,18 +77,16 @@ async function provisionEnvironment({
   recommended = [],
 }) {
   const uv = path.join(backendRoot, "tools", uvExecutableName(platform));
-  const wheelhouse = path.join(backendRoot, "wheels");
   const offlineRoot = path.join(backendRoot, "offline");
   const offline = fs.existsSync(offlineRoot);
-  for (const shipped of [uv, wheelhouse]) {
-    if (!fs.existsSync(shipped)) throw new Error(`Missing ${shipped}`);
-  }
+  if (!fs.existsSync(uv)) throw new Error(`Missing ${uv}`);
   fs.mkdirSync(envDir, { recursive: true });
+  const wheelhouse = await requiredWheelhouse(backendRoot, envDir);
   const archiveName = getArchiveFilename(platform, arch);
   const archive = offline
     ? path.join(offlineRoot, archiveName)
     : await downloadVerified(getDownloadUrl(platform, arch), path.join(envDir, archiveName), getArchiveSha256(platform, arch));
-  extractPython(archive, envDir);
+  extractTarball(archive, envDir);
   if (!offline) fs.rmSync(archive, { force: true });
 
   const windows = platform === "win32";
@@ -89,7 +106,9 @@ async function provisionEnvironment({
   run(uv, ["venv", venvDir, "--python", basePython, ...(offline ? ["--offline"] : [])], uvEnvironment);
   install(catalogue.required.map((spec) => `${spec.name}==${spec.install}`));
   if (recommended.length > 0) install(recommendedSpecs(recommended));
-  fs.rmSync(uvEnvironment.UV_CACHE_DIR, { recursive: true, force: true });
+  for (const temporary of [uvEnvironment.UV_CACHE_DIR, path.join(envDir, ".wheelhouse")]) {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
   return { pythonPath, offline };
 }
 

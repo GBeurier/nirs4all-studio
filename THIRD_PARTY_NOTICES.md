@@ -17,9 +17,11 @@ Installers contain no Python runtime. They redistribute, unmodified:
   (`uv.exe` on Windows), https://github.com/astral-sh/uv;
 - the wheels of the required nirs4all packages (`nirs4all`, `nirs4all-core`, `dag-ml`,
   `dag-ml-data`, `nirs4all-io`, `nirs4all-methods`, `nirs4all-formats`) under
-  `resources/backend/wheels/`, each under its own license.
+  `resources/backend/wheels/`, each under its own license. The macOS application embeds
+  no wheels: the same wheels are published as the release asset
+  `nirs4all.Studio-<version>-mac-arm64-wheels.tar.gz`, which Studio downloads.
 
-The offline installer variant (`-offline`) additionally redistributes, under
+The offline installer variant (`-offline`, Windows and Linux) additionally redistributes, under
 `resources/backend/offline/`, the python-build-standalone CPython runtime archive
 (https://github.com/astral-sh/python-build-standalone) and third-party wheels of the default
 package set, each under its own license.

@@ -286,33 +286,58 @@ function assertMember(backendRoot, label, member, platform, allowPlatformSignatu
   return memberPath;
 }
 
+/** The macOS application names its required wheels instead of embedding them. */
+function verifyRemoteWheelhouse(backendRoot) {
+  const manifestPath = path.join(backendRoot, "wheelhouse.json");
+  if (fs.existsSync(path.join(backendRoot, "wheels"))) {
+    throw new Error("A macOS application must not embed wheels: unsigned binaries inside archives fail notarisation");
+  }
+  if (!fs.existsSync(manifestPath)) throw new Error(`Packaged wheelhouse description not found: ${manifestPath}`);
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const { url, sha256, filename } = manifest;
+  if (
+    Object.keys(manifest).sort().join() !== "filename,sha256,url" ||
+    !/^[0-9a-f]{64}$/.test(sha256) ||
+    !/^nirs4all\.Studio-[0-9A-Za-z.-]+-mac-arm64-wheels\.tar\.gz$/.test(filename) ||
+    typeof url !== "string" ||
+    !url.startsWith("https://github.com/GBeurier/nirs4all-studio/releases/download/") ||
+    !url.endsWith(`/${filename}`)
+  ) {
+    throw new Error(`Invalid packaged wheelhouse description: ${manifestPath}`);
+  }
+}
+
 /**
  * What Studio needs to create and use a Python environment: the shipped uv,
- * one wheel per required package at its catalogue version, and the document
- * adapters exactly as attested in the source tree.
+ * the document adapters exactly as attested in the source tree, and the
+ * required packages: one embedded wheel per package at its catalogue version,
+ * or on macOS the description of the release asset that carries them.
  */
 function verifyPythonPayload(backendRoot, platform = process.platform) {
   const uvPath = path.join(backendRoot, "tools", platform === "win32" ? "uv.exe" : "uv");
   if (!fs.existsSync(uvPath) || !fs.lstatSync(uvPath).isFile()) {
     throw new Error(`Packaged uv not found: ${uvPath}`);
   }
-  const wheelhouse = path.join(backendRoot, "wheels");
-  const wheels = fs.existsSync(wheelhouse) ? fs.readdirSync(wheelhouse).filter((name) => name.endsWith(".whl")) : [];
-  for (const { name, install } of recommendedConfig.required) {
-    const prefix = `${name.replace(/[-_.]+/g, "_")}-${install}-`;
-    if (wheels.filter((wheel) => wheel.toLowerCase().startsWith(prefix)).length !== 1) {
-      throw new Error(`Packaged wheels must contain exactly one ${name}==${install} wheel: ${wheelhouse}`);
+  if (platform === "darwin") {
+    verifyRemoteWheelhouse(backendRoot);
+  } else {
+    const wheelhouse = path.join(backendRoot, "wheels");
+    const wheels = fs.existsSync(wheelhouse) ? fs.readdirSync(wheelhouse).filter((name) => name.endsWith(".whl")) : [];
+    for (const { name, install } of recommendedConfig.required) {
+      const prefix = `${name.replace(/[-_.]+/g, "_")}-${install}-`;
+      if (wheels.filter((wheel) => wheel.toLowerCase().startsWith(prefix)).length !== 1) {
+        throw new Error(`Packaged wheels must contain exactly one ${name}==${install} wheel: ${wheelhouse}`);
+      }
     }
-  }
-  if (wheels.length !== recommendedConfig.required.length) {
-    throw new Error(`Packaged wheels contain files outside the required cohort: ${wheelhouse}`);
+    if (wheels.length !== recommendedConfig.required.length) {
+      throw new Error(`Packaged wheels contain files outside the required cohort: ${wheelhouse}`);
+    }
   }
   const adaptersDir = path.join(backendRoot, "adapters");
   if (!fs.existsSync(path.join(adaptersDir, PACKAGE))) {
     throw new Error(`Packaged document adapters not found: ${adaptersDir}`);
   }
   verifyAdapterPackage(JSON.parse(fs.readFileSync(path.join(__dirname, "..", MANIFEST), "utf8")), adaptersDir);
-  return { uvPath, wheelhouse, adaptersDir };
 }
 
 function verifyRuntimeContract({

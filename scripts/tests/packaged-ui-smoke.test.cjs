@@ -13,19 +13,25 @@ async function run(change = {}) {
   const installer = path.join(root, 'candidate.deb'), output = path.join(root, 'proof.json');
   fs.writeFileSync(installer, 'fixture installer bytes');
   fs.writeFileSync(`${installer}.sha256`, `${finalize.sha256File(installer)}  candidate.deb\n`);
-  const markerPath = path.join(root, 'marker.json');
-  fs.writeFileSync(markerPath, JSON.stringify({ source_commit: change.sdk || 'b'.repeat(40), distribution_version: '1.4.13',
-    wheel_sha256: 'd'.repeat(64), constraints: { sha256: 'e'.repeat(64) } }));
+  const backendRoot = path.join(root, 'backend'), wheel = path.join(backendRoot, 'wheels/nirs4all-1.4.13-py3-none-any.whl');
+  fs.mkdirSync(path.dirname(wheel), { recursive: true });
+  fs.writeFileSync(wheel, 'fingerprinted public SDK wheel');
+  const cohort = { sdk: { version: '1.4.13', wheel_sha256: finalize.sha256File(wheel) } };
+  if (change.sdk) fs.writeFileSync(wheel, 'another SDK wheel');
+  if (change.remote) {
+    fs.rmSync(path.dirname(wheel), { recursive: true });
+    fs.writeFileSync(path.join(backendRoot, 'wheelhouse.json'), JSON.stringify({ filename: 'wheels.tar.gz' }));
+  }
   const calls = [], module = { exports: {} };
   const env = { RELEASE_SOURCE_SHA: 'a'.repeat(40), RELEASE_VERSION: '0.15.1', NIRS4ALL_LIBRARY_REF: 'b'.repeat(40),
     GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY: 'github-observational' };
   const mocks = {
     '@electron/asar': { extractFile: () => Buffer.from(JSON.stringify({ version: '0.15.1', commit: change.source || env.RELEASE_SOURCE_SHA })) },
     './smoke-archive-standalone.cjs': { parseArgs: () => ({ platform: 'linux', extractedRoot: root }), assertValidConfig: value => value,
-      resolveLaunchLayout: () => ({ backendRoot: path.join(root, 'backend'), runtimeReadyPath: markerPath }),
+      resolveLaunchLayout: () => ({ backendRoot }),
       verifyLaunchRuntimeContract: () => { calls.push('contract'); if (change.contract) throw new Error('tampered contract'); return {}; } },
     './qualification-performance.cjs': { resolvePerformancePolicy }, './finalize-release-assets.cjs': finalize,
-    './verify-runtime-cohort.cjs': { verifyRuntimeCohort: () => ({}), verifyInstalledCohort: () => ({}) },
+    './verify-runtime-cohort.cjs': { verifyRuntimeCohort: () => cohort },
     './qualify-local-packaged.cjs': { withOwnedProfile: (_profile, action) => action(),
       bootstrapOwnedWorkspace: async () => { calls.push('bootstrap'); }, assertOwnedWorkspace: async () => true },
     './smoke-shap-journey.cjs': { shapJourney: async () => {
@@ -33,6 +39,7 @@ async function run(change = {}) {
     } },
     './smoke-first-launch-ui.cjs': { sanitizeDiagnostic: String, main: async options => {
       calls.push('ui'); assert.equal(typeof options.journeys, 'function'); assert(options.sandboxRoot);
+      assert.equal(options.extraPackages.join(), 'shap,matplotlib');
       assert.equal(options.performancePolicy.budgets_enforced, false);
       if (change.ui) throw new Error('renderer failed');
       await options.journeys({ env: {} });
@@ -52,14 +59,21 @@ test('hosted UI smoke verifies source/contract/bootstrap and the real SHAP regre
   const result = await run(); assert.equal(result.error, undefined); assert.equal(result.proof.success, true);
   assert.equal(result.proof.installed_cycle, false); assert.equal(result.proof.full_local_qualification, false);
   assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap']);
+  assert.equal(result.proof.shipped_sdk.version, '1.4.13');
+  assert.match(result.proof.shipped_sdk.wheel_sha256, /^[0-9a-f]{64}$/);
 });
 test('wrong packaged source refuses UI and retains a failing proof', async () => {
   const result = await run({ source: 'c'.repeat(40) }); assert.match(result.error.message, /source mismatch/);
   assert.equal(result.proof.success, false); assert.deepEqual(result.calls, []);
 });
 test('wrong embedded SDK refuses UI despite a valid native contract', async () => {
-  const result = await run({ sdk: 'c'.repeat(40) }); assert.match(result.error.message, /SDK source mismatch/);
+  const result = await run({ sdk: true }); assert.match(result.error.message, /Embedded SDK wheel mismatch/);
   assert.equal(result.proof.success, false); assert.deepEqual(result.calls, ['contract']);
+});
+test('a macOS application is qualified through the wheelhouse it names instead of embedded wheels', async () => {
+  const result = await run({ remote: true }); assert.equal(result.error, undefined);
+  assert.deepEqual(result.proof.shipped_sdk, { wheelhouse: { filename: 'wheels.tar.gz' } });
+  assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap']);
 });
 test('contract failure remains blocking for hosted builds', async () => {
   const result = await run({ contract: true }); assert.match(result.error.message, /tampered contract/);

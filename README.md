@@ -65,7 +65,7 @@ published or qualified on every platform.
 | Target platform | Installer | Offline installer |
 |-----------------|-----------|-------------------|
 | **Windows x64** | `nirs4all.Studio-<version>-win-x64.exe` | `nirs4all.Studio-<version>-win-x64-offline.exe` |
-| **macOS** (Apple Silicon, Intel) | `nirs4all.Studio-<version>-mac-<arch>.dmg` | `nirs4all.Studio-<version>-mac-<arch>-offline.dmg` |
+| **macOS** (Apple Silicon) | `nirs4all.Studio-<version>-mac-arm64.dmg` | none |
 | **Linux x64** | `nirs4all.Studio-<version>-linux-amd64.deb` | `nirs4all.Studio-<version>-linux-amd64-offline.deb` |
 
 The installer contains the application and its Rust sidecar, the product
@@ -77,8 +77,8 @@ you either pick one or let Studio create one for you.
   environment. When it creates one, it downloads a pinned Python runtime and
   builds the environment with the `uv` tool shipped in the installer.
 - **Required packages are automatic.** `nirs4all` and its companion packages
-  are installed from wheels shipped in the installer and kept up to date at
-  each launch.
+  are installed from wheels shipped in the installer (on macOS, downloaded by
+  Studio the first time) and kept up to date at each launch.
 - **Recommended packages are your choice.** Deep-learning, boosting,
   explainability and other optional packages are installed one by one, on
   request. `torch` is installed in the build that matches your machine (CPU,
@@ -86,10 +86,16 @@ you either pick one or let Studio create one for you.
 - **Application updates are small.** An update replaces the application only;
   your environment stays in place.
 
-Pick the **offline installer** (file name ending in `-offline`) for machines
-without network access: it also carries the Python runtime and the wheels of
-the default package set, so the environment is created without downloading
-anything. In-app updates always use the standard installer.
+On Windows and Linux, pick the **offline installer** (file name ending in
+`-offline`) for machines without network access: it also carries the Python
+runtime and the wheels of the default package set, so the environment is
+created without downloading anything. In-app updates always use the standard
+installer.
+
+macOS is supported on Apple Silicon only and needs an internet connection at
+first launch: Studio downloads the Python runtime and its required packages.
+When macOS blocks the first opening of the application, open **System
+Settings > Privacy & Security** and choose **Open Anyway**.
 
 You can switch environment at any time in **Settings > Python**. Development
 (editable) installs are never modified by Studio.
@@ -118,7 +124,7 @@ HTTP process as a product route or fallback.
 |---|---|---|---|
 | **Install required** | Yes | Yes | Clone + npm install |
 | **Python required beforehand** | No (Studio creates an environment, or uses one of yours) | No | Yes (3.11+) |
-| **Network on first launch** | Yes, when Studio creates the environment | No | Yes |
+| **Network on first launch** | Yes, when Studio creates the environment (always on macOS) | No (Windows and Linux only) | Yes |
 | **Updates** | Standard installer of the newer version | Standard installer of the newer version | git pull |
 | **Best for** | End users | Machines without network access | Contributors |
 
@@ -164,7 +170,7 @@ calls. It never owns an HTTP port, scheduler, store, or fallback route. See
 This project supports development on:
 - **Windows Native** - PowerShell, cmd.exe, or Windows Terminal
 - **Linux** - Any distribution with Node.js and Python
-- **macOS** - Intel and Apple Silicon
+- **macOS** - Apple Silicon
 - **WSL2** - Windows Subsystem for Linux
 
 ---
@@ -483,6 +489,7 @@ nirs4all_webapp/
 ├── scripts/                # Build and utility scripts
 │   ├── fetch-uv.cjs        # Stages the pinned uv release
 │   ├── build-wheelhouse.cjs # Stages the wheels of the required packages
+│   ├── pack-remote-wheelhouse.cjs # macOS: packs those wheels as a release asset
 │   ├── build-offline-payload.cjs # Stages the offline installer payload
 │   └── build-release.cjs   # Installer build on the matching host
 ├── build/                  # Build configuration
@@ -551,11 +558,13 @@ profiles of the same application:
 
 | Profile | Command | Contents beside the application |
 |---------|---------|---------------------------------|
-| Installer | `npm run release -- --platform linux` | Rust sidecar, native Methods library, `uv`, the wheels of the required packages, Studio's document adapters |
-| Offline installer | `npm run release -- --platform linux --offline` | The same, plus the pinned Python runtime archive and the wheels of the default package set; artifact name ends in `-offline` |
+| Installer | `npm run release -- --platform linux` | Rust sidecar, native Methods library, `uv`, Studio's document adapters, and the wheels of the required packages (on macOS: the description of the release asset that carries them) |
+| Offline installer (Windows, Linux) | `npm run release -- --platform linux --offline` | The same, plus the pinned Python runtime archive and the wheels of the default package set; artifact name ends in `-offline` |
 
-Neither profile packages a Python runtime inside the application: Studio
-creates or selects the user's environment at first launch. The wheels come from
+Neither profile installs a Python runtime with the application: Studio
+creates or selects the user's environment at first launch. The offline
+installer carries the Python runtime as an archive that Studio extracts into
+that environment. The wheels come from
 hash-pinned locks under `build/constraints/`; after changing the required
 packages or a default recommended package in `recommended-config.json`,
 regenerate them with `node scripts/python-wheel-lock.cjs` (needs `uv` and
@@ -569,10 +578,10 @@ flavors, `--platform all`, and cross-host installer builds are rejected.
 | Command | Description |
 |---------|-------------|
 | `npm run release -- --platform win` | Package for Windows |
-| `npm run release -- --platform mac` | Package for macOS |
+| `npm run release -- --platform mac` | Package for macOS (Apple Silicon host) |
 | `npm run release -- --platform linux` | Package for Linux |
 | `npm run release -- --platform <host>` | Package on the matching Linux, Windows, or macOS host |
-| `npm run release -- --platform <host> --offline` | Package the offline installer on the matching host |
+| `npm run release -- --platform <host> --offline` | Package the offline installer on the matching Windows or Linux host |
 
 ---
 

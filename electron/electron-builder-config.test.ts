@@ -157,7 +157,7 @@ describe("electron-builder config", () => {
         path.join(projectRoot, "electron-builder.installer.yml"),
         "backend-dist/",
       ),
-    ).toEqual(["native/**/*", "tools/**/*", "wheels/**/*", "adapters/**/*"]);
+    ).toEqual(["native/**/*", "tools/**/*", "wheels/**/*", "wheelhouse.json", "adapters/**/*"]);
     expect(
       getExtraResourceFilter(
         path.join(projectRoot, "electron-builder.archive.yml"),
@@ -172,9 +172,10 @@ describe("electron-builder config", () => {
     expect(offline).toMatch(/^extends: electron-builder\.installer\.yml$/m);
     expect(getExtraResourceFilter(offlinePath, "backend-dist/")).toEqual(["offline/**/*"]);
     expect(offline.split(/\r?\n/).filter((line) => /^\S/.test(line) && !line.startsWith("#")))
-      .toEqual(["extends: electron-builder.installer.yml", "extraResources:", "win:", "mac:", "linux:"]);
+      .toEqual(["extends: electron-builder.installer.yml", "extraResources:", "win:", "linux:"]);
     const installer = fs.readFileSync(path.join(projectRoot, "electron-builder.installer.yml"), "utf8");
-    for (const platform of ["win", "mac", "linux"]) {
+    // No macOS offline installer: a macOS application cannot embed wheels.
+    for (const platform of ["win", "linux"]) {
       const standard = new RegExp(`^  artifactName: "(\\$\\{productName\\}-\\$\\{version\\}-${platform}-\\$\\{arch\\})\\.\\$\\{ext\\}"$`, "m").exec(installer);
       expect(standard, platform).not.toBeNull();
       expect(getTopLevelYamlSection(offlinePath, platform).trim()).toBe(`artifactName: "${standard![1]}-offline.\${ext}"`);

@@ -1,6 +1,7 @@
 /**
  * Stage the wheels of the required cohort for a target into backend-dist/wheels/.
- * Every installer ships them; Studio installs the required packages from them.
+ * Windows and Linux installers ship them; the macOS build publishes them as a
+ * release asset instead (see scripts/pack-remote-wheelhouse.cjs).
  *
  * Usage:
  *   node scripts/build-wheelhouse.cjs [--platform <win32|linux|darwin>] [--arch <x64|arm64>]
@@ -16,7 +17,7 @@ async function buildWheelhouse({ platform, arch }) {
   const backendRoot = path.join(projectRoot, "backend-dist");
   const key = targetKey(platform, arch);
   const destination = path.join(backendRoot, "wheels");
-  const wheels = await stageLockedPackages(lockedPackages(readLock(key), { required: true }), destination, key, backendRoot);
+  const wheels = await stageLockedPackages(lockedPackages(readLock(key), "required"), destination, key, backendRoot);
   return { destination, wheels };
 }
 

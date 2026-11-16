@@ -11,20 +11,31 @@ const PAYLOAD_SUFFIXES = Object.freeze([
   ".zip",
 ]);
 
-function expectedPublishedNames(version, includeAllInOne = false, includeMacosX64 = true) {
+/**
+ * Assets of a release. `includePythonPayloads` adds what releases publish
+ * since installers stopped carrying a Python runtime: the offline installers
+ * for Windows and Linux, and the required wheels of the macOS application,
+ * which embeds none. Releases published before that pass false.
+ */
+function expectedPublishedNames(version, includeAllInOne = false, includeMacosX64 = false, includePythonPayloads = false) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`Release version is invalid: ${version}`);
   }
   if (includeAllInOne) throw new Error("All-in-one publication is disabled; publish installers only");
-  if (typeof includeMacosX64 !== "boolean") throw new Error("Explicit macOS Intel inclusion flag must be boolean");
-  const installers = [
+  if (typeof includeMacosX64 !== "boolean" || typeof includePythonPayloads !== "boolean") {
+    throw new Error("Explicit macOS Intel and Python payload inclusion flags must be boolean");
+  }
+  if (includeMacosX64) throw new Error("macOS Intel installers are not published; macOS is supported on Apple Silicon only");
+  return [
     `nirs4all.Studio-${version}-linux-amd64.deb`,
     `nirs4all.Studio-${version}-mac-arm64.dmg`,
-    ...(includeMacosX64 ? [`nirs4all.Studio-${version}-mac-x64.dmg`] : []),
     `nirs4all.Studio-${version}-win-x64.exe`,
-  ];
-  // Every installer is published with its offline variant.
-  return installers.flatMap((name) => [name, name.replace(/(\.[a-z]+)$/, "-offline$1")]).sort();
+    ...(includePythonPayloads ? [
+      `nirs4all.Studio-${version}-linux-amd64-offline.deb`,
+      `nirs4all.Studio-${version}-mac-arm64-wheels.tar.gz`,
+      `nirs4all.Studio-${version}-win-x64-offline.exe`,
+    ] : []),
+  ].sort();
 }
 
 function canonicalPublishedName(name) {
@@ -170,15 +181,14 @@ function finalizeReleaseAssets(releaseRoot, expectedNames = null) {
 }
 
 function main(argv = process.argv.slice(2)) {
-  if (![3, 4].includes(argv.length) || !["true", "false"].includes(argv[2]) ||
-    (argv.length === 4 && !["true", "false"].includes(argv[3]))) {
+  if (![3, 4, 5].includes(argv.length) || argv.slice(2).some((flag) => !["true", "false"].includes(flag))) {
     throw new Error(
-      "Usage: node scripts/finalize-release-assets.cjs <release-root> <version> <include-all-in-one:true|false> [include-macos-x64:true|false]",
+      "Usage: node scripts/finalize-release-assets.cjs <release-root> <version> <include-all-in-one:true|false> [include-macos-x64:true|false] [include-python-payloads:true|false]",
     );
   }
   const records = finalizeReleaseAssets(
     path.resolve(argv[0]),
-    expectedPublishedNames(argv[1], argv[2] === "true", argv[3] !== "false"),
+    expectedPublishedNames(argv[1], argv[2] === "true", argv[3] === "true", argv[4] === "true"),
   );
   for (const record of records) {
     process.stdout.write(`${record.digest}  ${record.publishedName}\n`);

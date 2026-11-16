@@ -7,12 +7,12 @@ const yaml = require("js-yaml");
 const { expectedPublishedNames, sha256File } = require("../finalize-release-assets.cjs");
 const { ghFailureDiagnostic, publishQualifiedRelease, releaseManifest } = require("../publish-qualified-release.cjs");
 
-function fixture(t, includeMacosX64 = true) {
+function fixture(t, includePythonPayloads = true) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-publisher-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const releaseRoot = path.join(root, "release");
   fs.mkdirSync(releaseRoot);
-  for (const name of expectedPublishedNames("0.11.7", false, includeMacosX64)) {
+  for (const name of expectedPublishedNames("0.11.7", false, false, includePythonPayloads)) {
     const file = path.join(releaseRoot, name);
     fs.writeFileSync(file, `qualified product bytes: ${name}\n`);
     fs.writeFileSync(`${file}.sha256`, `${sha256File(file)}  ${name}\n`);
@@ -20,11 +20,11 @@ function fixture(t, includeMacosX64 = true) {
   const notesPath = path.join(root, "notes.md");
   fs.writeFileSync(notesPath, "Qualified release\n");
   return { repo: "owner/studio", tag: "0.11.7", version: "0.11.7", sha: "b".repeat(40),
-    prerelease: false, includeAllInOne: false, includeMacosX64, releaseRoot, notesPath };
+    prerelease: false, includeAllInOne: false, includePythonPayloads, releaseRoot, notesPath };
 }
 
 function github(options, behavior = {}) {
-  const manifest = releaseManifest(options.releaseRoot, options.version, options.includeAllInOne, options.includeMacosX64);
+  const manifest = releaseManifest(options.releaseRoot, options.version, options.includeAllInOne, false, options.includePythonPayloads);
   let nextId = 100;
   const state = {
     release: behavior.absent ? null : { id: 99, tag_name: options.tag, draft: true,
@@ -134,12 +134,12 @@ test("creates a draft, uploads exactly one asset at a time and publishes last", 
   const remote = github(options, { absent: true, annotated: true });
   const result = await publishQualifiedRelease(options, remote.dependencies);
   assert.equal(result.published, true);
-  assert.equal(result.assets, 16);
+  assert.equal(result.assets, 12);
   assert.equal(remote.state.maxActive, 1);
   assert.equal(remote.state.mutations[0], "create-draft");
   assert.equal(remote.state.mutations.at(-1), "publish");
-  assert(remote.state.mutations.slice(1, 9).every((name) => name.endsWith(".sha256")));
-  assert.equal(remote.state.mutations.length, 18);
+  assert(remote.state.mutations.slice(1, 7).every((name) => name.endsWith(".sha256")));
+  assert.equal(remote.state.mutations.length, 14);
 });
 
 test("waits for a newly created draft to appear in GitHub's release list", async (t) => {
@@ -156,7 +156,7 @@ test("resumes verified draft assets without uploading them again", async (t) => 
   const remote = github(options, { draftHidden: true });
   remote.state.assets.push(...remote.manifest.slice(0, 4).map(remote.state.asset));
   await publishQualifiedRelease(options, remote.dependencies);
-  assert.equal(remote.state.mutations.length, 13);
+  assert.equal(remote.state.mutations.length, 9);
   assert.equal(remote.state.mutations.at(-1), "publish");
 });
 
@@ -197,7 +197,7 @@ test("reconciles lost create, upload and publish responses without duplicate mut
   const options = fixture(t);
   const remote = github(options, { absent: true, createResponseLost: true, uploadResponseLost: true, publishResponseLost: true });
   await publishQualifiedRelease(options, remote.dependencies);
-  assert.equal(remote.state.mutations.length, 18);
+  assert.equal(remote.state.mutations.length, 14);
   assert.deepEqual(remote.state.waits, []);
 });
 
@@ -304,26 +304,35 @@ test("unified workflow invokes the sequential publisher only for immutable tag r
   assert(!job.steps.some((entry) => entry.uses?.startsWith("softprops/action-gh-release")));
   assert.match(job.if, /needs\.installer-windows\.result == 'success'/);
   assert.match(job.if, /needs\.installer-linux\.result == 'success'/);
-  assert.match(step.run, /needs\.prepare\.outputs\.include_macos_x64/);
+  // No all-in-one, no Intel Mac, and the offline installers with the macOS wheels.
+  const flags = /'\$\{\{ needs\.prepare\.outputs\.version \}\}' \\\n\s+false \\\n\s+false \\\n\s+true\n/;
+  assert.match(step.run, flags);
   const preparation = job.steps.find((entry) => entry.run?.includes("scripts/finalize-release-assets.cjs"));
-  assert.match(preparation.run, /needs\.prepare\.outputs\.include_macos_x64/);
+  assert.match(preparation.run, flags);
   assert(!job.if.includes('skip_all_in_one'));
 });
 
-test("an explicitly deferred Intel Mac publishes only the other installers and their offline variants", async (t) => {
+test("a release published before the Python payloads has only its three installers", async (t) => {
   const options = fixture(t, false);
-  assert.throws(() => releaseManifest(options.releaseRoot, options.version, false), /inventory is incomplete/);
+  assert.throws(() => releaseManifest(options.releaseRoot, options.version, false, false, true), /inventory is incomplete/);
   const remote = github(options);
   const result = await publishQualifiedRelease(options, remote.dependencies);
-  assert.equal(result.assets, 12);
-  assert.equal(remote.state.assets.length, 12);
-  assert(remote.state.assets.every((asset) => !asset.name.includes("mac-x64")));
+  assert.equal(result.assets, 6);
+  assert.equal(remote.state.assets.length, 6);
+  assert(remote.state.assets.every((asset) => !/-offline\.|-wheels\./.test(asset.name)));
 });
 
-test("deferring Intel never permits a missing required installer or an unexpected Intel payload", async (t) => {
+test("the current release publishes the offline installers and the macOS wheels, and never an Intel Mac payload", async (t) => {
+  const current = fixture(t);
+  assert.deepEqual(fs.readdirSync(current.releaseRoot).filter((name) => !name.endsWith(".sha256")).sort(), [
+    "nirs4all.Studio-0.11.7-linux-amd64-offline.deb", "nirs4all.Studio-0.11.7-linux-amd64.deb",
+    "nirs4all.Studio-0.11.7-mac-arm64-wheels.tar.gz", "nirs4all.Studio-0.11.7-mac-arm64.dmg",
+    "nirs4all.Studio-0.11.7-win-x64-offline.exe", "nirs4all.Studio-0.11.7-win-x64.exe",
+  ]);
   const options = fixture(t, false);
   const dependencies = { gh: async () => assert.fail("invalid inventory must fail before GitHub"), log: () => {} };
-  await assert.rejects(publishQualifiedRelease({ ...options, includeMacosX64: "false" }, dependencies), /flag must be boolean/);
+  await assert.rejects(publishQualifiedRelease({ ...options, includeMacosX64: "false" }, dependencies), /flags must be boolean/);
+  await assert.rejects(publishQualifiedRelease({ ...options, includeMacosX64: true }, dependencies), /Apple Silicon only/);
   const windows = path.join(options.releaseRoot, `nirs4all.Studio-${options.version}-win-x64.exe`);
   fs.unlinkSync(windows);
   fs.unlinkSync(`${windows}.sha256`);

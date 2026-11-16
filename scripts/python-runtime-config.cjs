@@ -18,10 +18,6 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
     filename: `cpython-${PYTHON_VERSION}+${PBS_TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz`,
     sha256: "1a6f32ef5ae2358c4707d3f979478b7678c9841fce42e26c44cfbc5f5e1133a2",
   }),
-  "darwin-x64": Object.freeze({
-    filename: `cpython-${PYTHON_VERSION}+${PBS_TAG}-x86_64-apple-darwin-install_only.tar.gz`,
-    sha256: "5f9e9e568fd5324f0590f76040f0f693a747349acce97346d6ac6b8a7d212723",
-  }),
   "darwin-arm64": Object.freeze({
     filename: `cpython-${PYTHON_VERSION}+${PBS_TAG}-aarch64-apple-darwin-install_only.tar.gz`,
     sha256: "58066d3516e1376a85d2533c43929b9404fac8ef9a7bf023a1ee30ab24c768a8",

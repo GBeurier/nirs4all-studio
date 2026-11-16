@@ -9,7 +9,7 @@
  * Options:
  *   --flavor cpu          Build flavor (only supported release profile)
  *   --mode installer      Installer mode (the only supported distribution)
- *   --offline             Build the offline installer (adds the offline payload)
+ *   --offline             Build the offline installer (Windows and Linux; adds the offline payload)
  *   --clean               Clean all build artifacts before building
  *   --skip-backend        Reuse the installer payload already in backend-dist/
  *   --skip-frontend       Skip building the frontend (use existing)
@@ -79,6 +79,11 @@ if (argumentError) {
   process.exit(1);
 }
 
+if (offline && process.platform === "darwin") {
+  console.error("Error: there is no macOS offline installer; a macOS application cannot embed wheels.");
+  process.exit(1);
+}
+
 if (flavor !== "cpu") {
   console.error(
     `Error: Release flavor '${flavor}' is not implemented. Use '--flavor cpu'.`,
@@ -98,9 +103,7 @@ if (!hostPlatform) {
   console.error(`Error: Unsupported release host '${process.platform}'.`);
   process.exit(1);
 }
-const supportedHostArch = process.platform === "darwin"
-  ? ["x64", "arm64"].includes(process.arch)
-  : process.arch === "x64";
+const supportedHostArch = process.arch === (process.platform === "darwin" ? "arm64" : "x64");
 if (!supportedHostArch) {
   console.error(
     `Error: Installer packaging is not attested on '${process.platform}/${process.arch}'.`,
@@ -232,6 +235,11 @@ async function main() {
       console.log("=== Step 1: Staging uv, required wheels, adapters and the native sidecar ===");
       await runCommand("node", ["scripts/fetch-uv.cjs"]);
       await runCommand("node", ["scripts/build-wheelhouse.cjs"]);
+      if (process.platform === "darwin") {
+        // The macOS application names its required wheels instead of embedding them.
+        const { version } = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"));
+        await runCommand("node", ["scripts/pack-remote-wheelhouse.cjs", "--tag", version, "--version", version]);
+      }
       await runCommand("node", ["scripts/studio-document-adapters.cjs", "--install", path.join(backendRoot, "adapters")]);
       await runCommand("node", ["scripts/build-native-sidecar.cjs"]);
     } else {

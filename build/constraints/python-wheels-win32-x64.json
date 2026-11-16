@@ -2,6 +2,12 @@
   "schema": "nirs4all.studio.python-wheel-lock.v1",
   "target": "win32-x64",
   "python": "3.11",
+  "rules": {
+    "platform": "x86_64-pc-windows-msvc",
+    "source_builds": [
+      "pyopls"
+    ]
+  },
   "requirements": {
     "required": [
       "nirs4all==1.4.16",

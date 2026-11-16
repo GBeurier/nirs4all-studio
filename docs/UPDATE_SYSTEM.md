@@ -5,7 +5,8 @@ This document describes the update system of nirs4all Studio.
 Two things are kept up to date, by two different owners:
 
 - **The application** (Electron shell, renderer, Rust sidecar, `uv`, the
-  wheels of the required packages, the document adapters) is updated by
+  document adapters and, on Windows and Linux, the wheels of the required
+  packages) is updated by
   installing the newer installer from GitHub Releases. The Rust sidecar
   discovers the release and selects the asset.
 - **The Python environment** belongs to the user. Electron keeps its required
@@ -16,7 +17,7 @@ Two things are kept up to date, by two different owners:
 
 An application update replaces the installed application only: everything
 under the installation directory, including `resources/backend/` (`native/`,
-`tools/`, `wheels/`, `adapters/`). Installers ship no Python, so an update
+`tools/`, `adapters/`, and `wheels/` or on macOS `wheelhouse.json`). Installers ship no Python, so an update
 downloads and rewrites about 150 MB of backend resources instead of a complete
 Python runtime.
 
@@ -37,7 +38,8 @@ selected environment and compares it with the `required` block of the new
 - a required package missing or out of range, in a writable environment with
   no editable required package: the required set is installed at its exact
   `install` versions from the shipped wheels before the sidecar starts (the
-  splash shows one progress line)
+  splash shows one progress line). On macOS the wheels of the new version are
+  first downloaded from its release, which needs an internet connection
 - otherwise Studio opens with the phase `needs_attention` and explains what to
   do
 
@@ -121,7 +123,7 @@ The sidecar selects one asset per release, by platform and architecture.
 | Platform | Selected asset suffix |
 |---|---|
 | Windows | `-win-{arch}.exe` |
-| macOS | `-mac-{arch}.dmg` (or `-mac-universal.dmg`) |
+| macOS | `-mac-arm64.dmg` (or `-mac-universal.dmg`) |
 | Linux | `-linux-amd64.deb` (or `-linux-{arch}.deb`) |
 
 Rules:
@@ -129,6 +131,12 @@ Rules:
 - An asset whose name contains `-offline` is never selected. The offline
   installer carries a Python payload that an installed application does not
   need.
+- The macOS wheel archive (`-mac-arm64-wheels.tar.gz`) matches no selected
+  suffix: the application fetches it by the exact URL in its own
+  `wheelhouse.json`, never through the update check.
+- macOS is published for Apple Silicon only. On an Intel Mac the selection
+  finds no asset and the check reports that no update is available for the
+  platform.
 - For a published release the selection resolves to the light installer of
   the platform, for example `nirs4all.Studio-{version}-win-x64.exe`.
 - When a release carries no installer for the platform, the selection looks
@@ -235,8 +243,8 @@ The version numbers are illustrative.
 
 1. Electron reads `env-settings.json` and takes the inventory of the selected
    environment
-2. required packages that left their range are installed from the wheels
-   shipped with the new version
+2. required packages that left their range are installed from the wheels of
+   the new version (shipped with it, or on macOS downloaded from its release)
 3. the sidecar starts on the environment and the window opens
 
 ### 4. Environment maintenance
@@ -253,6 +261,7 @@ go through `PythonEnvApi` and are independent of application updates.
 <userData>/
 ├── env-settings.json        selected interpreter: { "pythonPath": "..." }
 ├── python-inventory.json    cached package listing of the selected environment
+├── wheelhouse/              macOS: required wheels downloaded from the release
 └── python-env/              environment created by Studio, when the user chose that
     ├── python/
     └── venv/
@@ -267,12 +276,14 @@ data directory.
 resources/backend/
 ├── native/
 ├── tools/
-├── wheels/
+├── wheels/            (Windows and Linux)
+├── wheelhouse.json    (macOS)
 └── adapters/
 ```
 
 This tree is part of the installed application and is replaced as a whole by
-an application update. The offline installer adds `offline/`.
+an application update. The offline installer (Windows and Linux) adds
+`offline/`.
 
 ## Security And Reliability Notes
 

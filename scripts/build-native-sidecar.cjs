@@ -29,7 +29,6 @@ const MAX_METHODS_LIBRARY_BYTES = 64 * 1024 * 1024;
 const TARGETS = Object.freeze({
   "x86_64-unknown-linux-gnu": { platform: "linux", arch: "x64" },
   "x86_64-pc-windows-msvc": { platform: "win32", arch: "x64" },
-  "x86_64-apple-darwin": { platform: "darwin", arch: "x64" },
   "aarch64-apple-darwin": { platform: "darwin", arch: "arm64" },
 });
 

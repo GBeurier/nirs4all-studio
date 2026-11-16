@@ -38,6 +38,7 @@ function makeResources(): { resourcesPath: string; sidecarPath: string } {
   fs.writeFileSync(sidecarPath, sidecar);
   fs.mkdirSync(path.join(backendRoot, "tools"));
   fs.writeFileSync(path.join(backendRoot, "tools", "uv"), "uv");
+  fs.mkdirSync(path.join(backendRoot, "wheels"));
   fs.mkdirSync(path.join(backendRoot, "adapters", "studio_document_adapters"), { recursive: true });
   fs.writeFileSync(
     path.join(backendRoot, "native", "STUDIO_RUNTIME_CONTRACT.json"),
@@ -230,7 +231,7 @@ describe("packaged runtime contract", () => {
       fs.existsSync(path.join(root, "electron/python-http-diagnostic-policy.ts")),
     ).toBe(false);
   });
-  it("selects the content-addressed Rust sidecar of a package that carries uv and the adapters", () => {
+  it("selects the content-addressed Rust sidecar of a package that carries uv, the wheels and the adapters", () => {
     const fixture = makeResources();
     expect(
       verifyPackagedRuntimeContract({
@@ -247,6 +248,7 @@ describe("packaged runtime contract", () => {
 
   it.each([
     ["tools", "Packaged uv not found"],
+    ["wheels", "Packaged wheels not found"],
     ["adapters", "Packaged document adapters not found"],
   ])("refuses a package without %s", (directory, message) => {
     const fixture = makeResources();
@@ -254,6 +256,28 @@ describe("packaged runtime contract", () => {
     expect(() =>
       verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "linux" }),
     ).toThrow(message);
+  });
+
+  it("requires a well-formed wheelhouse description instead of wheels in a macOS package", () => {
+    const fixture = makeResources();
+    const backendRoot = path.join(fixture.resourcesPath, "backend");
+    const contractPath = path.join(backendRoot, "native", "STUDIO_RUNTIME_CONTRACT.json");
+    const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
+    fs.writeFileSync(contractPath, JSON.stringify({ ...contract, platform: "darwin" }));
+    fs.rmSync(path.join(backendRoot, "wheels"), { recursive: true });
+    const verify = () => verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "darwin" });
+    const manifest = {
+      url: "https://github.com/GBeurier/nirs4all-studio/releases/download/1.2.3/nirs4all.Studio-1.2.3-mac-arm64-wheels.tar.gz",
+      sha256: "a".repeat(64),
+      filename: "nirs4all.Studio-1.2.3-mac-arm64-wheels.tar.gz",
+    };
+    expect(verify).toThrow("Packaged wheelhouse description is missing or invalid");
+    for (const invalid of [{ ...manifest, sha256: "abc" }, { ...manifest, url: "file:///tmp/wheels.tar.gz" }, { url: manifest.url }]) {
+      fs.writeFileSync(path.join(backendRoot, "wheelhouse.json"), JSON.stringify(invalid));
+      expect(verify).toThrow("Packaged wheelhouse description is missing or invalid");
+    }
+    fs.writeFileSync(path.join(backendRoot, "wheelhouse.json"), JSON.stringify(manifest));
+    expect(verify().sidecarPath).toBe(fixture.sidecarPath);
   });
 
   it("expects uv.exe in a Windows package", () => {

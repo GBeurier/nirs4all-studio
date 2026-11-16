@@ -25,10 +25,6 @@ const UV_ARCHIVES = Object.freeze({
     filename: "uv-x86_64-pc-windows-msvc.zip",
     sha256: "0f0e22d7507633bfb38d9b42fb6a0341f1f74b8e80b070a31231c354812432a3",
   }),
-  "darwin-x64": Object.freeze({
-    filename: "uv-x86_64-apple-darwin.tar.gz",
-    sha256: "df6dd1c3ebeab4369a098c516c15c233c62bf789a40a4864b30dad1d38d7604e",
-  }),
   "darwin-arm64": Object.freeze({
     filename: "uv-aarch64-apple-darwin.tar.gz",
     sha256: "a6852e4dc565c8fedcf5adcdf09fca7caf5347739bed512bd95b15dada36db51",
@@ -39,14 +35,20 @@ function uvExecutableName(platform) {
   return platform === "win32" ? "uv.exe" : "uv";
 }
 
-function parseTargetArgs(argv = process.argv.slice(2)) {
+/** `--platform` and `--arch` (default: this host), plus the script's own `valueFlags` and `booleanFlags`. */
+function parseTargetArgs(argv = process.argv.slice(2), { valueFlags = [], booleanFlags = [] } = {}) {
   const target = { platform: process.platform, arch: process.arch };
   for (let index = 0; index < argv.length; index += 1) {
-    const flag = argv[index];
-    if (flag !== "--platform" && flag !== "--arch") throw new Error(`Unknown argument: ${flag}`);
-    const value = argv[++index];
-    if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value`);
-    target[flag.slice(2)] = value;
+    const name = argv[index].startsWith("--") ? argv[index].slice(2) : "";
+    if (booleanFlags.includes(name)) {
+      target[name] = true;
+    } else if (["platform", "arch", ...valueFlags].includes(name)) {
+      const value = argv[++index];
+      if (!value || value.startsWith("--")) throw new Error(`--${name} requires a value`);
+      target[name] = value;
+    } else {
+      throw new Error(`Unknown argument: ${argv[index]}`);
+    }
   }
   return target;
 }

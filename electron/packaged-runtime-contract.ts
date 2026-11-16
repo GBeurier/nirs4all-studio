@@ -188,8 +188,10 @@ function hasValidPlatformSignature(
 
 /**
  * Verify the product-owned Rust backend before spawn, and that the packaged
- * application still carries what environment setup needs: the shipped uv and
- * the document adapters. Python itself is never part of the package.
+ * application still carries what environment setup needs: the shipped uv, the
+ * document adapters and the required packages (embedded wheels, or on macOS
+ * the description of the release asset that carries them). Python itself is
+ * never part of the package.
  */
 export function verifyPackagedRuntimeContract({
   resourcesPath,
@@ -301,6 +303,24 @@ export function verifyPackagedRuntimeContract({
   const uvPath = path.join(backendRoot, "tools", platform === "win32" ? "uv.exe" : "uv");
   if (!fs.existsSync(uvPath)) {
     throw new Error(`Packaged uv not found: ${uvPath}`);
+  }
+  if (platform === "darwin") {
+    const manifestPath = path.join(backendRoot, "wheelhouse.json");
+    let manifest: Record<string, unknown> = {};
+    try {
+      manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+    } catch {
+      // Reported below with the missing-field case.
+    }
+    if (
+      typeof manifest.url !== "string" || !/^https:\/\/\S+$/.test(manifest.url) ||
+      typeof manifest.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(manifest.sha256) ||
+      typeof manifest.filename !== "string" || !manifest.filename.endsWith(".tar.gz")
+    ) {
+      throw new Error(`Packaged wheelhouse description is missing or invalid: ${manifestPath}`);
+    }
+  } else if (!fs.existsSync(path.join(backendRoot, "wheels"))) {
+    throw new Error(`Packaged wheels not found: ${path.join(backendRoot, "wheels")}`);
   }
   const adaptersPath = path.join(backendRoot, "adapters", "studio_document_adapters");
   if (!fs.existsSync(adaptersPath)) {

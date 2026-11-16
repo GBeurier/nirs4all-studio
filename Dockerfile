@@ -51,10 +51,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY recommended-config.json ./
-COPY scripts/fetch-uv.cjs scripts/verified-download.cjs scripts/tls-trust.cjs scripts/python-runtime-config.cjs scripts/python-wheel-lock.cjs scripts/build-wheelhouse.cjs scripts/provision-environment.cjs scripts/
+COPY scripts/fetch-uv.cjs scripts/verified-download.cjs scripts/tls-trust.cjs scripts/python-runtime-config.cjs scripts/python-wheel-lock.cjs scripts/build-wheelhouse.cjs scripts/build-offline-payload.cjs scripts/provision-environment.cjs scripts/
 COPY build/constraints/python-wheels-linux-x64.json build/constraints/
+# Every file of the environment comes from the lock: the Python archive and
+# each wheel are downloaded by pinned SHA-256, then installed without an index.
 RUN node scripts/fetch-uv.cjs --platform linux --arch x64 \
     && node scripts/build-wheelhouse.cjs --platform linux --arch x64 \
+    && node scripts/build-offline-payload.cjs --platform linux --arch x64 --image \
     && node scripts/provision-environment.cjs \
       --backend-root /build/backend-dist \
       --env-dir /opt/nirs4all/python-env \

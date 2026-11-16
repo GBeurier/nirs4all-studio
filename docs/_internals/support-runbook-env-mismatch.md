@@ -7,7 +7,7 @@ application. Model and vocabulary:
 
 ## Triage Questions
 
-1. **Which installer?** Standard, or offline (`-offline` in the file name).
+1. **Which installer?** Standard, or offline (`-offline` in the file name; Windows and Linux only).
 2. **What does Settings > Python show?** The selected environment, its phase
    and the problem message.
 3. **Which kind of environment is selected?** Created by Studio, a virtual
@@ -96,7 +96,10 @@ GET /api/system/env-coherence
 | Environment folder deleted or moved | Setup page with "The selected Python environment was not found" | Select it again or create a new one. |
 | System Python on Linux (externally managed) | `required_not_installable` | Create a Studio environment or use a virtual environment. |
 | Developer with an editable `nirs4all` out of range | `required_not_installable` | Update the checkout; Studio never modifies editable installs. |
-| No network on first launch with the standard installer | Creation fails while downloading the Python runtime or packages | Install the offline variant, or connect once. |
+| No network on first launch with the standard installer | Creation fails while downloading the Python runtime or packages | On Windows or Linux install the offline variant, or connect once. On macOS there is no offline variant: connect once. |
+| macOS: "Studio could not download its required packages" | The wheel archive of the release could not be downloaded or did not match its SHA-256 | Check the connection and retry; the archive is the release asset `nirs4all.Studio-<version>-mac-arm64-wheels.tar.gz`. |
+| macOS blocks the first opening of the application | The build is not signed | System Settings > Privacy & Security > Open Anyway. |
+| Intel Mac | No installer exists | macOS is supported on Apple Silicon only. |
 | Corporate proxy with a private certificate authority | `required_update_failed` with a certificate message | Add the authority to the system certificate store; `uv` and Studio use the system store. |
 | Package installed from a terminal into another Python | Package still shown as missing | Install it into the interpreter shown in Settings > Python, or use the page's checkboxes. |
 | "Python packages can be updated" toast | Recommended packages are older than recommended | Optional: review on Settings > Python. |

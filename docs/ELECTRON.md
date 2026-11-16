@@ -227,13 +227,16 @@ it is given. Detailed model:
 - **Catalogue.** `recommended-config.json`: `required` packages (accepted
   `range`, exact `install` version) and `optional` recommended packages.
 - **uv.** Environments are created and packages installed with the shipped
-  `uv` (`resources/backend/tools/uv[.exe]`), with `resources/backend/wheels/`
-  as a `--find-links` source. `torch` is installed with
+  `uv` (`resources/backend/tools/uv[.exe]`), with the required wheels as a
+  `--find-links` source: `resources/backend/wheels/` on Windows and Linux; on
+  macOS the archive named by `resources/backend/wheelhouse.json`, downloaded
+  once, verified and kept in `userData/wheelhouse/`. `torch` is installed with
   `--torch-backend auto`.
 - **First launch.** The phase is `unconfigured`; the renderer shows one page
   that lists detected environments. The user picks one or creates a new one
   (`userData/python-env/python` and `userData/python-env/venv`; the pinned
-  Python runtime is downloaded, or taken from the offline payload). Required
+  Python runtime is downloaded, or taken from the offline payload of a Windows
+  or Linux offline installer). Required
   packages are installed automatically; recommended packages are per-package
   choices.
 - **Later launches.** The environment is reused. Required packages that left
@@ -415,19 +418,22 @@ npm run build:electron
 # Run on the matching host; CPU is the only installer flavor.
 npm run release -- --platform linux --flavor cpu
 
-# Offline installer (adds the offline payload)
+# Offline installer (Windows and Linux; adds the offline payload)
 npm run release -- --platform linux --flavor cpu --offline
 ```
 
 This runs:
 1. staging of the installer payload in `backend-dist/`: `uv`, the wheels of
    the required packages, the document adapters and the Rust sidecar (plus the
-   offline payload with `--offline`)
+   offline payload with `--offline`). On macOS the wheels are packed as the
+   release asset `nirs4all.Studio-<version>-mac-arm64-wheels.tar.gz` and
+   replaced in the payload by `wheelhouse.json`
 2. verification of the runtime contract and of that payload
 3. `npm run build:electron` (React frontend and Electron main process)
 4. electron-builder packaging plus fresh-output/runtime verification
 
-No Python runtime is packaged. On macOS, the Electron Builder `afterPack` hook
+No Python runtime is packaged, and a macOS application embeds no wheels. On
+macOS (Apple Silicon only), the Electron Builder `afterPack` hook
 pre-signs `libn4m.dylib`, then regenerates `STUDIO_RUNTIME_CONTRACT.json`.
 `mac.signIgnore` prevents a second signature from changing those attested
 bytes. It does not match `native/studio-sidecar` or `tools/uv`, so Electron

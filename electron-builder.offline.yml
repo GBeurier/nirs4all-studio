@@ -1,7 +1,9 @@
-# Offline installer: the standard installer plus the offline payload (the
-# pinned Python runtime archive and the wheels of the default package set), so
-# that Studio can create its environment without network access. Artifacts
-# carry the `-offline` suffix; the in-app update check never selects them.
+# Offline installer (Windows and Linux): the standard installer plus the
+# offline payload (the pinned Python runtime archive and the wheels of the
+# default package set), so that Studio can create its environment without
+# network access. Artifacts carry the `-offline` suffix; the in-app update
+# check never selects them. There is no macOS offline installer: a macOS
+# application cannot embed wheels.
 extends: electron-builder.installer.yml
 
 extraResources:
@@ -12,9 +14,6 @@ extraResources:
 
 win:
   artifactName: "${productName}-${version}-win-${arch}-offline.${ext}"
-
-mac:
-  artifactName: "${productName}-${version}-mac-${arch}-offline.${ext}"
 
 linux:
   artifactName: "${productName}-${version}-linux-${arch}-offline.${ext}"

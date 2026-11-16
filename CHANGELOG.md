@@ -26,13 +26,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 - After this update, if you used the Python runtime included with earlier
   versions, Studio asks you once to choose or create a Python environment.
   Your workspaces and settings are kept.
+- macOS is supported on Apple Silicon only; there is no Intel Mac installer.
+  On macOS the first launch needs an internet connection: Studio downloads the
+  Python runtime and the packages it requires. When macOS blocks the first
+  opening of the application, allow it in System Settings > Privacy &
+  Security > Open Anyway.
 
 ### Added
 
-- An offline installer (file name ending in `-offline`) for machines without
-  network access. It carries the Python runtime and the default package set,
-  so Studio creates its environment without downloading anything. In-app
-  updates always use the standard installer.
+- An offline installer for Windows and Linux (file name ending in `-offline`)
+  for machines without network access. It carries the Python runtime and the
+  default package set, so Studio creates its environment without downloading
+  anything. In-app updates always use the standard installer.
 
 ## [0.15.11] — 2026-11-10
 

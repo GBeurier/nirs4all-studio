@@ -99,7 +99,8 @@ installation.
 ```
 
 The selected asset is always the installer of the platform; an asset whose
-name contains `-offline` is never selected. Version numbers and sizes in this
+name contains `-offline` is never selected, nor is the macOS wheel archive
+(`-mac-arm64-wheels.tar.gz`). Version numbers and sizes in this
 document are illustrative.
 
 #### GET /webapp/changelog

@@ -25,7 +25,7 @@ test("actual Python build stage has a closed CommonJS dependency graph", () => {
   assertDockerCjsModuleGraph({ projectRoot: root,
     dockerfile: fs.readFileSync(path.join(root, "Dockerfile"), "utf8"),
     stageName: "python-environment",
-    entrypoints: ["scripts/fetch-uv.cjs", "scripts/build-wheelhouse.cjs", "scripts/provision-environment.cjs"] });
+    entrypoints: ["scripts/fetch-uv.cjs", "scripts/build-wheelhouse.cjs", "scripts/build-offline-payload.cjs", "scripts/provision-environment.cjs"] });
 });
 
 test("checks an arbitrary deferred transitive require rather than one helper name", (t) => {

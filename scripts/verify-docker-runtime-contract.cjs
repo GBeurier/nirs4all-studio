@@ -4,6 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { assertDockerCjsModuleGraph } = require("./docker-cjs-module-graph.cjs");
+const { TARGETS: lockTargets } = require("./python-wheel-lock.cjs");
 const {
   MANIFEST: adapterManifest,
   SOURCE_FILES: adapterSourceFiles,
@@ -53,7 +54,7 @@ try {
     projectRoot: root,
     dockerfile,
     stageName: "python-environment",
-    entrypoints: ["scripts/fetch-uv.cjs", "scripts/build-wheelhouse.cjs", "scripts/provision-environment.cjs"],
+    entrypoints: ["scripts/fetch-uv.cjs", "scripts/build-wheelhouse.cjs", "scripts/build-offline-payload.cjs", "scripts/provision-environment.cjs"],
   });
 } catch (error) {
   errors.push(error.message);
@@ -65,8 +66,13 @@ requireText(
 );
 requireText(dockerfile, "node scripts/fetch-uv.cjs --platform linux --arch x64", "pinned uv");
 requireText(dockerfile, "node scripts/build-wheelhouse.cjs --platform linux --arch x64", "locked required wheels");
+requireText(dockerfile, "node scripts/build-offline-payload.cjs --platform linux --arch x64 --image", "locked image closure installed without an index");
 requireText(dockerfile, "--env-dir /opt/nirs4all/python-env", "environment created at its final image path");
-requireText(dockerfile, "--recommended shap,matplotlib,lightgbm", "catalogue packages of the image");
+requireText(
+  dockerfile,
+  `--recommended ${lockTargets["linux-x64"].imageExtras.join(",")}`,
+  "the image extras that the Linux lock resolves",
+);
 requireText(
   dockerfile,
   "COPY --from=studio-document-adapter-sources /api/synthetic_datasets.json api/synthetic_datasets.json",

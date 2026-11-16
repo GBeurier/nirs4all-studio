@@ -355,10 +355,12 @@ jobs:
           sudo chmod 4755 release/linux-unpacked/chrome-sandbox
           test "$(stat -c '%u:%g:%a' release/linux-unpacked/chrome-sandbox)" = '0:0:4755'
 
-      # The environment is created by the shipped uv from the shipped wheels,
-      # then the packaged application starts on it in a fresh profile.
-      - name: Verify first launch of the packaged Studio
-        timeout-minutes: 20
+      # Payload: a script creates an environment with the shipped uv from the
+      # shipped wheels and the packaged application starts on it. Application:
+      # on a fresh profile Studio opens its setup page and creates the
+      # environment itself with the packages it preselects.
+      - name: Verify the packaged payload and the application's first launch
+        timeout-minutes: 45
         run: |
           xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root release/linux-unpacked --platform linux
           xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root release/linux-unpacked --platform linux
