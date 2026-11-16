@@ -73,7 +73,7 @@ async function waitForFrontend(page: Page): Promise<void> {
  * Runs once before all tests to:
  * - Ensure test data directories exist
  * - Verify backend health
- * - Skip first-launch setup wizard (prevents redirect to /setup)
+ * - Force the English locale
  */
 async function globalSetup(config: FullConfig) {
   // Ensure test data directory exists
@@ -119,26 +119,6 @@ async function globalSetup(config: FullConfig) {
       }
     }
     console.log('Vite dependency cache warmed');
-
-    // Skip first-launch setup wizard to prevent redirect to /setup during tests.
-    // In CI the setup_status.json doesn't exist, so useStartupUpdateCheck would
-    // redirect every page to /setup before tests can interact with it.
-    try {
-      const setupResponse = await page.request.get(`${e2eRuntime.backendUrl}/api/config/setup-status`);
-      if (!setupResponse.ok()) {
-        throw new Error(`HTTP ${setupResponse.status()} ${await readResponseSnippet(setupResponse)}`);
-      }
-      const status = await setupResponse.json();
-      if (!status.setup_completed) {
-        console.log('Skipping first-launch setup for E2E tests...');
-        const skipResponse = await page.request.post(`${e2eRuntime.backendUrl}/api/config/skip-setup`);
-        if (!skipResponse.ok()) {
-          throw new Error(`HTTP ${skipResponse.status()} ${await readResponseSnippet(skipResponse)}`);
-        }
-      }
-    } catch (e) {
-      throw new Error(`Could not prepare first-launch setup state: ${e}`);
-    }
 
     // Force English in the Rust-owned application preferences. This setup must
     // not require an active scientific workspace merely to make UI tests

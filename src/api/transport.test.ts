@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, formatApiErrorDetail, getApiErrorMessage, resetBackendUrl } from "./transport";
 import { hasScientificRequestInFlight } from "./dataset-request-activity";
-import { getConfigDiff, getRecommendedConfig } from "./config";
 import {
   preselectRendererTransport,
   type RendererTransportRequest,
@@ -112,40 +111,7 @@ function createElectronApiMock(
     }),
     restartBackend: vi.fn().mockResolvedValue({ success: true }),
     restartScientificPlugin: vi.fn().mockResolvedValue({ success: true }),
-    onBackendStatusChanged: vi.fn(() => () => undefined),
     onScientificPluginStatusChanged: vi.fn(() => () => undefined),
-    getEnvStatus: vi.fn().mockResolvedValue("ready"),
-    isEnvReady: vi.fn().mockResolvedValue(true),
-    getEnvInfo: vi.fn().mockResolvedValue({
-      status: "ready",
-      envDir: "",
-      pythonPath: null,
-      sitePackages: null,
-      pythonVersion: null,
-      isCustom: false,
-    }),
-    detectExistingEnvs: vi.fn().mockResolvedValue([]),
-    inspectExistingEnv: vi
-      .fn()
-      .mockResolvedValue({ success: true, message: "" }),
-    useExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
-    selectPythonExe: vi.fn().mockResolvedValue(null),
-    inspectExistingPython: vi
-      .fn()
-      .mockResolvedValue({ success: true, message: "" }),
-    useExistingPython: vi
-      .fn()
-      .mockResolvedValue({ success: true, message: "" }),
-    applyExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
-    applyExistingPython: vi
-      .fn()
-      .mockResolvedValue({ success: true, message: "" }),
-    startEnvSetup: vi.fn().mockResolvedValue({ success: true }),
-    onEnvSetupProgress: vi.fn(() => () => undefined),
-    shouldShowWizard: vi.fn().mockResolvedValue(false),
-    markWizardComplete: vi.fn().mockResolvedValue(undefined),
-    getCurrentEnvSummary: vi.fn().mockResolvedValue(null),
-    isPortable: vi.fn().mockResolvedValue(false),
     platform: "linux",
     isElectron: true,
     getPathForFile: vi.fn(() => ""),
@@ -187,7 +153,6 @@ function mockRequiresPythonHost(path: string): boolean {
     "/system/build",
     "/system/env-coherence",
     "/updates/version",
-    "/updates/runtime/status",
   ].includes(path);
 }
 
@@ -207,7 +172,6 @@ function mockNativeCandidate(path: string, method: string): boolean {
     "/system/build",
     "/system/env-coherence",
     "/updates/version",
-    "/updates/runtime/status",
   ].includes(path) ||
     path.startsWith("/app/favorites/") ||
     ((method === "POST" || method === "DELETE") &&
@@ -736,29 +700,6 @@ describe("API client request handling", () => {
     expect(acquire).not.toHaveBeenCalled();
   });
 
-  it("adds include_latest=false only when the caller disables latest-version lookup", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        profile: "cpu",
-        profile_label: "CPU",
-        packages: [],
-        aligned_count: 0,
-        misaligned_count: 0,
-        missing_count: 0,
-        is_aligned: true,
-        checked_at: "2026-04-18T08:00:00",
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await getConfigDiff("cpu", false, false);
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/config/diff?profile=cpu&include_latest=false",
-      expect.any(Object),
-    );
-  });
-
   it("sends the migrated capabilities route to a running native sidecar without retrying Python", async () => {
     const fetchMock = vi
       .fn()
@@ -843,10 +784,7 @@ describe("API client request handling", () => {
   it("sends the migrated system-build route to a running native sidecar", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
       build: { flavor: "development", gpu_enabled: false },
-      gpu: { cuda_available: false, metal_available: false, backends: {} },
-      runtime_mode: "development",
-      is_frozen: false,
-      summary: { gpu_available: false },
+      summary: { flavor: "development", gpu_build: false },
     }));
     vi.stubGlobal("fetch", fetchMock);
     window.electronApi = createElectronApiMock({
@@ -892,43 +830,6 @@ describe("API client request handling", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:43123/api/updates/version",
-      expect.any(Object),
-    );
-  });
-
-  it("sends the migrated runtime status to a configured native sidecar", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
-      runtime: {
-        path: "/opt/nirs4all/runtime",
-        exists: true,
-        is_valid: true,
-        python_executable: "/opt/nirs4all/runtime/bin/python",
-        python_version: "3.11.9",
-        pip_version: "24.0",
-        created_at: null,
-        last_updated: null,
-        size_bytes: 1024,
-      },
-      venv: {},
-      packages: [],
-      nirs4all_version: "0.12.0",
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-    window.electronApi = createElectronApiMock({
-      getNativeSidecarInfo: vi.fn().mockResolvedValue({
-        status: "running",
-        host: "127.0.0.1",
-        port: 43123,
-        protocolVersion: "studio-sidecar-r1",
-        url: "http://127.0.0.1:43123",
-        pythonPluginHostConfigured: true,
-      }),
-    });
-
-    await api.get("/updates/runtime/status");
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:43123/api/updates/runtime/status",
       expect.any(Object),
     );
   });

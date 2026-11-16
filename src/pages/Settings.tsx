@@ -5,6 +5,7 @@
  * - General: Theme, UI density, animations, language, and keyboard shortcuts
  * - Workspace: Current workspace stats and management
  * - Data Defaults: Default settings for dataset loading
+ * - Python: The Python environment and its packages
  * - Advanced: Developer options and troubleshooting
  *
  * Phase 2 (Settings Roadmap): General Settings Enhancements
@@ -21,6 +22,7 @@ import { clearClientStorageArea } from "@/lib/clientStorage";
 import { useTheme } from "@/context/useTheme";
 import { useDeveloperMode } from "@/context/useDeveloperMode";
 import { useUISettings } from "@/context/useUISettings";
+import { pythonEnvNeedsReview, usePythonEnv } from "@/context/usePythonEnv";
 import {
   Card,
   CardContent,
@@ -47,6 +49,7 @@ import {
   GeneralSettingsTab,
   WorkspacesSettingsTab,
   DataSettingsTab,
+  PythonSettingsTab,
   UpdatesSettingsTab,
   AdvancedSettingsTab,
 } from "./SettingsSections";
@@ -75,6 +78,7 @@ export default function Settings() {
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const backendUrl = useBackendDisplayUrl(t("common.unknown"));
   const [isRestarting, setIsRestarting] = useState(false);
+  const pythonNeedsReview = pythonEnvNeedsReview(usePythonEnv().state);
   const [telemetryConsent, setTelemetryConsent] = useState<TelemetryConsentStatus>("unset");
   const [isSavingTelemetryConsent, setIsSavingTelemetryConsent] = useState(false);
 
@@ -225,10 +229,17 @@ export default function Settings() {
       {/* Tabs for organization */}
       <motion.div variants={itemVariants}>
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             {SETTINGS_TABS.map((tab) => (
               <TabsTrigger key={tab.value} value={tab.value}>
                 {t(tab.labelKey)}
+                {tab.value === "python" && pythonNeedsReview && (
+                  <span
+                    role="img"
+                    aria-label={t("pythonEnv.needsReview")}
+                    className="ml-1.5 h-2 w-2 rounded-full bg-amber-500"
+                  />
+                )}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -264,6 +275,11 @@ export default function Settings() {
           {/* Data Defaults Tab */}
           <TabsContent value="data" className="space-y-6">
             <DataSettingsTab />
+          </TabsContent>
+
+          {/* Python Tab */}
+          <TabsContent value="python" className="space-y-6">
+            <PythonSettingsTab />
           </TabsContent>
 
           {/* Updates Tab */}

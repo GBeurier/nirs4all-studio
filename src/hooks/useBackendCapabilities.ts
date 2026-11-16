@@ -8,8 +8,9 @@ import type { CapabilityLevel } from "@/lib/operatorCapability";
  * Used to hide UI for optional backend dependencies that are intentionally
  * absent in a pure-sklearn ("lite") build: deep-learning pipeline nodes
  * (PyTorch / TensorFlow / JAX) and the SHAP explainability UI. The endpoint
- * is fetched at most once per session and the result is shared across
- * callers. Every capability defaults to `true` while the probe is in flight so
+ * is fetched once per backend start and the result is shared across callers:
+ * a restarted backend (for instance after packages were installed in the
+ * Python environment) is probed again. Every capability defaults to `true` while the probe is in flight so
  * nothing is hidden prematurely. When the probe fails or times out the optional
  * heavy capabilities are reported unavailable (a deep-learning node offered on
  * a backend without PyTorch cannot run), and the failure is not cached so the
@@ -80,24 +81,41 @@ function probeCapabilities(): Promise<CapabilityFlags> {
   return inflight;
 }
 
+let restartSeen: Event | null = null;
+
+/** Delivers the flags now and again after each backend restart; returns the cleanup. */
+function watchCapabilities(onFlags: (flags: CapabilityFlags) => void): () => void {
+  let cancelled = false;
+  const deliver = (flags: CapabilityFlags) => {
+    if (!cancelled) {
+      onFlags(flags);
+    }
+  };
+  if (cached !== null) {
+    onFlags(cached);
+  } else {
+    void probeCapabilities().then(deliver);
+  }
+  const refresh = (event: Event) => {
+    // Every mounted caller receives the same event: drop the cache once, share one probe.
+    if (restartSeen !== event) {
+      restartSeen = event;
+      cached = null;
+      inflight = null;
+    }
+    void probeCapabilities().then(deliver);
+  };
+  window.addEventListener("backend-restarted", refresh);
+  return () => {
+    cancelled = true;
+    window.removeEventListener("backend-restarted", refresh);
+  };
+}
+
 function useCapability(key: BooleanCapabilityKey): boolean {
   const [available, setAvailable] = useState<boolean>(cached?.[key] ?? true);
 
-  useEffect(() => {
-    if (cached !== null) {
-      setAvailable(cached[key]);
-      return;
-    }
-    let cancelled = false;
-    probeCapabilities().then((flags) => {
-      if (!cancelled) {
-        setAvailable(flags[key]);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [key]);
+  useEffect(() => watchCapabilities((flags) => setAvailable(flags[key])), [key]);
 
   return available;
 }
@@ -126,21 +144,7 @@ export function useShapAvailable(): boolean {
 export function useBackendCapabilityReport(): BackendCapabilityStatus[] {
   const [report, setReport] = useState<BackendCapabilityStatus[]>(cached?.report ?? []);
 
-  useEffect(() => {
-    if (cached !== null) {
-      setReport(cached.report);
-      return;
-    }
-    let cancelled = false;
-    probeCapabilities().then((flags) => {
-      if (!cancelled) {
-        setReport(flags.report);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  useEffect(() => watchCapabilities((flags) => setReport(flags.report)), []);
 
   return report;
 }

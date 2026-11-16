@@ -10,7 +10,7 @@ describe("describeApiError", () => {
     expect(describeApiError({ detail: "Capability check failed", status: 503,
       code: "python_plugin_preflight_failed", reason: "timed_out" }, t)).toEqual({
       message: "errors.api.pythonCheckTimedOut",
-      action: { label: "errors.api.openPythonSettings", href: "/settings?tab=advanced" },
+      action: { label: "errors.api.openPythonSettings", href: "/settings?tab=python" },
     });
   });
 
@@ -20,7 +20,7 @@ describe("describeApiError", () => {
       t,
     );
     expect(result.message).toBe("errors.api.engineUnavailable");
-    expect(result.action).toEqual({ label: "errors.api.openPythonSettings", href: "/settings?tab=advanced" });
+    expect(result.action).toEqual({ label: "errors.api.openPythonSettings", href: "/settings?tab=python" });
   });
 
   it("never exposes machine reasons for unmigrated routes", () => {

@@ -3,11 +3,7 @@
  * These types enable TypeScript support for the Electron desktop integration
  */
 
-import type {
-  DesktopDetectedEnv,
-  DesktopEnvActionResult,
-  DesktopEnvInfo,
-} from "@/types/pythonRuntime";
+import type { PythonEnvApi } from "@/types/pythonEnvironment";
 
 interface BackendRestartResult {
   success: boolean;
@@ -184,83 +180,12 @@ interface ElectronApi {
     options?: BackendRestartOptions,
   ): Promise<BackendRestartResult>;
 
-  /**
-   * Subscribe to backend status changes
-   * @param callback - Called when backend status changes
-   * @returns Cleanup function to unsubscribe
-   */
-  onBackendStatusChanged(callback: (info: {
-    status: "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
-    port: number;
-    url: string;
-    error?: string;
-    restartCount: number;
-  }) => void): () => void;
-  /** Receive the explicit diagnostic backend's startup notifications. */
-  onMlReady(callback: (info: {
-    ready: boolean;
-    error?: string;
-    workspaceReady?: boolean;
-  }) => void): () => void;
-  /**
-   * Python environment management
-   */
-  getEnvStatus(): Promise<string>;
+  /** Python environment lifecycle, owned by the main process. */
+  pythonEnv: PythonEnvApi;
+
+  /** Output of the package operations run by the main process. */
   getInstallLog?(): Promise<import("./installLog").InstallLogSnapshot>;
   onInstallLog?(callback: (snapshot: import("./installLog").InstallLogSnapshot) => void): () => void;
-  isEnvReady(): Promise<boolean>;
-  getEnvInfo(): Promise<DesktopEnvInfo>;
-  detectExistingEnvs(): Promise<DesktopDetectedEnv[]>;
-  inspectExistingEnv(envPath: string): Promise<DesktopEnvActionResult>;
-  useExistingEnv(envPath: string): Promise<DesktopEnvActionResult>;
-  /**
-   * Open a file dialog to select a Python executable directly
-   */
-  selectPythonExe(): Promise<string | null>;
-  /**
-   * Configure using a direct path to a Python executable
-   */
-  inspectExistingPython(pythonPath: string): Promise<DesktopEnvActionResult>;
-  useExistingPython(pythonPath: string): Promise<DesktopEnvActionResult>;
-  applyExistingEnv(
-    envPath: string,
-    options?: { installCorePackages?: boolean },
-  ): Promise<DesktopEnvActionResult>;
-  applyExistingPython(
-    pythonPath: string,
-    options?: { installCorePackages?: boolean },
-  ): Promise<DesktopEnvActionResult>;
-  startEnvSetup(
-    targetDir?: string,
-  ): Promise<{ success: boolean; error?: string }>;
-  onEnvSetupProgress(
-    callback: (progress: {
-      percent: number;
-      step: string;
-      detail: string;
-    }) => void,
-  ): () => void;
-  /**
-   * Check if the setup wizard should be shown (new install, update, or portable mode)
-   */
-  shouldShowWizard(): Promise<boolean>;
-  /**
-   * Mark the setup wizard as completed and save preferences
-   * @param skipNextTime - If true, suppresses wizard on subsequent launches (portable mode)
-   */
-  markWizardComplete(skipNextTime: boolean): Promise<void>;
-  /**
-   * Get summary of the currently configured Python environment (for pre-filling the wizard)
-   */
-  getCurrentEnvSummary(): Promise<{
-    pythonPath: string;
-    envPath: string;
-    version: string;
-  } | null>;
-  /**
-   * Check if the app is running as a portable (non-installed) build
-   */
-  isPortable(): Promise<boolean>;
 
   /**
    * The current platform (darwin, win32, linux)

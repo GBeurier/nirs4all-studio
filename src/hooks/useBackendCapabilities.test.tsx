@@ -59,6 +59,23 @@ describe("useBackendCapabilities", () => {
     expect(seen.at(-1)).toBe(true);
   });
 
+  it("probes again after a backend restart, once for every mounted caller", async () => {
+    mocks.apiGet.mockResolvedValueOnce({ capabilities: { torch: false, shap: false } })
+      .mockResolvedValue({ capabilities: { torch: true, shap: true } });
+    const view = await renderFlags();
+    expect(view.seen).toEqual({ deepLearning: false, shap: false });
+
+    // Packages were installed from the Python page and the backend restarted.
+    await act(async () => { window.dispatchEvent(new CustomEvent("backend-restarted")); });
+
+    expect(view.seen).toEqual({ deepLearning: true, shap: true });
+    expect(mocks.apiGet).toHaveBeenCalledTimes(2);
+    await view.unmount();
+
+    await act(async () => { window.dispatchEvent(new CustomEvent("backend-restarted")); });
+    expect(mocks.apiGet).toHaveBeenCalledTimes(2);
+  });
+
   it("reflects the reported capabilities when the probe succeeds", async () => {
     mocks.apiGet.mockResolvedValue({ capabilities: { torch: false, tensorflow: false, jax: false, shap: true } });
     const view = await renderFlags();

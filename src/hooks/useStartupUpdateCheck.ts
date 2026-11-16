@@ -1,88 +1,67 @@
 /**
- * Startup update check hook.
+ * Startup checks.
  *
  * On app mount:
- * 1. Checks if first-launch setup is needed (redirects to /setup)
- * 2. Checks for available updates and shows toast notification
- * 3. Checks for config drift and shows settings badge
+ * 1. Opens the Python setup page while no environment is selected (desktop only)
+ * 2. Warns once when recommended Python packages are older than recommended
+ * 3. Checks for an application update and shows a toast notification
  *
- * Respects the auto_check setting.
+ * The update toast respects the auto_check setting.
  */
 
 import { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import i18n from "i18next";
 import { useUpdateStatus, useUpdateSettings } from "./useUpdates";
-import { useSetupStatus, useIsConfigAligned } from "./useRecommendedConfig";
-import { waitForScientificReadiness } from "@/lib/scientificReadiness";
-import { getElectronApi } from "@/components/settings/PythonEnvPickerRuntime";
 import { useNetworkState } from "./useNetworkState";
+import { usePythonEnv } from "@/context/usePythonEnv";
 
 export function useStartupUpdateCheck() {
   const { online, isLoading: networkLoading } = useNetworkState();
   const { data: status } = useUpdateStatus();
   const { data: settings } = useUpdateSettings();
-  const { data: setupStatus } = useSetupStatus();
-  const { isAligned, misalignedCount } = useIsConfigAligned();
+  const { state: pythonEnv, setupSkipped } = usePythonEnv();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const hasNotified = useRef(false);
-  const hasCheckedSetup = useRef(false);
+  const hasWarnedOutdated = useRef(false);
 
-  // Check for first-launch setup
+  // Studio needs an environment: stay on setup until one is selected or the
+  // user continues without Python. Outside Electron the state is never set.
+  const needsSetup = pythonEnv?.phase === "unconfigured" && !setupSkipped;
   useEffect(() => {
-    if (hasCheckedSetup.current) return;
-    if (!setupStatus) return;
+    if (needsSetup && pathname !== "/setup") navigate("/setup", { replace: true });
+  }, [needsSetup, pathname, navigate]);
 
-    const desktop = getElectronApi();
-    if (!desktop) {
-      hasCheckedSetup.current = true;
-      if (!setupStatus.setup_completed) navigate("/setup", { replace: true });
-      return;
-    }
-    let cancelled = false;
-    void Promise.all([
-      desktop.getEnvInfo(),
-      // A starting engine is not a broken one: wait for its acquisition to end.
-      waitForScientificReadiness().catch(() => null),
-    ]).then(([environment, readiness]) => {
-      if (cancelled) return;
-      hasCheckedSetup.current = true;
-      // A failed health request is not evidence that an existing environment
-      // needs installation. Keep the workspace and its recovery banner usable.
-      if (!environment.setupDeferred && (!setupStatus.setup_completed || readiness?.ml_ready === false)) {
-        navigate("/setup", { replace: true });
-      }
-    }).catch(() => {
-      if (!cancelled) hasCheckedSetup.current = true;
+  const outdatedCount = pythonEnv?.phase === "ready" ? pythonEnv.selected?.outdatedRecommendedCount ?? 0 : 0;
+  useEffect(() => {
+    if (hasWarnedOutdated.current || outdatedCount === 0) return;
+    hasWarnedOutdated.current = true;
+    toast(i18n.t("pythonEnv.outdatedToast.title"), {
+      description: i18n.t("pythonEnv.outdated", { count: outdatedCount }),
+      duration: 8000,
+      action: {
+        label: i18n.t("pythonEnv.outdatedToast.review"),
+        onClick: () => navigate("/settings?tab=python"),
+      },
     });
-    return () => { cancelled = true; };
-  }, [setupStatus, navigate]);
+  }, [outdatedCount, navigate]);
 
-  // Check for updates
+  // Check for an application update
   useEffect(() => {
     if (hasNotified.current) return;
     if (networkLoading || !online) return;
     if (!status || !settings) return;
     if (!settings.auto_check) return;
-
-    const hasWebapp = status.webapp?.update_available ?? false;
-    const hasNirs4all = !getElectronApi() && (status.nirs4all?.update_available ?? false);
-
-    if (!hasWebapp && !hasNirs4all) return;
+    if (!status.webapp?.update_available) return;
 
     hasNotified.current = true;
 
-    const parts: string[] = [];
-    if (hasWebapp && status.webapp?.latest_version) {
-      parts.push(`Webapp ${status.webapp.latest_version}`);
-    }
-    if (hasNirs4all && status.nirs4all?.latest_version) {
-      parts.push(`nirs4all ${status.nirs4all.latest_version}`);
-    }
-
     toast(i18n.t("common.updates.available.title"), {
-      description: i18n.t("common.updates.available.description", { versions: parts.join(", ") }),
+      description: i18n.t("common.updates.available.description", {
+        versions: status.webapp.latest_version ? `Webapp ${status.webapp.latest_version}` : "",
+      }),
       duration: 8000,
       action: {
         label: i18n.t("common.updates.available.view"),
@@ -90,22 +69,4 @@ export function useStartupUpdateCheck() {
       },
     });
   }, [online, networkLoading, status, settings, navigate]);
-
-  // User-selected desktop packages are informational, not a scored profile.
-  useEffect(() => {
-    if (getElectronApi()) return;
-    if (networkLoading || !online) return;
-    if (!setupStatus?.setup_completed) return;
-    if (isAligned) return;
-    if (misalignedCount === 0) return;
-
-    toast(i18n.t("common.updates.drift.title"), {
-      description: i18n.t("common.updates.drift.description", { count: misalignedCount }),
-      duration: 6000,
-      action: {
-        label: i18n.t("common.updates.drift.review"),
-        onClick: () => navigate("/settings?tab=advanced"),
-      },
-    });
-  }, [online, networkLoading, isAligned, misalignedCount, setupStatus, navigate]);
 }

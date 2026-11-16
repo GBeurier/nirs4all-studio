@@ -14,6 +14,7 @@ describe("settingsNavigation", () => {
       "general",
       "workspaces",
       "data",
+      "python",
       "updates",
       "advanced",
     ]);
@@ -33,6 +34,7 @@ describe("settingsNavigation", () => {
 
   it("reads the active tab from route search params", () => {
     expect(getSettingsTabFromSearchParams(new URLSearchParams("tab=data"))).toBe("data");
+    expect(getSettingsTabFromSearchParams(new URLSearchParams("tab=python"))).toBe("python");
     expect(getSettingsTabFromSearchParams(new URLSearchParams("tab=unknown"))).toBe(DEFAULT_SETTINGS_TAB);
   });
 });

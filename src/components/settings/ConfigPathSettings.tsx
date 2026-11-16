@@ -74,7 +74,7 @@ export function ConfigPathSettings() {
     loadConfigPath();
   }, []);
 
-  // Reload after backend restart (e.g., env change in PythonEnvPicker)
+  // Reload after backend restart (e.g. after a Python environment change)
   useEffect(() => {
     const handler = () => {
       // Backend just restarted — retry with delay so it's fully ready

@@ -26,6 +26,7 @@ import { UISettingsProvider } from "@/context/UISettingsContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { ActiveRunProvider } from "@/context/ActiveRunContext";
 import { MlReadinessProvider } from "@/context/MlReadinessContext";
+import { PythonEnvProvider } from "@/context/PythonEnvContext";
 import { Toaster } from "@/components/ui/sonner";
 import App from "./App";
 import "./index.css";
@@ -71,8 +72,10 @@ const appTree = (
                 <DeveloperModeProvider>
                   <ActiveRunProvider>
                     <MlReadinessProvider>
-                      <App />
-                      <Toaster position="bottom-right" />
+                      <PythonEnvProvider>
+                        <App />
+                        <Toaster position="bottom-right" />
+                      </PythonEnvProvider>
                     </MlReadinessProvider>
                   </ActiveRunProvider>
                 </DeveloperModeProvider>

@@ -10,11 +10,8 @@ import i18n from "i18next";
 
 import "@/lib/i18n";
 
-import { Nirs4allUpdateRow, WebappUpdateRow } from "../UpdatesSectionRows";
-import type {
-  Nirs4allUpdateRowState,
-  WebappUpdateRowState,
-} from "../UpdatesSectionLogic";
+import { WebappUpdateRow } from "../UpdatesSectionRows";
+import type { WebappUpdateRowState } from "../UpdatesSectionLogic";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -60,19 +57,6 @@ function createWebappRow(
     isPrerelease: false,
     showTargetVersion: true,
     targetVersion: "1.1.0",
-    ...overrides,
-  };
-}
-
-function createNirs4allRow(
-  overrides: Partial<Nirs4allUpdateRowState> = {},
-): Nirs4allUpdateRowState {
-  return {
-    action: "update",
-    currentVersion: "0.9.0",
-    isActionDisabled: false,
-    latestVersion: "0.10.0",
-    showTargetVersion: true,
     ...overrides,
   };
 }
@@ -136,42 +120,6 @@ describe("WebappUpdateRow", () => {
       />,
     );
 
-    expect(container.querySelector("button")?.disabled).toBe(true);
-  });
-});
-
-describe("Nirs4allUpdateRow", () => {
-  it("renders the prepared library update state and opens the dialog CTA", async () => {
-    const onOpenDialog = vi.fn();
-    const container = await render(
-      <Nirs4allUpdateRow
-        row={createNirs4allRow()}
-        onOpenDialog={onOpenDialog}
-      />,
-    );
-
-    expect(container.textContent).toContain("nirs4all Library");
-    expect(container.textContent).toContain("Current: 0.9.0 → 0.10.0");
-
-    await click(container.querySelector("button"));
-
-    expect(onOpenDialog).toHaveBeenCalledTimes(1);
-  });
-
-  it("renders the disabled install CTA for a read-only missing install", async () => {
-    const container = await render(
-      <Nirs4allUpdateRow
-        row={createNirs4allRow({
-          action: "install",
-          currentVersion: null,
-          isActionDisabled: true,
-          showTargetVersion: false,
-        })}
-        onOpenDialog={vi.fn()}
-      />,
-    );
-
-    expect(container.textContent).toContain("Not installed in current runtime");
     expect(container.querySelector("button")?.disabled).toBe(true);
   });
 });

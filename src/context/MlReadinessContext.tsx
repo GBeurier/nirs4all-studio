@@ -1,7 +1,6 @@
 /** Tracks the Rust control plane independently from the optional Python plugin. */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import i18n from "i18next";
 import { api } from "@/api/transport";
 import { invalidateLoadedWorkspaceDatasetResults } from "@/api/playground";
 import { hasScientificRequestInFlight } from "@/api/dataset-request-activity";
@@ -131,49 +130,6 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     });
     return unsubscribe;
   }, [state.datasetsPrimed, queryClient, setReadiness]);
-
-  useEffect(() => {
-    if (!electronApi?.isElectron) return;
-    const cleanupStatus = electronApi.onBackendStatusChanged?.((info) => {
-      readinessRevision.current += 1;
-      setReadiness((previous) => ({
-        ...previous,
-        scientificStatus: info.status,
-        scientificRequested: true,
-        mlReady: info.status === "running" && previous.mlReady,
-        mlLoading: info.status === "starting" || info.status === "restarting",
-        mlError: info.status === "error"
-          ? info.error ?? i18n.t("errors.scientificPluginStartFailed")
-          : info.status === "running" ? null : previous.mlError,
-      }));
-    });
-    const cleanupMl = electronApi.onMlReady?.((info) => {
-      readinessRevision.current += 1;
-      if (info.ready) {
-        setReadiness((previous) => ({
-          ...previous,
-          scientificStatus: "running",
-          scientificRequested: true,
-          mlReady: true,
-          mlLoading: false,
-          mlError: null,
-          workspaceReady: info.workspaceReady ? true : previous.workspaceReady,
-        }));
-      } else if (info.error) {
-        setReadiness((previous) => ({
-          ...previous,
-          scientificRequested: true,
-          mlReady: false,
-          mlLoading: false,
-          mlError: info.error ?? null,
-        }));
-      }
-    });
-    return () => {
-      cleanupStatus?.();
-      cleanupMl?.();
-    };
-  }, [setReadiness]);
 
   useEffect(() => {
     if (!electronApi?.isElectron) return;

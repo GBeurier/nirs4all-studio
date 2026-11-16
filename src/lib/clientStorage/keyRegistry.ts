@@ -133,6 +133,11 @@ export const clientStorageKeys = {
     scope: "user",
     description: "Datasets page sort direction preference.",
   }),
+  pythonSetupSkipped: defineClientStorageKey<string>("nirs4all_python_setup_skipped", {
+    area: "session",
+    scope: "session",
+    description: "The user chose to continue without Python, so a reload does not reopen the setup page.",
+  }),
   shapSession: defineClientStorageKey<string>("nirs4all_shap_session", {
     area: "session",
     scope: "session",

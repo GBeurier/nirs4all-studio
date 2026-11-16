@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { useHasUpdates } from "@/hooks/useUpdates";
+import { pythonEnvNeedsReview, usePythonEnv } from "@/context/usePythonEnv";
 import { clientStorageKeys, readClientStorageString, writeClientStorageString } from "@/lib/clientStorage";
 
 interface NavItem {
@@ -39,6 +40,8 @@ interface NavItem {
   href: string;
   icon: LucideIcon;
   badge?: number;
+  /** Accessible label of an attention dot; the dot is shown when set. */
+  attention?: string;
 }
 
 const prepareNavItems: NavItem[] = [
@@ -89,6 +92,7 @@ export function AppSidebar() {
   const collapsed = userCollapsed || narrow;
   const location = useLocation();
   const { updateCount } = useHasUpdates();
+  const pythonNeedsReview = pythonEnvNeedsReview(usePythonEnv().state);
 
   const toggleCollapsed = () => {
     const next = !userCollapsed;
@@ -128,9 +132,19 @@ export function AppSidebar() {
           {collapsed && item.badge !== undefined && item.badge > 0 && (
             <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-sidebar" />
           )}
+          {collapsed && item.attention && (
+            <span
+              role="img"
+              aria-label={item.attention}
+              className="absolute -bottom-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-sidebar"
+            />
+          )}
         </span>
         {!collapsed && (
           <span className="truncate">{title}</span>
+        )}
+        {!collapsed && item.attention && (
+          <span role="img" aria-label={item.attention} className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
         )}
         {!collapsed && item.badge !== undefined && item.badge > 0 && (
           <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-medium text-primary">
@@ -201,7 +215,13 @@ export function AppSidebar() {
 
       {/* Settings at bottom */}
       <div className="border-t border-border/50 p-3">
-        {renderNavItem({ titleKey: "nav.settings", href: updateCount > 0 ? "/settings?tab=updates" : "/settings", icon: Settings, badge: updateCount })}
+        {renderNavItem({
+          titleKey: "nav.settings",
+          href: pythonNeedsReview ? "/settings?tab=python" : updateCount > 0 ? "/settings?tab=updates" : "/settings",
+          icon: Settings,
+          badge: updateCount,
+          attention: pythonNeedsReview ? t("pythonEnv.needsReview") : undefined,
+        })}
       </div>
 
       {/* Collapse button (the rail is forced on narrow windows) */}
