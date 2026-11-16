@@ -33,8 +33,6 @@ const macRuntime = require("../scripts/macos-attested-runtime.cjs") as {
     keychainFile?: string | null;
     signMachOImpl?: (filePath: string, options: { identity: string }) => void;
     verifyRuntimeContractImpl: (options: Record<string, unknown>) => {
-      pythonRuntimeRoot: string;
-      pythonPluginHostPath: string;
       methodsLibraryPath: string | null;
       methodsIdentityProfile: "public-wheel" | "source-build";
     };
@@ -88,38 +86,27 @@ describe("macOS attested packaged runtime", () => {
     }
   });
 
-  it("pre-signs only attested Mach-O members before rewriting their contract", () => {
+  it("pre-signs only the Methods library before rewriting its contract", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-macos-attested-"));
     try {
       const backendRoot = path.join(root, "App.app", "Contents", "Resources", "backend");
-      const runtimeRoot = path.join(backendRoot, "python-runtime", "python");
-      const pythonPath = path.join(runtimeRoot, "bin", "python3");
-      const extensionPath = path.join(runtimeRoot, "lib", "python3.11", "site-packages", "native.so");
-      const textPath = path.join(runtimeRoot, "lib", "python3.11", "site-packages", "module.py");
       const methodsPath = path.join(backendRoot, "native", "libn4m.dylib");
       const sidecarPath = path.join(backendRoot, "native", "studio-sidecar");
-      writeMachO(pythonPath, "python-before-sign");
-      writeMachO(extensionPath, "extension-before-sign");
+      const uvPath = path.join(backendRoot, "tools", "uv");
       writeMachO(methodsPath, "methods-before-sign");
       writeMachO(sidecarPath, "sidecar-owned-by-electron-builder");
-      fs.writeFileSync(textPath, "print('not code signed')\n");
-      const sidecarBefore = digest(sidecarPath);
+      writeMachO(uvPath, "uv-owned-by-electron-builder");
+      const builderSigned = { sidecar: digest(sidecarPath), uv: digest(uvPath) };
       const events: string[] = [];
-      const verifyRuntimeContractImpl = vi.fn(() => {
+      const verifyRuntimeContractImpl = vi.fn((options: Record<string, unknown>) => {
         events.push("verify");
-        return {
-          pythonRuntimeRoot: runtimeRoot,
-          pythonPluginHostPath: pythonPath,
-          methodsLibraryPath: methodsPath,
-          methodsIdentityProfile: "source-build" as const,
-        };
+        expect(options).toMatchObject({ platform: "darwin", arch: "arm64", requirePythonPayload: true });
+        return { methodsLibraryPath: methodsPath, methodsIdentityProfile: "source-build" as const };
       });
-      const observedHashes: Record<string, string> = {};
+      let hashAtContractWrite = "";
       const writeRuntimeContractImpl = vi.fn((options: Record<string, unknown>) => {
         events.push("write");
-        observedHashes.python = digest(pythonPath);
-        observedHashes.extension = digest(extensionPath);
-        observedHashes.methods = digest(methodsPath);
+        hashAtContractWrite = digest(methodsPath);
         expect(options).toMatchObject({
           backendRoot,
           platform: "darwin",
@@ -145,34 +132,24 @@ describe("macOS attested packaged runtime", () => {
         writeRuntimeContractImpl,
       });
 
-      expect(result.machOs).toEqual([
-        methodsPath,
-        pythonPath,
-        extensionPath,
-      ].sort((left, right) => Buffer.compare(Buffer.from(left), Buffer.from(right))));
-      expect(signMachOImpl).toHaveBeenCalledTimes(3);
-      expect(events[0]).toBe("verify");
-      expect(events.at(-2)).toBe("write");
-      expect(events.at(-1)).toBe("verify");
-      expect(observedHashes).toEqual({
-        python: digest(pythonPath),
-        extension: digest(extensionPath),
-        methods: digest(methodsPath),
-      });
+      expect(result.machOs).toEqual([methodsPath]);
+      expect(events).toEqual(["verify", "sign:libn4m.dylib", "write", "verify"]);
+      expect(hashAtContractWrite).toBe(digest(methodsPath));
       const signingAttestation = JSON.parse(fs.readFileSync(
         path.join(backendRoot, "native", macRuntime.SIGNING_ATTESTATION_FILE),
         "utf8",
       ));
-      expect(signingAttestation.schema_version).toBe(1);
-      expect(signingAttestation.members).toContainEqual({
-        path: "python-runtime/python/lib/python3.11/site-packages/native.so",
-        pre_sign_sha256: createHash("sha256").update(Buffer.concat([
-          Buffer.from("feedfacf", "hex"), Buffer.from("extension-before-sign"),
-        ])).digest("hex"),
-        post_sign_sha256: digest(extensionPath),
+      expect(signingAttestation).toEqual({
+        schema_version: 1,
+        members: [{
+          path: "native/libn4m.dylib",
+          pre_sign_sha256: createHash("sha256").update(Buffer.concat([
+            Buffer.from("feedfacf", "hex"), Buffer.from("methods-before-sign"),
+          ])).digest("hex"),
+          post_sign_sha256: digest(methodsPath),
+        }],
       });
-      expect(fs.readFileSync(textPath, "utf8")).toBe("print('not code signed')\n");
-      expect(digest(sidecarPath)).toBe(sidecarBefore);
+      expect({ sidecar: digest(sidecarPath), uv: digest(uvPath) }).toEqual(builderSigned);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -182,9 +159,8 @@ describe("macOS attested packaged runtime", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-macos-sign-failure-"));
     try {
       const backendRoot = path.join(root, "backend");
-      const runtimeRoot = path.join(backendRoot, "python-runtime", "python");
-      const pythonPath = path.join(runtimeRoot, "bin", "python3");
-      writeMachO(pythonPath, "python");
+      const methodsPath = path.join(backendRoot, "native", "libn4m.dylib");
+      writeMachO(methodsPath, "methods");
       const writeRuntimeContractImpl = vi.fn();
 
       expect(() => macRuntime.prepareMacosAttestedRuntime({
@@ -196,9 +172,7 @@ describe("macOS attested packaged runtime", () => {
           throw new Error("codesign rejected member");
         },
         verifyRuntimeContractImpl: () => ({
-          pythonRuntimeRoot: runtimeRoot,
-          pythonPluginHostPath: pythonPath,
-          methodsLibraryPath: null,
+          methodsLibraryPath: methodsPath,
           methodsIdentityProfile: "source-build" as const,
         }),
         writeRuntimeContractImpl,
@@ -256,10 +230,7 @@ describe("macOS attested packaged runtime", () => {
   it("rejects a selected libn4m that is not Mach-O", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-macos-methods-format-"));
     try {
-      const runtimeRoot = path.join(root, "python-runtime", "python");
-      const pythonPath = path.join(runtimeRoot, "bin", "python3");
       const methodsPath = path.join(root, "native", "libn4m.dylib");
-      writeMachO(pythonPath, "python");
       fs.mkdirSync(path.dirname(methodsPath), { recursive: true });
       fs.writeFileSync(methodsPath, "ELF-by-mistake");
       const writeRuntimeContractImpl = vi.fn();
@@ -270,8 +241,6 @@ describe("macOS attested packaged runtime", () => {
         arch: "arm64",
         signingIdentity: "-",
         verifyRuntimeContractImpl: () => ({
-          pythonRuntimeRoot: runtimeRoot,
-          pythonPluginHostPath: pythonPath,
           methodsLibraryPath: methodsPath,
           methodsIdentityProfile: "source-build" as const,
         }),
@@ -283,12 +252,12 @@ describe("macOS attested packaged runtime", () => {
     }
   });
 
-  it("excludes only the pre-signed closure and libn4m from builder signing", () => {
+  it("excludes only the pre-signed libn4m from builder signing", () => {
     const patterns = macRuntime.MACOS_ATTESTED_SIGN_IGNORE.map(
       (source) => new RegExp(source),
     );
     const app = "/tmp/nirs4all Studio.app/Contents/Resources/backend";
-    expect(patterns.some((pattern) => pattern.test(`${app}/python-runtime/python/bin/python3`))).toBe(true);
+    expect(patterns.some((pattern) => pattern.test(`${app}/tools/uv`))).toBe(false);
     expect(patterns.some((pattern) => pattern.test(`${app}/native/libn4m.dylib`))).toBe(true);
     expect(patterns.some((pattern) => pattern.test(`${app}/native/studio-sidecar`))).toBe(false);
     expect(patterns.some((pattern) => pattern.test("/tmp/nirs4all Studio.app"))).toBe(false);

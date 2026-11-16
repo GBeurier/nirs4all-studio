@@ -7,6 +7,11 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
+const projectRoot = path.resolve(import.meta.dirname, "..");
+const recommendedConfig = require("../recommended-config.json") as { required: Array<{ name: string; install: string }> };
+const adapters = require("../scripts/studio-document-adapters.cjs") as {
+  installRuntimeAdapters(root: string, target: string): unknown;
+};
 const buildNativeSidecar = require("../scripts/build-native-sidecar.cjs") as {
   assertMethodsBuildIdentityConfigured(
     sourcePath: string | null,
@@ -35,10 +40,6 @@ const buildNativeSidecar = require("../scripts/build-native-sidecar.cjs") as {
   }): string | null;
 };
 const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
-  collectRuntimeClosure(runtimeRoot: string): {
-    files: Array<{ path: string; size: number; sha256: string }>;
-    directories: string[];
-  };
   parseVerifyArgs(argv?: string[]): {
     backendRoot: string;
     artifactBoundaryRoot: string;
@@ -50,11 +51,10 @@ const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
     artifactBoundaryRoot: string;
     platform: string;
     arch: string;
-    requireBundledPythonPlugin?: boolean;
+    requirePythonPayload?: boolean;
     requireBundledMethods?: boolean;
   }): {
     sidecarPath: string;
-    pythonPluginHostPath: string | null;
     methodsLibraryPath: string | null;
   };
   writeRuntimeContract(options: {
@@ -100,25 +100,6 @@ describe("build-native-sidecar", () => {
     ).not.toThrow();
   });
 
-  it("orders closure paths bytewise exactly as the Rust verifier", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-byte-order-"));
-    try {
-      for (const name of ["install-sh", "Makefile", "zeta", "Éclair", "éclair", "😀.txt"]) {
-        fs.writeFileSync(path.join(root, name), name);
-      }
-      const closure = runtimeContract.collectRuntimeClosure(root);
-      const expected = closure.files
-        .map((entry) => entry.path)
-        .sort((left, right) =>
-          Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
-        );
-      expect(closure.files.map((entry) => entry.path)).toEqual(expected);
-      expect(expected.indexOf("Makefile")).toBeLessThan(expected.indexOf("install-sh"));
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   it("places the host-native binary in the packaged backend resource tree", () => {
     const paths = buildNativeSidecar.getNativeSidecarPaths("/workspace/studio", "linux");
 
@@ -160,86 +141,48 @@ describe("build-native-sidecar", () => {
     );
   });
 
-  it("never promotes a generic standalone Python backend marker to plugin capability", () => {
+  it("requires the Python payload and the native Methods library only for release artifacts", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-build-contract-"));
     try {
       const backendRoot = path.join(root, "backend-dist");
       const sidecarPath = path.join(backendRoot, "native", "studio-sidecar");
-      const pythonPath = path.join(
-        backendRoot,
-        "python-runtime",
-        "python",
-        "bin",
-        "python3",
-      );
       fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
-      fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-      fs.mkdirSync(
-        path.join(
-          backendRoot,
-          "python-runtime",
-          "python",
-          "lib",
-          "python3.11",
-          "site-packages",
-        ),
-        { recursive: true },
-      );
       fs.writeFileSync(sidecarPath, "rust-sidecar");
-      fs.writeFileSync(pythonPath, "python-host");
-      fs.writeFileSync(
-        path.join(
-          backendRoot,
-          "python-runtime",
-          "python",
-          "lib",
-          "python3.11",
-          "site-packages",
-          "nirs4all.py",
-        ),
-        "def studio_scientific_job_v1(): pass\n",
-      );
-      fs.writeFileSync(
-        path.join(backendRoot, "python-runtime", "RUNTIME_READY.json"),
-        "{}\n",
-      );
 
       const written = runtimeContract.writeRuntimeContract({
         backendRoot,
         platform: "linux",
         arch: "x64",
       });
-      expect(fs.existsSync(written.contractPath)).toBe(true);
-      expect(
-        runtimeContract.verifyRuntimeContract({
-          backendRoot,
-          artifactBoundaryRoot: backendRoot,
-          platform: "linux",
-          arch: "x64",
-        }),
-      ).toMatchObject({
+      expect(JSON.parse(fs.readFileSync(written.contractPath, "utf8"))).not.toHaveProperty("python_plugin_host");
+      const verification = { backendRoot, artifactBoundaryRoot: backendRoot, platform: "linux", arch: "x64" };
+      expect(runtimeContract.verifyRuntimeContract(verification)).toMatchObject({
         sidecarPath,
-        pythonPluginHostPath: null,
         methodsLibraryPath: null,
       });
-      expect(() =>
-        runtimeContract.verifyRuntimeContract({
-          backendRoot,
-          artifactBoundaryRoot: backendRoot,
-          platform: "linux",
-          arch: "x64",
-          requireBundledPythonPlugin: true,
-        }),
-      ).toThrow(/required/);
-      expect(() =>
-        runtimeContract.verifyRuntimeContract({
-          backendRoot,
-          artifactBoundaryRoot: backendRoot,
-          platform: "linux",
-          arch: "x64",
-          requireBundledMethods: true,
-        }),
-      ).toThrow(/native Methods library is required/);
+      expect(() => runtimeContract.verifyRuntimeContract({ ...verification, requireBundledMethods: true }))
+        .toThrow(/native Methods library is required/);
+
+      const withPayload = { ...verification, requirePythonPayload: true };
+      expect(() => runtimeContract.verifyRuntimeContract(withPayload)).toThrow(/Packaged uv not found/);
+      fs.mkdirSync(path.join(backendRoot, "tools"));
+      fs.writeFileSync(path.join(backendRoot, "tools", "uv"), "uv");
+      expect(() => runtimeContract.verifyRuntimeContract(withPayload))
+        .toThrow(/exactly one nirs4all==\d+\.\d+\.\d+ wheel/);
+      const wheelhouse = path.join(backendRoot, "wheels");
+      fs.mkdirSync(wheelhouse);
+      for (const { name, install } of recommendedConfig.required) {
+        fs.writeFileSync(path.join(wheelhouse, `${name.replaceAll("-", "_")}-${install}-py3-none-any.whl`), name);
+      }
+      expect(() => runtimeContract.verifyRuntimeContract(withPayload)).toThrow(/Packaged document adapters not found/);
+      adapters.installRuntimeAdapters(projectRoot, path.join(backendRoot, "adapters"));
+      expect(runtimeContract.verifyRuntimeContract(withPayload).sidecarPath).toBe(sidecarPath);
+
+      fs.writeFileSync(path.join(wheelhouse, "numpy-2.4.6-cp311-cp311-manylinux_2_28_x86_64.whl"), "extra");
+      expect(() => runtimeContract.verifyRuntimeContract(withPayload)).toThrow(/outside the required cohort/);
+      fs.rmSync(path.join(wheelhouse, "numpy-2.4.6-cp311-cp311-manylinux_2_28_x86_64.whl"));
+      fs.appendFileSync(path.join(backendRoot, "adapters", "studio_document_adapters", "api", "library_documents.py"), "\n# changed\n");
+      expect(() => runtimeContract.verifyRuntimeContract(withPayload)).toThrow(/Adapter member differs/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -422,7 +365,7 @@ describe("build-native-sidecar", () => {
         "--platform=darwin",
         "--arch",
         "arm64",
-        "--require-bundled-python-plugin",
+        "--require-python-payload",
         "--require-bundled-methods",
       ]),
     ).toEqual({
@@ -430,7 +373,7 @@ describe("build-native-sidecar", () => {
       artifactBoundaryRoot: path.resolve("release/product"),
       platform: "darwin",
       arch: "arm64",
-      requireBundledPythonPlugin: true,
+      requirePythonPayload: true,
       requireBundledMethods: true,
     });
     expect(() => runtimeContract.parseVerifyArgs([])).toThrow(
@@ -472,10 +415,8 @@ describe("build-native-sidecar", () => {
   });
 
   it("keeps every official runtime verifier call fail-closed on an explicit boundary", () => {
-    const projectRoot = path.resolve(import.meta.dirname, "..");
     for (const relativePath of [
       "scripts/build-release.cjs",
-      "scripts/build-archive-standalone.cjs",
       "scripts/smoke-archive-standalone.cjs",
       "scripts/installer-release-contract.cjs",
     ]) {
@@ -484,7 +425,7 @@ describe("build-native-sidecar", () => {
       expect(calls.length, relativePath).toBeGreaterThan(0);
       for (const call of calls) {
         expect(call[1], relativePath).toContain("artifactBoundaryRoot:");
-        expect(call[1], relativePath).toContain("requireBundledPythonPlugin: true");
+        expect(call[1], relativePath).toContain("requirePythonPayload: true");
         expect(call[1], relativePath).toContain("requireBundledMethods: true");
       }
     }
@@ -499,7 +440,7 @@ describe("build-native-sidecar", () => {
       expect(commands.length, relativePath).toBeGreaterThan(0);
       for (const command of commands) {
         expect(command, relativePath).toContain("--artifact-boundary-root");
-        expect(command, relativePath).toContain("--require-bundled-python-plugin");
+        expect(command, relativePath).toContain("--require-python-payload");
         expect(command, relativePath).toContain("--require-bundled-methods");
       }
     }

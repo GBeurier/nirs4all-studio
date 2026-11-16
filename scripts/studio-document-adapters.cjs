@@ -22,7 +22,6 @@ const SOURCE_FILES = Object.freeze([
   "api/library_aggregated_results.py",
   "api/library_aggregated_steps.py",
   "api/store_adapter.py",
-  "api/library_runtime_config.py",
   "api/shared/json_safe.py",
   "api/pipeline_canonical.py",
   "api/pipeline_canonical_branch_merge.py",
@@ -147,21 +146,15 @@ function installAdapters(root, sitePackages) {
 }
 
 /** Refresh Studio-owned translators without replacing the user's environment. */
-function installRuntimeAdapters(root, sitePackages, sourceSitePackages) {
+function installRuntimeAdapters(root, sitePackages) {
   const expected = JSON.parse(regularFile(root, MANIFEST).toString("utf8"));
   const target = path.join(sitePackages, PACKAGE);
   if (fs.existsSync(target)) {
     if (fs.lstatSync(target).isSymbolicLink()) throw new Error("Studio adapter package must not be a symlink");
     try { return verifyAdapterPackage(expected, sitePackages); } catch { /* Update only Studio-owned files. */ }
   }
-  let payloads;
-  if (sourceSitePackages) {
-    verifyAdapterPackage(expected, sourceSitePackages);
-    payloads = new Map(expected.files.map(file => [file.path, regularFile(path.join(sourceSitePackages, PACKAGE), file.path)]));
-  } else {
-    expectedManifest(root);
-    payloads = sourcePayloads(root);
-  }
+  expectedManifest(root);
+  const payloads = sourcePayloads(root);
   fs.mkdirSync(sitePackages, { recursive: true });
   const staging = fs.mkdtempSync(path.join(sitePackages, ".studio-adapters-"));
   const stagedPackage = path.join(staging, PACKAGE);
@@ -189,15 +182,23 @@ function installRuntimeAdapters(root, sitePackages, sourceSitePackages) {
 }
 
 if (require.main === module) {
-  if (process.argv[2] !== "--manifest") throw new Error("Only explicit --manifest generation is supported");
   const root = path.join(__dirname, "..");
-  fs.writeFileSync(path.join(root, MANIFEST), `${JSON.stringify(buildManifest(root), null, 2)}\n`);
+  const [mode, target] = process.argv.slice(2);
+  if (mode === "--manifest" && target === undefined) {
+    fs.writeFileSync(path.join(root, MANIFEST), `${JSON.stringify(buildManifest(root), null, 2)}\n`);
+  } else if (mode === "--install" && target) {
+    // Packaged location: resources/backend/adapters/studio_document_adapters/.
+    installRuntimeAdapters(root, path.resolve(target));
+  } else {
+    throw new Error("Usage: node scripts/studio-document-adapters.cjs --manifest | --install <directory>");
+  }
 }
 
 module.exports = {
   buildManifest,
   installRuntimeAdapters,
   installAdapters,
+  verifyAdapterPackage,
   verifyAdapters,
   PACKAGE,
   SCHEMA,

@@ -10,7 +10,10 @@ const require = createRequire(import.meta.url);
 // js-yaml is already installed by the checked-in ESLint toolchain.
 const yaml = require("js-yaml") as { load(source: string): Workflow };
 interface Step { name?: string; run?: string; if?: string; env?: Record<string, string>; "continue-on-error"?: boolean; with?: Record<string, unknown> }
-interface Job { needs?: string | string[]; if?: string; steps?: Step[]; uses?: string; with?: Record<string, unknown>; "continue-on-error"?: boolean }
+interface Job {
+  needs?: string | string[]; if?: string; steps?: Step[]; uses?: string; with?: Record<string, unknown>; "continue-on-error"?: boolean;
+  strategy?: { matrix?: { include?: Array<Record<string, string>> } };
+}
 interface Workflow {
   on: { workflow_call?: { inputs: Record<string, { type: string; required: boolean; default: string }> }; push?: unknown; pull_request?: unknown };
   env?: Record<string, string>;
@@ -81,19 +84,27 @@ describe("CI release protection graph", () => {
     }
   });
 
-  it("keeps full E2E and scientific journeys local while smoking every built OS UI", () => {
+  it("keeps full E2E and scientific journeys local while smoking the first launch of every built installer", () => {
     expect(fs.existsSync(".github/workflows/playwright.yml")).toBe(false);
     for (const name of ["installer-linux", "installer-windows", "installer-macos-x64", "installer-macos-arm64"]) {
       const steps = release.jobs[name].steps!;
-      const smoke = steps.filter(step => step.run?.includes("scripts/smoke-packaged-ui.cjs"));
+      const smoke = steps.filter(step => step.run?.includes("scripts/smoke-archive-standalone.cjs"));
       expect(smoke, name).toHaveLength(1);
+      // Both variants are smoked: the offline leg proves an environment created from the payload alone.
       expect(smoke[0].if, name).toBeUndefined();
       expect(smoke[0]["continue-on-error"], name).not.toBe(true);
-      expect(smoke[0].env?.RELEASE_SOURCE_SHA).toBe("${{ needs.prepare.outputs.checkout_ref }}");
-      expect(smoke[0].env?.RELEASE_VERSION).toBe("${{ needs.prepare.outputs.version }}");
-      expect(smoke[0].env?.NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY).toBe("github-observational");
-      expect(smoke[0].run).toContain("--installer");
-      expect(smoke[0].run).toContain("--timeout-ms 120000");
+      expect(smoke[0].run).toContain("scripts/smoke-first-launch-ui.cjs");
+      expect(smoke[0].run?.match(/--timeout-ms 240000/g), name).toHaveLength(2);
+      const staged = steps.findIndex(step => step.run?.includes("scripts/build-wheelhouse.cjs"));
+      const offline = steps.findIndex(step => step.run?.includes("scripts/build-offline-payload.cjs"));
+      const packaged = steps.findIndex(step => step.run?.includes("npx electron-builder --config ${{ matrix.builder_config }}"));
+      expect(staged, name).toBeGreaterThan(0);
+      expect(steps[staged].run).toContain("scripts/fetch-uv.cjs");
+      expect(steps[staged].run).toContain("scripts/studio-document-adapters.cjs --install backend-dist/adapters");
+      expect(steps[offline].if, name).toBe("matrix.variant == 'offline'");
+      expect(offline, name).toBeGreaterThan(staged);
+      expect(packaged, name).toBeGreaterThan(offline);
+      expect(steps.indexOf(smoke[0]), name).toBeGreaterThan(packaged);
     }
     const remoteCommands = Object.values(release.jobs).flatMap(job => job.steps ?? []).map(step => step.run ?? "").join("\n");
     for (const fullJourney of ["scripts/qualify-installer.cjs", "installed_multimodal_provider.py", "test:native-archive-v2", "npx playwright test"]) {
@@ -220,11 +231,18 @@ describe("CI release protection graph", () => {
     for (const publisher of ["release"]) {
       expect(dependencies(release.jobs[publisher])).toContain("quality");
     }
-    for (const [name, job] of Object.entries(release.jobs)) {
-      if (name.startsWith("installer-") || name.startsWith("archive-")) {
-        expect(dependencies(job), name).toContain("pinned-plugin-wheels");
-      }
+    const installers = Object.entries(release.jobs).filter(([name]) => name.startsWith("installer-"));
+    expect(installers).toHaveLength(4);
+    for (const [name, job] of installers) {
+      expect(dependencies(job), name).toEqual(["prepare"]);
+      expect(job.strategy?.matrix?.include, name).toEqual([
+        { variant: "standard", builder_config: "electron-builder.installer.yml" },
+        { variant: "offline", builder_config: "electron-builder.offline.yml" },
+      ]);
+      const upload = job.steps!.find(step => step.name === "Upload artifacts")!;
+      expect(upload.with?.name, name).toMatch(/^installer-[a-z0-9-]+-\$\{\{ matrix\.variant \}\}-payload$/);
     }
+    expect(Object.keys(release.jobs)).not.toContain("pinned-plugin-wheels");
   });
 
   it("blocks publication when quality or any enabled platform fails or is skipped", () => {

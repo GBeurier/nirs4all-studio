@@ -225,7 +225,7 @@ jobs:
       - name: Check published runtime cohort contracts
         # Hosted jobs build and smoke; full scientific/backend suites run locally.
         run: |
-          python -m pytest tests/test_nirs4all_release_pin.py tests/test_plugin_runtime_platform_constraints.py -q --tb=short --timeout=120
+          python -m pytest tests/test_nirs4all_release_pin.py -q --tb=short --timeout=120
         env:
           PYTHONPATH: .
 
@@ -318,18 +318,24 @@ jobs:
       - name: Build Electron frontend
         run: npm run build:electron
 
-      - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs
+      # Installers ship no Python: uv, the wheels of the required packages and
+      # the document adapters let Studio create the user's environment.
+      - name: Stage uv, required wheels and document adapters
+        run: |
+          node scripts/fetch-uv.cjs
+          node scripts/build-wheelhouse.cjs
+          node scripts/studio-document-adapters.cjs --install backend-dist/adapters
 
       - name: Build and smoke native sidecar
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-python-payload --require-bundled-methods
           backend-dist/native/studio-sidecar --smoke-readiness
 
-      - name: Verify Python backend source is absent
+      - name: Verify that no Python runtime or backend source is staged
         run: |
+          test ! -e backend-dist/python-runtime
           test ! -f backend-dist/main.py
           test ! -d backend-dist/api
           test ! -d backend-dist/websocket
@@ -338,8 +344,7 @@ jobs:
         run: |
           npx electron-builder --config electron-builder.installer.yml --linux --dir
           test -x release/linux-unpacked/resources/backend/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root release/linux-unpacked/resources/backend --artifact-boundary-root release/linux-unpacked --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
-          node scripts/verify-packaged-plugin-identity.cjs release/linux-unpacked/resources
+          node scripts/native-runtime-contract.cjs --backend-root release/linux-unpacked/resources/backend --artifact-boundary-root release/linux-unpacked --platform linux --arch x64 --require-python-payload --require-bundled-methods
           release/linux-unpacked/resources/backend/native/studio-sidecar --smoke-readiness
           echo "Electron build test passed"
 
@@ -350,8 +355,10 @@ jobs:
           sudo chmod 4755 release/linux-unpacked/chrome-sandbox
           test "$(stat -c '%u:%g:%a' release/linux-unpacked/chrome-sandbox)" = '0:0:4755'
 
-      - name: Verify packaged Studio with fresh offline user state
-        timeout-minutes: 15
+      # The environment is created by the shipped uv from the shipped wheels,
+      # then the packaged application starts on it in a fresh profile.
+      - name: Verify first launch of the packaged Studio
+        timeout-minutes: 20
         run: |
           xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root release/linux-unpacked --platform linux
           xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root release/linux-unpacked --platform linux
@@ -382,9 +389,6 @@ jobs:
         with:
           platform: win32
           arch: x64
-
-      - name: Check packaged Python layout for Windows
-        run: python scripts/test_general_workflow_platform.py
 
       - name: Check and test Windows Job containment
         run: |

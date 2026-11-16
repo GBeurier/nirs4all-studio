@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 # nirs4all Studio native container: static renderer + Rust product backend.
 # nginx owns the public socket. The Rust sidecar remains loopback-only and is
-# the sole HTTP/control backend; CPython is a bounded stdio library/plugin host.
+# the sole HTTP/control backend; CPython is a bounded stdio library/plugin host
+# running in an environment built by uv from Studio's package catalogue.
 
 ARG NODE_IMAGE=node:24-bookworm-slim
 # The retained lock requires Rust >=1.91; the manifest's 1.88 is source-level only.
@@ -12,7 +13,7 @@ ARG NGINX_IMAGE=nginx:1.27.5-bookworm
 FROM scratch AS studio-document-adapter-sources
 COPY ["api/shared/system_info.py", "/api/shared/"]
 COPY ["api/library_operator_availability.py", "api/library_inspector.py", "api/library_prediction_export.py", "api/library_analysis.py", "api/robustness_contract.py", "/api/"]
-COPY ["api/library_documents.py", "api/library_dataset_inspection.py", "api/library_predictions.py", "api/library_prediction_results.py", "api/library_aggregated_results.py", "api/library_aggregated_steps.py", "api/library_playground_views.py", "api/store_adapter.py", "api/library_runtime_config.py", "api/pipeline_canonical.py", "api/pipeline_canonical_branch_merge.py", "api/pipeline_canonical_generators.py", "api/pipeline_canonical_finetune.py", "api/pipeline_y_processing.py", "api/node_registry_loader.py", "/api/"]
+COPY ["api/library_documents.py", "api/library_dataset_inspection.py", "api/library_predictions.py", "api/library_prediction_results.py", "api/library_aggregated_results.py", "api/library_aggregated_steps.py", "api/library_playground_views.py", "api/store_adapter.py", "api/pipeline_canonical.py", "api/pipeline_canonical_branch_merge.py", "api/pipeline_canonical_generators.py", "api/pipeline_canonical_finetune.py", "api/pipeline_y_processing.py", "api/node_registry_loader.py", "/api/"]
 COPY ["api/shared/json_safe.py", "api/shared/dataset_config.py", "api/shared/operator_catalogue.py", "api/shared/filter_catalogue.py", "api/shared/decimation.py", "/api/shared/"]
 COPY ["api/synthetic_datasets.json", "/api/synthetic_datasets.json"]
 COPY ["api/presets/complex_pls.yaml", "api/presets/complex_trees.yaml", "api/presets/deep_nonlinear_exploration.yaml", "api/presets/fast_result.yaml", "api/presets/nonlinear_exploration.yaml", "api/presets/simple_pls.yaml", "api/presets/simple_trees_boosting.yaml", "api/presets/ultra_pls.yaml", "api/presets/ultra_slow.yaml", "api/presets/ultra_trees.yaml", "/api/presets/"]
@@ -37,26 +38,27 @@ COPY scripts/methods-public-wheel-profile.json scripts/methods-public-wheel-prof
 COPY --from=studio-document-adapter-sources /api/synthetic_datasets.json api/synthetic_datasets.json
 COPY --from=studio-document-adapter-sources /api/presets/ api/presets/
 COPY --from=studio-document-adapter-sources /api/shared/system_info.py api/shared/system_info.py
-COPY --from=studio-document-adapter-sources /api/library_runtime_config.py api/library_runtime_config.py
 COPY recommended-config.json recommended-config.json
 RUN cargo build --locked --release --manifest-path sidecar/Cargo.toml \
     && strip sidecar/target/release/studio-sidecar \
     && sidecar/target/release/studio-sidecar --smoke-readiness >/dev/null
 
-FROM ${NODE_IMAGE} AS python-plugin-runtime
+# The environment is created at its final image path: a virtual environment
+# records the location of its interpreter.
+FROM ${NODE_IMAGE} AS python-environment
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY recommended-config.json ./
-COPY --from=studio-document-adapter-sources / /build/
-COPY scripts/setup-python-env.cjs scripts/tls-trust.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/
-COPY scripts/normalize-plugin-wheel.py scripts/
-COPY build/constraints/plugin-runtime-cpython311-sdk1416.txt build/constraints/plugin-runtime-cpython311-sdk1416.txt
-RUN --mount=type=cache,target=/python-cache \
-    node scripts/bake-python-plugin-runtime.cjs \
-      --backend-root /product/backend \
-      --cache-dir /python-cache
+COPY scripts/fetch-uv.cjs scripts/verified-download.cjs scripts/tls-trust.cjs scripts/python-runtime-config.cjs scripts/python-wheel-lock.cjs scripts/build-wheelhouse.cjs scripts/provision-environment.cjs scripts/
+COPY build/constraints/python-wheels-linux-x64.json build/constraints/
+RUN node scripts/fetch-uv.cjs --platform linux --arch x64 \
+    && node scripts/build-wheelhouse.cjs --platform linux --arch x64 \
+    && node scripts/provision-environment.cjs \
+      --backend-root /build/backend-dist \
+      --env-dir /opt/nirs4all/python-env \
+      --recommended shap,matplotlib,lightgbm
 
 FROM ${NODE_IMAGE} AS native-runtime-contract
 ARG NIRS4ALL_METHODS_SHA256
@@ -64,16 +66,15 @@ ARG NIRS4ALL_METHODS_IDENTITY_PROFILE=public-wheel
 WORKDIR /product
 RUN test -n "${NIRS4ALL_METHODS_SHA256}" \
     && mkdir -p backend/native /contract-scripts
-COPY --from=python-plugin-runtime /product/backend/ backend/
 COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/studio-sidecar
 COPY --from=methods-runtime /libn4m.so.2.22.0 backend/native/libn4m.so
 COPY --from=studio-document-adapter-sources / /
-COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/python-runtime-config.cjs scripts/methods-public-wheel-profile.json /contract-scripts/
+COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/methods-public-wheel-profile.json /contract-scripts/
 COPY recommended-config.json /recommended-config.json
-COPY build/constraints/plugin-runtime-cpython311-sdk1416.txt /build/constraints/plugin-runtime-cpython311-sdk1416.txt
 RUN test "$(sha256sum backend/native/libn4m.so | cut -d' ' -f1)" = "${NIRS4ALL_METHODS_SHA256}" \
     && chmod 0755 backend/native/studio-sidecar \
-    && node -e 'const c=require("/contract-scripts/native-runtime-contract.cjs"); c.writeRuntimeContract({backendRoot:"/product/backend",platform:"linux",arch:"x64",methodsLibraryPath:"/product/backend/native/libn4m.so",methodsIdentityProfile:process.env.NIRS4ALL_METHODS_IDENTITY_PROFILE}); c.verifyRuntimeContract({backendRoot:"/product/backend",artifactBoundaryRoot:"/product/backend",platform:"linux",arch:"x64",requireBundledPythonPlugin:true,requireBundledMethods:true})'
+    && node /contract-scripts/studio-document-adapters.cjs --install /product/backend/adapters \
+    && node -e 'const c=require("/contract-scripts/native-runtime-contract.cjs"); c.writeRuntimeContract({backendRoot:"/product/backend",platform:"linux",arch:"x64",methodsLibraryPath:"/product/backend/native/libn4m.so",methodsIdentityProfile:process.env.NIRS4ALL_METHODS_IDENTITY_PROFILE}); c.verifyRuntimeContract({backendRoot:"/product/backend",artifactBoundaryRoot:"/product/backend",platform:"linux",arch:"x64",requireBundledMethods:true})'
 
 FROM ${NGINX_IMAGE} AS runtime
 ARG STUDIO_VERSION=0.11.1
@@ -90,6 +91,7 @@ RUN apt-get update \
 
 COPY --from=frontend --chown=nginx:nginx /build/dist/ /usr/share/nginx/html/
 COPY --from=native-runtime-contract --chown=nginx:nginx /product/backend/ /opt/nirs4all/backend/
+COPY --from=python-environment --chown=nginx:nginx /opt/nirs4all/python-env/ /opt/nirs4all/python-env/
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/studio-entrypoint
 
@@ -106,10 +108,10 @@ RUN printf '%s\n' \
     && ! ldd /opt/nirs4all/backend/native/studio-sidecar | grep -q 'not found' \
     && ldd /opt/nirs4all/backend/native/libn4m.so \
     && ! ldd /opt/nirs4all/backend/native/libn4m.so | grep -q 'not found' \
-    && ldd /opt/nirs4all/backend/python-runtime/python/bin/python3 \
-    && ! ldd /opt/nirs4all/backend/python-runtime/python/bin/python3 | grep -q 'not found' \
-    && /opt/nirs4all/backend/python-runtime/python/bin/python3 -I -S -B -c 'import sys; sys.path.insert(0,"/opt/nirs4all/backend/python-runtime/python/lib/python3.11/site-packages"); import scipy.linalg; assert scipy.linalg.get_blas_funcs("gemm")' \
-    && find /opt/nirs4all/backend/python-runtime/python -type f \( -name '*.so' -o -name '*.so.*' \) \
+    && ldd /opt/nirs4all/python-env/python/bin/python3 \
+    && ! ldd /opt/nirs4all/python-env/python/bin/python3 | grep -q 'not found' \
+    && /opt/nirs4all/python-env/venv/bin/python -I -B -c 'import scipy.linalg; assert scipy.linalg.get_blas_funcs("gemm")' \
+    && find /opt/nirs4all/python-env -type f \( -name '*.so' -o -name '*.so.*' \) \
       -exec sh -eu -c 'for object do object_dir=${object%/*}; dependencies=$(LD_LIBRARY_PATH="${object_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "$object" 2>&1) || { echo "ELF dependency scan failed: $object" >&2; echo "$dependencies" >&2; exit 1; }; case "$dependencies" in *"not found"*) echo "ELF dependency missing: $object" >&2; echo "$dependencies" >&2; exit 1;; esac; done' sh {} + \
     && ! command -v python \
     && ! command -v python3
@@ -120,11 +122,9 @@ ENV NIRS4ALL_RUNTIME_MODE=container \
     NIRS4ALL_BUILD_INFO_PATH=/etc/nirs4all-studio-build-info.json \
     NIRS4ALL_CONFIG=/var/lib/nirs4all-studio/config \
     NIRS4ALL_BACKEND_DATA_DIR=/var/lib/nirs4all-studio \
-    NIRS4ALL_PYTHON_PLUGIN_HOST=/opt/nirs4all/backend/python-runtime/python/bin/python3 \
-    NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED=true \
-    NIRS4ALL_PYTHON_PLUGIN_CLOSURE=/opt/nirs4all/backend/python-runtime/PYTHON_PLUGIN_CLOSURE.json \
-    NIRS4ALL_PYTHON_PLUGIN_RUNTIME_ROOT=/opt/nirs4all/backend/python-runtime/python \
-    NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES=/opt/nirs4all/backend/python-runtime/python/lib/python3.11/site-packages \
+    NIRS4ALL_PYTHON_PLUGIN_HOST=/opt/nirs4all/python-env/venv/bin/python \
+    NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES=/opt/nirs4all/python-env/venv/lib/python3.11/site-packages \
+    NIRS4ALL_STUDIO_ADAPTERS_DIR=/opt/nirs4all/backend/adapters \
     NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1 \
     NIRS4ALL_DOCKER=true
 

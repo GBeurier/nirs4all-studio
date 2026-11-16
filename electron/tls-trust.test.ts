@@ -4,15 +4,10 @@ import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import tls from "node:tls";
-import { createRequire } from "node:module";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { downloadFile } from "./env/python-runtime-installer";
 import { loadNetworkTrust } from "./env/external-config";
 
-const require = createRequire(import.meta.url);
-const cli = require("../scripts/setup-python-env.cjs") as {
-  downloadFile(url: string, destination: string, options?: object): Promise<void>;
-};
 const trust = loadNetworkTrust();
 let directory: string;
 let certificate: string;
@@ -48,10 +43,10 @@ async function serve(): Promise<string> {
   return `https://127.0.0.1:${address.port}/runtime`;
 }
 
-describe.each([
-  { name: "Electron", download: (url: string, destination: string) => downloadFile(url, destination, undefined, { retries: 0 }) },
-  { name: "installer", download: (url: string, destination: string) => cli.downloadFile(url, destination, { retries: 0 }) },
-])("$name trusted downloads", ({ download }) => {
+describe("trusted downloads", () => {
+  const download = (url: string, destination: string) => downloadFile(url, destination, undefined, { retries: 0 });
+
+
   it("accepts a CA trusted by the operating system and retains the default CAs", async () => {
     const bundled = [...tls.rootCertificates];
     vi.spyOn(tls, "getCACertificates").mockImplementation(type => type === "system" ? [certificate] : bundled);

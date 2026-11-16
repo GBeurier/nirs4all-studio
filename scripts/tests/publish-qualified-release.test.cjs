@@ -134,12 +134,12 @@ test("creates a draft, uploads exactly one asset at a time and publishes last", 
   const remote = github(options, { absent: true, annotated: true });
   const result = await publishQualifiedRelease(options, remote.dependencies);
   assert.equal(result.published, true);
-  assert.equal(result.assets, 8);
+  assert.equal(result.assets, 16);
   assert.equal(remote.state.maxActive, 1);
   assert.equal(remote.state.mutations[0], "create-draft");
   assert.equal(remote.state.mutations.at(-1), "publish");
-  assert(remote.state.mutations.slice(1, 5).every((name) => name.endsWith(".sha256")));
-  assert.equal(remote.state.mutations.length, 10);
+  assert(remote.state.mutations.slice(1, 9).every((name) => name.endsWith(".sha256")));
+  assert.equal(remote.state.mutations.length, 18);
 });
 
 test("waits for a newly created draft to appear in GitHub's release list", async (t) => {
@@ -156,7 +156,7 @@ test("resumes verified draft assets without uploading them again", async (t) => 
   const remote = github(options, { draftHidden: true });
   remote.state.assets.push(...remote.manifest.slice(0, 4).map(remote.state.asset));
   await publishQualifiedRelease(options, remote.dependencies);
-  assert.equal(remote.state.mutations.length, 5);
+  assert.equal(remote.state.mutations.length, 13);
   assert.equal(remote.state.mutations.at(-1), "publish");
 });
 
@@ -197,7 +197,7 @@ test("reconciles lost create, upload and publish responses without duplicate mut
   const options = fixture(t);
   const remote = github(options, { absent: true, createResponseLost: true, uploadResponseLost: true, publishResponseLost: true });
   await publishQualifiedRelease(options, remote.dependencies);
-  assert.equal(remote.state.mutations.length, 10);
+  assert.equal(remote.state.mutations.length, 18);
   assert.deepEqual(remote.state.waits, []);
 });
 
@@ -310,13 +310,13 @@ test("unified workflow invokes the sequential publisher only for immutable tag r
   assert(!job.if.includes('skip_all_in_one'));
 });
 
-test("an explicitly deferred Intel Mac publishes only the three required installers", async (t) => {
+test("an explicitly deferred Intel Mac publishes only the other installers and their offline variants", async (t) => {
   const options = fixture(t, false);
   assert.throws(() => releaseManifest(options.releaseRoot, options.version, false), /inventory is incomplete/);
   const remote = github(options);
   const result = await publishQualifiedRelease(options, remote.dependencies);
-  assert.equal(result.assets, 6);
-  assert.equal(remote.state.assets.length, 6);
+  assert.equal(result.assets, 12);
+  assert.equal(remote.state.assets.length, 12);
   assert(remote.state.assets.every((asset) => !asset.name.includes("mac-x64")));
 });
 

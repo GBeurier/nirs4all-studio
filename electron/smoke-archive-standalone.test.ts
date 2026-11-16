@@ -24,16 +24,11 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     sandboxRoot: string;
     keepSandbox: boolean;
   };
-  buildSandboxEnv(platformId: string, sandboxRoot: string, port: number, timeoutMs?: number): Record<string, string>;
+  buildSandboxEnv(platformId: string, sandboxRoot: string, port: number): Record<string, string>;
   cleanupSandboxRoot(
     sandboxRoot: string,
     options?: { retryCount?: number; retryDelayMs?: number },
   ): Promise<boolean>;
-  collectRuntimePathLeaks(runtimeRoot: string, disallowedFragments: string[]): Array<{
-    path: string;
-    kind: string;
-    matches: string[];
-  }>;
   isRetryableCleanupError(error: { code?: string } | null | undefined): boolean;
   parseArgs(argv?: string[]): {
     extractedRoot: string;
@@ -46,15 +41,19 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     help: boolean;
   };
   verifyInstalledProduct(port: number, sessionToken: string): Promise<unknown>;
-  pluginPreflightTimeoutMs(remainingMs: number): number;
+  verifySelectedEnvironment(port: number, sessionToken: string, pythonPath: string): Promise<unknown>;
+  waitForReady(
+    port: number,
+    timeoutMs: number,
+    child: { exitCode: number | null },
+    outputBuffer: string[],
+    sessionToken: string,
+  ): Promise<{ healthPayload: unknown; readinessPayload: unknown }>;
   pushOutput(buffer: string[], label: string, chunk: Buffer): void;
   resolveLaunchLayout(extractedRoot: string, platformId: string, appName: string): {
     appRoot: string;
     backendRoot: string;
     executablePath: string;
-    runtimeReadyPath: string;
-    bundledPythonPath: string;
-    bundledPythonCandidates: string[];
     nativeSidecarPath: string;
   };
   verifyLaunchRuntimeContract(
@@ -69,10 +68,6 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     targetPath: string,
     options?: { retryCount?: number; retryDelayMs?: number },
   ): Promise<void>;
-  scientificUnavailabilityDiagnostic(
-    port: number,
-    sessionToken: string,
-  ): Promise<string>;
 };
 
 const tempDirs: string[] = [];
@@ -122,16 +117,10 @@ describe("smoke-archive-standalone", () => {
     const layout = smokeModule.resolveLaunchLayout(extractedRoot, "win32", "nirs4all Studio");
 
     expect(layout.executablePath).toBe(path.join(extractedRoot, "nirs4all Studio.exe"));
-    expect(layout.runtimeReadyPath).toBe(
-      path.join(extractedRoot, "resources", "backend", "python-runtime", "PLUGIN_RUNTIME_READY.json"),
-    );
-    expect(layout.bundledPythonPath).toBe(
-      path.join(extractedRoot, "resources", "backend", "python-runtime", "python", "python.exe"),
-    );
+    expect(layout.backendRoot).toBe(path.join(extractedRoot, "resources", "backend"));
     expect(layout.nativeSidecarPath).toBe(
       path.join(extractedRoot, "resources", "backend", "native", "studio-sidecar.exe"),
     );
-    expect(layout.bundledPythonCandidates).toEqual([layout.bundledPythonPath]);
   });
 
   it("resolves a wrapped Linux standalone layout", () => {
@@ -144,9 +133,7 @@ describe("smoke-archive-standalone", () => {
 
     expect(layout.appRoot).toBe(appRoot);
     expect(layout.executablePath).toBe(path.join(appRoot, "nirs4all-webapp"));
-    expect(layout.runtimeReadyPath).toBe(
-      path.join(appRoot, "resources", "backend", "python-runtime", "PLUGIN_RUNTIME_READY.json"),
-    );
+    expect(layout.backendRoot).toBe(path.join(appRoot, "resources", "backend"));
     expect(layout.nativeSidecarPath).toBe(
       path.join(appRoot, "resources", "backend", "native", "studio-sidecar"),
     );
@@ -185,44 +172,18 @@ describe("smoke-archive-standalone", () => {
     expect(layout.executablePath).toBe(
       path.join(appBundle, "Contents", "MacOS", "nirs4all Studio"),
     );
-    expect(layout.runtimeReadyPath).toBe(
-      path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "PLUGIN_RUNTIME_READY.json"),
-    );
-    expect(layout.bundledPythonPath).toBe(
-      path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "python", "bin", "python3"),
-    );
+    expect(layout.backendRoot).toBe(path.join(appBundle, "Contents", "Resources", "backend"));
     expect(layout.nativeSidecarPath).toBe(
       path.join(appBundle, "Contents", "Resources", "backend", "native", "studio-sidecar"),
     );
-    expect(layout.bundledPythonCandidates).toEqual([layout.bundledPythonPath]);
-  });
-
-  it("detects build-path leaks inside runtime launcher files", () => {
-    const runtimeRoot = makeTempDir("n4a-smoke-leaks-");
-    const scriptsDir = path.join(runtimeRoot, "venv", "Scripts");
-    fs.mkdirSync(scriptsDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(runtimeRoot, "venv", "pyvenv.cfg"),
-      "home = D:\\a\\nirs4all-webapp\\nirs4all-webapp\\backend-dist\\python-runtime\\python\n",
-    );
-
-    const leaks = smokeModule.collectRuntimePathLeaks(runtimeRoot, [
-      "D:\\a\\nirs4all-webapp\\nirs4all-webapp",
-      "D:\\a\\nirs4all-webapp\\nirs4all-webapp\\backend-dist",
-    ]);
-
-    expect(leaks).toHaveLength(1);
-    expect(leaks[0]?.path).toBe(path.join(runtimeRoot, "venv", "pyvenv.cfg"));
   });
 
   it("creates an isolated Linux sandbox env", () => {
     const sandboxRoot = makeTempDir("n4a-smoke-env-");
-    const env = smokeModule.buildSandboxEnv("linux", sandboxRoot, 43123, 90000);
+    const env = smokeModule.buildSandboxEnv("linux", sandboxRoot, 43123);
 
     expect(env.NIRS4ALL_OFFLINE).toBe("1");
     expect(env.NIRS4ALL_NATIVE_SIDECAR_PORT).toBe("43123");
-    expect(env.NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS).toBe("90000");
-    expect(env.NIRS4ALL_PLUGIN_PACKAGE_VERIFY_TIMEOUT_MS).toBe("90000");
     expect(env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN).toMatch(/^[a-f0-9]{64}$/);
     expect(env.NIRS4ALL_BACKEND_PORT).toBeUndefined();
     expect(env.HOME).toBe(path.join(sandboxRoot, "home"));
@@ -247,46 +208,38 @@ describe("smoke-archive-standalone", () => {
     ).toThrow("Invalid --port value: 70000");
   });
 
-  it("bounds cold plugin preflight above the server timeout within the global budget", () => {
-    expect(smokeModule.pluginPreflightTimeoutMs(180000)).toBe(75000);
-    expect(smokeModule.pluginPreflightTimeoutMs(42000)).toBe(42000);
-    expect(smokeModule.pluginPreflightTimeoutMs(-1)).toBe(1);
-  });
-
-  it("reports the bounded scientific acquisition reason without submitting a job", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      status: 503,
-      text: async () => JSON.stringify({
-        error: { details: { reason: "python_preflight_timed_out" } },
-      }),
+  it("waits for the scientific host and reports why it did not start", async () => {
+    const child = { exitCode: null };
+    const respond = (readiness: object) => vi.fn(async (url: string, options: RequestInit) => {
+      expect(options.headers).toMatchObject({ "X-Nirs4all-Session": "test-session" });
+      return {
+        ok: true,
+        json: async () => (url.endsWith("/sidecar/v1/health") ? { sidecar_ready: true } : readiness),
+      };
     });
-    vi.stubGlobal("fetch", fetchMock);
     try {
-      await expect(
-        smokeModule.scientificUnavailabilityDiagnostic(43123, "s".repeat(64)),
-      ).resolves.toContain("python_preflight_timed_out");
-      expect(fetchMock).toHaveBeenCalledWith(
-        "http://127.0.0.1:43123/api/runs/run-groups",
-        expect.objectContaining({
-          method: "POST",
-          body: "{}",
-          headers: expect.objectContaining({
-            "X-Nirs4all-Session": "s".repeat(64),
-          }),
-        }),
-      );
-    } finally {
-      vi.unstubAllGlobals();
-    }
+      vi.stubGlobal("fetch", respond({ ml_loading: false, ml_ready: true }));
+      await expect(smokeModule.waitForReady(43123, 5000, child, [], "test-session")).resolves.toEqual({
+        healthPayload: { sidecar_ready: true },
+        readinessPayload: { ml_loading: false, ml_ready: true },
+      });
+      vi.stubGlobal("fetch", respond({ ml_loading: false, ml_ready: false, ml_error: "studio_adapters_unavailable" }));
+      await expect(smokeModule.waitForReady(43123, 5000, child, ["[stderr] host"], "test-session"))
+        .rejects.toThrow(/did not start on the provisioned environment.*studio_adapters_unavailable[\s\S]*\[stderr\] host/);
+    } finally { vi.unstubAllGlobals(); }
   });
 
-  it("requires installed CPU packages before accepting a release", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true, json: async () => ({ is_aligned: false, missing_count: 2, misaligned_count: 0 }),
+  it("requires the sidecar to run the provisioned interpreter", async () => {
+    const coherence = { configured_python: "/data/python-env/venv/bin/python", coherent: true, core_ready: true };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      expect(url).toBe("http://127.0.0.1:43123/api/system/env-coherence");
+      return { ok: true, json: async () => coherence };
     }));
     try {
-      await expect(smokeModule.verifyInstalledProduct(43123, "test-session"))
-        .rejects.toThrow("Installed CPU packages are incomplete");
+      await expect(smokeModule.verifySelectedEnvironment(43123, "test-session", coherence.configured_python))
+        .resolves.toEqual(coherence);
+      await expect(smokeModule.verifySelectedEnvironment(43123, "test-session", "/usr/bin/python3"))
+        .rejects.toThrow("does not use the provisioned environment /usr/bin/python3");
     } finally { vi.unstubAllGlobals(); }
   });
 
@@ -298,13 +251,7 @@ describe("smoke-archive-standalone", () => {
       expect(options.headers).toMatchObject({ "X-Nirs4all-Session": "test-session" });
       const body = typeof options.body === "string" ? JSON.parse(options.body) : {};
       let value: unknown;
-      if (url.includes("/config/diff")) {
-        value = { is_aligned: true, missing_count: 0, misaligned_count: 0 };
-      } else if (url.endsWith("/updates/dependencies")) {
-        value = { nirs4all_installed: true, categories: [{ packages: ["shap", "matplotlib"].map(name => ({
-          name, is_installed: true, installed_version: "1.0",
-        })) }] };
-      } else if (url.endsWith("/datasets/detect-unified")) {
+      if (url.endsWith("/datasets/detect-unified")) {
         fixture = body.path;
         expect(fs.readFileSync(path.join(fixture, "Mtrain.csv"), "utf8")).toContain("sample-a;\n");
         value = { metadata_columns: ["sample_id", "nirs_Remarque"], files: [{ path: "Mtrain.csv", type: "metadata" }] };
@@ -328,7 +275,7 @@ describe("smoke-archive-standalone", () => {
     }));
     try {
       await smokeModule.verifyInstalledProduct(43123, "test-session");
-      expect(calls).toHaveLength(9);
+      expect(calls).toHaveLength(7);
       expect(fs.existsSync(fixture)).toBe(false);
     } finally { vi.unstubAllGlobals(); }
   });

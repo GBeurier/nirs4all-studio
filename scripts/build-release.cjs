@@ -1,6 +1,7 @@
 /**
- * Cross-platform build script for complete nirs4all release.
- * Builds frontend + backend + Electron installer packaging.
+ * Build an installer on the matching host: the installer payload (uv, the
+ * wheels of the required packages, the document adapters, the Rust sidecar),
+ * the frontend, then the electron-builder package.
  *
  * Usage:
  *   node scripts/build-release.cjs [options]
@@ -8,8 +9,9 @@
  * Options:
  *   --flavor cpu          Build flavor (only supported release profile)
  *   --mode installer      Installer mode (the only supported distribution)
+ *   --offline             Build the offline installer (adds the offline payload)
  *   --clean               Clean all build artifacts before building
- *   --skip-backend        Reuse an existing attested plugin-host closure
+ *   --skip-backend        Reuse the installer payload already in backend-dist/
  *   --skip-frontend       Skip building the frontend (use existing)
  *   --platform            Current host only: win, mac, or linux (default: current)
  */
@@ -30,6 +32,7 @@ process.chdir(projectRoot);
 const args = process.argv.slice(2);
 let flavor = "cpu";
 let mode = "installer";
+let offline = false;
 let clean = false;
 let skipBackend = false;
 let skipFrontend = false;
@@ -43,6 +46,8 @@ for (let i = 0; i < args.length; i++) {
       break;
     }
     flavor = args[++i];
+  } else if (args[i] === "--offline") {
+    offline = true;
   } else if (args[i] === "--clean") {
     clean = true;
   } else if (args[i] === "--mode") {
@@ -173,7 +178,7 @@ console.log("  nirs4all Release Build");
 console.log("========================================");
 console.log("");
 console.log("Build configuration:");
-console.log(`  Mode: ${mode}`);
+console.log(`  Mode: ${mode}${offline ? " (offline)" : ""}`);
 console.log(`  Flavor: ${flavor.toUpperCase()}`);
 console.log(`  Platform: ${platform || "current"}`);
 console.log("");
@@ -216,44 +221,32 @@ async function main() {
       rmrf("dist-electron");
       rmrf("backend-dist");
       rmrf("release");
-      rmrf("build/nirs4all-backend");
       console.log("Clean complete");
       console.log("");
     }
 
-    // Step 1: Prepare the pinned plugin-only CPython runtime. Python is never
-    // the product HTTP/WS backend in Phase 2.
+    // Step 1: Stage what the installer ships beside the application. Python
+    // itself is never packaged; Studio creates the user's environment with uv.
+    const backendRoot = path.join(projectRoot, "backend-dist");
     if (!skipBackend) {
-      console.log("=== Step 1: Building plugin-only CPython runtime ===");
-      await runCommand("node", ["scripts/bake-python-plugin-runtime.cjs"]);
-      console.log("");
+      console.log("=== Step 1: Staging uv, required wheels, adapters and the native sidecar ===");
+      await runCommand("node", ["scripts/fetch-uv.cjs"]);
+      await runCommand("node", ["scripts/build-wheelhouse.cjs"]);
+      await runCommand("node", ["scripts/studio-document-adapters.cjs", "--install", path.join(backendRoot, "adapters")]);
+      await runCommand("node", ["scripts/build-native-sidecar.cjs"]);
     } else {
-      console.log("=== Step 1: Reusing plugin-host closure ===");
-      const backendDistPath = path.join(projectRoot, "backend-dist");
-      if (
-        !fs.existsSync(backendDistPath) ||
-        fs.readdirSync(backendDistPath).length === 0
-      ) {
-        console.error(
-          "Error: backend-dist is empty but --skip-backend was specified",
-        );
-        process.exit(1);
-      }
-      console.log("");
-      await runCommand("node", [
-        "scripts/bake-python-plugin-runtime.cjs",
-        "--verify-only",
-      ]);
+      console.log("=== Step 1: Reusing the installer payload in backend-dist/ ===");
     }
-
-    // Every desktop artifact ships the Rust control-plane binary and the
-    // separately attested Python library/plugin-host closure.
-    console.log("=== Step 1b: Building native Studio sidecar ===");
-    await runCommand("node", ["scripts/build-native-sidecar.cjs"]);
+    if (offline) {
+      await runCommand("node", ["scripts/build-offline-payload.cjs"]);
+    } else {
+      // A light installer must not pick up a payload left by an offline build.
+      rmrf("backend-dist/offline");
+    }
     verifyRuntimeContract({
-      backendRoot: path.join(projectRoot, "backend-dist"),
-      artifactBoundaryRoot: path.join(projectRoot, "backend-dist"),
-      requireBundledPythonPlugin: true,
+      backendRoot,
+      artifactBoundaryRoot: backendRoot,
+      requirePythonPayload: true,
       requireBundledMethods: true,
     });
     console.log("");
@@ -310,7 +303,7 @@ async function main() {
         runCommand("npx", [
           "electron-builder",
           "--config",
-          "electron-builder.installer.yml",
+          offline ? "electron-builder.offline.yml" : "electron-builder.installer.yml",
           "--publish",
           "never",
           `--config.directories.output=${stagingRoot}`,

@@ -127,9 +127,11 @@ docker exec "${container}" sh -eu -c '
   test -x /opt/nirs4all/backend/native/studio-sidecar
   test -f /opt/nirs4all/backend/native/libn4m.so
   test -f /opt/nirs4all/backend/native/STUDIO_RUNTIME_CONTRACT.json
-  test -x /opt/nirs4all/backend/python-runtime/python/bin/python3
-  test -f /opt/nirs4all/backend/python-runtime/PLUGIN_RUNTIME_READY.json
-  test -f /opt/nirs4all/backend/python-runtime/PYTHON_PLUGIN_CLOSURE.json
+  test -d /opt/nirs4all/backend/adapters/studio_document_adapters
+  test -x /opt/nirs4all/python-env/venv/bin/python
+  test "${NIRS4ALL_PYTHON_PLUGIN_HOST}" = /opt/nirs4all/python-env/venv/bin/python
+  test "${NIRS4ALL_STUDIO_ADAPTERS_DIR}" = /opt/nirs4all/backend/adapters
+  test ! -e /opt/nirs4all/backend/python-runtime
   ! command -v python
   ! command -v python3
   test ! -e /app/main.py

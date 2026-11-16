@@ -21,7 +21,7 @@ const contract = require(contractModulePath) as {
       artifactBoundaryRoot: string;
       platform: string;
       arch: string;
-      requireBundledPythonPlugin: boolean;
+      requirePythonPayload: boolean;
       requireBundledMethods: boolean;
     }): { sidecarPath: string };
     smokeSidecar?(sidecarPath: string): void;
@@ -86,12 +86,12 @@ function verifier(options: {
   artifactBoundaryRoot: string;
   platform: string;
   arch: string;
-  requireBundledPythonPlugin: boolean;
+  requirePythonPayload: boolean;
   requireBundledMethods: boolean;
 }): { sidecarPath: string } {
   expect(["linux", "win32", "darwin"]).toContain(options.platform);
   expect(options.arch).toBe(options.platform === "darwin" ? process.arch : "x64");
-  expect(options.requireBundledPythonPlugin).toBe(true);
+  expect(options.requirePythonPayload).toBe(true);
   expect(options.requireBundledMethods).toBe(true);
   const expectedBoundary = options.platform === "darwin"
     ? path.resolve(options.backendRoot, "../../..")

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const finalizer = require(path.resolve("scripts/finalize-release-assets.cjs")) as {
   canonicalPublishedName(name: string): string;
-  expectedPublishedNames(version: string, includeAllInOne?: boolean): string[];
+  expectedPublishedNames(version: string, includeAllInOne?: boolean, includeMacosX64?: boolean): string[];
   finalizeReleaseAssets(root: string, expectedNames?: string[] | null): Array<{
     publishedName: string;
     digest: string;
@@ -126,11 +126,22 @@ describe("finalize release assets", () => {
     ).toThrow("Release asset inventory mismatch");
   });
 
-  it("supports the installer-only publication profile", () => {
+  it("publishes every installer with its offline variant", () => {
     const root = temporaryRoot();
     const expectedNames = finalizer.expectedPublishedNames("0.11.2", false);
-    expect(expectedNames).toHaveLength(4);
-    expect(expectedNames.every((name) => !name.includes("all-in-one"))).toBe(true);
+    expect(expectedNames).toEqual([
+      "nirs4all.Studio-0.11.2-linux-amd64-offline.deb",
+      "nirs4all.Studio-0.11.2-linux-amd64.deb",
+      "nirs4all.Studio-0.11.2-mac-arm64-offline.dmg",
+      "nirs4all.Studio-0.11.2-mac-arm64.dmg",
+      "nirs4all.Studio-0.11.2-mac-x64-offline.dmg",
+      "nirs4all.Studio-0.11.2-mac-x64.dmg",
+      "nirs4all.Studio-0.11.2-win-x64-offline.exe",
+      "nirs4all.Studio-0.11.2-win-x64.exe",
+    ]);
+    expect(finalizer.expectedPublishedNames("0.11.2", false, false)).toEqual(
+      expectedNames.filter((name) => !name.includes("-mac-x64")),
+    );
     for (const publishedName of expectedNames) {
       writePair(
         root,

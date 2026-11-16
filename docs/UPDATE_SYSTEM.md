@@ -1,166 +1,147 @@
 # Update System Documentation
 
-This document describes the current update system used by `nirs4all-webapp`.
+This document describes the update system of nirs4all Studio.
 
-The update stack now covers two separate concerns:
+Two things are kept up to date, by two different owners:
 
-- application self-update through GitHub Releases
-- optional Python environment and `nirs4all` management for writable runtimes only
+- **The application** (Electron shell, renderer, Rust sidecar, `uv`, the
+  wheels of the required packages, the document adapters) is updated by
+  installing the newer installer from GitHub Releases. The Rust sidecar
+  discovers the release and selects the asset.
+- **The Python environment** belongs to the user. Electron keeps its required
+  packages in range and installs recommended packages on request. There are no
+  sidecar routes for package or runtime management.
 
-For the all-in-one ZIP bundle, the embedded runtime is read-only. The app can still check for and stage application updates, but it must not mutate `resources/backend/python-runtime/`.
+## What An Application Update Replaces
 
-## Runtime Modes
+An application update replaces the installed application only: everything
+under the installation directory, including `resources/backend/` (`native/`,
+`tools/`, `wheels/`, `adapters/`). Installers ship no Python, so an update
+downloads and rewrites about 150 MB of backend resources instead of a complete
+Python runtime.
 
-`/api/system/build` exposes the runtime contract used by the backend and frontend:
+An update does not touch `userData`:
 
-| `runtime_mode` | Meaning | Writable Python runtime |
-|---|---|---|
-| `development` | Local development / ad hoc Python launch | yes |
-| `managed` | Installer-style runtime managed outside the app bundle | yes |
-| `bundled` | All-in-one ZIP with embedded `python-runtime/python` | no |
-| `pyinstaller` | Legacy frozen backend mode kept for compatibility | no |
+- `env-settings.json` and the selected Python environment (whether Studio
+  created it under `userData/python-env/` or the user selected their own)
+- workspaces, application settings and update settings
 
-`is_frozen` is still returned for compatibility, but new logic should rely on `runtime_mode`.
+### Required packages after an update
+
+At the first launch after an update, Electron takes the inventory of the
+selected environment and compares it with the `required` block of the new
+`recommended-config.json`:
+
+- every required package within its `range`: nothing is installed, and the
+  cached inventory is reused when the environment has not changed
+- a required package missing or out of range, in a writable environment with
+  no editable required package: the required set is installed at its exact
+  `install` versions from the shipped wheels before the sidecar starts (the
+  splash shows one progress line)
+- otherwise Studio opens with the phase `needs_attention` and explains what to
+  do
+
+Recommended packages are never changed by an update. When some are older than
+their recommended version, Studio shows one warning toast per session and an
+indicator dot on Settings and on its `Python` tab.
+
+### Updating from a release that had an included runtime
+
+Such an installation has no selected environment in `env-settings.json`. After
+the update the phase is `unconfigured`: Studio opens the setup page once and
+the user chooses a detected environment or creates a new one. Workspaces and
+settings are kept.
 
 ## Architecture Overview
 
 ```text
 React Settings UI
-  ├─ UpdatesSection
-  ├─ DependenciesManager
-  └─ ConfigAlignment
-          |
-          v
-FastAPI backend
-  ├─ api/updates/        (package: manager · app_updates · staging · catalog · dependencies · snapshots)
-  ├─ api/update_downloader.py
-  ├─ api/venv_manager.py
-  ├─ api/recommended_config.py
-  └─ api/system.py
-          |
-          +--> GitHub Releases (desktop app updates)
-          +--> PyPI (nirs4all metadata / installs for managed runtimes)
-          +--> updater/__init__.py (stage/apply/restart scripts)
+  ├─ Updates tab  (UpdatesSection)          ── HTTP ──> Rust sidecar
+  └─ Python tab   (PythonEnvironmentPage)   ── IPC ───> Electron main
+
+Rust sidecar (sidecar/src/native_updates.rs)
+  ├─ /api/updates/status, /check, /settings, /version
+  ├─ /api/updates/webapp/*
+  └──> GitHub Releases (release discovery, checksum sidecar)
+
+Electron main (electron/env-manager.ts, electron/env/)
+  ├─ PythonEnvApi (window.electronApi.pythonEnv)
+  └──> uv ──> shipped wheels, offline payload, package index
 ```
-
-### What changed versus the old model
-
-- Desktop releases are no longer described as a PyInstaller-first product.
-- Installed desktop builds and all-in-one ZIP builds now share the same update channel, but not the same runtime mutability.
-- The frontend uses `runtime_mode`, not only `is_frozen`, to decide when package-management actions must be disabled.
 
 ## Main Components
 
-### `api/updates/` (package)
-
-Split into focused submodules (`manager`, `app_updates`, `staging`, `catalog`,
-`dependencies`, `snapshots`); shared state is re-exported at the package level so
-endpoints and tests reach it as `api.updates.<name>`.
+### `sidecar/src/native_updates.rs`
 
 Responsibilities:
 
-- check GitHub Releases for desktop updates
-- check PyPI for `nirs4all` updates
-- select the correct release asset for the current platform/runtime
-- expose update, download, staging, and apply endpoints
-- block runtime mutations when the runtime is read-only
-- **gate in-place self-update by capability** (`staging.get_update_capability`):
-  builds that can't be replaced on disk — per-machine Windows, `.deb`, AppImage,
-  DMG in `/Applications` — are reported with `can_apply_in_place: false` and the
-  `download-start`/`apply` endpoints refuse them with `400` **before the app
-  quits**, so the UI redirects to the installer instead of stranding the user.
-- **reconcile a pending apply on the next launch** (`updater.reconcile_apply`):
-  a marker recorded before quit is compared against the running version; if it
-  did not advance, the failure is logged + reported to Sentry with the updater
-  log tail (the only signal, since apply runs in a detached post-exit script),
-  and surfaced as a dismissible banner in Settings.
+- query GitHub Releases for the configured repository and channel
+- select the release asset for the current platform and architecture
+- bind the asset to its `.sha256` sidecar
+- report the update capability of the installation (`update_capability`)
+- refuse checks and downloads in offline mode
 
-Important details:
+The update capability of an installed application is:
 
-- installed Windows builds prefer all-in-one ZIP assets
-- portable Windows builds prefer `-portable.exe`
-- macOS prefers ZIP assets
-- Linux prefers `.tar.gz` / `.tgz` all-in-one assets, with ZIP still accepted for backward compatibility
-- when multiple ZIPs exist, names containing `all-in-one` are preferred
+```json
+{
+  "can_apply_in_place": false,
+  "channel": "installer",
+  "reason": "installer_release",
+  "install_kind": "windows-installer"
+}
+```
 
-### `api/update_downloader.py`
+`install_kind` is `windows-installer`, `dmg` or `deb`. `reason` is
+`installer_release` once a release has been discovered, `managed_install`
+before. With
+`channel: "installer"` the Updates tab offers the installer download
+(`installer_download_url`) and opens it in the system browser; the
+`download-start` and `apply` routes answer `400`.
 
-Responsibilities:
+### Electron environment manager
 
-- download the selected release asset
-- verify file size and optional SHA256
-- extract ZIP or tarball content into staging
-- restore POSIX executable bits from ZIP metadata on Linux/macOS
-
-The ZIP permission restoration is required for bundled Electron and bundled Python binaries to remain executable after staging.
-
-### `updater/__init__.py`
-
-Responsibilities:
-
-- determine update mode:
-  - `portable`
-  - `bundle`
-  - `directory`
-- create platform-specific apply scripts
-- back up the current install
-- replace files from staging
-- relaunch the updated app
-
-On macOS app bundles, the updater relaunches the `.app` itself. On non-bundle platforms it relaunches the executable directly.
-
-### `api/venv_manager.py`
-
-Responsibilities:
-
-- manage the writable Python environment used by installer-style builds
-- create the managed venv
-- install/uninstall/update Python packages
-- report installed package state
-
-This component is not allowed to mutate the runtime in `bundled` or `pyinstaller` modes.
+`electron/env-manager.ts` and `electron/env/` own the Python environment:
+detection, creation, the automatic update of required packages, and the
+installation of recommended packages. See
+[environment architecture](_internals/environment-architecture.md).
 
 ### Frontend settings surfaces
 
-The following frontend surfaces react to `runtime_mode`:
-
-- `src/components/settings/UpdatesSection.tsx`
-- `src/components/settings/DependenciesManager.tsx`
-- `src/components/settings/ConfigAlignment.tsx`
-- `src/components/settings/SystemInfo.tsx`
-
-In `bundled` mode they show the runtime as read-only and disable incompatible actions.
+- `src/components/settings/UpdatesSection.tsx`: application update status and
+  installer download
+- `src/components/python-env/PythonEnvironmentPage.tsx`: the `Python` tab of
+  Settings and the `/setup` route
+- `src/components/settings/SystemInfo.tsx`: versions
 
 ## Asset Selection Rules
 
-The backend chooses update assets by platform and runtime mode.
+The sidecar selects one asset per release, by platform and architecture.
 
-### Installed desktop builds
+| Platform | Selected asset suffix |
+|---|---|
+| Windows | `-win-{arch}.exe` |
+| macOS | `-mac-{arch}.dmg` (or `-mac-universal.dmg`) |
+| Linux | `-linux-amd64.deb` (or `-linux-{arch}.deb`) |
 
-Preferred update assets:
+Rules:
 
-- Windows: `nirs4all Studio-{version}-all-in-one-win-x64.zip`
-- macOS: `nirs4all Studio-{version}-all-in-one-mac-{arch}.zip`
-- Linux: `nirs4all Studio-{version}-all-in-one-linux-x64.tar.gz`
-
-### Portable Windows builds
-
-Preferred update asset:
-
-- `nirs4all Studio-{version}-win-x64-portable.exe`
-
-### Formats intentionally excluded from in-place update
-
-- Windows installer `.exe`
-- `.dmg`
-- `.deb`
-- `.AppImage`
-
-These are installer/distribution artifacts, not updater payloads.
+- An asset whose name contains `-offline` is never selected. The offline
+  installer carries a Python payload that an installed application does not
+  need.
+- For a published release the selection resolves to the light installer of
+  the platform, for example `nirs4all.Studio-{version}-win-x64.exe`.
+- When a release carries no installer for the platform, the selection looks
+  for an `-all-in-one-{os}-{arch}` archive name; published releases carry
+  none. A release with neither fails the check with
+  `No matching installer or legacy archive for this platform and architecture`.
 
 ### Checksums
 
-If a matching `.sha256` sidecar asset exists in the GitHub Release, it is downloaded and used for verification before staging.
+The `.sha256` sidecar published next to the selected asset is required. It is
+downloaded and bound to that exact asset name; its digest is reported as
+`checksum_sha256`. A release whose selected asset has no sidecar fails the
+check.
 
 ## API Reference
 
@@ -174,95 +155,63 @@ Base path:
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/status` | `GET` | Return cached update status |
-| `/check` | `POST` | Force a fresh GitHub/PyPI check |
+| `/status` | `GET` | Return the cached update status |
+| `/check` | `POST` | Force a fresh GitHub Releases check |
 | `/settings` | `GET` | Read update settings |
 | `/settings` | `PUT` | Update settings |
-| `/version` | `GET` | Return version and Python runtime info |
+| `/version` | `GET` | Return the application, Python and `nirs4all` versions |
 
-### Managed runtime endpoints
-
-| Endpoint | Method | Purpose |
-|---|---|---|
-| `/venv/status` | `GET` | Inspect the managed venv |
-| `/venv/create` | `POST` | Create the managed venv |
-| `/nirs4all/install` | `POST` | Install or upgrade `nirs4all` |
-| `/dependencies/install` | `POST` | Install an optional package in the managed venv |
-| `/dependencies/uninstall` | `POST` | Remove an optional package |
-| `/dependencies/update` | `POST` | Update one package |
-| `/dependencies/revert` | `POST` | Revert to the recommended package state |
-
-In `bundled` and `pyinstaller` modes, these mutation endpoints return `400` with a read-only message instead of attempting a `pip` operation.
-
-### Webapp update endpoints
+### Application update endpoints
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/webapp/download-info` | `GET` | Resolve the current release asset for this platform |
-| `/webapp/download-start` | `POST` | Create a background download job |
-| `/webapp/download-status/{job_id}` | `GET` | Poll job progress |
-| `/webapp/download-cancel/{job_id}` | `POST` | Cancel an active download |
+| `/webapp/download-info` | `GET` | Resolve the release asset for this platform and the update channel |
+| `/webapp/changelog` | `GET` | Release notes of the discovered release |
+| `/webapp/download-start` | `POST` | Start an in-place download; `400` on an installed application |
+| `/webapp/download-status/{job_id}` | `GET` | Poll a download job |
+| `/webapp/download-cancel/{job_id}` | `POST` | Cancel a download job |
 | `/webapp/staged-update` | `GET` | Inspect the staged update, if any |
 | `/webapp/staged-update` | `DELETE` | Remove the staged update |
-| `/webapp/apply` | `POST` | Launch the updater script and mark restart as required |
+| `/webapp/apply` | `POST` | Apply a staged update; `400` on an installed application |
 | `/webapp/cleanup` | `POST` | Remove stale update artifacts |
+| `/webapp/last-apply-result` | `GET`, `DELETE` | Read or dismiss the result of the last apply attempt |
 | `/webapp/restart` | `POST` | Request application restart |
-| `/webapp/download` | `POST` | Legacy endpoint returning only the resolved download URL |
+
+The Python environment has no route under `/api/updates`. It is managed
+through the `PythonEnvApi` IPC contract (`src/types/pythonEnvironment.ts`), and
+its state is visible on the sidecar through `/api/system/readiness`,
+`/api/system/env-coherence`, `/api/system/info` and
+`/api/system/capabilities`. See [API_UPDATES.md](API_UPDATES.md).
 
 ## Key Response Shapes
-
-### `GET /api/system/build`
-
-```json
-{
-  "build": {
-    "flavor": "cpu",
-    "gpu_enabled": false
-  },
-  "runtime_mode": "bundled",
-  "is_frozen": false,
-  "summary": {
-    "runtime_mode": "bundled"
-  }
-}
-```
 
 ### `GET /api/updates/webapp/download-info`
 
 ```json
 {
   "update_available": true,
-  "current_version": "0.5.0",
-  "latest_version": "0.5.1",
-  "download_url": "https://github.com/.../nirs4all%20Studio-0.5.1-all-in-one-win-x64.zip",
-  "asset_name": "nirs4all Studio-0.5.1-all-in-one-win-x64.zip",
+  "current_version": "0.15.11",
+  "latest_version": "0.16.0",
+  "download_url": "https://github.com/.../nirs4all.Studio-0.16.0-win-x64.exe",
+  "asset_name": "nirs4all.Studio-0.16.0-win-x64.exe",
   "download_size_bytes": 123456789,
   "release_notes": "...",
-  "release_url": "https://github.com/.../releases/tag/0.5.1"
+  "release_url": "https://github.com/.../releases/tag/0.16.0",
+  "installer_download_url": "https://github.com/.../nirs4all.Studio-0.16.0-win-x64.exe",
+  "installer_asset_name": "nirs4all.Studio-0.16.0-win-x64.exe",
+  "can_apply_in_place": false,
+  "update_channel": "installer",
+  "install_kind": "windows-installer"
 }
 ```
 
-### `POST /api/updates/webapp/download-start`
-
-```json
-{
-  "job_id": "job_123",
-  "status": "started",
-  "version": "0.5.1",
-  "asset_name": "nirs4all Studio-0.5.1-all-in-one-win-x64.zip",
-  "message": "Downloading nirs4all Studio-0.5.1-all-in-one-win-x64.zip..."
-}
-```
+The version numbers are illustrative.
 
 ### `GET /api/updates/webapp/staged-update`
 
 ```json
 {
-  "has_staged_update": true,
-  "staging_path": "/path/to/update_staging",
-  "version": "0.5.1",
-  "asset_name": "nirs4all Studio-0.5.1-all-in-one-linux-x64.zip",
-  "update_mode": "directory"
+  "has_staged_update": false
 }
 ```
 
@@ -270,150 +219,98 @@ In `bundled` and `pyinstaller` modes, these mutation endpoints return `400` with
 
 ### 1. Background or manual check
 
-1. frontend calls `/status` or `/check`
-2. backend queries GitHub Releases and PyPI
-3. backend caches the result
-4. frontend refreshes update banners and version panels
+1. the renderer calls `/status` (cached) or `/check` (fresh)
+2. the sidecar queries GitHub Releases, selects the installer asset and reads
+   its checksum sidecar
+3. the renderer refreshes the update notice and the Updates tab
 
-### 2. Download and stage application update
+### 2. Install the application update
 
-1. frontend calls `/webapp/download-start`
-2. backend creates an update job
-3. `api/update_downloader.py` downloads and extracts the selected asset
-4. staging metadata records:
-   - target version
-   - asset name
-   - expected update mode
-5. frontend polls `/webapp/download-status/{job_id}`
+1. the Updates tab shows the new version with a download action
+2. Studio opens `installer_download_url` in the system browser
+3. the user closes Studio and runs the downloaded installer
+4. the installer replaces the application; `userData` is kept
 
-### 3. Apply staged update
+### 3. First launch of the new version
 
-1. frontend calls `/webapp/apply`
-2. backend validates staged content
-3. `updater/__init__.py` creates the platform-specific apply script
-4. current app exits
-5. updater replaces files, restores from backup on failure, then relaunches
+1. Electron reads `env-settings.json` and takes the inventory of the selected
+   environment
+2. required packages that left their range are installed from the wheels
+   shipped with the new version
+3. the sidecar starts on the environment and the window opens
 
-### 4. Current runtime maintenance
+### 4. Environment maintenance
 
-These actions always target the current Python runtime, not a separate backend
-"managed env" control plane.
-
-Writable-runtime flow:
-
-1. inspect the current runtime
-2. install or update `nirs4all`
-3. install or remove optional packages
-4. restart backend if required
-
-In a bundled build:
-
-- the embedded runtime is read-only while it remains active
-- switching to an external runtime is allowed through Electron
-- once switched, update and dependency actions target that external runtime like
-  any other user-managed Python
-
-## Read-Only Guardrails For All-In-One Bundles
-
-When `NIRS4ALL_RUNTIME_MODE=bundled`, the backend refuses mutations that would
-rewrite the embedded bundled Python runtime in place.
-
-Blocked actions include:
-
-- backend-side runtime creation
-- `nirs4all` install/upgrade
-- optional dependency install/uninstall/update/revert
-- config alignment mutations in `api/recommended_config.py`
-- snapshot restore flows that would rewrite the active embedded runtime
-
-Expected error:
-
-```json
-{
-  "detail": "This action would modify the embedded bundled Python runtime. Switch to an external Python runtime in Settings first."
-}
-```
-
-This is intentional. The restriction applies to the embedded runtime itself, not
-to the user's ability to leave it.
+Changing the environment, creating one, and installing or updating
+recommended packages are user actions on the `Python` tab of Settings. They
+go through `PythonEnvApi` and are independent of application updates.
 
 ## Storage Layout
 
-### Writable state
-
-Update settings, cache, staging, backup, and logs live under the app data directory:
-
-- installed builds: standard platformdirs locations
-- portable Windows builds: `.nirs4all/` next to the portable executable
-
-Typical directories:
+### User data
 
 ```text
 <userData>/
-├── update_settings.yaml
-├── update_cache.json
-├── update_cache/
-├── update_staging/
-├── update_backup/
-└── python-env/
+├── env-settings.json        selected interpreter: { "pythonPath": "..." }
+├── python-inventory.json    cached package listing of the selected environment
+└── python-env/              environment created by Studio, when the user chose that
+    ├── python/
+    └── venv/
 ```
 
-### Embedded runtime
+Update settings are stored by the sidecar in `update_settings.yaml` in its
+data directory.
 
-The all-in-one runtime lives inside the packaged app:
+### Application resources
 
 ```text
-resources/backend/python-runtime/
+resources/backend/
+├── native/
+├── tools/
+├── wheels/
+└── adapters/
 ```
 
-That path is part of the distributed artifact and must remain read-only at runtime.
+This tree is part of the installed application and is replaced as a whole by
+an application update. The offline installer adds `offline/`.
 
 ## Security And Reliability Notes
 
-- update checks use HTTPS GitHub and PyPI endpoints
+- update checks use HTTPS GitHub endpoints
 - application updates are explicit, not silent
-- `.sha256` sidecars are used when available
-- staged updates are applied from a backup-aware external script
-- ZIP extraction restores recorded POSIX permissions on Linux/macOS
-- all-in-one runtime mutation is blocked by design
+- the selected asset must have a matching `.sha256` sidecar
+- offline mode (`offline_mode` setting, `NIRS4ALL_OFFLINE`, or the `--offline`
+  application switch) disables update checks and downloads
+- the user's Python environment is never replaced by an application update;
+  Studio never modifies editable installs
 
 ## Troubleshooting
 
-### "No download URL available for this platform"
+### "No matching installer or legacy archive for this platform and architecture"
 
-The latest GitHub Release does not contain a compatible update asset for the current platform/runtime. Check asset naming first.
+The latest GitHub Release does not contain an installer for the current
+platform. Check asset naming first.
 
-### Portable Windows app downloads a ZIP
+### "Matching SHA-256 sidecar asset is missing"
 
-That is a release naming or asset selection regression. Portable mode should prefer `-portable.exe`, not the all-in-one ZIP.
+The release carries the installer but not its `.sha256` file. Each
+downloadable artifact must ship with one.
 
-### Bundled app says package management is unavailable
+### The update check proposes nothing while a newer release exists
 
-Expected behavior. The embedded runtime in the all-in-one bundle is read-only.
+Check that offline mode is off, that the release channel matches (the
+prerelease setting), and `GET /api/updates/webapp/download-info`.
 
-### Linux or macOS staged ZIP loses executable bits
+### Studio opens the setup page after an update
 
-Run the dedicated smoke:
+No Python environment is selected. This is expected once when updating from a
+release that had an included runtime; choose or create an environment.
 
-```bash
-python3 scripts/smoke-update-zip-permissions.py --archive path/to/archive.zip --platform linux
-```
+### Studio reports that required packages could not be installed after an update
 
-### Update is downloaded but not applied
-
-First check whether the build is even eligible for in-place update:
-
-- `GET /api/updates/webapp/download-info` → `can_apply_in_place` / `update_channel`.
-  If `installer`, this build (per-machine Windows, `.deb`, AppImage, DMG) is
-  intentionally redirected to the installer; in-app apply is refused by design.
-
-Otherwise inspect:
-
-- `/api/updates/webapp/staged-update`
-- `/api/updates/webapp/last-apply-result` (a `failed` status means the app
-  relaunched on the old version — see `log_tail`)
-- backend logs
-- updater log under the app log directory
+The new version requires package versions the environment does not have, and
+their installation failed or is not allowed. See the
+[support runbook](_internals/support-runbook-env-mismatch.md).
 
 ## See Also
 

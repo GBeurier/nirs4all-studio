@@ -6,13 +6,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
-  collectRuntimeClosure,
   verifyRuntimeContract,
   writeRuntimeContract,
 } = require("./native-runtime-contract.cjs");
 
 const MACOS_ATTESTED_SIGN_IGNORE = Object.freeze([
-  String.raw`[\\/]Contents[\\/]Resources[\\/]backend[\\/]python-runtime[\\/]python[\\/]`,
   String.raw`[\\/]Contents[\\/]Resources[\\/]backend[\\/]native[\\/]libn4m\.dylib$`,
 ]);
 
@@ -187,27 +185,6 @@ function signMachO(
 
 function collectAttestedMachOs(verified) {
   const files = [];
-  if (verified.pythonRuntimeRoot) {
-    const closure = collectRuntimeClosure(verified.pythonRuntimeRoot);
-    const nestedBundle = closure.directories.find((directory) =>
-      /\.(?:app|bundle|framework|plugin|xpc)$/i.test(directory),
-    );
-    if (nestedBundle) {
-      throw new Error(
-        `Bundled Python closure contains an unsupported nested code bundle: ${nestedBundle}`,
-      );
-    }
-    for (const member of closure.files) {
-      const filePath = requireCanonicalFile(
-        path.join(verified.pythonRuntimeRoot, ...member.path.split("/")),
-        "Bundled Python closure member",
-      );
-      if (isMachO(filePath)) files.push(filePath);
-    }
-    if (!files.includes(path.resolve(verified.pythonPluginHostPath))) {
-      throw new Error("Bundled Python plugin host is not a Mach-O executable");
-    }
-  }
   if (verified.methodsLibraryPath) {
     const methodsPath = requireCanonicalFile(
       verified.methodsLibraryPath,
@@ -239,7 +216,7 @@ function prepareMacosAttestedRuntime({
     artifactBoundaryRoot,
     platform: "darwin",
     arch,
-    requireBundledPythonPlugin: true,
+    requirePythonPayload: true,
   });
   const machOs = collectAttestedMachOs(verifiedBefore);
   if (machOs.length === 0) {
@@ -278,7 +255,7 @@ function prepareMacosAttestedRuntime({
     artifactBoundaryRoot,
     platform: "darwin",
     arch,
-    requireBundledPythonPlugin: true,
+    requirePythonPayload: true,
   });
   return { machOs, verified: verifiedAfter };
 }

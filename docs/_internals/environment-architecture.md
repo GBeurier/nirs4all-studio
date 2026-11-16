@@ -1,234 +1,231 @@
 # Environment Architecture
 
-Internal reference for how `nirs4all-webapp` manages Python runtimes after the
-single-runtime refactor.
+Internal reference for how nirs4all Studio finds, prepares and uses Python.
+The renderer/main contract is `src/types/pythonEnvironment.ts`; the working
+specification is
+[python-environment-redesign-2026-11-16.md](python-environment-redesign-2026-11-16.md).
 
 ## Core Model
 
-The desktop app has exactly one active Python runtime at a time.
+Studio uses exactly one Python environment: the interpreter the user selected,
+or the one Studio created for them. The selection is one persisted value:
 
-That runtime is the single source of truth for:
+```text
+<userData>/env-settings.json   { "pythonPath": "..." }
+```
 
-- backend startup
-- package scans
-- `nirs4all` importability
-- dependency installation
-- config alignment
-- pipeline execution
+Installers ship no Python. They ship the tools Studio needs to create and
+maintain that environment: `uv`, the wheels of the required packages and the
+document adapters (see [PACKAGING.md](../PACKAGING.md)).
 
-Electron persists one setting, `pythonPath`, which is always the Python
-executable the next backend restart should use.
+The state of the environment is derived from a package listing (distribution
+metadata). Studio never imports a package to decide whether an environment is
+usable.
+
+## Package Catalogue
+
+`recommended-config.json` is the single source of package names, ranges and
+versions for the Electron main process, the build scripts and the Rust sidecar.
+
+| Block | Entry shape | Meaning |
+|---|---|---|
+| `required` | `{ name, range, install }` | Packages Studio cannot run without: `nirs4all`, `nirs4all-core`, `dag-ml`, `dag-ml-data`, `nirs4all-io`, `nirs4all-methods`, `nirs4all-formats`. `range` is the accepted version specifier (may be empty); `install` is the exact version Studio installs. |
+| `optional` | `min`, `recommended`, `category`, `description`, `default_install`, optional `python` | The recommended catalogue. Each package is a per-package choice; `default_install` preselects it when Studio creates an environment. |
+
+Two rules follow from the `required` shape:
+
+- **Admission is a range.** An environment is usable when every required
+  package is installed within its `range`.
+- **Installation is exact.** When Studio installs or repairs the required
+  packages, it installs every one of them at its `install` version in a single
+  resolver call, so the cohort stays mutually coherent.
+
+`recommended-config.json` also carries a `profiles` block. Only the
+transitional FastAPI tooling under `api/` reads it; the product does not.
 
 ## Main Components
 
-### Electron EnvManager
-
-**File:** `electron/env-manager.ts`
-
-**Settings file:** `{userData}/env-settings.json`
-
-Responsibilities:
-
-- persist `pythonPath`
-- discover managed, local venv, conda, bundled, and global runtimes
-- inspect a candidate runtime before switching
-- create a managed runtime for convenience
-- install missing backend-core packages only after explicit confirmation
-- expose configured runtime metadata to the backend launcher
-
-Important distinctions:
-
-- `getConfiguredPythonPath()` returns the interpreter Electron is configured to
-  launch next
-- the currently running backend may still differ until restart
-- there is no second backend-side custom-path control plane anymore
-
-### Electron BackendManager
-
-**File:** `electron/backend-manager.ts`
-
-Responsibilities:
-
-- launch the backend under the configured interpreter in both dev and packaged
-  desktop modes
-- pass runtime metadata to the backend:
-  - `NIRS4ALL_EXPECTED_PYTHON`
-  - `NIRS4ALL_ENV_SETTINGS_PATH`
-  - `NIRS4ALL_RUNTIME_MODE`
-  - `NIRS4ALL_RUNTIME_KIND`
-  - `NIRS4ALL_IS_BUNDLED_DEFAULT`
-  - `NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE`
-
-Launch contract:
-
-- if a configured desktop runtime exists, use it
-- in dev, `../.venv` is only a fallback when no desktop runtime is configured
-- in bundled builds, the embedded runtime is the default only until the user
-  switches away from it
-
-### Backend Runtime Manager
-
-**File:** `api/venv_manager.py`
-
-Responsibilities:
-
-- operate on the Python interpreter that is currently running the backend
-- provide package scans, `pip` installs, uninstalls, and snapshot restore
-  against `sys.executable` / `sys.prefix`
-
-Non-responsibilities:
-
-- no persisted custom venv path
-- no deferred activation
-- no `venv_settings.json` control plane
-
-### Runtime Summary Endpoint
-
-**File:** `api/system.py`
-
-**URL:** `GET /api/system/env-coherence`
-
-This is the runtime contract used by the frontend. It reports:
-
-- `configured_python`
-- `running_python`
-- `running_prefix`
-- `runtime_kind`
-- `is_bundled_default`
-- `bundled_runtime_available`
-- `configured_matches_running`
-- `core_ready`
-- `missing_core_packages`
-- `missing_optional_packages`
-
-`coherent` now means:
-
-- the backend is running under the same interpreter Electron is configured to
-  use
-
-It does not mean "some backend helper object agrees with itself."
-
-## Runtime States
-
-### Managed runtime
-
-An app-created runtime under `{userData}/python-env/venv`.
-
-- writable
-- used like any other configured Python
-- created by Electron, then made the active runtime
-
-### Custom runtime
-
-A user-selected interpreter from:
-
-- local venv
-- conda env
-- global/system Python
-- another user-managed environment
-
-### Bundled embedded runtime
-
-The Python embedded in an all-in-one bundle.
-
-- default on first launch of bundled builds
-- read-only
-- safe to inspect and run
-- must not be mutated in place
-
-### Bundled build switched to external runtime
-
-Still the same app build, but no longer using the embedded interpreter.
-
-- allowed
-- backend runs on the selected external interpreter after restart
-- dependency and update actions target that external runtime
-- frontend should warn that the app is no longer using the embedded runtime
-
-## Package Semantics
-
-There is one runtime, but two readiness levels inside it:
-
-### Core readiness
-
-Packages required to boot the backend, including:
-
-- `fastapi`
-- `uvicorn`
-- `nirs4all`
-
-If these are missing, the runtime cannot run the app correctly.
-
-### Optional feature readiness
-
-Packages needed only for specific operators or pages, such as:
-
-- `shap`
-- `xgboost`
-- other optional packages from `recommended-config.json`
-
-If these are missing:
-
-- the runtime may still be valid for supported workflows
-- unsupported operators should fail preflight or show as unavailable
-- the app should not pretend a second environment exists
-
-## Switch Flow
-
-The same runtime switch contract should be used everywhere:
-
-1. inspect the candidate interpreter
-2. classify it
-3. report missing core and optional packages
-4. optionally install missing core packages after explicit confirmation
-5. persist `pythonPath`
-6. restart the backend under that exact interpreter
-7. fetch the runtime summary and post-switch validation data
-
-This applies in:
-
-- first-launch wizard
-- settings runtime picker
-- bundled-to-external switching
-- managed runtime creation
-
-## Data Flow
-
-### Desktop startup
-
-1. `EnvManager.validateConfiguredState()`
-2. `EnvManager.ensureBackendPackages()`
-3. `BackendManager` launches the backend under the configured interpreter
-4. backend reports configured-vs-running state through `/api/system/env-coherence`
-
-### Runtime switch
-
-1. user selects a runtime in the wizard or settings
-2. Electron inspects it without mutating it
-3. user chooses:
-   - use as-is
-   - install missing core packages and switch
-4. Electron persists `pythonPath`
-5. backend restarts
-6. frontend refreshes runtime summary, GPU/profile hints, and dependency state
-
-## Mode Matrix
-
-| Mode | Default runtime | Mutable runtime? | Can switch to another runtime? |
-|---|---|---|---|
-| Web dev | current Python process | yes | n/a |
-| Electron installer | managed or configured external runtime | yes | yes |
-| Electron portable | managed or configured external runtime | yes | yes |
-| All-in-one bundled build | embedded bundled runtime | only after switching away | yes |
-| Legacy PyInstaller backend | packaged backend runtime | no | no |
-| Docker | container Python runtime | yes | container-managed |
-
-## Key Decisions
-
-1. Only one active runtime exists at a time.
-2. Switching Python must change the real backend interpreter after restart.
-3. Selecting an existing interpreter never mutates it silently.
-4. Optional-package gaps do not create a second environment; they only reduce
-   available features inside the current runtime.
-5. Bundled builds may switch to external runtimes, but the embedded runtime
-   itself stays read-only.
+### Electron main process
+
+`electron/env-manager.ts` (`EnvManager`) coordinates the environment. The
+mechanics live in `electron/env/`:
+
+| Module | Responsibility |
+|---|---|
+| `env-settings.ts` | Read and atomically write `env-settings.json`; the last valid file is kept as `env-settings.json.bak`. |
+| `catalogue.ts` | Required and recommended package specifications from `recommended-config.json`. |
+| `python-discovery.ts` | Candidate interpreters: `PATH`, common home virtual environments, conda, pyenv, the Windows `py` launcher and nearby project directories. |
+| `env-detection.ts` | One inventory per candidate (four at a time), sorted and de-duplicated by environment root, cached in memory for 30 seconds. |
+| `inventory.ts` | One subprocess per interpreter (`python -I -B -c <probe>`) that lists distributions, editable installs, the PEP 668 marker and whether the package directory is writable; `evaluateInventory` turns the listing into a `PythonEnvReport`. |
+| `inventory-cache.ts` | `<userData>/python-inventory.json`: the inventory of the selected environment, keyed by interpreter, required catalogue and environment fingerprint, so an ordinary launch spawns no Python. |
+| `uv.ts` | Locates `uv` and the shipped wheels; runs `uv venv` and `uv pip install`. |
+| `provisioning.ts` | Creates a Studio environment. |
+| `python-runtime-installer.ts` | Downloads, extracts and un-quarantines the python-build-standalone archive. |
+| `runtime-paths.ts` | Layout of a Studio environment and classification of an environment root (`studio`, `conda`, `venv`, `system`). |
+| `studio-adapters.ts` | Location of the `studio_document_adapters` package. |
+| `scientific-host.ts` | Confirms through the sidecar that the scientific host runs the selected interpreter; counts active runs. |
+| `install-log.ts` | Bounded, redacted install log shared by every environment operation. |
+
+### uv
+
+`uv` is the only tool Studio uses to create environments and install packages.
+It is resolved from `NIRS4ALL_UV`, then `resources/backend/tools/uv[.exe]`,
+then `backend-dist/tools/`, then `PATH` (development). Every call names the
+target interpreter with `--python`, sets `UV_LINK_MODE=copy` and
+`UV_NATIVE_TLS=1` (system certificate store), and streams its output to the
+install log.
+
+`resources/backend/wheels/` is passed as `--find-links`. When the installation
+carries the offline payload (`resources/backend/offline/`), its `wheels/`
+directory is a second `--find-links` source and installs are first attempted
+with `--offline --no-index`; what the shipped wheels cannot satisfy is then
+requested from the package index. `torch` is installed with
+`--torch-backend auto` when it comes from the package index; offline wheels
+are used as shipped.
+
+### Rust sidecar
+
+The sidecar runs the scientific host. It receives the selection through four
+variables set by Electron, and nothing else about the environment:
+
+| Variable | Value |
+|---|---|
+| `NIRS4ALL_PYTHON_PLUGIN_HOST` | Selected interpreter, exactly as selected. |
+| `NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES` | Package directory of that environment (`purelib` from the inventory). |
+| `NIRS4ALL_STUDIO_ADAPTERS_DIR` | Directory that contains `studio_document_adapters/`. |
+| `NIRS4ALL_SCIENTIFIC_EXECUTOR` | `cpython-stdio-v1`. |
+
+Electron removes inherited values of these variables before it starts the
+sidecar. When no usable environment is selected, the sidecar starts without a
+Python host: the product stays available and the scientific capabilities report
+as unavailable. Host admission by the sidecar is described in
+[sidecar/README.md](../../sidecar/README.md#python-environment-hand-off).
+
+The document adapters ship with the application
+(`resources/backend/adapters/studio_document_adapters/`). They are never copied
+into the user's environment. In development, Electron materialises them once
+per process into `<userData>/studio-adapters/`.
+
+### Renderer
+
+One page component (`src/components/python-env/PythonEnvironmentPage.tsx`)
+serves the `/setup` route and the `Python` tab of Settings. It talks to the
+main process only through `PythonEnvApi` (`window.electronApi.pythonEnv`).
+Outside Electron (browser, Docker) the tab is a read-only summary built from
+`/api/system/info`.
+
+## Phases
+
+`PythonEnvState.phase` is one of:
+
+| Phase | Meaning |
+|---|---|
+| `unconfigured` | No environment is selected, or the selected interpreter file no longer exists (`problem.code` is then `interpreter_missing`). The setup page is shown. |
+| `ready` | The selected environment satisfies every required package. |
+| `busy` | A creation, installation, required update or switch is running; `activity` describes it. |
+| `needs_attention` | The selected environment exists but cannot be used; `problem` says why. |
+
+Problem codes:
+
+| Code | Cause |
+|---|---|
+| `interpreter_missing` | The selected interpreter file no longer exists. |
+| `interpreter_unusable` | The interpreter could not be inspected, or is older than Python 3.11. |
+| `required_not_installable` | A required package is missing or out of range and Studio may not install it: the environment is read-only or externally managed, or a required package is an editable install. |
+| `required_update_failed` | The automatic installation of the required packages failed. |
+| `host_failed` | Packages are in range but the scientific host did not start on this interpreter. |
+
+## Lifecycle
+
+### First launch
+
+1. The phase is `unconfigured`; the sidecar starts without a Python host and
+   the renderer opens `/setup`.
+2. The page lists detected environments with what each lacks, and describes
+   the environment Studio would create (`describeNewEnvironment`, no
+   subprocess).
+3. The user either selects an environment (`apply`) or creates one (`create`).
+   The user may also continue without Python for the session; a banner then
+   links back to the setup page.
+
+### Create
+
+`create` builds a Studio environment under `<userData>/python-env/` (or
+`<directory>/python-env/` when the user chooses a folder):
+
+1. Obtain the pinned python-build-standalone archive
+   (`scripts/python-runtime-config.cjs`): from the offline payload when
+   present, otherwise by download.
+2. Extract it to `python-env/python`.
+3. `uv venv python-env/venv` on that interpreter.
+4. Install the required packages, then the recommended packages the user
+   chose.
+
+An existing `venv` directory is never overwritten. A failed creation removes
+what it created so that it can be retried.
+
+### Select an existing environment
+
+`apply` inspects the interpreter, installs the required packages when they are
+missing or out of range, installs the chosen recommended packages, then
+switches. Recommended packages are installed together with pins of the required
+packages already present, so a conflicting recommended package fails the
+resolution instead of changing `nirs4all` or its owners.
+
+### Switch
+
+A switch persists the new `pythonPath`, restarts the sidecar on it, waits for
+`/api/system/readiness` to report `ml_ready`, and confirms that
+`/api/system/env-coherence` reports the selected interpreter. On failure the
+previous selection is persisted again and restarted.
+
+Environment operations run one at a time and end by restarting the sidecar.
+Except for an explicit backend restart, they are refused while a run is queued
+or running.
+
+### Later launches
+
+1. Read `env-settings.json` and take the inventory of the selection (from
+   `python-inventory.json` when the environment has not changed).
+2. If a required package is missing or out of range, and the environment is
+   writable and has no editable required package, install the required set
+   (activity `updating_required`; the splash shows one progress line).
+3. Start the sidecar on the selection, create the window, and confirm the host
+   in the background.
+
+A failure never blocks startup: Studio opens with the phase `needs_attention`
+and a banner that offers Retry.
+
+### Application update
+
+An application update replaces the application files only. The environment
+under `<userData>/python-env/` (or the user's own environment) and
+`env-settings.json` are untouched. If the new version raises a required range,
+the required packages are updated at the next launch through the step above.
+
+An installation whose `env-settings.json` holds no `pythonPath`, as left by a
+release that used an included runtime, starts `unconfigured`: the user chooses
+or creates an environment once.
+
+## Package Rules
+
+- Required packages are installed and updated automatically. Their rows are
+  locked on the page.
+- Recommended packages are installed only on request, one checkbox per
+  package. A recommended package below its `recommended` version has status
+  `older`: Studio shows one warning toast per session and an indicator dot on
+  the Settings sidebar entry and on the `Python` tab.
+- Editable installs are never modified. An editable required package within
+  range is `ok`. Any editable required package prevents Studio from installing
+  the required set in that environment.
+- Studio does not install into an externally managed (PEP 668) or read-only
+  environment.
+
+## Deployment Matrix
+
+| Deployment | Environment | Managed by |
+|---|---|---|
+| Desktop installer | Selected or created by the user | Electron (`PythonEnvApi`) |
+| Desktop offline installer | Same; creation and required installs work without network | Electron (`PythonEnvApi`) |
+| Docker image | `/opt/nirs4all/python-env/{python,venv}`, built at image build time by `scripts/provision-environment.cjs` | The image |
+| Browser development (`npm run dev`) | None owned by the renderer | The server it is pointed at |

@@ -62,30 +62,40 @@ published or qualified on every platform.
 
 ### Installer target (unpublished)
 
-| Target platform | Candidate file contract | Availability |
-|-----------------|-------------------------|--------------|
-| **Windows x64** | `.exe` installer | Unpublished; installation qualification pending |
-| **macOS** (Intel & Apple Silicon) | `.dmg` disk image | Unpublished; installation qualification pending |
-| **Linux x64** | `.AppImage` or `.deb` package | Unpublished; local evidence is not a public release |
+| Target platform | Installer | Offline installer |
+|-----------------|-----------|-------------------|
+| **Windows x64** | `nirs4all.Studio-<version>-win-x64.exe` | `nirs4all.Studio-<version>-win-x64-offline.exe` |
+| **macOS** (Apple Silicon, Intel) | `nirs4all.Studio-<version>-mac-<arch>.dmg` | `nirs4all.Studio-<version>-mac-<arch>-offline.dmg` |
+| **Linux x64** | `nirs4all.Studio-<version>-linux-amd64.deb` | `nirs4all.Studio-<version>-linux-amd64-offline.deb` |
 
-The candidate installer embeds the Rust product backend and a fixed, content-addressed
-CPython library/plugin closure. It does not discover user environments or
-install packages at runtime. **You don't need Python installed on your machine.**
+The installer contains the application and its Rust sidecar, the product
+backend. It ships no Python. **You don't need Python installed on your
+machine**: on first launch Studio lists the Python environments it finds and
+you either pick one or let Studio create one for you.
 
-> **Candidate profile:** the proposed desktop packages and native Docker image
-> use the single CPU plugin profile. GPU plugin-host packaging remains
-> separately scoped and is not a candidate download promise.
+- **One environment, chosen by you.** Studio uses exactly one Python
+  environment. When it creates one, it downloads a pinned Python runtime and
+  builds the environment with the `uv` tool shipped in the installer.
+- **Required packages are automatic.** `nirs4all` and its companion packages
+  are installed from wheels shipped in the installer and kept up to date at
+  each launch.
+- **Recommended packages are your choice.** Deep-learning, boosting,
+  explainability and other optional packages are installed one by one, on
+  request. `torch` is installed in the build that matches your machine (CPU,
+  CUDA or Apple Metal).
+- **Application updates are small.** An update replaces the application only;
+  your environment stays in place.
 
-### All-in-one archive target (unpublished)
+Pick the **offline installer** (file name ending in `-offline`) for machines
+without network access: it also carries the Python runtime and the wheels of
+the default package set, so the environment is created without downloading
+anything. In-app updates always use the standard installer.
 
-| Target platform | Candidate file contract | Availability |
-|-----------------|-------------------------|--------------|
-| **Windows x64** | `nirs4all-Studio-*-all-in-one-win-x64.zip` | Unpublished; qualification pending |
-| **macOS x64/arm64** | `nirs4all Studio-*-all-in-one-mac-*.zip` | Unpublished; qualification pending |
-| **Linux x64** | `nirs4all-Studio-*-all-in-one-linux-x64.tar.gz` | Unpublished; local evidence only |
+You can switch environment at any time in **Settings > Python**. Development
+(editable) installs are never modified by Studio.
 
-The candidate contract bundles Electron, the Rust product backend, and the
-fixed CPython plugin-host closure. It does not bundle a Python HTTP backend.
+The all-in-one archive lane is not part of the published release and has not
+been converted to this model.
 
 ### Developer setup from source
 
@@ -104,13 +114,13 @@ HTTP process as a product route or fallback.
 
 ### Installation comparison
 
-| | Installer | Standalone | Developer |
+| | Installer | Offline installer | Developer |
 |---|---|---|---|
-| **Install required** | Yes | No (extract & run) | Clone + npm install |
-| **Python required** | No (bundled) | No (bundled) | Yes (3.11+) |
-| **Auto-updates** | Candidate channel unavailable | Candidate archive unavailable | git pull |
-| **Desktop profile** | CPU | CPU | Contributor-selected |
-| **Best for** | End users | Portable / trial use | Contributors |
+| **Install required** | Yes | Yes | Clone + npm install |
+| **Python required beforehand** | No (Studio creates an environment, or uses one of yours) | No | Yes (3.11+) |
+| **Network on first launch** | Yes, when Studio creates the environment | No | Yes |
+| **Updates** | Standard installer of the newer version | Standard installer of the newer version | git pull |
+| **Best for** | End users | Machines without network access | Contributors |
 
 ### Native Docker candidate
 
@@ -121,15 +131,16 @@ runtime or Python backend source.
 Startup requires a mounted password file or an explicit trusted-local-only
 configuration; see [Docker access](docs/NATIVE_HTTP_ACCESS.md#docker). Do not
 publish an unauthenticated container port on a shared network.
-It does include the content-addressed `nirs4all-methods` ABI 2.14 library used by
-the Rust/Core Archive V2 prediction path and the same fixed CPython
-library/plugin closure used for bounded Rust-to-Python stdio interoperability.
+It does include the content-addressed `nirs4all-methods` ABI 2.22 library used by
+the Rust/Core Archive V2 prediction path, and a Python environment built at
+image build time with `uv` from the same package catalogue as the desktop
+product (the required packages plus `shap`, `matplotlib` and `lightgbm`).
 
 No candidate container tag is published. Build and tag the image locally for
 development; do not treat `ghcr.io/...:latest` or the historical `0.10.1`
 release as evidence for this Rust-only candidate.
 
-The embedded CPython closure is selected only for bounded Rust-to-Python stdio
+The image's Python environment is used only for bounded Rust-to-Python stdio
 calls. It never owns an HTTP port, scheduler, store, or fallback route. See
 [Docker packaging](docs/PACKAGING.md#docker-asset) for the exact boundary.
 
@@ -301,14 +312,14 @@ npm run electron:preview
 Electron starts the Rust control-plane sidecar and creates the desktop window
 without starting a Python HTTP server. In the normal desktop product every
 renderer HTTP/WebSocket request is preselected for a qualified Rust route;
-unmigrated routes fail closed before Python acquisition. The bundled/configured
-CPython runtime remains available only as the bounded stdio library/plugin host
-invoked by Rust.
+unmigrated routes fail closed before Python acquisition. The interpreter of the
+selected Python environment is used only as the bounded stdio library/plugin
+host invoked by Rust.
 
-Phase 2 desktop has no Python HTTP activation flag, environment override, IPC
-acquisition path, or renderer target. Web-development server sources remain in
-the checkout, but they are outside the packaged Electron dependency graph and
-absent from product installers and all-in-one archives.
+The desktop product has no Python HTTP activation flag, environment override,
+IPC acquisition path, or renderer target. Web-development server sources remain
+in the checkout, but they are outside the packaged Electron dependency graph
+and absent from product installers.
 
 The native sidecar is the packaged product backend, not an opt-in hybrid.
 `npm run start:desktop` builds the Rust backend incrementally in release mode
@@ -320,16 +331,15 @@ loopback port (default `0`, an ephemeral port). Packaged Electron instead
 verifies and starts the bundled content-addressed
 `resources/backend/native/studio-sidecar`. It routes only explicitly migrated
 UI calls through Rust; every other route family refuses before fetch in the
-normal session. Electron accepts the embedded interpreter only from
-`STUDIO_RUNTIME_CONTRACT.json`; environment values, managed/user venvs, PATH,
-and source-sibling checkouts cannot replace it in a packaged product. The
-contract content-addresses the executable and exact adjacent runtime inventory,
-including its single explicit `site-packages` directory. Symlinks, special
-files, extra files, missing files, and path substitution disable only the
-plugin capability before request or job mutation. The worker starts with
-`-I -S -B`, so `.pth`, user-site, and bytecode side effects are not acquisition
-paths. The explicit preflight verifies the runtime and scientific callable
-identities. The bounded stdio worker,
+normal session. `STUDIO_RUNTIME_CONTRACT.json` content-addresses the sidecar
+and the native Methods library. The Python interpreter is the one of the
+environment selected in Studio (`userData/env-settings.json`); Electron passes
+it to the sidecar when it starts it, and inherited environment values cannot
+replace it. The sidecar admits the interpreter when it is CPython 3.11 or
+newer and its `nirs4all` version is within the range Studio requires. The
+worker starts with `-I -S -B` and receives the environment's package directory
+and Studio's own document adapters explicitly, so the user site and bytecode
+side effects are not acquisition paths. The bounded stdio worker,
 Rust-owned terminal callback, and native saved-input resolver are implemented.
 On qualified Unix launches, the resolver accepts only one train-only numeric
 regression dataset and an explicit saved KFold + PLS pipeline, delegates
@@ -338,7 +348,7 @@ Other scientific shapes fail before job/event/durable mutation; Windows stays
 unavailable until process-tree termination is qualified. The first UI-backed native
 routes are `/api/health`, `/api/system/capabilities`, `/api/system/info`, and
 `/api/system/env-coherence`, `/api/system/network`, `/api/updates/version`,
-`/api/updates/runtime/status`, `/api/updates/settings`, plus `/api/app/settings`,
+`/api/updates/settings`, plus `/api/app/settings`,
 `/api/app/favorites`, `/api/app/config-path`, the `/api/workspaces` catalogue,
 and native workspace activation/unlink mutations. They are served by Rust and
 do not fall back to FastAPI after sidecar selection. Run discovery is also
@@ -434,9 +444,9 @@ route.
 
 ### Product Backend and Python Interop
 - **Rust sidecar** for packaged HTTP/WS orchestration, jobs, scheduling, and storage
-- **[nirs4all](https://github.com/GBeurier/nirs4all)** in a bounded, content-addressed CPython library/plugin host over stdio
+- **[nirs4all](https://github.com/GBeurier/nirs4all)** in a bounded CPython library/plugin host over stdio, running in the Python environment selected in Studio
+- **[uv](https://github.com/astral-sh/uv)** shipped with the application to create that environment and install its packages
 - **FastAPI/WebSocket Python source** retained only for web development and explicit whole-session diagnostics
-- **PyInstaller surfaces** retained as legacy compatibility tooling, never selected by Phase 2 desktop releases
 
 ---
 
@@ -460,8 +470,9 @@ nirs4all_webapp/
 ├── electron/               # Electron main process
 │   ├── main.ts             # Main entry point (window management)
 │   ├── preload.ts          # Secure IPC bridge (contextBridge)
-│   ├── backend-manager.ts  # Optional diagnostic Python backend lifecycle
-│   ├── env-manager.ts      # Packaged CPython plugin-host resolution
+│   ├── native-sidecar-manager.ts # Rust sidecar lifecycle
+│   ├── env-manager.ts      # The one Python environment: selection, checks, installs
+│   ├── env/                # Detection, package inventory, uv, environment creation
 │   └── logger.ts           # Persistent file logging
 ├── api/                    # Legacy web-dev/diagnostic FastAPI routes
 │   ├── workspace.py        # Workspace management routes
@@ -470,17 +481,20 @@ nirs4all_webapp/
 │   ├── predictions.py      # Prediction storage
 │   └── system.py           # Health, system info, and GPU detection
 ├── scripts/                # Build and utility scripts
-│   ├── bake-python-plugin-runtime.cjs # Pinned plugin-only closure builder
-│   └── build-release.cjs   # CPU installer build on the matching host
+│   ├── fetch-uv.cjs        # Stages the pinned uv release
+│   ├── build-wheelhouse.cjs # Stages the wheels of the required packages
+│   ├── build-offline-payload.cjs # Stages the offline installer payload
+│   └── build-release.cjs   # Installer build on the matching host
 ├── build/                  # Build configuration
+│   ├── constraints/        # Hash-pinned wheel locks per target
 │   └── entitlements.mac.plist  # macOS code signing entitlements
 ├── docs/                   # Documentation
 │   └── _internals/         # Developer guides
 ├── public/                 # Static assets
 ├── main.py                 # Legacy web-dev/diagnostic FastAPI entry
-├── backend.spec            # Legacy PyInstaller compatibility spec
+├── recommended-config.json # Package catalogue (required and recommended packages)
 ├── electron-builder.installer.yml  # Electron packaging config (installer)
-├── electron-builder.archive.yml    # Electron packaging config (portable archive)
+├── electron-builder.offline.yml    # Electron packaging config (offline installer)
 └── package.json            # Node dependencies
 ```
 
@@ -531,17 +545,23 @@ session.
 
 ### Desktop Release Profiles
 
-`npm run release` builds an unpublished CPU installer candidate on the current
-host only; it does not publish or qualify the target platform. The product
-backend is Rust; the adjacent content-addressed CPython closure is restricted to
-library/plugin interop and does not use a user venv, PATH discovery, or runtime
-`pip install`.
+`npm run release` builds an unpublished installer candidate on the current
+host only; it does not publish or qualify the target platform. There are two
+profiles of the same application:
 
-```bash
-npm run release -- --platform linux --flavor cpu
-```
+| Profile | Command | Contents beside the application |
+|---------|---------|---------------------------------|
+| Installer | `npm run release -- --platform linux` | Rust sidecar, native Methods library, `uv`, the wheels of the required packages, Studio's document adapters |
+| Offline installer | `npm run release -- --platform linux --offline` | The same, plus the pinned Python runtime archive and the wheels of the default package set; artifact name ends in `-offline` |
 
-Portable and all-in-one releases are disabled. Legacy `--standalone`, non-CPU
+Neither profile packages a Python runtime inside the application: Studio
+creates or selects the user's environment at first launch. The wheels come from
+hash-pinned locks under `build/constraints/`; after changing the required
+packages or a default recommended package in `recommended-config.json`,
+regenerate them with `node scripts/python-wheel-lock.cjs` (needs `uv` and
+network access). See [docs/PACKAGING.md](docs/PACKAGING.md#build-entry-points).
+
+Portable and all-in-one releases are disabled. `--standalone`, non-CPU
 flavors, `--platform all`, and cross-host installer builds are rejected.
 
 ### npm Scripts - Packaging
@@ -552,6 +572,7 @@ flavors, `--platform all`, and cross-host installer builds are rejected.
 | `npm run release -- --platform mac` | Package for macOS |
 | `npm run release -- --platform linux` | Package for Linux |
 | `npm run release -- --platform <host>` | Package on the matching Linux, Windows, or macOS host |
+| `npm run release -- --platform <host> --offline` | Package the offline installer on the matching host |
 
 ---
 

@@ -1,7 +1,11 @@
 # Unified Release Workflow
-# One installer format per OS: NSIS, DMG (one per CPU), DEB.
+# One installer format per OS: NSIS, DMG (one per CPU), DEB. Each is built
+# twice: the standard installer and its offline variant (`-offline`), which
+# also carries the Python runtime and the default package set.
 # Full E2E, scientific journeys and application migration qualify locally.
-# Hosted jobs build installers and smoke each actual packaged UI only.
+# Hosted jobs build installers and smoke the first launch of each packaged
+# application: its environment is created by the shipped uv from the shipped
+# wheels, entirely from the payload for the offline variant.
 #   - Native Docker image (static frontend + Rust sidecar)
 #
 # Trigger: tag v* or manual dispatch
@@ -222,82 +226,26 @@ jobs:
       dag_ml_ref: beaba0b62f9a65bca86c2f521fc482bd80092ba3
       dag_ml_data_ref: eb2ad7835ca85feebf6f626d9f43f61575a1c9a9
 
-  # Download the exact public SDK wheel once.
-  # Every distributable consumes the same hash-verified payload.
-  pinned-plugin-wheels:
-    name: Acquire pinned plugin wheels
-    needs: prepare
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare.outputs.checkout_ref }}
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Download and verify canonical plugin wheel
-        env:
-          GIT_CONFIG_COUNT: '1'
-          GIT_CONFIG_KEY_0: core.autocrlf
-          GIT_CONFIG_VALUE_0: 'false'
-        run: |
-          python -m pip install --upgrade pip==26.2.1
-          mkdir -p dist/pinned-plugin-wheels
-          python -c 'import os,urllib.request; urllib.request.urlretrieve(os.environ["NIRS4ALL_WHEEL_URL"], "dist/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl")'
-          cd dist/pinned-plugin-wheels
-          echo "$NIRS4ALL_WHEEL_SHA256  nirs4all-1.4.16-py3-none-any.whl" | sha256sum --check --strict
-
-      - name: Prove deterministic plugin runtime closure
-        run: >-
-          node scripts/verify-plugin-runtime-reproducibility.cjs
-          --plugin-wheel dist/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl
-          --evidence dist/plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json
-
-      - name: Upload plugin runtime reproducibility evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: plugin-runtime-reproducibility
-          path: dist/plugin-runtime-reproducibility-*.json
-          if-no-files-found: error
-
-      - name: Upload canonical wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: pinned-plugin-wheels
-          path: dist/pinned-plugin-wheels/*.whl
-          if-no-files-found: error
-          retention-days: 5
-
   # ═══════════════════════════════════════════════════════════════════════════
-  # Installer: Linux x64 (Electron + Rust sidecar + plugin-only CPython closure)
+  # Installer: Linux x64 (Electron + Rust sidecar + uv + required wheels)
   # ═══════════════════════════════════════════════════════════════════════════
   installer-linux:
-    name: Installer — Linux x64
+    name: Installer — Linux x64 (${{ matrix.variant }})
     if: needs.prepare.outputs.macos_arm64_only != 'true'
-    needs: [prepare, pinned-plugin-wheels]
+    needs: prepare
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: standard
+            builder_config: electron-builder.installer.yml
+          - variant: offline
+            builder_config: electron-builder.offline.yml
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
-
-      # Retry immutable application tags with the triggering workflow's packaging fixes.
-      - name: Checkout Linux packaging helpers
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: .release-packaging
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            scripts/bundle-linux-openmp.py
-            scripts/verify-linux-cpu-closure.py
-            scripts/probe-linux-cpu-threading.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -315,8 +263,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             xvfb \
-            libgomp1 \
-            patchelf \
             libgirepository1.0-dev \
             libcairo2-dev \
             gir1.2-gtk-3.0 \
@@ -324,12 +270,6 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
-
-      - name: Download canonical plugin wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: pinned-plugin-wheels
-          path: _deps/pinned-plugin-wheels
 
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
@@ -356,21 +296,27 @@ jobs:
           }
           EOF
 
-      - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl
+      # Installers ship no Python: uv, the wheels of the required packages and
+      # the document adapters let Studio create the user's environment.
+      - name: Stage uv, required wheels and document adapters
+        run: |
+          node scripts/fetch-uv.cjs
+          node scripts/build-wheelhouse.cjs
+          node scripts/studio-document-adapters.cjs --install backend-dist/adapters
 
-      - name: Bundle LightGBM OpenMP before sealing the runtime
-        run: python3 -B .release-packaging/scripts/bundle-linux-openmp.py --runtime-root backend-dist/python-runtime/python
+      - name: Stage offline payload
+        if: matrix.variant == 'offline'
+        run: node scripts/build-offline-payload.cjs
 
       - name: Build and smoke native sidecar
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-python-payload --require-bundled-methods
           backend-dist/native/studio-sidecar --smoke-readiness
 
       - name: Package with electron-builder
-        run: npx electron-builder --config electron-builder.installer.yml --linux --publish never
+        run: npx electron-builder --config ${{ matrix.builder_config }} --linux --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -381,27 +327,12 @@ jobs:
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
           ARTIFACT_BOUNDARY="$(dirname "$(dirname "$BACKEND_ROOT")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform linux --arch x64 --require-python-payload --require-bundled-methods
           "$SIDECAR" --smoke-readiness
           test -f "$ARTIFACT_BOUNDARY/chrome-sandbox"
           sudo chown root:root "$ARTIFACT_BOUNDARY/chrome-sandbox"
           sudo chmod 4755 "$ARTIFACT_BOUNDARY/chrome-sandbox"
           test "$(stat -c '%u:%g:%a' "$ARTIFACT_BOUNDARY/chrome-sandbox")" = '0:0:4755'
-
-      - name: Qualify Linux CPU closure without optional system thread pools
-        run: |
-          sudo apt-get install -y --no-install-recommends bubblewrap binutils
-          PYTHON="$(find release -type f -path '*/resources/backend/python-runtime/python/bin/python3' -print -quit)"
-          test -n "$PYTHON"
-          python3 -B .release-packaging/scripts/verify-linux-cpu-closure.py --runtime-root "$(dirname "$(dirname "$PYTHON")")" --output "$RUNNER_TEMP/linux-installer-cpu-closure.json"
-
-      - name: Preserve Linux installer CPU closure proof
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-linux-cpu-closure-proof
-          path: ${{ runner.temp }}/linux-installer-cpu-closure.json
-          if-no-files-found: error
-          retention-days: 14
 
       - name: Generate checksums
         run: |
@@ -410,41 +341,22 @@ jobs:
             [ -f "$f" ] && sha256sum "$f" > "$f.sha256"
           done
 
-      # Retry an immutable application tag with the current qualification helper.
-      - name: Checkout packaged SHAP qualification helper
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: .release-qualification
-          persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: scripts/smoke-shap-journey.cjs
-
-      - name: Smoke packaged UI and runtime contract
-        timeout-minutes: 8
-        env:
-          NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY: github-observational
-          RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      # The environment is created by the shipped uv from the shipped wheels:
+      # with network access for the standard installer, entirely from the
+      # payload for the offline one. The application then starts on it, first
+      # behind its sidecar routes, then through its real renderer.
+      - name: Smoke first launch of the packaged application
+        timeout-minutes: 30
         run: |
-          node -e "require('node:fs').copyFileSync('.release-qualification/scripts/smoke-shap-journey.cjs', 'scripts/smoke-shap-journey.cjs')"
           installers=(release/*.deb)
           test "${#installers[@]}" = 1
-          xvfb-run -a node scripts/smoke-packaged-ui.cjs --extracted-root release/linux-unpacked --platform linux --timeout-ms 120000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
-
-      - name: Preserve packaged UI smoke proof
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: packaged-ui-linux-proof
-          path: ${{ runner.temp }}/packaged-ui-smoke.json
-          if-no-files-found: warn
-          retention-days: 14
+          xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root release/linux-unpacked --platform linux --timeout-ms 240000
+          xvfb-run -a node scripts/smoke-first-launch-ui.cjs --extracted-root release/linux-unpacked --platform linux --timeout-ms 240000
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: installer-linux-x64-payload
+          name: installer-linux-x64-${{ matrix.variant }}-payload
           path: |
             release/*.deb
             release/*.sha256
@@ -452,14 +364,22 @@ jobs:
           retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Installer: Windows x64 (Electron + Rust sidecar + plugin-only CPython closure)
+  # Installer: Windows x64 (Electron + Rust sidecar + uv + required wheels)
   # ═══════════════════════════════════════════════════════════════════════════
   installer-windows:
-    name: Installer — Windows x64
+    name: Installer — Windows x64 (${{ matrix.variant }})
     if: needs.prepare.outputs.macos_arm64_only != 'true'
-    needs: [prepare, pinned-plugin-wheels]
+    needs: prepare
     # Methods' release preset is intentionally bound to VS 17 / 2022.
     runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: standard
+            builder_config: electron-builder.installer.yml
+          - variant: offline
+            builder_config: electron-builder.offline.yml
     steps:
       - uses: actions/checkout@v4
         with:
@@ -485,12 +405,6 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Download canonical plugin wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: pinned-plugin-wheels
-          path: _deps/pinned-plugin-wheels
-
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
         with:
@@ -515,8 +429,19 @@ jobs:
             commit = "${{ needs.prepare.outputs.checkout_ref }}"
           } | ConvertTo-Json | Out-File -FilePath version.json -Encoding utf8
 
-      - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl
+      # Installers ship no Python: uv, the wheels of the required packages and
+      # the document adapters let Studio create the user's environment.
+      - name: Stage uv, required wheels and document adapters
+        shell: bash
+        run: |
+          node scripts/fetch-uv.cjs
+          node scripts/build-wheelhouse.cjs
+          node scripts/studio-document-adapters.cjs --install backend-dist/adapters
+
+      - name: Stage offline payload
+        if: matrix.variant == 'offline'
+        shell: bash
+        run: node scripts/build-offline-payload.cjs
 
       - name: Build and smoke native sidecar
         shell: pwsh
@@ -527,7 +452,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $sidecar -PathType Leaf)) {
             throw "Native Studio sidecar not found: $sidecar"
           }
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform win32 --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform win32 --arch x64 --require-python-payload --require-bundled-methods
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -546,7 +471,7 @@ jobs:
           echo "CSC_KEY_PASSWORD=$($env:WINDOWS_CERT_PASSWORD)" >> $env:GITHUB_ENV
 
       - name: Package with electron-builder
-        run: npx electron-builder --config electron-builder.installer.yml --win --publish never
+        run: npx electron-builder --config ${{ matrix.builder_config }} --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -563,7 +488,7 @@ jobs:
           }
           $backendRoot = Split-Path -Parent (Split-Path -Parent $sidecar.FullName)
           $artifactBoundary = Split-Path -Parent (Split-Path -Parent $backendRoot)
-          node scripts/native-runtime-contract.cjs --backend-root $backendRoot --artifact-boundary-root $artifactBoundary --platform win32 --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          node scripts/native-runtime-contract.cjs --backend-root $backendRoot --artifact-boundary-root $artifactBoundary --platform win32 --arch x64 --require-python-payload --require-bundled-methods
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar.FullName --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -602,45 +527,26 @@ jobs:
             "$hash  $($_.Name)" | Out-File -FilePath "$($_.FullName).sha256" -Encoding ascii -NoNewline
           }
 
-      # Retry an immutable application tag with the current qualification helper.
-      - name: Checkout packaged SHAP qualification helper
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: .release-qualification
-          persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: scripts/smoke-shap-journey.cjs
-
-      - name: Smoke packaged UI and runtime contract
-        timeout-minutes: 8
-        env:
-          NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY: github-observational
-          RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      # The environment is created by the shipped uv from the shipped wheels:
+      # with network access for the standard installer, entirely from the
+      # payload for the offline one. The application then starts on it, first
+      # behind its sidecar routes, then through its real renderer.
+      - name: Smoke first launch of the packaged application
+        timeout-minutes: 30
         shell: pwsh
         run: |
-          node -e "require('node:fs').copyFileSync('.release-qualification/scripts/smoke-shap-journey.cjs', 'scripts/smoke-shap-journey.cjs')"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $installers = @(Get-ChildItem release -File -Filter '*.exe')
           if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
-          node scripts/smoke-packaged-ui.cjs --extracted-root release/win-unpacked --platform win32 --timeout-ms 120000 --installer $installers[0].FullName --output "$env:RUNNER_TEMP/packaged-ui-smoke.json"
+          node scripts/smoke-archive-standalone.cjs --extracted-root release/win-unpacked --platform win32 --timeout-ms 240000
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Preserve packaged UI smoke proof
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: packaged-ui-windows-proof
-          path: ${{ runner.temp }}/packaged-ui-smoke.json
-          if-no-files-found: warn
-          retention-days: 14
+          node scripts/smoke-first-launch-ui.cjs --extracted-root release/win-unpacked --platform win32 --timeout-ms 240000
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: installer-windows-x64-payload
+          name: installer-windows-x64-${{ matrix.variant }}-payload
           path: |
             release/*.exe
             release/*.sha256
@@ -651,10 +557,18 @@ jobs:
   # Installer: macOS x64 (Intel) — Phase 4: signed + notarized
   # ═══════════════════════════════════════════════════════════════════════════
   installer-macos-x64:
-    name: Installer — macOS x64
-    needs: [prepare, pinned-plugin-wheels]
+    name: Installer — macOS x64 (${{ matrix.variant }})
+    needs: prepare
     if: needs.prepare.outputs.include_macos_x64 == 'true'
     runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: standard
+            builder_config: electron-builder.installer.yml
+          - variant: offline
+            builder_config: electron-builder.offline.yml
     steps:
       - uses: actions/checkout@v4
         with:
@@ -678,12 +592,6 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
-
-      - name: Download canonical plugin wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: pinned-plugin-wheels
-          path: _deps/pinned-plugin-wheels
 
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
@@ -710,14 +618,23 @@ jobs:
           }
           EOF
 
-      - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl
+      # Installers ship no Python: uv, the wheels of the required packages and
+      # the document adapters let Studio create the user's environment.
+      - name: Stage uv, required wheels and document adapters
+        run: |
+          node scripts/fetch-uv.cjs
+          node scripts/build-wheelhouse.cjs
+          node scripts/studio-document-adapters.cjs --install backend-dist/adapters
+
+      - name: Stage offline payload
+        if: matrix.variant == 'offline'
+        run: node scripts/build-offline-payload.cjs
 
       - name: Build and smoke native sidecar
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-apple-darwin
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch x64 --require-python-payload --require-bundled-methods
           if [ "$(uname -m)" = "x86_64" ]; then
             backend-dist/native/studio-sidecar --smoke-readiness
           else
@@ -750,7 +667,7 @@ jobs:
           echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
       - name: Package with electron-builder
-        run: npx electron-builder --config electron-builder.installer.yml --mac --x64 --publish never
+        run: npx electron-builder --config ${{ matrix.builder_config }} --mac --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # electron-builder reads these for signing
@@ -767,7 +684,7 @@ jobs:
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
           ARTIFACT_BOUNDARY="$(dirname "$(dirname "$(dirname "$BACKEND_ROOT")")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch x64 --require-python-payload --require-bundled-methods
           if [ "$(uname -m)" = "x86_64" ]; then
             "$SIDECAR" --smoke-readiness
           else
@@ -841,43 +758,24 @@ jobs:
             [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
           done
 
-      # Retry an immutable application tag with the current qualification helper.
-      - name: Checkout packaged SHAP qualification helper
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: .release-qualification
-          persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: scripts/smoke-shap-journey.cjs
-
-      - name: Smoke packaged UI and runtime contract
-        timeout-minutes: 8
-        env:
-          NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY: github-observational
-          RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      # The environment is created by the shipped uv from the shipped wheels:
+      # with network access for the standard installer, entirely from the
+      # payload for the offline one. The application then starts on it, first
+      # behind its sidecar routes, then through its real renderer.
+      - name: Smoke first launch of the packaged application
+        timeout-minutes: 30
         run: |
-          node -e "require('node:fs').copyFileSync('.release-qualification/scripts/smoke-shap-journey.cjs', 'scripts/smoke-shap-journey.cjs')"
           installers=(release/*.dmg)
           test "${#installers[@]}" = 1
           export TMPDIR="$(cd "$RUNNER_TEMP" && pwd -P)"
-          node scripts/smoke-packaged-ui.cjs --extracted-root release/mac --platform darwin --timeout-ms 120000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
-
-      - name: Preserve packaged UI smoke proof
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: packaged-ui-macos-x64-proof
-          path: ${{ runner.temp }}/packaged-ui-smoke.json
-          if-no-files-found: warn
-          retention-days: 14
+          node scripts/smoke-archive-standalone.cjs --extracted-root release/mac --platform darwin --timeout-ms 240000
+          node scripts/smoke-first-launch-ui.cjs --extracted-root release/mac --platform darwin --timeout-ms 240000
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: installer-macos-x64-payload
+          name: installer-macos-x64-${{ matrix.variant }}-payload
           path: |
             release/*.dmg
             release/*.sha256
@@ -888,9 +786,17 @@ jobs:
   # Installer: macOS arm64 (Apple Silicon) — Phase 4: signed + notarized
   # ═══════════════════════════════════════════════════════════════════════════
   installer-macos-arm64:
-    name: Installer — macOS arm64
-    needs: [prepare, pinned-plugin-wheels]
+    name: Installer — macOS arm64 (${{ matrix.variant }})
+    needs: prepare
     runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: standard
+            builder_config: electron-builder.installer.yml
+          - variant: offline
+            builder_config: electron-builder.offline.yml
     steps:
       - uses: actions/checkout@v4
         with:
@@ -914,12 +820,6 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
-
-      - name: Download canonical plugin wheels
-        uses: actions/download-artifact@v4
-        with:
-          name: pinned-plugin-wheels
-          path: _deps/pinned-plugin-wheels
 
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
@@ -946,14 +846,23 @@ jobs:
           }
           EOF
 
-      - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl
+      # Installers ship no Python: uv, the wheels of the required packages and
+      # the document adapters let Studio create the user's environment.
+      - name: Stage uv, required wheels and document adapters
+        run: |
+          node scripts/fetch-uv.cjs
+          node scripts/build-wheelhouse.cjs
+          node scripts/studio-document-adapters.cjs --install backend-dist/adapters
+
+      - name: Stage offline payload
+        if: matrix.variant == 'offline'
+        run: node scripts/build-offline-payload.cjs
 
       - name: Build and smoke native sidecar
         run: |
           node scripts/build-native-sidecar.cjs --target aarch64-apple-darwin
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch arm64 --require-bundled-python-plugin --require-bundled-methods
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch arm64 --require-python-payload --require-bundled-methods
           if [ "$(uname -m)" = "arm64" ]; then
             backend-dist/native/studio-sidecar --smoke-readiness
           else
@@ -984,7 +893,7 @@ jobs:
           echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
       - name: Package with electron-builder
-        run: npx electron-builder --config electron-builder.installer.yml --mac --arm64 --publish never
+        run: npx electron-builder --config ${{ matrix.builder_config }} --mac --arm64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -1000,7 +909,7 @@ jobs:
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
           ARTIFACT_BOUNDARY="$(dirname "$(dirname "$(dirname "$BACKEND_ROOT")")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch arm64 --require-bundled-python-plugin --require-bundled-methods
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch arm64 --require-python-payload --require-bundled-methods
           if [ "$(uname -m)" = "arm64" ]; then
             "$SIDECAR" --smoke-readiness
           else
@@ -1074,43 +983,24 @@ jobs:
             [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
           done
 
-      # Retry an immutable application tag with the current qualification helper.
-      - name: Checkout packaged SHAP qualification helper
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          path: .release-qualification
-          persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: scripts/smoke-shap-journey.cjs
-
-      - name: Smoke packaged UI and runtime contract
-        timeout-minutes: 8
-        env:
-          NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY: github-observational
-          RELEASE_SOURCE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      # The environment is created by the shipped uv from the shipped wheels:
+      # with network access for the standard installer, entirely from the
+      # payload for the offline one. The application then starts on it, first
+      # behind its sidecar routes, then through its real renderer.
+      - name: Smoke first launch of the packaged application
+        timeout-minutes: 30
         run: |
-          node -e "require('node:fs').copyFileSync('.release-qualification/scripts/smoke-shap-journey.cjs', 'scripts/smoke-shap-journey.cjs')"
           installers=(release/*.dmg)
           test "${#installers[@]}" = 1
           export TMPDIR="$(cd "$RUNNER_TEMP" && pwd -P)"
-          node scripts/smoke-packaged-ui.cjs --extracted-root release/mac-arm64 --platform darwin --timeout-ms 120000 --installer "${installers[0]}" --output "$RUNNER_TEMP/packaged-ui-smoke.json"
-
-      - name: Preserve packaged UI smoke proof
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: packaged-ui-macos-arm64-proof
-          path: ${{ runner.temp }}/packaged-ui-smoke.json
-          if-no-files-found: warn
-          retention-days: 14
+          node scripts/smoke-archive-standalone.cjs --extracted-root release/mac-arm64 --platform darwin --timeout-ms 240000
+          node scripts/smoke-first-launch-ui.cjs --extracted-root release/mac-arm64 --platform darwin --timeout-ms 240000
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: installer-macos-arm64-payload
+          name: installer-macos-arm64-${{ matrix.variant }}-payload
           path: |
             release/*.dmg
             release/*.sha256
@@ -1264,8 +1154,9 @@ jobs:
 
           ### Installers (Recommended)
 
-          Full desktop application with its included CPU runtime and required packages.
-          First launch verifies the installed runtime before opening your datasets.
+          Desktop application. On first launch Studio lists the Python environments
+          found on the computer and uses the one you choose, or creates one for you;
+          the packages it requires are installed automatically.
 
           | Platform | Architecture | File | Status |
           |----------|-------------|------|--------|
@@ -1273,6 +1164,18 @@ jobs:
           | **macOS** | Intel (x64) | \`nirs4all.Studio-${VERSION}-mac-x64.dmg\` | ${INSTALLER_MACOS_X64} |
           | **macOS** | Apple Silicon (arm64) | \`nirs4all.Studio-${VERSION}-mac-arm64.dmg\` | ${INSTALLER_MACOS_ARM64} |
           | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-linux-amd64.deb\` | ${INSTALLER_LINUX} |
+
+          ### Offline installers
+
+          The same application with the Python runtime and the default package set
+          included, for computers without network access.
+
+          | Platform | Architecture | File | Status |
+          |----------|-------------|------|--------|
+          | **Windows** | x64 | \`nirs4all.Studio-${VERSION}-win-x64-offline.exe\` | ${INSTALLER_WINDOWS} |
+          | **macOS** | Intel (x64) | \`nirs4all.Studio-${VERSION}-mac-x64-offline.dmg\` | ${INSTALLER_MACOS_X64} |
+          | **macOS** | Apple Silicon (arm64) | \`nirs4all.Studio-${VERSION}-mac-arm64-offline.dmg\` | ${INSTALLER_MACOS_ARM64} |
+          | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-linux-amd64-offline.deb\` | ${INSTALLER_LINUX} |
 
           ### Docker
 

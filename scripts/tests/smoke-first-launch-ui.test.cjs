@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { diagnosticUrl, sanitizeDiagnostic, recordHttpFailure, waitForSetupState } = require("../smoke-first-launch-ui.cjs");
+const { diagnosticUrl, sanitizeDiagnostic, recordHttpFailure, waitForSelectedEnvironment } = require("../smoke-first-launch-ui.cjs");
 
 test("transport diagnostics omit URL credentials, query values and fragments", () => {
   assert.equal(diagnosticUrl("http://user:password@127.0.0.1:8000/api/system/readiness?session=private#secret"),
@@ -65,65 +65,39 @@ test("an unfinished HTTP error body cannot hold diagnostic collection beyond one
   assert.match(messages[1], /body unavailable after 1000ms/);
 });
 
-function setupPage(onWait = () => {}) {
-  const state = { ready: false, alert: null, visible: true, waits: 0, outsideAlert: null };
-  const retry = {};
-  return {
-    state,
-    getByRole: (role, options) => {
-      if (role === "alert") return { all: async () => [state.alert, state.outsideAlert].filter(Boolean).map(message => ({
-        isVisible: async () => true, textContent: async () => message,
-      })) };
-      assert.equal(role, "button");
-      assert.deepEqual(options, { name: "Retry verification", exact: true });
-      return retry;
-    },
-    locator: selector => {
-      assert.equal(selector, ".bg-card");
-      return { filter: ({ has }) => {
-        assert.equal(has, retry);
-        return { getByRole: role => {
-          assert.equal(role, "alert");
-          return { all: async () => state.alert === null ? [] : [{
-            isVisible: async () => state.visible,
-            textContent: async () => state.alert,
-          }] };
-        } };
-      } };
-    },
-    waitForTimeout: async () => { state.waits += 1; onWait(state); await new Promise(resolve => setImmediate(resolve)); },
-  };
+function environmentPage(states) {
+  const page = { waits: 0,
+    evaluate: async () => states[Math.min(page.waits, states.length - 1)],
+    waitForTimeout: async () => { page.waits += 1; await new Promise(resolve => setImmediate(resolve)); } };
+  return page;
 }
+const python = "/data/python-env/venv/bin/python";
 
-test("a setup error appearing during runtime verification fails promptly despite the ten-minute timeout", { timeout: 1000 }, async () => {
-  const page = setupPage(state => { state.alert = "Native service unavailable: session-value"; });
-  await assert.rejects(waitForSetupState(page, () => page.state.ready, 600000, "runtime ready",
-    value => sanitizeDiagnostic(value, ["session-value"])), /First setup failed: Native service unavailable: \[redacted\]/);
-  assert.equal(page.state.waits, 1);
+test("the provisioned environment is accepted only once Studio reports it ready", async () => {
+  const page = environmentPage([
+    { phase: "busy", selectedPythonPath: python }, { phase: "busy", selectedPythonPath: python },
+    { phase: "ready", selectedPythonPath: python },
+  ]);
+  assert.equal((await waitForSelectedEnvironment(page, python, 1000)).phase, "ready");
+  assert.equal(page.waits, 2);
 });
 
-test("a visible setup error wins even if a previous ready indication remains", async () => {
-  const page = setupPage();
-  page.state.alert = "Failed to save setup completion";
-  await assert.rejects(waitForSetupState(page, () => true, 600000, "datasets"), /Failed to save setup completion/);
+test("an unusable environment fails at once with its redacted reason despite a ten-minute timeout", { timeout: 1000 }, async () => {
+  const page = environmentPage([{ phase: "needs_attention", selectedPythonPath: python,
+    problem: { code: "host_failed", message: "Host refused session-value" } }]);
+  await assert.rejects(waitForSelectedEnvironment(page, python, 600000, value => sanitizeDiagnostic(value, ["session-value"])),
+    /not usable: host_failed: Host refused \[redacted\]/);
+  assert.equal(page.waits, 0);
 });
 
-test("setup succeeds only once the required ready predicate is true and ignores hidden alerts", async () => {
-  const page = setupPage(state => { state.ready = state.waits >= 3; });
-  page.state.alert = "Hidden previous error";
-  page.state.visible = false;
-  await waitForSetupState(page, () => page.state.ready, 1000, "runtime ready");
-  assert.equal(page.state.waits, 3);
+test("another selection or an unconfigured application is refused", async () => {
+  await assert.rejects(waitForSelectedEnvironment(environmentPage([{ phase: "ready", selectedPythonPath: "/usr/bin/python3" }]), python, 1000),
+    /instead of the provisioned environment/);
+  await assert.rejects(waitForSelectedEnvironment(environmentPage([{ phase: "unconfigured", selectedPythonPath: null }]), python, 1000),
+    /instead of the provisioned environment/);
 });
 
-test("absence of errors cannot bypass runtime readiness", async () => {
-  const page = setupPage();
-  await assert.rejects(waitForSetupState(page, () => false, 10, "runtime ready"), /Timed out waiting for runtime ready/);
-});
-
-test("alerts outside the installation verification card do not fail setup", async () => {
-  const page = setupPage(state => { state.ready = true; });
-  page.state.outsideAlert = "An update is available";
-  await waitForSetupState(page, () => page.state.ready, 1000, "runtime ready");
-  assert.equal(page.state.waits, 1);
+test("an environment that never becomes ready times out", async () => {
+  await assert.rejects(waitForSelectedEnvironment(environmentPage([{ phase: "busy", selectedPythonPath: python }]), python, 10),
+    /Timed out waiting for the Python environment \(phase busy\)/);
 });

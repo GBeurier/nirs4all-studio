@@ -1,4 +1,4 @@
-/** Real packaged renderer: first setup, developer preference, reload, restart. */
+/** Real packaged renderer on a freshly created environment: developer preference, reload, restart. */
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -78,22 +78,24 @@ async function recordHttpFailure(response, record, sanitize) {
   }
 }
 
-/** Observe setup without clicking Retry or accepting a partial runtime. */
-async function waitForSetupState(page, isReady, timeoutMs, description, sanitize = sanitizeDiagnostic) {
+/**
+ * Wait until the application reports the provisioned environment as ready.
+ * A state that cannot become ready by itself fails at once with its reason.
+ */
+async function waitForSelectedEnvironment(page, pythonPath, timeoutMs, sanitize = sanitizeDiagnostic) {
   const deadline = Date.now() + timeoutMs;
-  const setupAlerts = page.locator(".bg-card")
-    .filter({ has: page.getByRole("button", { name: "Retry verification", exact: true }) }).getByRole("alert");
-  while (Date.now() < deadline) {
-    for (const alert of await setupAlerts.all()) {
-      if (await alert.isVisible()) {
-        const message = await alert.textContent({ timeout: Math.max(1, Math.min(1000, deadline - Date.now())) });
-        throw new Error(`First setup failed: ${sanitize(message || "Visible error alert")}`);
-      }
+  for (;;) {
+    const state = await page.evaluate(() => window.electronApi.pythonEnv.getState());
+    if (state.selectedPythonPath !== pythonPath) {
+      throw new Error(`Studio selected ${sanitize(state.selectedPythonPath)} instead of the provisioned environment`);
     }
-    if (await isReady()) return;
+    if (state.phase === "ready") return state;
+    if (state.phase === "needs_attention") {
+      throw new Error(`The provisioned environment is not usable: ${sanitize(state.problem?.code)}: ${sanitize(state.problem?.message)}`);
+    }
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for the Python environment (phase ${state.phase})`);
     await page.waitForTimeout(Math.min(200, Math.max(0, deadline - Date.now())));
   }
-  throw new Error(`Timed out waiting for ${description}`);
 }
 
 async function freePort() {
@@ -111,7 +113,8 @@ async function main(options = {}) {
   const config = options.config || archive.assertValidConfig(archive.parseArgs());
   const layout = archive.resolveLaunchLayout(config.extractedRoot, config.platform, config.appName);
   const sandbox = options.sandboxRoot || config.sandboxRoot || fs.mkdtempSync(path.join(os.tmpdir(), "studio-first-launch-ui-"));
-  const env = { ...archive.buildSandboxEnv(config.platform, sandbox, await freePort(), config.timeoutMs), ...options.envOverrides };
+  const env = { ...archive.buildSandboxEnv(config.platform, sandbox, await freePort()), ...options.envOverrides };
+  const userDataDir = options.userDataDir ? path.resolve(options.userDataDir) : path.join(sandbox, "electron-user-data");
   env.SENTRY_DSN = "";
   let app;
   const errors = [];
@@ -128,9 +131,8 @@ async function main(options = {}) {
     app = await electron.launch({
       executablePath: layout.executablePath,
       args: [...(config.platform === "linux" ? ["--no-sandbox"] : []),
-        ...(options.userDataDir ? [`--user-data-dir=${path.resolve(options.userDataDir)}`]
-          : !(config.platform === "win32" && options.existingProfile && options.envOverrides)
-            ? [`--user-data-dir=${path.join(sandbox, "electron-user-data")}`] : [])],
+        ...(options.userDataDir || !(config.platform === "win32" && options.existingProfile && options.envOverrides)
+          ? [`--user-data-dir=${userDataDir}`] : [])],
       cwd: layout.appRoot,
       env,
       timeout: config.timeoutMs,
@@ -175,21 +177,19 @@ async function main(options = {}) {
   console.log(`First-launch UI sandbox: ${sandbox}`);
   try {
     const setupStarted = Date.now();
+    // Created like Studio's own environment: shipped uv, shipped wheels, Studio's data directory.
+    const environment = options.existingProfile
+      ? null : await archive.provisionSelectedEnvironment(layout.backendRoot, userDataDir, options.recommendedPackages);
     const page = await launch();
-    if (!options.existingProfile) {
-    await page.getByRole("button", { name: options.consent === "accept" ? "Allow reports (recommended)" : "Do not send", exact: true }).click({ timeout: config.timeoutMs });
-    await waitForSetupState(page,
-      () => page.getByText("Your environment is ready for analysis.", { exact: true }).isVisible(),
-      config.timeoutMs, "the included CPU runtime and required packages to be ready", sanitize);
-    await page.getByRole("button", { name: "Open Studio", exact: true }).click();
-    await waitForSetupState(page, () => /\/datasets(?:[?#]|$)/.test(page.url()),
-      config.timeoutMs, "setup completion and the datasets page", sanitize);
-    console.log("First setup verified bundled packages and opened datasets without skipping setup.");
-    if (options.timings) {
-      const elapsed = Date.now() - setupStarted;
-      recordTiming({ timings: options.timings, performance_policy: options.performancePolicy },
-        "first_setup", elapsed, config.timeoutMs);
-    }
+    if (environment) {
+      await page.getByRole("button", { name: options.consent === "accept" ? "Allow reports (recommended)" : "Do not send", exact: true }).click({ timeout: config.timeoutMs });
+      await waitForSelectedEnvironment(page, environment.pythonPath, config.timeoutMs, sanitize);
+      console.log("Studio started on the environment created by the shipped uv, without a setup step.");
+      if (options.timings) {
+        const elapsed = Date.now() - setupStarted;
+        recordTiming({ timings: options.timings, performance_policy: options.performancePolicy },
+          "first_setup", elapsed, config.timeoutMs);
+      }
     }
     if (options.inspectProfile) await options.inspectProfile({ page, app, env });
 
@@ -234,7 +234,7 @@ async function main(options = {}) {
     if (options.journeys) await options.journeys({ page: restarted, app, env });
     await withDiagnosticTimeout(Promise.allSettled([...pendingDiagnostics]));
     if (errors.length) throw new Error(`Installed renderer failed: ${errors.join("; ")}`);
-    console.log("First-launch UI smoke passed: installed runtime, setup, Settings, saved preference, reload and app restart.");
+    console.log("First-launch UI smoke passed: created environment, Settings, saved preference, reload and app restart.");
   } catch (error) {
     await withDiagnosticTimeout(Promise.allSettled([...pendingDiagnostics]));
     console.error("Renderer errors:", errors.join("\n") || "none");
@@ -265,7 +265,7 @@ async function main(options = {}) {
   }
 }
 
-module.exports = { main, diagnosticUrl, sanitizeDiagnostic, recordHttpFailure, waitForSetupState };
+module.exports = { main, diagnosticUrl, sanitizeDiagnostic, recordHttpFailure, waitForSelectedEnvironment };
 
 if (require.main === module) {
   main().catch(error => { console.error("First-launch UI smoke failed:", sanitizeDiagnostic(error.stack || error)); process.exitCode = 1; });

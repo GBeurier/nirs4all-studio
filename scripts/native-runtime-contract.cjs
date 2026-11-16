@@ -4,19 +4,11 @@ const publicMethodsWheel = require("./methods-public-wheel-profile.json");
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const {
-  PLUGIN_MARKER_FILE,
-  expectedMarker,
-  verifyPluginRuntime,
-} = require("./bake-python-plugin-runtime.cjs");
+const recommendedConfig = require("../recommended-config.json");
+const { MANIFEST, PACKAGE, verifyAdapterPackage } = require("./studio-document-adapters.cjs");
 
 const CONTRACT_FILE = "STUDIO_RUNTIME_CONTRACT.json";
 const CONTRACT_SCHEMA = "nirs4all.studio-packaged-runtime.v1";
-const PYTHON_CLOSURE_FILE = "PYTHON_PLUGIN_CLOSURE.json";
-const PYTHON_CLOSURE_SCHEMA = "nirs4all.studio-python-plugin-closure.v1";
-const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
-const MAX_PYTHON_CLOSURE_FILES = 100_000;
-const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 const METHODS_ABI_MAJOR = 2;
 const METHODS_ABI_MINOR = 22;
 const METHODS_SOURCE_COMMIT = "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed";
@@ -104,10 +96,6 @@ function sha256File(filePath) {
   return hash.digest("hex");
 }
 
-function compareUtf8Paths(left, right) {
-  return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
-}
-
 function describeFile(filePath, relativePath, boundaryRoot = path.dirname(filePath)) {
   const stat = fs.lstatSync(filePath);
   const relative = path.relative(path.resolve(boundaryRoot), path.resolve(filePath));
@@ -126,122 +114,6 @@ function describeFile(filePath, relativePath, boundaryRoot = path.dirname(filePa
     size: stat.size,
     sha256: sha256File(filePath),
   };
-}
-
-function assertCanonicalDirectory(directoryPath, label, boundaryRoot = directoryPath) {
-  const metadata = fs.lstatSync(directoryPath);
-  const relative = path.relative(path.resolve(boundaryRoot), path.resolve(directoryPath));
-  const expected = path.resolve(fs.realpathSync.native(boundaryRoot), relative);
-  if (
-    metadata.isSymbolicLink() ||
-    !metadata.isDirectory() ||
-    relative === ".." ||
-    relative.startsWith(`..${path.sep}`) ||
-    fs.realpathSync.native(directoryPath) !== expected
-  ) {
-    throw new Error(`${label} must be a canonical non-symlink directory`);
-  }
-}
-
-function collectRuntimeClosure(runtimeRoot) {
-  assertCanonicalDirectory(runtimeRoot, "Bundled Python runtime root");
-  const files = [];
-  const directories = [];
-  const pending = [runtimeRoot];
-  while (pending.length > 0) {
-    const directory = pending.pop();
-    assertCanonicalDirectory(
-      directory,
-      "Bundled Python runtime directory",
-      runtimeRoot,
-    );
-    if (directories.length >= MAX_PYTHON_CLOSURE_DIRECTORIES) {
-      throw new Error("Bundled Python runtime exceeds the 100000-directory closure limit");
-    }
-    const relativeDirectory = path.relative(runtimeRoot, directory);
-    directories.push(relativeDirectory.split(path.sep).join("/"));
-    const entries = fs
-      .readdirSync(directory, { withFileTypes: true })
-      .sort((left, right) => compareUtf8Paths(left.name, right.name));
-    for (const entry of entries) {
-      const entryPath = path.join(directory, entry.name);
-      const metadata = fs.lstatSync(entryPath);
-      if (metadata.isSymbolicLink()) {
-        throw new Error(`Bundled Python runtime must not contain symlinks: ${entryPath}`);
-      }
-      if (metadata.isDirectory()) {
-        pending.push(entryPath);
-        continue;
-      }
-      if (!metadata.isFile()) {
-        throw new Error(`Bundled Python runtime contains a special file: ${entryPath}`);
-      }
-      if (files.length >= MAX_PYTHON_CLOSURE_FILES) {
-        throw new Error("Bundled Python runtime exceeds the 100000-file closure limit");
-      }
-      const relativePath = path.relative(runtimeRoot, entryPath).split(path.sep).join("/");
-      files.push({
-        path: relativePath,
-        size: metadata.size,
-        sha256: sha256File(entryPath),
-      });
-    }
-  }
-  files.sort((left, right) => compareUtf8Paths(left.path, right.path));
-  directories.sort(compareUtf8Paths);
-  return { files, directories };
-}
-
-function findRuntimeSitePackages(runtimeRoot, directories) {
-  const candidates = directories
-    .filter((relativePath) =>
-      relativePath === "Lib/site-packages" ||
-      /^lib\/python3\.\d+\/site-packages$/.test(relativePath),
-    )
-    .map((relativePath) => path.join(runtimeRoot, ...relativePath.split("/")));
-  if (candidates.length !== 1) {
-    throw new Error(
-      `Bundled Python runtime must contain exactly one site-packages directory; found ${candidates.length}`,
-    );
-  }
-  return candidates[0];
-}
-
-function writePythonRuntimeClosure(backendRoot) {
-  const runtimeRoot = path.join(backendRoot, "python-runtime", "python");
-  const { files, directories } = collectRuntimeClosure(runtimeRoot);
-  const sitePackagesPath = findRuntimeSitePackages(runtimeRoot, directories);
-  const closurePath = path.join(
-    backendRoot,
-    "python-runtime",
-    PYTHON_CLOSURE_FILE,
-  );
-  const closure = {
-    schema: PYTHON_CLOSURE_SCHEMA,
-    root: "python-runtime/python",
-    site_packages: path
-      .relative(backendRoot, sitePackagesPath)
-      .split(path.sep)
-      .join("/"),
-    directories,
-    files,
-  };
-  const encoded = `${JSON.stringify(closure)}\n`;
-  if (Buffer.byteLength(encoded) > MAX_PYTHON_CLOSURE_BYTES) {
-    throw new Error("Bundled Python closure manifest exceeds 32 MiB");
-  }
-  fs.writeFileSync(closurePath, encoded, { flag: "w" });
-  return {
-    closurePath,
-    runtimeRoot,
-    sitePackagesPath,
-  };
-}
-
-function bundledPythonRelativePath(platform) {
-  return platform === "win32"
-    ? path.join("python-runtime", "python", "python.exe")
-    : path.join("python-runtime", "python", "bin", "python3");
 }
 
 function bundledMethodsRelativePath(platform) {
@@ -277,43 +149,6 @@ function createRuntimeContract({
     throw new Error(`Native Studio sidecar not found: ${sidecarPath}`);
   }
 
-  const pluginMarkerPath = path.join(backendRoot, "python-runtime", PLUGIN_MARKER_FILE);
-  const hasBundledRuntime = fs.existsSync(pluginMarkerPath);
-  let pythonPluginHost = {
-    mode: "unavailable",
-    member: null,
-    closure: null,
-    runtime_root: null,
-    site_packages: null,
-    marker: null,
-  };
-  if (hasBundledRuntime) {
-    verifyPluginRuntime({ backendRoot, platform, arch, writeMarker: false });
-    const pythonRelativePath = bundledPythonRelativePath(platform);
-    const pythonPath = path.join(backendRoot, pythonRelativePath);
-    if (!fs.existsSync(pythonPath)) {
-      throw new Error(
-        `Bundled runtime marker exists but its Python plugin host is missing: ${pythonPath}`,
-      );
-    }
-    const closure = writePythonRuntimeClosure(backendRoot);
-    pythonPluginHost = {
-      mode: "bundled-required",
-      member: describeFile(pythonPath, pythonRelativePath, backendRoot),
-      closure: describeFile(
-        closure.closurePath,
-        path.relative(backendRoot, closure.closurePath),
-        backendRoot,
-      ),
-      runtime_root: path.relative(backendRoot, closure.runtimeRoot).split(path.sep).join("/"),
-      site_packages: path.relative(backendRoot, closure.sitePackagesPath).split(path.sep).join("/"),
-      marker: describeFile(
-        pluginMarkerPath,
-        path.relative(backendRoot, pluginMarkerPath),
-        backendRoot,
-      ),
-    };
-  }
   const methodsRelativePath = bundledMethodsRelativePath(platform);
   const methodsPath = path.join(backendRoot, methodsRelativePath);
   if (
@@ -364,9 +199,7 @@ function createRuntimeContract({
     platform,
     arch,
     product_backend: "rust-sidecar",
-    python_role: "library-plugin-host-only",
     sidecar: describeFile(sidecarPath, sidecarRelativePath, backendRoot),
-    python_plugin_host: pythonPluginHost,
     methods_library: methodsLibrary,
     ...(platform === "win32"
       ? { native_runtime_linkage: WINDOWS_NATIVE_RUNTIME_LINKAGE }
@@ -453,96 +286,33 @@ function assertMember(backendRoot, label, member, platform, allowPlatformSignatu
   return memberPath;
 }
 
-function verifyPythonRuntimeClosure(backendRoot, plugin, platform) {
-  const normalizedSitePackages =
-    typeof plugin.site_packages === "string"
-      ? path.normalize(plugin.site_packages).split(path.sep).join("/")
-      : null;
-  if (
-    plugin.runtime_root !== "python-runtime/python" ||
-    typeof plugin.site_packages !== "string" ||
-    normalizedSitePackages !== plugin.site_packages ||
-    !plugin.site_packages.startsWith("python-runtime/python/")
-  ) {
-    throw new Error("Invalid bundled Python closure paths in packaged runtime contract");
+/**
+ * What Studio needs to create and use a Python environment: the shipped uv,
+ * one wheel per required package at its catalogue version, and the document
+ * adapters exactly as attested in the source tree.
+ */
+function verifyPythonPayload(backendRoot, platform = process.platform) {
+  const uvPath = path.join(backendRoot, "tools", platform === "win32" ? "uv.exe" : "uv");
+  if (!fs.existsSync(uvPath) || !fs.lstatSync(uvPath).isFile()) {
+    throw new Error(`Packaged uv not found: ${uvPath}`);
   }
-  const closurePath = assertMember(
-    backendRoot,
-    "Bundled Python closure manifest",
-    plugin.closure,
-    platform,
-    false,
-  );
-  const encoded = fs.readFileSync(closurePath);
-  if (encoded.length > MAX_PYTHON_CLOSURE_BYTES) {
-    throw new Error("Bundled Python closure manifest exceeds 32 MiB");
-  }
-  const closure = JSON.parse(encoded.toString("utf8"));
-  if (
-    !closure ||
-    closure.schema !== PYTHON_CLOSURE_SCHEMA ||
-    closure.root !== plugin.runtime_root ||
-    closure.site_packages !== plugin.site_packages ||
-    !Array.isArray(closure.directories) ||
-    closure.directories.length < 1 ||
-    closure.directories.length > MAX_PYTHON_CLOSURE_DIRECTORIES ||
-    !Array.isArray(closure.files) ||
-    closure.files.length < 1 ||
-    closure.files.length > MAX_PYTHON_CLOSURE_FILES
-  ) {
-    throw new Error("Invalid bundled Python closure manifest");
-  }
-  const runtimeRoot = path.join(backendRoot, ...plugin.runtime_root.split("/"));
-  const actualClosure = collectRuntimeClosure(runtimeRoot);
-  if (
-    actualClosure.directories.length !== closure.directories.length ||
-    actualClosure.directories.some(
-      (directory, index) => directory !== closure.directories[index],
-    )
-  ) {
-    throw new Error("Bundled Python runtime closure directory inventory mismatch");
-  }
-  const actual = actualClosure.files;
-  if (actual.length !== closure.files.length) {
-    throw new Error("Bundled Python runtime closure inventory mismatch");
-  }
-  for (let index = 0; index < actual.length; index += 1) {
-    const expected = closure.files[index];
-    if (
-      !expected ||
-      expected.path !== actual[index].path ||
-      expected.size !== actual[index].size ||
-      expected.sha256 !== actual[index].sha256
-    ) {
-      throw new Error(`Bundled Python runtime closure mismatch: ${actual[index].path}`);
+  const wheelhouse = path.join(backendRoot, "wheels");
+  const wheels = fs.existsSync(wheelhouse) ? fs.readdirSync(wheelhouse).filter((name) => name.endsWith(".whl")) : [];
+  for (const { name, install } of recommendedConfig.required) {
+    const prefix = `${name.replace(/[-_.]+/g, "_")}-${install}-`;
+    if (wheels.filter((wheel) => wheel.toLowerCase().startsWith(prefix)).length !== 1) {
+      throw new Error(`Packaged wheels must contain exactly one ${name}==${install} wheel: ${wheelhouse}`);
     }
   }
-  const sitePackagesPath = path.join(backendRoot, ...plugin.site_packages.split("/"));
-  assertCanonicalDirectory(
-    sitePackagesPath,
-    "Bundled Python site-packages",
-    runtimeRoot,
-  );
-  return { closurePath, runtimeRoot, sitePackagesPath };
-}
-
-function verifyPluginMarker(backendRoot, plugin, platform, arch) {
-  const expectedPath = path.join("python-runtime", PLUGIN_MARKER_FILE);
-  if (path.normalize(plugin.marker?.path ?? "") !== expectedPath) {
-    throw new Error("Packaged Python plugin marker path mismatch");
+  if (wheels.length !== recommendedConfig.required.length) {
+    throw new Error(`Packaged wheels contain files outside the required cohort: ${wheelhouse}`);
   }
-  const readyPath = assertMember(
-    backendRoot,
-    "Bundled Python plugin marker",
-    plugin.marker,
-    platform,
-    false,
-  );
-  const actual = JSON.parse(fs.readFileSync(readyPath, "utf8"));
-  if (JSON.stringify(actual) !== JSON.stringify(expectedMarker(platform, arch))) {
-    throw new Error("Bundled Python plugin marker identity mismatch");
+  const adaptersDir = path.join(backendRoot, "adapters");
+  if (!fs.existsSync(path.join(adaptersDir, PACKAGE))) {
+    throw new Error(`Packaged document adapters not found: ${adaptersDir}`);
   }
-  return readyPath;
+  verifyAdapterPackage(JSON.parse(fs.readFileSync(path.join(__dirname, "..", MANIFEST), "utf8")), adaptersDir);
+  return { uvPath, wheelhouse, adaptersDir };
 }
 
 function verifyRuntimeContract({
@@ -550,7 +320,7 @@ function verifyRuntimeContract({
   artifactBoundaryRoot,
   platform = process.platform,
   arch = process.arch,
-  requireBundledPythonPlugin = false,
+  requirePythonPayload = false,
   requireBundledMethods = false,
 }) {
   verifyArtifactBoundary(artifactBoundaryRoot, backendRoot);
@@ -567,8 +337,7 @@ function verifyRuntimeContract({
     contract.schema !== CONTRACT_SCHEMA ||
     contract.platform !== platform ||
     contract.arch !== arch ||
-    contract.product_backend !== "rust-sidecar" ||
-    contract.python_role !== "library-plugin-host-only"
+    contract.product_backend !== "rust-sidecar"
   ) {
     throw new Error("Packaged runtime contract metadata mismatch");
   }
@@ -596,42 +365,7 @@ function verifyRuntimeContract({
     platform,
   );
 
-  const plugin = contract.python_plugin_host;
-  if (!plugin || !["unavailable", "bundled-required"].includes(plugin.mode)) {
-    throw new Error("Invalid Python plugin-host policy in packaged runtime contract");
-  }
-  let pythonPluginHostPath = null;
-  let pythonClosurePath = null;
-  let pythonRuntimeRoot = null;
-  let pythonSitePackagesPath = null;
-  if (plugin.mode === "bundled-required") {
-    const expectedPython = bundledPythonRelativePath(platform);
-    if (path.normalize(plugin.member?.path ?? "") !== expectedPython) {
-      throw new Error("Packaged runtime contract selects an unexpected Python plugin host");
-    }
-    pythonPluginHostPath = assertMember(
-      backendRoot,
-      "Bundled Python plugin host",
-      plugin.member,
-      platform,
-    );
-    const closure = verifyPythonRuntimeClosure(backendRoot, plugin, platform);
-    verifyPluginMarker(backendRoot, plugin, platform, arch);
-    pythonClosurePath = closure.closurePath;
-    pythonRuntimeRoot = closure.runtimeRoot;
-    pythonSitePackagesPath = closure.sitePackagesPath;
-  } else if (
-    plugin.member !== null ||
-    plugin.closure !== null ||
-    plugin.runtime_root !== null ||
-    plugin.site_packages !== null ||
-    plugin.marker !== null
-  ) {
-    throw new Error("Unavailable Python plugin-host policy must not select packaged members");
-  }
-  if (requireBundledPythonPlugin && !pythonPluginHostPath) {
-    throw new Error("Packaged Python plugin runtime is required for this release artifact");
-  }
+  if (requirePythonPayload) verifyPythonPayload(backendRoot, platform);
 
   const methods = contract.methods_library;
   if (
@@ -677,10 +411,6 @@ function verifyRuntimeContract({
     contract,
     contractPath,
     sidecarPath,
-    pythonPluginHostPath,
-    pythonClosurePath,
-    pythonRuntimeRoot,
-    pythonSitePackagesPath,
     methodsLibraryPath,
     methodsIdentityProfile: Object.hasOwn(methods, "artifact") ? "public-wheel" : "source-build",
   };
@@ -692,7 +422,7 @@ function parseVerifyArgs(argv = process.argv.slice(2)) {
     artifactBoundaryRoot: "",
     platform: process.platform,
     arch: process.arch,
-    requireBundledPythonPlugin: false,
+    requirePythonPayload: false,
     requireBundledMethods: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -715,8 +445,8 @@ function parseVerifyArgs(argv = process.argv.slice(2)) {
       parsed.platform = readValue();
     } else if (flag === "--arch") {
       parsed.arch = readValue();
-    } else if (flag === "--require-bundled-python-plugin") {
-      parsed.requireBundledPythonPlugin = true;
+    } else if (flag === "--require-python-payload") {
+      parsed.requirePythonPayload = true;
     } else if (flag === "--require-bundled-methods") {
       parsed.requireBundledMethods = true;
     } else {
@@ -750,9 +480,6 @@ module.exports = {
   bundledMethodsRelativePath,
   CONTRACT_FILE,
   CONTRACT_SCHEMA,
-  bundledPythonRelativePath,
-  collectRuntimeClosure,
-  compareUtf8Paths,
   createRuntimeContract,
   hasValidPlatformSignature,
   hasExactPublicMethodsArtifact,
@@ -763,12 +490,8 @@ module.exports = {
   METHODS_SOURCE_TREE,
   WINDOWS_NATIVE_RUNTIME_LINKAGE,
   parseVerifyArgs,
-  PYTHON_CLOSURE_FILE,
-  PYTHON_CLOSURE_SCHEMA,
   sha256File,
-  verifyPythonRuntimeClosure,
   verifyArtifactBoundary,
   verifyRuntimeContract,
-  writePythonRuntimeClosure,
   writeRuntimeContract,
 };

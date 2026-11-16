@@ -5,8 +5,6 @@
     "source_sha": "28c51162fc4d31d674c6606d608367a5f4b32b0e",
     "wheel_sha256": "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4",
     "qualification_oracle_sha256": "5c8932cbae3ab5890314a1db4a5081619339b6ef2e849fb4c4b98ca77ef9a223",
-    "raw_public_wheel_sha256": "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4",
-    "installed_manifest_sha256": "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f",
     "source_tree": "8bb8092320ec48f50183b1932f87867c8df909b1",
     "publication_status": "published-registry",
     "wheel_url": "https://files.pythonhosted.org/packages/47/c2/8c92965fe20f18d05a34026e2c7cf48bd30b8ec1287c5a951cf523c8a028/nirs4all-1.4.16-py3-none-any.whl"

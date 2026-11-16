@@ -23,7 +23,8 @@ function expectedPublishedNames(version, includeAllInOne = false, includeMacosX6
     ...(includeMacosX64 ? [`nirs4all.Studio-${version}-mac-x64.dmg`] : []),
     `nirs4all.Studio-${version}-win-x64.exe`,
   ];
-  return installers.sort();
+  // Every installer is published with its offline variant.
+  return installers.flatMap((name) => [name, name.replace(/(\.[a-z]+)$/, "-offline$1")]).sort();
 }
 
 function canonicalPublishedName(name) {

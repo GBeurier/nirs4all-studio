@@ -6,6 +6,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- The installer is much lighter and application updates are faster. Studio
+  ships without a Python runtime: an update replaces the application only and
+  leaves your Python environment in place.
+- Studio uses one Python environment, chosen by you. On first launch a single
+  page lists the environments found on your machine with what each one lacks;
+  pick one, or let Studio create a new one. The same page is available at any
+  time in Settings, under the new Python tab, to switch environment or add
+  packages.
+- The packages Studio needs (`nirs4all` and its companion packages) are
+  installed automatically and kept up to date at each launch. Recommended
+  packages are yours to choose, one by one; when some are older than
+  recommended, Studio shows a short notice at startup and a dot on Settings.
+  Development (editable) installs are never modified.
+- After this update, if you used the Python runtime included with earlier
+  versions, Studio asks you once to choose or create a Python environment.
+  Your workspaces and settings are kept.
+
+### Added
+
+- An offline installer (file name ending in `-offline`) for machines without
+  network access. It carries the Python runtime and the default package set,
+  so Studio creates its environment without downloading anything. In-app
+  updates always use the standard installer.
+
 ## [0.15.11] — 2026-11-10
 
 ### Fixed
