@@ -222,7 +222,7 @@ describe("Python environment page", () => {
   it("shows why a change failed and keeps the choice", async () => {
     const state = envState({ selected: current });
     const api = mockPythonEnvApi(state, [current, other]);
-    api.apply.mockResolvedValue({ success: false, message: "uv could not download nirs4all 1.4.16", state });
+    api.apply.mockResolvedValue({ success: false, message: "uv could not download nirs4all 1.4.16", hostRestarted: false, state });
     await mount(api);
 
     await click(radioFor(other.pythonPath));
@@ -264,6 +264,66 @@ describe("Python environment page", () => {
     expect(container.textContent).toContain("No network connection.");
     await click(button("Retry"));
     expect(api.retry).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["interpreter_missing", "The selected Python environment was not found"],
+    ["interpreter_unusable", "Studio could not use the selected Python interpreter (Python 3.11 or newer is required)"],
+  ] as const)("explains %s on the setup page although no environment is configured", async (code, title) => {
+    const api = mockPythonEnvApi({
+      ...unconfiguredState(),
+      selectedPythonPath: "D:/envs/gone/python.exe",
+      problem: { code, message: "D:/envs/gone/python.exe could not be used." },
+    }, [other]);
+    await mount(api, "setup");
+
+    expect(container.textContent).toContain(title);
+    expect(container.textContent).toContain("D:/envs/gone/python.exe could not be used.");
+    expect(container.textContent).not.toContain("No Python environment is selected.");
+    await click(button("Retry"));
+    expect(api.retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists the environments again after an action", async () => {
+    const api = mockPythonEnvApi(envState({ selected: current }), [current]);
+    await mount(api);
+    expect(api.detect).toHaveBeenCalledTimes(1);
+
+    await click(checkbox("shap"));
+    await click(button("Install 1 package"));
+
+    expect(api.detect).toHaveBeenCalledTimes(2);
+    expect(api.detect).toHaveBeenLastCalledWith(true);
+  });
+
+  it("starts over from a fresh listing when creating an environment failed", async () => {
+    const state = unconfiguredState();
+    const api = mockPythonEnvApi(state, []);
+    api.create.mockResolvedValue({ success: false, message: "The download was interrupted.", hostRestarted: false, state });
+    await mount(api, "setup");
+    expect(radioFor("Create a new environment").getAttribute("aria-checked")).toBe("true");
+
+    // The interrupted creation left an environment behind.
+    api.detect.mockResolvedValue([other]);
+    await click(button("Create environment"));
+
+    expect(api.detect).toHaveBeenLastCalledWith(true);
+    expect(container.textContent).toContain("The download was interrupted.");
+    expect(radioFor(other.pythonPath)).toBeDefined();
+    expect(radioFor("Create a new environment").getAttribute("aria-checked")).toBe("false");
+    expect(button("Choose an environment")?.disabled).toBe(true);
+  });
+
+  it("offers to create again when a failed creation left nothing behind", async () => {
+    const state = unconfiguredState();
+    const api = mockPythonEnvApi(state, []);
+    api.create.mockResolvedValue({ success: false, message: "The download was interrupted.", hostRestarted: false, state });
+    await mount(api, "setup");
+
+    await click(button("Create environment"));
+
+    expect(radioFor("Create a new environment").getAttribute("aria-checked")).toBe("true");
+    expect(button("Create environment")?.disabled).toBe(false);
   });
 
   it("adds an interpreter chosen by the user, or says why it cannot be used", async () => {

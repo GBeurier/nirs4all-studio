@@ -11,10 +11,6 @@ interface BackendRestartResult {
   error?: string;
 }
 
-interface BackendRestartOptions {
-  skipEnsure?: boolean;
-}
-
 interface NativeSidecarInfo {
   status: "disabled" | "starting" | "running" | "stopped" | "error";
   host: string | null;
@@ -176,9 +172,7 @@ interface ElectronApi {
   /**
    * Restart the backend server
    */
-  restartBackend(
-    options?: BackendRestartOptions,
-  ): Promise<BackendRestartResult>;
+  restartBackend(): Promise<BackendRestartResult>;
 
   /** Python environment lifecycle, owned by the main process. */
   pythonEnv: PythonEnvApi;

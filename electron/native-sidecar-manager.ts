@@ -270,7 +270,8 @@ export class NativeSidecarManager {
     this.pythonPluginHostConfigured = false;
 
     let child: ChildProcess;
-    const pythonPluginHost = options.pythonPluginHost?.trim() || null;
+    // Passed exactly as selected: the sidecar compares the running interpreter with this string.
+    const pythonPluginHost = options.pythonPluginHost || null;
     this.pythonPluginHostConfigured = pythonPluginHost !== null;
     const childEnvironment: NodeJS.ProcessEnv = { ...process.env };
     this.sessionToken = createNativeSessionToken();
@@ -280,16 +281,21 @@ export class NativeSidecarManager {
     delete childEnvironment[ARCHIVE_SMOKE_SESSION_TOKEN_ENV];
     delete childEnvironment.NIRS4ALL_STUDIO_ALLOWED_ORIGINS;
     // Only Electron's selection reaches the sidecar, never inherited variables.
-    for (const name of [PYTHON_PLUGIN_HOST_ENV, PYTHON_PLUGIN_SITE_PACKAGES_ENV, SCIENTIFIC_EXECUTOR_ENV, STUDIO_ADAPTERS_DIR_ENV]) {
+    // The two updater variables belonged to the removed all-in-one installer:
+    // a stray value must not let the sidecar update an installation in place.
+    for (const name of [
+      PYTHON_PLUGIN_HOST_ENV, PYTHON_PLUGIN_SITE_PACKAGES_ENV, SCIENTIFIC_EXECUTOR_ENV, STUDIO_ADAPTERS_DIR_ENV,
+      "NIRS4ALL_ALL_IN_ONE", "NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE",
+    ]) {
       delete childEnvironment[name];
     }
     if (pythonPluginHost) {
       childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
       childEnvironment[SCIENTIFIC_EXECUTOR_ENV] = "cpython-stdio-v1";
-      if (options.pythonPluginSitePackages?.trim())
-        childEnvironment[PYTHON_PLUGIN_SITE_PACKAGES_ENV] = options.pythonPluginSitePackages.trim();
-      if (options.studioAdaptersDir?.trim())
-        childEnvironment[STUDIO_ADAPTERS_DIR_ENV] = options.studioAdaptersDir.trim();
+      if (options.pythonPluginSitePackages)
+        childEnvironment[PYTHON_PLUGIN_SITE_PACKAGES_ENV] = options.pythonPluginSitePackages;
+      if (options.studioAdaptersDir)
+        childEnvironment[STUDIO_ADAPTERS_DIR_ENV] = options.studioAdaptersDir;
     }
     if (options.buildInfoPath?.trim())
       childEnvironment[BUILD_INFO_PATH_ENV] = options.buildInfoPath.trim();

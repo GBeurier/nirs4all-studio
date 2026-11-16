@@ -50,10 +50,13 @@ describe("PythonEnvProvider", () => {
     expect(seen.state?.phase).toBe("ready");
   });
 
-  it("adopts the state of an action and announces the restarted backend only on success", async () => {
+  it("adopts the state of an action and announces every backend restart, also after a failure", async () => {
     const api = mockPythonEnvApi(unconfiguredState());
-    api.retry.mockResolvedValueOnce({ success: false, message: "offline", state: unconfiguredState() })
-      .mockResolvedValue({ success: true, state: envState() });
+    api.retry
+      .mockResolvedValueOnce({ success: false, message: "offline", hostRestarted: false, state: unconfiguredState() })
+      // A switch that failed and was rolled back restarted the backend on the previous environment.
+      .mockResolvedValueOnce({ success: false, message: "the host did not start", hostRestarted: true, state: unconfiguredState() })
+      .mockResolvedValue({ success: true, hostRestarted: true, state: envState() });
     restoreApi = installPythonEnvApi(api);
     const restarted = vi.fn();
     window.addEventListener("backend-restarted", restarted);
@@ -61,12 +64,18 @@ describe("PythonEnvProvider", () => {
       await mount();
       await act(async () => { await seen.run((env) => env.retry()); });
       expect(restarted).not.toHaveBeenCalled();
+      expect(mocks.resetBackendUrl).not.toHaveBeenCalled();
       expect(seen.state?.phase).toBe("unconfigured");
 
       await act(async () => { await seen.run((env) => env.retry()); });
-      expect(seen.state?.phase).toBe("ready");
+      expect(seen.state?.phase).toBe("unconfigured");
       expect(restarted).toHaveBeenCalledTimes(1);
       expect(mocks.resetBackendUrl).toHaveBeenCalledTimes(1);
+
+      await act(async () => { await seen.run((env) => env.retry()); });
+      expect(seen.state?.phase).toBe("ready");
+      expect(restarted).toHaveBeenCalledTimes(2);
+      expect(mocks.resetBackendUrl).toHaveBeenCalledTimes(2);
     } finally {
       window.removeEventListener("backend-restarted", restarted);
     }

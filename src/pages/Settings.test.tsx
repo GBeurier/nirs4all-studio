@@ -16,8 +16,12 @@ vi.mock("./SettingsSections", () => ({
   DataSettingsTab: () => null,
   PythonSettingsTab: () => <div data-testid="python-tab" />,
   UpdatesSettingsTab: () => null,
-  AdvancedSettingsTab: () => null,
+  AdvancedSettingsTab: ({ handleRestartBackend }: { handleRestartBackend: () => void }) => (
+    <button type="button" data-testid="restart" onClick={handleRestartBackend} />
+  ),
 }));
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({ toast: { error: toastError } }));
 vi.mock("@/context/useTheme", () => ({ useTheme: () => ({ theme: "light", setTheme: vi.fn() }) }));
 vi.mock("@/context/useDeveloperMode", () => ({ useDeveloperMode: () => ({ isDeveloperMode: false, setDeveloperMode: vi.fn(), isLoading: false }) }));
 vi.mock("@/context/useUISettings", () => ({
@@ -50,6 +54,7 @@ describe("Settings Python tab", () => {
   });
   afterEach(async () => {
     await act(async () => root.unmount());
+    window.electronApi = undefined;
   });
 
   async function pythonTab(state: PythonEnvState | null, path = "/settings") {
@@ -78,5 +83,25 @@ describe("Settings Python tab", () => {
     expect(dot(tab)).toBeNull();
     expect(tab.getAttribute("aria-selected")).toBe("true");
     expect(container.querySelector('[data-testid="python-tab"]')).not.toBeNull();
+  });
+
+  it("tells the user when the analysis engine restart is refused", async () => {
+    toastError.mockReset();
+    const restarted = vi.fn();
+    window.addEventListener("backend-restarted", restarted);
+    window.electronApi = {
+      restartBackend: vi.fn().mockResolvedValue({ success: false, error: "A Python environment change is in progress." }),
+    } as unknown as Window["electronApi"];
+    try {
+      await pythonTab(envState(), "/settings?tab=advanced");
+      await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="restart"]')!.click());
+
+      expect(toastError).toHaveBeenCalledWith("settings.advanced.backend.restartFailed", {
+        description: "A Python environment change is in progress.",
+      });
+      expect(restarted).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("backend-restarted", restarted);
+    }
   });
 });

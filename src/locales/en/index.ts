@@ -40,6 +40,7 @@ const en = {
     },
     problem: {
       interpreter_missing: "The selected Python environment was not found",
+      interpreter_unusable: "Studio could not use the selected Python interpreter (Python 3.11 or newer is required)",
       required_not_installable: "Studio cannot install the required packages in this environment",
       required_update_failed: "The required packages could not be installed",
       host_failed: "The analysis engine did not start",
@@ -300,6 +301,7 @@ const en = {
       error: {
         missing: "nirs4all is not installed in the selected Python environment. Open Settings → Python to install it.",
         versionUnsupported: "The selected Python environment has an unsupported nirs4all version. Open Settings → Python to update it.",
+        inconsistent: "The nirs4all installation in the selected Python environment is inconsistent (duplicate or outdated package files). Open Settings → Python to reinstall nirs4all or choose another environment.",
         importFailed: "nirs4all could not be loaded from the selected Python environment. Open Settings → Python to repair it or choose another environment.",
         adaptersUnavailable: "Studio could not load its Python components. Open Settings → Python and retry; reinstall Studio if it happens again.",
       },
@@ -644,6 +646,7 @@ notFound: {
         restart: "Restart Analysis Engine",
         restartHint: "Stop and restart the analysis engine",
         restarting: "Restarting...",
+        restartFailed: "The analysis engine could not be restarted",
         status: {
           title: "Analysis Engine Status",
           description: "Connection health and latency",

@@ -115,10 +115,8 @@ const electronApi = {
     error?: string;
   }> => ipcRenderer.invoke("control:getInfo"),
 
-  restartBackend: (options?: {
-    skipEnsure?: boolean;
-  }): Promise<{ success: boolean; port?: number; error?: string }> =>
-    ipcRenderer.invoke("backend:restart", options),
+  restartBackend: (): Promise<{ success: boolean; port?: number; error?: string }> =>
+    ipcRenderer.invoke("backend:restart"),
 
   /**
    * Python environment (contract: src/types/pythonEnvironment.ts)

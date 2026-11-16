@@ -31,7 +31,7 @@ import { recommendedInstallSpecs } from "./env/catalogue";
 import { clearDetectionCache, detectEnvironments } from "./env/env-detection";
 import { SETTINGS_FILE, readSelectedPythonPath, writeSelectedPythonPath } from "./env/env-settings";
 import { loadNetworkTrust, loadPythonRuntimeConfig } from "./env/external-config";
-import { editableRequiredPackages, evaluateInventory, takeInventory } from "./env/inventory";
+import { editableRequiredPackages, evaluateInventory, installedRequiredPins, takeInventory } from "./env/inventory";
 import type { PythonInventory } from "./env/inventory";
 import { readCachedInventory, writeCachedInventory } from "./env/inventory-cache";
 import { createStudioEnvironment } from "./env/provisioning";
@@ -51,6 +51,13 @@ export interface EnvManagerOptions {
    * that it runs that interpreter. Rejects with a user-facing reason.
    */
   restartHost(): Promise<void>;
+  /**
+   * Stop the sidecar when it is running a Python environment, so that the
+   * environment's files are free to be replaced. Resolves to whether it was stopped.
+   */
+  stopHost(): Promise<boolean>;
+  /** A sentence describing the runs the sidecar is executing, or null when it is idle. */
+  describeActiveRuns(): Promise<string | null>;
 }
 
 /** What the sidecar needs to run the selected interpreter. */
@@ -85,14 +92,21 @@ function unmetRequirements(report: PythonEnvReport): string {
     .join(", ");
 }
 
-/** Why Studio may not install the required packages itself, or null when it may. */
-function installBlocker(report: PythonEnvReport): string | null {
-  const editable = report.required.filter((item) => item.status === "editable").map((item) => item.name);
+const NOT_WRITABLE = "Studio cannot install packages in this environment (it is read-only or managed by the operating system).";
+
+/**
+ * Why Studio may not install the required packages itself, or null when it
+ * may. Any editable required package blocks the installation: the resolver
+ * could replace it as a dependency of another required package, and Studio
+ * never modifies an editable install.
+ */
+function installBlocker({ inventory, report }: Evaluation): string | null {
+  const editable = editableRequiredPackages(inventory);
   if (editable.length > 0) {
-    return `${editable.join(", ")} is installed in development (editable) mode outside the version Studio requires: ${unmetRequirements(report)}. Studio does not modify editable installs; update it in this environment or choose another one.`;
+    return `${editable.join(", ")} ${editable.length === 1 ? "is" : "are"} installed in development (editable) mode, and Studio does not modify editable installs. Not satisfied: ${unmetRequirements(report)}. Install or update them yourself in this environment, or choose another one.`;
   }
   if (!report.writable) {
-    return `Studio cannot install packages in this environment (it is read-only or managed by the operating system). Not satisfied: ${unmetRequirements(report)}. Install them yourself or choose another environment.`;
+    return `${NOT_WRITABLE} Not satisfied: ${unmetRequirements(report)}. Install them yourself or choose another environment.`;
   }
   return null;
 }
@@ -119,8 +133,10 @@ export class EnvManager {
   private readonly listeners = new Set<(state: PythonEnvState) => void>();
   private current: Selection;
   private activity: PythonEnvActivity | undefined;
-  /** The running operation installed into the selected environment, which the sidecar is using. */
-  private selectionModified = false;
+  /** The sidecar was stopped or restarted during the running operation. */
+  private hostRestarted = false;
+  /** The sidecar was stopped for an installation and has not been started again. */
+  private hostStopped = false;
 
   constructor(private readonly options: EnvManagerOptions) {
     this.studioEnvDir = getStudioEnvDir(options.userDataDir);
@@ -163,6 +179,8 @@ export class EnvManager {
    */
   async startupCheck(): Promise<PythonEnvState> {
     await this.checkSelection(true);
+    // The caller starts the sidecar next, whatever was stopped for an installation.
+    this.hostStopped = false;
     this.setActivity(undefined);
     return this.getState();
   }
@@ -209,22 +227,21 @@ export class EnvManager {
       recommendedInstallSpecs(request.packages);
       let evaluation = await this.evaluate(pythonPath, false);
       const installsRequired = !evaluation.report.usable;
-      const blocker = installsRequired ? installBlocker(evaluation.report) : null;
+      const blocker = installsRequired ? installBlocker(evaluation) : null;
       if (blocker) throw new Error(blocker);
-      if (request.packages.length > 0 && !evaluation.report.writable) {
-        throw new Error("Studio cannot install packages in this environment (it is read-only or managed by the operating system).");
-      }
+      if (request.packages.length > 0 && !evaluation.report.writable) throw new Error(NOT_WRITABLE);
       if (installsRequired) {
         this.setActivity({ kind: "installing", percent: null, detail: "Installing the required packages…" });
-        this.selectionModified ||= pythonPath === this.current.pythonPath;
-        await installRequiredPackages(pythonPath, editableRequiredPackages(evaluation.inventory));
+        await this.stopHostBeforeInstalling(pythonPath);
+        await installRequiredPackages(pythonPath);
+        evaluation = await this.evaluate(pythonPath, false);
       }
       if (request.packages.length > 0) {
         this.setActivity({ kind: "installing", percent: null, detail: "Installing the selected packages…" });
-        this.selectionModified ||= pythonPath === this.current.pythonPath;
-        await installRecommendedPackages(pythonPath, request.packages);
+        await this.stopHostBeforeInstalling(pythonPath);
+        await installRecommendedPackages(pythonPath, request.packages, installedRequiredPins(evaluation.inventory));
+        evaluation = await this.evaluate(pythonPath, false);
       }
-      if (installsRequired || request.packages.length > 0) evaluation = await this.evaluate(pythonPath, false);
       await this.switchTo(pythonPath, evaluation);
     });
   }
@@ -242,13 +259,14 @@ export class EnvManager {
 
   installPackages(packages: string[]): Promise<PythonEnvActionResult> {
     return this.runAction({ kind: "installing", percent: null, detail: "Installing the selected packages…" }, async () => {
-      const { pythonPath, evaluation } = this.current;
-      if (!pythonPath || !evaluation) throw new Error("No usable Python environment is selected.");
-      if (!evaluation.report.writable) {
-        throw new Error("Studio cannot install packages in this environment (it is read-only or managed by the operating system).");
-      }
-      this.selectionModified = true;
-      await installRecommendedPackages(pythonPath, packages);
+      const pythonPath = this.current.pythonPath;
+      if (!pythonPath || !this.current.evaluation) throw new Error("No usable Python environment is selected.");
+      recommendedInstallSpecs(packages);
+      // Read the environment now: its required packages are pinned at the versions really installed.
+      const { inventory, report } = await this.evaluate(pythonPath, false);
+      if (!report.writable) throw new Error(NOT_WRITABLE);
+      await this.stopHostBeforeInstalling(pythonPath);
+      await installRecommendedPackages(pythonPath, packages, installedRequiredPins(inventory));
       await this.checkAndActivate();
     });
   }
@@ -257,24 +275,58 @@ export class EnvManager {
     return this.runAction({ kind: "updating_required", percent: null, detail: "Checking the Python environment…" }, () => this.checkAndActivate());
   }
 
-  /** One operation at a time; a failure is returned as a message, never thrown. */
-  private async runAction(activity: PythonEnvActivity, action: () => Promise<void>): Promise<PythonEnvActionResult> {
+  /**
+   * The user's "restart backend": with a problem to solve it is a retry,
+   * otherwise the sidecar is restarted on the current selection. It may
+   * interrupt a run, which is what the user asked for.
+   */
+  restartBackend(): Promise<PythonEnvActionResult> {
+    if (this.current.phase === "needs_attention") return this.retry();
+    return this.runAction(
+      { kind: "switching", percent: null, detail: "Restarting the analysis backend…" },
+      () => this.activateHost(),
+      { interruptsRuns: true },
+    );
+  }
+
+  /**
+   * One operation at a time; a failure is returned as a message, never thrown.
+   * An operation ends by restarting the sidecar, which would kill a run in
+   * progress: unless that is intended, it is refused while a run is active.
+   */
+  private async runAction(
+    activity: PythonEnvActivity,
+    action: () => Promise<void>,
+    { interruptsRuns = false } = {},
+  ): Promise<PythonEnvActionResult> {
     if (this.activity) {
-      return { success: false, message: "Another Python environment operation is still running.", state: this.getState() };
+      return { success: false, message: "Another Python environment operation is still running.", hostRestarted: false, state: this.getState() };
     }
     this.setActivity(activity);
-    this.selectionModified = false;
+    this.hostRestarted = false;
     let message: string | undefined;
     try {
+      const activeRuns = interruptsRuns ? null : await this.options.describeActiveRuns();
+      if (activeRuns) throw new Error(`${activeRuns} Wait for the end of the run or stop it, then try again.`);
       await action();
     } catch (error) {
       message = errorMessage(error);
       console.warn(`[EnvManager] ${activity.kind} failed: ${message}`);
-      if (this.selectionModified) await this.resyncSelection().catch(() => undefined);
+      // An installation failed while the sidecar was stopped for it: read the
+      // environment as it now is and start the sidecar again.
+      if (this.hostStopped) {
+        await this.checkSelection(false);
+        await this.activateHost().catch(() => undefined);
+      }
     }
     clearDetectionCache();
     this.setActivity(undefined);
-    return { success: message === undefined, ...(message === undefined ? {} : { message }), state: this.getState() };
+    return {
+      success: message === undefined,
+      ...(message === undefined ? {} : { message }),
+      hostRestarted: this.hostRestarted,
+      state: this.getState(),
+    };
   }
 
   /** The one spelling emitted for an interpreter path; see `canonicalPythonPath`. */
@@ -332,18 +384,19 @@ export class EnvManager {
     try {
       evaluation = await this.evaluate(pythonPath, useCache);
     } catch (error) {
-      this.settle({ pythonPath, phase: "needs_attention", evaluation: null, problem: { code: "interpreter_missing", message: errorMessage(error) } });
+      this.settle({ pythonPath, phase: "needs_attention", evaluation: null, problem: { code: "interpreter_unusable", message: errorMessage(error) } });
       return;
     }
     if (!evaluation.report.usable) {
-      const blocker = installBlocker(evaluation.report);
+      const blocker = installBlocker(evaluation);
       if (blocker) {
         this.settle({ pythonPath, phase: "needs_attention", evaluation, problem: { code: "required_not_installable", message: blocker } });
         return;
       }
       this.setActivity({ kind: "updating_required", percent: null, detail: "Updating the required Python packages…" });
       try {
-        await installRequiredPackages(pythonPath, editableRequiredPackages(evaluation.inventory));
+        await this.stopHostBeforeInstalling(pythonPath);
+        await installRequiredPackages(pythonPath);
         evaluation = await this.evaluate(pythonPath, false);
         if (!evaluation.report.usable) throw new Error(`Still not satisfied after installation: ${unmetRequirements(evaluation.report)}.`);
       } catch (error) {
@@ -359,10 +412,29 @@ export class EnvManager {
     this.settle({ pythonPath, phase: "ready", evaluation });
   }
 
-  /** Restart the sidecar on the current selection; a failure becomes the `host_failed` problem. */
+  /**
+   * The sidecar and its warm workers hold the files of the environment they
+   * run: Windows cannot replace a loaded extension module, and elsewhere a
+   * running worker would mix versions. Stop it before installing there.
+   */
+  private async stopHostBeforeInstalling(pythonPath: string): Promise<void> {
+    if (pythonPath !== this.current.pythonPath || this.hostStopped) return;
+    if (await this.options.stopHost()) {
+      this.hostRestarted = true;
+      this.hostStopped = true;
+    }
+  }
+
   private async restartHost(): Promise<void> {
+    this.hostRestarted = true;
+    this.hostStopped = false;
+    await this.options.restartHost();
+  }
+
+  /** Restart the sidecar on the current selection; a failure becomes the `host_failed` problem. */
+  private async activateHost(): Promise<void> {
     try {
-      await this.options.restartHost();
+      await this.restartHost();
     } catch (error) {
       this.reportHostFailure(errorMessage(error));
       throw error;
@@ -372,23 +444,10 @@ export class EnvManager {
   /** Re-run the startup check, then restart the sidecar on the result. */
   private async checkAndActivate(): Promise<void> {
     await this.checkSelection(false);
-    await this.restartHost();
+    await this.activateHost();
     if (this.current.phase !== "ready") {
       throw new Error(this.current.problem?.message ?? "No Python environment is selected.");
     }
-  }
-
-  /**
-   * After a failed operation that installed into the selected environment:
-   * read it again and, when a required package changed, restart the sidecar.
-   * The sidecar admitted the nirs4all version it started with and its workers
-   * refuse to run on any other.
-   */
-  private async resyncSelection(): Promise<void> {
-    const required = () => JSON.stringify(this.current.evaluation?.report.required);
-    const before = required();
-    await this.checkSelection(false);
-    if (required() !== before) await this.restartHost();
   }
 
   /**
@@ -404,13 +463,18 @@ export class EnvManager {
     writeSelectedPythonPath(this.settingsPath, pythonPath);
     writeCachedInventory(this.options.userDataDir, pythonPath, evaluation.inventory);
     this.settle({ pythonPath, phase: "ready", evaluation });
+    if (pythonPath === previous.pythonPath) {
+      // The same environment, possibly with new packages: there is no other selection to return to.
+      await this.activateHost();
+      return;
+    }
     try {
-      await this.options.restartHost();
+      await this.restartHost();
     } catch (error) {
       this.settle(previous);
       try {
         writeSelectedPythonPath(this.settingsPath, previous.pythonPath);
-        await this.restartHost();
+        await this.activateHost();
       } catch (restoreError) {
         console.error("[EnvManager] Could not restart the previous environment:", restoreError);
       }

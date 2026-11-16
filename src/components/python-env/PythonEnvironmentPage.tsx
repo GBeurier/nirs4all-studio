@@ -116,13 +116,13 @@ function CurrentEnvironment({
             {t(`pythonEnv.activity.${state.activity?.kind ?? "installing"}`)}
           </p>
         )}
-        {state?.phase === "needs_attention" && (
+        {state?.problem && (state.phase === "needs_attention" || state.phase === "unconfigured") && (
           <Alert className="border-amber-300 text-amber-950 dark:border-amber-900 dark:text-amber-100">
             <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <AlertTitle>{t(`pythonEnv.problem.${state.problem?.code ?? "unknown"}`)}</AlertTitle>
-                {state.problem?.message && (
+                <AlertTitle>{t(`pythonEnv.problem.${state.problem.code}`)}</AlertTitle>
+                {state.problem.message && (
                   <AlertDescription className="break-words">{state.problem.message}</AlertDescription>
                 )}
               </div>
@@ -225,19 +225,23 @@ function DesktopPythonEnvironment({ api, context }: { api: PythonEnvApi; context
   const perform = async (start: Parameters<typeof run>[0]) => {
     setWorking(true);
     setFailure(null);
+    let succeeded = false;
     try {
       const result = await run(start);
-      if (result.success) {
-        setChoice("");
-        setTicks(null);
-      } else {
-        setFailure(result.message ?? t("pythonEnv.action.failed"));
-      }
+      succeeded = result.success;
+      if (!result.success) setFailure(result.message ?? t("pythonEnv.action.failed"));
     } catch (error) {
       setFailure(errorMessage(error));
     } finally {
       setWorking(false);
     }
+    // A failed creation may have left an environment behind: creating again
+    // would collide with it, so that choice is made anew from a fresh listing.
+    if (succeeded || choice === NEW_ENVIRONMENT) {
+      setChoice("");
+      setTicks(null);
+    }
+    void detect(true);
   };
 
   const submit = () => {

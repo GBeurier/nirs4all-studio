@@ -269,6 +269,7 @@ fn report(distribution_version: &Value) -> String {
             "isolated": true,
             "network_bind_denied": true,
             "distribution_version": distribution_version,
+            "distribution_inconsistency": null,
             "import_error": null,
             "ready": true,
         })

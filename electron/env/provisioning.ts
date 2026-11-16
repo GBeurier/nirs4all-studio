@@ -7,14 +7,16 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { requiredInstallSpecs } from "./catalogue";
 import { loadPythonRuntimeConfig } from "./external-config";
 import { rmWithRetry } from "./process-utils";
-import { downloadFile, extractTarball, removeQuarantine } from "./python-runtime-installer";
+import { downloadFile, extractTarball, removeQuarantine, verifySha256 } from "./python-runtime-installer";
 import { getStandalonePythonPath, getVenvPythonPath } from "./runtime-paths";
 import { createVenv, installRecommendedPackages, installRequiredPackages, resolveUvPayload } from "./uv";
 
-const { getArchiveFilename, getDownloadUrl } = loadPythonRuntimeConfig<{
+const { getArchiveFilename, getArchiveSha256, getDownloadUrl } = loadPythonRuntimeConfig<{
   getArchiveFilename(platform: string, arch: string): string;
+  getArchiveSha256(platform: string, arch: string): string;
   getDownloadUrl(platform: string, arch: string): string;
 }>();
 
@@ -63,6 +65,7 @@ async function obtainPythonArchive(baseDir: string, progress: CreateProgress): P
     await downloadFile(getDownloadUrl(process.platform, process.arch), downloaded, (percent) => {
       progress(Math.round(percent * 0.3), `Downloading the Python runtime… ${percent}%`);
     });
+    await verifySha256(downloaded, getArchiveSha256(process.platform, process.arch));
   }
   return { path: downloaded, downloaded: true };
 }
@@ -101,7 +104,7 @@ export async function createStudioEnvironment(
     await installRequiredPackages(pythonPath);
     if (recommendedPackages.length > 0) {
       progress(70, "Installing the selected packages…");
-      await installRecommendedPackages(pythonPath, recommendedPackages);
+      await installRecommendedPackages(pythonPath, recommendedPackages, requiredInstallSpecs());
     }
     if (archive.downloaded) fs.rmSync(archive.path, { force: true });
     progress(100, "The environment is ready.");

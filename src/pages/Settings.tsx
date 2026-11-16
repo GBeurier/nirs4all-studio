@@ -17,6 +17,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { motion } from "@/lib/motion";
 import { clearClientStorageArea } from "@/lib/clientStorage";
 import { useTheme } from "@/context/useTheme";
@@ -174,18 +175,24 @@ export default function Settings() {
   const handleRestartBackend = async () => {
     setIsRestarting(true);
     try {
-      const electronApi = (window as unknown as { electronApi?: { restartBackend?: () => Promise<{ success: boolean; port?: number }> } }).electronApi;
-      if (electronApi?.restartBackend) {
-        const result = await electronApi.restartBackend();
+      if (window.electronApi?.restartBackend) {
+        const result = await window.electronApi.restartBackend();
         if (result.success) {
           resetBackendUrl();
           dispatchOperatorAvailabilityInvalidated();
           window.dispatchEvent(new CustomEvent("backend-restarted"));
+        } else {
+          // For instance refused while a Python environment action is running.
+          toast.error(t("settings.advanced.backend.restartFailed"), { description: result.error });
         }
       } else {
         await requestRestart();
         dispatchOperatorAvailabilityInvalidated();
       }
+    } catch (error) {
+      toast.error(t("settings.advanced.backend.restartFailed"), {
+        description: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       setIsRestarting(false);
     }

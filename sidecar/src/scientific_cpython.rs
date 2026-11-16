@@ -123,9 +123,13 @@ sys.path.insert(0,sys.argv[2])
 
 /// Admission probe: interpreter facts, the nirs4all version from distribution
 /// metadata, and whether nirs4all and its Studio callables import.
+///
+/// The metadata must describe the code that runs: exactly one nirs4all
+/// distribution is visible on `sys.path`, and the imported package lies under
+/// that distribution's location unless it is an editable install.
 const PREFLIGHT_SCRIPT: &str = concat!(
     host_bootstrap!(),
-    r#"import socket
+    r#"import os,socket
 probe=socket.socket()
 bind_denied=False
 try:
@@ -134,20 +138,33 @@ except RuntimeError:
     bind_denied=True
 finally:
     probe.close()
+def canonical(path):
+    return os.path.normcase(os.path.realpath(str(path)))
 distribution_version=None
+distribution_inconsistency=None
 import_error=None
 ready=False
-try:
-    distribution_version=importlib.metadata.version("nirs4all")
-except importlib.metadata.PackageNotFoundError:
-    pass
-if distribution_version is not None:
+distributions=list(importlib.metadata.distributions(name="nirs4all",path=list(dict.fromkeys(canonical(entry) for entry in sys.path))))
+if len(distributions)>1:
+    distribution_inconsistency="%d nirs4all distributions are installed: %s"%(len(distributions),", ".join(sorted("%s in %s"%(found.version,found.locate_file("")) for found in distributions)))
+elif distributions:
+    distribution=distributions[0]
+    distribution_version=distribution.version
     try:
         import nirs4all
-        ready=all(callable(getattr(nirs4all,name,None)) for name in ("studio_scientific_job_v1","studio_scientific_job_v2"))
     except Exception as error:
-        import_error=(type(error).__name__+": "+bounded_library_error_message(error))[:500]
-print(json.dumps({"schema":"nirs4all.studio-scientific-cpython-host.v2","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution_version":distribution_version,"import_error":import_error,"ready":ready},separators=(",",":"),sort_keys=True))
+        import_error=type(error).__name__+": "+bounded_library_error_message(error)
+    else:
+        try:
+            editable=bool(json.loads(distribution.read_text("direct_url.json") or "{}").get("dir_info",{}).get("editable"))
+        except Exception:
+            editable=False
+        module_file=getattr(nirs4all,"__file__",None)
+        if editable or (module_file and canonical(module_file).startswith(canonical(distribution.locate_file("")).rstrip(os.sep)+os.sep)):
+            ready=all(callable(getattr(nirs4all,name,None)) for name in ("studio_scientific_job_v1","studio_scientific_job_v2"))
+        else:
+            distribution_inconsistency="nirs4all is imported from %s, outside its %s distribution in %s"%(module_file,distribution_version,distribution.locate_file(""))
+print(json.dumps({"schema":"nirs4all.studio-scientific-cpython-host.v2","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution_version":distribution_version,"distribution_inconsistency":distribution_inconsistency and distribution_inconsistency[:500],"import_error":import_error and import_error[:500],"ready":ready},separators=(",",":"),sort_keys=True))
 "#
 );
 
@@ -287,6 +304,7 @@ pub enum ScientificCpythonUnavailable {
     IsolationDisabled,
     NetworkGuardFailed,
     DistributionMissing,
+    DistributionInconsistent,
     DistributionVersionUnsupported,
     LibraryImportFailed,
     CallableUnavailable,
@@ -316,6 +334,7 @@ impl ScientificCpythonUnavailable {
             Self::IsolationDisabled => "python_host_isolation_disabled",
             Self::NetworkGuardFailed => "python_host_network_guard_failed",
             Self::DistributionMissing => "scientific_distribution_missing",
+            Self::DistributionInconsistent => "scientific_distribution_inconsistent",
             Self::DistributionVersionUnsupported => "scientific_distribution_version_unsupported",
             Self::LibraryImportFailed => "scientific_library_import_failed",
             Self::CallableUnavailable => "scientific_callable_unavailable",
@@ -866,6 +885,14 @@ fn admitted_distribution(
     }
     if response["network_bind_denied"] != true {
         return Err(ScientificCpythonUnavailable::NetworkGuardFailed);
+    }
+    // The metadata version is only meaningful when it describes the imported code.
+    if let Some(inconsistency) = response["distribution_inconsistency"].as_str() {
+        eprintln!(
+            "Studio scientific host refused: {}",
+            bounded_process_diagnostic(inconsistency.as_bytes())
+        );
+        return Err(ScientificCpythonUnavailable::DistributionInconsistent);
     }
     let Some(distribution_version) = response["distribution_version"].as_str() else {
         return Err(ScientificCpythonUnavailable::DistributionMissing);
@@ -2689,6 +2716,7 @@ done"#,
             "isolated": true,
             "network_bind_denied": true,
             "distribution_version": "2.3.4",
+            "distribution_inconsistency": null,
             "import_error": null,
             "ready": true,
         });
@@ -2796,6 +2824,16 @@ done"#,
                 Refusal::DistributionMissing,
             ),
             (
+                serde_json::json!({"distribution_version": null, "ready": false,
+                    "distribution_inconsistency": "2 nirs4all distributions are installed"}),
+                Refusal::DistributionInconsistent,
+            ),
+            (
+                serde_json::json!({"ready": false,
+                    "distribution_inconsistency": "nirs4all is imported from elsewhere"}),
+                Refusal::DistributionInconsistent,
+            ),
+            (
                 serde_json::json!({"distribution_version": "2.4.0"}),
                 Refusal::DistributionVersionUnsupported,
             ),
@@ -2837,6 +2875,10 @@ done"#,
         assert_eq!(
             Refusal::DistributionMissing.reason(),
             "scientific_distribution_missing"
+        );
+        assert_eq!(
+            Refusal::DistributionInconsistent.reason(),
+            "scientific_distribution_inconsistent"
         );
         assert_eq!(
             Refusal::DistributionVersionUnsupported.reason(),
@@ -2962,23 +3004,40 @@ done"#,
         assert_eq!(admitted.host.as_ref().unwrap().python, python);
         assert!(admitted.warm_workers[0].lock().unwrap().is_some());
         drop(admitted);
+
+        // An interrupted installation left the metadata of two releases: the
+        // in-range one cannot be trusted to describe the files that import.
+        let leftover = write_nirs4all_metadata(&site_packages, "0.0.1");
+        assert_eq!(
+            acquire().unavailable_reason(),
+            "scientific_distribution_inconsistent"
+        );
+        std::fs::remove_dir_all(leftover).unwrap();
         std::fs::remove_dir_all(wheel).unwrap();
         std::fs::remove_dir_all(site_packages.join("nirs4all")).unwrap();
 
-        // The same release as an editable install: the package lives in a source
-        // checkout, site-packages holds only metadata and a path file.
+        // In-range metadata whose package is imported from another directory is
+        // stale: it describes files that are not the ones that run.
         let checkout = root.path().join("checkout");
         write_nirs4all_package(&checkout, STUDIO_CALLABLES);
         let editable = write_nirs4all_metadata(&site_packages, install);
         std::fs::write(
+            site_packages.join("__editable__.nirs4all.pth"),
+            format!("{}\n", checkout.display()),
+        )
+        .unwrap();
+        assert_eq!(
+            acquire().unavailable_reason(),
+            "scientific_distribution_inconsistent"
+        );
+
+        // Unless it is an editable install of that release: the package then
+        // legitimately lives in a source checkout, site-packages holds only
+        // metadata and a path file.
+        std::fs::write(
             editable.join("direct_url.json"),
             serde_json::json!({"url": format!("file://{}", checkout.display()), "dir_info": {"editable": true}})
                 .to_string(),
-        )
-        .unwrap();
-        std::fs::write(
-            site_packages.join("__editable__.nirs4all.pth"),
-            format!("{}\n", checkout.display()),
         )
         .unwrap();
         let admitted = acquire();

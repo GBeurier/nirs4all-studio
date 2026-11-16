@@ -2,9 +2,10 @@
  * Package inventory of one Python interpreter and its evaluation against the
  * catalogue.
  *
- * The inventory is one subprocess that reads distribution metadata only: no
- * package is imported, so it is fast and cannot be broken by a package's import
- * side effects. `evaluateInventory` is pure.
+ * The inventory reads distribution metadata only: no package is imported, so
+ * it is fast and cannot be broken by a package's import side effects. It lists
+ * exactly what the sidecar's scientific worker can import. `evaluateInventory`
+ * is pure.
  */
 
 import { execFile } from "node:child_process";
@@ -33,11 +34,14 @@ export interface PythonInventory {
 }
 
 /**
- * ASCII-only JSON on stdout: isolated mode ignores PYTHONIOENCODING, and paths
- * may not be representable in the console code page on Windows.
+ * What the scientific worker sees. The sidecar starts it with `-I -S -B` and
+ * adds one directory with `site.addsitedir`: its `.pth` entries count, while
+ * the user site and the base installation behind a `--system-site-packages`
+ * environment do not. argv: [package directory].
  */
-const INVENTORY_PROBE = `import json, os, re, sys, sysconfig
+const DISTRIBUTIONS_PROBE = `import json, re, site, sys
 from importlib import metadata
+site.addsitedir(sys.argv[1])
 distributions = {}
 editable = []
 for dist in metadata.distributions():
@@ -58,15 +62,50 @@ for dist in metadata.distributions():
             editable.append(key)
     except Exception:
         pass
+print(json.dumps({"distributions": distributions, "editable": editable}))
+`;
+
+/**
+ * The interpreter itself, with its normal start-up: a virtual environment only
+ * knows its own package directory once `site` has run, so the worker's view is
+ * listed by a child started the way the sidecar starts the worker.
+ * argv: [DISTRIBUTIONS_PROBE].
+ *
+ * Writability is tested by creating a file: `os.access` is always true for a
+ * directory on Windows. The directory's modification time is put back, because
+ * it identifies the environment's content in the inventory cache.
+ *
+ * ASCII-only JSON on stdout: isolated mode ignores PYTHONIOENCODING, and paths
+ * may not be representable in the console code page on Windows.
+ */
+const INVENTORY_PROBE = `import json, os, subprocess, sys, sysconfig, tempfile
+def writable(directory):
+    try:
+        before = os.stat(directory)
+        handle, name = tempfile.mkstemp(prefix=".studio-write-test-", dir=directory)
+    except OSError:
+        return False
+    try:
+        os.close(handle)
+    finally:
+        try:
+            os.unlink(name)
+            os.utime(directory, ns=(before.st_atime_ns, before.st_mtime_ns))
+        except OSError:
+            pass
+    return True
 purelib = sysconfig.get_path("purelib")
-print(json.dumps({
+externally_managed = sys.prefix == sys.base_prefix and os.path.isfile(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED"))
+listing = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", sys.argv[1], purelib], stdout=subprocess.PIPE, timeout=40, check=True)
+inventory = json.loads(listing.stdout.decode("utf-8", "replace").strip().splitlines()[-1])
+inventory.update({
     "pythonVersion": "%d.%d.%d" % sys.version_info[:3],
-    "distributions": distributions,
-    "editable": editable,
-    "externallyManaged": sys.prefix == sys.base_prefix and os.path.isfile(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")),
+    "externallyManaged": externally_managed,
     "purelib": purelib,
-    "purelibWritable": os.access(purelib, os.W_OK),
-}))
+    # Studio never installs into an operating-system installation: do not touch it.
+    "purelibWritable": not externally_managed and writable(purelib),
+})
+print(json.dumps(inventory))
 `;
 
 /** A cold interpreter (antivirus scan after an update) gets one longer second attempt. */
@@ -88,7 +127,7 @@ function runInventoryProbe(pythonPath: string, timeout: number): Promise<{ stdou
   return new Promise((resolve) => {
     execFile(
       pythonPath,
-      ["-I", "-B", "-c", INVENTORY_PROBE],
+      ["-I", "-B", "-c", INVENTORY_PROBE, DISTRIBUTIONS_PROBE],
       { timeout, windowsHide: process.platform === "win32", maxBuffer: 16 * 1024 * 1024 },
       (error, stdout) => resolve(error ? { timedOut: error.killed === true, message: error.message } : { stdout }),
     );
@@ -177,8 +216,18 @@ export function evaluateInventory(pythonPath: string, inventory: PythonInventory
   };
 }
 
-/** Normalised names of the required packages that are editable installs. */
-export function editableRequiredPackages(inventory: PythonInventory): Set<string> {
-  const required = new Set(REQUIRED_PACKAGES.map((spec) => normalizePackageName(spec.name)));
-  return new Set(inventory.editable.filter((name) => required.has(name)));
+/** Required packages that are editable (development) installs, by catalogue name. */
+export function editableRequiredPackages(inventory: PythonInventory): string[] {
+  const editable = new Set(inventory.editable);
+  return REQUIRED_PACKAGES.map((spec) => spec.name).filter((name) => editable.has(normalizePackageName(name)));
+}
+
+/** `name==installed version` of the required packages present and not editable; see `installRecommendedPackages`. */
+export function installedRequiredPins(inventory: PythonInventory): string[] {
+  const editable = new Set(inventory.editable);
+  return REQUIRED_PACKAGES.flatMap((spec) => {
+    const name = normalizePackageName(spec.name);
+    const installed = inventory.distributions[name];
+    return installed && !editable.has(name) ? [`${spec.name}==${installed}`] : [];
+  });
 }

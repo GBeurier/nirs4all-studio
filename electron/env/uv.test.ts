@@ -113,50 +113,106 @@ describe("uv arguments", () => {
 
 describe("uv installations", () => {
   const uvEnvironment = { UV_LINK_MODE: "copy", UV_NATIVE_TLS: "1" };
+  const PINS = ["nirs4all==1.4.18", "nirs4all-io==0.3.1"];
+  /** A failed command as `runCommand` reports it: the command line in the message, the tool's output aside. */
+  const commandFailure = (output: string) => Object.assign(new Error(`Command "uv pip install --python ${PYTHON}" failed (code 1): ${output.slice(0, 40)}`), { output });
 
   it("installs the whole required cohort in one resolver call with Studio's uv settings", async () => {
     process.env.NIRS4ALL_UV = "/opt/tools/uv";
-    await installRequiredPackages(PYTHON, new Set(["nirs4all"]));
+    await installRequiredPackages(PYTHON);
     expect(runCommand).toHaveBeenCalledTimes(1);
     expect(runCommand).toHaveBeenCalledWith(
       "/opt/tools/uv",
-      ["pip", "install", "--python", PYTHON, ...REQUIRED_SPECS.slice(1)],
+      ["pip", "install", "--python", PYTHON, ...REQUIRED_SPECS],
       expect.objectContaining({ env: uvEnvironment }),
     );
     expect(vi.mocked(runCommand).mock.calls[0][2]?.timeoutMs).toBeGreaterThan(0);
   });
 
-  it("installs required packages offline when the installer carries the offline payload", async () => {
+  it("installs required packages from the offline payload when the installer carries one", async () => {
     const offline = shipped(resources, "backend", "offline");
     await installRequiredPackages(PYTHON);
-    expect(vi.mocked(runCommand).mock.calls[0][1]).toEqual([
-      "pip", "install", "--python", PYTHON, "--offline", "--no-index", "--find-links", path.join(offline, "wheels"), ...REQUIRED_SPECS,
+    expect(vi.mocked(runCommand).mock.calls.map((call) => call[1])).toEqual([
+      ["pip", "install", "--python", PYTHON, "--offline", "--no-index", "--find-links", path.join(offline, "wheels"), ...REQUIRED_SPECS],
     ]);
   });
 
-  it("installs recommended packages at their recommended versions", async () => {
-    await installRecommendedPackages(PYTHON, ["torch", "xgboost"]);
+  it("falls back to the package index when the offline payload cannot satisfy the required packages", async () => {
+    const offline = shipped(resources, "backend", "offline");
+    vi.mocked(runCommand).mockRejectedValueOnce(commandFailure("  × No solution found when resolving dependencies:\n  ╰─▶ Because nirs4all-methods was not found in the provided package locations"));
+
+    await installRequiredPackages(PYTHON);
+
+    expect(vi.mocked(runCommand).mock.calls.map((call) => call[1])).toEqual([
+      ["pip", "install", "--python", PYTHON, "--offline", "--no-index", "--find-links", path.join(offline, "wheels"), ...REQUIRED_SPECS],
+      ["pip", "install", "--python", PYTHON, "--find-links", path.join(offline, "wheels"), ...REQUIRED_SPECS],
+    ]);
+  });
+
+  it("reports both failures when neither the offline payload nor the index can install", async () => {
+    shipped(resources, "backend", "offline");
+    vi.mocked(runCommand)
+      .mockRejectedValueOnce(commandFailure("  × No solution found: nirs4all-methods was not found in the provided package locations"))
+      .mockRejectedValue(commandFailure("error: Failed to fetch: `https://pypi.org/simple/nirs4all/`\n  Caused by: dns error"));
+
+    await expect(installRequiredPackages(PYTHON)).rejects.toThrow(
+      "error: Failed to fetch: `https://pypi.org/simple/nirs4all/` Caused by: dns error (Offline package set: No solution found: nirs4all-methods was not found in the provided package locations)",
+    );
+  });
+
+  it("resolves recommended packages together with the installed required packages", async () => {
+    await installRecommendedPackages(PYTHON, ["torch", "xgboost"], PINS);
     expect(runCommand).toHaveBeenCalledTimes(1);
     expect(vi.mocked(runCommand).mock.calls[0][1]).toEqual([
-      "pip", "install", "--python", PYTHON, "--torch-backend", "auto", "torch==2.6.0", "xgboost==3.0.0",
+      "pip", "install", "--python", PYTHON, "--torch-backend", "auto", "torch==2.6.0", "xgboost==3.0.0", ...PINS,
     ]);
     vi.mocked(runCommand).mockClear();
-    await installRecommendedPackages(PYTHON, []);
+    await installRecommendedPackages(PYTHON, [], PINS);
     expect(runCommand).not.toHaveBeenCalled();
   });
 
-  it("tries the offline payload first and needs the index only for packages outside it", async () => {
+  it("fails with uv's own explanation when a recommended package conflicts with a required one", async () => {
+    vi.mocked(runCommand).mockRejectedValue(commandFailure([
+      "Using Python 3.11.13 environment at: /envs/studio",
+      "  × No solution found when resolving dependencies:",
+      "  ╰─▶ Because autogluon==1.2.0 depends on nirs4all-io<0.3 and you require nirs4all-io==0.3.1,",
+      "      we can conclude that your requirements are unsatisfiable.",
+    ].join("\n")));
+
+    const failure = await installRecommendedPackages(PYTHON, ["autogluon"], PINS).catch((error: Error) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(
+      "No solution found when resolving dependencies: Because autogluon==1.2.0 depends on nirs4all-io<0.3 and you require nirs4all-io==0.3.1, we can conclude that your requirements are unsatisfiable.",
+    );
+  });
+
+  it("reports a conflict once when the offline payload and the index give the same answer", async () => {
+    shipped(resources, "backend", "offline");
+    vi.mocked(runCommand).mockRejectedValue(commandFailure("  × No solution found when resolving dependencies:\n  ╰─▶ Because you require numpy==1.21.0 and nirs4all==1.4.16 depends on numpy>=2.0.0"));
+
+    await expect(installRecommendedPackages(PYTHON, ["xgboost"], PINS)).rejects.toThrow(
+      /^No solution found when resolving dependencies: Because you require numpy==1\.21\.0 and nirs4all==1\.4\.16 depends on numpy>=2\.0\.0$/,
+    );
+  });
+
+  it("keeps the original error when uv could not be started", async () => {
+    vi.mocked(runCommand).mockRejectedValue(new Error('Failed to start command "uv pip install": spawn uv ENOENT'));
+    await expect(installRequiredPackages(PYTHON)).rejects.toThrow("spawn uv ENOENT");
+  });
+
+  it("tries the offline payload first for recommended packages and needs the index only for packages outside it", async () => {
     const offline = shipped(resources, "backend", "offline");
-    await installRecommendedPackages(PYTHON, ["xgboost"]);
+    await installRecommendedPackages(PYTHON, ["xgboost"], []);
     expect(runCommand).toHaveBeenCalledTimes(1);
     expect(vi.mocked(runCommand).mock.calls[0][1]).toContain("--no-index");
 
     vi.mocked(runCommand).mockClear();
     vi.mocked(runCommand).mockRejectedValueOnce(new Error("no matching distribution"));
-    await installRecommendedPackages(PYTHON, ["catboost"]);
+    await installRecommendedPackages(PYTHON, ["catboost"], PINS);
     expect(vi.mocked(runCommand).mock.calls.map((call) => call[1])).toEqual([
-      ["pip", "install", "--python", PYTHON, "--offline", "--no-index", "--find-links", path.join(offline, "wheels"), "catboost==1.2.7"],
-      ["pip", "install", "--python", PYTHON, "--find-links", path.join(offline, "wheels"), "catboost==1.2.7"],
+      ["pip", "install", "--python", PYTHON, "--offline", "--no-index", "--find-links", path.join(offline, "wheels"), "catboost==1.2.7", ...PINS],
+      ["pip", "install", "--python", PYTHON, "--find-links", path.join(offline, "wheels"), "catboost==1.2.7", ...PINS],
     ]);
   });
 

@@ -16,7 +16,7 @@ import type {
 import { EnvManager } from "./env-manager";
 import { loadNetworkTrust } from "./env/external-config";
 import { getInstallLog, subscribeInstallLog } from "./env/install-log";
-import { samePythonPath } from "./env/python-discovery";
+import { confirmScientificHost, describeActiveRuns as describeSidecarRuns } from "./env/scientific-host";
 import { resolveStudioAdaptersDir } from "./env/studio-adapters";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { ensureDesktopWorkspace } from "./default-workspace";
@@ -136,6 +136,8 @@ if (SentryMain) console.log("Sentry crash reporting enabled (main process)");
 const envManager = new EnvManager({
   userDataDir: app.getPath("userData"),
   restartHost: restartScientificHost,
+  stopHost: stopScientificHost,
+  describeActiveRuns,
 });
 const nativeSidecarManager = new NativeSidecarManager();
 let nativePythonPluginHostStale = false;
@@ -199,52 +201,31 @@ function getNativeSidecarInfo() {
     : info;
 }
 
-/** The sidecar's cold acquisition budget (180 s) plus a margin. */
-const SCIENTIFIC_ACQUISITION_WAIT_MS = 200_000;
-
-/**
- * Rust acquires the scientific host after it reports ready; readiness says
- * `ml_loading` until that acquisition ends. Wait for its outcome.
- */
-async function waitForScientificAcquisition(url: string) {
-  const deadline = Date.now() + SCIENTIFIC_ACQUISITION_WAIT_MS;
-  for (;;) {
-    const response = await nativeSidecarManager.authenticatedFetch(`${url}/api/system/readiness`);
-    const readiness = await response.json() as { ml_ready?: boolean; ml_loading?: boolean; ml_error?: string };
-    if (!response.ok || readiness.ml_loading !== true || Date.now() >= deadline) return { response, readiness };
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
+/** Confirm that the running sidecar loaded the scientific library from `expectedPython`. */
+async function confirmHostRuns(expectedPython: string): Promise<void> {
+  const { url } = nativeSidecarManager.getInfo();
+  if (!url) throw new Error("The analysis backend could not be started.");
+  await confirmScientificHost(url, expectedPython, nativeSidecarManager.authenticatedFetch);
 }
 
-/** Plain words for the sidecar's host acquisition reason codes (`ml_error`); others are shown as codes. */
-const HOST_FAILURE_REASONS: Record<string, string> = {
-  studio_adapters_unavailable: "Studio's own Python adapters are missing from this installation",
-  scientific_distribution_missing: "nirs4all is not installed in it",
-  scientific_distribution_version_unsupported: "its nirs4all version is outside the range Studio requires",
-  scientific_library_import_failed: "nirs4all is installed but could not be imported",
-  python_host_windows_system_root_unavailable: "Windows did not give Python its system directory (SystemRoot)",
-};
+/**
+ * Stop a sidecar that runs a Python environment, before packages are installed
+ * into that environment. A sidecar without Python holds none of its files.
+ */
+async function stopScientificHost(): Promise<boolean> {
+  if (!nativeSidecarManager.getInfo().pythonPluginHostConfigured || nativeSidecarManager.getInfo().status !== "running") return false;
+  sidecarGeneration += 1;
+  nativePythonPluginHostStale = true;
+  await nativeSidecarManager.stop();
+  return true;
+}
 
-/** Confirm that the running sidecar loaded the scientific library from `expectedPython`. */
-async function confirmScientificHost(expectedPython: string): Promise<void> {
+/** The runs a restart of the sidecar would interrupt, or null. */
+async function describeActiveRuns(): Promise<string | null> {
   const info = nativeSidecarManager.getInfo();
-  if (!info.url) throw new Error("The analysis backend could not be started.");
-  const [{ response: readinessResponse, readiness }, coherenceResponse] = await Promise.all([
-    waitForScientificAcquisition(info.url),
-    nativeSidecarManager.authenticatedFetch(`${info.url}/api/system/env-coherence`),
-  ]);
-  const coherence = await coherenceResponse.json() as { coherent?: boolean; running_python?: string };
-  if (!readinessResponse.ok || readiness.ml_ready !== true) {
-    const code = readiness.ml_error;
-    const reason = code ? `${HOST_FAILURE_REASONS[code] ?? "the sidecar reported"} (${code})` : "no reason was reported";
-    throw new Error(`Studio could not start nirs4all in this Python environment: ${reason}.`);
-  }
-  if (!coherenceResponse.ok || coherence.coherent !== true || !coherence.running_python) {
-    throw new Error("The analysis backend did not activate the selected Python environment.");
-  }
-  if (!samePythonPath(expectedPython, coherence.running_python)) {
-    throw new Error("The analysis backend is using a different Python interpreter than the one you selected.");
-  }
+  return info.status === "running" && info.url
+    ? describeSidecarRuns(info.url, nativeSidecarManager.authenticatedFetch)
+    : null;
 }
 
 /**
@@ -258,7 +239,7 @@ async function restartScientificHost(): Promise<void> {
   await nativeSidecarManager.stop();
   await startNativeSidecar();
   const host = envManager.getHost();
-  if (host) await confirmScientificHost(host.pythonPath);
+  if (host) await confirmHostRuns(host.pythonPath);
 }
 
 let mainWindow: BrowserWindowInstance | null = null;
@@ -588,23 +569,13 @@ ipcMain.handle("control:getInfo", () => {
   };
 });
 
-async function restartNativeBackend() {
-  try {
-    sidecarGeneration += 1;
-    await nativeSidecarManager.stop();
-    await startNativeSidecar();
-    const info = getNativeSidecarInfo();
-    return { success: true, port: info.port ?? undefined };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-ipcMain.handle("backend:restart", (_event, _options) =>
-  restartNativeBackend());
+ipcMain.handle("backend:restart", async () => {
+  const result = await envManager.restartBackend();
+  const { port } = getNativeSidecarInfo();
+  return result.success
+    ? { success: true, port: port ?? undefined }
+    : { success: false, error: result.message };
+});
 
 // The install log is shared by every environment operation.
 ipcMain.handle("env:getInstallLog", () => getInstallLog());
@@ -699,7 +670,7 @@ async function startControlPlane(): Promise<void> {
   const host = envManager.getHost();
   if (host) {
     const generation = sidecarGeneration;
-    void confirmScientificHost(host.pythonPath).catch((error) => {
+    void confirmHostRuns(host.pythonPath).catch((error) => {
       // A sidecar restarted meanwhile is confirmed by the operation that restarted it.
       if (generation !== sidecarGeneration) return;
       envManager.reportHostFailure(error instanceof Error ? error.message : String(error));

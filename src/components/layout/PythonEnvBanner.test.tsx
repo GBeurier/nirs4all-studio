@@ -44,6 +44,7 @@ describe("Python environment banner", () => {
 
   it.each<[PythonEnvProblemCode, string]>([
     ["interpreter_missing", "The selected Python environment was not found"],
+    ["interpreter_unusable", "Studio could not use the selected Python interpreter (Python 3.11 or newer is required)"],
     ["required_not_installable", "Studio cannot install the required packages in this environment"],
     ["required_update_failed", "The required packages could not be installed"],
     ["host_failed", "The analysis engine did not start"],
@@ -59,7 +60,7 @@ describe("Python environment banner", () => {
     const retry = vi.fn();
     run.mockImplementation(async (action) => {
       await action({ retry } as never);
-      return { success: true, state: envState() };
+      return { success: true, hostRestarted: true, state: envState() };
     });
     await render(problem("host_failed", "The host exited."));
     await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry")!.click());

@@ -26,11 +26,8 @@ describe("package catalogue", () => {
     expect(REQUIRED_PACKAGES[0].install).toBe(catalogueFile.nirs4all);
   });
 
-  it("installs the required cohort at exact versions and leaves excluded packages out", () => {
+  it("installs the required cohort at exact versions", () => {
     expect(requiredInstallSpecs()).toEqual(REQUIRED_PACKAGES.map((spec) => `${spec.name}==${spec.install}`));
-    expect(requiredInstallSpecs(new Set(["nirs4all", "dag-ml"])).map((spec) => spec.split("==")[0])).toEqual([
-      "nirs4all-core", "dag-ml-data", "nirs4all-io", "nirs4all-methods", "nirs4all-formats",
-    ]);
   });
 
   it("describes every recommended package with a recommended version that meets its minimum", () => {

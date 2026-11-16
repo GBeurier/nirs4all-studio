@@ -34,6 +34,10 @@ let settingsPath: string;
 /** What each interpreter's package listing currently returns. */
 let inventories: Map<string, PythonInventory>;
 let restartHost: ReturnType<typeof vi.fn<() => Promise<void>>>;
+let stopHost: ReturnType<typeof vi.fn<() => Promise<boolean>>>;
+let describeActiveRuns: ReturnType<typeof vi.fn<() => Promise<string | null>>>;
+/** Order of the calls that touch the sidecar or the environment. */
+let calls: string[];
 
 /** Create an interpreter file and its package directory, and register its inventory. */
 function environment(name: string, overrides: Partial<PythonInventory> = {}): string {
@@ -68,7 +72,7 @@ function persistedSelection(): unknown {
 }
 
 function manager(): EnvManager {
-  return new EnvManager({ userDataDir, restartHost });
+  return new EnvManager({ userDataDir, restartHost, stopHost, describeActiveRuns });
 }
 
 /** A manager whose startup check already ran on `pythonPath`. */
@@ -77,6 +81,8 @@ async function startedOn(pythonPath: string): Promise<EnvManager> {
   const env = manager();
   await env.startupCheck();
   vi.mocked(takeInventory).mockClear();
+  stopHost.mockClear();
+  calls.length = 0;
   return env;
 }
 
@@ -85,16 +91,21 @@ beforeEach(() => {
   userDataDir = path.join(root, "user-data");
   settingsPath = path.join(userDataDir, "env-settings.json");
   inventories = new Map();
-  restartHost = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+  calls = [];
+  restartHost = vi.fn<() => Promise<void>>(async () => { calls.push("restart"); });
+  // As in the main process: a sidecar that runs a Python environment is stopped.
+  stopHost = vi.fn<() => Promise<boolean>>(async () => { calls.push("stop"); return true; });
+  describeActiveRuns = vi.fn<() => Promise<string | null>>().mockResolvedValue(null);
   vi.mocked(takeInventory).mockImplementation(async (pythonPath) => {
     const inventory = inventories.get(pythonPath);
     if (!inventory) throw new Error("This file could not be run as a Python 3.11+ interpreter: spawn ENOEXEC");
     return inventory;
   });
   vi.mocked(installRequiredPackages).mockImplementation(async (pythonPath) => {
+    calls.push("install required");
     setDistributions(pythonPath, { ...inventories.get(pythonPath)!.distributions, ...COHORT });
   });
-  vi.mocked(installRecommendedPackages).mockResolvedValue(undefined);
+  vi.mocked(installRecommendedPackages).mockImplementation(async () => { calls.push("install recommended"); });
   vi.spyOn(console, "log").mockImplementation(() => undefined);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -192,7 +203,7 @@ describe("startup check", () => {
     const state = await env.startupCheck();
 
     expect(installRequiredPackages).toHaveBeenCalledTimes(1);
-    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath, new Set());
+    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath);
     expect(states.some((item) => item.phase === "busy" && item.activity?.kind === "updating_required" && item.activity.percent === null)).toBe(true);
     expect(state).toMatchObject({ phase: "ready", selected: { usable: true } });
     expect(state.activity).toBeUndefined();
@@ -262,13 +273,32 @@ describe("startup check", () => {
     expect(installRequiredPackages).not.toHaveBeenCalled();
   });
 
-  it("uses an editable install within range and leaves it out of a repair of the other packages", async () => {
+  it("installs nothing when a required package is missing next to an editable one, even in range", async () => {
+    // Installing nirs4all-core could replace the editable nirs4all as its dependency.
     const { "nirs4all-core": _missing, ...withoutCore } = COHORT;
-    const pythonPath = environment("dev", { distributions: { ...withoutCore, nirs4all: "1.4.17" }, editable: ["nirs4all"] });
+    const pythonPath = environment("dev", { distributions: { ...withoutCore, nirs4all: "1.4.17", "dag-ml": "0.4.1" }, editable: ["nirs4all", "dag-ml", "requests"] });
+    select(pythonPath);
+    const env = manager();
+
+    const state = await env.startupCheck();
+
+    expect(state).toMatchObject({ phase: "needs_attention", problem: { code: "required_not_installable" } });
+    expect(state.problem?.message).toContain("nirs4all, dag-ml are installed in development (editable) mode");
+    expect(state.problem?.message).toContain("nirs4all-core (missing)");
+    expect(state.problem?.message).not.toContain("requests");
+    expect(installRequiredPackages).not.toHaveBeenCalled();
+    // The same rule when the user switches to such an environment.
+    const applied = await (await startedOn(environment("other"))).apply({ pythonPath, packages: [] });
+    expect(applied).toMatchObject({ success: false, message: expect.stringContaining("editable"), hostRestarted: false });
+    expect(installRequiredPackages).not.toHaveBeenCalled();
+  });
+
+  it("uses editable installs that are all within range", async () => {
+    const pythonPath = environment("dev", { distributions: { ...COHORT, nirs4all: "1.4.17" }, editable: ["nirs4all"] });
     select(pythonPath);
 
     expect((await manager().startupCheck()).phase).toBe("ready");
-    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath, new Set(["nirs4all"]));
+    expect(installRequiredPackages).not.toHaveBeenCalled();
   });
 
   it("needs attention when the selected file is not a usable interpreter", async () => {
@@ -279,8 +309,23 @@ describe("startup check", () => {
     expect(await manager().startupCheck()).toMatchObject({
       phase: "needs_attention",
       selected: null,
-      problem: { code: "interpreter_missing", message: expect.stringContaining("Python 3.11+") },
+      problem: { code: "interpreter_unusable", message: expect.stringContaining("Python 3.11+") },
     });
+  });
+
+  it("needs attention when the selected interpreter is older than Python 3.11 or does not answer", async () => {
+    const pythonPath = environment("old");
+    select(pythonPath);
+    vi.mocked(takeInventory).mockRejectedValueOnce(new Error("Python 3.11 or later is required; this interpreter is Python 3.10.12."));
+    const env = manager();
+
+    expect(await env.startupCheck()).toMatchObject({
+      phase: "needs_attention",
+      selectedPythonPath: pythonPath,
+      selected: null,
+      problem: { code: "interpreter_unusable", message: expect.stringContaining("3.10.12") },
+    });
+    expect(env.getHost()).toBeNull();
   });
 });
 
@@ -296,8 +341,13 @@ describe("switching environment", () => {
 
     expect(result).toMatchObject({ success: true, state: { phase: "ready", selectedPythonPath: target, selected: { usable: true } } });
     expect(result.message).toBeUndefined();
-    expect(installRequiredPackages).toHaveBeenCalledWith(target, new Set());
-    expect(installRecommendedPackages).toHaveBeenCalledWith(target, ["torch", "xgboost"]);
+    expect(installRequiredPackages).toHaveBeenCalledWith(target);
+    // The recommended packages are resolved together with the required cohort just installed.
+    expect(installRecommendedPackages).toHaveBeenCalledWith(target, ["torch", "xgboost"], REQUIRED_PACKAGES.map((spec) => `${spec.name}==${spec.install}`));
+    // The running sidecar uses another environment: it is only restarted, on the new one.
+    expect(calls).toEqual(["install required", "install recommended"]);
+    expect(stopHost).not.toHaveBeenCalled();
+    expect(result.hostRestarted).toBe(true);
     expect(hostDuringRestart).toEqual([target]);
     expect(persistedSelection()).toEqual({ pythonPath: target });
     expect(clearDetectionCache).toHaveBeenCalled();
@@ -456,60 +506,88 @@ describe("creating an environment", () => {
 });
 
 describe("installing recommended packages", () => {
-  it("installs into the selected environment, refreshes its report and restarts the sidecar", async () => {
+  it("stops the sidecar, installs into the selected environment, refreshes its report and restarts", async () => {
     const pythonPath = environment("work");
     const env = await startedOn(pythonPath);
     vi.mocked(installRecommendedPackages).mockImplementationOnce(async () => {
+      calls.push("install recommended");
       setDistributions(pythonPath, { ...COHORT, torch: "2.6.0" });
     });
 
     const result = await env.installPackages(["torch"]);
 
-    expect(installRecommendedPackages).toHaveBeenCalledWith(pythonPath, ["torch"]);
-    expect(result.success).toBe(true);
+    // The sidecar and its warm workers hold the environment's files until they are stopped.
+    expect(calls).toEqual(["stop", "install recommended", "restart"]);
+    expect(result).toMatchObject({ success: true, hostRestarted: true });
     expect(result.state.selected?.recommended.find((item) => item.name === "torch")).toMatchObject({ installedVersion: "2.6.0", status: "ok" });
-    expect(restartHost).toHaveBeenCalledTimes(1);
   });
 
-  it("repairs required packages that an installation moved out of range", async () => {
+  it("pins the required packages at the versions really installed, leaving editable ones out", async () => {
     const pythonPath = environment("work");
     const env = await startedOn(pythonPath);
-    vi.mocked(installRecommendedPackages).mockImplementationOnce(async () => {
-      setDistributions(pythonPath, { ...COHORT, "nirs4all-methods": "2.0.0" });
+    // Changed outside Studio since the last check.
+    inventories.set(pythonPath, { ...inventories.get(pythonPath)!, distributions: { ...COHORT, nirs4all: "1.4.18" }, editable: ["dag-ml"] });
+
+    await env.installPackages(["xgboost"]);
+
+    expect(installRecommendedPackages).toHaveBeenCalledWith(pythonPath, ["xgboost"], [
+      "nirs4all==1.4.18", "nirs4all-core==0.5.0", "dag-ml-data==0.2.16", "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15", "nirs4all-formats==0.2.16",
+    ]);
+  });
+
+  it("keeps a host failure after a successful installation instead of reporting the environment ready", async () => {
+    const pythonPath = environment("work");
+    const env = await startedOn(pythonPath);
+    restartHost.mockRejectedValueOnce(new Error("Studio could not start nirs4all in this Python environment: nirs4all is installed but could not be imported (scientific_library_import_failed)."));
+
+    const result = await env.installPackages(["torch"]);
+
+    expect(result).toMatchObject({
+      success: false,
+      hostRestarted: true,
+      message: expect.stringContaining("scientific_library_import_failed"),
+      state: { phase: "needs_attention", selected: { usable: true }, problem: { code: "host_failed" } },
     });
-
-    const result = await env.installPackages(["autogluon"]);
-
-    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath, new Set());
-    expect(result).toMatchObject({ success: true, state: { phase: "ready" } });
+    // One restart attempt: the failure is not papered over by a second check.
+    expect(restartHost).toHaveBeenCalledTimes(1);
+    expect(env.getHost()).toBeNull();
   });
 
-  it("leaves the sidecar alone when the installation fails", async () => {
-    const env = await startedOn(environment("work"));
-    vi.mocked(installRecommendedPackages).mockRejectedValueOnce(new Error("No matching distribution"));
-
-    expect(await env.installPackages(["catboost"])).toMatchObject({ success: false, message: "No matching distribution", state: { phase: "ready" } });
-    expect(restartHost).not.toHaveBeenCalled();
-  });
-
-  it("restarts the sidecar after a failed installation that changed a required package", async () => {
+  it("starts the sidecar again on the environment as it is after a failed installation", async () => {
     const pythonPath = environment("work");
     const env = await startedOn(pythonPath);
     // The installation replaced nirs4all with another in-range version, then failed.
     vi.mocked(installRecommendedPackages).mockImplementationOnce(async () => {
+      calls.push("install recommended");
       setDistributions(pythonPath, { ...COHORT, nirs4all: "1.4.18" });
       throw new Error("No space left on device");
     });
 
     const result = await env.installPackages(["torch"]);
 
-    expect(result).toMatchObject({ success: false, message: "No space left on device", state: { phase: "ready" } });
+    expect(calls).toEqual(["stop", "install recommended", "restart"]);
+    expect(result).toMatchObject({ success: false, message: "No space left on device", hostRestarted: true, state: { phase: "ready" } });
     expect(result.state.selected?.required[0].installedVersion).toBe("1.4.18");
-    // Its workers would refuse the nirs4all version the running sidecar did not admit.
+  });
+
+  it("repairs required packages when a failed installation left them out of range", async () => {
+    const pythonPath = environment("work");
+    const env = await startedOn(pythonPath);
+    vi.mocked(installRecommendedPackages).mockImplementationOnce(async () => {
+      setDistributions(pythonPath, { ...COHORT, "nirs4all-methods": "2.0.0" });
+      throw new Error("interrupted");
+    });
+
+    const result = await env.installPackages(["autogluon"]);
+
+    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath);
+    expect(result).toMatchObject({ success: false, message: "interrupted", hostRestarted: true, state: { phase: "ready" } });
+    // Stopped once for the whole operation.
+    expect(stopHost).toHaveBeenCalledTimes(1);
     expect(restartHost).toHaveBeenCalledTimes(1);
   });
 
-  it("restarts the sidecar when a failed switch already changed nirs4all in the selected environment", async () => {
+  it("stops the sidecar before installing into the selected environment through a switch, and has nothing to roll back to", async () => {
     const { "dag-ml": _removed, ...withoutDagMl } = COHORT;
     const pythonPath = environment("work", { distributions: { ...COHORT, nirs4all: "1.4.18" } });
     const env = await startedOn(pythonPath);
@@ -517,12 +595,43 @@ describe("installing recommended packages", () => {
     setDistributions(pythonPath, { ...withoutDagMl, nirs4all: "1.4.18" });
     vi.mocked(installRecommendedPackages).mockRejectedValueOnce(new Error("No matching distribution"));
 
-    const result = await env.apply({ pythonPath, packages: ["catboost"] });
+    const failed = await env.apply({ pythonPath, packages: ["catboost"] });
 
-    expect(installRequiredPackages).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({ success: false, message: "No matching distribution", state: { phase: "ready", selectedPythonPath: pythonPath } });
-    expect(result.state.selected?.required[0].installedVersion).toBe("1.4.16");
-    expect(restartHost).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(["stop", "install required", "restart"]);
+    expect(failed).toMatchObject({ success: false, message: "No matching distribution", hostRestarted: true, state: { phase: "ready", selectedPythonPath: pythonPath } });
+    expect(failed.state.selected?.required[0].installedVersion).toBe("1.4.16");
+
+    restartHost.mockRejectedValueOnce(new Error("The analysis backend could not be started."));
+    const hostFailure = await env.apply({ pythonPath, packages: ["xgboost"] });
+
+    expect(hostFailure).toMatchObject({
+      success: false,
+      message: "The analysis backend could not be started.",
+      state: { phase: "needs_attention", selectedPythonPath: pythonPath, problem: { code: "host_failed" } },
+    });
+  });
+
+  it("refuses to touch the environment while a run is in progress", async () => {
+    const pythonPath = environment("work");
+    const other = environment("other", { distributions: {} });
+    const env = await startedOn(pythonPath);
+    describeActiveRuns.mockResolvedValue("A run is in progress.");
+
+    for (const result of [
+      await env.installPackages(["torch"]),
+      await env.retry(),
+      await env.apply({ pythonPath: other, packages: [] }),
+      await env.create({ packages: [] }),
+    ]) {
+      expect(result).toEqual({
+        success: false,
+        message: "A run is in progress. Wait for the end of the run or stop it, then try again.",
+        hostRestarted: false,
+        state: expect.objectContaining({ phase: "ready", selectedPythonPath: pythonPath }),
+      });
+    }
+    expect(calls).toEqual([]);
+    expect(createStudioEnvironment).not.toHaveBeenCalled();
   });
 
   it("refuses when nothing usable is selected or the environment is read-only", async () => {
@@ -531,8 +640,10 @@ describe("installing recommended packages", () => {
     expect(await unconfigured.installPackages(["torch"])).toMatchObject({ success: false, message: "No usable Python environment is selected." });
 
     const readOnly = await startedOn(environment("system", { purelibWritable: false }));
-    expect(await readOnly.installPackages(["torch"])).toMatchObject({ success: false, message: expect.stringContaining("read-only") });
+    expect(await readOnly.installPackages(["torch"])).toMatchObject({ success: false, hostRestarted: false, message: expect.stringContaining("read-only") });
+    expect(await readOnly.installPackages(["requests"])).toMatchObject({ success: false, message: expect.stringContaining("not in Studio's package catalogue") });
     expect(installRecommendedPackages).not.toHaveBeenCalled();
+    expect(stopHost).not.toHaveBeenCalled();
   });
 });
 
@@ -576,11 +687,23 @@ describe("scientific host failures and retry", () => {
     const env = manager();
     expect((await env.startupCheck()).problem?.code).toBe("required_update_failed");
 
+    calls.length = 0;
     const result = await env.retry();
 
     expect(installRequiredPackages).toHaveBeenCalledTimes(2);
-    expect(result).toMatchObject({ success: true, state: { phase: "ready" } });
-    expect(restartHost).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ success: true, hostRestarted: true, state: { phase: "ready" } });
+    // The sidecar is stopped before packages are installed into the environment it may be running.
+    expect(calls).toEqual(["stop", "install required", "restart"]);
+  });
+
+  it("does not report a restart that never happened", async () => {
+    const env = await startedOn(environment("work"));
+    stopHost.mockResolvedValue(false);
+    vi.mocked(installRecommendedPackages).mockRejectedValueOnce(new Error("No matching distribution"));
+
+    // No sidecar was running Python: nothing was stopped, so nothing is restarted after the failure.
+    expect(await env.installPackages(["catboost"])).toMatchObject({ success: false, hostRestarted: false });
+    expect(restartHost).not.toHaveBeenCalled();
   });
 
   it("fails a retry that still cannot make the environment usable, after restarting without Python", async () => {
@@ -594,6 +717,73 @@ describe("scientific host failures and retry", () => {
     });
     expect(restartHost).toHaveBeenCalledTimes(1);
     expect(env.getHost()).toBeNull();
+  });
+});
+
+describe("restart backend", () => {
+  it("restarts the sidecar on the current environment, even during a run", async () => {
+    const pythonPath = environment("work");
+    const env = await startedOn(pythonPath);
+    describeActiveRuns.mockResolvedValue("A run is in progress.");
+
+    const result = await env.restartBackend();
+
+    expect(result).toMatchObject({ success: true, hostRestarted: true, state: { phase: "ready", selectedPythonPath: pythonPath } });
+    expect(calls).toEqual(["restart"]);
+    expect(takeInventory).not.toHaveBeenCalled();
+  });
+
+  it("records a host that does not come back", async () => {
+    const env = await startedOn(environment("work"));
+    restartHost.mockRejectedValueOnce(new Error("The analysis backend could not be started."));
+
+    expect(await env.restartBackend()).toMatchObject({
+      success: false,
+      hostRestarted: true,
+      message: "The analysis backend could not be started.",
+      state: { phase: "needs_attention", problem: { code: "host_failed" } },
+    });
+  });
+
+  it("is a retry when the environment needs attention", async () => {
+    const pythonPath = environment("work", { distributions: {} });
+    select(pythonPath);
+    vi.mocked(installRequiredPackages).mockRejectedValueOnce(new Error("offline"));
+    const env = manager();
+    await env.startupCheck();
+    calls.length = 0;
+
+    const result = await env.restartBackend();
+
+    expect(calls).toEqual(["stop", "install required", "restart"]);
+    expect(result).toMatchObject({ success: true, state: { phase: "ready" } });
+  });
+
+  it("restarts without Python when nothing is configured", async () => {
+    const env = manager();
+    await env.startupCheck();
+
+    expect(await env.restartBackend()).toMatchObject({ success: true, hostRestarted: true, state: { phase: "unconfigured" } });
+    expect(env.getHost()).toBeNull();
+  });
+
+  it("is refused while an environment operation runs", async () => {
+    const target = environment("target");
+    const env = await startedOn(environment("previous"));
+    let release: () => void = () => undefined;
+    restartHost.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
+
+    const switching = env.apply({ pythonPath: target, packages: [] });
+    await vi.waitFor(() => expect(restartHost).toHaveBeenCalledTimes(1));
+    expect(await env.restartBackend()).toEqual({
+      success: false,
+      message: "Another Python environment operation is still running.",
+      hostRestarted: false,
+      state: expect.objectContaining({ phase: "busy" }),
+    });
+    expect(restartHost).toHaveBeenCalledTimes(1);
+    release();
+    await switching;
   });
 });
 

@@ -34,8 +34,8 @@ export function PythonEnvProvider({ children }: { children: ReactNode }) {
     if (!api) throw new Error("Python environment management is unavailable");
     const result = await action(api);
     setState(result.state);
-    if (result.success) {
-      // The main process restarted the backend with the new environment.
+    if (result.hostRestarted) {
+      // Also after a failure: a rolled-back switch restarts the backend on the previous environment.
       resetBackendUrl();
       dispatchOperatorAvailabilityInvalidated();
       window.dispatchEvent(new CustomEvent("backend-restarted"));

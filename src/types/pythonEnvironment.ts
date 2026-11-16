@@ -73,7 +73,10 @@ export type PythonEnvPhase =
   | "needs_attention";
 
 export type PythonEnvProblemCode =
+  /** The selected interpreter file no longer exists. */
   | "interpreter_missing"
+  /** The interpreter exists but could not be inspected, or is older than Python 3.11. */
+  | "interpreter_unusable"
   /** A required package is missing or out of range and Studio may not install it (read-only or editable). */
   | "required_not_installable"
   /** The automatic installation of required packages failed (offline, resolver conflict). */
@@ -141,6 +144,8 @@ export interface PythonEnvActionResult {
   success: boolean;
   /** Failure reason. On failure the previous selection has been restored. */
   message?: string;
+  /** The analysis backend was restarted during the action, whether or not it succeeded. */
+  hostRestarted: boolean;
   state: PythonEnvState;
 }
 

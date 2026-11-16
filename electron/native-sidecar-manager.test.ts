@@ -44,6 +44,8 @@ afterEach(() => {
   delete process.env.NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES;
   delete process.env.NIRS4ALL_SCIENTIFIC_EXECUTOR;
   delete process.env.NIRS4ALL_STUDIO_ADAPTERS_DIR;
+  delete process.env.NIRS4ALL_ALL_IN_ONE;
+  delete process.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE;
   delete process.env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN;
   delete process.env.NIRS4ALL_APP_DIR;
   delete process.env.NIRS4ALL_APP_EXE;
@@ -148,6 +150,9 @@ describe("NativeSidecarManager", () => {
     process.env.NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES = "/user/venv/lib/site-packages";
     process.env.NIRS4ALL_SCIENTIFIC_EXECUTOR = "cpython-stdio-v1";
     process.env.NIRS4ALL_STUDIO_ADAPTERS_DIR = "/user/adapters";
+    // Nor may stray updater variables enable an in-place update of the installation.
+    process.env.NIRS4ALL_ALL_IN_ONE = "true";
+    process.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE = "true";
     const child = makeProcess();
     childProcessMocks.spawn.mockReturnValue(child);
     const { NativeSidecarManager } = await import("./native-sidecar-manager");
@@ -168,6 +173,8 @@ describe("NativeSidecarManager", () => {
     expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES).toBeUndefined();
     expect(spawnOptions.env.NIRS4ALL_SCIENTIFIC_EXECUTOR).toBeUndefined();
     expect(spawnOptions.env.NIRS4ALL_STUDIO_ADAPTERS_DIR).toBeUndefined();
+    expect(spawnOptions.env.NIRS4ALL_ALL_IN_ONE).toBeUndefined();
+    expect(spawnOptions.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBeUndefined();
     child.stdout.emit("data", Buffer.from(READY_LINE));
     await expect(startup).resolves.toMatchObject({
       status: "running",

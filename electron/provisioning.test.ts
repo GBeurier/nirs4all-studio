@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./env/process-utils", () => ({ rmWithRetry: vi.fn() }));
-vi.mock("./env/python-runtime-installer", () => ({ downloadFile: vi.fn(), extractTarball: vi.fn(), removeQuarantine: vi.fn() }));
+vi.mock("./env/python-runtime-installer", () => ({ downloadFile: vi.fn(), extractTarball: vi.fn(), removeQuarantine: vi.fn(), verifySha256: vi.fn() }));
 vi.mock("./env/uv", () => ({
   createVenv: vi.fn(),
   installRecommendedPackages: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock("./env/uv", () => ({
   resolveUvPayload: vi.fn(),
 }));
 import { rmWithRetry } from "./env/process-utils";
-import { downloadFile, extractTarball } from "./env/python-runtime-installer";
+import { downloadFile, extractTarball, verifySha256 } from "./env/python-runtime-installer";
 import { createStudioEnvironment } from "./env/provisioning";
 import { getStandalonePythonPath, getVenvPythonPath } from "./env/runtime-paths";
 import { createVenv, installRecommendedPackages, installRequiredPackages, resolveUvPayload } from "./env/uv";
@@ -71,7 +71,11 @@ describe("Studio environment creation", () => {
     expect(vi.mocked(downloadFile).mock.calls[0][0]).toMatch(/^https:\/\/github\.com\/astral-sh\/python-build-standalone\/releases\/download\/\d+\/cpython-3\.11\./);
     expect(createVenv).toHaveBeenCalledWith(path.join(baseDir, "venv"), getStandalonePythonPath(baseDir));
     expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath);
-    expect(installRecommendedPackages).toHaveBeenCalledWith(pythonPath, ["torch"]);
+    // Resolved together with the exact cohort that was just installed.
+    expect(installRecommendedPackages).toHaveBeenCalledWith(pythonPath, ["torch"], [
+      "nirs4all==1.4.16", "nirs4all-core==0.5.0", "dag-ml==0.4.0", "dag-ml-data==0.2.16",
+      "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15", "nirs4all-formats==0.2.16",
+    ]);
     const percents = progress.mock.calls.map(([percent]) => percent as number);
     expect(percents).toEqual([...percents].sort((left, right) => left - right));
     expect(percents.at(-1)).toBe(100);
@@ -119,6 +123,16 @@ describe("Studio environment creation", () => {
 
     await createStudioEnvironment(baseDir, [], vi.fn());
     expect(downloadFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a download that does not match its pinned checksum", async () => {
+    const baseDir = baseDirectory();
+    vi.mocked(verifySha256).mockRejectedValueOnce(new Error("corrupt"));
+
+    await expect(createStudioEnvironment(baseDir, [], vi.fn())).rejects.toThrow("corrupt");
+
+    expect(verifySha256).toHaveBeenCalledWith(expect.stringContaining(baseDir), expect.stringMatching(/^[0-9a-f]{64}$/));
+    expect(extractTarball).not.toHaveBeenCalled();
   });
 
   it("discards an archive that fails extraction so the next attempt downloads again", async () => {

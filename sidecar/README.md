@@ -332,10 +332,14 @@ site-packages. The admission probe then requires, in this order:
 
 1. CPython 3.11 or newer, with `-I -S -B` isolation active and a real negative
    bind self-test;
-2. a `nirs4all` distribution whose metadata version is within the range of the
-   embedded `recommended-config.json` (`required` entry `nirs4all`, field
-   `range`) -- editable and development installs are admitted like wheels;
-3. `import nirs4all` and its Studio callables (`studio_scientific_job_v1`,
+2. exactly one `nirs4all` distribution visible on the worker's `sys.path`,
+   whose metadata version is within the range of the embedded
+   `recommended-config.json` (`required` entry `nirs4all`, field `range`);
+3. `import nirs4all` from under that distribution's location, so the admitted
+   metadata describes the code that runs -- an editable install
+   (`direct_url.json` with `dir_info.editable`) may live elsewhere and is
+   admitted like a wheel;
+4. its Studio callables (`studio_scientific_job_v1`,
    `studio_scientific_job_v2`).
 
 The probe process becomes the first interactive worker. Later workers receive
@@ -344,7 +348,7 @@ distribution metadata no longer matches it. Nothing is hashed or walked on a
 readiness poll or around a request. Refusals are typed
 (`python_host_unavailable`, `studio_adapters_unavailable`,
 `python_host_not_cpython`, `python_host_version_unsupported`,
-`scientific_distribution_missing`,
+`scientific_distribution_missing`, `scientific_distribution_inconsistent`,
 `scientific_distribution_version_unsupported`,
 `scientific_library_import_failed`, `scientific_callable_unavailable`, ...) and
 logged once per acquisition on stderr. A Python audit hook rejects

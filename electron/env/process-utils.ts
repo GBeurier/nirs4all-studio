@@ -120,7 +120,8 @@ export function runCommand(command: string, args: string[], options?: CommandOpt
     proc.on("close", (code) => {
       if (finished) return;
       if (code === 0) complete();
-      else complete(new Error(`Command "${commandLabel}" failed (code ${code}): ${stderr.slice(0, 500)}`));
+      // `output` (the redacted end of the command's output) lets a caller quote the tool's own explanation.
+      else complete(Object.assign(new Error(`Command "${commandLabel}" failed (code ${code}): ${stderr.slice(0, 500)}`), { output: stderr }));
     });
 
     proc.on("error", (error) => {

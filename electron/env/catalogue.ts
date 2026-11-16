@@ -58,11 +58,9 @@ export function normalizePackageName(name: string): string {
   return name.replace(/[-_.]+/g, "-").toLowerCase();
 }
 
-/** `name==install` for every required package except the `excluded` (normalised) names. */
-export function requiredInstallSpecs(excluded: ReadonlySet<string> = new Set()): string[] {
-  return REQUIRED_PACKAGES
-    .filter((spec) => !excluded.has(normalizePackageName(spec.name)))
-    .map((spec) => `${spec.name}==${spec.install}`);
+/** `name==install` for every required package: the exact qualified cohort. */
+export function requiredInstallSpecs(): string[] {
+  return REQUIRED_PACKAGES.map((spec) => `${spec.name}==${spec.install}`);
 }
 
 /** `name==recommended` for the requested catalogue packages; unknown names are refused. */

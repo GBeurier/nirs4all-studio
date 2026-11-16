@@ -94,7 +94,7 @@ export type PythonEnvApiMock = { [K in keyof PythonEnvApi]: ReturnType<typeof vi
 /** `window.electronApi.pythonEnv` double; actions succeed with `initial` unless overridden. */
 export function mockPythonEnvApi(initial: PythonEnvState, detected: PythonEnvReport[] = []): PythonEnvApiMock {
   const listeners = new Set<(state: PythonEnvState) => void>();
-  const done = async (): Promise<PythonEnvActionResult> => ({ success: true, state: initial });
+  const done = async (): Promise<PythonEnvActionResult> => ({ success: true, hostRestarted: true, state: initial });
   return {
     getState: vi.fn<PythonEnvApi["getState"]>(async () => initial),
     detect: vi.fn<PythonEnvApi["detect"]>(async () => detected),

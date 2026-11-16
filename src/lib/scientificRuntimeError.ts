@@ -4,6 +4,7 @@ import i18next from "i18next";
 const MESSAGE_KEYS: Record<string, string> = {
   scientific_distribution_missing: "common.pythonEnv.error.missing",
   scientific_distribution_version_unsupported: "common.pythonEnv.error.versionUnsupported",
+  scientific_distribution_inconsistent: "common.pythonEnv.error.inconsistent",
   scientific_library_import_failed: "common.pythonEnv.error.importFailed",
   studio_adapters_unavailable: "common.pythonEnv.error.adaptersUnavailable",
 };

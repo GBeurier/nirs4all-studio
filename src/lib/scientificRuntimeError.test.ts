@@ -16,6 +16,7 @@ describe("scientific runtime error messages", () => {
 
   it.each([
     ["scientific_distribution_missing", "nirs4all is not installed"],
+    ["scientific_distribution_inconsistent", "nirs4all installation in the selected Python environment is inconsistent"],
     ["scientific_library_import_failed", "nirs4all could not be loaded"],
     ["studio_adapters_unavailable", "Studio could not load its Python components"],
   ])("explains %s in plain words and points to the Python settings", (code, text) => {

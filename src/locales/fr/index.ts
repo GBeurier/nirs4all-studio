@@ -39,6 +39,7 @@ const fr = {
     },
     problem: {
       interpreter_missing: "L'environnement Python sélectionné est introuvable",
+      interpreter_unusable: "Studio n'a pas pu utiliser l'interpréteur Python sélectionné (Python 3.11 ou plus récent est requis)",
       required_not_installable: "Studio ne peut pas installer les paquets requis dans cet environnement",
       required_update_failed: "Les paquets requis n'ont pas pu être installés",
       host_failed: "Le moteur d'analyse n'a pas démarré",
@@ -299,6 +300,7 @@ const fr = {
       error: {
         missing: "nirs4all n'est pas installé dans l'environnement Python sélectionné. Ouvrez Paramètres → Python pour l'installer.",
         versionUnsupported: "L'environnement Python sélectionné contient une version de nirs4all non prise en charge. Ouvrez Paramètres → Python pour la mettre à jour.",
+        inconsistent: "L'installation de nirs4all dans l'environnement Python sélectionné est incohérente (fichiers de paquet en double ou obsolètes). Ouvrez Paramètres → Python pour réinstaller nirs4all ou choisir un autre environnement.",
         importFailed: "nirs4all n'a pas pu être chargé depuis l'environnement Python sélectionné. Ouvrez Paramètres → Python pour le réparer ou choisir un autre environnement.",
         adaptersUnavailable: "Studio n'a pas pu charger ses composants Python. Ouvrez Paramètres → Python et réessayez ; réinstallez Studio si cela se reproduit.",
       },
@@ -644,6 +646,7 @@ notFound: {
         restart: "Redémarrer le moteur d’analyse",
         restartHint: "Arrêter et redémarrer le moteur d’analyse",
         restarting: "Redémarrage...",
+        restartFailed: "Le moteur d'analyse n'a pas pu être redémarré",
         status: {
           title: "État du moteur d’analyse",
           description: "Santé de la connexion et latence",

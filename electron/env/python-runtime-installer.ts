@@ -9,12 +9,22 @@ import fs from "node:fs";
 import https from "node:https";
 import http from "node:http";
 import { pipeline } from "node:stream/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { runCommand } from "./process-utils";
 import { loadNetworkTrust } from "./external-config";
 
 const isWindows = process.platform === "win32";
+
+/** Check a downloaded file against its pinned SHA-256; a mismatching file is removed. */
+export async function verifySha256(filePath: string, expected: string): Promise<void> {
+  const hash = createHash("sha256");
+  await pipeline(fs.createReadStream(filePath), hash);
+  if (hash.digest("hex") !== expected.toLowerCase()) {
+    fs.rmSync(filePath, { force: true });
+    throw new Error("The downloaded Python runtime is incomplete or corrupt. Check the connection and try again.");
+  }
+}
 
 /**
  * Remove macOS Gatekeeper quarantine attribute from downloaded Python.

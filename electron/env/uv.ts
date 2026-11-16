@@ -76,41 +76,77 @@ export function venvArgs(venvDir: string, basePython: string, payload: UvPayload
   return ["venv", venvDir, "--python", basePython, ...(payload.offline ? ["--offline"] : [])];
 }
 
-function runUv(args: string[], timeoutMs: number): Promise<void> {
-  // One retry: antivirus can briefly lock freshly written files on Windows.
-  return runCommand(resolveUvPath(), args, { env: UV_ENVIRONMENT, timeoutMs, retries: 1 });
+/**
+ * uv's own explanation of a failure (resolver conflict, missing wheel, network)
+ * instead of the command line that failed.
+ */
+function uvFailure(error: unknown): Error {
+  const output = (error as { output?: unknown } | null)?.output;
+  if (typeof output !== "string") return error instanceof Error ? error : new Error(String(error));
+  const lines = output.split("\n").map((line) => line.trim()).filter(Boolean);
+  const start = lines.findIndex((line) => /^(×|error:)/i.test(line));
+  const detail = lines.slice(start < 0 ? -6 : start).join(" ").replace(/[×╰─▶]+/g, " ").replace(/\s+/g, " ").trim();
+  return detail ? new Error(detail.slice(0, 1500), { cause: error }) : error as Error;
+}
+
+async function runUv(args: string[], timeoutMs: number, retries: number): Promise<void> {
+  try {
+    await runCommand(resolveUvPath(), args, { env: UV_ENVIRONMENT, timeoutMs, retries });
+  } catch (error) {
+    throw uvFailure(error);
+  }
 }
 
 export function createVenv(venvDir: string, basePython: string): Promise<void> {
-  return runUv(venvArgs(venvDir, basePython, resolveUvPayload()), UV_VENV_TIMEOUT_MS);
+  // One retry: antivirus can briefly lock freshly written files on Windows.
+  return runUv(venvArgs(venvDir, basePython, resolveUvPayload()), UV_VENV_TIMEOUT_MS, 1);
+}
+
+/**
+ * One resolver call for `specs`. With an offline payload the shipped wheels
+ * are tried first; what they cannot satisfy then needs the package index.
+ */
+async function install(pythonPath: string, specs: readonly string[]): Promise<void> {
+  const payload = resolveUvPayload();
+  let offlineFailure: Error | null = null;
+  if (payload.offline) {
+    try {
+      await runUv(pipInstallArgs(pythonPath, specs, payload, true), UV_INSTALL_TIMEOUT_MS, 0);
+      return;
+    } catch (error) {
+      offlineFailure = error as Error;
+      appendInstallLog("Not available in the offline package set; trying the package index.");
+    }
+  }
+  try {
+    await runUv(pipInstallArgs(pythonPath, specs, payload, false), UV_INSTALL_TIMEOUT_MS, 1);
+  } catch (error) {
+    const message = (error as Error).message;
+    // A conflict is the same from both sources; a missing wheel and a network failure are two reasons.
+    if (!offlineFailure || offlineFailure.message === message) throw error;
+    throw new Error(`${message} (Offline package set: ${offlineFailure.message})`, { cause: error });
+  }
 }
 
 /**
  * Install the required cohort at its exact versions in one resolver call, so
- * the packages stay mutually coherent. `excluded` names (editable installs)
- * are left untouched.
+ * the packages stay mutually coherent.
  */
-export function installRequiredPackages(pythonPath: string, excluded: ReadonlySet<string> = new Set()): Promise<void> {
-  const payload = resolveUvPayload();
-  return runUv(pipInstallArgs(pythonPath, requiredInstallSpecs(excluded), payload, payload.offline !== null), UV_INSTALL_TIMEOUT_MS);
+export function installRequiredPackages(pythonPath: string): Promise<void> {
+  return install(pythonPath, requiredInstallSpecs());
 }
 
 /**
- * Install recommended packages at their recommended versions. With an offline
- * payload the shipped wheels are tried first; a package outside the payload
- * then needs the package index.
+ * Install recommended packages at their recommended versions. `requiredPins`
+ * (`name==installed version` of the required packages already present) join
+ * the same resolver call: a recommended package that conflicts with them
+ * fails the resolution instead of silently changing nirs4all or its owners.
  */
-export async function installRecommendedPackages(pythonPath: string, names: readonly string[]): Promise<void> {
+export async function installRecommendedPackages(
+  pythonPath: string,
+  names: readonly string[],
+  requiredPins: readonly string[],
+): Promise<void> {
   const specs = recommendedInstallSpecs(names);
-  if (specs.length === 0) return;
-  const payload = resolveUvPayload();
-  if (payload.offline) {
-    try {
-      await runCommand(resolveUvPath(), pipInstallArgs(pythonPath, specs, payload, true), { env: UV_ENVIRONMENT, timeoutMs: UV_INSTALL_TIMEOUT_MS });
-      return;
-    } catch {
-      appendInstallLog("Not available in the offline package set; trying the package index.");
-    }
-  }
-  await runUv(pipInstallArgs(pythonPath, specs, payload, false), UV_INSTALL_TIMEOUT_MS);
+  if (specs.length > 0) await install(pythonPath, [...specs, ...requiredPins]);
 }
