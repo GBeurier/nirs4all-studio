@@ -1,6 +1,6 @@
 /**
- * Updates API client — webapp/nirs4all update status, update settings, Python
- * runtime status, changelog, the staged auto-update flow, and config snapshots.
+ * Updates API client — application update status, update settings, changelog
+ * and the staged auto-update flow.
  */
 
 import { api } from "./transport";
@@ -33,33 +33,6 @@ export interface WebappUpdateInfo {
   installer_asset_name?: string | null;
 }
 
-export interface Nirs4allUpdateInfo {
-  current_version: string | null;
-  latest_version: string | null;
-  update_available: boolean;
-  pypi_url: string | null;
-  release_notes: string | null;
-  requires_restart: boolean;
-}
-
-export interface RuntimeInfo {
-  path: string;
-  exists: boolean;
-  is_valid: boolean;
-  python_executable: string | null;
-  python_version: string | null;
-  pip_version: string | null;
-  created_at: string | null;
-  last_updated: string | null;
-  size_bytes: number;
-}
-
-export interface PackageInfo {
-  name: string;
-  version: string;
-  location: string | null;
-}
-
 /** Whether this build can apply a webapp update in place, or must use its installer. */
 export interface UpdateCapability {
   can_apply_in_place: boolean;
@@ -70,19 +43,9 @@ export interface UpdateCapability {
 
 export interface UpdateStatus {
   webapp: WebappUpdateInfo;
-  nirs4all: Nirs4allUpdateInfo;
-  runtime: RuntimeInfo;
-  venv?: RuntimeInfo;
   update_capability?: UpdateCapability | null;
   last_check: string | null;
   check_interval_hours: number;
-}
-
-export interface RuntimeStatus {
-  runtime: RuntimeInfo;
-  venv?: RuntimeInfo;
-  packages: PackageInfo[];
-  nirs4all_version: string | null;
 }
 
 export interface VersionInfo {
@@ -94,7 +57,7 @@ export interface VersionInfo {
 }
 
 /**
- * Get current update status for webapp and nirs4all
+ * Get the current application update status
  */
 export async function getUpdateStatus(): Promise<UpdateStatus> {
   return api.get("/updates/status");
@@ -121,28 +84,6 @@ export async function updateUpdateSettings(
   settings: Partial<UpdateSettings>
 ): Promise<UpdateSettings> {
   return api.put("/updates/settings", settings);
-}
-
-/**
- * Get current runtime status and installed packages
- */
-export async function getRuntimeStatus(): Promise<RuntimeStatus> {
-  return api.get("/updates/runtime/status");
-}
-
-/**
- * Install or upgrade nirs4all in the current Python runtime
- */
-export async function installNirs4all(options?: {
-  version?: string;
-  extras?: string[];
-}): Promise<{
-  success: boolean;
-  message: string;
-  version: string | null;
-  output: string[];
-}> {
-  return api.post("/updates/nirs4all/install", options || {});
 }
 
 export interface ChangelogEntry {
@@ -300,50 +241,4 @@ export async function getLastApplyResult(): Promise<LastApplyResult> {
  */
 export async function dismissLastApplyResult(): Promise<{ success: boolean }> {
   return api.delete("/updates/webapp/last-apply-result");
-}
-
-export interface ConfigSnapshot {
-  name: string;
-  label: string;
-  created_at: string;
-  size_bytes: number;
-}
-
-/**
- * List all saved config snapshots
- */
-export async function listSnapshots(): Promise<{ snapshots: ConfigSnapshot[] }> {
-  return api.get("/updates/runtime/snapshots");
-}
-
-/**
- * Create a config snapshot (pip freeze)
- */
-export async function createSnapshot(label?: string): Promise<{
-  success: boolean;
-  name: string;
-  label: string;
-  created_at: string;
-}> {
-  return api.post("/updates/runtime/snapshots", { label: label || null });
-}
-
-/**
- * Restore a config snapshot
- */
-export async function restoreSnapshot(name: string): Promise<{
-  success: boolean;
-  message: string;
-}> {
-  return api.post(`/updates/runtime/snapshots/${name}/restore`);
-}
-
-/**
- * Delete a config snapshot
- */
-export async function deleteSnapshot(name: string): Promise<{
-  success: boolean;
-  message: string;
-}> {
-  return api.delete(`/updates/runtime/snapshots/${name}`);
 }

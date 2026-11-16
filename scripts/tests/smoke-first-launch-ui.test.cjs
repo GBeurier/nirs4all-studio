@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { diagnosticUrl, sanitizeDiagnostic, recordHttpFailure, waitForSetupState } = require("../smoke-first-launch-ui.cjs");
+const { diagnosticUrl, sanitizeDiagnostic, recordHttpFailure, assertCreatedEnvironment } = require("../smoke-first-launch-ui.cjs");
 
 test("transport diagnostics omit URL credentials, query values and fragments", () => {
   assert.equal(diagnosticUrl("http://user:password@127.0.0.1:8000/api/system/readiness?session=private#secret"),
@@ -65,65 +65,30 @@ test("an unfinished HTTP error body cannot hold diagnostic collection beyond one
   assert.match(messages[1], /body unavailable after 1000ms/);
 });
 
-function setupPage(onWait = () => {}) {
-  const state = { ready: false, alert: null, visible: true, waits: 0, outsideAlert: null };
-  const retry = {};
-  return {
-    state,
-    getByRole: (role, options) => {
-      if (role === "alert") return { all: async () => [state.alert, state.outsideAlert].filter(Boolean).map(message => ({
-        isVisible: async () => true, textContent: async () => message,
-      })) };
-      assert.equal(role, "button");
-      assert.deepEqual(options, { name: "Retry verification", exact: true });
-      return retry;
-    },
-    locator: selector => {
-      assert.equal(selector, ".bg-card");
-      return { filter: ({ has }) => {
-        assert.equal(has, retry);
-        return { getByRole: role => {
-          assert.equal(role, "alert");
-          return { all: async () => state.alert === null ? [] : [{
-            isVisible: async () => state.visible,
-            textContent: async () => state.alert,
-          }] };
-        } };
-      } };
-    },
-    waitForTimeout: async () => { state.waits += 1; onWait(state); await new Promise(resolve => setImmediate(resolve)); },
-  };
+function created(change = {}) {
+  const installed = change.installed ?? ["torch", "xgboost", "shap"];
+  return { before: "unconfigured", packages: ["torch", "xgboost"], success: true,
+    state: { phase: "ready", selectedPythonPath: "/data/python-env/venv/bin/python",
+      selected: { kind: "studio", recommended: ["torch", "xgboost", "shap", "keras"].map(name => ({
+        name, installedVersion: installed.includes(name) ? "1.0" : null })) } },
+    ...change.outcome };
 }
 
-test("a setup error appearing during runtime verification fails promptly despite the ten-minute timeout", { timeout: 1000 }, async () => {
-  const page = setupPage(state => { state.alert = "Native service unavailable: session-value"; });
-  await assert.rejects(waitForSetupState(page, () => page.state.ready, 600000, "runtime ready",
-    value => sanitizeDiagnostic(value, ["session-value"])), /First setup failed: Native service unavailable: \[redacted\]/);
-  assert.equal(page.state.waits, 1);
+test("an environment created by Studio is accepted once ready with every preselected and added package", () => {
+  assert.equal(assertCreatedEnvironment(created(), ["shap"]).phase, "ready");
 });
 
-test("a visible setup error wins even if a previous ready indication remains", async () => {
-  const page = setupPage();
-  page.state.alert = "Failed to save setup completion";
-  await assert.rejects(waitForSetupState(page, () => true, 600000, "datasets"), /Failed to save setup completion/);
+test("a first launch that is already configured, or a failed creation, is refused with its redacted reason", () => {
+  assert.throws(() => assertCreatedEnvironment(created({ outcome: { before: "ready" } })), /did not start unconfigured \(phase ready\)/);
+  assert.throws(() => assertCreatedEnvironment(created({ outcome: { success: false, message: "uv failed for session-value" } }), [],
+    value => sanitizeDiagnostic(value, ["session-value"])), /could not create its environment: uv failed for \[redacted\]/);
 });
 
-test("setup succeeds only once the required ready predicate is true and ignores hidden alerts", async () => {
-  const page = setupPage(state => { state.ready = state.waits >= 3; });
-  page.state.alert = "Hidden previous error";
-  page.state.visible = false;
-  await waitForSetupState(page, () => page.state.ready, 1000, "runtime ready");
-  assert.equal(page.state.waits, 3);
-});
-
-test("absence of errors cannot bypass runtime readiness", async () => {
-  const page = setupPage();
-  await assert.rejects(waitForSetupState(page, () => false, 10, "runtime ready"), /Timed out waiting for runtime ready/);
-});
-
-test("alerts outside the installation verification card do not fail setup", async () => {
-  const page = setupPage(state => { state.ready = true; });
-  page.state.outsideAlert = "An update is available";
-  await waitForSetupState(page, () => page.state.ready, 1000, "runtime ready");
-  assert.equal(page.state.waits, 1);
+test("an environment that is not ready, not Studio's own, or lacks a requested package is refused", () => {
+  const unready = created();
+  unready.state.phase = "needs_attention"; unready.state.problem = { code: "host_failed", message: "Host refused" };
+  assert.throws(() => assertCreatedEnvironment(unready), /not ready \(phase needs_attention\): Host refused/);
+  const foreign = created(); foreign.state.selected.kind = "venv";
+  assert.throws(() => assertCreatedEnvironment(foreign), /not ready/);
+  assert.throws(() => assertCreatedEnvironment(created({ installed: ["torch"] }), ["shap"]), /lacks xgboost, shap/);
 });

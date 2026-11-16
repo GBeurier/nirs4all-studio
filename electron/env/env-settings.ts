@@ -1,9 +1,8 @@
 /**
- * Persistence for the Electron env-settings file.
+ * Persistence of the selected interpreter in `env-settings.json`.
  *
- * Holds the on-disk shape (`EnvSettings`) and the JSON read/write primitives.
- * EnvManager owns the in-memory state and decides what to persist; these helpers
- * only translate between that state and the settings file.
+ * The file holds only `{ "pythonPath": "..." }`. Files written by earlier
+ * releases are read for that key alone; nothing else is migrated.
  */
 
 import fs from "node:fs";
@@ -12,28 +11,22 @@ import { randomUUID } from "node:crypto";
 
 export const SETTINGS_FILE = "env-settings.json";
 
-export interface EnvSettings {
-  /** A user-selected interpreter outside the Studio installation. */
-  pythonPath?: string;
-  /**
-   * Studio's included runtime was selected. Stored as a marker rather than an
-   * absolute path so the selection survives updates that move the install tree.
-   */
-  runtime?: "bundled";
-  /** App version when the setup wizard was last completed */
-  appVersion?: string;
-  /** "Don't ask again" flag — skips wizard on subsequent launches (portable mode) */
-  skipWizardOnLaunch?: boolean;
+function parseSelection(raw: string): string | null | undefined {
+  const data: unknown = JSON.parse(raw);
+  if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const { pythonPath } = data as { pythonPath?: unknown };
+  if (pythonPath === undefined) return null;
+  return typeof pythonPath === "string" && pythonPath.length > 0 ? pythonPath : undefined;
 }
 
-/** Read and parse the settings file, or null when it is absent or unreadable. */
-export function readEnvSettings(settingsPath: string): Record<string, unknown> | null {
+/** The persisted interpreter path, or null when none is recorded. Falls back to the last valid backup. */
+export function readSelectedPythonPath(settingsPath: string): string | null {
   for (const candidate of [settingsPath, `${settingsPath}.bak`]) {
     try {
       if (!fs.existsSync(candidate)) continue;
-      const data: unknown = JSON.parse(fs.readFileSync(candidate, "utf-8"));
-      if (!isEnvSettings(data)) throw new Error("Invalid Python environment settings");
-      return data as Record<string, unknown>;
+      const selection = parseSelection(fs.readFileSync(candidate, "utf-8"));
+      if (selection === undefined) throw new Error("Invalid Python environment settings");
+      return selection;
     } catch (error) {
       console.warn(`[EnvManager] Failed to load ${candidate}: ${error}`);
     }
@@ -41,32 +34,23 @@ export function readEnvSettings(settingsPath: string): Record<string, unknown> |
   return null;
 }
 
-function isEnvSettings(data: unknown): data is EnvSettings {
-  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
-  const value = data as Record<string, unknown>;
-  return (value.pythonPath === undefined || (typeof value.pythonPath === "string" && value.pythonPath.length > 0))
-    && (value.runtime === undefined || value.runtime === "bundled")
-    && (value.appVersion === undefined || typeof value.appVersion === "string")
-    && (value.skipWizardOnLaunch === undefined || typeof value.skipWizardOnLaunch === "boolean");
-}
-
-/** Commit a complete file atomically; keep the last valid selection for recovery. */
-export function writeEnvSettings(settingsPath: string, data: EnvSettings): void {
+/** Commit the selection atomically; keep the last valid file as a backup for recovery. */
+export function writeSelectedPythonPath(settingsPath: string, pythonPath: string | null): void {
   const temporary = `${settingsPath}.${randomUUID()}.tmp`;
   try {
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
     const descriptor = fs.openSync(temporary, "wx");
     try {
-      fs.writeFileSync(descriptor, JSON.stringify(data, null, 2));
+      fs.writeFileSync(descriptor, JSON.stringify(pythonPath ? { pythonPath } : {}, null, 2));
       fs.fsyncSync(descriptor);
     } finally {
       fs.closeSync(descriptor);
     }
     if (fs.existsSync(settingsPath)) {
-      let previous: unknown;
-      try { previous = JSON.parse(fs.readFileSync(settingsPath, "utf-8")); }
+      let previousIsValid = false;
+      try { previousIsValid = parseSelection(fs.readFileSync(settingsPath, "utf-8")) !== undefined; }
       catch { /* Preserve the valid backup when recovering a truncated file. */ }
-      if (isEnvSettings(previous)) fs.copyFileSync(settingsPath, `${settingsPath}.bak`);
+      if (previousIsValid) fs.copyFileSync(settingsPath, `${settingsPath}.bak`);
     }
     fs.renameSync(temporary, settingsPath);
   } catch (error) {

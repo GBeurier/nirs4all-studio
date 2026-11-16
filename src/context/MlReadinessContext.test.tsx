@@ -51,12 +51,6 @@ interface MlStatusPayload {
 }
 
 type RendererElectronApi = NonNullable<Window["electronApi"]>;
-type MlReadyListener = (info: {
-  ready: boolean;
-  error?: string;
-  workspaceReady?: boolean;
-}) => void;
-
 type ElectronApiMock = RendererElectronApi;
 
 function createElectronApiMock(
@@ -102,43 +96,11 @@ function createElectronApiMock(
       pythonPluginHostConfigured: false,
     }),
     restartBackend: vi.fn().mockResolvedValue({ success: true }),
-    onBackendStatusChanged: vi.fn(() => () => undefined),
-    getEnvStatus: vi.fn().mockResolvedValue("ready"),
-    isEnvReady: vi.fn().mockResolvedValue(true),
-    getEnvInfo: vi.fn().mockResolvedValue({
-      status: "ready",
-      envDir: "",
-      pythonPath: null,
-      sitePackages: null,
-      pythonVersion: null,
-      isCustom: false,
-    }),
-    detectExistingEnvs: vi.fn().mockResolvedValue([]),
-    inspectExistingEnv: vi
-      .fn()
-      .mockResolvedValue({ success: true, message: "" }),
-    useExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
-    selectPythonExe: vi.fn().mockResolvedValue(null),
-    inspectExistingPython: vi
-      .fn()
-      .mockResolvedValue({ success: true, message: "" }),
-    useExistingPython: vi
-      .fn()
-      .mockResolvedValue({ success: true, message: "" }),
-    applyExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
-    applyExistingPython: vi
-      .fn()
-      .mockResolvedValue({ success: true, message: "" }),
-    startEnvSetup: vi.fn().mockResolvedValue({ success: true }),
-    onEnvSetupProgress: vi.fn(() => () => undefined),
-    shouldShowWizard: vi.fn().mockResolvedValue(false),
-    markWizardComplete: vi.fn().mockResolvedValue(undefined),
-    getCurrentEnvSummary: vi.fn().mockResolvedValue(null),
-    isPortable: vi.fn().mockResolvedValue(false),
+    // The readiness provider never touches the environment lifecycle.
+    pythonEnv: {} as ElectronApiMock["pythonEnv"],
     platform: "linux",
     isElectron: true,
     getPathForFile: vi.fn(() => ""),
-    onMlReady: vi.fn(() => () => undefined),
     ...overrides,
   };
 }
@@ -535,66 +497,6 @@ describe("MlReadinessProvider", () => {
     expect(mocks.apiGet).toHaveBeenCalledTimes(3);
     expect(view.result.current?.mlReady).toBe(true);
     expect(view.result.current?.scientificStatus).toBe("running");
-
-    await view.unmount();
-  });
-
-  it("cancels stale startup polls when workspace readiness arrives from IPC first", async () => {
-    vi.useFakeTimers();
-
-    const firstPoll = deferred<MlStatusPayload>();
-    let mlReadyListener: MlReadyListener | null = null;
-
-    mocks.apiGet.mockReturnValueOnce(firstPoll.promise).mockResolvedValue({
-      core_ready: true, ml_ready: true, ml_loading: false, ml_error: null, workspace_ready: true,
-    });
-
-    const view = await renderProvider(
-      createElectronApiMock({
-        onMlReady: (cb) => {
-          mlReadyListener = cb;
-          return () => {
-            if (mlReadyListener === cb) {
-              mlReadyListener = null;
-            }
-          };
-        },
-        onBackendStatusChanged: () => () => undefined,
-      }),
-    );
-
-    await act(async () => {
-      mlReadyListener?.({ ready: true, workspaceReady: true });
-    });
-
-    await waitFor(() => {
-      expect(view.result.current?.mlReady).toBe(true);
-      expect(view.result.current?.workspaceReady).toBe(true);
-    });
-
-    await act(async () => {
-      firstPoll.resolve({
-        core_ready: false,
-        ml_ready: false,
-        ml_loading: true,
-        ml_error: null,
-        workspace_ready: false,
-      });
-      await Promise.resolve();
-    });
-
-    // Assert before any fresh poll can mask a stale response regression.
-    expect(view.result.current?.mlReady).toBe(true);
-    expect(view.result.current?.workspaceReady).toBe(true);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(SETTLED_POLL_MS);
-    });
-
-    expect(mocks.apiGet).toHaveBeenCalledTimes(2);
-    expect(view.result.current?.coreReady).toBe(true);
-    expect(view.result.current?.mlReady).toBe(true);
-    expect(view.result.current?.workspaceReady).toBe(true);
 
     await view.unmount();
   });

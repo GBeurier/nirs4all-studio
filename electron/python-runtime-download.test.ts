@@ -2,18 +2,10 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { downloadFile, type DownloadOptions } from "./env/python-runtime-installer";
 
-const require = createRequire(import.meta.url);
-const cli = require("../scripts/setup-python-env.cjs") as {
-  downloadFile(url: string, destination: string, options?: DownloadOptions): Promise<void>;
-};
-const implementations = [
-  { name: "Electron provisioning", download: (url: string, destination: string, options: DownloadOptions) => downloadFile(url, destination, undefined, options) },
-  { name: "release setup", download: cli.downloadFile },
-];
+const download = (url: string, destination: string, options: DownloadOptions) => downloadFile(url, destination, undefined, options);
 let server: http.Server;
 let directory: string;
 let destination: string;
@@ -39,7 +31,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-describe.each(implementations)("$name downloads", ({ download }) => {
+describe("Python runtime downloads", () => {
   const fast: DownloadOptions = { retries: 0, timeoutMs: 100, maxDurationMs: 2000, retryDelayMs: 0 };
 
   it("follows relative redirects and publishes a complete closed file atomically", async () => {

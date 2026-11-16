@@ -1,163 +1,166 @@
 # Packaging & Release System
 
-This document describes the V1 packaging model built around the Rust sidecar
-and its bounded CPython scientific-library host. Product version metadata, the
-release tag, runtime manifests, and published asset names must agree exactly;
-the release workflow verifies that identity before creating a GitHub Release.
+This document describes how nirs4all Studio is packaged: an Electron
+application, the Rust sidecar that is its product backend, and the tools Studio
+needs to create and maintain the user's Python environment. Installers ship no
+Python. Product version metadata, the release tag, the runtime contract, and
+published asset names must agree exactly; the release workflow verifies that
+identity before creating a GitHub Release.
 
 The source of truth is:
 
 - `.github/workflows/release-unified.yml`
 - `electron-builder.installer.yml`
-- `electron-builder.archive.yml`
+- `electron-builder.offline.yml`
 - `scripts/build-release.cjs`
-- `scripts/build-archive-standalone.cjs`
-- `scripts/bake-python-plugin-runtime.cjs`
+- `scripts/fetch-uv.cjs`
+- `scripts/python-wheel-lock.cjs`
+- `scripts/build-wheelhouse.cjs`
+- `scripts/pack-remote-wheelhouse.cjs`
+- `scripts/build-offline-payload.cjs`
+- `scripts/studio-document-adapters.cjs`
+- `scripts/build-native-sidecar.cjs`
 - `scripts/native-runtime-contract.cjs`
 - `scripts/macos-attested-runtime.cjs`
-
-Legacy PyInstaller-based backend packaging still exists in the repository for
-compatibility and diagnostic development only. It is neither part of the
-product graph nor a fallback for the Rust sidecar.
+- `recommended-config.json` (`required`, `optional`)
 
 ## Overview
 
-The project prepares three desktop distribution families plus Docker:
-
-| Product | Target platforms | Candidate asset patterns | Runtime model |
+| Product | Target platforms | Asset patterns | Runtime model |
 |---|---|---|---|
-| Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + Rust `native/studio-sidecar` + read-only plugin-only CPython closure |
-| Portable Windows | Windows x64 | `-portable.exe` | Electron portable layout with state under `.nirs4all/` next to the executable |
-| All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` on Windows/macOS, `-all-in-one-*.tar.gz` on Linux | Electron + Rust `native/studio-sidecar` + the same read-only plugin-only CPython closure; no Python backend source |
-| Docker | Linux x64 | `ghcr.io/gbeurier/nirs4all-studio:*` | nginx static UI + loopback Rust sidecar + bounded plugin-only CPython closure; no Python HTTP backend |
+| Installer | Windows x64, macOS arm64 (Apple Silicon), Linux x64 | `.exe` (NSIS), `.dmg`, `.deb` | Electron + Rust `native/studio-sidecar` + `uv`, the document adapters and the required packages: embedded wheels on Windows and Linux, a release asset downloaded on first use on macOS. The Python environment is created or selected at first launch. |
+| Offline installer | Windows x64, Linux x64 | `.exe`, `.deb` with the `-offline` suffix | The installer plus the offline payload: the pinned Python runtime archive and the wheels of the default package set, so the environment is created without network access. |
+| macOS required wheels | macOS arm64 | `-mac-arm64-wheels.tar.gz` | The required cohort of the macOS application, fetched by Studio itself; not a user download. |
+| Docker | Linux x64 | `ghcr.io/gbeurier/nirs4all-studio:*` | nginx static UI + loopback Rust sidecar + a Python environment built at image build time from the same catalogue; no Python HTTP backend. |
 
-For the desktop all-in-one bundle, v1 is deliberately locked to a single product profile:
+macOS is supported on Apple Silicon only. A macOS application embeds no wheels,
+because wheels are archives that contain unsigned binaries and such archives
+fail Apple notarisation; it therefore needs an internet connection at first
+launch and has no offline installer.
 
-- `cpu`
-- the exact constraint-locked plugin closure; heavy optional frameworks such as
-  PyTorch are not bundled and their nodes remain unavailable
-- archive format is platform-specific: `.zip` on Windows/macOS, `.tar.gz` on Linux
-- no first-launch Python download
-- no first-launch setup wizard
+The all-in-one archive lane (`scripts/build-archive-standalone.cjs`,
+`electron-builder.archive.yml`, `scripts/smoke-self-update.cjs`) is not part
+of the published release and has not been converted to this model.
 
 ## Terminology
 
-- `Installer`: standard OS install flow (`.exe`, `.dmg`, `.AppImage`, `.deb`).
-- `Portable`: Windows-only `-portable.exe` build with dedicated state next to the executable.
-- `All-in-one`: archive layout containing Electron, Rust, and the embedded plugin-only CPython closure.
-- `Bundled runtime`: the embedded Python runtime found under `resources/backend/python-runtime/`.
-- `Legacy PyInstaller`: historical frozen-backend packaging path. Not the release path for the desktop product anymore.
-
-An extracted all-in-one archive is not the same thing as portable mode. Portable mode is enabled explicitly by the electron-builder portable executable and its dedicated environment variables.
+- `Installer`: standard OS install flow (`.exe`, `.dmg`, `.deb`). Also called
+  the light installer.
+- `Offline installer`: the Windows or Linux installer with the offline
+  payload; its file name ends in `-offline`.
+- `Required cohort`: the packages listed under `required` in
+  `recommended-config.json` (`nirs4all`, `nirs4all-core`, `dag-ml`,
+  `dag-ml-data`, `nirs4all-io`, `nirs4all-methods`, `nirs4all-formats`) at
+  their `install` versions.
+- `Recommended packages`: the packages listed under `optional`. Those with
+  `default_install: true` are preselected when Studio creates an environment.
+- `Wheelhouse`: one wheel per package of the required cohort. Windows and
+  Linux installers embed it as `resources/backend/wheels/`.
+- `Remote wheelhouse`: the same wheels for macOS, published as the release
+  asset `nirs4all.Studio-<version>-mac-arm64-wheels.tar.gz` and described by
+  `resources/backend/wheelhouse.json` in the application.
+- `Offline payload`: `resources/backend/offline/`.
 
 ## Packaged Layouts
 
-### Installer / portable builds
-
-Installer-oriented builds package the Rust control-plane binary alongside the
-same plugin-only CPython closure as all-in-one archives:
+### Installer
 
 ```text
 resources/
 └── backend/
-    ├── python-runtime/
-    │   ├── python/
-    │   ├── PLUGIN_RUNTIME_READY.json
-    │   └── PYTHON_PLUGIN_CLOSURE.json
     ├── native/
-    │   ├── studio-sidecar
+    │   ├── studio-sidecar[.exe]
     │   ├── libn4m.so / libn4m.dylib / n4m.dll
     │   └── STUDIO_RUNTIME_CONTRACT.json
-    ├── recommended-config.json
-    └── version.json
+    ├── tools/
+    │   └── uv[.exe]
+    ├── wheels/                 (Windows and Linux)
+    │   └── one wheel per package of the required cohort
+    ├── wheelhouse.json         (macOS)
+    └── adapters/
+        └── studio_document_adapters/
 ```
 
-At runtime, Electron may still resolve or create a writable Python environment
-outside the app bundle for explicit compatibility diagnostics:
+- `native/` holds the Rust product backend, the native Methods library and the
+  contract that content-addresses both.
+- `tools/uv` is the pinned `uv` 0.10.4 release for the target, redistributed
+  unmodified. It is the only tool Studio uses to create environments and
+  install packages.
+- `wheels/` holds exactly the required cohort for the target. Studio installs
+  the required packages from it; their dependencies and every recommended
+  package come from the package index.
+- `wheelhouse.json` replaces `wheels/` in the macOS application:
+  `{ "url", "sha256", "filename" }` of the release asset that carries the same
+  wheels. The first time Studio installs the required packages it downloads
+  that archive, verifies its SHA-256 and keeps the wheels under
+  `userData/wheelhouse/`. `NIRS4ALL_WHEELHOUSE_ARCHIVE` names a local copy of
+  the archive (verified against the same SHA-256) for a build whose release is
+  not published yet.
+- `adapters/studio_document_adapters/` is Studio's own document-translation
+  package. The sidecar adds this directory to the scientific host's import
+  path; it is never copied into the user's environment.
 
-- installed app: standard `userData` paths
-- portable Windows app: `.nirs4all/` next to the executable
+`scripts/python-runtime-config.cjs`, `scripts/tls-trust.cjs` and
+`recommended-config.json` are packaged at the application root (inside the
+asar): the Electron main process reads the pinned Python runtime identity, the
+system trust helper and the package catalogue from them.
 
-Electron starts the packaged sidecar on every packaged desktop launch. This
-managed environment is never eligible for the product stdio plugin host.
-Installer layouts without a bundled closure advertise that capability as
-unavailable, and routes requiring it refuse. Changing the interpreter does not
-start another backend. A running sidecar whose original plugin-host path
-became stale reports the optional host as unavailable until the next
-application launch. The sidecar remains the sole product HTTP owner. There is
-no command-line switch, environment activation, IPC acquisition, or renderer
-target for a Python HTTP backend in Phase 2 desktop packages.
+At first launch the user selects a Python environment or lets Studio create
+one under `userData/python-env/`. See
+[environment architecture](_internals/environment-architecture.md).
+
+### Offline installer
+
+The offline installer exists for Windows and Linux. It is the installer plus:
+
+```text
+resources/
+└── backend/
+    └── offline/
+        ├── cpython-<version>+<tag>-<triple>-install_only.tar.gz
+        └── wheels/
+```
+
+- The archive is the pinned python-build-standalone runtime declared in
+  `scripts/python-runtime-config.cjs`.
+- `offline/wheels/` holds the rest of the locked closure: the dependencies of
+  the required cohort, and the `default_install` recommended packages with
+  their dependencies. `torch` is locked as CPU wheels.
+
+With this payload Studio creates the environment and installs the required
+packages and every default recommended package without network access: the
+payload is the closure that `uv` resolved for exactly that set, and the release
+workflow installs it with `--offline --no-index` on each platform before
+publication. Studio tries the payload first for every installation; a package
+that is not in it (any recommended package outside the default set) is then
+requested from the package index.
+
+It is built with `electron-builder.offline.yml`, which `extends`
+`electron-builder.installer.yml` and adds `offline/**/*` to the packaged
+resources.
+
+### Sidecar and Methods contract
 
 Packaged startup verifies the sidecar size and SHA-256 from
 `STUDIO_RUNTIME_CONTRACT.json` before spawning it. A missing or altered sidecar
-fails product startup before the renderer window is created; it is never
-replaced by the Python compatibility backend. On signed Windows/macOS release
-payloads, a valid Authenticode/code-signature verification is accepted when the
-signing step has necessarily changed the pre-signing byte hash; tampering then
-invalidates that platform signature and remains fail-closed.
+fails product startup before the renderer window is created. On signed
+Windows/macOS release payloads, a valid Authenticode/code-signature
+verification is accepted when the signing step has necessarily changed the
+pre-signing byte hash; tampering then invalidates that platform signature and
+remains fail-closed.
 
-### All-in-one builds
+The sidecar builder refuses to emit a product tree unless the build supplies
+one content-addressed native Methods library at ABI 2.22
+(`nirs4all-methods` 1.3.15). Every release gate invokes
+`native-runtime-contract.cjs` with `--require-python-payload` and
+`--require-bundled-methods`, so an installer cannot be published without `uv`,
+the required wheels (on macOS: a well-formed `wheelhouse.json` and no embedded
+wheels), the attested adapters and the native Methods library.
 
-All-in-one bundles embed the runtime directly in the packaged app:
-
-```text
-resources/
-└── backend/
-    ├── recommended-config.json
-    ├── version.json
-    ├── python-runtime/
-    │   ├── python/
-    │   ├── PYTHON_PLUGIN_CLOSURE.json
-    │   └── PLUGIN_RUNTIME_READY.json
-    └── native/
-        ├── studio-sidecar
-        ├── libn4m.so / libn4m.dylib / n4m.dll
-        └── STUDIO_RUNTIME_CONTRACT.json
-```
-
-Electron starts the packaged sidecar automatically and gives it the sibling
-embedded interpreter only after the runtime contract and closure manifest have
-verified the exact file inventory, sizes, hashes, canonical parents, unique
-site-packages directory, and absence of symlinks/special files. Packaged
-environment overrides, managed/user venvs, PATH, and source siblings are ignored.
-The worker uses `-I -S -B` and inserts only the attested site-packages directory.
-The Rust
-sidecar remains the process and HTTP owner; the embedded Python runtime is a
-plugin capability, not a FastAPI/Uvicorn fallback.
-
-Phase 2 installers and all-in-one archives build this payload with
-`scripts/bake-python-plugin-runtime.cjs`. This is a separate product profile;
-it does not invoke `bake-standalone-backend.cjs`, copy `api/`, `websocket/`, or
-`main.py`, or install the shared FastAPI backend dependency set. It downloads
-the immutable published `nirs4all 1.3.0` wheel associated with source commit
-`dceb21978dddb98683004248dbce378ffadf01b8` from its exact PyPI file URL (or
-accepts that exact wheel for an offline build), verifies SHA-256
-`9d6878dfcab7a301e952e274c2bd61501ef8dc44d657753a9264c24cd6d9252e`,
-and rejects FastAPI, Starlette, Uvicorn, Sentry's FastAPI integration, and the
-Uvicorn server transitive set. `PLUGIN_RUNTIME_READY.json` freezes the exact
-`library-plugin-host-only` role. The older generic `RUNTIME_READY.json` never
-enables the plugin capability.
-
-The broad dependency ranges of the published Python wheel are resolved through
-the versioned `build/constraints/plugin-runtime-cpython311.txt` closure on every
-platform. The release gate rebuilds two fresh runtimes, rejects missing,
-unexpected, or version-drifted distributions, and requires identical marker and
-complete file-closure digests. Thus resolver date and a warm local pip cache
-cannot silently change the Studio payload.
-
-Every installer/release gate invokes `native-runtime-contract.cjs` with
-`--require-bundled-python-plugin` and `--require-bundled-methods`. The sidecar
-builder likewise refuses to emit a product tree unless the build supplies one
-content-addressed native Methods library at ABI 2.14. Therefore a standard
-installer or all-in-one archive cannot silently publish either capability as
-`mode: unavailable`.
-
-The `nirs4all-methods` Python wheel in the constrained CPython closure is not
-the qualifying input for Studio's native dispatch library. Every release job
-separately checks out commit `b8b942aea291102d974bb68eb09013f3453b0a86`,
-compiles and tests that source through `.github/actions/build-native-methods`,
-stages the resulting `libn4m`/`n4m.dll`, and requires the archive/sidecar smoke
-to exercise the attested ABI 2.14 library before an artifact can pass.
+The `nirs4all-methods` wheel in `wheels/` is installed into the user's
+environment; it is not the native dispatch library of the sidecar. That
+library is `native/libn4m` (`n4m.dll` on Windows), staged by the build and
+recorded in the runtime contract.
 
 Windows builds make both Studio-owned native binaries independent of a
 machine-wide Visual C++ Redistributable: Methods is configured with CMake's
@@ -170,156 +173,232 @@ additional Microsoft redistributable files or licence payloads are introduced
 by this static-link profile; the ordinary third-party licence inventory remains
 the publication authority.
 
-The same content contract pins the bundled interpreter and every runtime file.
-Because this interpreter is a headless scientific stdio host, its packaging
-step removes the unused `tkinter` package and `_tkinter` extension instead of
-shipping platform Tcl/Tk libraries.
-If any member is missing, altered, added, or path-substituted after packaging,
-the Rust sidecar still owns the product
-port and reports the Python plugin host unavailable. It does not acquire,
-restart, or fall back to Uvicorn. Archive creation and the release smoke are
-stricter: they reject such an incomplete bundle before publication.
-
-Rust hashes the complete closure during acquisition and caches that attestation.
-Before spawn, immediately after spawn before stdin is released, and after process
-exit it walks the closed inventory and compares path, device, inode, size,
-nanosecond mtime, and nanosecond ctime snapshots. An unchanged snapshot avoids
-re-reading every large scientific member. Any snapshot drift triggers a complete
-SHA-256 inventory verification; additions, removals, content changes, and inode
-replacement fail closed. A metadata-only change with identical bytes may refresh
-the cached snapshot only after that full verification. The child independently
-checks the immutable installed RECORD identity and callable bytes, but relies on
-the Rust attestation instead of hashing the full wheel a second time.
-Targets whose standard metadata API does not expose an inode change-time
-equivalent retain the complete SHA-256 verification at every boundary.
-
-Cross-platform filesystems do not provide one portable sealed-executable
-primitive for this tree, so the residual same-user race between a successful
-snapshot and the kernel's later module read is not claimed away. Release
-resources must also be installed read-only and protected by the platform
-package/signature mechanism; any observed drift fails the job and terminates a
-just-spawned worker.
-
-Every Rust-owned invocation of the embedded CPython host disables bytecode
-writes with both `-B` and `PYTHONDONTWRITEBYTECODE=1`. This keeps preflight,
-system/update inspection, run-detail materialization, and scientific execution
-from adding `__pycache__` members to the exact packaged closure.
+On Windows the sidecar starts CPython through its internal Job Object
+launcher; it joins a kill-on-close job before creating CPython, so descendants
+cannot race the containment boundary or request breakaway.
 
 ### macOS signing order for attested native bytes
 
 macOS code signing changes Mach-O bytes. The packaged runtime therefore uses a
 strict order that differs from the default recursive Electron signing pass:
 
-1. Electron Builder copies `backend-dist/` into the unsigned `.app`.
+1. Electron Builder copies the packaged part of `backend-dist/` into the
+   unsigned `.app`.
 2. `scripts/macos-attested-runtime.cjs`, registered as `afterPack`, verifies the
-   copied runtime contract and discovers Mach-O files from the complete CPython
-   closure plus the optional `native/libn4m.dylib`.
-3. When Electron Builder has selected a signing identity, the hook signs those
-   files first with that same identity, hardened-runtime options, inherited
+   copied runtime contract, including the Python payload (`uv`,
+   `wheelhouse.json` and the adapters, and the absence of embedded wheels), and
+   selects `native/libn4m.dylib`.
+3. When Electron Builder has selected a signing identity, the hook signs that
+   library first with the same identity, hardened-runtime options, inherited
    entitlements, keychain, and timestamp policy. Any unresolved requested
-   identity, non-Mach-O selected interpreter/library, signing error, or
-   verification error aborts packaging.
-4. Only after those signatures are final does the hook regenerate
-   `PYTHON_PLUGIN_CLOSURE.json` and `STUDIO_RUNTIME_CONTRACT.json`, then verify
-   the complete copied tree again.
-5. Both Electron Builder configs use `mac.signIgnore` for exactly the CPython
-   runtime root and `libn4m.dylib`. Electron Builder still signs the Rust
-   sidecar, Electron helpers, frameworks, and outer application normally. The
-   outer application signature seals the already signed and attested resources.
+   identity, non-Mach-O library, signing error, or verification error aborts
+   packaging.
+4. Only after that signature is final does the hook regenerate
+   `STUDIO_RUNTIME_CONTRACT.json`, then verify the copied tree again.
+5. `mac.signIgnore` in `electron-builder.installer.yml` matches exactly
+   `libn4m.dylib`. Electron Builder signs the Rust sidecar, `uv`, Electron
+   helpers, frameworks, and the outer application normally. The outer
+   application signature seals the already signed and attested library.
 
-Unsigned local x64 builds have no signing identity to apply, but the hook still
-re-attests the bytes in the final `.app`. Apple Silicon's Electron Builder
-ad-hoc fallback is mirrored for the embedded Mach-O files. Custom macOS signing
-hooks are rejected because their identity cannot be proven equal to the one
-used for this pre-sign phase. This ordering preserves byte attestation; it does
-not replace the release workflow's application-signature, notarization, staple,
+Without a signing identity, Electron Builder's ad-hoc signature for Apple
+Silicon is mirrored for the library, and the hook still re-attests the bytes
+in the final `.app`. Custom macOS signing hooks are
+rejected because their identity cannot be proven equal to the one used for
+this pre-sign phase. This ordering preserves byte attestation; it does not
+replace the release workflow's application-signature, notarization, staple,
 or extracted-artifact verification gates.
-Nested `.app`, `.bundle`, `.framework`, `.plugin`, or `.xpc` directories inside
-the CPython closure are not currently attested as signable bundles and are
-rejected instead of being partially signed.
 
-This is purely a packaging rule. The Rust sidecar remains the sole product HTTP
-and WebSocket owner; CPython remains a bounded stdio library host.
+### Payload sizes
 
-Local Linux evidence executes the unpacked installer directly. The release
-workflow is designed to verify the same manifest for Windows x64 and macOS
-x64/arm64 payloads on matching runners and to smoke extracted archives on each
-target OS. Those external installation, update, uninstall, and crash-recovery
-results remain required before the matrix can be described as qualified.
+Measured on disk on Linux x64 on 2026-11-16:
 
-While the app is still running on the embedded bundled runtime, package
-installation, runtime creation, snapshot restore, and config alignment
-mutations are disabled. Users may still switch the compatibility diagnostic
-environment to an external Python runtime; that choice does not replace the
-packaged stdio plugin host.
-
-## Runtime Modes
-
-`/api/system/build` exposes the runtime contract used by Electron and the frontend:
-
-| `runtime_mode` | Meaning |
+| Part | Size |
 |---|---|
-| `development` | Diagnostic web-development server / ad hoc Python process; never a product backend |
-| `managed` | Writable Python environment for historical compatibility diagnostics only |
-| `bundled` | All-in-one archive with embedded read-only runtime |
-| `pyinstaller` | Legacy frozen backend path kept for compatibility |
+| `tools/uv` | 53 MB |
+| `wheels/` (required cohort) | 50 MB |
+| `adapters/` | 1.5 MB |
+| `native/libn4m.so` | 6.6 MB |
+| `native/studio-sidecar` (release build) | about 40 MB |
+| `resources/backend/` of the installer | about 150 MB |
+| `offline/` | about 1.1 GB: wheels 1.05 GB, of which `xgboost` and `nvidia-nccl-cu12` about 590 MB and CPU `torch` about 180 MB; Python archive 46 MB |
 
-`is_frozen` remains in the API for compatibility, but new UI and packaging decisions should use `runtime_mode`.
-The product always selects the verified Rust sidecar; these legacy
-API values cannot select a Python HTTP product route.
+A `resources/backend/` that carries a complete Python runtime weighs about
+1.5 GB.
+
+Not measured on their platforms: the following are the download sizes of the
+locked files, summed from the locks.
+
+| Target | Required cohort | Offline wheels | Python archive |
+|---|---|---|---|
+| Windows x64 | 42 MB | about 580 MB | 45 MB |
+| macOS arm64 | about 60 MB (remote wheelhouse; one wheel is built from source) | no offline installer | 18 MB (downloaded at first launch) |
 
 ## Build Entry Points
 
 ### Installer-oriented local builds
 
-Use `scripts/build-release.cjs` for installer-style packaging:
+Use `scripts/build-release.cjs` for installer packaging:
 
 ```bash
 npm run release -- --clean --platform win
 npm run release -- --clean --platform mac
 npm run release -- --clean --platform linux
+npm run release -- --clean --platform linux --offline
 ```
 
-This path packages with `electron-builder.installer.yml`.
+On macOS the script also packs the remote wheelhouse (see
+[Build inputs](#build-inputs)) and refuses `--offline`.
+
+The script stages the build inputs below into `backend-dist/`, verifies the
+runtime contract with the Python payload and the native Methods library, builds
+the frontend, then packages with `electron-builder.installer.yml`
+(`electron-builder.offline.yml` with `--offline`).
 
 Notes:
 
-- it is the local helper for installer targets
-- the desktop matrix is not split into CPU/GPU installers
+- only the CPU flavor and the matching host platform are accepted (x64 on
+  Windows and Linux, arm64 on macOS); cross-host and `--platform all` builds
+  are rejected
+- `--skip-backend` reuses the payload already in `backend-dist/`;
+  `--skip-frontend` reuses `dist/` and `dist-electron/`
+- without `--offline`, `backend-dist/offline/` is removed so that a light
+  installer cannot pick up a payload left by an offline build
 - `--mode standalone` is rejected; portable and all-in-one releases are disabled
-- only the CPU profile and the matching host platform are accepted; cross-host and `--platform all` builds are rejected
+
+### Build inputs
+
+Every build input writes under `backend-dist/`, which electron-builder copies
+to `resources/backend/`:
+
+| Command | Output | Target options |
+|---|---|---|
+| `node scripts/fetch-uv.cjs` | `tools/uv[.exe]` (pinned `uv` 0.10.4, SHA-256 verified) | `--platform`, `--arch` |
+| `node scripts/build-wheelhouse.cjs` | `wheels/` (required cohort) | `--platform`, `--arch` |
+| `node scripts/pack-remote-wheelhouse.cjs --tag <tag> --version <version>` | macOS only: moves `wheels/` into `release/nirs4all.Studio-<version>-mac-arm64-wheels.tar.gz` (with its `.sha256`) and writes `wheelhouse.json` | `--platform`, `--arch` |
+| `node scripts/studio-document-adapters.cjs --install backend-dist/adapters` | `adapters/studio_document_adapters/` | none |
+| `node scripts/build-native-sidecar.cjs` | `native/` and `STUDIO_RUNTIME_CONTRACT.json` | `--target <rust-target-triple>` |
+| `node scripts/build-offline-payload.cjs` | `offline/` (offline variant, Windows and Linux) | `--platform`, `--arch` |
+| `node scripts/build-offline-payload.cjs --image` | `offline/` with the closure of the Docker image instead | `--platform`, `--arch` |
+
+`--platform` and `--arch` name one of the three targets (`win32` `x64`,
+`linux` `x64`, `darwin` `arm64`) and default to the host. The `url` in
+`wheelhouse.json` is
+`https://github.com/GBeurier/nirs4all-studio/releases/download/<tag>/<filename>`;
+the release tag is the version, without a `v` prefix.
+
+### Wheel locks
+
+The wheels are not resolved at build time. One hash-pinned lock per target
+lives in `build/constraints/python-wheels-<platform>-<arch>.json`
+(`linux-x64`, `win32-x64`, `darwin-arm64`). For the CPython minor version
+pinned in `scripts/python-runtime-config.cjs` on that target, it names the
+exact file of every package Studio ships:
+
+- `packages`: the required cohort and, for the targets that have an offline
+  installer, the `default_install` recommended packages and all their
+  dependencies. The macOS lock holds the required cohort only.
+- `image_packages` (Linux only): the closure of the Docker image, that is the
+  required cohort and the image extras (`shap`, `matplotlib`, `lightgbm`) with
+  all their dependencies, at the same versions as `packages` wherever both
+  need a package.
+
+`build-wheelhouse.cjs` stages the entries of the required cohort;
+`build-offline-payload.cjs` stages the rest of `packages`, or of
+`image_packages` with `--image`. Both only download the locked files and
+verify their SHA-256.
+
+A lock also records what it was resolved from: the catalogue's exact
+requirements, the Python version, and the rules of its target (resolution
+platform, macOS deployment target, packages built from source). The build
+scripts refuse a lock when any of these no longer matches.
+
+Regenerate every lock after any change of `required`, or of a
+`default_install` package, in `recommended-config.json`:
+
+```bash
+node scripts/python-wheel-lock.cjs
+```
+
+This needs `uv` (on `PATH`, or named by `NIRS4ALL_UV`) and network access.
+
+Packages that publish no wheel for a target are locked as source distributions
+and built into wheels when the payload is built:
+
+| Package | Targets | Build requirement |
+|---|---|---|
+| `pyopls` | all (offline and image closures) | none (pure Python) |
+| `nirs4all-formats` | macOS arm64 | Rust toolchain on the macOS build host |
+
+Source builds use a `uv`-managed Python and, on macOS, the deployment target
+recorded in the lock (12.0), so the wheel's tags do not depend on the build
+machine. Native packages only build on their target host.
 
 ### Supported release formats
 
-Publish NSIS for Windows, DEB for Linux, DMG for each macOS architecture, and
-Docker. Portable and all-in-one archives are excluded from the release workflow
-and npm release commands. Historical archive helpers remain for regression
-tests of previously published versions.
+Publish NSIS for Windows and DEB for Linux, each with its offline variant, DMG
+for macOS arm64 with its remote wheelhouse, and Docker. Portable and all-in-one archives are
+excluded from the release workflow and npm release commands.
 
-### Plugin-runtime-only bake
+### Verification
 
-To build only the embedded library/plugin payload:
+Verify a staged or packaged backend tree:
 
 ```bash
-node scripts/bake-python-plugin-runtime.cjs
+node scripts/native-runtime-contract.cjs \
+  --backend-root <dir> --artifact-boundary-root <dir> \
+  --platform <platform> --arch <arch> \
+  --require-python-payload --require-bundled-methods
 ```
 
-This produces `backend-dist/` with `python-runtime/` and the strict
-`PLUGIN_RUNTIME_READY.json`. Pass `--plugin-wheel <path>` for an offline
-build; the wheel must match its pinned SHA-256 identity. Every transitive scientific dependency comes from
-the attested `nirs4all` wheel closure; the bake fails closed if that published
-closure is incomplete or differs from its recorded hashes.
+It checks the sidecar and `libn4m` against the contract and, with
+`--require-python-payload`, the presence of `uv`, exactly one wheel per
+required package at its `install` version with no other wheel (for
+`--platform darwin`: a well-formed `wheelhouse.json` and no `wheels/`
+directory), and the adapters against their attested manifest
+(`sidecar/contracts/studio_document_adapters_v1.json`).
 
-For a **local pre-release multimodal qualification**, copy
-`backend-dist/python-runtime/python` outside the Studio checkout, prepare an
-existing typed `nirs4all.studio-scientific-job.v2` request JSON, and run
-`python3 scripts/qualify-multimodal-candidate.py --runtime-copy <copy> --nirs-wheel <wheel> --io-wheel <wheel> --request <json>`.
-The script verifies each wheel's RECORD, extracts both into a temporary overlay
-under the copied interpreter, checks their import origins, then runs, exports and
-replays the cohort without fitting. It leaves the signed Studio runtime and
-release pins untouched. Its result is **not** Rust-sidecar or Electron
-qualification; published wheel identities and the full installed-app path
-must be attested separately before release.
+Two smokes run on an unpacked application, and both are release gates:
+
+```bash
+node scripts/smoke-archive-standalone.cjs --extracted-root <unpacked app> --platform <platform>
+node scripts/smoke-packaged-ui.cjs --extracted-root <unpacked app> --platform <platform> \
+  --installer <installer file> --output <proof.json>
+```
+
+- `smoke-archive-standalone.cjs` checks the payload. A script
+  (`provision-environment.cjs`) creates an environment with the shipped `uv`
+  from the shipped wheels in a private profile; when the application carries
+  `offline/`, nothing comes from the network (`--offline --no-index`) and the
+  default recommended packages are installed too, which proves that the
+  payload is complete on that platform. The packaged application is then
+  launched on that environment: the smoke waits for `/api/system/readiness` to
+  report `ml_ready`, checks `/api/system/env-coherence`, and exercises the
+  Playground and dataset routes through the Rust sidecar.
+- `smoke-packaged-ui.cjs` checks the application. On a fresh profile the
+  renderer opens the setup page and Studio creates the environment itself,
+  through `window.electronApi.pythonEnv.create` with the packages it
+  preselects; `shap` and `matplotlib` are then added the same way. The smoke
+  waits for the scientific host, saves a preference, reloads, restarts, and
+  runs one real training followed by its SHAP analysis in the renderer. It
+  needs `RELEASE_SOURCE_SHA`, `RELEASE_VERSION` and the cohort variables of
+  the release workflow. `scripts/smoke-first-launch-ui.cjs` is the same run
+  without the release identity checks and the SHAP journey.
+
+On macOS both take the freshly built wheel archive through
+`NIRS4ALL_WHEELHOUSE_ARCHIVE`.
+
+The provisioning step is available on its own, and is also what the Docker
+image uses:
+
+```bash
+node scripts/provision-environment.cjs --backend-root <dir> --env-dir <dir> [--recommended a,b]
+```
+
+`--backend-root` is `resources/backend` of an application or `backend-dist/`.
+The script creates `<env-dir>/python` and `<env-dir>/venv`, installs the
+required cohort and the named recommended packages at their catalogue
+versions, and prints the environment's interpreter. With an `offline/`
+directory in the backend tree it installs from that payload only.
 
 ## CI/CD Pipeline
 
@@ -333,7 +412,8 @@ The release workflow is `.github/workflows/release-unified.yml`.
 ### Manual inputs
 
 - `tag`
-- `skip_all_in_one`
+- `publish_existing_tag`
+- `macos_arm64_only`
 - `skip_docker`
 
 ### Jobs
@@ -341,50 +421,46 @@ The release workflow is `.github/workflows/release-unified.yml`.
 | Job | Purpose |
 |---|---|
 | `prepare` | Resolve version/tag, prerelease flag, and build switches |
-| `installer-linux` | Linux installer assets via `electron-builder.installer.yml` |
-| `installer-windows` | Windows NSIS installer and portable executable |
-| `installer-macos-x64` | macOS Intel DMG, signed/notarized when secrets are available |
-| `installer-macos-arm64` | macOS Apple Silicon DMG, signed/notarized when secrets are available |
-| `archive-windows` | Windows all-in-one ZIP |
-| `archive-linux` | Linux all-in-one tar.gz |
-| `archive-macos-x64` | macOS Intel all-in-one ZIP, rebuilt after notarization/stapling |
-| `archive-macos-arm64` | macOS Apple Silicon all-in-one ZIP, rebuilt after notarization/stapling |
-| `docker` | Native container image with nginx and the Rust sidecar |
-| `release` | Consolidates `installer-*` and `archive-*` artifacts into the GitHub Release |
+| `quality` | Qualify the release commit |
+| `installer-linux` | Linux DEB installer and its offline variant |
+| `installer-windows` | Windows NSIS installer and its offline variant |
+| `installer-macos-arm64` | macOS Apple Silicon DMG and its remote wheelhouse; the DMG is signed/notarized when secrets are available |
+| `docker` | Native container image with nginx, the Rust sidecar and its Python environment |
+| `release` | Consolidates the `installer-*` artifacts into the GitHub Release |
 
-### Why installer and archive builds are split
-
-The split is intentional:
-
-- installer assets must stay lighter and writable at runtime
-- all-in-one archives must embed the heavy baked runtime
-- macOS archive notarization has different handling than DMG packaging
-- update asset names must stay unambiguous
+The Linux and Windows jobs run once per variant (`standard`, `offline`). Each
+leg stages the [build inputs](#build-inputs) for its target, verifies the
+runtime contract, packages its installer, and runs both smokes described under
+[Verification](#verification) on the unpacked application.
 
 ## Asset Name Contract
 
 These patterns describe outputs of the release workflow. The workflow must
 produce and smoke-test them before they may be attached to a release.
+electron-builder writes the product name with a space
+(`nirs4all Studio-...`); the published asset uses a dot
+(`nirs4all.Studio-...`). `scripts/finalize-release-assets.cjs` enforces the
+published set.
 
-### Installer / portable assets
+### Installer assets
 
-| Platform | Asset pattern |
-|---|---|
-| Windows installer | `nirs4all Studio-{version}-win-x64.exe` |
-| Windows portable | `nirs4all Studio-{version}-win-x64-portable.exe` |
-| macOS Intel installer | `nirs4all Studio-{version}-mac-x64.dmg` |
-| macOS Apple Silicon installer | `nirs4all Studio-{version}-mac-arm64.dmg` |
-| Linux AppImage | `nirs4all Studio-{version}-linux-x64.AppImage` |
-| Linux DEB | `nirs4all Studio-{version}-linux-x64.deb` |
+| Platform | Installer | Offline installer |
+|---|---|---|
+| Windows x64 | `nirs4all.Studio-{version}-win-x64.exe` | `nirs4all.Studio-{version}-win-x64-offline.exe` |
+| macOS Apple Silicon | `nirs4all.Studio-{version}-mac-arm64.dmg` | none |
+| Linux x64 | `nirs4all.Studio-{version}-linux-amd64.deb` | `nirs4all.Studio-{version}-linux-amd64-offline.deb` |
 
-### All-in-one assets
+The macOS release also carries
+`nirs4all.Studio-{version}-mac-arm64-wheels.tar.gz`, the remote wheelhouse of
+the macOS application.
 
-| Platform | Asset pattern |
-|---|---|
-| Windows x64 | `nirs4all Studio-{version}-all-in-one-win-x64.zip` |
-| Linux x64 | `nirs4all Studio-{version}-all-in-one-linux-x64.tar.gz` |
-| macOS Intel | `nirs4all Studio-{version}-all-in-one-mac-x64.zip` |
-| macOS Apple Silicon | `nirs4all Studio-{version}-all-in-one-mac-arm64.zip` |
+`expectedPublishedNames` in `scripts/finalize-release-assets.cjs` takes an
+explicit flag for the offline installers and the macOS wheels: the release
+workflow passes it, and the lanes that republish a release made before them do
+not.
+
+The in-app update check always selects the installer, never an `-offline`
+asset or the wheel archive. See [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md#asset-selection-rules).
 
 ### Docker asset
 
@@ -398,22 +474,34 @@ compiled React application and proxies `/api/*` and `/ws*` to
 WebSocket, job/control, scheduler and state owner. Its loopback port is neither
 exposed nor configurable by container users.
 
-The default image embeds the same fixed, separately attested CPython
-library/plugin closure as the desktop packages. It contains no FastAPI,
-Uvicorn, `main.py`, `api/`, or `websocket/` sources. The Rust sidecar selects
-that interpreter through fixed `NIRS4ALL_PYTHON_PLUGIN_*` identities and invokes
-it only through the bounded stdio protocol. It never owns a port, scheduler,
-store, or fallback route.
-Windows packages start CPython through the sidecar's internal Job Object
-launcher; it joins a kill-on-close job before creating CPython, so descendants
-cannot race the containment boundary or request breakaway.
-The image does embed the exact `nirs4all-methods` ABI 2.14 library and its
+The image's Python environment is built at image build time by
+`scripts/provision-environment.cjs`, with `uv` and the same catalogue as the
+desktop product: the pinned Python runtime, the required cohort, and the
+recommended packages `shap`, `matplotlib` and `lightgbm`. Every file comes
+from the Linux lock (`image_packages`): `build-offline-payload.cjs --image`
+downloads the Python archive and each distribution by pinned SHA-256, and the
+environment is installed with `--offline --no-index`. It
+lives at `/opt/nirs4all/python-env/{python,venv}`; the adapters are at
+`/opt/nirs4all/backend/adapters`. The sidecar receives it through the same four
+variables Electron sets on the desktop:
+
+| Variable | Value in the image |
+|---|---|
+| `NIRS4ALL_PYTHON_PLUGIN_HOST` | `/opt/nirs4all/python-env/venv/bin/python` |
+| `NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES` | `/opt/nirs4all/python-env/venv/lib/python3.11/site-packages` |
+| `NIRS4ALL_STUDIO_ADAPTERS_DIR` | `/opt/nirs4all/backend/adapters` |
+| `NIRS4ALL_SCIENTIFIC_EXECUTOR` | `cpython-stdio-v1` |
+
+The image contains no FastAPI, Uvicorn, `main.py` or `websocket/` sources, and
+no `python` command on `PATH`. The sidecar invokes the interpreter only through
+the bounded stdio protocol; it never owns a port, scheduler, store, or fallback
+route.
+The image also embeds the exact `nirs4all-methods` ABI 2.22 library and its
 `STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
-independent of the plugin host. CI supplies that library through a local
-BuildKit context built and tested from the published `nirs4all-methods` 1.2.1
-commit `b8b942aea291102d974bb68eb09013f3453b0a86`, never from an
-unverified URL. The image build verifies both the complete CPython closure and
-the Methods digest before the runtime stage is assembled.
+independent of the Python host. CI supplies that library through the local
+BuildKit context `methods-runtime`, never from an unverified URL. The image
+build verifies the Methods digest and the attested adapters before the runtime
+stage is assembled.
 
 Persist native Studio configuration in `/var/lib/nirs4all-studio` and mount
 scientific workspaces under `/workspaces`:
@@ -453,99 +541,79 @@ When configured, electron-builder signs the generated executables.
 
 ### macOS installers
 
-Installer jobs package DMGs with `electron-builder.installer.yml`, then:
+The macOS job packages the DMG with `electron-builder.installer.yml`. When the
+Apple secrets are configured it then:
 
-1. sign the `.app`
-2. build the `.dmg`
-3. notarize the `.dmg`
-4. staple the notarization ticket
+1. signs the `.app`
+2. builds the `.dmg`
+3. notarizes the `.dmg`
+4. staples the notarization ticket
 
-### macOS all-in-one ZIPs
-
-The all-in-one ZIP path is stricter:
-
-1. build the packaged `.app`
-2. zip the `.app` for notarization submission
-3. notarize
-4. staple the `.app`
-5. rebuild the final distributed ZIP from the stapled `.app`
-
-This order is required for the offline first-launch promise of the macOS ZIP bundle.
+Without those secrets the DMG is published unsigned. macOS then blocks the
+first opening of the application: the user allows it in System Settings >
+Privacy & Security > Open Anyway. The application embeds no wheels so that it
+contains no unsigned binary inside an archive.
 
 ## Update Compatibility
 
-The update contract uses GitHub Releases. The updater may apply only assets it
-can stage and verify in place.
-
-### Native update assets
-
-- installed Windows builds: all-in-one ZIP
-- portable Windows builds: portable executable
-- macOS builds: all-in-one ZIP
-- Linux builds: all-in-one tar.gz, with ZIP retained only for historical compatibility
-
-### Rejected as in-place update assets
-
-These formats are installation-only and are
-not eligible for in-place replacement:
-
-- `.dmg`
-- `.deb`
-- `.AppImage`
-- non-portable Windows installer `.exe`
-
-### ZIP permissions on Linux and macOS
-
-`api/update_downloader.py` restores POSIX permission bits recorded in ZIP entries during extraction. This is required so that:
-
-- the packaged Electron binary remains executable
-- the embedded Python runtime remains executable
-
-The release workflow validates this with `scripts/smoke-update-zip-permissions.py`.
+The update contract uses GitHub Releases. An application update is the
+installer of the newer version: the update check selects the installer asset
+for the platform, never an `-offline` asset or the macOS wheel archive, and
+Studio offers its download.
+Running it replaces the application; the user's Python environment and
+settings under `userData` are kept. See [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md).
 
 ## Troubleshooting
 
-### All-in-one build shows the setup wizard
+### The release build refuses the wheel lock
 
-The packaged runtime was not detected. Check that the archive contains:
+`build-wheelhouse.cjs` or `build-offline-payload.cjs` reports that
+`build/constraints/python-wheels-<target>.json` does not match
+`recommended-config.json`. The catalogue changed after the locks were
+generated; run `node scripts/python-wheel-lock.cjs` and commit the locks.
 
-- `resources/backend/python-runtime/PLUGIN_RUNTIME_READY.json`
-- `resources/backend/python-runtime/PYTHON_PLUGIN_CLOSURE.json`
+### Contract verification reports files outside the required cohort
 
-### Linux or macOS update succeeds but the app will not launch
+`backend-dist/wheels/` must contain exactly one wheel per required package at
+its `install` version. Run `node scripts/build-wheelhouse.cjs` again: it
+removes every file that is not in the lock.
 
-Check ZIP permission restoration first:
+### The packaged application opens the setup page
 
-```bash
-python3 scripts/smoke-update-zip-permissions.py --archive path/to/archive.zip --platform linux
-```
-
-### macOS ZIP launches only online or fails Gatekeeper checks
-
-Verify that the final ZIP was rebuilt after notarization and stapling. Zipping too early breaks the offline launch contract.
-
-### Local release contains ambiguous ZIP files
-
-The updater prefers asset names containing `all-in-one`. Do not publish generic sidecar ZIPs that collide with the all-in-one naming convention.
+Expected on the first launch: no Python environment is selected yet. With the
+offline installer (Windows, Linux), creating the environment needs no network
+access. On macOS it needs one: Studio downloads the Python runtime and the
+remote wheelhouse.
 
 ## Files Reference
 
 | File | Purpose |
 |---|---|
 | `.github/workflows/release-unified.yml` | Source of truth for artifact construction, qualification, and publication |
-| `electron-builder.installer.yml` | Installer and portable packaging config |
-| `electron-builder.archive.yml` | All-in-one ZIP packaging config |
-| `electron-builder.yml` | Compatibility/default entry that still points to installer-style packaging |
-| `scripts/build-release.cjs` | Local installer-oriented build helper |
-| `scripts/build-archive-standalone.cjs` | Local all-in-one ZIP build helper |
-| `scripts/bake-python-plugin-runtime.cjs` | Builder/verifier for the pinned plugin-only CPython closure |
-| `scripts/bake-standalone-backend.cjs` | Legacy compatibility backend builder; never used by Phase 2 desktop release |
-| `scripts/copy-backend-source.cjs` | Legacy compatibility source copier; never used by Phase 2 desktop release |
-| `scripts/smoke-archive-standalone.cjs` | Offline launch smoke test for extracted all-in-one bundles |
-| `scripts/smoke-update-zip-permissions.py` | ZIP permission restoration smoke test |
-| `api/update_downloader.py` | Download, checksum, and archive extraction logic |
-| `api/updates.py` | GitHub/PyPI checks and asset selection logic |
+| `electron-builder.installer.yml` | Installer packaging config |
+| `electron-builder.offline.yml` | Offline installer packaging config; extends the installer config |
+| `scripts/build-release.cjs` | Local installer build helper (`npm run release`) |
+| `scripts/fetch-uv.cjs` | Stages the pinned `uv` release |
+| `scripts/python-wheel-lock.cjs` | Generates and reads the hash-pinned wheel locks |
+| `scripts/build-wheelhouse.cjs` | Stages the wheels of the required cohort |
+| `scripts/pack-remote-wheelhouse.cjs` | macOS: packs the required wheels as a release asset and writes `wheelhouse.json` |
+| `scripts/build-offline-payload.cjs` | Stages the offline payload, or the Docker image closure with `--image` |
+| `scripts/studio-document-adapters.cjs` | Attests and installs the document adapters |
+| `scripts/build-native-sidecar.cjs` | Builds the Rust sidecar and writes the runtime contract |
+| `scripts/native-runtime-contract.cjs` | Writes and verifies `STUDIO_RUNTIME_CONTRACT.json` and the Python payload |
+| `scripts/macos-attested-runtime.cjs` | macOS `afterPack` pre-signing and re-attestation |
+| `scripts/python-runtime-config.cjs` | Pinned python-build-standalone runtime identity |
+| `scripts/provision-environment.cjs` | Creates an environment from a backend tree (smokes, Docker image) |
+| `scripts/smoke-archive-standalone.cjs` | Payload smoke of an unpacked or installed application |
+| `scripts/smoke-first-launch-ui.cjs` | Application smoke: environment created by Studio from its setup page |
+| `scripts/smoke-packaged-ui.cjs` | Release gate: the application smoke with release identity checks and a training + SHAP journey |
+| `scripts/finalize-release-assets.cjs` | Published asset names and checksum sidecars |
+| `build/constraints/python-wheels-<platform>-<arch>.json` | Wheel locks |
+| `recommended-config.json` | Package catalogue (`required`, `optional`) |
+| `Dockerfile` | Native container image |
+| `sidecar/src/native_updates.rs` | Release discovery and asset selection for application updates |
 
 ## See Also
 
 - [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md)
+- [Environment architecture](_internals/environment-architecture.md)

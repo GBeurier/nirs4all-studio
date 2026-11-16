@@ -2,10 +2,9 @@
  * Update system hooks using TanStack Query
  *
  * Provides hooks for:
- * - Checking for webapp and nirs4all updates
+ * - Checking for application updates
  * - Managing update settings
- * - Inspecting the current Python runtime
- * - Downloading and applying webapp updates
+ * - Downloading and applying application updates
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -17,8 +16,6 @@ import {
   checkForUpdates,
   getUpdateSettings,
   updateUpdateSettings,
-  getRuntimeStatus,
-  installNirs4all,
   getVersionInfo,
   startWebappDownload,
   getDownloadStatus,
@@ -38,7 +35,6 @@ export const updateKeys = {
   all: ["updates"] as const,
   status: () => [...updateKeys.all, "status"] as const,
   settings: () => [...updateKeys.all, "settings"] as const,
-  venv: () => [...updateKeys.all, "venv"] as const,
   version: () => [...updateKeys.all, "version"] as const,
 };
 
@@ -101,35 +97,6 @@ export function useUpdateUpdateSettings() {
 }
 
 /**
- * Hook to fetch current runtime status
- */
-export function useVenvStatus() {
-  return useQuery({
-    queryKey: updateKeys.venv(),
-    queryFn: getRuntimeStatus,
-    staleTime: 30 * 1000, // 30 seconds
-    retry: 1,
-  });
-}
-
-/**
- * Hook to install/upgrade nirs4all
- */
-export function useInstallNirs4all() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (options?: { version?: string; extras?: string[] }) =>
-      installNirs4all(options),
-    onSuccess: () => {
-      // Invalidate queries to refetch updated versions
-      queryClient.invalidateQueries({ queryKey: updateKeys.venv() });
-      queryClient.invalidateQueries({ queryKey: updateKeys.status() });
-    },
-  });
-}
-
-/**
  * Hook to fetch version information
  */
 export function useVersionInfo() {
@@ -141,7 +108,7 @@ export function useVersionInfo() {
 }
 
 /**
- * Hook to check if any updates are available
+ * Hook to check if an application update is available
  *
  * Returns a simplified boolean + counts for quick UI indicators
  */
@@ -152,17 +119,10 @@ export function useHasUpdates() {
     isLoading,
     error,
     hasWebappUpdate: status?.webapp?.update_available ?? false,
-    hasNirs4allUpdate: status?.nirs4all?.update_available ?? false,
-    hasAnyUpdate:
-      (status?.webapp?.update_available ?? false) ||
-      (status?.nirs4all?.update_available ?? false),
-    updateCount:
-      (status?.webapp?.update_available ? 1 : 0) +
-      (status?.nirs4all?.update_available ? 1 : 0),
+    hasAnyUpdate: status?.webapp?.update_available ?? false,
+    updateCount: status?.webapp?.update_available ? 1 : 0,
     webappVersion: status?.webapp?.current_version,
-    nirs4allVersion: status?.nirs4all?.current_version,
     latestWebappVersion: status?.webapp?.latest_version,
-    latestNirs4allVersion: status?.nirs4all?.latest_version,
   };
 }
 

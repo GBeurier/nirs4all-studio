@@ -968,7 +968,14 @@ mod tests {
         std::fs::create_dir(&config).unwrap();
         std::fs::write(config.join("app_settings.json"), json!({"linked_workspaces":[{"id":"test","path":workspace,"name":"test","is_active":true,"linked_at":"2026-09-01T10:00:00","last_scanned":null,"discovered":{"runs_count":1}}]}).to_string()).unwrap();
         let mut state = SidecarState::with_app_settings_dir(&config);
-        state.scientific_host = Some(Arc::new(crate::scientific_cpython::CpythonScientificJobExecutor::acquire_existing_with_config_dir(root.path().join("missing-python"), root.path().join("missing-packages"), &config)));
+        state.scientific_host = Some(Arc::new(
+            crate::scientific_cpython::CpythonScientificJobExecutor::acquire(
+                root.path().join("missing-python"),
+                root.path().join("missing-packages"),
+                root.path().join("missing-adapters"),
+                &config,
+            ),
+        ));
         let state = Arc::new(Mutex::new(state));
         let request = HttpRequest {
             method: "GET".into(),

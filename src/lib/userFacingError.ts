@@ -20,7 +20,7 @@ export interface UserFacingError {
 }
 
 /** Settings tab that hosts the Python environment picker. */
-const PYTHON_SETTINGS_HREF = "/settings?tab=advanced";
+const PYTHON_SETTINGS_HREF = "/settings?tab=python";
 
 /** Refusal identifiers (renderer preselection reasons and sidecar error codes) that mean "no analysis engine". */
 const ENGINE_UNAVAILABLE = new Set([

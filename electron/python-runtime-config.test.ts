@@ -4,123 +4,47 @@ import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
-  assertProfileSupportedOnPlatform(profileId: string, platform?: string): void;
-  LITE_EXCLUDED_PACKAGE_NAMES: string[];
-  MANAGED_RUNTIME_PACKAGES: string[];
-  PLUGIN_DISTRIBUTION_REQUIREMENT: string;
-  PLUGIN_DISTRIBUTION_VERSION: string;
-  PLUGIN_HOST_PACKAGES: string[];
-  REQUIRED_METHODS_ABI: number[];
-  REUSABLE_RUNTIME_PACKAGES: string[];
-  PRODUCT_PROFILES: Record<string, { extraPackageNames: string[] }>;
-  STANDALONE_V1_PROFILE: string;
+  PYTHON_VERSION: string;
   getArchiveFilename(platform: string, arch: string): string;
+  getArchiveSha256(platform: string, arch: string): string;
   getDownloadUrl(platform: string, arch: string): string;
-  getProfilePackageInstallSpecs(profileId: string, options?: { platform?: string }): string[];
-  resolveProfileForFlavor(flavor: string, platform?: string): string;
+  listSupportedPlatformArchKeys(): string[];
 };
 const transitionalHttpConfig = require("../scripts/python-http-runtime-config.cjs") as {
   BACKEND_COMMON_PACKAGES: string[];
 };
 
 describe("python-runtime-config", () => {
-  it("accepts version ranges in reused environments and pins only the bundled cohort", () => {
-    // nirs4all: the Studio-required release up to the next minor; io/methods: nirs4all's own declared ranges.
-    expect(runtimeConfig.PLUGIN_DISTRIBUTION_REQUIREMENT).toBe(">=1.4.16,<1.5");
-    expect(runtimeConfig.REUSABLE_RUNTIME_PACKAGES).toEqual([
-      "nirs4all>=1.4.16,<1.5", "nirs4all-io>=0.3.0,<0.4", "nirs4all-methods>=1.3.15,<2", "nirs4all-formats",
-    ]);
-    expect(runtimeConfig.REQUIRED_METHODS_ABI).toEqual([2, 22]);
+  it("pins one python-build-standalone archive and its SHA-256 per supported target", () => {
+    expect(runtimeConfig.PYTHON_VERSION).toBe("3.11.13");
+    expect(runtimeConfig.listSupportedPlatformArchKeys()).toEqual(["darwin-arm64", "linux-x64", "win32-x64"]);
+    expect(runtimeConfig.getArchiveFilename("linux", "x64")).toBe(
+      "cpython-3.11.13+20250828-x86_64-unknown-linux-gnu-install_only.tar.gz",
+    );
+    expect(runtimeConfig.getDownloadUrl("darwin", "arm64")).toBe(
+      "https://github.com/astral-sh/python-build-standalone/releases/download/20250828/cpython-3.11.13+20250828-aarch64-apple-darwin-install_only.tar.gz",
+    );
+    const digests = runtimeConfig.listSupportedPlatformArchKeys().map((key) => {
+      const [platform, arch] = key.split("-");
+      expect(runtimeConfig.getArchiveFilename(platform, arch)).toContain(`cpython-${runtimeConfig.PYTHON_VERSION}+`);
+      return runtimeConfig.getArchiveSha256(platform, arch);
+    });
+    expect(digests.every((digest) => /^[0-9a-f]{64}$/.test(digest))).toBe(true);
+    expect(new Set(digests).size).toBe(3);
   });
-  it("keeps transitional HTTP dependencies out of the packaged plugin-host config", () => {
+
+  it("refuses a target without a pinned archive", () => {
+    expect(() => runtimeConfig.getArchiveFilename("linux", "arm64")).toThrow(
+      "Unsupported python-build-standalone target 'linux-arm64'",
+    );
+    expect(() => runtimeConfig.getDownloadUrl("darwin", "x64")).toThrow("Unsupported python-build-standalone target 'darwin-x64'");
+    expect(() => runtimeConfig.getArchiveSha256("win32", "arm64")).toThrow("Unsupported python-build-standalone target");
+  });
+
+  it("exposes no package list: the catalogue is recommended-config.json alone", () => {
+    expect(Object.keys(runtimeConfig).sort()).toEqual([
+      "PYTHON_VERSION", "getArchiveFilename", "getArchiveSha256", "getDownloadUrl", "listSupportedPlatformArchKeys",
+    ]);
     expect(transitionalHttpConfig.BACKEND_COMMON_PACKAGES).toContain("fastapi>=0.115.0");
-    expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("1.4.16");
-    expect(runtimeConfig.PLUGIN_HOST_PACKAGES).toEqual([
-      "nirs4all==1.4.16", "nirs4all-core==0.5.0", "dag-ml==0.4.0", "dag-ml-data==0.2.16", "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15", "nirs4all-formats==0.2.16", "pyarrow==25.0.1", "shap==0.47.1", "matplotlib==3.10.1", "lightgbm==4.6.0",
-    ]);
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toEqual(runtimeConfig.PLUGIN_HOST_PACKAGES);
-
-    const packagedSpecs = runtimeConfig.MANAGED_RUNTIME_PACKAGES.join(" ").toLowerCase();
-    for (const forbidden of ["fastapi", "uvicorn", "python-multipart", "sentry-sdk"]) {
-      expect(packagedSpecs).not.toContain(forbidden);
-    }
-  });
-
-  it("keeps the standalone v1 scope pinned to the cpu profile extras", () => {
-    expect(runtimeConfig.STANDALONE_V1_PROFILE).toBe("cpu");
-    expect(runtimeConfig.PRODUCT_PROFILES.cpu.extraPackageNames).toEqual([
-      "pyopls",
-      "trendfitter",
-      "xgboost",
-      "umap-learn",
-      "torch",
-    ]);
-  });
-
-  it("keeps the cpu-lite profile lite: exclusions and CPU-wheel renames come from recommended-config.json", () => {
-    // The lite rules are data on the cpu-lite profile (exclude_optionals /
-    // package_renames) shared with api/recommended_config.py — losing them in
-    // the JSON would silently re-grow the lite build, so pin the result here.
-    expect(runtimeConfig.LITE_EXCLUDED_PACKAGE_NAMES).toEqual([
-      "torch",
-      "tensorflow",
-      "keras",
-      "jax",
-      "jaxlib",
-      "flax",
-      "tabpfn",
-      "tabicl",
-      "autogluon",
-      "umap-learn",
-    ]);
-    expect(runtimeConfig.PRODUCT_PROFILES["cpu-lite"].extraPackageNames).toEqual([
-      "pyopls",
-      "trendfitter",
-      "xgboost",
-    ]);
-    expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "linux" })).toEqual([
-      "nirs4all>=1.4.16,<1.5",
-      "pyopls>=20.0",
-      "trendfitter>=0.0.6",
-      "xgboost-cpu>=2.0.0",
-    ]);
-    expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "win32" })).toEqual([
-      "nirs4all>=1.4.16,<1.5",
-      "pyopls>=20.0",
-      "trendfitter>=0.0.6",
-      "xgboost-cpu>=2.0.0",
-    ]);
-    // No macOS xgboost-cpu wheel exists — darwin keeps the regular name.
-    expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "darwin" })).toEqual([
-      "nirs4all>=1.4.16,<1.5",
-      "pyopls>=20.0",
-      "trendfitter>=0.0.6",
-      "xgboost>=2.0.0",
-    ]);
-  });
-
-  it("resolves python-build-standalone archive names and URLs from the shared mapping", () => {
-    expect(runtimeConfig.getArchiveFilename("darwin", "arm64")).toBe(
-      "cpython-3.11.13+20250828-aarch64-apple-darwin-install_only.tar.gz",
-    );
-    expect(runtimeConfig.getDownloadUrl("linux", "x64")).toBe(
-      "https://github.com/astral-sh/python-build-standalone/releases/download/20250828/cpython-3.11.13+20250828-x86_64-unknown-linux-gnu-install_only.tar.gz",
-    );
-  });
-
-  it("maps legacy installer flavors onto product profiles while preserving the managed runtime footprint", () => {
-    expect(runtimeConfig.resolveProfileForFlavor("gpu", "darwin")).toBe("gpu-mps");
-    expect(runtimeConfig.resolveProfileForFlavor("gpu", "win32")).toBe("gpu-cuda-torch");
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==1.4.16");
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES.some((pkg) => pkg.startsWith("torch"))).toBe(false);
-  });
-
-  it("rejects profiles and legacy flavors that are incompatible with the current platform", () => {
-    expect(() => runtimeConfig.assertProfileSupportedOnPlatform("gpu-cuda-torch", "darwin")).toThrow(
-      "Product profile 'gpu-cuda-torch' is not supported on platform 'darwin'. Supported platforms: win32, linux",
-    );
-    expect(() => runtimeConfig.resolveProfileForFlavor("gpu-metal", "win32")).toThrow(
-      "Product profile 'gpu-mps' is not supported on platform 'win32'. Supported platforms: darwin",
-    );
   });
 });

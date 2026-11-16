@@ -1,18 +1,15 @@
 #!/usr/bin/env node
 /**
- * check-dep-sync.cjs — fail the green gate if the backend runtime dependency
- * sources drift apart.
+ * check-dep-sync.cjs — fail the green gate if the dependency lists of the
+ * transitional Python HTTP tooling drift apart.
  *
  * Single source of truth: BACKEND_COMMON_PACKAGES in
  * scripts/python-http-runtime-config.cjs. This transitional source/dev config
  * is intentionally excluded from packaged Electron products.
  *
  * Validated against it:
- *   - requirements.txt          (dev / CI / PyInstaller fallback install list)
- *   - requirements-cpu.txt      (the live PyInstaller CPU build install list)
- *   - backend.spec hiddenimports (the frozen-build module roster)
- *
- * Build-only tooling (pyinstaller) is ignored.
+ *   - requirements.txt      (development and CI install list)
+ *   - requirements-cpu.txt  (CPU development install list)
  *
  * Exit 0 when every source agrees; exit 1 with a precise diff otherwise.
  */
@@ -21,14 +18,6 @@ const path = require("path");
 const { BACKEND_COMMON_PACKAGES } = require("./python-http-runtime-config.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
-const BUILD_ONLY = new Set(["pyinstaller"]);
-
-// pip import-name overrides (package name -> module imported in backend.spec)
-const IMPORT_NAME = {
-  "pyyaml": "yaml",
-  "python-multipart": "python_multipart",
-  "sentry-sdk": "sentry_sdk",
-};
 
 /** "uvicorn[standard]>=0.34.0" -> { base: "uvicorn", spec: "uvicorn[standard]>=0.34.0" } */
 function parseSpec(line) {
@@ -39,10 +28,6 @@ function parseSpec(line) {
     .trim()
     .toLowerCase();
   return { base, spec };
-}
-
-function importNameFor(base) {
-  return IMPORT_NAME[base] || base.replace(/-/g, "_");
 }
 
 const canonical = new Map(
@@ -61,7 +46,6 @@ function checkRequirements(file) {
     const line = raw.trim();
     if (!line || line.startsWith("#") || line.startsWith("-r")) continue;
     const { base, spec } = parseSpec(line);
-    if (BUILD_ONLY.has(base)) continue;
     found.set(base, spec);
   }
   for (const [base, spec] of canonical) {
@@ -81,20 +65,8 @@ function checkRequirements(file) {
   }
 }
 
-function checkBackendSpec() {
-  const text = fs.readFileSync(path.join(ROOT, "backend.spec"), "utf8");
-  for (const [base] of canonical) {
-    const imp = importNameFor(base);
-    const re = new RegExp(`['"]${imp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}['"]`);
-    if (!re.test(text)) {
-      errors.push(`backend.spec: hiddenimports missing '${imp}' (for canonical dep '${base}')`);
-    }
-  }
-}
-
 checkRequirements("requirements.txt");
 checkRequirements("requirements-cpu.txt");
-checkBackendSpec();
 
 if (errors.length) {
   console.error("Backend dependency sources are out of sync with BACKEND_COMMON_PACKAGES:\n");
@@ -105,5 +77,5 @@ if (errors.length) {
 
 console.log(
   `✓ backend dependency sources in sync (${canonical.size} runtime packages: ` +
-    `requirements.txt, requirements-cpu.txt, backend.spec)`,
+    `requirements.txt, requirements-cpu.txt)`,
 );

@@ -1,6 +1,12 @@
 # Updates API Reference
 
-Quick reference for the nirs4all webapp update system API.
+Quick reference for the application update API served by the Rust sidecar,
+and for the interfaces that expose the Python environment.
+
+Application updates are HTTP routes of the sidecar. The Python environment is
+not managed over HTTP: the Electron main process owns it and exposes it to the
+renderer through the `PythonEnvApi` IPC contract. The sidecar only reports what
+the scientific host runs.
 
 ## Base URL
 
@@ -13,7 +19,7 @@ Quick reference for the nirs4all webapp update system API.
 ### Update Status
 
 #### GET /status
-Get current update status for webapp and nirs4all (uses cache).
+Get the current application update status (uses cache).
 
 **Response**: `UpdateStatus`
 
@@ -50,14 +56,16 @@ Update settings.
 ### Version Info
 
 #### GET /version
-Get current version information.
+Get the application version and the versions reported by the selected Python
+environment. Answers `503` (`reason: "not_configured"`) when the sidecar runs
+without a Python host.
 
 **Response**:
 ```json
 {
-  "webapp_version": "1.0.0",
-  "nirs4all_version": "0.6.2",
-  "python_version": "3.11.5",
+  "webapp_version": "0.15.11",
+  "nirs4all_version": "1.4.16",
+  "python_version": "3.11.13",
   "platform": "Linux",
   "machine": "x86_64"
 }
@@ -65,101 +73,55 @@ Get current version information.
 
 ---
 
-### Managed Virtual Environment
-
-#### GET /venv/status
-Get managed venv status and installed packages.
-
-**Response**: `VenvStatus`
-
-#### POST /venv/create
-Create the managed virtual environment.
-
-**Request Body**:
-```json
-{
-  "force": false,
-  "install_nirs4all": true,
-  "extras": ["tensorflow"]
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Virtual environment created successfully",
-  "already_existed": false,
-  "nirs4all_installed": true,
-  "install_message": "Successfully installed nirs4all"
-}
-```
-
----
-
-### nirs4all Library
-
-#### POST /nirs4all/install
-Install or upgrade nirs4all in the managed venv.
-
-**Request Body**:
-```json
-{
-  "version": "0.7.0",
-  "extras": ["tensorflow", "torch"]
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Successfully installed nirs4all==0.7.0",
-  "version": "0.7.0",
-  "output": ["Installing...", "Successfully installed"]
-}
-```
-
----
-
-### Webapp Update
+### Application Update
 
 #### GET /webapp/download-info
-Get information needed to download a webapp update.
+Resolve the release asset for this platform and the update channel of this
+installation.
 
 **Response**:
 ```json
 {
   "update_available": true,
-  "current_version": "0.5.0",
-  "latest_version": "0.5.1",
-  "download_url": "https://github.com/.../nirs4all%20Studio-0.5.1-all-in-one-linux-x64.zip",
-  "asset_name": "nirs4all Studio-0.5.1-all-in-one-linux-x64.zip",
-  "download_size_bytes": 85000000,
+  "current_version": "0.15.11",
+  "latest_version": "0.16.0",
+  "download_url": "https://github.com/.../nirs4all.Studio-0.16.0-linux-amd64.deb",
+  "asset_name": "nirs4all.Studio-0.16.0-linux-amd64.deb",
+  "download_size_bytes": 185000000,
   "release_notes": "### What's New...",
-  "release_url": "https://github.com/.../releases/tag/0.5.1"
+  "release_url": "https://github.com/.../releases/tag/0.16.0",
+  "installer_download_url": "https://github.com/.../nirs4all.Studio-0.16.0-linux-amd64.deb",
+  "installer_asset_name": "nirs4all.Studio-0.16.0-linux-amd64.deb",
+  "can_apply_in_place": false,
+  "update_channel": "installer",
+  "install_kind": "deb"
 }
 ```
 
-#### POST /webapp/download-start
-Start a background download job for the selected webapp update.
+The selected asset is always the installer of the platform; an asset whose
+name contains `-offline` is never selected, nor is the macOS wheel archive
+(`-mac-arm64-wheels.tar.gz`). Version numbers and sizes in this
+document are illustrative.
 
-**Response**:
+#### GET /webapp/changelog
+Release notes of the discovered release. Optional query:
+`current_version=<version>`.
+
+#### POST /webapp/download-start
+Start an in-place download job. An installed application updates through its
+installer, so this route answers `400`:
+
 ```json
 {
-  "job_id": "job_123",
-  "status": "started",
-  "asset_name": "nirs4all Studio-0.5.1-all-in-one-linux-x64.zip",
-  "version": "0.5.1",
-  "message": "Downloading nirs4all Studio-0.5.1-all-in-one-linux-x64.zip..."
+  "detail": "This build updates through its installer and cannot apply an archive in place"
 }
 ```
 
 #### GET /webapp/download-status/{job_id}
-Poll the progress of a background download job.
+Poll the progress of a download job.
 
 #### POST /webapp/download-cancel/{job_id}
-Request cancellation of an in-progress download.
+Request cancellation of a download job.
 
 #### GET /webapp/staged-update
 Get information about the currently staged update, if any.
@@ -167,11 +129,7 @@ Get information about the currently staged update, if any.
 **Response**:
 ```json
 {
-  "has_staged_update": true,
-  "staging_path": "/path/to/update_staging",
-  "version": "0.5.1",
-  "asset_name": "nirs4all Studio-0.5.1-all-in-one-linux-x64.zip",
-  "update_mode": "directory"
+  "has_staged_update": false
 }
 ```
 
@@ -179,16 +137,18 @@ Get information about the currently staged update, if any.
 Remove the staged update without applying it.
 
 #### POST /webapp/apply
-Create and launch the platform-specific updater script for the staged update.
+Apply a staged update. Accepts only `{"confirm": true}`. Answers `400` on an
+installed application (`"This build cannot apply updates in place"`).
 
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Update will be applied after app restart (directory mode). Please close the application.",
-  "restart_required": true
-}
-```
+#### POST /webapp/cleanup
+Remove stale update artifacts.
+
+#### GET /webapp/last-apply-result
+Result of the last apply attempt; `{"status": "none"}` when there is nothing
+to report.
+
+#### DELETE /webapp/last-apply-result
+Dismiss the stored result.
 
 #### POST /webapp/restart
 Request application restart.
@@ -197,13 +157,10 @@ Request application restart.
 ```json
 {
   "success": true,
-  "message": "Restart requested.",
+  "message": "Restart requested; Electron will restart the native backend",
   "restart_required": true
 }
 ```
-
-#### POST /webapp/download
-Legacy endpoint that only returns the resolved download URL.
 
 ---
 
@@ -214,8 +171,7 @@ Legacy endpoint that only returns the resolved download URL.
 ```typescript
 interface UpdateStatus {
   webapp: WebappUpdateInfo;
-  nirs4all: Nirs4allUpdateInfo;
-  venv: VenvInfo;
+  update_capability?: UpdateCapability | null;
   last_check: string | null;
   check_interval_hours: number;
 }
@@ -235,56 +191,25 @@ interface WebappUpdateInfo {
   download_url: string | null;
   asset_name: string | null;
   checksum_sha256: string | null;
+  is_prerelease: boolean;
+  installer_download_url?: string | null;
+  installer_asset_name?: string | null;
 }
 ```
 
-### Nirs4allUpdateInfo
+### UpdateCapability
 
 ```typescript
-interface Nirs4allUpdateInfo {
-  current_version: string | null;
-  latest_version: string | null;
-  update_available: boolean;
-  pypi_url: string | null;
-  release_notes: string | null;
-  requires_restart: boolean;
+interface UpdateCapability {
+  can_apply_in_place: boolean;
+  channel: "in_place" | "installer";
+  reason: string;
+  install_kind: string;
 }
 ```
 
-### VenvInfo
-
-```typescript
-interface VenvInfo {
-  path: string;
-  exists: boolean;
-  is_valid: boolean;
-  python_version: string | null;
-  pip_version: string | null;
-  created_at: string | null;
-  last_updated: string | null;
-  size_bytes: number;
-}
-```
-
-### VenvStatus
-
-```typescript
-interface VenvStatus {
-  venv: VenvInfo;
-  packages: PackageInfo[];
-  nirs4all_version: string | null;
-}
-```
-
-### PackageInfo
-
-```typescript
-interface PackageInfo {
-  name: string;
-  version: string;
-  location: string | null;
-}
-```
+An installed application reports `can_apply_in_place: false` and
+`channel: "installer"`.
 
 ### UpdateSettings
 
@@ -296,169 +221,144 @@ interface UpdateSettings {
   github_repo: string;
   pypi_package: string;
   dismissed_versions: string[];
+  offline_mode: string;
 }
 ```
 
 ---
 
-### Environment Management
+## Python Environment
 
-#### GET /runtime/status
-#### GET /venv/status
+### PythonEnvApi (Electron IPC)
 
-Inspect the current Python runtime the backend is actually using.
+Exposed by the preload script as `window.electronApi.pythonEnv`; types in
+`src/types/pythonEnvironment.ts`. This is the only interface that changes the
+environment.
 
-**Response**:
-```json
-{
-  "runtime": {
-    "path": "/path/to/runtime",
-    "exists": true,
-    "is_valid": true,
-    "python_version": "3.11.9",
-    "pip_version": "25.0"
-  },
-  "venv": {
-    "path": "/path/to/runtime",
-    "exists": true,
-    "is_valid": true
-  },
-  "packages": [],
-  "nirs4all_version": "0.9.1"
-}
-```
+| Method | Purpose |
+|---|---|
+| `getState()` | Current `PythonEnvState`: phase, selected interpreter, its report, problem, activity |
+| `detect(refresh?)` | List the interpreters found on this machine, each with its report |
+| `inspect(path)` | Inspect an interpreter path or environment directory without changing anything |
+| `describeNewEnvironment()` | What Studio would install in an environment it creates |
+| `browse()` | File dialog to choose a Python executable |
+| `chooseDirectory()` | Folder dialog to choose where a new environment is created |
+| `apply({ pythonPath, packages })` | Switch to an existing interpreter; required packages are always installed |
+| `create({ directory?, packages })` | Create a Studio environment and switch to it |
+| `installPackages(packages)` | Install or update recommended packages in the selected environment |
+| `retry()` | Re-run the startup check, then restart the analysis backend |
+| `onState(handler)` | Subscribe to state changes; returns the unsubscribe function |
 
-The `venv` field is a compatibility alias for the same current-runtime payload.
+`packages` are names from the recommended catalogue (`optional` in
+`recommended-config.json`); unknown names are refused. `apply`, `create`,
+`installPackages` and `retry` resolve to a `PythonEnvActionResult`
+(`success`, `message`, `hostRestarted`, `state`); a failure is returned as a
+message, never thrown, and a failed switch restores the previous selection.
 
-#### POST /runtime/create
-#### POST /venv/create
+`PythonEnvState.phase` is `unconfigured`, `ready`, `busy` or
+`needs_attention`. `problem.code` is one of `interpreter_missing`,
+`interpreter_unusable`, `required_not_installable`, `required_update_failed`,
+`host_failed`.
 
-Legacy compatibility endpoint. The backend no longer creates an independent
-managed environment on its own.
-
-**Response**:
-```json
-{
-  "detail": "Creating a new Python runtime is a desktop-managed action. Use the Python Runtime settings to create a runtime and switch the app to it."
-}
-```
-
-#### GET /runtime/path
-#### GET /venv/path
-
-Return the current runtime root path.
-
-**Response**:
-```json
-{
-  "current_path": "/path/to/runtime",
-  "is_valid": true,
-  "exists": true
-}
-```
-
----
-
-### Environment Coherence
+### Sidecar system routes
 
 > **Base URL**: `/api/system` (not `/api/updates`)
 
+These routes are read-only. They describe the interpreter the sidecar was
+started with.
+
+#### GET /api/system/readiness
+Readiness of the sidecar and of the scientific host.
+
+**Response**:
+```json
+{
+  "core_ready": true,
+  "elapsed_seconds": 4.2,
+  "ml_error": null,
+  "ml_loading": false,
+  "ml_ready": true,
+  "workspace_ready": true,
+  "native_prediction_ready": true,
+  "native_training_ready": true
+}
+```
+
+`ml_loading` is true while the host is being acquired. When the host is
+neither ready nor loading, `ml_error` holds the acquisition reason code (for
+example `studio_adapters_unavailable` or
+`scientific_distribution_version_unsupported`).
+
 #### GET /api/system/env-coherence
-Return the configured-vs-running runtime summary used by desktop diagnostics,
-Settings, and preflight checks.
+Compare the interpreter the sidecar was given with the one the host reports.
+Electron uses it to confirm a switch. Answers `503` when no Python host is
+configured or when the probe fails.
 
 **Response**:
 ```json
 {
   "coherent": true,
-  "configured_python": "/Users/alice/.venvs/nirs4all/bin/python",
-  "running_python": "/Users/alice/.venvs/nirs4all/bin/python",
-  "running_prefix": "/Users/alice/.venvs/nirs4all",
-  "runtime_kind": "managed",
-  "is_bundled_default": false,
-  "bundled_runtime_available": false,
+  "configured_python": "/home/alice/.config/nirs4all-webapp/python-env/venv/bin/python",
+  "running_python": "/home/alice/.config/nirs4all-webapp/python-env/venv/bin/python",
+  "running_prefix": "/home/alice/.config/nirs4all-webapp/python-env/venv",
   "configured_matches_running": true,
   "core_ready": true,
+  "runtime_engine_capabilities": {},
   "missing_core_packages": [],
-  "missing_optional_packages": ["shap"],
+  "missing_optional_packages": [],
   "python_match": true,
   "prefix_match": true,
   "runtime": {
-    "python": "/Users/alice/.venvs/nirs4all/bin/python",
-    "prefix": "/Users/alice/.venvs/nirs4all",
-    "version": "3.11.9"
+    "python": "/home/alice/.config/nirs4all-webapp/python-env/venv/bin/python",
+    "prefix": "/home/alice/.config/nirs4all-webapp/python-env/venv",
+    "version": "3.11.13"
   },
   "venv_manager": {
-    "python": "/Users/alice/.venvs/nirs4all/bin/python",
-    "prefix": "/Users/alice/.venvs/nirs4all"
-  }
+    "python": "/home/alice/.config/nirs4all-webapp/python-env/venv/bin/python",
+    "prefix": "/home/alice/.config/nirs4all-webapp/python-env/venv"
+  },
+  "electron_expected_python": "/home/alice/.config/nirs4all-webapp/python-env/venv/bin/python",
+  "electron_match": true
 }
 ```
 
-Optional desktop fields:
+`coherent` means the running interpreter is the configured one. `core_ready`
+is false, with `missing_core_packages: ["nirs4all"]`, when `nirs4all` cannot
+be imported. The content of `runtime_engine_capabilities` is elided here.
 
-- `electron_expected_python`
-- `electron_match`
+#### GET /api/system/info
+Interpreter, operating system and installed package versions, read from
+distribution metadata without importing packages. Without a usable Python host
+the route still answers `200` with `python_available: false` and a
+`python_error`.
 
-`coherent` now means the running backend interpreter matches the Python
-configured by Electron. The backend does not support deferred custom-path
-activation anymore.
+#### GET /api/system/capabilities
+Which capability packages (for example `nirs4all`, `torch`, `tensorflow`,
+`jax`, `shap`) are installed, as `{ "capabilities": { "<module>": true } }`,
+without importing them. Answers `503` when no Python host is configured.
 
 #### GET /api/system/build
-Get build information including `runtime_mode`.
+Build metadata assembled in Rust without Python.
 
 **Response**:
 ```json
 {
   "build": {
-    "flavor": "cpu",
+    "flavor": "development",
     "gpu_enabled": false
   },
-  "runtime_mode": "managed",
-  "is_frozen": false,
   "summary": {
-    "runtime_mode": "managed"
+    "flavor": "development",
+    "gpu_build": false
   }
 }
 ```
-
-Use `runtime_mode` as the primary contract for UI/runtime behavior. `is_frozen` is kept for compatibility with the legacy PyInstaller path.
-
----
-
-### Run Preflight
-
-> **Base URL**: `/api/runs` (not `/api/updates`)
-
-#### POST /api/runs/preflight
-Pre-run validation: checks environment coherence and pipeline operator imports.
-
-**Request Body**:
-```json
-{
-  "pipeline_ids": ["pipeline_1", "pipeline_2"],
-  "inline_pipeline": null
-}
-```
-
-**Response**:
-```json
-{
-  "ready": true,
-  "issues": []
-}
-```
-
-Issue types when `ready: false`:
-- `env_mismatch` — VenvManager targets a different env than the running backend
-- `not_found` — A referenced `pipeline_id` does not exist
-- `missing_module` — An operator class cannot be imported (includes `details` with `step_name`, `step_type`, `error`)
 
 ---
 
 ## Error Responses
 
-All endpoints may return error responses:
+Update routes report errors as:
 
 ```json
 {
@@ -468,9 +368,13 @@ All endpoints may return error responses:
 
 | Status Code | Description |
 |-------------|-------------|
-| 400 | Bad request (e.g., no update available) |
-| 500 | Internal server error (e.g., venv creation failed) |
-| 501 | Not implemented (e.g., nirs4all not available) |
+| 400 | Bad request (e.g., no update available, offline mode, in-place update not available) |
+| 404 | Unknown update route |
+| 405 | Method not allowed |
+| 409 | Conflicting update operation in progress |
+
+System routes that need the Python host report its absence or failure as
+`503` with a typed error envelope (`error.code`, `error.details.reason`).
 
 ---
 
@@ -479,7 +383,7 @@ All endpoints may return error responses:
 ### Check for Updates (TypeScript)
 
 ```typescript
-import { getUpdateStatus, checkForUpdates } from "@/api/client";
+import { getUpdateStatus, checkForUpdates } from "@/api/updates";
 
 // Get cached status
 const status = await getUpdateStatus();
@@ -491,39 +395,29 @@ if (status.webapp.update_available) {
 const freshStatus = await checkForUpdates();
 ```
 
-### Install nirs4all (TypeScript)
+### Read the Python environment (TypeScript)
 
 ```typescript
-import { installNirs4all } from "@/api/client";
-
-const result = await installNirs4all({
-  version: "0.7.0",
-  extras: ["tensorflow"]
-});
-
-if (result.success) {
-  console.log(`Installed: ${result.version}`);
+const pythonEnv = window.electronApi?.pythonEnv;
+if (pythonEnv) {
+  const state = await pythonEnv.getState();
+  if (state.phase === "needs_attention") {
+    console.log(state.problem?.code, state.problem?.message);
+  }
+  const unsubscribe = pythonEnv.onState((next) => console.log(next.phase));
 }
 ```
 
 ### Using React Hooks
 
 ```typescript
-import { useUpdateStatus, useInstallNirs4all } from "@/hooks/useUpdates";
+import { useUpdateStatus } from "@/hooks/useUpdates";
 
-function UpdateButton() {
+function UpdateNotice() {
   const { data: status } = useUpdateStatus();
-  const { mutate: install, isPending } = useInstallNirs4all();
 
-  if (!status?.nirs4all?.update_available) return null;
+  if (!status?.webapp?.update_available) return null;
 
-  return (
-    <button
-      onClick={() => install({ version: status.nirs4all.latest_version })}
-      disabled={isPending}
-    >
-      Update to {status.nirs4all.latest_version}
-    </button>
-  );
+  return <span>Version {status.webapp.latest_version} is available</span>;
 }
 ```

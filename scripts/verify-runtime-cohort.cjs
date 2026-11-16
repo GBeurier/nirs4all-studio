@@ -1,9 +1,12 @@
-/** Anchor build environment and constraints to fingerprinted runtime inputs. */
+/** Anchor the build environment, the package catalogue and the wheel locks to the fingerprinted cohort. */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { installedDistributionVersions, PLUGIN_CONSTRAINTS_PATH } = require('./bake-python-plugin-runtime.cjs');
-const distributions = { sdk: 'nirs4all', dag: 'dag-ml', dag_data: 'dag-ml-data', core: 'nirs4all-core' };
+const { TARGETS, readLock } = require('./python-wheel-lock.cjs');
+const distributions = {
+  sdk: 'nirs4all', dag: 'dag-ml', dag_data: 'dag-ml-data', core: 'nirs4all-core',
+  io: 'nirs4all-io', formats: 'nirs4all-formats', methods: 'nirs4all-methods',
+};
 
 function verifyRuntimeCohort(env = process.env, root = path.resolve(__dirname, '..')) {
   const cohort = JSON.parse(fs.readFileSync(path.join(root, 'build/runtime-cohort.json'), 'utf8'));
@@ -14,24 +17,22 @@ function verifyRuntimeCohort(env = process.env, root = path.resolve(__dirname, '
     assert.equal(env[variable], cohort[key].source_sha, `Build ${key} source differs from runtime cohort`);
   }
   assert.equal(env.NIRS4ALL_WHEEL_SHA256, cohort.sdk.wheel_sha256, 'SDK wheel differs from runtime cohort');
-  const constraints = fs.readFileSync(path.join(root, path.relative(path.resolve(__dirname, '..'), PLUGIN_CONSTRAINTS_PATH)), 'utf8');
-  for (const [key, distribution] of Object.entries(distributions)) {
-    const rows = constraints.split(/\r?\n/).filter(line => line.startsWith(`${distribution}==`));
-    assert.deepEqual(rows, [`${distribution}==${cohort[key].version}`], `${distribution} constraints differ from runtime cohort`);
+  const catalogue = JSON.parse(fs.readFileSync(path.join(root, 'recommended-config.json'), 'utf8'));
+  assert.deepEqual(
+    Object.fromEntries(catalogue.required.map(spec => [spec.name, spec.install])),
+    Object.fromEntries(Object.entries(distributions).map(([key, distribution]) => [distribution, cohort[key].version])),
+    'Required packages of recommended-config.json differ from runtime cohort',
+  );
+  // readLock refuses a lock that does not carry the catalogue's exact versions.
+  for (const target of Object.keys(TARGETS)) {
+    const sdk = readLock(target, root).packages.find(entry => entry.name === distributions.sdk);
+    assert.equal(sdk?.sha256, cohort.sdk.wheel_sha256, `${target} wheel lock selects another SDK wheel`);
   }
   return cohort;
-}
-
-function verifyInstalledCohort(contract, cohort) {
-  const versions = installedDistributionVersions(contract.pythonSitePackagesPath);
-  for (const [key, distribution] of Object.entries(distributions)) {
-    assert.equal(versions.get(distribution), cohort[key].version, `Actual embedded ${distribution} differs from runtime cohort`);
-  }
-  return Object.fromEntries(versions);
 }
 
 if (require.main === module) {
   try { verifyRuntimeCohort(); console.log('RUNTIME_COHORT_INPUTS_OK'); }
   catch (error) { console.error(error.message); process.exitCode = 1; }
 }
-module.exports = { verifyRuntimeCohort, verifyInstalledCohort };
+module.exports = { verifyRuntimeCohort };

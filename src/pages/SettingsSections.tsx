@@ -66,10 +66,8 @@ import { N4AWorkspaceSelector } from "@/components/settings/N4AWorkspaceSelector
 import { N4AWorkspaceList } from "@/components/settings/N4AWorkspaceList";
 import { WorkspaceDiscoveryPanel } from "@/components/settings/WorkspaceDiscoveryPanel";
 import { UpdatesSection } from "@/components/settings/UpdatesSection";
-import { DependenciesManager } from "@/components/settings/DependenciesManager";
 import { ConfigPathSettings } from "@/components/settings/ConfigPathSettings";
-import { ConfigAlignment } from "@/components/settings/ConfigAlignment";
-import { PythonEnvPicker } from "@/components/settings/PythonEnvPicker";
+import { PythonEnvironmentPage } from "@/components/python-env/PythonEnvironmentPage";
 import { StorageHealthWidget } from "@/components/settings/StorageHealthWidget";
 import type { ThemeOption, UIDensity, UIZoomLevel } from "@/types/settings";
 import type { TelemetryConsentStatus } from "@/lib/telemetryConsent";
@@ -387,6 +385,10 @@ export function DataSettingsTab() {
   );
 }
 
+export function PythonSettingsTab() {
+  return <PythonEnvironmentPage context="settings" />;
+}
+
 export function UpdatesSettingsTab() {
   return <UpdatesSection />;
 }
@@ -416,9 +418,6 @@ export function AdvancedSettingsTab({
 
   return (
     <>
-      {/* Python Environment Picker (Electron only) */}
-      <PythonEnvPicker />
-
       {/* Developer Mode */}
       <Card>
         <CardHeader>
@@ -456,12 +455,6 @@ export function AdvancedSettingsTab({
 
       {/* Config Path Settings */}
       <ConfigPathSettings />
-
-      {/* Config Alignment */}
-      <ConfigAlignment />
-
-      {/* Dependencies Manager */}
-      <DependenciesManager />
 
       {/* Backend Settings */}
       <Card>

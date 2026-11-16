@@ -9,13 +9,6 @@ export const PACKAGED_RUNTIME_CONTRACT_FILE =
   "STUDIO_RUNTIME_CONTRACT.json";
 const CONTRACT_SCHEMA = "nirs4all.studio-packaged-runtime.v1";
 const MAX_CONTRACT_BYTES = 64 * 1024;
-const PYTHON_CLOSURE_SCHEMA = "nirs4all.studio-python-plugin-closure.v1";
-const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
-const MAX_PYTHON_CLOSURE_FILES = 100_000;
-const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
-const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
-const PLUGIN_SOURCE_COMMIT = "28c51162fc4d31d674c6606d608367a5f4b32b0e";
-const PLUGIN_WHEEL_SHA256 = "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4";
 const METHODS_ABI_MAJOR = 2;
 const METHODS_ABI_MINOR = 22;
 const METHODS_SOURCE_COMMIT = "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed";
@@ -27,18 +20,6 @@ const WINDOWS_NATIVE_RUNTIME_LINKAGE = {
   sidecar_rust_target_feature: "+crt-static",
   forbidden_dynamic_import_prefixes: ["MSVCP", "VCRUNTIME"],
 } as const;
-const FORBIDDEN_PLUGIN_DISTRIBUTIONS = [
-  "fastapi",
-  "httptools",
-  "python-multipart",
-  "sentry-sdk",
-  "starlette",
-  "uvicorn",
-  "uvloop",
-  "watchfiles",
-  "websockets",
-] as const;
-
 interface ContractMember {
   path: string;
   size: number;
@@ -50,16 +31,7 @@ interface PackagedRuntimeContract {
   platform: string;
   arch: string;
   product_backend: string;
-  python_role: string;
   sidecar: ContractMember;
-  python_plugin_host: {
-    mode: string;
-    member: ContractMember | null;
-    closure: ContractMember | null;
-    runtime_root: string | null;
-    site_packages: string | null;
-    marker: ContractMember | null;
-  };
   methods_library: {
     mode: string;
     member: ContractMember | null;
@@ -118,11 +90,6 @@ export function hasExactWindowsNativeRuntimeLinkage(
 export interface VerifiedPackagedRuntime {
   contractPath: string;
   sidecarPath: string;
-  pythonPluginHostPath: string | null;
-  pythonPluginHostError: string | null;
-  pythonClosurePath: string | null;
-  pythonRuntimeRoot: string | null;
-  pythonSitePackagesPath: string | null;
   methodsLibraryPath: string | null;
   methodsLibraryError: string | null;
 }
@@ -141,28 +108,6 @@ function hashFile(filePath: string): string {
     fs.closeSync(descriptor);
   }
   return hash.digest("hex");
-}
-
-function validateCanonicalDirectory(
-  directoryPath: string,
-  label: string,
-  boundaryRoot = directoryPath,
-): void {
-  const stat = fs.lstatSync(directoryPath);
-  const relative = path.relative(
-    path.resolve(boundaryRoot),
-    path.resolve(directoryPath),
-  );
-  const expected = path.resolve(fs.realpathSync.native(boundaryRoot), relative);
-  if (
-    stat.isSymbolicLink() ||
-    !stat.isDirectory() ||
-    relative === ".." ||
-    relative.startsWith(`..${path.sep}`) ||
-    fs.realpathSync.native(directoryPath) !== expected
-  ) {
-    throw new Error(`${label} must be a canonical non-symlink directory`);
-  }
 }
 
 function validateMember(
@@ -214,122 +159,6 @@ function validateMember(
   return memberPath;
 }
 
-function verifyPythonRuntimeClosure(
-  backendRoot: string,
-  plugin: PackagedRuntimeContract["python_plugin_host"],
-  platform: NodeJS.Platform,
-): {
-  closurePath: string;
-  runtimeRoot: string;
-  sitePackagesPath: string;
-} {
-  const normalizedSitePackages =
-    typeof plugin.site_packages === "string"
-      ? path.normalize(plugin.site_packages).split(path.sep).join("/")
-      : null;
-  if (
-    plugin.runtime_root !== "python-runtime/python" ||
-    typeof plugin.site_packages !== "string" ||
-    normalizedSitePackages !== plugin.site_packages ||
-    !plugin.site_packages.startsWith("python-runtime/python/")
-  ) {
-    throw new Error(
-      "Invalid bundled Python closure paths in packaged runtime contract",
-    );
-  }
-  const closurePath = validateMember(
-    backendRoot,
-    "Bundled Python closure manifest",
-    plugin.closure,
-    platform,
-    false,
-  );
-  const encoded = fs.readFileSync(closurePath);
-  if (encoded.length > MAX_PYTHON_CLOSURE_BYTES) {
-    throw new Error("Bundled Python closure manifest exceeds 32 MiB");
-  }
-  const closure = JSON.parse(encoded.toString("utf8")) as {
-    schema?: unknown;
-    root?: unknown;
-    site_packages?: unknown;
-    directories?: unknown;
-    files?: unknown;
-  };
-  if (
-    closure.schema !== PYTHON_CLOSURE_SCHEMA ||
-    closure.root !== plugin.runtime_root ||
-    closure.site_packages !== plugin.site_packages ||
-    !Array.isArray(closure.directories) ||
-    closure.directories.length < 1 ||
-    closure.directories.length > MAX_PYTHON_CLOSURE_DIRECTORIES ||
-    !Array.isArray(closure.files) ||
-    closure.files.length < 1 ||
-    closure.files.length > MAX_PYTHON_CLOSURE_FILES
-  ) {
-    throw new Error("Invalid bundled Python closure manifest");
-  }
-  const runtimeRoot = path.join(
-    backendRoot,
-    ...plugin.runtime_root.split("/"),
-  );
-  // Build qualification verifies the complete closure with
-  // scripts/native-runtime-contract.cjs against the packaged artifact.
-  // Startup checks only manifest anchors and selected runtime entry points.
-  validateCanonicalDirectory(runtimeRoot, "Bundled Python runtime root");
-  const sitePackagesPath = path.join(
-    backendRoot,
-    ...plugin.site_packages.split("/"),
-  );
-  validateCanonicalDirectory(
-    sitePackagesPath,
-    "Bundled Python site-packages",
-    runtimeRoot,
-  );
-  return { closurePath, runtimeRoot, sitePackagesPath };
-}
-
-function verifyPluginMarker(
-  backendRoot: string,
-  plugin: PackagedRuntimeContract["python_plugin_host"],
-  platform: NodeJS.Platform,
-  arch: string,
-): void {
-  const expectedPath = path.join("python-runtime", PLUGIN_MARKER_FILE);
-  if (path.normalize(plugin.marker?.path ?? "") !== expectedPath) {
-    throw new Error("Packaged Python plugin marker path mismatch");
-  }
-  const markerPath = validateMember(
-    backendRoot,
-    "Bundled Python plugin marker",
-    plugin.marker,
-    platform,
-    false,
-  );
-  const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as Record<string, unknown>;
-  if (
-    marker.schema !== "nirs4all.studio-python-plugin-runtime.v1" ||
-    marker.python_role !== "library-plugin-host-only" ||
-    marker.product_backend !== "rust-sidecar" ||
-    marker.transport !== "bounded-cpython-stdio-v1" ||
-    marker.http_listener !== "forbidden" ||
-    marker.source_commit !== PLUGIN_SOURCE_COMMIT ||
-    marker.wheel_sha256 !== PLUGIN_WHEEL_SHA256 ||
-    marker.distribution !== "nirs4all" ||
-    marker.distribution_version !== "1.4.16" ||
-    marker.installed_manifest_sha256 !==
-      "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f" ||
-    marker.platform !== platform ||
-    marker.arch !== arch ||
-    !Array.isArray(marker.forbidden_distributions) ||
-    marker.forbidden_distributions.length !== FORBIDDEN_PLUGIN_DISTRIBUTIONS.length ||
-    marker.forbidden_distributions.some(
-      (name, index) => name !== FORBIDDEN_PLUGIN_DISTRIBUTIONS[index],
-    )
-  ) {
-    throw new Error("Packaged Python plugin marker identity mismatch");
-  }
-}
-
 function hasValidPlatformSignature(
   filePath: string,
   platform: NodeJS.Platform,
@@ -358,9 +187,11 @@ function hasValidPlatformSignature(
 }
 
 /**
- * Verify the product-owned Rust backend before spawn. A missing or altered
- * bundled CPython disables only the explicit library/plugin host; it never
- * changes the selected product backend or starts an HTTP compatibility server.
+ * Verify the product-owned Rust backend before spawn, and that the packaged
+ * application still carries what environment setup needs: the shipped uv, the
+ * document adapters and the required packages (embedded wheels, or on macOS
+ * the description of the release asset that carries them). Python itself is
+ * never part of the package.
  */
 export function verifyPackagedRuntimeContract({
   resourcesPath,
@@ -395,8 +226,7 @@ export function verifyPackagedRuntimeContract({
     contract.schema !== CONTRACT_SCHEMA ||
     contract.platform !== platform ||
     contract.arch !== arch ||
-    contract.product_backend !== "rust-sidecar" ||
-    contract.python_role !== "library-plugin-host-only"
+    contract.product_backend !== "rust-sidecar"
   ) {
     throw new Error("Packaged runtime contract metadata mismatch");
   }
@@ -470,75 +300,32 @@ export function verifyPackagedRuntimeContract({
     }
   }
 
-  const plugin = contract.python_plugin_host;
-  if (!plugin || !["unavailable", "bundled-required"].includes(plugin.mode)) {
-    throw new Error("Invalid Python plugin-host policy in packaged runtime contract");
+  const uvPath = path.join(backendRoot, "tools", platform === "win32" ? "uv.exe" : "uv");
+  if (!fs.existsSync(uvPath)) {
+    throw new Error(`Packaged uv not found: ${uvPath}`);
   }
-  if (plugin.mode === "unavailable") {
-    if (
-      plugin.member !== null ||
-      plugin.closure !== null ||
-      plugin.runtime_root !== null ||
-      plugin.site_packages !== null ||
-      plugin.marker !== null
-    ) {
-      throw new Error(
-        "Unavailable Python plugin-host policy must not select packaged members",
-      );
+  if (platform === "darwin") {
+    const manifestPath = path.join(backendRoot, "wheelhouse.json");
+    let manifest: Record<string, unknown> = {};
+    try {
+      manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+    } catch {
+      // Reported below with the missing-field case.
     }
-    return {
-      contractPath,
-      sidecarPath,
-      pythonPluginHostPath: null,
-      pythonPluginHostError: null,
-      pythonClosurePath: null,
-      pythonRuntimeRoot: null,
-      pythonSitePackagesPath: null,
-      methodsLibraryPath,
-      methodsLibraryError,
-    };
+    if (
+      typeof manifest.url !== "string" || !/^https:\/\/\S+$/.test(manifest.url) ||
+      typeof manifest.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(manifest.sha256) ||
+      typeof manifest.filename !== "string" || !manifest.filename.endsWith(".tar.gz")
+    ) {
+      throw new Error(`Packaged wheelhouse description is missing or invalid: ${manifestPath}`);
+    }
+  } else if (!fs.existsSync(path.join(backendRoot, "wheels"))) {
+    throw new Error(`Packaged wheels not found: ${path.join(backendRoot, "wheels")}`);
+  }
+  const adaptersPath = path.join(backendRoot, "adapters", "studio_document_adapters");
+  if (!fs.existsSync(adaptersPath)) {
+    throw new Error(`Packaged document adapters not found: ${adaptersPath}`);
   }
 
-  const expectedPython = platform === "win32"
-    ? path.join("python-runtime", "python", "python.exe")
-    : path.join("python-runtime", "python", "bin", "python3");
-  try {
-    if (path.normalize(plugin.member?.path ?? "") !== expectedPython) {
-      throw new Error(
-        "Packaged runtime contract selects an unexpected Python plugin host",
-      );
-    }
-    const pythonPluginHostPath = validateMember(
-      backendRoot,
-      "Bundled Python plugin host",
-      plugin.member,
-      platform,
-    );
-    const closure = verifyPythonRuntimeClosure(backendRoot, plugin, platform);
-    verifyPluginMarker(backendRoot, plugin, platform, arch);
-    return {
-      contractPath,
-      sidecarPath,
-      pythonPluginHostPath,
-      pythonPluginHostError: null,
-      pythonClosurePath: closure.closurePath,
-      pythonRuntimeRoot: closure.runtimeRoot,
-      pythonSitePackagesPath: closure.sitePackagesPath,
-      methodsLibraryPath,
-      methodsLibraryError,
-    };
-  } catch (error) {
-    return {
-      contractPath,
-      sidecarPath,
-      pythonPluginHostPath: null,
-      pythonPluginHostError:
-        error instanceof Error ? error.message : String(error),
-      pythonClosurePath: null,
-      pythonRuntimeRoot: null,
-      pythonSitePackagesPath: null,
-      methodsLibraryPath,
-      methodsLibraryError,
-    };
-  }
+  return { contractPath, sidecarPath, methodsLibraryPath, methodsLibraryError };
 }

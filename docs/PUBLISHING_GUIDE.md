@@ -50,8 +50,8 @@ git push origin 1.1.0-beta.1
 
 The `release-unified.yml` workflow triggers on `[0-9]*` tags (no `v` prefix). It will:
 
-1. Build the single attested **CPU** installer profile for Linux x64, Windows x64, and macOS x64/arm64
-2. Build the matching all-in-one archives unless explicitly skipped, plus separately scoped Docker images
+1. Build the installers for Linux x64 and Windows x64, each with its offline variant, and for macOS arm64 with its required-wheels asset
+2. Build the native Docker image
 3. Generate **SHA256 checksums** as `.sha256` sidecar files
 4. Create a **GitHub Release** with all assets attached
 

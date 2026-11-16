@@ -3,6 +3,9 @@
 const { contextBridge, ipcRenderer, webUtils } =
   require("electron") as typeof import("electron");
 
+import type { InstallLogSnapshot } from "../src/types/installLog";
+import type { PythonEnvApi, PythonEnvState } from "../src/types/pythonEnvironment";
+
 /**
  * Electron API exposed to the renderer process via contextBridge.
  * This provides a secure interface for the React app to access native features.
@@ -112,270 +115,36 @@ const electronApi = {
     error?: string;
   }> => ipcRenderer.invoke("control:getInfo"),
 
-  restartBackend: (options?: {
-    skipEnsure?: boolean;
-  }): Promise<{ success: boolean; port?: number; error?: string }> =>
-    ipcRenderer.invoke("backend:restart", options),
-
-  onBackendStatusChanged: (
-    callback: (info: {
-      status:
-        | "stopped"
-        | "starting"
-        | "running"
-        | "error"
-        | "restarting"
-        | "setup_required";
-      port: number;
-      url: string;
-      error?: string;
-      restartCount: number;
-    }) => void,
-  ) => {
-    const handler = (_event: Electron.IpcRendererEvent, info: unknown) =>
-      callback(info as Parameters<typeof callback>[0]);
-    ipcRenderer.on("backend:statusChanged", handler);
-    // Return cleanup function
-    return () => ipcRenderer.removeListener("backend:statusChanged", handler);
-  },
+  restartBackend: (): Promise<{ success: boolean; port?: number; error?: string }> =>
+    ipcRenderer.invoke("backend:restart"),
 
   /**
-   * Listen for ML ready notification.
-   * `workspaceReady` distinguishes the two backend startup phases:
-   * - first event: `ready=true, workspaceReady=false` → ML imports loaded
-   * - second event: `ready=true, workspaceReady=true` → active workspace restored
-   * Pages that depend on dataset/run/prediction lists must wait for the second.
+   * Python environment (contract: src/types/pythonEnvironment.ts)
    */
-  onMlReady: (
-    callback: (info: {
-      ready: boolean;
-      error?: string;
-      workspaceReady?: boolean;
-    }) => void,
-  ) => {
-    const handler = (_event: Electron.IpcRendererEvent, info: unknown) =>
-      callback(info as Parameters<typeof callback>[0]);
-    ipcRenderer.on("backend:mlReady", handler);
-    return () => ipcRenderer.removeListener("backend:mlReady", handler);
-  },
+  pythonEnv: {
+    getState: () => ipcRenderer.invoke("pythonEnv:getState"),
+    detect: (refresh) => ipcRenderer.invoke("pythonEnv:detect", refresh),
+    inspect: (path) => ipcRenderer.invoke("pythonEnv:inspect", path),
+    describeNewEnvironment: () => ipcRenderer.invoke("pythonEnv:describeNewEnvironment"),
+    browse: () => ipcRenderer.invoke("pythonEnv:browse"),
+    chooseDirectory: () => ipcRenderer.invoke("pythonEnv:chooseDirectory"),
+    apply: (request) => ipcRenderer.invoke("pythonEnv:apply", request),
+    create: (request) => ipcRenderer.invoke("pythonEnv:create", request),
+    installPackages: (packages) => ipcRenderer.invoke("pythonEnv:installPackages", packages),
+    retry: () => ipcRenderer.invoke("pythonEnv:retry"),
+    onState: (handler) => {
+      const listener = (_event: Electron.IpcRendererEvent, state: PythonEnvState) => handler(state);
+      ipcRenderer.on("pythonEnv:state", listener);
+      return () => { ipcRenderer.removeListener("pythonEnv:state", listener); };
+    },
+  } satisfies PythonEnvApi,
 
-  /**
-   * Python environment management
-   */
-  getEnvStatus: (): Promise<string> => ipcRenderer.invoke("env:getStatus"),
-
-  getInstallLog: (): Promise<import("../src/types/installLog").InstallLogSnapshot> => ipcRenderer.invoke("env:getInstallLog"),
-  onInstallLog: (callback: (snapshot: import("../src/types/installLog").InstallLogSnapshot) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, snapshot: import("../src/types/installLog").InstallLogSnapshot) => callback(snapshot);
+  /** Output of the running or last package installation. */
+  getInstallLog: (): Promise<InstallLogSnapshot> => ipcRenderer.invoke("env:getInstallLog"),
+  onInstallLog: (callback: (snapshot: InstallLogSnapshot) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, snapshot: InstallLogSnapshot) => callback(snapshot);
     ipcRenderer.on("env:installLog", handler);
     return () => ipcRenderer.removeListener("env:installLog", handler);
-  },
-
-  isEnvReady: (): Promise<boolean> => ipcRenderer.invoke("env:isReady"),
-
-  getEnvInfo: (): Promise<{
-    status: string;
-    envDir: string;
-    pythonPath: string | null;
-    sitePackages: string | null;
-    pythonVersion: string | null;
-    isCustom: boolean;
-    canInstallRequiredVersions?: boolean;
-    setupDeferred?: boolean;
-    runtimeFallback?: {
-      reason: "missing" | "incompatible";
-      selectedPythonPath: string;
-      issues: string[];
-    };
-    pythonHostError?: string;
-    error?: string;
-  }> => ipcRenderer.invoke("env:getInfo"),
-
-  detectExistingEnvs: (): Promise<
-    Array<{
-      path: string;
-      pythonPath: string;
-      pythonVersion: string;
-      hasNirs4all: boolean;
-      hasCorePackages: boolean;
-      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
-      writable: boolean;
-    }>
-  > => ipcRenderer.invoke("env:detectExisting"),
-
-  inspectExistingEnv: (
-    envPath: string,
-  ): Promise<{
-    success: boolean;
-    message: string;
-    info?: {
-      path: string;
-      pythonPath: string;
-      pythonVersion: string;
-      hasNirs4all: boolean;
-      hasCorePackages: boolean;
-      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
-      writable: boolean;
-      missingCorePackages: string[];
-      missingOptionalPackages: string[];
-      profileAlignmentGuess: {
-        id: string;
-        label: string;
-        missingCount: number;
-      } | null;
-    };
-  }> => ipcRenderer.invoke("env:inspectExisting", envPath),
-
-  inspectExistingPython: (
-    pythonPath: string,
-  ): Promise<{
-    success: boolean;
-    message: string;
-    info?: {
-      path: string;
-      pythonPath: string;
-      pythonVersion: string;
-      hasNirs4all: boolean;
-      hasCorePackages: boolean;
-      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
-      writable: boolean;
-      missingCorePackages: string[];
-      missingOptionalPackages: string[];
-      profileAlignmentGuess: {
-        id: string;
-        label: string;
-        missingCount: number;
-      } | null;
-    };
-  }> => ipcRenderer.invoke("env:inspectExistingPython", pythonPath),
-
-  useExistingEnv: (
-    envPath: string,
-  ): Promise<{
-    success: boolean;
-    message: string;
-    info?: {
-      path: string;
-      pythonPath: string;
-      pythonVersion: string;
-      hasNirs4all: boolean;
-      hasCorePackages: boolean;
-      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
-      writable: boolean;
-      missingCorePackages?: string[];
-      missingOptionalPackages?: string[];
-      profileAlignmentGuess?: {
-        id: string;
-        label: string;
-        missingCount: number;
-      } | null;
-    };
-  }> => ipcRenderer.invoke("env:useExisting", envPath),
-
-  selectPythonExe: (): Promise<string | null> =>
-    ipcRenderer.invoke("dialog:selectPythonExe"),
-
-  useExistingPython: (
-    pythonPath: string,
-  ): Promise<{
-    success: boolean;
-    message: string;
-    info?: {
-      path: string;
-      pythonPath: string;
-      pythonVersion: string;
-      hasNirs4all: boolean;
-      hasCorePackages: boolean;
-      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
-      writable: boolean;
-      missingCorePackages?: string[];
-      missingOptionalPackages?: string[];
-      profileAlignmentGuess?: {
-        id: string;
-        label: string;
-        missingCount: number;
-      } | null;
-    };
-  }> => ipcRenderer.invoke("env:useExistingPython", pythonPath),
-
-  applyExistingEnv: (
-    envPath: string,
-    options?: { installCorePackages?: boolean },
-  ): Promise<{
-    success: boolean;
-    message: string;
-    info?: {
-      path: string;
-      pythonPath: string;
-      pythonVersion: string;
-      hasNirs4all: boolean;
-      hasCorePackages: boolean;
-      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
-      writable: boolean;
-      missingCorePackages: string[];
-      missingOptionalPackages: string[];
-      profileAlignmentGuess: {
-        id: string;
-        label: string;
-        missingCount: number;
-      } | null;
-    };
-  }> => ipcRenderer.invoke("env:applyExisting", envPath, options),
-
-  applyExistingPython: (
-    pythonPath: string,
-    options?: { installCorePackages?: boolean },
-  ): Promise<{
-    success: boolean;
-    message: string;
-    info?: {
-      path: string;
-      pythonPath: string;
-      pythonVersion: string;
-      hasNirs4all: boolean;
-      hasCorePackages: boolean;
-      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
-      writable: boolean;
-      missingCorePackages: string[];
-      missingOptionalPackages: string[];
-      profileAlignmentGuess: {
-        id: string;
-        label: string;
-        missingCount: number;
-      } | null;
-    };
-  }> => ipcRenderer.invoke("env:applyExistingPython", pythonPath, options),
-
-  startEnvSetup: (
-    targetDir?: string,
-  ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("env:startSetup", targetDir),
-
-  shouldShowWizard: (): Promise<boolean> =>
-    ipcRenderer.invoke("env:shouldShowWizard"),
-
-  markWizardComplete: (skipNextTime: boolean): Promise<void> =>
-    ipcRenderer.invoke("env:markWizardComplete", skipNextTime),
-
-  getCurrentEnvSummary: (): Promise<{
-    pythonPath: string;
-    envPath: string;
-    version: string;
-  } | null> => ipcRenderer.invoke("env:getCurrentEnvSummary"),
-
-  isPortable: (): Promise<boolean> => ipcRenderer.invoke("env:isPortable"),
-
-  onEnvSetupProgress: (
-    callback: (progress: {
-      percent: number;
-      step: string;
-      detail: string;
-    }) => void,
-  ) => {
-    const handler = (_event: Electron.IpcRendererEvent, progress: unknown) =>
-      callback(progress as Parameters<typeof callback>[0]);
-    ipcRenderer.on("env:setupProgress", handler);
-    return () => ipcRenderer.removeListener("env:setupProgress", handler);
   },
 
   /**

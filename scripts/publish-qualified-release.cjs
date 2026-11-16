@@ -77,12 +77,12 @@ function ghFailureHttpStatus(error) {
   return new Set(statuses).size === 1 ? statuses[0] : null;
 }
 
-function releaseManifest(root, version, includeAllInOne, includeMacosX64 = true) {
+function releaseManifest(root, version, includeAllInOne, includeMacosX64 = false, includePythonPayloads = false) {
   const stat = fs.lstatSync(root);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error("Release root must be a real directory");
   }
-  const payloads = expectedPublishedNames(version, includeAllInOne, includeMacosX64);
+  const payloads = expectedPublishedNames(version, includeAllInOne, includeMacosX64, includePythonPayloads);
   const expected = payloads.flatMap((name) => [name, `${name}.sha256`]).sort();
   if (JSON.stringify(fs.readdirSync(root).sort()) !== JSON.stringify(expected)) {
     throw new Error("Release asset inventory is incomplete or contains unexpected files");
@@ -112,7 +112,7 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   const gh = dependencies.gh || runGh;
   const wait = dependencies.sleep || sleep;
   const log = dependencies.log || ((message) => console.log(message));
-  const { repo, tag, version, sha, prerelease, includeAllInOne, includeMacosX64 = true, releaseRoot, notesPath } = options;
+  const { repo, tag, version, sha, prerelease, includeAllInOne, includeMacosX64 = false, includePythonPayloads = false, releaseRoot, notesPath } = options;
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo || "")) {
     throw new Error("GH_REPO must be an owner/repository pair");
   }
@@ -125,7 +125,7 @@ async function publishQualifiedRelease(options, dependencies = {}) {
   if (includeAllInOne) {
     throw new Error("All-in-one publication is disabled; publish installers only");
   }
-  const manifest = releaseManifest(path.resolve(releaseRoot), version, includeAllInOne, includeMacosX64);
+  const manifest = releaseManifest(path.resolve(releaseRoot), version, includeAllInOne, includeMacosX64, includePythonPayloads);
   let reviewedNotes;
   if (options.reviewedNotesSha256 !== undefined) {
     if (!/^[0-9a-f]{64}$/.test(options.reviewedNotesSha256)) throw new Error("Invalid reviewed notes SHA256");
@@ -358,10 +358,9 @@ async function publishQualifiedRelease(options, dependencies = {}) {
 }
 
 async function main(argv = process.argv.slice(2), env = process.env) {
-  if (![3, 4].includes(argv.length) || !["true", "false"].includes(argv[2]) ||
-    (argv.length === 4 && !["true", "false"].includes(argv[3])) ||
+  if (![3, 4, 5].includes(argv.length) || argv.slice(2).some((flag) => !["true", "false"].includes(flag)) ||
     !["true", "false"].includes(env.RELEASE_PRERELEASE)) {
-    throw new Error("Usage: node scripts/publish-qualified-release.cjs <release-root> <version> <include-all-in-one:true|false> [include-macos-x64:true|false]; set GH_REPO, RELEASE_TAG, RELEASE_SHA, RELEASE_PRERELEASE, RELEASE_NOTES_PATH and GH_TOKEN");
+    throw new Error("Usage: node scripts/publish-qualified-release.cjs <release-root> <version> <include-all-in-one:true|false> [include-macos-x64:true|false] [include-python-payloads:true|false]; set GH_REPO, RELEASE_TAG, RELEASE_SHA, RELEASE_PRERELEASE, RELEASE_NOTES_PATH and GH_TOKEN");
   }
   return publishQualifiedRelease({
     repo: env.GH_REPO || env.GITHUB_REPOSITORY,
@@ -369,7 +368,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     sha: env.RELEASE_SHA,
     prerelease: env.RELEASE_PRERELEASE === "true",
     includeAllInOne: argv[2] === "true",
-    includeMacosX64: argv[3] !== "false",
+    includeMacosX64: argv[3] === "true",
+    includePythonPayloads: argv[4] === "true",
     releaseRoot: argv[0],
     version: argv[1],
     notesPath: env.RELEASE_NOTES_PATH || "release_notes.md",

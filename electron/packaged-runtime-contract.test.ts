@@ -13,7 +13,6 @@ import {
   verifyPackagedRuntimeContract,
 } from "./packaged-runtime-contract";
 import publicMethodsWheel from "../scripts/methods-public-wheel-profile.json";
-import { preselectRendererTransport } from "./renderer-transport-selection";
 
 const require = createRequire(import.meta.url);
 const { assertPackagedElectronGraph } = require("../scripts/check-packaged-electron-graph.cjs") as {
@@ -29,98 +28,18 @@ function digest(value: Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function makeResources(): {
-  resourcesPath: string;
-  sidecarPath: string;
-  pythonPath: string;
-  sitePackagesPath: string;
-} {
+function makeResources(): { resourcesPath: string; sidecarPath: string } {
   const resourcesPath = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-runtime-contract-"));
   tempDirs.push(resourcesPath);
   const backendRoot = path.join(resourcesPath, "backend");
   const sidecarPath = path.join(backendRoot, "native", "studio-sidecar");
-  const pythonPath = path.join(
-    backendRoot,
-    "python-runtime",
-    "python",
-    "bin",
-    "python3",
-  );
   const sidecar = Buffer.from("rust-sidecar");
-  const python = Buffer.from("python-plugin-host");
-  const sitePackagesPath = path.join(
-    backendRoot,
-    "python-runtime",
-    "python",
-    "lib",
-    "python3.11",
-    "site-packages",
-  );
-  const packagePath = path.join(sitePackagesPath, "nirs4all.py");
   fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
-  fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-  fs.mkdirSync(sitePackagesPath, { recursive: true });
   fs.writeFileSync(sidecarPath, sidecar);
-  fs.writeFileSync(pythonPath, python);
-  fs.writeFileSync(packagePath, "def studio_scientific_job_v1(): pass\n");
-  const closure = {
-    schema: "nirs4all.studio-python-plugin-closure.v1",
-    root: "python-runtime/python",
-    site_packages: "python-runtime/python/lib/python3.11/site-packages",
-    directories: [
-      "",
-      "bin",
-      "lib",
-      "lib/python3.11",
-      "lib/python3.11/site-packages",
-    ],
-    files: [pythonPath, packagePath]
-      .map((filePath) => {
-        const bytes = fs.readFileSync(filePath);
-        return {
-          path: path
-            .relative(path.join(backendRoot, "python-runtime", "python"), filePath)
-            .split(path.sep)
-            .join("/"),
-          size: bytes.length,
-          sha256: digest(bytes),
-        };
-      })
-      .sort((left, right) =>
-        Buffer.compare(Buffer.from(left.path, "utf8"), Buffer.from(right.path, "utf8")),
-      ),
-  };
-  const closurePath = path.join(
-    backendRoot,
-    "python-runtime",
-    "PYTHON_PLUGIN_CLOSURE.json",
-  );
-  fs.writeFileSync(closurePath, `${JSON.stringify(closure)}\n`);
-  const closureBytes = fs.readFileSync(closurePath);
-  const markerPath = path.join(
-    backendRoot,
-    "python-runtime",
-    "PLUGIN_RUNTIME_READY.json",
-  );
-  fs.writeFileSync(markerPath, JSON.stringify({
-    schema: "nirs4all.studio-python-plugin-runtime.v1",
-    python_role: "library-plugin-host-only",
-    product_backend: "rust-sidecar",
-    transport: "bounded-cpython-stdio-v1",
-    http_listener: "forbidden",
-    source_commit: "28c51162fc4d31d674c6606d608367a5f4b32b0e",
-    wheel_sha256: "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4",
-    distribution: "nirs4all",
-    distribution_version: "1.4.16",
-    installed_manifest_sha256: "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f",
-    platform: "linux",
-    arch: process.arch,
-    forbidden_distributions: [
-      "fastapi", "httptools", "python-multipart", "sentry-sdk", "starlette",
-      "uvicorn", "uvloop", "watchfiles", "websockets",
-    ],
-  }));
-  const markerBytes = fs.readFileSync(markerPath);
+  fs.mkdirSync(path.join(backendRoot, "tools"));
+  fs.writeFileSync(path.join(backendRoot, "tools", "uv"), "uv");
+  fs.mkdirSync(path.join(backendRoot, "wheels"));
+  fs.mkdirSync(path.join(backendRoot, "adapters", "studio_document_adapters"), { recursive: true });
   fs.writeFileSync(
     path.join(backendRoot, "native", "STUDIO_RUNTIME_CONTRACT.json"),
     JSON.stringify({
@@ -128,31 +47,10 @@ function makeResources(): {
       platform: "linux",
       arch: process.arch,
       product_backend: "rust-sidecar",
-      python_role: "library-plugin-host-only",
       sidecar: {
         path: "native/studio-sidecar",
         size: sidecar.length,
         sha256: digest(sidecar),
-      },
-      python_plugin_host: {
-        mode: "bundled-required",
-        member: {
-          path: "python-runtime/python/bin/python3",
-          size: python.length,
-          sha256: digest(python),
-        },
-        closure: {
-          path: "python-runtime/PYTHON_PLUGIN_CLOSURE.json",
-          size: closureBytes.length,
-          sha256: digest(closureBytes),
-        },
-        runtime_root: "python-runtime/python",
-        site_packages: "python-runtime/python/lib/python3.11/site-packages",
-        marker: {
-          path: "python-runtime/PLUGIN_RUNTIME_READY.json",
-          size: markerBytes.length,
-          sha256: digest(markerBytes),
-        },
       },
       methods_library: {
         mode: "unavailable",
@@ -166,7 +64,7 @@ function makeResources(): {
       },
     }),
   );
-  return { resourcesPath, sidecarPath, pythonPath, sitePackagesPath };
+  return { resourcesPath, sidecarPath };
 }
 
 afterEach(() => {
@@ -208,8 +106,6 @@ describe("packaged runtime contract", () => {
   it("refuses arbitrary bytes in the public-wheel producer without stamping a source", () => {
     const fixture = makeResources();
     const backendRoot = path.join(fixture.resourcesPath, "backend");
-    // Do not invoke the unrelated Python-runtime bake verifier in this test.
-    fs.rmSync(path.join(backendRoot, "python-runtime", "PLUGIN_RUNTIME_READY.json"));
     const methodsLibraryPath = path.join(backendRoot, "native", "libn4m.so");
     fs.writeFileSync(methodsLibraryPath, "unselected-artifact-bytes");
     const producer = require("../scripts/native-runtime-contract.cjs") as {
@@ -225,7 +121,6 @@ describe("packaged runtime contract", () => {
     () => {
       const fixture = makeResources();
       const backendRoot = path.join(fixture.resourcesPath, "backend");
-      fs.rmSync(path.join(backendRoot, "python-runtime", "PLUGIN_RUNTIME_READY.json"));
       const methodsLibraryPath = path.join(backendRoot, "native", "libn4m.so");
       fs.copyFileSync(process.env.NIRS4ALL_BUILD_METHODS_LIBRARY!, methodsLibraryPath);
       const producer = require("../scripts/native-runtime-contract.cjs") as {
@@ -261,7 +156,6 @@ describe("packaged runtime contract", () => {
     () => {
       const fixture = makeResources();
       const backendRoot = path.join(fixture.resourcesPath, "backend");
-      fs.rmSync(path.join(backendRoot, "python-runtime", "PLUGIN_RUNTIME_READY.json"));
       const methodsLibraryPath = path.join(backendRoot, "native", "libn4m.so");
       fs.copyFileSync(process.env.NIRS4ALL_BUILD_METHODS_LIBRARY!, methodsLibraryPath);
       const stagedSha256 = digest(fs.readFileSync(methodsLibraryPath));
@@ -323,7 +217,7 @@ describe("packaged runtime contract", () => {
     expect(hasExactWindowsNativeRuntimeLinkage(withUnexpected)).toBe(false);
   });
 
-  it("keeps the transitive packaged Electron graph plugin-host only", () => {
+  it("keeps the transitional Python HTTP configuration out of the packaged Electron graph", () => {
     const root = process.cwd();
     const result = assertPackagedElectronGraph({ root, requireDist: false });
     const relativeSources = result.sourceFiles.map(
@@ -337,78 +231,76 @@ describe("packaged runtime contract", () => {
       fs.existsSync(path.join(root, "electron/python-http-diagnostic-policy.ts")),
     ).toBe(false);
   });
-  it("selects content-addressed Rust and bundled Python resources", () => {
+  it("selects the content-addressed Rust sidecar of a package that carries uv, the wheels and the adapters", () => {
     const fixture = makeResources();
     expect(
       verifyPackagedRuntimeContract({
         resourcesPath: fixture.resourcesPath,
         platform: "linux",
       }),
-    ).toMatchObject({
+    ).toEqual({
+      contractPath: path.join(fixture.resourcesPath, "backend", "native", "STUDIO_RUNTIME_CONTRACT.json"),
       sidecarPath: fixture.sidecarPath,
-      pythonPluginHostPath: fixture.pythonPath,
-      pythonPluginHostError: null,
-      pythonSitePackagesPath: fixture.sitePackagesPath,
+      methodsLibraryPath: null,
+      methodsLibraryError: null,
     });
   });
 
-  it("keeps verified packaged stdio execution behind Rust-owned routes", async () => {
+  it.each([
+    ["tools", "Packaged uv not found"],
+    ["wheels", "Packaged wheels not found"],
+    ["adapters", "Packaged document adapters not found"],
+  ])("refuses a package without %s", (directory, message) => {
     const fixture = makeResources();
-    const verified = verifyPackagedRuntimeContract({
-      resourcesPath: fixture.resourcesPath,
-      platform: "linux",
-    });
-    expect(verified.pythonPluginHostPath).toBe(fixture.pythonPath);
+    fs.rmSync(path.join(fixture.resourcesPath, "backend", directory), { recursive: true });
+    expect(() =>
+      verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "linux" }),
+    ).toThrow(message);
+  });
 
-    const capabilities = vi.fn().mockImplementation(
-      async () => new Response(
-        JSON.stringify({
-          protocol_version: "studio-sidecar-r1",
-          features: {
-            renderer_transport_selection: true,
-            renderer_rust_only_default: true,
-            implicit_python_http_fallback: false,
-            unmigrated_renderer_routes_fail_closed: true,
-            renderer_http_transport: true,
-            renderer_websocket_transport: true,
-            health: true,
-            scientific_submission_transport: true,
-            native_archive_v2_prediction: true,
-            system_capabilities_route: true,
-            python_plugin_preflight: true,
-            python_plugin_execution: true,
-            scientific_execution: true,
-          },
-        }),
-        { status: 200 },
-      ),
-    );
-    const packagedSidecar = () => ({
-      status: "running" as const,
-      url: "http://127.0.0.1:43123",
-      pythonPluginHostConfigured: verified.pythonPluginHostPath !== null,
-    });
-
-    for (const candidate of [
-      { kind: "http" as const, method: "GET", path: "/health" },
-      { kind: "http" as const, method: "POST", path: "/runs/run-groups" },
-      { kind: "http" as const, method: "POST", path: "/predict/archive-v2" },
-      { kind: "http" as const, method: "GET", path: "/system/capabilities" },
-      { kind: "websocket" as const, path: "/ws/training/job-1" },
-    ]) {
-      await expect(preselectRendererTransport(
-        candidate,
-        packagedSidecar,
-        capabilities,
-      )).resolves.toMatchObject({
-        target: "native-sidecar",
-        renderer_transport: true,
-        scientific_execution: false,
-        fallback_after_native_selection: "none",
-        status: 200,
-      });
+  it("requires a well-formed wheelhouse description instead of wheels in a macOS package", () => {
+    const fixture = makeResources();
+    const backendRoot = path.join(fixture.resourcesPath, "backend");
+    const contractPath = path.join(backendRoot, "native", "STUDIO_RUNTIME_CONTRACT.json");
+    const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
+    fs.writeFileSync(contractPath, JSON.stringify({ ...contract, platform: "darwin" }));
+    fs.rmSync(path.join(backendRoot, "wheels"), { recursive: true });
+    const verify = () => verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "darwin" });
+    const manifest = {
+      url: "https://github.com/GBeurier/nirs4all-studio/releases/download/1.2.3/nirs4all.Studio-1.2.3-mac-arm64-wheels.tar.gz",
+      sha256: "a".repeat(64),
+      filename: "nirs4all.Studio-1.2.3-mac-arm64-wheels.tar.gz",
+    };
+    expect(verify).toThrow("Packaged wheelhouse description is missing or invalid");
+    for (const invalid of [{ ...manifest, sha256: "abc" }, { ...manifest, url: "file:///tmp/wheels.tar.gz" }, { url: manifest.url }]) {
+      fs.writeFileSync(path.join(backendRoot, "wheelhouse.json"), JSON.stringify(invalid));
+      expect(verify).toThrow("Packaged wheelhouse description is missing or invalid");
     }
-    expect(capabilities).toHaveBeenCalledTimes(5);
+    fs.writeFileSync(path.join(backendRoot, "wheelhouse.json"), JSON.stringify(manifest));
+    expect(verify().sidecarPath).toBe(fixture.sidecarPath);
+  });
+
+  it("expects uv.exe in a Windows package", () => {
+    const fixture = makeResources();
+    const contractPath = path.join(fixture.resourcesPath, "backend", "native", "STUDIO_RUNTIME_CONTRACT.json");
+    const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
+    const sidecar = fs.readFileSync(fixture.sidecarPath);
+    fs.writeFileSync(path.join(fixture.resourcesPath, "backend", "native", "studio-sidecar.exe"), sidecar);
+    fs.writeFileSync(contractPath, JSON.stringify({
+      ...contract,
+      platform: "win32",
+      sidecar: { ...contract.sidecar, path: "native/studio-sidecar.exe" },
+      native_runtime_linkage: {
+        profile: "studio-msvc-static-crt-v1",
+        methods_cmake_runtime: "MultiThreaded",
+        sidecar_rust_target_feature: "+crt-static",
+        forbidden_dynamic_import_prefixes: ["MSVCP", "VCRUNTIME"],
+      },
+    }));
+    const verify = () => verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "win32" });
+    expect(verify).toThrow("Packaged uv not found");
+    fs.writeFileSync(path.join(fixture.resourcesPath, "backend", "tools", "uv.exe"), "uv");
+    expect(verify().sidecarPath).toBe(path.join(fixture.resourcesPath, "backend", "native", "studio-sidecar.exe"));
   });
 
   it("refuses an altered product sidecar before spawn", () => {
@@ -420,153 +312,6 @@ describe("packaged runtime contract", () => {
         platform: "linux",
       }),
     ).toThrow("Native Studio sidecar integrity mismatch");
-  });
-
-  it("disables Python when the plugin-only role marker is altered", () => {
-    const fixture = makeResources();
-    const markerPath = path.join(
-      fixture.resourcesPath,
-      "backend",
-      "python-runtime",
-      "PLUGIN_RUNTIME_READY.json",
-    );
-    const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
-    marker.python_role = "standalone-bundled-runtime";
-    fs.writeFileSync(markerPath, JSON.stringify(marker));
-    expect(
-      verifyPackagedRuntimeContract({
-        resourcesPath: fixture.resourcesPath,
-        platform: "linux",
-      }),
-    ).toMatchObject({
-      pythonPluginHostPath: null,
-      pythonPluginHostError: expect.stringMatching(/marker.*(integrity|identity)/i),
-    });
-  });
-
-  it.each([
-    { distribution_version: "1.4.15" },
-    { installed_manifest_sha256: "3d20a5efa05396c42663531092f077195bf37e4472a0cd2f19045897b1d8bc4a" },
-    { source_commit: "2ab9953ccb4b5e72f76be6cb637503622c5869cf" },
-    { wheel_sha256: "27f3cefc9987b46e6850d3812bb4b5fcb651b82ec455b73d33469fb7bc43e6e0" },
-  ])("refuses stale SDK identity even with an intact marker anchor: %j", (stale) => {
-    const fixture = makeResources();
-    const backend = path.join(fixture.resourcesPath, "backend");
-    const markerPath = path.join(backend, "python-runtime", "PLUGIN_RUNTIME_READY.json");
-    const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
-    const bytes = Buffer.from(JSON.stringify({ ...marker, ...stale }));
-    fs.writeFileSync(markerPath, bytes);
-    const contractPath = path.join(backend, "native", "STUDIO_RUNTIME_CONTRACT.json");
-    const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
-    contract.python_plugin_host.marker.size = bytes.length;
-    contract.python_plugin_host.marker.sha256 = digest(bytes);
-    fs.writeFileSync(contractPath, JSON.stringify(contract));
-    expect(verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "linux" }))
-      .toMatchObject({ sidecarPath: fixture.sidecarPath, pythonPluginHostPath: null,
-        pythonPluginHostError: "Packaged Python plugin marker identity mismatch" });
-  });
-
-  it("disables a missing bundled Python host without changing the Rust backend", () => {
-    const fixture = makeResources();
-    fs.rmSync(fixture.pythonPath);
-    expect(
-      verifyPackagedRuntimeContract({
-        resourcesPath: fixture.resourcesPath,
-        platform: "linux",
-      }),
-    ).toMatchObject({
-      sidecarPath: fixture.sidecarPath,
-      pythonPluginHostPath: null,
-      pythonPluginHostError: expect.stringContaining(
-        "Bundled Python plugin host not found",
-      ),
-    });
-  });
-
-  it("leaves full package content and inventory validation to build qualification", () => {
-    const changed = makeResources();
-    fs.appendFileSync(
-      path.join(changed.sitePackagesPath, "nirs4all.py"),
-      "# tampered\n",
-    );
-    expect(
-      verifyPackagedRuntimeContract({
-        resourcesPath: changed.resourcesPath,
-        platform: "linux",
-      }),
-    ).toMatchObject({
-      sidecarPath: changed.sidecarPath,
-      pythonPluginHostPath: changed.pythonPath,
-      pythonPluginHostError: null,
-    });
-
-    const extended = makeResources();
-    fs.writeFileSync(path.join(extended.sitePackagesPath, "injected.pth"), "import injected\n");
-    expect(
-      verifyPackagedRuntimeContract({
-        resourcesPath: extended.resourcesPath,
-        platform: "linux",
-      }),
-    ).toMatchObject({
-      pythonPluginHostPath: extended.pythonPath,
-      pythonPluginHostError: null,
-    });
-  });
-
-  it("starts without walking or reading the Python package tree", () => {
-    const fixture = makeResources();
-    const scan = vi.spyOn(fs, "readdirSync").mockImplementation(() => {
-      throw new Error("Electron must not scan the runtime tree at startup");
-    });
-    const open = vi.spyOn(fs, "openSync");
-    expect(verifyPackagedRuntimeContract({
-      resourcesPath: fixture.resourcesPath,
-      platform: "linux",
-    })).toMatchObject({
-      pythonPluginHostPath: fixture.pythonPath,
-      pythonPluginHostError: null,
-    });
-    expect(scan).not.toHaveBeenCalled();
-    expect(open.mock.calls.some(([file]) => String(file).startsWith(fixture.sitePackagesPath + path.sep))).toBe(false);
-  });
-
-  it("disables Python when its closure manifest anchor is altered", () => {
-    const fixture = makeResources();
-    fs.appendFileSync(path.join(fixture.resourcesPath, "backend", "python-runtime", "PYTHON_PLUGIN_CLOSURE.json"), " ");
-    expect(verifyPackagedRuntimeContract({
-      resourcesPath: fixture.resourcesPath,
-      platform: "linux",
-    })).toMatchObject({
-      sidecarPath: fixture.sidecarPath,
-      pythonPluginHostPath: null,
-      pythonPluginHostError: expect.stringContaining("closure manifest integrity mismatch"),
-    });
-  });
-
-  it("refuses parent-path substitution of the selected site-packages", () => {
-    if (process.platform === "win32") return;
-    const parent = makeResources();
-    const original = path.join(
-      parent.resourcesPath,
-      "backend",
-      "python-runtime",
-      "python",
-      "lib",
-    );
-    const substituted = path.join(parent.resourcesPath, "substituted-lib");
-    fs.renameSync(original, substituted);
-    fs.symlinkSync(substituted, original, "dir");
-    expect(
-      verifyPackagedRuntimeContract({
-        resourcesPath: parent.resourcesPath,
-        platform: "linux",
-      }),
-    ).toMatchObject({
-      pythonPluginHostPath: null,
-      pythonPluginHostError: expect.stringContaining(
-        "canonical non-symlink directory",
-      ),
-    });
   });
 
   it("selects native Methods only while its exact packaged SHA remains valid", () => {

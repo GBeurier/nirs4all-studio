@@ -2,10 +2,11 @@
 
 use std::{
     fs,
-    io::Read,
+    io::{BufRead, BufReader, Read},
     net::{TcpListener, TcpStream},
     os::unix::fs::{symlink, PermissionsExt},
     path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
     sync::{mpsc, Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -19,14 +20,12 @@ use studio_sidecar::{
         ScientificSubmissionPreflight,
     },
     route_request_with_body,
-    scientific_cpython::{
-        CpythonScientificJobExecutor, SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT,
-        SCIENTIFIC_CPYTHON_HOST_CONTRACT, SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
-    },
+    scientific_cpython::{CpythonScientificJobExecutor, SCIENTIFIC_CPYTHON_EXECUTOR_ID},
     websocket_transport::{
         handle_websocket_connection, LegacyWebSocketEndpoint, WebSocketConnectionManager,
     },
-    SidecarState,
+    SidecarState, PYTHON_PLUGIN_HOST_ENV, PYTHON_PLUGIN_SITE_PACKAGES_ENV, SCIENTIFIC_EXECUTOR_ENV,
+    STUDIO_ADAPTERS_DIR_ENV,
 };
 use tungstenite::{
     protocol::{Role, WebSocket},
@@ -202,49 +201,17 @@ fn configured_resolver(root: &Path) -> PathBuf {
     config
 }
 
-/// Exercise production environment selection without modifying the source venv.
-fn selected_runtime_site(python: &Path, root: &Path) -> (PathBuf, PathBuf) {
-    let runtime = root.join("selected-runtime");
-    let copied = std::process::Command::new(python)
-        .args(["-I", "-B", "-c", r#"import importlib.metadata,json,pathlib,shutil,sys
-runtime=pathlib.Path(sys.argv[1])
-site=runtime/"lib"/f"python{sys.version_info.major}.{sys.version_info.minor}"/"site-packages"
-site.mkdir(parents=True)
-binary=runtime/"bin"/"python"
-binary.parent.mkdir()
-shutil.copy2(sys.executable,binary)
-(runtime/"pyvenv.cfg").write_text(f"home = {pathlib.Path(sys.executable).resolve().parent}\ninclude-system-site-packages = false\n")
-# Only dependencies are inherited; the exact SDK and Studio adapters below
-# live inside the active prefix required by the scientific owner.
-(site/"inherited-dependencies.pth").write_text("\n".join(path for path in sys.path if pathlib.Path(path).is_dir())+"\n")
-for name,module in (("nirs4all","nirs4all"),("dag-ml","dag_ml")):
-    d=importlib.metadata.distribution(name)
-    package=pathlib.Path(d.locate_file(module))
-    metadata=next(pathlib.Path(d.locate_file(p)).parent for p in d.files if p.name=="METADATA" and p.parent.name.endswith(".dist-info"))
-    for source in (package,metadata):
-        shutil.copytree(source,site/source.name,ignore=shutil.ignore_patterns("__pycache__"))
-print(json.dumps({"python":str(binary),"site":str(site)}))
-"#])
-        .arg(&runtime)
-        .output()
-        .unwrap();
-    assert!(
-        copied.status.success(),
-        "{}",
-        String::from_utf8_lossy(&copied.stderr)
-    );
-    let copied: Value = serde_json::from_slice(&copied.stdout).unwrap();
-    let selected_python = PathBuf::from(copied["python"].as_str().unwrap());
-    let site = PathBuf::from(copied["site"].as_str().unwrap());
+/// The adapters directory shipped with the application, from the compiled manifest.
+fn application_adapters(root: &Path) -> PathBuf {
+    let directory = root.join("adapters");
     let manifest: Value = serde_json::from_str(include_str!(
         "../contracts/studio_document_adapters_v1.json"
     ))
     .unwrap();
     let sources = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let adapters = site.join("studio_document_adapters");
     for member in manifest["files"].as_array().unwrap() {
         let relative = member["path"].as_str().unwrap();
-        let destination = adapters.join(relative);
+        let destination = directory.join("studio_document_adapters").join(relative);
         fs::create_dir_all(destination.parent().unwrap()).unwrap();
         let bytes = if relative.ends_with("__init__.py") {
             b"\"\"\"Pure document translation package; no HTTP or application state.\"\"\"\n"
@@ -254,14 +221,86 @@ print(json.dumps({"python":str(binary),"site":str(site)}))
         };
         fs::write(destination, bytes).unwrap();
     }
-    (selected_python, site)
+    directory
+}
+
+/// The site-packages directory of a real interpreter, without importing anything.
+fn site_packages_of(python: &Path) -> PathBuf {
+    let output = std::process::Command::new(python)
+        .args([
+            "-I",
+            "-B",
+            "-c",
+            "import sysconfig; print(sysconfig.get_paths()['purelib'])",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    PathBuf::from(String::from_utf8(output.stdout).unwrap().trim())
+}
+
+/// Admit a real environment exactly as the application hands it over.
+fn acquire_real(python: &Path, root: &Path, config: &Path) -> CpythonScientificJobExecutor {
+    CpythonScientificJobExecutor::acquire(
+        python,
+        site_packages_of(python),
+        application_adapters(root),
+        config,
+    )
+}
+
+/// A shell host that answers the admission probe with one framed report.
+fn probe_host(root: &Path, name: &str, report_command: &str) -> PathBuf {
+    shell_host(
+        root,
+        name,
+        &format!("{report_command} | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(4, chr(108)+chr(105)+chr(116)+chr(116)+chr(108)+chr(101))); sys.stdout.buffer.write(data)'"),
+    )
+}
+
+/// A shell command printing the admission report of a host with this nirs4all.
+fn report(distribution_version: &Value) -> String {
+    format!(
+        "printf '%s' '{}'",
+        json!({
+            "schema": "nirs4all.studio-scientific-cpython-host.v2",
+            "implementation": "cpython",
+            "version": [3, 11, 0],
+            "isolated": true,
+            "network_bind_denied": true,
+            "distribution_version": distribution_version,
+            "distribution_inconsistency": null,
+            "import_error": null,
+            "ready": true,
+        })
+    )
+}
+
+/// The nirs4all release the embedded catalogue installs, which it admits.
+fn catalogue_install_version() -> Value {
+    let catalogue: Value =
+        serde_json::from_str(include_str!("../../recommended-config.json")).unwrap();
+    catalogue["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|package| package["name"] == "nirs4all")
+        .unwrap()["install"]
+        .clone()
 }
 
 fn refusal(root: &Path, host: &Path) -> (Value, Arc<NativeJobRuntime>) {
     let config = root.join("config");
     fs::create_dir_all(config.join("app_settings.json")).unwrap();
+    let site_packages = root.join("site-packages");
+    fs::create_dir_all(&site_packages).unwrap();
     let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(
-        CpythonScientificJobExecutor::acquire(host),
+        CpythonScientificJobExecutor::acquire(
+            host,
+            site_packages,
+            application_adapters(root),
+            &config,
+        ),
     )));
     let mut state =
         SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
@@ -276,18 +315,33 @@ fn refusal(root: &Path, host: &Path) -> (Value, Arc<NativeJobRuntime>) {
 }
 
 #[test]
-fn absent_malformed_and_oversized_hosts_are_typed_before_mutation() {
+fn unusable_hosts_are_typed_before_body_or_workspace_access() {
     let root = test_directory("typed");
+    let linked = root.join("venv-python");
+    let ready = probe_host(&root, "ready", &report(&catalogue_install_version()));
+    // A venv interpreter is a link: the selected path is used as given.
+    symlink(&ready, &linked).unwrap();
     let cases = [
         (root.join("missing"), "python_host_unavailable"),
         (
-            shell_host(&root, "malformed", "printf nope"),
+            probe_host(&root, "malformed", "printf nope"),
             "python_host_malformed_response",
         ),
         (
-            shell_host(&root, "oversized", "head -c 9000 /dev/zero | tr '\\000' x"),
+            probe_host(&root, "oversized", "head -c 9000 /dev/zero | tr '\\000' x"),
             "python_host_stdout_too_large",
         ),
+        (
+            probe_host(&root, "outdated", &report(&json!("0.0.1"))),
+            "scientific_distribution_version_unsupported",
+        ),
+        (
+            probe_host(&root, "absent", &report(&Value::Null)),
+            "scientific_distribution_missing",
+        ),
+        // Admitted hosts still need the Rust-owned saved-run resolver.
+        (ready, "scientific_request_resolver_unavailable"),
+        (linked, "scientific_request_resolver_unavailable"),
     ];
     for (host, expected) in cases {
         let (body, runtime) = refusal(&root, &host);
@@ -299,115 +353,79 @@ fn absent_malformed_and_oversized_hosts_are_typed_before_mutation() {
     fs::remove_dir_all(root).unwrap();
 }
 
-#[test]
-fn scientific_host_contract_tracks_the_product_preflight_budget() {
-    let contract: Value = serde_json::from_str(SCIENTIFIC_CPYTHON_HOST_CONTRACT).unwrap();
-    assert_eq!(
-        contract["preflight_timeout_ms"],
-        u64::try_from(SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT.as_millis()).unwrap()
+struct RunningSidecar(Child);
+
+impl Drop for RunningSidecar {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Start the product binary with exactly the given hand-off and return its
+/// readiness once the scientific host acquisition has ended.
+fn readiness_after_startup(config: &Path, hand_off: &[(&str, &Path)]) -> Value {
+    let mut sidecar = RunningSidecar(
+        Command::new(env!("CARGO_BIN_EXE_studio-sidecar"))
+            .args(["--host", "127.0.0.1", "--port", "0"])
+            .env_clear()
+            .env("NIRS4ALL_CONFIG", config)
+            .env(SCIENTIFIC_EXECUTOR_ENV, SCIENTIFIC_CPYTHON_EXECUTOR_ID)
+            .envs(hand_off.iter().copied())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
     );
-    assert!(SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT < Duration::from_secs(75));
-    assert_eq!(SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT, Duration::from_secs(45));
+    let mut ready = String::new();
+    BufReader::new(sidecar.0.stdout.take().unwrap())
+        .read_line(&mut ready)
+        .unwrap();
+    let ready: Value =
+        serde_json::from_str(ready.strip_prefix("STUDIO_SIDECAR_READY ").unwrap()).unwrap();
+    let url = format!("http://127.0.0.1:{}/api/system/readiness", ready["port"]);
+    let client = reqwest::blocking::Client::new();
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        let readiness: Value = client.get(&url).send().unwrap().json().unwrap();
+        if readiness["ml_loading"] == false {
+            return readiness;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "acquisition did not end"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 #[test]
-fn copied_interpreter_files_are_inspected_but_venv_symlinks_are_unsupported() {
-    let root = test_directory("copied-host");
-    let source = shell_host(&root, "source-python", "printf nope");
-    let copied = root.join("embedded-python-copy");
-    fs::copy(&source, &copied).unwrap();
-    let copied_executor = CpythonScientificJobExecutor::acquire(&copied);
-    assert_eq!(
-        copied_executor.unavailable_reason(),
-        "python_host_malformed_response"
-    );
-
-    let venv_link = root.join("venv-python");
-    symlink(&copied, &venv_link).unwrap();
-    let linked_executor = CpythonScientificJobExecutor::acquire(&venv_link);
-    assert_eq!(
-        linked_executor.unavailable_reason(),
-        "python_host_symlink_unsupported"
-    );
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn acquired_host_tamper_is_typed_before_body_or_workspace_access() {
-    let root = test_directory("tamper");
-    let host = shell_host(
-        &root,
-        "host",
-        r#"printf '%s' '{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"implementation":"cpython","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","version":[3,11,0]}'"#,
-    );
-    let executor = Arc::new(CpythonScientificJobExecutor::acquire(&host));
-    fs::write(&host, "tampered").unwrap();
-    let runtime = Arc::new(NativeJobRuntime::with_executor(executor));
+fn product_startup_admits_the_handed_over_environment_and_names_what_is_missing() {
+    let root = test_directory("hand-off");
+    let host = probe_host(&root, "python", &report(&catalogue_install_version()));
+    let site_packages = root.join("site-packages");
     let config = root.join("config");
-    fs::create_dir_all(config.join("app_settings.json")).unwrap();
-    let mut state =
-        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
-    let response = route_request_with_body(
-        &mut state,
-        "POST",
-        "/api/runs/run-groups",
-        b"not-json-must-not-be-parsed",
-    );
-    assert_eq!(response.status, 503);
-    let body: Value = serde_json::from_str(&response.body).unwrap();
-    assert_eq!(
-        body["error"]["details"]["reason"],
-        "python_host_malformed_response"
-    );
-    assert_eq!(runtime.published_event_count(), 0);
-    assert_eq!(runtime.durable_write_count(), 0);
-    fs::remove_dir_all(root).unwrap();
-}
+    fs::create_dir_all(&site_packages).unwrap();
+    fs::create_dir_all(&config).unwrap();
+    let adapters = application_adapters(&root);
+    let hand_off = [
+        (PYTHON_PLUGIN_HOST_ENV, host.as_path()),
+        (PYTHON_PLUGIN_SITE_PACKAGES_ENV, site_packages.as_path()),
+        (STUDIO_ADAPTERS_DIR_ENV, adapters.as_path()),
+    ];
+    let admitted = readiness_after_startup(&config, &hand_off);
+    assert_eq!(admitted["ml_ready"], true, "{admitted}");
+    assert!(admitted["ml_error"].is_null());
 
-#[test]
-fn unattested_callable_cannot_select_scientific_execution() {
-    let root = test_directory("honesty");
-    fs::create_dir_all(&root).unwrap();
-    let callable = root.join("studio_scientific.py");
-    fs::write(
-        &callable,
-        "def studio_scientific_job_v1(request): return request\n",
-    )
-    .unwrap();
-    let digest = {
-        use sha2::{Digest, Sha256};
-        format!("{:x}", Sha256::digest(fs::read(&callable).unwrap()))
-    };
-    let host = shell_host(
-        &root,
-        "future-callable",
-        &format!(
-            r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":"{}","callable_sha256":"{}","implementation":"cpython","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":true,"schema":"nirs4all.studio-scientific-cpython-host.v1","version":[3,11,0]}}'"#,
-            callable.display(),
-            digest
-        ),
-    );
-    let config = root.join("config");
-    fs::create_dir_all(config.join("app_settings.json")).unwrap();
-    let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(
-        CpythonScientificJobExecutor::acquire_with_config_dir(&host, &config),
-    )));
-    let mut state =
-        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
-    let response = route_request_with_body(
-        &mut state,
-        "POST",
-        "/api/runs/run-groups",
-        b"not-json-must-not-be-parsed",
-    );
-    assert_eq!(response.status, 503);
-    let body: Value = serde_json::from_str(&response.body).unwrap();
-    assert_eq!(
-        body["error"]["details"]["reason"],
-        "python_host_malformed_response"
-    );
-    assert_eq!(runtime.published_event_count(), 0);
-    assert_eq!(runtime.durable_write_count(), 0);
+    for (present, expected) in [
+        (&hand_off[..2], "studio_adapters_unavailable"),
+        (&hand_off[..1], "python_host_unavailable"),
+        (&hand_off[1..], "python_host_unavailable"),
+    ] {
+        let refused = readiness_after_startup(&config, present);
+        assert_eq!(refused["ml_ready"], false);
+        assert_eq!(refused["ml_error"], expected);
+    }
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -419,7 +437,7 @@ fn terminal_callback_failure_is_observed_and_disables_future_selection() {
     let root = test_directory("terminal-callback");
     fs::create_dir_all(&root).unwrap();
     let config = configured_resolver(&root);
-    let executor = CpythonScientificJobExecutor::acquire_with_config_dir(&python, &config);
+    let executor = acquire_real(&python, &root, &config);
     assert!(executor.is_selected(), "{}", executor.unavailable_reason());
     let request = ScientificExecutionRequest {
         job_id: "run_native_callback_failure".into(),
@@ -469,7 +487,7 @@ fn selected_wheel_executes_closed_path_free_request_through_real_stdio_host() {
     };
     let root = test_directory("real-wheel");
     let config = configured_resolver(&root);
-    let executor = CpythonScientificJobExecutor::acquire_with_config_dir(&python, &config);
+    let executor = acquire_real(&python, &root, &config);
     assert!(executor.is_selected(), "{}", executor.unavailable_reason());
     let job_id = "run_native_real_wheel";
     let request = ScientificExecutionRequest {
@@ -613,9 +631,7 @@ fn selected_wheel_resolves_saved_route_and_persists_only_the_original_request() 
         .unwrap(),
     )
     .unwrap();
-    let (python, site) = selected_runtime_site(&python, &root);
-    let executor =
-        CpythonScientificJobExecutor::acquire_existing_with_config_dir(&python, site, &config);
+    let executor = acquire_real(&python, &root, &config);
     assert!(executor.is_selected(), "{}", executor.unavailable_reason());
     let observed_executor = Arc::new(ObservedScientificExecutor {
         inner: Arc::new(executor),

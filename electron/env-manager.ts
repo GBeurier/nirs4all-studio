@@ -1,950 +1,491 @@
 /**
- * Runtime Python environment manager for Electron.
+ * Coordinator of Studio's single Python environment.
  *
- * Downloads python-build-standalone and creates a venv on first launch,
- * so the installer stays lightweight (~15MB instead of 350MB).
- * The Python env is stored in the user's app data directory.
+ * Studio uses exactly one interpreter: the one persisted in
+ * `env-settings.json`. This class owns that selection, derives its state from
+ * a package listing (never from imports), installs the required packages when
+ * it may, and exposes the operations of the renderer contract
+ * (`src/types/pythonEnvironment.ts`). The mechanics live in `electron/env/`.
  *
- * This module is the coordinator: it owns the in-memory env state and the
- * setup/verify/detect/apply flows. The lower-level mechanics are split into
- * focused modules under `electron/env/`:
- *   - network-probe         — outbound reachability probe
- *   - process-utils         — runCommand / rmWithRetry / execFileText
- *   - python-discovery      — interpreter discovery across ecosystems
- *   - python-runtime-installer — download / extract / quarantine primitives
- *   - env-inspection        — package scoring and pure interpreter inspection
- *   - env-settings          — env-settings.json shape + read/write
- *   - runtime-paths         — runtime-mode + filesystem-layout resolution
- *   - env-detection         — existing-env discovery, classification, TTL cache
- *   - verify-cache          — verify-cache.json fingerprint + read/write
+ * The scientific host itself runs in the Rust sidecar; the main process
+ * supplies `restartHost` so that a change of environment is only kept when the
+ * sidecar really runs it.
  */
 
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { probeNetworkOnline } from "./env/network-probe";
-import {
-  getEnvRootForPythonPath,
-  getPythonExecutableCandidatesForEnvRoot,
-} from "./env/python-discovery";
-import {
-  getMissingCorePackages,
-  getCorePackageIssues,
-  getMissingOptionalPackages,
-  guessProfileAlignment,
-  inspectPythonPackages,
-} from "./env/env-inspection";
 import type {
-  DetectedEnv,
-  InspectedEnv,
-  InspectPythonData,
-} from "./env/env-inspection";
-import { installCorePackages, provisionManagedRuntime } from "./env/provisioning";
-import type { ProvisioningContext } from "./env/provisioning";
-import { SETTINGS_FILE, readEnvSettings, writeEnvSettings } from "./env/env-settings";
-import type { EnvSettings } from "./env/env-settings";
+  ApplyPythonEnvRequest,
+  CreatePythonEnvRequest,
+  InspectPythonEnvResult,
+  NewPythonEnvPlan,
+  PythonEnvActionResult,
+  PythonEnvActivity,
+  PythonEnvPhase,
+  PythonEnvProblem,
+  PythonEnvReport,
+  PythonEnvState,
+} from "../src/types/pythonEnvironment";
+import { recommendedInstallSpecs } from "./env/catalogue";
+import { clearDetectionCache, detectEnvironments } from "./env/env-detection";
+import { SETTINGS_FILE, readSelectedPythonPath, writeSelectedPythonPath } from "./env/env-settings";
+import { loadNetworkTrust, loadPythonRuntimeConfig } from "./env/external-config";
+import { editableRequiredPackages, evaluateInventory, installedRequiredPins, takeInventory } from "./env/inventory";
+import type { PythonInventory } from "./env/inventory";
+import { readCachedInventory, writeCachedInventory } from "./env/inventory-cache";
+import { createStudioEnvironment } from "./env/provisioning";
 import {
-  detectBundledRuntime,
-  getEnvKind,
-  getManagedPythonPath,
-  getSitePackagesForPythonPath,
-  isBundledRuntimeLayoutPath,
-  isLikelyWritable,
-  resolveSitePackages,
-} from "./env/runtime-paths";
-import type { BundledRuntimeInfo } from "./env/runtime-paths";
-import { checkPythonEnv, detectExistingEnvs } from "./env/env-detection";
-import { clearVerifyCache, computeEnvFingerprint, readVerifyCache, writeVerifyCache } from "./env/verify-cache";
-import { validatePythonRuntime } from "./env/runtime-validation";
-import { prepareRuntimeAdapters } from "./env/runtime-adapters";
-import { checkRuntimePackageVersions, describeRuntimePackageIssues } from "./env/runtime-version-check";
+  canonicalPythonPath,
+  getPythonExecutableCandidatesForEnvRoot,
+  normalizePythonPath,
+} from "./env/python-discovery";
+import { getStudioEnvDir, getVenvPythonPath } from "./env/runtime-paths";
+import { installRecommendedPackages, installRequiredPackages, resolveUvPayload } from "./env/uv";
+import type { WheelhouseCache } from "./env/wheelhouse";
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
-// require("electron") resolves to the binary path string outside the Electron
-// runtime (Vitest locally) and THROWS when the binary was never downloaded
-// (CI runners). Both must fall through to the injected/stub app below.
-const electronModule = (() => {
-  try {
-    return require("electron") as typeof import("electron") | string;
-  } catch {
-    return "electron-unavailable";
-  }
-})();
-const testApp = (globalThis as { __NIRS4ALL_TEST_APP__?: AppLike }).__NIRS4ALL_TEST_APP__;
-const { app } = typeof electronModule === "string"
-  ? {
-      // In non-Electron contexts (for example Vitest), require("electron")
-      // resolves to the binary path string. Fall back to an injected test app,
-      // or a minimal cwd-based stub so the module can still be exercised.
-      app: testApp ?? {
-        getPath: (_name: string) => process.cwd(),
-        getVersion: () => "0.0.0-test",
-      },
-    }
-  : electronModule;
-
-export type EnvStatus = "none" | "downloading" | "extracting" | "creating_venv" | "installing" | "ready" | "error";
-
-export type ProgressCallback = (percent: number, step: string, detail: string) => void;
-
-export interface EnvInfo {
-  status: EnvStatus;
-  envDir: string;
-  pythonPath: string | null;
-  sitePackages: string | null;
-  pythonVersion: string | null;
-  isCustom: boolean;
-  canInstallRequiredVersions?: boolean;
-  setupDeferred?: boolean;
-  /** Set when this session runs Studio's included runtime instead of the selected environment. */
-  runtimeFallback?: RuntimeFallback;
-  error?: string;
+export interface EnvManagerOptions {
+  /** Electron's `userData` directory: settings, inventory cache and Studio's own environment. */
+  userDataDir: string;
+  /**
+   * Restart the sidecar on the current selection (`getHost()`) and confirm
+   * that it runs that interpreter. Rejects with a user-facing reason.
+   */
+  restartHost(): Promise<void>;
+  /**
+   * Stop the sidecar when it is running a Python environment, so that the
+   * environment's files are free to be replaced. Resolves to whether it was stopped.
+   */
+  stopHost(): Promise<boolean>;
+  /** A sentence describing the runs the sidecar is executing, or null when it is idle. */
+  describeActiveRuns(): Promise<string | null>;
 }
 
-/** Why the selected environment was replaced by the included runtime for this session. */
-export interface RuntimeFallback {
-  reason: "missing" | "incompatible";
-  /** The interpreter the user selected, kept so it can be repaired or relocated. */
-  selectedPythonPath: string;
-  /** Package version issues of the selected environment (empty when it is missing). */
-  issues: string[];
-}
-
-export type EnvRuntimeMode = "bundled" | "managed" | "custom" | "none";
-
-export interface EnvSummary {
+/** What the sidecar needs to run the selected interpreter. */
+export interface PythonHost {
   pythonPath: string;
-  envPath: string;
-  version: string;
+  sitePackages: string;
 }
 
-interface EnsureBackendPackagesOptions {
-  timeoutMs?: number;
+interface Evaluation {
+  inventory: PythonInventory;
+  report: PythonEnvReport;
 }
 
-/** Record which Python environment this session runs, and why, in the main log. */
-function logEnvironmentDecision(decision: {
-  mode: EnvRuntimeMode;
+interface Selection {
   pythonPath: string | null;
-  versions: Record<string, string | null>;
-  issues: readonly string[];
-  fallback: RuntimeFallback["reason"] | null;
-  running: string | null;
-}): void {
-  const versions = Object.entries(decision.versions)
-    .map(([name, version]) => `${name} ${version ?? "missing"}`).join(", ");
-  const parts = [
-    `selected=${decision.mode}`,
-    `path=${decision.pythonPath ?? "none"}`,
-    `versions=${versions || (decision.mode === "bundled" ? "qualified with this installer" : "not read")}`,
-    `compatible=${decision.pythonPath !== null && decision.issues.length === 0 && decision.fallback !== "missing"}`,
-  ];
-  if (decision.issues.length > 0) parts.push(`issues=${decision.issues.join("; ")}`);
-  if (decision.fallback) parts.push(`fallback=included runtime (selected environment is ${decision.fallback})`);
-  parts.push(`running=${decision.running ?? "none"}`);
-  console.log(`[EnvManager] Python environment: ${parts.join(" | ")}`);
+  phase: Exclude<PythonEnvPhase, "busy">;
+  evaluation: Evaluation | null;
+  problem?: PythonEnvProblem;
 }
 
-function envTimeoutMs(name: string, fallbackMs: number): number {
-  const value = Number.parseInt(process.env[name] ?? "", 10);
-  return Number.isInteger(value) && value >= 1000 ? value : fallbackMs;
+/** User-facing reason; certificate failures of a download or an installation get their remedy. */
+function errorMessage(error: unknown): string {
+  return loadNetworkTrust().explainNetworkError(error).message;
 }
 
-interface ApplyExistingPythonOptions {
-  installCorePackages?: boolean;
+function unmetRequirements(report: PythonEnvReport): string {
+  return report.required
+    .filter((item) => item.status !== "ok")
+    .map((item) => item.installedVersion
+      ? `${item.name} ${item.installedVersion}${item.requiredRange ? ` (required ${item.requiredRange})` : ""}`
+      : `${item.name} (missing)`)
+    .join(", ");
+}
+
+const NOT_WRITABLE = "Studio cannot install packages in this environment (it is read-only or managed by the operating system).";
+
+/**
+ * Why Studio may not install the required packages itself, or null when it
+ * may. Any editable required package blocks the installation: the resolver
+ * could replace it as a dependency of another required package, and Studio
+ * never modifies an editable install.
+ */
+function installBlocker({ inventory, report }: Evaluation): string | null {
+  const editable = editableRequiredPackages(inventory);
+  if (editable.length > 0) {
+    return `${editable.join(", ")} ${editable.length === 1 ? "is" : "are"} installed in development (editable) mode, and Studio does not modify editable installs. Not satisfied: ${unmetRequirements(report)}. Install or update them yourself in this environment, or choose another one.`;
+  }
+  if (!report.writable) {
+    return `${NOT_WRITABLE} Not satisfied: ${unmetRequirements(report)}. Install them yourself or choose another environment.`;
+  }
+  return null;
+}
+
+/** Accept an interpreter path or an environment directory. */
+function resolveInterpreter(target: string): string {
+  const location = normalizePythonPath(target);
+  let isDirectory: boolean;
+  try {
+    isDirectory = fs.statSync(location).isDirectory();
+  } catch {
+    throw new Error("No Python interpreter was found at this location.");
+  }
+  if (!isDirectory) return location;
+  const pythonPath = getPythonExecutableCandidatesForEnvRoot(location).find((candidate) => fs.existsSync(candidate));
+  if (!pythonPath) throw new Error("No Python interpreter was found in this folder.");
+  return pythonPath;
 }
 
 export class EnvManager {
-  private status: EnvStatus = "none";
-  private preparedSitePackages: string | null = null;
-  private lastError: string | null = null;
-  private envDir: string;
-  private settingsPath: string;
-  private pythonPath: string | null = null;
-  /** Studio's included runtime was explicitly selected (persisted as a marker, never a path). */
-  private bundledSelected = false;
-  private runtimeFallback: RuntimeFallback | null = null;
-  private savedAppVersion: string | null = null;
-  private savedSkipWizard: boolean = false;
+  private readonly studioEnvDir: string;
+  private readonly settingsPath: string;
+  private readonly offlineInstall = resolveUvPayload().offline !== null;
+  private readonly listeners = new Set<(state: PythonEnvState) => void>();
+  /** Required wheels are downloaded on first use where the installer cannot embed them; see `env/wheelhouse.ts`. */
+  private readonly wheelhouse: WheelhouseCache;
+  private current: Selection;
+  private activity: PythonEnvActivity | undefined;
+  /** The sidecar was stopped or restarted during the running operation. */
+  private hostRestarted = false;
+  /** The sidecar was stopped for an installation and has not been started again. */
+  private hostStopped = false;
 
-  constructor() {
-    this.envDir = path.join(app.getPath("userData"), "python-env");
-    this.settingsPath = path.join(app.getPath("userData"), SETTINGS_FILE);
-    this.loadSettings();
+  constructor(private readonly options: EnvManagerOptions) {
+    this.studioEnvDir = getStudioEnvDir(options.userDataDir);
+    this.settingsPath = path.join(options.userDataDir, SETTINGS_FILE);
+    this.wheelhouse = {
+      directory: path.join(options.userDataDir, "wheelhouse"),
+      onProgress: (detail) => { if (this.activity) this.setActivity({ ...this.activity, detail }); },
+    };
+    const persisted = readSelectedPythonPath(this.settingsPath);
+    // The phase is settled by `startupCheck()`, which runs before any window exists.
+    this.current = { pythonPath: persisted && normalizePythonPath(persisted), phase: "unconfigured", evaluation: null };
+  }
 
-    // Check initial status
-    if (this.isReady()) {
-      this.status = "ready";
+  getState(): PythonEnvState {
+    const { pythonPath, phase, evaluation, problem } = this.current;
+    return {
+      phase: this.activity ? "busy" : phase,
+      selectedPythonPath: pythonPath,
+      selected: evaluation?.report ?? null,
+      ...(problem ? { problem } : {}),
+      ...(this.activity ? { activity: this.activity } : {}),
+      offlineInstall: this.offlineInstall,
+    };
+  }
+
+  /** Subscribe to state changes; returns the unsubscribe function. */
+  onStateChange(listener: (state: PythonEnvState) => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+
+  /** The interpreter the sidecar must run, or null when the selection is not usable. */
+  getHost(): PythonHost | null {
+    const { pythonPath, phase, evaluation } = this.current;
+    return phase === "ready" && pythonPath && evaluation
+      ? { pythonPath, sitePackages: evaluation.inventory.purelib }
+      : null;
+  }
+
+  /**
+   * Check the selection before the sidecar starts. Required packages that are
+   * missing or out of range are installed when the environment allows it. A
+   * failure is recorded in the state; Studio still opens.
+   */
+  async startupCheck(): Promise<PythonEnvState> {
+    await this.checkSelection(true);
+    // The caller starts the sidecar next, whatever was stopped for an installation.
+    this.hostStopped = false;
+    this.setActivity(undefined);
+    return this.getState();
+  }
+
+  /** The sidecar reported that it could not run the selected environment. */
+  reportHostFailure(message: string): void {
+    if (this.current.phase !== "ready") return;
+    this.settle({ ...this.current, phase: "needs_attention", problem: { code: "host_failed", message } });
+  }
+
+  detect(refresh = false): Promise<PythonEnvReport[]> {
+    return detectEnvironments({ studioEnvDir: this.studioEnvDir, selectedPythonPath: this.current.pythonPath }, refresh);
+  }
+
+  async inspect(target: string): Promise<InspectPythonEnvResult> {
+    try {
+      return { report: (await this.evaluate(this.canonical(resolveInterpreter(target)), false)).report };
+    } catch (error) {
+      return { error: errorMessage(error) };
     }
   }
 
-  private loadSettings(): void {
-    const data = readEnvSettings(this.settingsPath);
-    if (!data) return;
+  /**
+   * What a new Studio environment would contain: the pinned Python and every
+   * catalogue package, evaluated against an empty environment. No subprocess.
+   */
+  describeNewEnvironment(): NewPythonEnvPlan {
+    const { PYTHON_VERSION } = loadPythonRuntimeConfig<{ PYTHON_VERSION: string }>();
+    const { pythonVersion, required, recommended } = evaluateInventory(getVenvPythonPath(this.studioEnvDir), {
+      pythonVersion: PYTHON_VERSION,
+      distributions: {},
+      editable: [],
+      externallyManaged: false,
+      purelib: "",
+      purelibWritable: true,
+    }, this.studioEnvDir);
+    return { pythonVersion, required, recommended };
+  }
 
-    this.savedAppVersion = (data.appVersion as string) ?? null;
-    this.savedSkipWizard = (data.skipWizardOnLaunch as boolean) ?? false;
-    if (data.runtime === "bundled") {
-      this.bundledSelected = true;
-    } else if (typeof data.pythonPath === "string") {
-      // Earlier releases saved the included runtime as an absolute path, which
-      // went stale when an update moved the installation.
-      if (this.isBundledPythonPath(data.pythonPath) || isBundledRuntimeLayoutPath(data.pythonPath)) {
-        this.bundledSelected = true;
-      } else {
-        this.pythonPath = data.pythonPath;
+  apply(request: ApplyPythonEnvRequest): Promise<PythonEnvActionResult> {
+    return this.runAction({ kind: "switching", percent: null, detail: "Checking the selected environment…" }, async () => {
+      const pythonPath = this.canonical(resolveInterpreter(request.pythonPath));
+      // Refuse unknown package names before anything is installed.
+      recommendedInstallSpecs(request.packages);
+      let evaluation = await this.evaluate(pythonPath, false);
+      const installsRequired = !evaluation.report.usable;
+      const blocker = installsRequired ? installBlocker(evaluation) : null;
+      if (blocker) throw new Error(blocker);
+      if (request.packages.length > 0 && !evaluation.report.writable) throw new Error(NOT_WRITABLE);
+      if (installsRequired) {
+        this.setActivity({ kind: "installing", percent: null, detail: "Installing the required packages…" });
+        await this.stopHostBeforeInstalling(pythonPath);
+        await installRequiredPackages(pythonPath, this.wheelhouse);
+        evaluation = await this.evaluate(pythonPath, false);
       }
-    }
+      if (request.packages.length > 0) {
+        this.setActivity({ kind: "installing", percent: null, detail: "Installing the selected packages…" });
+        await this.stopHostBeforeInstalling(pythonPath);
+        await installRecommendedPackages(pythonPath, request.packages, installedRequiredPins(evaluation.inventory), this.wheelhouse);
+        evaluation = await this.evaluate(pythonPath, false);
+      }
+      await this.switchTo(pythonPath, evaluation);
+    });
   }
 
-  private saveSettings(): void {
-    const data: EnvSettings = {};
-    if (this.bundledSelected) data.runtime = "bundled";
-    else if (this.pythonPath) data.pythonPath = this.pythonPath;
-    if (this.savedAppVersion) data.appVersion = this.savedAppVersion;
-    if (this.savedSkipWizard) data.skipWizardOnLaunch = this.savedSkipWizard;
-    writeEnvSettings(this.settingsPath, data);
+  create(request: CreatePythonEnvRequest): Promise<PythonEnvActionResult> {
+    return this.runAction({ kind: "creating", percent: 0, detail: "Preparing the new environment…" }, async () => {
+      recommendedInstallSpecs(request.packages);
+      const baseDir = request.directory ? path.join(request.directory, "python-env") : this.studioEnvDir;
+      const pythonPath = this.canonical(await createStudioEnvironment(baseDir, request.packages, (percent, detail) => {
+        this.setActivity({ kind: "creating", percent, detail });
+      }, this.wheelhouse.directory));
+      await this.switchTo(pythonPath, await this.evaluate(pythonPath, false));
+    });
   }
 
-  /** Get the environment directory */
-  getEnvDir(): string {
-    return this.envDir;
+  installPackages(packages: string[]): Promise<PythonEnvActionResult> {
+    return this.runAction({ kind: "installing", percent: null, detail: "Installing the selected packages…" }, async () => {
+      const pythonPath = this.current.pythonPath;
+      if (!pythonPath || !this.current.evaluation) throw new Error("No usable Python environment is selected.");
+      recommendedInstallSpecs(packages);
+      // Read the environment now: its required packages are pinned at the versions really installed.
+      const { inventory, report } = await this.evaluate(pythonPath, false);
+      if (!report.writable) throw new Error(NOT_WRITABLE);
+      await this.stopHostBeforeInstalling(pythonPath);
+      await installRecommendedPackages(pythonPath, packages, installedRequiredPins(inventory), this.wheelhouse);
+      await this.checkAndActivate();
+    });
   }
 
-  /** Get the persisted Electron env settings file path. */
-  getSettingsPath(): string {
-    return this.settingsPath;
-  }
-
-  /** Get current setup status */
-  getStatus(): EnvStatus {
-    return this.status;
-  }
-
-  /** Check if the Python environment is ready to use */
-  isReady(): boolean {
-    const pythonPath = this.getPythonPath();
-    if (!pythonPath || !fs.existsSync(pythonPath)) return false;
-
-    const sitePackages = this.getSitePackages();
-    if (!sitePackages || !fs.existsSync(sitePackages)) return false;
-
-    return true;
-  }
-
-  detectBundledRuntime(): BundledRuntimeInfo | null {
-    return detectBundledRuntime();
-  }
-
-  isBundled(): boolean {
-    return this.getConfiguredRuntimeMode() === "bundled";
-  }
-
-  private isBundledPythonPath(pythonPath: string): boolean {
-    const bundled = detectBundledRuntime();
-    const normalize = (value: string) => process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
-    return !!bundled && normalize(pythonPath) === normalize(bundled.pythonPath);
-  }
-
-  /** The included runtime runs when it was selected or replaces an unusable selection. */
-  private usesBundledRuntime(): boolean {
-    return this.bundledSelected || this.runtimeFallback !== null;
+  retry(): Promise<PythonEnvActionResult> {
+    return this.runAction({ kind: "updating_required", percent: null, detail: "Checking the Python environment…" }, () => this.checkAndActivate());
   }
 
   /**
-   * Get the Python executable Electron is currently configured to use.
-   *
-   * A saved environment is retained across updates. The included interpreter
-   * is the default when no existing or managed environment has been selected.
+   * The user's "restart backend": with a problem to solve it is a retry,
+   * otherwise the sidecar is restarted on the current selection. It may
+   * interrupt a run, which is what the user asked for.
    */
-  getConfiguredPythonPath(): string | null {
-    if (this.usesBundledRuntime()) return detectBundledRuntime()?.pythonPath ?? null;
-    if (this.pythonPath) return fs.existsSync(this.pythonPath) ? this.pythonPath : null;
-    const managedPython = getManagedPythonPath(this.envDir);
-    if (fs.existsSync(managedPython)) return managedPython;
-    const bundledRuntime = detectBundledRuntime();
-    if (bundledRuntime) {
-      return bundledRuntime.pythonPath;
-    }
-
-    return null;
-  }
-
-  /** Get the configured runtime mode from Electron state. */
-  getConfiguredRuntimeMode(): EnvRuntimeMode {
-    if (this.usesBundledRuntime()) return detectBundledRuntime() ? "bundled" : "none";
-    if (this.pythonPath) return "custom";
-    if (fs.existsSync(getManagedPythonPath(this.envDir))) return "managed";
-    return detectBundledRuntime() ? "bundled" : "none";
-  }
-
-  /**
-   * Resolve the Python executable Electron intends to target for plugin-host
-   * verification / repair work. Falls back to the runtime launch path when no
-   * configured interpreter has been persisted yet.
-   */
-  private getBackendTargetPythonPath(): string | null {
-    return this.getConfiguredPythonPath() ?? this.getPythonPath();
-  }
-
-  /** Get the Python executable path */
-  getPythonPath(): string | null {
-    return this.getConfiguredPythonPath();
-  }
-
-  snapshotSelection() {
-    // A default (unselected) included runtime is pinned on restore so a managed
-    // environment created by a failed change does not silently take over.
-    const bundledSelected = this.bundledSelected
-      || (!this.pythonPath && !this.runtimeFallback && this.getConfiguredRuntimeMode() === "bundled");
-    return { pythonPath: this.pythonPath, bundledSelected, runtimeFallback: this.runtimeFallback, status: this.status, lastError: this.lastError, preparedSitePackages: this.preparedSitePackages, savedAppVersion: this.savedAppVersion, savedSkipWizard: this.savedSkipWizard };
-  }
-
-  restoreSelection(snapshot: ReturnType<EnvManager["snapshotSelection"]>): void {
-    this.pythonPath = snapshot.pythonPath;
-    this.bundledSelected = snapshot.bundledSelected;
-    this.runtimeFallback = snapshot.runtimeFallback;
-    this.preparedSitePackages = snapshot.preparedSitePackages;
-    this.status = snapshot.status;
-    this.lastError = snapshot.lastError;
-    this.savedAppVersion = snapshot.savedAppVersion;
-    this.savedSkipWizard = snapshot.savedSkipWizard;
-    this.saveSettings();
-  }
-
-  async prepareSelectedRuntimeAdapters(): Promise<void> {
-    const pythonPath = this.getConfiguredPythonPath();
-    if (pythonPath && !this.isBundled()) this.preparedSitePackages = await prepareRuntimeAdapters(pythonPath);
-  }
-
-  /**
-   * Check package versions on first launch, app update, or explicit env change.
-   *
-   * With `allowBundledFallback` (packaged builds), a selected environment that
-   * is missing or needs other package versions is replaced for this session by
-   * the included runtime. The selection itself is kept so it can be repaired,
-   * and `getInfo().runtimeFallback` explains what happened.
-   */
-  async checkPackageVersions(force = false, allowBundledFallback = false): Promise<boolean> {
-    this.runtimeFallback = null;
-    const mode = this.getConfiguredRuntimeMode();
-    const pythonPath = this.getConfiguredPythonPath();
-    const { issues, versions } = pythonPath
-      ? await checkRuntimePackageVersions({
-        pythonPath,
-        appVersion: app.getVersion(),
-        userDataDir: app.getPath("userData"),
-        reused: mode !== "bundled",
-        force,
-      })
-      : { issues: [], versions: {} };
-    const selectedPythonPath = pythonPath ?? this.pythonPath;
-    const unusable = !pythonPath || issues.length > 0;
-    if (allowBundledFallback && unusable && selectedPythonPath && (mode === "custom" || mode === "managed") && detectBundledRuntime()) {
-      this.runtimeFallback = { reason: pythonPath ? "incompatible" : "missing", selectedPythonPath, issues };
-      logEnvironmentDecision({ mode, pythonPath: selectedPythonPath, versions, issues, fallback: this.runtimeFallback.reason, running: detectBundledRuntime()?.pythonPath ?? null });
-      this.status = "ready";
-      this.lastError = null;
-      return true;
-    }
-    logEnvironmentDecision({ mode, pythonPath: selectedPythonPath, versions, issues, fallback: null, running: pythonPath });
-    if (!pythonPath) return false;
-    const error = issues.length > 0 ? describeRuntimePackageIssues(issues) : null;
-    this.lastError = error;
-    this.status = error ? "error" : "ready";
-    return error === null;
-  }
-
-  /** Get the site-packages path */
-  getSitePackages(): string | null {
-    if (!this.isBundled()) return this.preparedSitePackages ?? getSitePackagesForPythonPath(this.getConfiguredPythonPath());
-    const bundledRuntime = detectBundledRuntime();
-    if (bundledRuntime) {
-      return bundledRuntime.sitePackages;
-    }
-
-    // Custom python path: derive env root from executable location
-    if (this.pythonPath) {
-      return resolveSitePackages(getEnvRootForPythonPath(this.pythonPath), true);
-    }
-
-    // Managed env
-    const venvDir = path.join(this.envDir, "venv");
-    return resolveSitePackages(venvDir);
-  }
-
-  private buildInspectedEnv(pythonPath: string, data: InspectPythonData): InspectedEnv {
-    const envRoot = getEnvRootForPythonPath(pythonPath);
-    const installedPackageNames = new Set(data.installedPackages.keys());
-    const missingCorePackages = getMissingCorePackages(data.installedPackages);
-    const profileAlignmentGuess = guessProfileAlignment(installedPackageNames);
-
-    return {
-      path: envRoot,
-      pythonPath,
-      pythonVersion: data.version,
-      hasNirs4all: installedPackageNames.has("nirs4all"),
-      hasCorePackages: missingCorePackages.length === 0,
-      envKind: getEnvKind(this.envDir, envRoot, pythonPath),
-      writable: isLikelyWritable(envRoot, pythonPath),
-      missingCorePackages,
-      corePackageIssues: getCorePackageIssues(data.installedPackages),
-      missingOptionalPackages: getMissingOptionalPackages(installedPackageNames),
-      profileAlignmentGuess,
-    };
-  }
-
-  /** Get full environment info */
-  async getInfo(): Promise<EnvInfo> {
-    const pythonPath = this.getConfiguredPythonPath();
-    let pythonVersion: string | null = null;
-    if (pythonPath && fs.existsSync(pythonPath)) {
-      const detected = await checkPythonEnv(this.envDir, pythonPath);
-      if (detected) pythonVersion = detected.pythonVersion;
-    }
-    return {
-      status: this.status,
-      envDir: this.envDir,
-      pythonPath,
-      sitePackages: this.getSitePackages(),
-      pythonVersion,
-      isCustom: this.getConfiguredRuntimeMode() === "custom",
-      canInstallRequiredVersions: this.status === "error" && Boolean(this.lastError && pythonPath) && !this.isBundled(),
-      setupDeferred: this.savedSkipWizard,
-      ...(this.runtimeFallback ? { runtimeFallback: this.runtimeFallback } : {}),
-      error: this.lastError ?? undefined,
-    };
-  }
-
-  /** Check if this is a portable (non-installed) build */
-  isPortable(): boolean {
-    return !!process.env.PORTABLE_EXECUTABLE_FILE;
-  }
-
-  /**
-   * Validate the currently configured Python path.
-   *
-   * This catches stale custom paths and half-missing managed envs before the
-   * app tries to reuse them on startup.
-   *
-   * @returns `true` if the configured runtime is still reachable.
-   */
-  validateConfiguredState(): boolean {
-    // The bundle is independently attested when it is the selected runtime.
-    if (this.isBundled()) {
-      this.status = "ready";
-      this.lastError = null;
-      return true;
-    }
-    if (this.pythonPath && !fs.existsSync(this.pythonPath)) {
-      console.warn(
-        `[EnvManager] Configured Python not found at ${this.pythonPath}`,
-      );
-      this.status = "none";
-      this.lastError = "Your previous Python environment could not be found. Select its current location or another existing environment.";
-      return false;
-    }
-
-    const pythonPath = this.getPythonPath();
-    if (!pythonPath) {
-      this.status = "none";
-      return false;
-    }
-
-    if (fs.existsSync(pythonPath)) {
-      return true;
-    }
-
-    console.warn(
-      `[EnvManager] Configured Python not found at ${pythonPath}`,
+  restartBackend(): Promise<PythonEnvActionResult> {
+    if (this.current.phase === "needs_attention") return this.retry();
+    return this.runAction(
+      { kind: "switching", percent: null, detail: "Restarting the analysis backend…" },
+      () => this.activateHost(),
+      { interruptsRuns: true },
     );
-
-    this.status = "none";
-    this.lastError = null;
-    return false;
   }
 
   /**
-   * Single decision point for whether the setup wizard should be shown.
-   *
-   * Missing or broken runtimes require recovery. A valid environment whose
-   * setup was completed stays usable across Studio updates; an application
-   * version change alone must not restart Python onboarding. Actual package
-   * compatibility is checked independently during runtime verification.
+   * One operation at a time; a failure is returned as a message, never thrown.
+   * An operation ends by restarting the sidecar, which would kill a run in
+   * progress: unless that is intended, it is refused while a run is active.
    */
-  shouldShowWizard(): boolean {
-    this.validateConfiguredState();
-
-    // Standalone archive runtime is pre-baked and immutable. Even if a prior
-    // verify failed, routing to the setup wizard would be misleading because
-    // the bundle cannot be repaired in-place from that flow.
-    if (this.isBundled()) return false;
-
-    // Startup validation failed (for example a timed-out repair on a stale env)
-    // — route the user back through the setup flow instead of leaving them on
-    // the backend-connecting screen forever.
-    if (this.status === "error") return true;
-
-    // Env not configured at all → must show wizard
-    if (!this.isReady()) return true;
-
-    return this.savedAppVersion === null;
-  }
-
-  /**
-   * Mark the setup wizard as completed.
-   * Saves the current app version and the "don't ask again" preference.
-   */
-  markWizardComplete(skipNextTime: boolean): void {
-    const previousVersion = this.savedAppVersion;
-    const previousSkip = this.savedSkipWizard;
-    this.savedAppVersion = app.getVersion();
-    this.savedSkipWizard = skipNextTime;
-    try { this.saveSettings(); }
-    catch (error) {
-      this.savedAppVersion = previousVersion;
-      this.savedSkipWizard = previousSkip;
-      throw error;
+  private async runAction(
+    activity: PythonEnvActivity,
+    action: () => Promise<void>,
+    { interruptsRuns = false } = {},
+  ): Promise<PythonEnvActionResult> {
+    if (this.activity) {
+      return { success: false, message: "Another Python environment operation is still running.", hostRestarted: false, state: this.getState() };
     }
-  }
-
-  /**
-   * Get a summary of the currently configured Python environment.
-   * Returns null if no env is configured or the Python executable doesn't exist.
-   */
-  async getCurrentEnvSummary(): Promise<EnvSummary | null> {
-    const pythonPath = this.getConfiguredPythonPath();
-    if (!pythonPath || !fs.existsSync(pythonPath)) return null;
-
-    const info = await checkPythonEnv(this.envDir, pythonPath);
-    if (!info) return null;
-
+    this.setActivity(activity);
+    this.hostRestarted = false;
+    let message: string | undefined;
+    try {
+      const activeRuns = interruptsRuns ? null : await this.options.describeActiveRuns();
+      if (activeRuns) throw new Error(`${activeRuns} Wait for the end of the run or stop it, then try again.`);
+      await action();
+    } catch (error) {
+      message = errorMessage(error);
+      console.warn(`[EnvManager] ${activity.kind} failed: ${message}`);
+      // An installation failed while the sidecar was stopped for it: read the
+      // environment as it now is and start the sidecar again.
+      if (this.hostStopped) {
+        await this.checkSelection(false);
+        await this.activateHost().catch(() => undefined);
+      }
+    }
+    clearDetectionCache();
+    this.setActivity(undefined);
     return {
-      pythonPath,
-      envPath: info.path,
-      version: info.pythonVersion,
+      success: message === undefined,
+      ...(message === undefined ? {} : { message }),
+      hostRestarted: this.hostRestarted,
+      state: this.getState(),
     };
   }
 
-  /**
-   * Lightweight check that the selected interpreter can host the bounded
-   * Rust -> Python stdio plugin. Package imports stay in the explicit verify.
-   */
-  async verifyBackendRuntime(): Promise<boolean> {
-    const pythonPath = this.getBackendTargetPythonPath();
-    if (!pythonPath || !fs.existsSync(pythonPath)) return false;
-
-    const timeout = envTimeoutMs("NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS", 15000);
-    const start = Date.now();
-    const result = await new Promise<boolean>((resolve) => {
-      execFile(
-        pythonPath,
-        ["-c", "import sys; assert sys.version_info >= (3, 11)"],
-        { timeout },
-        (error) => resolve(!error),
-      );
-    });
-    console.log(`verifyBackendRuntime: ${result ? "ok" : "fail"} in ${Date.now() - start}ms`);
-    return result;
+  /** The one spelling emitted for an interpreter path; see `canonicalPythonPath`. */
+  private canonical(pythonPath: string): string {
+    return canonicalPythonPath(pythonPath, this.current.pythonPath);
   }
 
-  /**
-   * Verify the exact nirs4all distribution and bounded stdio entrypoint used
-   * by the native sidecar. No Python HTTP/control-plane module is imported.
-   */
-  async verifyBackendPackages(): Promise<boolean> {
-    const pythonPath = this.getBackendTargetPythonPath();
-    if (!pythonPath || !fs.existsSync(pythonPath)) return false;
-
-    const timeout = envTimeoutMs("NIRS4ALL_PLUGIN_PACKAGE_VERIFY_TIMEOUT_MS", 30000);
-    const start = Date.now();
-    let result = false;
-    try {
-      await validatePythonRuntime(pythonPath, {
-        timeoutMs: timeout,
-        checkDependencies: false,
-        reused: !this.isBundled(),
-      });
-      result = true;
-    } catch (error) {
-      console.warn(`verifyBackendPackages: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    console.log(`verifyBackendPackages: ${result ? "ok" : "fail"} in ${Date.now() - start}ms`);
-    return result;
+  private setActivity(activity: PythonEnvActivity | undefined): void {
+    if (activity === undefined && this.activity === undefined) return;
+    this.activity = activity;
+    this.emit();
   }
 
-  /**
-   * Ensure the bounded Python plugin host is installed and importable.
-   * Verifies the interpreter first, then confirms the exact `nirs4all`
-   * stdio entrypoint before writing the persistent verify cache.
-   *
-   * Returns true when a repair/install was actually performed.
-   *
-   * Called before starting the native sidecar when a selected interpreter is
-   * missing its plugin-host dependency.
-   */
-  async ensureBackendPackages(options?: EnsureBackendPackagesOptions): Promise<boolean> {
-    if (!this.validateConfiguredState()) {
-      this.status = "error";
-      this.lastError = "Python environment is not configured or is missing";
-      throw new Error(this.lastError);
-    }
-
-    const pythonPath = this.getBackendTargetPythonPath();
-    if (!pythonPath || !fs.existsSync(pythonPath)) {
-      this.status = "error";
-      this.lastError = "Python executable not found";
-      throw new Error(this.lastError);
-    }
-
-    const isBundledRuntime = this.getConfiguredRuntimeMode() === "bundled";
-
-    try {
-      let repaired = false;
-
-      // Directory mtimes cannot detect changes inside installed packages.
-      // A matching cache is diagnostic only; always recheck imports and deps.
-      const fingerprint = computeEnvFingerprint(this.envDir, pythonPath);
-      const currentVersion = app.getVersion();
-      if (fingerprint) {
-        const cached = readVerifyCache(app.getPath("userData"));
-        if (
-          cached
-          && cached.pythonPath === pythonPath
-          && cached.appVersion === currentVersion
-          && cached.fingerprint === fingerprint
-        ) {
-          console.log("ensureBackendPackages: verify-cache matched; revalidating packages");
-        }
-      } else {
-        console.log("ensureBackendPackages: verify-cache disabled (no fingerprint)");
-      }
-
-      // Cache miss / disabled / mismatch — verify the interpreter before the
-      // heavier exact-distribution and stdio-entrypoint import.
-      const hasRuntime = await this.verifyBackendRuntime();
-      if (!hasRuntime) {
-        if (isBundledRuntime) {
-          this.status = "error";
-          this.lastError = "Bundled runtime verification failed. Reinstall the all-in-one bundle.";
-          throw new Error(this.lastError);
-        }
-        if (!(await probeNetworkOnline())) {
-          // Offline: don't blindly mark ready. Confirm the heavier
-          // plugin-host verify succeeds before claiming the env works,
-          // otherwise leave a clear error so the UI can surface it.
-          const hasBackendPackages = await this.verifyBackendPackages();
-          if (hasBackendPackages) {
-            console.warn("Interpreter check failed but plugin host is usable offline — proceeding without repair");
-            this.lastError = null;
-            this.status = "ready";
-            return false;
-          }
-          this.status = "error";
-          this.lastError = "Python plugin host is missing and the app is offline. Connect to the internet once to repair, or install the exact nirs4all plugin package manually.";
-          throw new Error(this.lastError);
-        }
-        console.log("Python plugin host missing, installing managed plugin package...");
-        await installCorePackages(pythonPath, {
-          timeoutMs: options?.timeoutMs,
-        });
-        console.log("Python plugin host installed successfully");
-        repaired = true;
-      }
-
-      // The startup-fast path only skipped the heavy import from the main
-      // process. We still need to confirm that nirs4all imports before we
-      // trust or persist this environment state.
-      let hasBackendPackages = await this.verifyBackendPackages();
-      if (!hasBackendPackages) {
-        if (isBundledRuntime) {
-          this.status = "error";
-          this.lastError = "Bundled runtime packages are not importable. Reinstall the all-in-one bundle.";
-          throw new Error(this.lastError);
-        }
-        if (!(await probeNetworkOnline())) {
-          // Offline and packages don't import. The runtime check passed so
-          // the interpreter may still be healthy; surface the plugin failure
-          // problem rather than claim "ready".
-          this.status = "error";
-          this.lastError = "The Python plugin host is not importable and the app is offline. Connect to the internet to repair the environment.";
-          throw new Error(this.lastError);
-        }
-        if (!repaired) {
-          console.log("Python plugin host incomplete, reinstalling managed plugin package...");
-          await installCorePackages(pythonPath, {
-            timeoutMs: options?.timeoutMs,
-          });
-          console.log("Python plugin host reinstalled successfully");
-          repaired = true;
-        }
-
-        hasBackendPackages = await this.verifyBackendPackages();
-        if (!hasBackendPackages) {
-          throw new Error("Python plugin host is still not importable after repair");
-        }
-      }
-
-      // Persist a fresh cache entry. Recompute the fingerprint after any
-      // install so the new site-packages mtime is captured.
-      const finalFingerprint = computeEnvFingerprint(this.envDir, pythonPath);
-      if (finalFingerprint) {
-        writeVerifyCache(app.getPath("userData"), {
-          pythonPath,
-          appVersion: currentVersion,
-          fingerprint: finalFingerprint,
-          verifiedAt: Date.now(),
-        });
-      }
-
-      this.lastError = null;
-      this.status = "ready";
-      return repaired;
-    } catch (error) {
-      clearVerifyCache(app.getPath("userData"));
-      this.status = "error";
-      this.lastError = error instanceof Error ? error.message : String(error);
-      throw error;
-    }
+  private settle(selection: Selection): void {
+    this.current = selection;
+    const versions = selection.evaluation?.report.required
+      .map((item) => `${item.name} ${item.installedVersion ?? "missing"}`).join(", ");
+    console.log(`[EnvManager] Python environment: phase=${selection.phase} | path=${selection.pythonPath ?? "none"}`
+      + `${versions ? ` | ${versions}` : ""}${selection.problem ? ` | ${selection.problem.code}: ${selection.problem.message}` : ""}`);
+    this.emit();
   }
 
-  /**
-   * Detect existing Python environments on the system. Delegates discovery,
-   * classification, sorting, and the short-TTL cache to env-detection; this
-   * passes the configured/managed interpreter context.
-   */
-  detectExistingEnvs(): Promise<DetectedEnv[]> {
-    return detectExistingEnvs({
-      envDir: this.envDir,
-      customPythonPath: this.pythonPath,
-      configuredPythonPath: this.getConfiguredPythonPath(),
-    });
+  private emit(): void {
+    const state = this.getState();
+    for (const listener of this.listeners) listener(state);
   }
 
-  /**
-   * Inspect an existing Python environment without mutating it.
-   */
-  async inspectExistingEnv(envPath: string): Promise<{ success: boolean; message: string; info?: InspectedEnv }> {
-    const candidates = getPythonExecutableCandidatesForEnvRoot(envPath)
-      .filter((candidate) => fs.existsSync(candidate));
-
-    if (candidates.length === 0) {
-      return { success: false, message: "No Python executable found in the selected directory" };
+  /** List an interpreter's packages; the persistent cache only ever describes the selection. */
+  private async evaluate(pythonPath: string, useCache: boolean): Promise<Evaluation> {
+    const cached = useCache ? readCachedInventory(this.options.userDataDir, pythonPath) : null;
+    const inventory = cached ?? await takeInventory(pythonPath);
+    if (!cached && pythonPath === this.current.pythonPath) {
+      writeCachedInventory(this.options.userDataDir, pythonPath, inventory);
     }
-
-    let lastFailure: { success: boolean; message: string; info?: InspectedEnv } | null = null;
-    for (const pythonPath of candidates) {
-      const inspection = await this.inspectExistingPython(pythonPath);
-      if (inspection.success) {
-        return inspection;
-      }
-
-      lastFailure = inspection;
-    }
-
-    return lastFailure ?? { success: false, message: "No supported Python executable found in the selected directory" };
+    return { inventory, report: evaluateInventory(pythonPath, inventory, this.studioEnvDir) };
   }
 
-  /**
-   * Inspect a Python executable without mutating it.
-   */
-  async inspectExistingPython(pythonPath: string): Promise<{ success: boolean; message: string; info?: InspectedEnv }> {
-    if (!fs.existsSync(pythonPath)) {
-      return { success: false, message: "Python executable not found at the selected path" };
-    }
-
-    let data: InspectPythonData | null;
-    try { data = await inspectPythonPackages(pythonPath); }
-    catch (error) { return { success: false, message: error instanceof Error ? error.message : "Python inspection failed. Retry without reinstalling the environment." }; }
-    if (!data) {
-      return { success: false, message: "Python 3.11 or later is required (or the selected file is not a valid Python executable)" };
-    }
-
-    const info = this.buildInspectedEnv(pythonPath, data);
-    const message = info.hasCorePackages
-      ? `Python ${info.pythonVersion} is ready to use`
-      : `Python ${info.pythonVersion} can be reused after preparing ${info.missingCorePackages.length} required package${info.missingCorePackages.length === 1 ? "" : "s"} in place`;
-
-    return { success: true, message, info };
-  }
-
-  /**
-   * Persist an inspected Python environment and optionally install its missing
-   * managed plugin-host package before switching.
-   */
-  async applyExistingEnv(
-    envPath: string,
-    options?: ApplyExistingPythonOptions,
-  ): Promise<{ success: boolean; message: string; info?: InspectedEnv }> {
-    const inspection = await this.inspectExistingEnv(envPath);
-    if (!inspection.success || !inspection.info) {
-      return inspection;
-    }
-    return this.applyExistingPython(inspection.info.pythonPath, options);
-  }
-
-  /**
-   * Persist a Python executable as the configured runtime. Missing core
-   * packages are only installed when explicitly requested.
-   */
-  async applyExistingPython(
-    pythonPath: string,
-    options?: ApplyExistingPythonOptions,
-  ): Promise<{ success: boolean; message: string; info?: InspectedEnv }> {
-    const inspection = await this.inspectExistingPython(pythonPath);
-    if (!inspection.success || !inspection.info) {
-      return inspection;
-    }
-
-    let info = inspection.info;
-    const bundledSelection = this.isBundledPythonPath(pythonPath);
-    const shouldInstallCorePackages = !info.hasCorePackages && options?.installCorePackages === true && !bundledSelection;
-
-    if (!info.hasCorePackages && !shouldInstallCorePackages) {
-      return {
-        success: false,
-        message: `Reuse Python ${info.pythonVersion} by preparing the required packages in this environment (${info.missingCorePackages.join(", ")}). A new environment is not required.`,
-        info,
-      };
-    }
-
-    if (shouldInstallCorePackages) {
-      if (!(await probeNetworkOnline())) {
-        return {
-          success: false,
-          message: `Python ${info.pythonVersion} is missing the required plugin-host package and the app is offline. Connect to the internet once to install ${info.missingCorePackages.join(", ")} or install it manually and retry.`,
-          info,
-        };
-      }
-
-      try {
-        await installCorePackages(pythonPath);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          success: false,
-          message: `Python ${info.pythonVersion} found but failed to install required packages: ${message}`,
-          info,
-        };
-      }
-
-      const refreshedInspection = await this.inspectExistingPython(pythonPath);
-      if (!refreshedInspection.success || !refreshedInspection.info) {
-        return {
-          success: false,
-          message: "The plugin-host package was installed but the environment could not be revalidated.",
-        };
-      }
-
-      info = refreshedInspection.info;
-      if (!info.hasCorePackages) {
-        return {
-          success: false,
-          message: `The plugin-host package is still missing after installation: ${info.missingCorePackages.join(", ")}`,
-          info,
-        };
-      }
-    }
-
-    let preparedSitePackages: string | null;
-    try {
-      const { issues: versionIssues } = await checkRuntimePackageVersions({
-        pythonPath,
-        appVersion: app.getVersion(),
-        userDataDir: app.getPath("userData"),
-        reused: !bundledSelection,
-        force: true,
-      });
-      if (versionIssues.length > 0) throw new Error(describeRuntimePackageIssues(versionIssues));
-      preparedSitePackages = bundledSelection ? null : await prepareRuntimeAdapters(pythonPath);
-    } catch (error) {
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : "Python runtime verification failed",
-        info,
-      };
-    }
-
-    const previousPythonPath = this.pythonPath;
-    const previousBundledSelected = this.bundledSelected;
-    this.pythonPath = bundledSelection ? null : pythonPath;
-    this.bundledSelected = bundledSelection;
-    try { this.saveSettings(); }
-    catch (error) {
-      this.pythonPath = previousPythonPath;
-      this.bundledSelected = previousBundledSelected;
-      return { success: false, message: error instanceof Error ? error.message : "Could not save the environment selection", info };
-    }
-    this.runtimeFallback = null;
-    this.preparedSitePackages = preparedSitePackages;
-    this.status = "ready";
-    this.lastError = null;
-
-    const action = shouldInstallCorePackages ? "Installed the plugin host and switched" : "Using";
-    return {
-      success: true,
-      message: `${action} Python ${info.pythonVersion} from ${pythonPath}`,
-      info,
-    };
-  }
-
-  /**
-   * Configure an existing Python environment without mutating it.
-   */
-  async useExistingEnv(envPath: string): Promise<{ success: boolean; message: string; info?: DetectedEnv }> {
-    const result = await this.applyExistingEnv(envPath, { installCorePackages: false });
-    return { success: result.success, message: result.message, info: result.info };
-  }
-
-  /**
-   * Configure using a direct path to a Python executable.
-   * More reliable than folder-based detection — no guessing about directory structure.
-   */
-  async useExistingPython(pythonPath: string): Promise<{ success: boolean; message: string; info?: DetectedEnv }> {
-    const result = await this.applyExistingPython(pythonPath, { installCorePackages: false });
-    return { success: result.success, message: result.message, info: result.info };
-  }
-
-  /**
-   * Narrow EnvManager state view passed to the provisioning flow so it can
-   * drive status transitions and persist the resolved interpreter without
-   * owning the rest of the coordinator's state.
-   */
-  private provisioningContext(): ProvisioningContext {
-    return {
-      envDir: this.envDir,
-      setStatus: (status) => { this.status = status; },
-      setLastError: (error) => { this.lastError = error; },
-      setPythonPath: (pythonPath) => {
-        this.pythonPath = pythonPath;
-        this.bundledSelected = false;
-        this.runtimeFallback = null;
-      },
-      saveSettings: () => this.saveSettings(),
-    };
-  }
-
-  /**
-   * Full setup: download Python, create venv, install packages.
-   * Reports progress via callback.
-   * @param progress - Optional progress callback
-   * @param targetDir - Optional custom directory. If provided, the env is created there
-   *   instead of the default userData location. The venv python is then saved as
-   *   pythonPath so getPythonPath() finds it.
-   */
-  async setup(progress?: ProgressCallback, targetDir?: string): Promise<void> {
-    const destination = targetDir ?? this.envDir;
-    const existingPython = [getManagedPythonPath(destination), ...getPythonExecutableCandidatesForEnvRoot(destination)]
-      .find((candidate) => fs.existsSync(candidate));
-    if (existingPython) {
-      progress?.(10, "installing", "Updating the existing Studio environment…");
-      const result = await this.applyExistingPython(existingPython, { installCorePackages: true });
-      if (!result.success) throw new Error(result.message);
-      progress?.(100, "ready", "The existing environment is ready.");
+  /** Settle the selection's phase, installing the required packages when Studio may. */
+  private async checkSelection(useCache: boolean): Promise<void> {
+    const pythonPath = this.current.pythonPath;
+    if (!pythonPath) {
+      this.settle({ pythonPath, phase: "unconfigured", evaluation: null });
       return;
     }
-    return provisionManagedRuntime(this.provisioningContext(), progress, targetDir);
+    if (!fs.existsSync(pythonPath)) {
+      this.settle({
+        pythonPath,
+        phase: "unconfigured",
+        evaluation: null,
+        problem: { code: "interpreter_missing", message: `The selected Python interpreter no longer exists: ${pythonPath}` },
+      });
+      return;
+    }
+    let evaluation: Evaluation;
+    try {
+      evaluation = await this.evaluate(pythonPath, useCache);
+    } catch (error) {
+      this.settle({ pythonPath, phase: "needs_attention", evaluation: null, problem: { code: "interpreter_unusable", message: errorMessage(error) } });
+      return;
+    }
+    if (!evaluation.report.usable) {
+      const blocker = installBlocker(evaluation);
+      if (blocker) {
+        this.settle({ pythonPath, phase: "needs_attention", evaluation, problem: { code: "required_not_installable", message: blocker } });
+        return;
+      }
+      this.setActivity({ kind: "updating_required", percent: null, detail: "Updating the required Python packages…" });
+      try {
+        await this.stopHostBeforeInstalling(pythonPath);
+        await installRequiredPackages(pythonPath, this.wheelhouse);
+        evaluation = await this.evaluate(pythonPath, false);
+        if (!evaluation.report.usable) throw new Error(`Still not satisfied after installation: ${unmetRequirements(evaluation.report)}.`);
+      } catch (error) {
+        this.settle({
+          pythonPath,
+          phase: "needs_attention",
+          evaluation,
+          problem: { code: "required_update_failed", message: `Studio could not install the required packages. ${errorMessage(error)}` },
+        });
+        return;
+      }
+    }
+    this.settle({ pythonPath, phase: "ready", evaluation });
+  }
+
+  /**
+   * The sidecar and its warm workers hold the files of the environment they
+   * run: Windows cannot replace a loaded extension module, and elsewhere a
+   * running worker would mix versions. Stop it before installing there.
+   */
+  private async stopHostBeforeInstalling(pythonPath: string): Promise<void> {
+    if (pythonPath !== this.current.pythonPath || this.hostStopped) return;
+    if (await this.options.stopHost()) {
+      this.hostRestarted = true;
+      this.hostStopped = true;
+    }
+  }
+
+  private async restartHost(): Promise<void> {
+    this.hostRestarted = true;
+    this.hostStopped = false;
+    await this.options.restartHost();
+  }
+
+  /** Restart the sidecar on the current selection; a failure becomes the `host_failed` problem. */
+  private async activateHost(): Promise<void> {
+    try {
+      await this.restartHost();
+    } catch (error) {
+      this.reportHostFailure(errorMessage(error));
+      throw error;
+    }
+  }
+
+  /** Re-run the startup check, then restart the sidecar on the result. */
+  private async checkAndActivate(): Promise<void> {
+    await this.checkSelection(false);
+    await this.activateHost();
+    if (this.current.phase !== "ready") {
+      throw new Error(this.current.problem?.message ?? "No Python environment is selected.");
+    }
+  }
+
+  /**
+   * Select an environment and keep it only when the sidecar runs it: on
+   * failure the previous selection is persisted again and restarted.
+   */
+  private async switchTo(pythonPath: string, evaluation: Evaluation): Promise<void> {
+    if (!evaluation.report.usable) {
+      throw new Error(`The required packages are not satisfied: ${unmetRequirements(evaluation.report)}.`);
+    }
+    const previous = this.current;
+    this.setActivity({ kind: "switching", percent: null, detail: "Starting the analysis backend on this environment…" });
+    writeSelectedPythonPath(this.settingsPath, pythonPath);
+    writeCachedInventory(this.options.userDataDir, pythonPath, evaluation.inventory);
+    this.settle({ pythonPath, phase: "ready", evaluation });
+    if (pythonPath === previous.pythonPath) {
+      // The same environment, possibly with new packages: there is no other selection to return to.
+      await this.activateHost();
+      return;
+    }
+    try {
+      await this.restartHost();
+    } catch (error) {
+      this.settle(previous);
+      try {
+        writeSelectedPythonPath(this.settingsPath, previous.pythonPath);
+        await this.activateHost();
+      } catch (restoreError) {
+        console.error("[EnvManager] Could not restart the previous environment:", restoreError);
+      }
+      throw new Error(`${errorMessage(error)} Your previous environment selection has been restored.`);
+    }
   }
 }

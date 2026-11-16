@@ -1382,6 +1382,14 @@ fn select_platform_asset(assets: &[Value]) -> Option<&Value> {
     } else {
         "zip"
     };
+    // The offline installer variant (`-offline` in its name) carries a Python
+    // payload an installed application does not need: an update never uses it.
+    let candidate = |asset: &&Value| {
+        asset
+            .get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|name| !name.to_ascii_lowercase().contains("-offline"))
+    };
     // Prefer the native installer. Releases no longer need to manufacture an
     // all-in-one archive merely for discovery by installed desktop clients.
     let installer_suffix = match os {
@@ -1389,7 +1397,7 @@ fn select_platform_asset(assets: &[Value]) -> Option<&Value> {
         "mac" => format!("-mac-{arch}.dmg"),
         _ => format!("-linux-{}.deb", if arch == "x64" { "amd64" } else { arch }),
     };
-    if let Some(installer) = assets.iter().find(|asset| {
+    if let Some(installer) = assets.iter().filter(candidate).find(|asset| {
         let name = asset
             .get("name")
             .and_then(Value::as_str)
@@ -1403,7 +1411,7 @@ fn select_platform_asset(assets: &[Value]) -> Option<&Value> {
     }
     // Retain discovery for already-published portable installations only.
     let suffix = format!("-all-in-one-{os}-{arch}.{extension}");
-    assets.iter().find(|asset| {
+    assets.iter().filter(candidate).find(|asset| {
         let name = asset
             .get("name")
             .and_then(Value::as_str)
@@ -2444,6 +2452,22 @@ mod tests {
             json!({"name": format!("{name}.sha256")}),
         ];
         assert_eq!(select_platform_asset(&assets).unwrap()["name"], name);
+        // The offline variant is never selected, wherever the suffix sits and
+        // whatever the asset order; alone, it is not an update candidate.
+        let (stem, extension) = name.rsplit_once('.').unwrap();
+        let offline = [
+            format!("{stem}-offline.{extension}"),
+            name.replacen("-0.11.8-", "-0.11.8-offline-", 1),
+        ];
+        for offline_name in &offline {
+            let published = vec![
+                json!({"name": offline_name}),
+                json!({"name": format!("{offline_name}.sha256")}),
+                json!({"name": name}),
+            ];
+            assert_eq!(select_platform_asset(&published).unwrap()["name"], name);
+            assert!(select_platform_asset(&published[..2]).is_none());
+        }
         assert!(is_installer_asset(&name));
         assert!(!is_installer_asset("studio-win-x64-portable.exe"));
         assert!(!is_installer_asset("studio-all-in-one-win-x64.zip"));

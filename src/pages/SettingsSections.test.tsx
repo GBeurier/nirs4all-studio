@@ -18,10 +18,8 @@ vi.mock("@/components/settings/N4AWorkspaceSelector", () => ({ N4AWorkspaceSelec
 vi.mock("@/components/settings/N4AWorkspaceList", () => ({ N4AWorkspaceList: () => null }));
 vi.mock("@/components/settings/WorkspaceDiscoveryPanel", () => ({ WorkspaceDiscoveryPanel: () => null }));
 vi.mock("@/components/settings/UpdatesSection", () => ({ UpdatesSection: () => null }));
-vi.mock("@/components/settings/DependenciesManager", () => ({ DependenciesManager: () => null }));
 vi.mock("@/components/settings/ConfigPathSettings", () => ({ ConfigPathSettings: () => null }));
-vi.mock("@/components/settings/ConfigAlignment", () => ({ ConfigAlignment: () => null }));
-vi.mock("@/components/settings/PythonEnvPicker", () => ({ PythonEnvPicker: () => null }));
+vi.mock("@/components/python-env/PythonEnvironmentPage", () => ({ PythonEnvironmentPage: () => null }));
 vi.mock("@/components/settings/StorageHealthWidget", () => ({ StorageHealthWidget: () => null }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

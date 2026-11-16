@@ -9,18 +9,21 @@ directories:
 files:
   - dist/**/*
   - dist-electron/**/*
-  # dist-electron/main.cjs loads the shared Python runtime config at startup.
+  # dist-electron/main.cjs loads the pinned Python runtime, the package
+  # catalogue and the system trust helper from the application root.
   - scripts/python-runtime-config.cjs
   - scripts/tls-trust.cjs
-  - scripts/studio-document-adapters.cjs
-  - sidecar/contracts/studio_document_adapters_v1.json
   - recommended-config.json
   # Bind the packaged application to the exact resolved build source.
   - version.json
   - "!**/*.map"
 
-# Standard installers ship the attested plugin-only CPython closure beside the
-# Rust sidecar. They never ship the legacy Python HTTP/WS backend source.
+# Installers ship no Python. Beside the Rust sidecar they carry what Studio
+# needs to create and use the user's environment: uv, the document adapters
+# and the required packages. Windows and Linux embed their wheels (wheels/);
+# the macOS build stages wheelhouse.json instead, which names the release
+# asset Studio downloads, because wheels cannot be notarised inside the
+# application. electron-builder.offline.yml adds the offline payload.
 extraResources:
   - from: LICENSE
     to: LICENSE
@@ -33,15 +36,16 @@ extraResources:
   - from: backend-dist/
     to: backend/
     filter:
-      - "python-runtime/**/*"
       - "native/**/*"
-      - "recommended-config.json"
-      - "version.json"
+      - "tools/**/*"
+      - "wheels/**/*"
+      - "wheelhouse.json"
+      - "adapters/**/*"
 
 asar: true
 
-# On macOS, pre-sign closure Mach-O members in the copied .app and rewrite
-# their content contract before electron-builder signs the remaining bundle.
+# On macOS, pre-sign the native Methods library in the copied .app and rewrite
+# its content contract before electron-builder signs the remaining bundle.
 afterPack: scripts/macos-attested-runtime.cjs
 
 win:
@@ -74,9 +78,8 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   # These exact bytes are pre-signed and re-attested by afterPack. The Rust
-  # sidecar does not match these expressions and is signed normally.
+  # sidecar and uv do not match this expression and are signed normally.
   signIgnore:
-    - '[\\/]Contents[\\/]Resources[\\/]backend[\\/]python-runtime[\\/]python[\\/]'
     - '[\\/]Contents[\\/]Resources[\\/]backend[\\/]native[\\/]libn4m\.dylib$'
   artifactName: "${productName}-${version}-mac-${arch}.${ext}"
 

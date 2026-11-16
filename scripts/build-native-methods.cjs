@@ -130,13 +130,13 @@ function targetConfig(platform, arch) {
       ctestExtra: [],
     };
   }
-  if (platform === "darwin" && ["x64", "arm64"].includes(arch)) {
+  if (platform === "darwin" && arch === "arm64") {
     return {
       preset: "ci-macos-clang-release",
       libraryPattern: new RegExp(`^libn4m\\.${METHODS_ABI_MAJOR}\\.${METHODS_ABI_MINOR}\\.0\\.dylib$`),
       cliParts: ["cpp", "cli", "n4m_cli"],
       configureExtra: [
-        `-DCMAKE_OSX_ARCHITECTURES=${arch === "x64" ? "x86_64" : "arm64"}`,
+        "-DCMAKE_OSX_ARCHITECTURES=arm64",
         "-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0",
       ],
       buildExtra: [],
@@ -285,8 +285,7 @@ function buildAndAttest({
       cwd: source.sourceRoot,
       capture: true,
     }).split(/\s+/).filter(Boolean);
-    const expectedArchitecture = arch === "x64" ? "x86_64" : "arm64";
-    if (architectures.length !== 1 || architectures[0] !== expectedArchitecture) {
+    if (architectures.length !== 1 || architectures[0] !== "arm64") {
       throw new Error(
         `Built Methods dylib architecture mismatch: ${architectures.join(" ") || "none"}`,
       );

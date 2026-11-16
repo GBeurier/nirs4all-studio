@@ -26,7 +26,6 @@ api/*
 !api/library_aggregated_results.py
 !api/library_aggregated_steps.py
 !api/store_adapter.py
-!api/library_runtime_config.py
 !api/pipeline_canonical.py
 !api/pipeline_canonical_branch_merge.py
 !api/pipeline_canonical_generators.py
@@ -54,7 +53,6 @@ api/presets/*
 websocket/
 main.py
 requirements*.txt
-backend.spec
 recommended-config.json
 !recommended-config.json
 
@@ -78,12 +76,11 @@ build/
 build/*
 !build/constraints/
 build/constraints/*
-!build/constraints/plugin-runtime-cpython311-sdk1416.txt
+!build/constraints/python-wheels-linux-x64.json
 installer/
 updater/
 
 # Local configuration
-*.spec
 .env
 .env.*
 *.swp

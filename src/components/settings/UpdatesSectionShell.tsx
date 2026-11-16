@@ -2,27 +2,22 @@
  * Updates Section — presentation shell
  *
  * Pure presentation/composition for the Updates settings card:
- * loading/error cards, the header, the alert banners, the update rows,
- * the runtime status panel, and the snapshots/settings collapsibles.
+ * loading/error cards, the header, the alert banner, the application update
+ * row and the settings collapsible.
  *
- * All hooks, mutations, dialog state, restart, and API side effects stay in
+ * All hooks, mutations, dialog state, and API side effects stay in
  * `UpdatesSection.tsx` — this file only renders props and forwards callbacks.
  */
 
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import {
   AlertCircle,
-  CheckCircle2,
   ChevronDown,
   Download,
   ExternalLink,
-  History,
-  Loader2,
   RefreshCw,
-  RotateCcw,
-  Save,
   Settings2,
-  Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -45,21 +40,10 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 
-import type {
-  ConfigSnapshot,
-  LastApplyResult,
-  RuntimeInfo,
-  UpdateSettings,
-} from "@/api/updates";
-import type { PythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
+import type { LastApplyResult, UpdateSettings } from "@/api/updates";
 
-import { RuntimeStatusPanel } from "./UpdatesSectionRuntimePanel";
-import { Nirs4allUpdateRow, WebappUpdateRow } from "./UpdatesSectionRows";
-import type {
-  Nirs4allUpdateRowState,
-  TextDisplay,
-  WebappUpdateRowState,
-} from "./UpdatesSectionLogic";
+import { WebappUpdateRow } from "./UpdatesSectionRows";
+import type { WebappUpdateRowState } from "./UpdatesSectionLogic";
 import { getActiveLocale } from "@/lib/activeLocale";
 
 export function UpdatesLoadingCard() {
@@ -116,53 +100,22 @@ export function UpdatesErrorCard({ onRetry, isRetrying }: UpdatesErrorCardProps)
 
 interface UpdatesSectionShellProps {
   // Header
-  hasAnyUpdate: boolean;
-  updateCount: number;
   isChecking: boolean;
   onCheckNow: () => void;
 
-  // Alert banners
-  needsRestart: boolean;
-  onRestartBackend: () => void | Promise<void>;
-  runtimeDisplay: PythonRuntimeDisplayState;
-  isReadOnlyRuntime: boolean;
+  // Alert banner
   lastApplyResult: LastApplyResult | undefined;
   installerUrl: string | null;
   onOpenInstaller: () => void;
   onDismissApplyResult: () => void;
   isDismissApplyResultPending: boolean;
 
-  // Update rows
+  // Update row
   webappRow: WebappUpdateRowState;
-  nirs4allRow: Nirs4allUpdateRowState;
   onOpenWebappDialog: () => void;
-  onOpenNirs4allDialog: () => void;
 
   // Last check
   lastCheck: string | null | undefined;
-
-  // Runtime status panel
-  currentRuntime: RuntimeInfo | null;
-  gpuDisplay: TextDisplay;
-  isRuntimeLoading: boolean;
-  venvOpen: boolean;
-  onVenvOpenChange: (open: boolean) => void;
-  packageCount: number;
-  runtimeExecutablePath: string;
-  runtimeSizeLabel: string;
-  torchDisplay: TextDisplay | null;
-
-  // Snapshots
-  snapshotsOpen: boolean;
-  onSnapshotsOpenChange: (open: boolean) => void;
-  snapshots: ConfigSnapshot[];
-  canCreateSnapshot: boolean;
-  onCreateSnapshot: () => void;
-  isCreatingSnapshot: boolean;
-  onRestoreSnapshot: (name: string) => void;
-  isRestoringSnapshot: boolean;
-  onDeleteSnapshot: (name: string) => void;
-  isDeletingSnapshot: boolean;
 
   // Settings
   settingsOpen: boolean;
@@ -178,43 +131,16 @@ interface UpdatesSectionShellProps {
 }
 
 export function UpdatesSectionShell({
-  hasAnyUpdate,
-  updateCount,
   isChecking,
   onCheckNow,
-  needsRestart,
-  onRestartBackend,
-  runtimeDisplay,
-  isReadOnlyRuntime,
   lastApplyResult,
   installerUrl,
   onOpenInstaller,
   onDismissApplyResult,
   isDismissApplyResultPending,
   webappRow,
-  nirs4allRow,
   onOpenWebappDialog,
-  onOpenNirs4allDialog,
   lastCheck,
-  currentRuntime,
-  gpuDisplay,
-  isRuntimeLoading,
-  venvOpen,
-  onVenvOpenChange,
-  packageCount,
-  runtimeExecutablePath,
-  runtimeSizeLabel,
-  torchDisplay,
-  snapshotsOpen,
-  onSnapshotsOpenChange,
-  snapshots,
-  canCreateSnapshot,
-  onCreateSnapshot,
-  isCreatingSnapshot,
-  onRestoreSnapshot,
-  isRestoringSnapshot,
-  onDeleteSnapshot,
-  isDeletingSnapshot,
   settingsOpen,
   onSettingsOpenChange,
   settings,
@@ -233,9 +159,9 @@ export function UpdatesSectionShell({
             <CardTitle className="flex items-center gap-2">
               <Download className="h-5 w-5" />
               {t("settings.updates.title")}
-              {hasAnyUpdate && (
+              {webappRow.hasUpdate && (
                 <Badge variant="default" className="ml-2">
-                  {t("settings.updates.availableCount", { count: updateCount })}
+                  {t("settings.updates.availableCount", { count: 1 })}
                 </Badge>
               )}
             </CardTitle>
@@ -255,44 +181,6 @@ export function UpdatesSectionShell({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Restart Banner */}
-        {needsRestart && (
-          <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
-            <AlertCircle className="h-4 w-4 text-blue-600" />
-            <AlertDescription className="flex items-center justify-between">
-              <span>{t("settings.updates.restartNeeded")}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onRestartBackend}
-              >
-                <RotateCcw className="mr-2 h-3 w-3" />
-                {t("settings.updates.restartBackend")}
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {isReadOnlyRuntime && (
-          <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
-            <AlertCircle className="h-4 w-4 text-blue-600" />
-            <AlertDescription>
-              {runtimeDisplay.isBundledEmbedded
-                ? t("settings.updates.readOnlyEmbedded")
-                : t("settings.updates.readOnlyChoose")}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {runtimeDisplay.isBundledExternal && (
-          <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
-            <AlertCircle className="h-4 w-4 text-blue-600" />
-            <AlertDescription>
-              {t("settings.updates.externalRuntime")}
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* Previous update silently failed — surface it and offer the installer */}
         {lastApplyResult?.status === "failed" && (
           <Alert variant="destructive">
@@ -330,11 +218,12 @@ export function UpdatesSectionShell({
           onOpenInstaller={onOpenInstaller}
         />
 
-        {/* nirs4all Library Update */}
-        <Nirs4allUpdateRow
-          row={nirs4allRow}
-          onOpenDialog={onOpenNirs4allDialog}
-        />
+        <p className="text-sm text-muted-foreground">
+          {t("settings.updates.pythonHint")}{" "}
+          <Link to="/settings?tab=python" className="font-medium text-primary underline-offset-4 hover:underline">
+            {t("settings.updates.openPython")}
+          </Link>
+        </p>
 
         {/* Last Check Info */}
         {lastCheck && (
@@ -342,33 +231,6 @@ export function UpdatesSectionShell({
             {t("settings.updates.lastChecked", { date: new Date(lastCheck).toLocaleString(getActiveLocale()) })}
           </p>
         )}
-
-        <RuntimeStatusPanel
-          currentRuntime={currentRuntime}
-          gpuDisplay={gpuDisplay}
-          isLoading={isRuntimeLoading}
-          onOpenChange={onVenvOpenChange}
-          open={venvOpen}
-          packageCount={packageCount}
-          runtimeDisplay={runtimeDisplay}
-          runtimeExecutablePath={runtimeExecutablePath}
-          runtimeSizeLabel={runtimeSizeLabel}
-          torchDisplay={torchDisplay}
-        />
-
-        <SnapshotsSection
-          open={snapshotsOpen}
-          onOpenChange={onSnapshotsOpenChange}
-          snapshots={snapshots}
-          canCreateSnapshot={canCreateSnapshot}
-          onCreateSnapshot={onCreateSnapshot}
-          isCreatingSnapshot={isCreatingSnapshot}
-          isReadOnlyRuntime={isReadOnlyRuntime}
-          onRestoreSnapshot={onRestoreSnapshot}
-          isRestoringSnapshot={isRestoringSnapshot}
-          onDeleteSnapshot={onDeleteSnapshot}
-          isDeletingSnapshot={isDeletingSnapshot}
-        />
 
         <UpdateSettingsSection
           open={settingsOpen}
@@ -383,119 +245,6 @@ export function UpdatesSectionShell({
 
       {children}
     </Card>
-  );
-}
-
-interface SnapshotsSectionProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  snapshots: ConfigSnapshot[];
-  canCreateSnapshot: boolean;
-  onCreateSnapshot: () => void;
-  isCreatingSnapshot: boolean;
-  isReadOnlyRuntime: boolean;
-  onRestoreSnapshot: (name: string) => void;
-  isRestoringSnapshot: boolean;
-  onDeleteSnapshot: (name: string) => void;
-  isDeletingSnapshot: boolean;
-}
-
-function SnapshotsSection({
-  open,
-  onOpenChange,
-  snapshots,
-  canCreateSnapshot,
-  onCreateSnapshot,
-  isCreatingSnapshot,
-  isReadOnlyRuntime,
-  onRestoreSnapshot,
-  isRestoringSnapshot,
-  onDeleteSnapshot,
-  isDeletingSnapshot,
-}: SnapshotsSectionProps) {
-  const { t } = useTranslation();
-  return (
-    <Collapsible open={open} onOpenChange={onOpenChange}>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" className="w-full justify-between p-2 h-auto">
-          <span className="text-sm font-medium flex items-center gap-2">
-            <History className="h-4 w-4" />
-            {t("settings.updates.workingConfig")}
-          </span>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-muted-foreground">
-              {t("settings.updates.savedCount", { count: snapshots.length ?? 0 })}
-            </Badge>
-            <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
-          </div>
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-2 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            {t("settings.updates.snapshotHint")}
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onCreateSnapshot}
-            disabled={isCreatingSnapshot || !canCreateSnapshot}
-          >
-            {isCreatingSnapshot ? (
-              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-3 w-3" />
-            )}
-            {t("settings.updates.saveCurrent")}
-          </Button>
-        </div>
-
-        {snapshots && snapshots.length > 0 ? (
-          <div className="space-y-2">
-            {snapshots.map((snap) => (
-              <div key={snap.name} className="flex items-center justify-between p-2 bg-muted/30 rounded text-sm">
-                <div>
-                  <span className="font-medium">{snap.label}</span>
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {new Date(snap.created_at).toLocaleDateString(getActiveLocale())}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2"
-                    onClick={() => onRestoreSnapshot(snap.name)}
-                    disabled={isRestoringSnapshot || isReadOnlyRuntime}
-                  >
-                    {isRestoringSnapshot ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <RotateCcw className="h-3 w-3" />
-                    )}
-                    <span className="ml-1">{t("settings.updates.restore")}</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-destructive hover:text-destructive"
-                    onClick={() => onDeleteSnapshot(snap.name)}
-                    disabled={isDeletingSnapshot}
-                    aria-label={t("settings.updates.deleteSnapshot")}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground italic p-2">
-            {t("settings.updates.noSnapshots")}
-          </p>
-        )}
-      </CollapsibleContent>
-    </Collapsible>
   );
 }
 

@@ -104,27 +104,26 @@ describe("electron-builder config", () => {
     expect(packageJson.homepage).toBe("https://nirs4all.org");
   });
 
-  it("documents official installers as Rust plus plugin-only CPython", () => {
+  it("documents installers as Rust plus a user-chosen Python environment", () => {
     const workflow = fs.readFileSync(
       path.join(projectRoot, ".github", "workflows", "release-unified.yml"),
       "utf8",
     );
-    expect(workflow).not.toMatch(/Installer: .*venv-based|Installer: .*embedded Python/);
-    expect(workflow).toContain("Rust sidecar + plugin-only CPython closure");
+    expect(workflow).not.toMatch(/Installer: .*venv-based|Installer: .*embedded Python|plugin-only CPython closure/);
+    expect(workflow).toContain("Rust sidecar + uv + required wheels");
 
     const readme = fs.readFileSync(path.join(projectRoot, "README.md"), "utf8");
-    expect(readme).toContain("Rust sidecar");
-    expect(readme).toContain("bounded, content-addressed CPython library/plugin host");
-    expect(readme).toContain("CPU installer build on the matching host");
-    expect(readme).toContain("absent from product installers and all-in-one archives");
-    expect(readme).not.toContain("FastAPI files remain packaged transitionally");
+    for (const expected of ["Rust sidecar", "uv", "-offline"]) expect(readme).toContain(expected);
+    for (const removed of ["bake-python-plugin-runtime", "setup-python-env", "backend.spec", "PyInstaller", "included CPU runtime"]) {
+      expect(readme).not.toContain(removed);
+    }
   });
 
-  it("packages the shared Python runtime config required by the Electron main process", () => {
+  it("packages the Python runtime pin, the catalogue and the trust helper required by the Electron main process", () => {
     const expectedFiles = ["scripts/python-runtime-config.cjs", "scripts/tls-trust.cjs", "recommended-config.json"];
 
-    expect(configNames).toEqual(["electron-builder.archive.yml", "electron-builder.installer.yml"]);
-    for (const configName of configNames) {
+    expect(configNames).toEqual(["electron-builder.archive.yml", "electron-builder.installer.yml", "electron-builder.offline.yml"]);
+    for (const configName of ["electron-builder.archive.yml", "electron-builder.installer.yml"]) {
       const packagedFiles = getTopLevelYamlList(path.join(projectRoot, configName), "files");
 
       expect(packagedFiles, `${configName} files list`).toEqual(
@@ -141,43 +140,48 @@ describe("electron-builder config", () => {
     }
   });
 
-  it("pre-signs macOS attested runtime bytes and excludes only those bytes from builder signing", () => {
-    for (const configName of configNames) {
-      const source = fs.readFileSync(path.join(projectRoot, configName), "utf8");
-      const macSection = getTopLevelYamlSection(path.join(projectRoot, configName), "mac");
-      expect(source, configName).toMatch(
-        /^afterPack: scripts\/macos-attested-runtime\.cjs$/m,
-      );
-      expect(macSection, configName).toContain("signIgnore:");
-      expect(macSection, configName).toContain(
-        "backend[\\\\/]python-runtime[\\\\/]python[\\\\/]",
-      );
-      expect(macSection, configName).toContain(
-        "backend[\\\\/]native[\\\\/]libn4m\\.dylib$",
-      );
-      expect(macSection, configName).not.toContain("studio-sidecar");
-    }
+  it("pre-signs the macOS Methods library and excludes only those bytes from builder signing", () => {
+    const configPath = path.join(projectRoot, "electron-builder.installer.yml");
+    const macSection = getTopLevelYamlSection(configPath, "mac");
+    expect(fs.readFileSync(configPath, "utf8")).toMatch(/^afterPack: scripts\/macos-attested-runtime\.cjs$/m);
+    expect(macSection.match(/^\s+- '.*'$/gm)).toEqual([
+      "    - '[\\\\/]Contents[\\\\/]Resources[\\\\/]backend[\\\\/]native[\\\\/]libn4m\\.dylib$'",
+    ]);
+    expect(macSection).not.toContain("studio-sidecar");
+    expect(macSection).not.toContain("python-runtime/");
   });
 
-  it("packages the complete plugin closure and Rust sidecar in every desktop artifact", () => {
-    const expectedInstallerFilter = [
-      "python-runtime/**/*",
-      "native/**/*",
-      "recommended-config.json",
-      "version.json",
-    ];
+  it("ships the sidecar, uv, the required wheels and the adapters, and no Python runtime", () => {
     expect(
       getExtraResourceFilter(
         path.join(projectRoot, "electron-builder.installer.yml"),
         "backend-dist/",
       ),
-    ).toEqual(expectedInstallerFilter);
+    ).toEqual(["native/**/*", "tools/**/*", "wheels/**/*", "wheelhouse.json", "adapters/**/*"]);
     expect(
       getExtraResourceFilter(
         path.join(projectRoot, "electron-builder.archive.yml"),
         "backend-dist/",
       ),
     ).toEqual(["**/*"]);
+  });
+
+  it("derives the offline installer from the standard one, adding only the payload and the artifact suffix", () => {
+    const offlinePath = path.join(projectRoot, "electron-builder.offline.yml");
+    const offline = fs.readFileSync(offlinePath, "utf8");
+    expect(offline).toMatch(/^extends: electron-builder\.installer\.yml$/m);
+    expect(getExtraResourceFilter(offlinePath, "backend-dist/")).toEqual(["offline/**/*"]);
+    expect(offline.split(/\r?\n/).filter((line) => /^\S/.test(line) && !line.startsWith("#")))
+      .toEqual(["extends: electron-builder.installer.yml", "extraResources:", "win:", "linux:"]);
+    const installer = fs.readFileSync(path.join(projectRoot, "electron-builder.installer.yml"), "utf8");
+    // No macOS offline installer: a macOS application cannot embed wheels.
+    for (const platform of ["win", "linux"]) {
+      const standard = new RegExp(`^  artifactName: "(\\$\\{productName\\}-\\$\\{version\\}-${platform}-\\$\\{arch\\})\\.\\$\\{ext\\}"$`, "m").exec(installer);
+      expect(standard, platform).not.toBeNull();
+      expect(getTopLevelYamlSection(offlinePath, platform).trim()).toBe(`artifactName: "${standard![1]}-offline.\${ext}"`);
+    }
+    // The user-data preservation include stays in the configuration both installers share.
+    expect(getTopLevelYamlSection(path.join(projectRoot, "electron-builder.installer.yml"), "nsis")).toContain("include: build/installer.nsh");
   });
 
   it("attests install-tree ownership only in standalone archives", () => {
@@ -203,7 +207,7 @@ describe("electron-builder config", () => {
   });
 
   it("publishes every desktop artifact to the canonical Studio repository", () => {
-    for (const configName of configNames) {
+    for (const configName of ["electron-builder.archive.yml", "electron-builder.installer.yml"]) {
       const publishSection = getTopLevelYamlSection(
         path.join(projectRoot, configName),
         "publish",
@@ -215,7 +219,7 @@ describe("electron-builder config", () => {
     }
   });
 
-  it("never selects legacy Python backend source for standard installers", () => {
+  it("never selects Python backend source or a Python runtime for installers", () => {
     const installer = fs.readFileSync(
       path.join(projectRoot, "electron-builder.installer.yml"),
       "utf8",
@@ -223,6 +227,6 @@ describe("electron-builder config", () => {
     expect(installer).not.toMatch(
       /^\s+-\s+"?(?:api|websocket|updater|public)\/|^\s+-\s+"?main\.py/m,
     );
-    expect(installer).toContain("plugin-only CPython closure");
+    expect(installer).not.toContain("python-runtime/");
   });
 });

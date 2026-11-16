@@ -128,19 +128,12 @@ export async function openFolderInExplorer(path: string): Promise<void> {
   }
 }
 
-// Build info (includes standalone/frozen detection)
+// Build info
 export interface BuildInfoResponse {
   build: { flavor: string; gpu_enabled: boolean };
-  gpu: Record<string, unknown>;
-  runtime_mode: "development" | "managed" | "bundled" | "pyinstaller";
-  is_frozen: boolean;
   summary: {
     flavor: string;
     gpu_build: boolean;
-    gpu_available: boolean;
-    gpu_type: string | null;
-    gpu_device: string | null;
-    runtime_mode: "development" | "managed" | "bundled" | "pyinstaller";
   };
 }
 

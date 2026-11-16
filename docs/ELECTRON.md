@@ -9,7 +9,7 @@ This document describes the Electron-based desktop architecture for nirs4all Stu
 3. [Architecture](#architecture)
 4. [Main Process](#main-process)
 5. [Preload Script](#preload-script)
-6. [Backend Manager](#backend-manager)
+6. [Python Environment](#python-environment)
 7. [Development Workflow](#development-workflow)
 8. [Security Model](#security-model)
 9. [Build System](#build-system)
@@ -23,23 +23,33 @@ nirs4all Studio uses Electron as the desktop shell, replacing the previous PyWeb
 - **Consistent WebGL**: Chromium engine on all platforms
 - **Better DevTools**: Full Chrome DevTools support
 - **Mature Packaging**: electron-builder for multi-OS distribution
-- **Auto-Updates**: Built-in electron-updater support
+- **Updates**: installer-based application updates from GitHub Releases (see [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md))
 
 ### Current native-session lifecycle
 
-Electron now starts the Rust `studio-sidecar` control plane and creates the
+Electron starts the Rust `studio-sidecar` control plane and creates the
 window through `electron/native-session-lifecycle.ts`. No packaged Electron
 entrypoint imports or starts a Python HTTP server.
 
+Startup order (`startControlPlane` in `electron/main.ts`):
+
+1. `EnvManager.startupCheck()` settles the Python environment: it reads the
+   selection, takes its package inventory and, when a required package is
+   missing or out of range and Studio may install it, installs the required
+   packages. The splash shows one progress line.
+2. The sidecar is started on the selected environment, or without a Python
+   host when none is usable.
+3. The window is created. The scientific host is confirmed in the background,
+   so the window is not delayed by the scientific library's cold start.
+
 Native route selection happens before dispatch. A request selected for the
 sidecar is never retried through another server. An unmigrated route returns a
-typed fail-closed refusal without acquiring Python. The Rust sidecar can invoke bounded CPython stdio
-library/plugin host independently of this HTTP policy. In packaged products
-that host is discoverable only through `STUDIO_RUNTIME_CONTRACT.json` and its
-content-addressed adjacent runtime closure; user/managed venvs and environment
-overrides cannot replace it. The child uses `-I -S -B` and owns no listener.
-
-Historical backend-manager examples below are not product entrypoints.
+typed fail-closed refusal without acquiring Python. The Rust sidecar invokes a
+bounded CPython stdio library/plugin host independently of this HTTP policy.
+That host is the interpreter of the one Python environment the user selected
+or Studio created; Electron passes it to the sidecar at start (see
+[Python Environment](#python-environment)). The child uses `-I -S -B` and owns
+no listener.
 
 ---
 
@@ -90,73 +100,25 @@ Rust may invoke bounded nirs4all library callables through fresh isolated
 CPython JSON-stdio processes. CPython never owns the product listener.
 ```
 
-The historical `backend-manager.ts` diagram below is retained only as source
-history; it is excluded from the packaged Electron dependency graph.
+Process and module layout:
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Electron Application                             │
-│                                                                          │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │                    Main Process (Node.js)                          │ │
-│  │                                                                    │ │
-│  │  electron/main.ts                                                  │ │
-│  │  ├── BrowserWindow creation                                        │ │
-│  │  ├── App lifecycle (ready, quit, activate)                         │ │
-│  │  ├── IPC handlers (file dialogs, system info)                      │ │
-│  │  └── Rust-sidecar lifecycle                                         │ │
-│  │                                                                    │ │
-│  │  electron/backend-manager.ts                                       │ │
-│  │  ├── spawn() - Start Python backend subprocess                     │ │
-│  │  ├── healthCheck() - Poll /api/health endpoint                     │ │
-│  │  ├── shutdown() - Graceful SIGTERM                                 │ │
-│  │  └── restart() - Auto-restart on failure                           │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                               │                                          │
-│                               │ contextBridge.exposeInMainWorld()        │
-│                               │                                          │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │                   Preload Script (Isolated)                        │ │
-│  │                                                                    │ │
-│  │  electron/preload.ts                                               │ │
-│  │  └── window.electronAPI = {                                        │ │
-│  │        getBackendPort(),     // Get dynamic port                   │ │
-│  │        openFileDialog(),     // Native file picker                 │ │
-│  │        openDirectoryDialog(),// Native folder picker               │ │
-│  │        saveFileDialog(),     // Native save dialog                 │ │
-│  │        getPlatform(),        // OS detection                       │ │
-│  │        getAppVersion(),      // App version                        │ │
-│  │      }                                                             │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                               │                                          │
-│                               │ window.electronAPI                       │
-│                               ▼                                          │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │                  Renderer Process (Chromium)                       │ │
-│  │                                                                    │ │
-│  │  React Application (src/)                                          │ │
-│  │  ├── Pipeline Editor (WebGL via Regl)                              │ │
-│  │  ├── Spectral Visualization                                        │ │
-│  │  └── API Client → http://localhost:{PORT}/api/...                  │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────┘
-                               │
-                               │ HTTP/WebSocket (localhost:PORT)
-                               ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│              Optional Python HTTP Diagnostic (Subprocess)                │
-│                                                                          │
-│  FastAPI + Uvicorn                                                       │
-│  ├── /api/health          - Health check (used by backend-manager)       │
-│  ├── /api/system/build    - Build info + GPU detection                   │
-│  ├── /api/workspace/*     - Workspace management                         │
-│  ├── /api/datasets/*      - Dataset operations                           │
-│  └── /api/pipelines/*     - Pipeline execution                           │
-│                                                                          │
-│  nirs4all library (lazy-loaded)                                          │
-│  ├── TensorFlow/PyTorch (GPU if available)                               │
-│  └── scikit-learn, numpy, pandas                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```text
+Electron main process (electron/)
+├── main.ts                        window, app lifecycle, IPC handlers
+├── native-session-lifecycle.ts    start order: control plane, then window
+├── native-sidecar-manager.ts      spawn, readiness line, stop of studio-sidecar
+├── packaged-runtime-contract.ts   verifies STUDIO_RUNTIME_CONTRACT.json before spawn
+├── env-manager.ts                 coordinator of the one Python environment
+└── env/                           detection, inventory, uv, provisioning, adapters
+        │ contextBridge (preload.ts)
+        ▼
+Renderer (src/)                    window.electronApi; HTTP/WS to the sidecar only
+        │ HTTP/WebSocket on 127.0.0.1:<port>
+        ▼
+studio-sidecar (Rust)              product HTTP/WS owner, jobs, state
+        │ JSON over stdio
+        ▼
+CPython worker                     interpreter of the selected environment
 ```
 
 ---
@@ -168,177 +130,172 @@ The main process (`electron/main.ts`) handles:
 ### Window Management
 
 ```typescript
-const mainWindow = new BrowserWindow({
+mainWindow = new BrowserWindow({
   width: 1400,
   height: 900,
+  minWidth: 1024,
+  minHeight: 768,
   webPreferences: {
-    nodeIntegration: false,      // Security: disable Node in renderer
-    contextIsolation: true,      // Security: isolate preload context
-    preload: path.join(__dirname, 'preload.js'),
+    preload: path.join(__dirname, "preload.cjs"),
+    nodeIntegration: false,   // Security: disable Node in renderer
+    contextIsolation: true,   // Security: isolate preload context
+    sandbox: true,
   },
+  show: false,
 });
 ```
 
 ### App Lifecycle
 
 ```typescript
-app.on('ready', async () => {
-  // 1. Start backend
-  await backendManager.spawn();
-  await backendManager.waitForHealth();
-
-  // 2. Create window
-  createMainWindow();
+app.whenReady().then(async () => {
+  splashWindow = createSplashWindow();
+  await startNativeSession({ startControlPlane, createWindow });
 });
 
-app.on('before-quit', async () => {
-  // Graceful backend shutdown
-  await backendManager.shutdown();
+app.on("before-quit", (event) => {
+  // Stops the sidecar, then quits; a 5 second deadline forces the quit.
 });
 ```
 
+A packaged sidecar that fails its contract verification or does not become
+ready stops startup with an error dialog. A Python environment problem never
+does: Studio opens and reports it (see [Python Environment](#python-environment)).
+
 ### IPC Handlers
 
-```typescript
-ipcMain.handle('dialog:openFile', async (event, options) => {
-  return dialog.showOpenDialog(mainWindow, options);
-});
+Handlers are registered with `ipcMain.handle` under namespaced channels:
+`dialog:*`, `system:*`, `window:*`, `telemetry:*`, `sidecar:*`,
+`control:getInfo`, `backend:restart`, `env:getInstallLog`, `pythonEnv:*` and
+`app:quitForUpdate`.
 
-ipcMain.handle('backend:getPort', () => {
-  return backendManager.getPort();
-});
+```typescript
+ipcMain.handle("pythonEnv:getState", () => envManager.getState());
+
+ipcMain.handle("pythonEnv:apply", (_event, request) =>
+  envManager.apply({
+    pythonPath: requireString(request?.pythonPath, "pythonPath"),
+    packages: requirePackageNames(request?.packages),
+  }));
 ```
 
 ---
 
 ## Preload Script
 
-The preload script (`electron/preload.ts`) creates a secure bridge:
+The preload script (`electron/preload.ts`) exposes one object,
+`window.electronApi`, through `contextBridge`:
 
 ```typescript
-import { contextBridge, ipcRenderer } from 'electron';
-
-contextBridge.exposeInMainWorld('electronAPI', {
-  // Backend communication
-  getBackendPort: () => ipcRenderer.invoke('backend:getPort'),
-
-  // File dialogs
-  openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
-  openDirectoryDialog: (options) => ipcRenderer.invoke('dialog:openDirectory', options),
-  saveFileDialog: (options) => ipcRenderer.invoke('dialog:saveFile', options),
-
-  // System info
-  getPlatform: () => process.platform,
-  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
-});
+const electronApi = {
+  selectFolder: () => ipcRenderer.invoke("dialog:selectFolder"),
+  openExternal: (url) => ipcRenderer.invoke("system:openExternal", url),
+  // ...
+  pythonEnv: {
+    getState: () => ipcRenderer.invoke("pythonEnv:getState"),
+    detect: (refresh) => ipcRenderer.invoke("pythonEnv:detect", refresh),
+    // ...
+    onState: (handler) => { /* subscribes to "pythonEnv:state" */ },
+  } satisfies PythonEnvApi,
+  getInstallLog: () => ipcRenderer.invoke("env:getInstallLog"),
+  onInstallLog: (callback) => { /* subscribes to "env:installLog" */ },
+};
 ```
 
 ### TypeScript Types
 
-The renderer accesses this API via `src/types/electron.d.ts`:
-
-```typescript
-interface ElectronAPI {
-  getBackendPort(): Promise<number>;
-  openFileDialog(options?: OpenDialogOptions): Promise<OpenDialogReturnValue>;
-  openDirectoryDialog(options?: OpenDialogOptions): Promise<OpenDialogReturnValue>;
-  saveFileDialog(options?: SaveDialogOptions): Promise<SaveDialogReturnValue>;
-  getPlatform(): string;
-  getAppVersion(): Promise<string>;
-}
-
-declare global {
-  interface Window {
-    electronAPI?: ElectronAPI;
-  }
-}
-```
+The renderer accesses this API via `src/types/electron.d.ts`
+(`window.electronApi?: ElectronApi`). The Python environment types are in
+`src/types/pythonEnvironment.ts`, imported by both `electron/` and `src/`.
 
 ---
 
-## Backend Manager
+## Python Environment
 
-The backend manager (`electron/backend-manager.ts`) handles:
+Studio uses exactly one Python environment: the interpreter the user selected,
+or the one Studio created. Installers ship no Python. The Electron main
+process owns the environment lifecycle; the sidecar only runs the interpreter
+it is given. Detailed model:
+[environment architecture](_internals/environment-architecture.md).
 
-### Spawning the Backend
+### Lifecycle (`electron/env-manager.ts`, `electron/env/`)
 
-```typescript
-class BackendManager {
-  private process: ChildProcess | null = null;
-  private port: number = 0;
+- **Selection.** `userData/env-settings.json` holds `{ "pythonPath": "..." }`.
+- **Inventory.** One subprocess per interpreter lists its distributions from
+  metadata; nothing is imported. The inventory of the selected environment is
+  cached in `userData/python-inventory.json`.
+- **Catalogue.** `recommended-config.json`: `required` packages (accepted
+  `range`, exact `install` version) and `optional` recommended packages.
+- **uv.** Environments are created and packages installed with the shipped
+  `uv` (`resources/backend/tools/uv[.exe]`), with the required wheels as a
+  `--find-links` source: `resources/backend/wheels/` on Windows and Linux; on
+  macOS the archive named by `resources/backend/wheelhouse.json`, downloaded
+  once, verified and kept in `userData/wheelhouse/`. `torch` is installed with
+  `--torch-backend auto`.
+- **First launch.** The phase is `unconfigured`; the renderer shows one page
+  that lists detected environments. The user picks one or creates a new one
+  (`userData/python-env/python` and `userData/python-env/venv`; the pinned
+  Python runtime is downloaded, or taken from the offline payload of a Windows
+  or Linux offline installer). Required
+  packages are installed automatically; recommended packages are per-package
+  choices.
+- **Later launches.** The environment is reused. Required packages that left
+  their range are updated before the sidecar starts. Recommended packages
+  older than recommended produce a warning toast and indicator dots.
+- **Switch.** Settings has a `Python` tab with the same page. A switch is kept
+  only when the sidecar really runs the new interpreter; otherwise the
+  previous selection is restored.
+- **Editable installs** are never modified.
 
-  async spawn(): Promise<void> {
-    // Find free port
-    this.port = await findFreePort();
+Phases: `unconfigured`, `ready`, `busy`, `needs_attention`.
 
-    // Locate backend binary
-    const backendPath = this.getBackendPath();
+### IPC surface: `PythonEnvApi`
 
-    // Spawn subprocess
-    this.process = spawn(backendPath, [
-      '--port', String(this.port),
-      '--host', '127.0.0.1',
-    ]);
+Exposed as `window.electronApi.pythonEnv`; contract in
+`src/types/pythonEnvironment.ts`.
 
-    // Handle stdout/stderr
-    this.process.stdout?.on('data', (data) => {
-      console.log(`[Backend] ${data}`);
-    });
-  }
+| Method | IPC channel | Purpose |
+|---|---|---|
+| `getState()` | `pythonEnv:getState` | Current `PythonEnvState` |
+| `detect(refresh?)` | `pythonEnv:detect` | Interpreters found on this machine, with their reports |
+| `inspect(path)` | `pythonEnv:inspect` | Report of an interpreter or environment directory, without changing anything |
+| `describeNewEnvironment()` | `pythonEnv:describeNewEnvironment` | What Studio would install in an environment it creates |
+| `browse()` | `pythonEnv:browse` | File dialog for a Python executable |
+| `chooseDirectory()` | `pythonEnv:chooseDirectory` | Folder dialog for a new environment |
+| `apply(request)` | `pythonEnv:apply` | Switch to an existing interpreter |
+| `create(request)` | `pythonEnv:create` | Create a Studio environment and switch to it |
+| `installPackages(packages)` | `pythonEnv:installPackages` | Install or update recommended packages |
+| `retry()` | `pythonEnv:retry` | Re-run the startup check and restart the host |
+| `onState(handler)` | `pythonEnv:state` (event) | State changes |
 
-  private getBackendPath(): string {
-    if (app.isPackaged) {
-      // Production: backend in resources folder
-      return path.join(process.resourcesPath, 'backend', 'nirs4all-backend');
-    } else {
-      // Development: use local binary or Python directly
-      return path.join(__dirname, '..', 'backend-dist', 'nirs4all-backend');
-    }
-  }
-}
-```
+The install log is a separate channel shared by every environment operation:
+`getInstallLog()` (`env:getInstallLog`) and `onInstallLog()` (`env:installLog`
+event). `restartBackend()` (`backend:restart`) restarts the sidecar on the
+current selection, or retries when the phase is `needs_attention`.
 
-### Health Monitoring
+### Sidecar start variables
 
-```typescript
-async waitForHealth(timeout = 30000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${this.port}/api/health`);
-      if (response.ok) {
-        console.log('Backend is healthy');
-        return;
-      }
-    } catch {
-      // Backend not ready yet
-    }
-    await sleep(100);
-  }
-  throw new Error('Backend health check timeout');
-}
-```
+`electron/native-sidecar-manager.ts` spawns
+`studio-sidecar --host 127.0.0.1 --port <port>` and waits for its
+`STUDIO_SIDECAR_READY` line. The Python hand-off is four variables, set only
+when the phase is `ready`:
 
-### Graceful Shutdown
+| Variable | Value |
+|---|---|
+| `NIRS4ALL_PYTHON_PLUGIN_HOST` | Selected interpreter, exactly as selected |
+| `NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES` | Package directory of the environment |
+| `NIRS4ALL_STUDIO_ADAPTERS_DIR` | Directory that contains `studio_document_adapters/` (`resources/backend/adapters` when packaged) |
+| `NIRS4ALL_SCIENTIFIC_EXECUTOR` | `cpython-stdio-v1` |
 
-```typescript
-async shutdown(): Promise<void> {
-  if (this.process) {
-    // Send SIGTERM for graceful shutdown
-    this.process.kill('SIGTERM');
+Inherited values of these variables are removed before the spawn, so only
+Electron's selection reaches the sidecar. The sidecar also receives
+`NIRS4ALL_STUDIO_SESSION_TOKEN`, `NIRS4ALL_APP_VERSION`, `NIRS4ALL_APP_DIR`,
+`NIRS4ALL_APP_EXE`, `NIRS4ALL_ELECTRON_PID`, `NIRS4ALL_ELECTRON` and, when the
+file exists, `NIRS4ALL_BUILD_INFO_PATH`.
 
-    // Wait for process to exit
-    await new Promise((resolve) => {
-      this.process?.on('exit', resolve);
-      // Force kill after timeout
-      setTimeout(() => {
-        this.process?.kill('SIGKILL');
-        resolve(null);
-      }, 5000);
-    });
-  }
-}
-```
+After a start or restart on an environment, the main process polls
+`/api/system/readiness` until the host is acquired, then checks that
+`/api/system/env-coherence` reports the selected interpreter.
 
 ---
 
@@ -366,6 +323,14 @@ In development mode:
 - Vite serves the React app with HMR
 - Electron starts the Rust sidecar and refuses unmigrated renderer routes
 - Electron loads from `http://localhost:5173`
+- The Python environment is selected on the same page as in the product, and
+  stored in `userData/env-settings.json`
+- `uv` is resolved from `NIRS4ALL_UV`, then `backend-dist/tools/` (staged by
+  `node scripts/fetch-uv.cjs`), then `PATH`; the required wheels are taken
+  from `backend-dist/wheels/` when `node scripts/build-wheelhouse.cjs` has
+  staged them, otherwise from the package index
+- The document adapters are materialised from the source tree into
+  `userData/studio-adapters/`
 
 On Windows, the sidecar starts bounded CPython processes through an internal
 launcher rather than Python itself. The launcher creates a Job Object with
@@ -440,66 +405,44 @@ The renderer communicates with the backend via HTTP/WebSocket only:
 
 ## Build System
 
-### Legacy Python Backend Build (not a desktop release path)
-
-The commands below are retained for browser-only web development. Phase 2 desktop
-installers use the Rust sidecar plus the plugin-only CPython closure and never
-package this FastAPI/PyInstaller backend.
-
-```bash
-# CPU build
-NIRS4ALL_BUILD_FLAVOR=cpu pyinstaller backend.spec --noconfirm
-
-# GPU build (CUDA on Linux/Windows)
-NIRS4ALL_BUILD_FLAVOR=gpu pyinstaller backend.spec --noconfirm
-
-# GPU build (Metal on macOS)
-NIRS4ALL_BUILD_FLAVOR=gpu-metal pyinstaller backend.spec --noconfirm
-```
-
-The `backend.spec` file configures:
-- Hidden imports for dynamic modules
-- Data files (frontend build, public assets)
-- Exclusions (reduce bundle size)
-- Platform-specific settings
-
 ### Electron Build
 
 ```bash
-# Build main process (TypeScript → JavaScript)
+# Build the renderer and the Electron main process, then check the packaged graph
 npm run build:electron
-
-# Package for distribution
-npm run dist           # Current platform
-npm run dist:linux     # Linux (AppImage, DEB)
-npm run dist:win       # Windows (NSIS, portable)
-npm run dist:mac       # macOS (DMG)
 ```
 
 ### Full Release
 
 ```bash
-# Run on the matching host; CPU is the only attested installer profile.
+# Run on the matching host; CPU is the only installer flavor.
 npm run release -- --platform linux --flavor cpu
+
+# Offline installer (Windows and Linux; adds the offline payload)
+npm run release -- --platform linux --flavor cpu --offline
 ```
 
 This runs:
-1. `npm run build` (React frontend)
-2. pinned plugin-only CPython closure preparation and Rust sidecar build
-3. `npm run build:electron` (Electron main process)
+1. staging of the installer payload in `backend-dist/`: `uv`, the wheels of
+   the required packages, the document adapters and the Rust sidecar (plus the
+   offline payload with `--offline`). On macOS the wheels are packed as the
+   release asset `nirs4all.Studio-<version>-mac-arm64-wheels.tar.gz` and
+   replaced in the payload by `wheelhouse.json`
+2. verification of the runtime contract and of that payload
+3. `npm run build:electron` (React frontend and Electron main process)
 4. electron-builder packaging plus fresh-output/runtime verification
 
-On macOS, the Electron Builder `afterPack` hook pre-signs every Mach-O in the
-copied CPython closure and the optional `libn4m.dylib`, then regenerates their
-SHA-256 closure and `STUDIO_RUNTIME_CONTRACT.json`. `mac.signIgnore` prevents a
-second signature from changing those attested bytes. It does not match
-`native/studio-sidecar`, so Electron Builder signs the Rust HTTP/WS owner and
-the outer `.app` normally. See `docs/PACKAGING.md` for the fail-closed signing
-order and its notarization limits.
+No Python runtime is packaged, and a macOS application embeds no wheels. On
+macOS (Apple Silicon only), the Electron Builder `afterPack` hook
+pre-signs `libn4m.dylib`, then regenerates `STUDIO_RUNTIME_CONTRACT.json`.
+`mac.signIgnore` prevents a second signature from changing those attested
+bytes. It does not match `native/studio-sidecar` or `tools/uv`, so Electron
+Builder signs them and the outer `.app` normally. See
+[PACKAGING.md](PACKAGING.md) for the build inputs, the wheel locks, the
+fail-closed signing order and its notarization limits.
 
-Use `npm run release:all-in-one` for portable archives. The installer helper
-rejects GPU/cpu-lite labels, cross-host targets, `--platform all`, and legacy
-standalone mode.
+The installer helper rejects non-CPU flavors, cross-host targets,
+`--platform all`, and standalone mode.
 
 ---
 
@@ -509,14 +452,20 @@ standalone mode.
 |------|---------|
 | `electron/main.ts` | Main process entry point |
 | `electron/preload.ts` | IPC bridge |
-| `electron/backend-manager.ts` | Backend lifecycle |
-| `electron/env-manager.ts` | Python environment detection and setup |
+| `electron/native-session-lifecycle.ts` | Start order of the control plane and the window |
+| `electron/native-sidecar-manager.ts` | Rust sidecar lifecycle |
+| `electron/packaged-runtime-contract.ts` | Verification of the packaged sidecar and Methods library |
+| `electron/env-manager.ts` | Coordinator of the selected Python environment |
+| `electron/env/` | Detection, inventory, `uv`, provisioning, adapters |
 | `electron/logger.ts` | Persistent file logging |
-| `electron-builder.yml` | Packaging configuration |
-| `backend.spec` | PyInstaller configuration |
+| `electron-builder.installer.yml` | Installer packaging configuration |
+| `electron-builder.offline.yml` | Offline installer packaging configuration |
+| `recommended-config.json` | Package catalogue (`required`, `optional`) |
+| `scripts/python-runtime-config.cjs` | Pinned Python runtime that Studio installs when it creates an environment |
 | `vite.config.ts` | Vite + Electron plugin |
 | `build/entitlements.mac.plist` | macOS entitlements |
-| `src/types/electron.d.ts` | TypeScript types |
+| `src/types/electron.d.ts` | TypeScript types of `window.electronApi` |
+| `src/types/pythonEnvironment.ts` | Python environment contract (`PythonEnvApi`) |
 
 ---
 
@@ -524,7 +473,7 @@ standalone mode.
 
 ### Persistent Log Files
 
-All main process output (including backend stdout/stderr) is written to rotating log files:
+All main process output (including the sidecar's stderr) is written to rotating log files:
 
 | OS | Location |
 |----|----------|
@@ -534,7 +483,8 @@ All main process output (including backend stdout/stderr) is written to rotating
 
 Logs include:
 - All `console.log/warn/error` from the main process
-- Backend stdout/stderr (prefixed with `[Backend]`)
+- Sidecar stderr (prefixed with `[Native sidecar]`)
+- Python environment state changes and failures (prefixed with `[EnvManager]`)
 - Uncaught exceptions and unhandled promise rejections with full stack traces
 - App startup information (version, platform, architecture)
 
@@ -552,11 +502,14 @@ Press `Cmd+Option+I` (macOS) or `Ctrl+Shift+I` (Windows/Linux) to open DevTools.
 
 ### Backend Logs
 
-Backend stdout/stderr is forwarded to both the main process console and the persistent log files. Also check:
+The sidecar's stderr is forwarded to both the main process console and the persistent log files. Also check:
 ```bash
-# If backend fails to start
-./backend-dist/nirs4all-backend --port 8000
+# If the sidecar fails to start: readiness check without starting a server
+sidecar/target/release/studio-sidecar --smoke-readiness
 ```
+
+The output of `uv` during an environment operation is the install log, shown
+on the Python page and available through `electronApi.getInstallLog()`.
 
 ### IPC Debugging
 

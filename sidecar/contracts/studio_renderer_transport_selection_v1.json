@@ -54,7 +54,6 @@
       "GET /workspaces",
       "GET /workspace/format-status",
       "GET /updates/version",
-      "GET /updates/runtime/status",
       "GET /updates/settings",
       "PUT /updates/settings",
       "POST /runs/run-groups"

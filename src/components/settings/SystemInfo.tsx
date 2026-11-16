@@ -14,6 +14,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getApiErrorMessage } from "@/api/transport";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import {
   Monitor,
   Cpu,
@@ -121,7 +122,6 @@ System Information
 Python Version: ${systemInfo.python.version}
 Configured Python: ${runtimeSummary?.configured_python ?? "Not reported"}
 Running Python: ${runtimeSummary?.running_python ?? systemInfo.python.executable}
-Runtime Kind: ${runtimeSummary?.runtime_kind ?? "unknown"}
 Configured Matches Running: ${runtimeSummary?.configured_matches_running ? "yes" : "no"}
 OS: ${systemInfo.system.os} ${systemInfo.system.release}
 Architecture: ${systemInfo.system.machine}
@@ -188,9 +188,11 @@ ${Object.entries(systemInfo.packages)
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          {window.electronApi?.isElectron && <Button variant="outline" size="sm" onClick={() => window.dispatchEvent(new CustomEvent("choose-python-environment"))}>
-            {t("errors.api.openPythonSettings")}
-          </Button>}
+          {window.electronApi?.isElectron && (
+            <Button asChild variant="outline" size="sm">
+              <Link to="/settings?tab=python">{t("errors.api.openPythonSettings")}</Link>
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={loadData}>
             <RefreshCw className="mr-2 h-4 w-4" />
             {t("common.retry")}
@@ -273,12 +275,6 @@ ${Object.entries(systemInfo.packages)
                 <span className="text-muted-foreground">{t("settings.systemInfo.platform")}</span>
                 <span>{systemInfo.python.platform}</span>
               </div>
-              {runtimeSummary?.runtime_kind && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{t("settings.systemInfo.runtimeKind")}</span>
-                  <Badge variant="outline">{runtimeSummary.runtime_kind}</Badge>
-                </div>
-              )}
               {runtimeSummary && (
                 <>
                   <div className="flex justify-between">

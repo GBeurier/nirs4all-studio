@@ -252,14 +252,6 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
         if set(document) != {"source", "output"}:
             raise ValueError("Workspace upgrade requires explicit source and output paths")
         return upgrade_workspace_copy(document["source"], document["output"])
-    if operation == "config.dependencies":
-        from .library_runtime_config import dependency_inventory
-
-        return dependency_inventory(document)
-    if operation == "config.compare":
-        from .library_runtime_config import compare_configuration
-
-        return compare_configuration(document)
     if operation in {"results.chains", "results.dataset_chains", "results.top", "results.chain", "results.chain_detail", "results.arrays", "results.chain_steps", "results.pipeline_steps"}:
         from .library_aggregated_results import read_aggregated_results
 

@@ -5,7 +5,7 @@ const { test } = require('node:test');
 const yaml = require('js-yaml');
 const vm = require('node:vm');
 
-for (const filename of ['publish-qualified-unix-hotfix.yml', 'publish-qualified-macintel-hotfix.yml']) {
+for (const filename of ['publish-qualified-unix-hotfix.yml']) {
 test(`${filename} adds checksums first and refuses to replace an existing different payload`, () => {
   const publisher = yaml.load(fs.readFileSync(path.resolve(__dirname, '../../.github/workflows', filename), 'utf8'));
   const publishStep = publisher.jobs.publish.steps.find(step => step.name === 'Add only verified new assets without replacing existing release files');

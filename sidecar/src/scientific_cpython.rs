@@ -1,26 +1,26 @@
 //! Bounded `CPython` host: fresh training jobs and reusable interactive workers.
 //!
 //! The stdio worker and Rust-owned terminal callback are implemented here,
-//! with explicit native job lifecycle and separately attested document
-//! translation. Python never owns HTTP, jobs, events, cancellation or scheduling.
+//! with explicit native job lifecycle and document translation through the
+//! adapters shipped with the application. Python never owns HTTP, jobs, events, cancellation or scheduling.
 //! The scientific library may persist its own WorkspaceStore/results only to
 //! the workspace authorized by the Rust request resolver.
 
 use std::{
     collections::BTreeMap,
-    fs::{self, File},
+    ffi::OsStr,
+    fs,
     io::{Read, Write},
     path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
     time::{Duration, Instant, SystemTime},
 };
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 use crate::job_http::{
     JobExecutorError, ScientificExecutionRequest, ScientificExecutorSelection,
@@ -28,10 +28,6 @@ use crate::job_http::{
 };
 use crate::scientific_request_resolver::ScientificRequestResolver;
 
-#[path = "host_verification_cache.rs"]
-mod host_verification_cache;
-#[path = "selected_library_identity.rs"]
-mod selected_library_identity;
 #[path = "warm_library_host.rs"]
 mod warm_library_host;
 
@@ -75,29 +71,16 @@ impl Drop for BoundaryTiming {
     }
 }
 
-pub const SCIENTIFIC_CPYTHON_HOST_CONTRACT: &str =
-    include_str!("../contracts/studio_scientific_cpython_host_sdk1416_v1.json");
 pub const SCIENTIFIC_CPYTHON_EXECUTOR_ID: &str = "cpython-stdio-v1";
 pub const WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT: &str = "--internal-scientific-cpython-job";
-/// One-time cold-start budget for the immutable packaged scientific runtime.
+/// Budget for acquiring the scientific host: one cold import of nirs4all.
 ///
-/// The preflight imports the full nirs4all stack and verifies every RECORD
-/// member after checking the packaged anchors. Intel macOS runners have shown
-/// valid cold starts exceeding 15 seconds under load, so keep this below the
-/// 75-second HTTP preflight budget while allowing a measured 3x margin.
-pub const SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(45);
-/// Acquisition budget when the host has no verification record.
-///
-/// This is the first launch after an install or update, when antivirus scans and a cold disk
-/// cache made a valid packaged preflight take 38 s on Windows (and minutes in
-/// field reports). Acquisition runs after the sidecar is ready, so this
-/// budget never delays the window.
-pub const SCIENTIFIC_CPYTHON_COLD_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(180);
-/// Stat identity of a packaged distribution whose members Rust saw verified.
-const VERIFIED_DISTRIBUTION_STAT_ENV: &str = "NIRS4ALL_VERIFIED_DISTRIBUTION_STAT";
+/// Antivirus scans and a cold disk cache made valid first imports take 38 s on
+/// Windows (and minutes in field reports). Acquisition runs after the sidecar
+/// is ready, so this budget never delays the window; a timeout is retried.
+pub const SCIENTIFIC_CPYTHON_ACQUISITION_TIMEOUT: Duration = Duration::from_secs(180);
 /// Document adapters import the same scientific stack in each fresh worker.
-/// Keep preview, setup and translation within the qualified cold-start budget.
-pub const SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT: Duration = SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT;
+pub const SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT: Duration = Duration::from_secs(45);
 pub const SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT: Duration = Duration::from_secs(120);
 // Training campaigns are cancellable, isolated from interactive readers and
 // report progress through the heartbeat. Their budget must accommodate the
@@ -106,111 +89,18 @@ pub const SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT: Duration = Duration::from_secs(86
 pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
-pub const MAX_SCIENTIFIC_CPYTHON_HOST_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
-/// Chosen minimum SDK version for the current qualified local owner cohort.
-/// This floor does not assert publication or the first version of any API.
-pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.4.16";
-/// Exclusive upper bound of the nirs4all releases a selected environment may use.
+
+/// Shared start of every host script: the process audit, then the environment.
 ///
-/// Selected (custom or managed) environments are not attested file by file:
-/// they accept any nirs4all release in `[SCIENTIFIC_DISTRIBUTION_VERSION,
-/// SCIENTIFIC_DISTRIBUTION_LIMIT)`, the range Electron checks and installs
-/// (`REUSABLE_RUNTIME_PACKAGES`). Studio reaches nirs4all only through named,
-/// schema-versioned callables that stay stable within a minor release.
-pub const SCIENTIFIC_DISTRIBUTION_LIMIT: &str = "1.5";
-pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = ">=1.4.16,<1.5";
-/// Exact public SDK wheel selected for packaged admission.
-const PACKAGED_DISTRIBUTION_VERSION: &str = "1.4.16";
-pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
-    "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f";
-pub const SCIENTIFIC_WHEEL_SHA256: &str =
-    "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4";
-pub const SCIENTIFIC_SOURCE_COMMIT: &str = "28c51162fc4d31d674c6606d608367a5f4b32b0e";
-pub const SCIENTIFIC_CALLABLE_SHA256: &str =
-    "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
-
-const PREFLIGHT_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
-SCHEMA="nirs4all.studio-scientific-cpython-host.v1"
-def deny_product_network(event,args):
-    if event == "socket.bind":
-        raise RuntimeError("CPython library host cannot own a listening socket")
-    if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}:
-        raise PermissionError("CPython library host cannot spawn child processes")
-if sys.platform == "win32":
-    platform.machine()
-sys.addaudithook(deny_product_network)
-selected_site=os.environ.get("NIRS4ALL_SELECTED_SITE_PACKAGES")
-if selected_site:
-    # Load the selected environment only after the process audit is active.
-    site.main()
-    site.addsitedir(selected_site)
-    sys.path.insert(0,selected_site)
-if sys.argv[1]:
-    sys.path.insert(0,sys.argv[1])
-probe=socket.socket()
-bind_denied=False
-try:
-    distribution_error=None
-    probe.bind(("127.0.0.1",0))
-except RuntimeError:
-    bind_denied=True
-finally:
-    probe.close()
-try:
-    import nirs4all
-    target=getattr(nirs4all,"studio_scientific_job_v1",None)
-    ready=callable(target)
-    callable_path=inspect.getsourcefile(target) if ready else None
-    callable_sha256=hashlib.sha256(open(callable_path,"rb").read()).hexdigest() if callable_path else None
-    distribution=importlib.metadata.distribution("nirs4all")
-    distribution_version=distribution.version
-    record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
-    record_path=distribution.locate_file(record_entry) if record_entry else None
-    record_bytes=open(record_path,"rb").read() if record_path else b""
-    distribution_record_sha256=hashlib.sha256(record_bytes).hexdigest() if record_bytes else None
-    metadata_root=str(record_entry).rsplit("/",1)[0]+"/"
-    installer_members={metadata_root+name for name in ("INSTALLER","REQUESTED","direct_url.json","uv_cache.json")}
-    record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0] not in installer_members))
-    manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-    distribution_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest() if manifest_bytes else None
-    # Only the packaged runtime (argv[1]) is attested member by member.
-    # Selected environments are admitted by version range and Methods ABI.
-    distribution_files_verified=bool(record_rows) and bool(sys.argv[1])
-    distribution_stat_sha256=None
-    if distribution_files_verified:
-        # Stat identity of RECORD and its members. Rust passes the identity it
-        # recorded after a full verification of this runtime: when nothing was
-        # written, replaced or updated since, the member hashes are skipped.
-        stat_rows=[]
-        for relative in [str(record_entry)]+[row[0] for row in record_rows]:
-            status=os.stat(distribution.locate_file(relative))
-            stat_rows.append(",".join((relative,str(status.st_size),str(status.st_mtime_ns),str(status.st_ctime_ns),str(status.st_ino),str(status.st_dev)))+"\n")
-        distribution_stat_sha256=hashlib.sha256("".join(stat_rows).encode("utf-8")).hexdigest()
-    if distribution_files_verified and os.environ.get("NIRS4ALL_VERIFIED_DISTRIBUTION_STAT") != distribution_stat_sha256:
-        for relative,encoded,size in record_rows:
-            algorithm,expected=encoded.split("=",1)
-            member=distribution.locate_file(relative)
-            payload=open(member,"rb").read()
-            actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
-            if actual != expected or (size and len(payload) != int(size)):
-                distribution_files_verified=False
-                break
-except Exception as error:
-    ready=False
-    callable_path=None
-    callable_sha256=None
-    distribution_version=None
-    distribution_manifest_sha256=None
-    distribution_record_sha256=None
-    distribution_files_verified=False
-    distribution_stat_sha256=None
-    distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_stat_sha256":distribution_stat_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4" if sys.argv[1] else None,"source_commit":"28c51162fc4d31d674c6606d608367a5f4b32b0e" if sys.argv[1] else None},separators=(",",":"),sort_keys=True))
-"#;
-
-const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,site,socket,sys
+/// Arguments: `argv[1]` is the environment's site-packages and `argv[2]` the
+/// directory holding the `studio_document_adapters` package shipped with the
+/// application. The adapters directory comes first on `sys.path`, so a copy
+/// left in the environment by an older Studio is never imported.
+macro_rules! host_bootstrap {
+    () => {
+        r#"import importlib.metadata,json,platform,site,sys
 def bounded_library_error_message(error):
     sanitized="".join(" " if ord(char)<32 or 127<=ord(char)<=159 else char for char in str(error))
     return sanitized.encode("utf-8")[:4000].decode("utf-8",errors="ignore")
@@ -222,73 +112,75 @@ def deny_product_network(event,args):
 if sys.platform == "win32":
     platform.machine()
 sys.addaudithook(deny_product_network)
-selected_site=os.environ.get("NIRS4ALL_SELECTED_SITE_PACKAGES")
-if selected_site:
-    site.main()
-    site.addsitedir(selected_site)
-    sys.path.insert(0,selected_site)
-if sys.argv[1]:
-    sys.path.insert(0,sys.argv[1])
-    if sys.platform == "win32":
-        from pathlib import Path
-        # Rust's canonicalized package path retains Windows' \\?\ prefix.
-        # Match sys.prefix to that same attested runtime spelling so the
-        # library's own prefix containment check sees equivalent paths.
-        runtime_prefix=str(Path(sys.argv[1]).parent.parent)
-        if not os.path.samefile(runtime_prefix,sys.prefix):
-            raise RuntimeError("scientific runtime prefix changed")
-        sys.prefix=runtime_prefix
-def studio_distribution_supported(version):
-    import re
-    match=re.match(r"v?(\d+(?:\.\d+)*)(.*)$",version.strip(),re.I)
-    if not match:
-        return False
-    release=[int(part) for part in match.group(1).split(".")]
-    prerelease=bool(re.match(r"[-_.]?(a|b|c|rc|alpha|beta|pre|preview|dev)",match.group(2).strip(),re.I))
-    def compare(bound):
-        size=max(len(release),len(bound))
-        left=release+[0]*(size-len(release))
-        right=bound+[0]*(size-len(bound))
-        return (left>right)-(left<right)
-    minimum=compare([1,4,16])
-    return (minimum>0 or (minimum==0 and not prerelease)) and compare([1,5])<0
-raw=sys.stdin.buffer.read(33554433)
+# Load the selected environment only after the process audit is active.
+site.main()
+site.addsitedir(sys.argv[1])
+sys.path.insert(0,sys.argv[1])
+sys.path.insert(0,sys.argv[2])
+"#
+    };
+}
+
+/// Admission probe: interpreter facts, the nirs4all version from distribution
+/// metadata, and whether nirs4all and its Studio callables import.
+///
+/// The metadata must describe the code that runs: exactly one nirs4all
+/// distribution is visible on `sys.path`, and the imported package lies under
+/// that distribution's location unless it is an editable install.
+const PREFLIGHT_SCRIPT: &str = concat!(
+    host_bootstrap!(),
+    r#"import os,socket
+probe=socket.socket()
+bind_denied=False
+try:
+    probe.bind(("127.0.0.1",0))
+except RuntimeError:
+    bind_denied=True
+finally:
+    probe.close()
+def canonical(path):
+    return os.path.normcase(os.path.realpath(str(path)))
+distribution_version=None
+distribution_inconsistency=None
+import_error=None
+ready=False
+distributions=list(importlib.metadata.distributions(name="nirs4all",path=list(dict.fromkeys(canonical(entry) for entry in sys.path))))
+if len(distributions)>1:
+    distribution_inconsistency="%d nirs4all distributions are installed: %s"%(len(distributions),", ".join(sorted("%s in %s"%(found.version,found.locate_file("")) for found in distributions)))
+elif distributions:
+    distribution=distributions[0]
+    distribution_version=distribution.version
+    try:
+        import nirs4all
+    except Exception as error:
+        import_error=type(error).__name__+": "+bounded_library_error_message(error)
+    else:
+        try:
+            editable=bool(json.loads(distribution.read_text("direct_url.json") or "{}").get("dir_info",{}).get("editable"))
+        except Exception:
+            editable=False
+        module_file=getattr(nirs4all,"__file__",None)
+        if editable or (module_file and canonical(module_file).startswith(canonical(distribution.locate_file("")).rstrip(os.sep)+os.sep)):
+            ready=all(callable(getattr(nirs4all,name,None)) for name in ("studio_scientific_job_v1","studio_scientific_job_v2"))
+        else:
+            distribution_inconsistency="nirs4all is imported from %s, outside its %s distribution in %s"%(module_file,distribution_version,distribution.locate_file(""))
+print(json.dumps({"schema":"nirs4all.studio-scientific-cpython-host.v2","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution_version":distribution_version,"distribution_inconsistency":distribution_inconsistency and distribution_inconsistency[:500],"import_error":import_error and import_error[:500],"ready":ready},separators=(",",":"),sort_keys=True))
+"#
+);
+
+/// Worker: `argv[3]` is the nirs4all version admitted at acquisition.
+const EXECUTION_SCRIPT: &str = concat!(
+    host_bootstrap!(),
+    r#"raw=sys.stdin.buffer.read(33554433)
 if len(raw)>33554432:
     raise RuntimeError("scientific request exceeds stdin budget")
 request=json.loads(raw)
-distribution=importlib.metadata.distribution("nirs4all")
-if not studio_distribution_supported(distribution.version):
-    raise RuntimeError("scientific distribution version unsupported")
-if sys.argv[1]:
-    if distribution.version != "1.4.16":
-        raise RuntimeError("scientific distribution version changed")
-    record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
-    record_path=distribution.locate_file(record_entry) if record_entry else None
-    record_bytes=open(record_path,"rb").read() if record_path else b""
-    metadata_root=str(record_entry).rsplit("/",1)[0]+"/"
-    installer_members={metadata_root+name for name in ("INSTALLER","REQUESTED","direct_url.json","uv_cache.json")}
-    record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0] != "../../Scripts/nirs4all.exe" and row[0] not in installer_members))
-    manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-    if hashlib.sha256(manifest_bytes).hexdigest() != "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f":
-        raise RuntimeError("scientific distribution identity changed")
-    for relative,encoded,size in record_rows:
-        if "=" not in encoded or (size and not size.isdigit()):
-            raise RuntimeError("scientific distribution record changed")
-# Build qualification verifies the full packaged closure. Runtime acquisition
-# verifies the scientific RECORD members once; subsequent workers verify its
-# identity and the selected callable without repeating whole-package hashing.
-# Selected environments are admitted by version range; Rust snapshots their
-# nirs4all package and metadata to refuse later changes.
+if importlib.metadata.version("nirs4all") != sys.argv[3]:
+    raise RuntimeError("the nirs4all distribution changed since the scientific host was admitted")
 import nirs4all
 target=getattr(nirs4all,"studio_scientific_job_v1",None)
 if not callable(target):
     raise RuntimeError("scientific callable unavailable")
-actual_path=os.path.realpath(inspect.getsourcefile(target))
-# Rust canonical paths may use the Windows extended-length prefix while
-# Python reports the same file without it. Compare file identity, retaining
-# the content attestation for both spellings.
-if not os.path.samefile(actual_path, sys.argv[2]) or hashlib.sha256(open(actual_path,"rb").read()).hexdigest() != sys.argv[3]:
-    raise RuntimeError("scientific callable identity changed")
 import contextlib
 with contextlib.redirect_stdout(sys.stderr):
     if request.get("schema") == "nirs4all.studio-document-request.v1":
@@ -393,14 +285,13 @@ for text_chunk in json.JSONEncoder(allow_nan=False,ensure_ascii=False,separators
         raise RuntimeError("scientific response exceeds stdout budget")
     encoded.extend(chunk)
 sys.stdout.buffer.write(encoded)
-"#;
+"#
+);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScientificCpythonUnavailable {
     HostUnavailable,
-    HostSymlinkUnsupported,
-    HostTooLarge,
-    HostTampered,
+    AdaptersUnavailable,
     SpawnFailed,
     TimedOut,
     ProcessFailed,
@@ -412,12 +303,12 @@ pub enum ScientificCpythonUnavailable {
     UnsupportedPythonVersion,
     IsolationDisabled,
     NetworkGuardFailed,
-    CallableUnavailable,
-    CallableTampered,
-    DistributionTampered,
+    DistributionMissing,
+    DistributionInconsistent,
     DistributionVersionUnsupported,
-    RuntimeContractUnavailable,
-    RuntimeContractTampered,
+    LibraryImportFailed,
+    CallableUnavailable,
+    WindowsSystemRootUnavailable,
     RequestResolverUnavailable,
     PlatformKillTreeUnqualified,
     TerminalCallbackFailed,
@@ -430,9 +321,7 @@ impl ScientificCpythonUnavailable {
     pub const fn reason(self) -> &'static str {
         match self {
             Self::HostUnavailable => "python_host_unavailable",
-            Self::HostSymlinkUnsupported => "python_host_symlink_unsupported",
-            Self::HostTooLarge => "python_host_too_large",
-            Self::HostTampered => "python_host_tampered",
+            Self::AdaptersUnavailable => "studio_adapters_unavailable",
             Self::SpawnFailed => "python_host_spawn_failed",
             Self::TimedOut => "python_host_timed_out",
             Self::ProcessFailed => "python_host_process_failed",
@@ -444,12 +333,12 @@ impl ScientificCpythonUnavailable {
             Self::UnsupportedPythonVersion => "python_host_version_unsupported",
             Self::IsolationDisabled => "python_host_isolation_disabled",
             Self::NetworkGuardFailed => "python_host_network_guard_failed",
-            Self::CallableUnavailable => "scientific_callable_unavailable",
-            Self::CallableTampered => "scientific_callable_tampered",
-            Self::DistributionTampered => "scientific_distribution_tampered",
+            Self::DistributionMissing => "scientific_distribution_missing",
+            Self::DistributionInconsistent => "scientific_distribution_inconsistent",
             Self::DistributionVersionUnsupported => "scientific_distribution_version_unsupported",
-            Self::RuntimeContractUnavailable => "python_runtime_contract_unavailable",
-            Self::RuntimeContractTampered => "python_runtime_contract_tampered",
+            Self::LibraryImportFailed => "scientific_library_import_failed",
+            Self::CallableUnavailable => "scientific_callable_unavailable",
+            Self::WindowsSystemRootUnavailable => "python_host_windows_system_root_unavailable",
             Self::RequestResolverUnavailable => "scientific_request_resolver_unavailable",
             Self::PlatformKillTreeUnqualified => "scientific_platform_kill_tree_unqualified",
             Self::TerminalCallbackFailed => "scientific_terminal_callback_failed",
@@ -459,66 +348,26 @@ impl ScientificCpythonUnavailable {
     }
 }
 
+/// The interpreter and directories handed over by the application, with the
+/// nirs4all release found when the host was admitted.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct HostIdentity {
-    canonical_path: PathBuf,
-    selected_site_packages: Option<PathBuf>,
-    size: u64,
-    sha256: [u8; 32],
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RuntimeClosureFile {
-    relative_path: String,
-    size: u64,
-    sha256: [u8; 32],
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RuntimePathSnapshot {
-    relative_path: String,
-    size: u64,
-    device: u64,
-    inode: u128,
-    modified_nanos: i128,
-    changed_nanos: i128,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RuntimeSnapshot {
-    directories: Vec<RuntimePathSnapshot>,
-    files: Vec<RuntimePathSnapshot>,
-}
-
-#[derive(Clone, Debug)]
-struct PackagedRuntimeIdentity {
-    runtime_root: PathBuf,
+struct ScientificHost {
+    python: PathBuf,
     site_packages: PathBuf,
-    closure: HostIdentity,
-    directories: Vec<String>,
-    files: Vec<RuntimeClosureFile>,
-    snapshot: Arc<Mutex<RuntimeSnapshot>>,
-    full_hash_scans: Arc<AtomicUsize>,
-    changes: Option<Arc<warm_library_host::RuntimeChanges>>,
-    full_inventory_check: bool,
+    adapters: PathBuf,
+    distribution_version: String,
 }
 
-/// Sticky acquisition record for an explicitly selected `CPython` stdio host.
+/// Acquisition record for the `CPython` stdio host the application selected.
 ///
-/// The packaged runtime requires the exact attested distribution and callable;
-/// a selected environment requires a supported nirs4all release. Both need a qualified
-/// Unix process group or Windows kill-on-close Job Object, and the Rust-owned
-/// saved-run resolver that prepares the callable's path-free matrix contract
-/// before any job mutation.
+/// Admission requires `CPython` 3.11 or newer, a nirs4all release within the
+/// catalogue range, and a worker bootstrap that imports nirs4all and its Studio
+/// callables. Execution additionally needs a qualified Unix process group or
+/// Windows kill-on-close Job Object, and the Rust-owned saved-run resolver that
+/// prepares the callable's path-free matrix contract before any job mutation.
 #[derive(Debug)]
 pub struct CpythonScientificJobExecutor {
-    identity: Option<HostIdentity>,
-    distribution_version: Option<String>,
-    callable_identity: Option<HostIdentity>,
-    packaged_runtime: Option<PackagedRuntimeIdentity>,
-    existing_site_packages: Option<PathBuf>,
-    selected_library: Option<selected_library_identity::SelectedLibraryIdentity>,
-    adapter_verification: Mutex<Option<RuntimeSnapshot>>,
+    host: Option<ScientificHost>,
     dataset_cache_scope: u64,
     #[cfg_attr(not(any(unix, windows)), allow(dead_code))]
     acquisition: ScientificCpythonUnavailable,
@@ -542,76 +391,14 @@ impl CpythonScientificJobExecutor {
     /// The nirs4all release found when this host was acquired.
     #[must_use]
     pub fn distribution_version(&self) -> Option<&str> {
-        self.distribution_version.as_deref()
+        self.host
+            .as_ref()
+            .map(|host| host.distribution_version.as_str())
     }
 
-    fn verify_document_adapters(&self, site_packages: &Path) -> Result<(), String> {
-        let _timing = BoundaryTiming::start("adapter_validation");
-        let mut verified = self
-            .adapter_verification
-            .lock()
-            .map_err(|_| "Adapter verification lock failed")?;
-        if self.packaged_runtime.is_some() && verified.is_some() {
-            // Bundled adapters are qualified with the installation. Verify them
-            // once per host instead of rescanning them on every exchange.
-            return Ok(());
-        }
-        let root = site_packages.join("studio_document_adapters");
-        let before = collect_runtime_snapshot(&root).map_err(|error| error.reason().to_owned())?;
-        if runtime_snapshot_cache_is_trustworthy() && verified.as_ref() == Some(&before) {
-            return Ok(());
-        }
-        if performance_diagnostics_enabled() {
-            eprintln!(
-                "Studio performance adapter_full_hash_scan files={}",
-                before.files.len()
-            );
-        }
-        crate::document_cpython::verify(site_packages)?;
-        let after = collect_runtime_snapshot(&root).map_err(|error| error.reason().to_owned())?;
-        if before != after {
-            return Err("Document adapters changed during verification".into());
-        }
-        *verified = Some(after);
-        drop(verified);
-        Ok(())
-    }
-
-    pub(crate) fn library_facades_available(&self) -> bool {
-        self.library_facades_available_with(validate_runtime_availability)
-    }
-
-    pub(crate) fn library_facades_available_background(&self) -> bool {
-        self.library_facades_available_with(validate_runtime_availability_background)
-    }
-
-    fn library_facades_available_with(
-        &self,
-        validate: fn(&PackagedRuntimeIdentity) -> Result<(), ScientificCpythonUnavailable>,
-    ) -> bool {
-        platform_kill_tree_qualified()
-            && self.identity.is_some()
-            && self.callable_identity.is_some()
-            && self.packaged_runtime.as_ref().map_or_else(
-                || {
-                    self.existing_site_packages
-                        .as_ref()
-                        .is_some_and(|site_packages| {
-                            self.selected_library.as_ref().map_or_else(
-                                || {
-                                    self.identity
-                                        .as_ref()
-                                        .is_some_and(|host| verify_identity(host).is_ok())
-                                        && self.callable_identity.as_ref().is_some_and(|callable| {
-                                            verify_identity(callable).is_ok()
-                                        })
-                                },
-                                |selected| selected.verify().is_ok(),
-                            ) && self.verify_document_adapters(site_packages).is_ok()
-                        })
-                },
-                |runtime| validate(runtime).is_ok(),
-            )
+    /// Whether the admitted host can serve interactive library requests.
+    pub(crate) const fn library_facades_available(&self) -> bool {
+        platform_kill_tree_qualified() && self.host.is_some()
     }
 
     pub(crate) fn invoke_library_facade(
@@ -632,21 +419,16 @@ impl CpythonScientificJobExecutor {
                 "Unsupported Studio library facade contract",
             ));
         }
-        let (Some(host), Some(callable)) = (&self.identity, &self.callable_identity) else {
+        let Some(host) = &self.host else {
             return Err(fail(
                 "host_unavailable",
-                "Attested scientific library host unavailable",
+                "Scientific library host unavailable",
             ));
         };
         let bytes = serde_json::to_vec(request)
             .map_err(|_| fail("invalid_request", "Library facade request is not JSON"))?;
         let response = self
-            .run_selected_interactive_request(
-                host,
-                callable,
-                &bytes,
-                SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
-            )
+            .run_interactive_request(host, &bytes, SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT)
             .map_err(|error| {
                 if matches!(std::env::var("CI").as_deref(), Ok("true" | "1")) {
                     eprintln!("Scientific library facade unavailable: {}", error.reason());
@@ -679,19 +461,6 @@ impl CpythonScientificJobExecutor {
         Ok(response)
     }
 
-    pub(crate) fn prediction_read_activity(
-        &self,
-        operation: &str,
-    ) -> Result<Option<warm_library_host::PredictionReadActivity>, ScientificCpythonUnavailable>
-    {
-        self.packaged_runtime
-            .as_ref()
-            .and_then(|runtime| runtime.changes.as_ref())
-            .map_or(Ok(None), |changes| {
-                changes.prediction_read_activity(operation)
-            })
-    }
-
     pub(crate) fn adapt_document(&self, operation: &str, payload: &Value) -> Result<Value, String> {
         self.adapt_document_cancellable(operation, payload, &AtomicBool::new(false))
     }
@@ -707,19 +476,9 @@ impl CpythonScientificJobExecutor {
             "dataset.preview" => "document_preview",
             _ => "document_other",
         });
-        let (Some(host), Some(callable)) = (&self.identity, &self.callable_identity) else {
-            return Err("Attested document library host unavailable".into());
+        let Some(host) = &self.host else {
+            return Err("Document library host unavailable".into());
         };
-        let site_packages = self
-            .packaged_runtime
-            .as_ref()
-            .map(|runtime| &runtime.site_packages)
-            .or(self.existing_site_packages.as_ref())
-            .ok_or("Document adapter folder unavailable")?;
-        {
-            let _timing = BoundaryTiming::start("adapter_verify_before");
-            self.verify_document_adapters(site_packages)?;
-        }
         let request = crate::document_cpython::request(operation, payload)?;
         let bytes = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
         let dedicated = matches!(
@@ -734,8 +493,6 @@ impl CpythonScientificJobExecutor {
             // Heavy operations must not occupy either interactive worker.
             run_scientific_process_with_timeout(
                 host,
-                callable,
-                self.packaged_runtime.as_ref(),
                 &bytes,
                 cancelled,
                 if operation == "analysis.shap_compute" {
@@ -745,18 +502,9 @@ impl CpythonScientificJobExecutor {
                 },
             )
         } else {
-            self.run_selected_interactive_request(
-                host,
-                callable,
-                &bytes,
-                SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT,
-            )
+            self.run_interactive_request(host, &bytes, SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT)
         }
         .map_err(|error| error.reason().to_owned())?;
-        {
-            let _timing = BoundaryTiming::start("adapter_verify_after");
-            self.verify_document_adapters(site_packages)?;
-        }
         if response["success"] == true {
             Ok(response["result"].clone())
         } else {
@@ -766,150 +514,49 @@ impl CpythonScientificJobExecutor {
                 .into())
         }
     }
-    fn run_selected_interactive_request(
-        &self,
-        host: &HostIdentity,
-        callable: &HostIdentity,
-        input: &[u8],
-        timeout: Duration,
-    ) -> Result<Value, ScientificCpythonUnavailable> {
-        if self.packaged_runtime.is_some() || self.selected_library.is_some() {
-            self.run_interactive_request(
-                host,
-                callable,
-                self.packaged_runtime.as_ref(),
-                input,
-                timeout,
-            )
-        } else {
-            // The bare-host diagnostic API has no selected installation to guard.
-            run_scientific_process_with_timeout(
-                host,
-                callable,
-                None,
-                input,
-                &AtomicBool::new(false),
-                timeout,
-            )
-        }
-    }
 
+    /// Admit the interpreter the application selected.
+    ///
+    /// `site_packages` is that environment's package directory and
+    /// `adapters_dir` the application directory that contains the
+    /// `studio_document_adapters` package.
     #[must_use]
-    pub fn acquire(path: impl AsRef<Path>) -> Self {
-        let config_dir = std::env::var_os("NIRS4ALL_CONFIG")
-            .map(PathBuf::from)
-            .unwrap_or_default();
-        Self::acquire_with_config_dir(path, config_dir)
-    }
-
-    #[must_use]
-    pub fn acquire_with_config_dir(path: impl AsRef<Path>, config_dir: impl Into<PathBuf>) -> Self {
-        Self::acquire_inner(path.as_ref(), None, None, config_dir.into())
-    }
-
-    /// Acquire only an adjacent packaged runtime already selected by Electron's
-    /// content contract. Product startup uses this path; user venvs and PATH
-    /// discovery never reach it.
-    #[must_use]
-    pub fn acquire_packaged_with_config_dir(
-        path: impl AsRef<Path>,
-        closure: impl AsRef<Path>,
-        runtime_root: impl AsRef<Path>,
+    pub fn acquire(
+        python: impl AsRef<Path>,
         site_packages: impl AsRef<Path>,
+        adapters_dir: impl AsRef<Path>,
         config_dir: impl Into<PathBuf>,
     ) -> Self {
-        let packaged_runtime = packaged_runtime_identity_with_policy(
-            path.as_ref(),
-            closure.as_ref(),
-            runtime_root.as_ref(),
+        Self::acquire_within(
+            python.as_ref(),
             site_packages.as_ref(),
-            false,
-        );
-        match packaged_runtime {
-            Ok(identity) => {
-                Self::acquire_inner(path.as_ref(), Some(identity), None, config_dir.into())
-            }
-            Err(error) => Self::unavailable(error, config_dir.into()),
-        }
-    }
-
-    /// Reuse an explicitly selected interpreter while retaining the exact
-    /// scientific distribution, document adapter and bounded-process checks.
-    #[must_use]
-    pub fn acquire_existing_with_config_dir(
-        path: impl AsRef<Path>,
-        site_packages: impl Into<PathBuf>,
-        config_dir: impl Into<PathBuf>,
-    ) -> Self {
-        Self::acquire_inner(
-            path.as_ref(),
-            None,
-            Some(site_packages.into()),
+            adapters_dir.as_ref(),
             config_dir.into(),
+            SCIENTIFIC_CPYTHON_ACQUISITION_TIMEOUT,
         )
     }
 
-    fn acquire_inner(
-        path: &Path,
-        packaged_runtime: Option<PackagedRuntimeIdentity>,
-        existing_site_packages: Option<PathBuf>,
+    fn acquire_within(
+        python: &Path,
+        site_packages: &Path,
+        adapters_dir: &Path,
         config_dir: PathBuf,
+        timeout: Duration,
     ) -> Self {
         let started = Instant::now();
-        let verification = host_verification_cache::VerificationCache::new(&config_dir);
-        let resolver = ScientificRequestResolver::new(config_dir);
-        let acquired = packaged_runtime.as_ref().map_or_else(
-            || {
-                existing_site_packages.as_deref().map_or_else(
-                    || acquire_host(path, None).map(|acquired| (acquired, None, None)),
-                    |selected_site| acquire_selected(path, selected_site, &verification),
-                )
-            },
-            |runtime| acquire_packaged(path, runtime, &verification),
-        );
-        log_acquisition(
-            packaged_runtime.is_some(),
-            acquired.as_ref().map(|(acquired, ..)| acquired),
-            started.elapsed(),
-        );
+        let acquired = acquire_host(python, site_packages, adapters_dir, timeout);
+        log_acquisition(acquired.as_ref().map(|(host, _)| host), started.elapsed());
         match acquired {
-            Ok((acquired, worker, selected_library)) => {
-                let callable_ready = acquired.callable.is_some();
-                Self {
-                    identity: Some(acquired.identity),
-                    distribution_version: Some(acquired.distribution_version),
-                    callable_identity: acquired.callable,
-                    packaged_runtime,
-                    existing_site_packages,
-                    selected_library,
-                    adapter_verification: Mutex::new(None),
-                    dataset_cache_scope: NEXT_DATASET_CACHE_SCOPE.fetch_add(1, Ordering::Relaxed),
-                    acquisition: if callable_ready {
-                        ScientificCpythonUnavailable::RequestResolverUnavailable
-                    } else {
-                        ScientificCpythonUnavailable::CallableUnavailable
-                    },
-                    resolver,
-                    running: Arc::new(Mutex::new(BTreeMap::new())),
-                    terminal_callback_failed: Arc::new(AtomicBool::new(false)),
-                    warm_workers: [Mutex::new(worker), Mutex::new(None)],
-                }
-            }
-            Err(error) => Self {
-                identity: None,
-                distribution_version: None,
-                callable_identity: None,
-                packaged_runtime,
-                existing_site_packages,
-                selected_library: None,
-                adapter_verification: Mutex::new(None),
+            Ok((host, worker)) => Self {
+                host: Some(host),
                 dataset_cache_scope: NEXT_DATASET_CACHE_SCOPE.fetch_add(1, Ordering::Relaxed),
-                acquisition: error,
-                resolver,
+                acquisition: ScientificCpythonUnavailable::RequestResolverUnavailable,
+                resolver: ScientificRequestResolver::new(config_dir),
                 running: Arc::new(Mutex::new(BTreeMap::new())),
                 terminal_callback_failed: Arc::new(AtomicBool::new(false)),
-                warm_workers: std::array::from_fn(|_| Mutex::new(None)),
+                warm_workers: [Mutex::new(Some(worker)), Mutex::new(None)],
             },
+            Err(error) => Self::unavailable(error, config_dir),
         }
     }
 
@@ -922,18 +569,12 @@ impl CpythonScientificJobExecutor {
     /// Whether acquisition ran out of time, rather than finding an unusable host.
     #[must_use]
     pub fn acquisition_timed_out(&self) -> bool {
-        self.identity.is_none() && self.acquisition == ScientificCpythonUnavailable::TimedOut
+        self.host.is_none() && self.acquisition == ScientificCpythonUnavailable::TimedOut
     }
 
     fn unavailable(error: ScientificCpythonUnavailable, config_dir: PathBuf) -> Self {
         Self {
-            identity: None,
-            distribution_version: None,
-            callable_identity: None,
-            packaged_runtime: None,
-            existing_site_packages: None,
-            selected_library: None,
-            adapter_verification: Mutex::new(None),
+            host: None,
             dataset_cache_scope: NEXT_DATASET_CACHE_SCOPE.fetch_add(1, Ordering::Relaxed),
             acquisition: error,
             resolver: ScientificRequestResolver::new(config_dir),
@@ -954,33 +595,6 @@ impl CpythonScientificJobExecutor {
             if self.terminal_callback_failed.load(Ordering::Acquire) {
                 return ScientificCpythonUnavailable::TerminalCallbackFailed.reason();
             }
-            if let Some(runtime) = &self.packaged_runtime {
-                if validate_runtime_availability(runtime).is_err() {
-                    return ScientificCpythonUnavailable::RuntimeContractTampered.reason();
-                }
-            } else if let Some(selected) = &self.selected_library {
-                if let Err(error) = selected.verify() {
-                    return error.reason();
-                }
-            } else {
-                if self
-                    .identity
-                    .as_ref()
-                    .is_some_and(|identity| verify_identity(identity).is_err())
-                {
-                    return ScientificCpythonUnavailable::HostTampered.reason();
-                }
-                if self
-                    .callable_identity
-                    .as_ref()
-                    .is_some_and(|identity| verify_identity(identity).is_err())
-                {
-                    return ScientificCpythonUnavailable::CallableTampered.reason();
-                }
-            }
-            if self.callable_identity.is_some() && !self.resolver.is_configured() {
-                return ScientificCpythonUnavailable::RequestResolverUnavailable.reason();
-            }
             self.acquisition.reason()
         }
     }
@@ -989,8 +603,7 @@ impl CpythonScientificJobExecutor {
 impl ScientificJobExecutor for CpythonScientificJobExecutor {
     fn is_selected(&self) -> bool {
         platform_kill_tree_qualified()
-            && self.identity.is_some()
-            && self.callable_identity.is_some()
+            && self.host.is_some()
             && self.resolver.is_configured()
             && !self.terminal_callback_failed.load(Ordering::Acquire)
     }
@@ -1009,10 +622,8 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
                 detail: "the scientific Python host is not available",
             });
         }
-        // The mandatory batch worker below revalidates the selected executable,
-        // callable and manifest anchors, and the scientific distribution before
-        // importing. Do not run a second cold
-        // import/attestation subprocess for the same admission boundary.
+        // The host was admitted at acquisition: do not run a second cold import
+        // for the same admission boundary.
         let payload = self
             .resolver
             .resolve_general_batched(request, |operation, payload| {
@@ -1044,15 +655,9 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         request: &ScientificExecutionRequest,
         terminal: Arc<dyn ScientificJobTerminal>,
     ) -> Result<(), JobExecutorError> {
-        let (Some(host), Some(callable)) = (&self.identity, &self.callable_identity) else {
+        let Some(host) = &self.host else {
             return Err(JobExecutorError::SubmissionRefused);
         };
-        if let Some(packaged_runtime) = &self.packaged_runtime {
-            verify_packaged_runtime_identity(packaged_runtime)
-                .map_err(|_| JobExecutorError::SubmissionRefused)?;
-        }
-        verify_identity(host).map_err(|_| JobExecutorError::SubmissionRefused)?;
-        verify_identity(callable).map_err(|_| JobExecutorError::SubmissionRefused)?;
         validate_scientific_request(&request.payload, &request.job_id)
             .map_err(|_| JobExecutorError::SubmissionRefused)?;
         let encoded = serde_json::to_vec(&request.payload)
@@ -1070,20 +675,12 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         }
         let job_id = request.job_id.clone();
         let host = host.clone();
-        let callable = callable.clone();
-        let packaged_runtime = self.packaged_runtime.clone();
         let running = Arc::clone(&self.running);
         let terminal_callback_failed = Arc::clone(&self.terminal_callback_failed);
         std::thread::spawn(move || {
             let _ = terminal.activity(&job_id, "Preparing the scientific runtime");
-            let (outcome, diagnostic) = run_scientific_process(
-                &host,
-                &callable,
-                packaged_runtime.as_ref(),
-                &encoded,
-                &cancelled,
-                Some(Arc::clone(&terminal)),
-            );
+            let (outcome, diagnostic) =
+                run_scientific_process(&host, &encoded, &cancelled, Some(Arc::clone(&terminal)));
             running
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1125,129 +722,55 @@ const fn platform_kill_tree_qualified() -> bool {
     cfg!(any(unix, windows))
 }
 
-type AcquisitionParts = (
-    AcquiredHost,
-    Option<warm_library_host::Worker>,
-    Option<selected_library_identity::SelectedLibraryIdentity>,
-);
-
-/// Budget for an acquisition: warm when the host was acquired before.
-const fn preflight_budget(verified: Option<&host_verification_cache::VerifiedHost>) -> Duration {
-    if verified.is_some() {
-        SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT
-    } else {
-        SCIENTIFIC_CPYTHON_COLD_PREFLIGHT_TIMEOUT
+/// Admit the selected interpreter; the probe process becomes the first worker.
+fn acquire_host(
+    python: &Path,
+    site_packages: &Path,
+    adapters_dir: &Path,
+    timeout: Duration,
+) -> Result<(ScientificHost, warm_library_host::Worker), ScientificCpythonUnavailable> {
+    // Workers run in a scratch directory, so every path is made absolute. A
+    // venv interpreter is a link to its base interpreter: keep the selected
+    // path, since resolving it would leave the environment.
+    let absolute = |path: &Path, refusal| std::path::absolute(path).map_err(|_| refusal);
+    let mut host = ScientificHost {
+        python: absolute(python, ScientificCpythonUnavailable::HostUnavailable)?,
+        site_packages: absolute(site_packages, ScientificCpythonUnavailable::HostUnavailable)?,
+        adapters: absolute(
+            adapters_dir,
+            ScientificCpythonUnavailable::AdaptersUnavailable,
+        )?,
+        distribution_version: String::new(),
+    };
+    if !host.python.is_file() || !host.site_packages.is_dir() {
+        return Err(ScientificCpythonUnavailable::HostUnavailable);
     }
-}
-
-fn acquire_selected(
-    path: &Path,
-    selected_site: &Path,
-    verification: &host_verification_cache::VerificationCache,
-) -> Result<AcquisitionParts, ScientificCpythonUnavailable> {
-    let mut identity = host_identity_with_limit(path, MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)?;
-    identity.canonical_path =
-        std::path::absolute(path).map_err(|_| ScientificCpythonUnavailable::HostUnavailable)?;
-    identity.selected_site_packages = Some(selected_site.to_path_buf());
-    // Capture before the preflight so installation changes across
-    // the initial content checks are refused too.
-    let selected =
-        selected_library_identity::SelectedLibraryIdentity::capture(&identity, selected_site)?;
-    let key = host_verification_cache::VerificationKey::new(&identity, Some(selected_site), None);
-    let budget = preflight_budget(verification.lookup(&key).as_ref());
-    let (worker, output) = warm_library_host::Worker::acquire(&identity, None, None, budget)?;
-    let acquired = parse_acquired_host(identity, &output, DistributionPolicy::Selected)?;
-    verify_identity(&acquired.identity)?;
-    selected.verify()?;
-    if acquired.callable.is_some() {
-        verification.record(&key, None);
-    }
-    Ok((acquired, Some(worker), Some(selected)))
-}
-
-fn acquire_packaged(
-    path: &Path,
-    runtime: &PackagedRuntimeIdentity,
-    verification: &host_verification_cache::VerificationCache,
-) -> Result<AcquisitionParts, ScientificCpythonUnavailable> {
-    let identity = host_identity(path)?;
-    let key = host_verification_cache::VerificationKey::new(
-        &identity,
-        Some(&runtime.site_packages),
-        Some(&runtime.closure),
-    );
-    let verified = verification.lookup(&key);
-    let (worker, output) = warm_library_host::Worker::acquire(
-        &identity,
-        Some(runtime),
-        verified
-            .as_ref()
-            .and_then(|verified| verified.distribution_stat_sha256.as_deref()),
-        preflight_budget(verified.as_ref()),
-    )?;
-    let acquired = parse_acquired_host(identity, &output, DistributionPolicy::Packaged)?;
-    if acquired.callable.is_some() {
-        verification.record(&key, acquired.distribution_stat_sha256.as_deref());
-    }
-    Ok((acquired, Some(worker), None))
+    // The adapters are the application's own files: verified here, once.
+    crate::document_cpython::verify(&host.adapters).map_err(|error| {
+        eprintln!("Studio scientific host refused: document adapters: {error}");
+        ScientificCpythonUnavailable::AdaptersUnavailable
+    })?;
+    let (worker, output) = warm_library_host::Worker::acquire(&host, timeout)?;
+    let range = crate::recommended_config::nirs4all_range()
+        .ok_or(ScientificCpythonUnavailable::DistributionVersionUnsupported)?;
+    host.distribution_version = admitted_distribution(&output, &range)?;
+    Ok((host, worker))
 }
 
 /// One diagnostic line per acquisition; Electron records it in the main log.
 fn log_acquisition(
-    packaged: bool,
-    acquired: Result<&AcquiredHost, &ScientificCpythonUnavailable>,
+    acquired: Result<&ScientificHost, &ScientificCpythonUnavailable>,
     elapsed: Duration,
 ) {
-    let kind = if packaged { "packaged" } else { "selected" };
     let outcome = match acquired {
-        Ok(acquired) if acquired.callable.is_some() => {
-            format!("ready nirs4all={}", acquired.distribution_version)
-        }
-        Ok(acquired) => format!(
-            "unavailable nirs4all={} reason={}",
-            acquired.distribution_version,
-            ScientificCpythonUnavailable::CallableUnavailable.reason()
-        ),
+        Ok(host) => format!("ready nirs4all={}", host.distribution_version),
         Err(error) => format!("unavailable reason={}", error.reason()),
     };
     let _ = writeln!(
         std::io::stderr().lock(),
-        "Studio scientific host {kind} {outcome} elapsed_ms={}",
+        "Studio scientific host {outcome} elapsed_ms={}",
         elapsed.as_millis()
     );
-}
-
-/// Which nirs4all distribution an acquired host must expose.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DistributionPolicy {
-    /// The packaged runtime: the exact attested release, RECORD manifest,
-    /// verified members and callable digest.
-    Packaged,
-    /// A selected (custom or managed) interpreter: a supported release only.
-    Selected,
-}
-
-#[derive(Debug)]
-struct AcquiredHost {
-    identity: HostIdentity,
-    callable: Option<HostIdentity>,
-    distribution_version: String,
-    /// Stat identity of the verified packaged distribution members.
-    distribution_stat_sha256: Option<String>,
-}
-
-fn acquire_host(
-    path: &Path,
-    site_packages: Option<&Path>,
-) -> Result<AcquiredHost, ScientificCpythonUnavailable> {
-    let identity = host_identity(path)?;
-    let output = run_preflight(&identity.canonical_path, site_packages)?;
-    let policy = if site_packages.is_some() {
-        DistributionPolicy::Packaged
-    } else {
-        DistributionPolicy::Selected
-    };
-    parse_acquired_host(identity, &output, policy)
 }
 
 /// Numeric release and pre-release marker of a PEP 440 version.
@@ -1290,1081 +813,107 @@ fn compare_releases(left: &[u64], right: &[u64]) -> std::cmp::Ordering {
         .unwrap_or(std::cmp::Ordering::Equal)
 }
 
-/// Whether a selected environment's nirs4all release is in
-/// `[SCIENTIFIC_DISTRIBUTION_VERSION, SCIENTIFIC_DISTRIBUTION_LIMIT)`.
-/// Pre-releases sort before their release, and pre-releases of the limit are
-/// excluded, as in PEP 440.
-fn distribution_version_supported(version: &str) -> bool {
-    let (Some((release, prerelease)), Some((minimum, _)), Some((limit, _))) = (
-        version_release(version),
-        version_release(SCIENTIFIC_DISTRIBUTION_VERSION),
-        version_release(SCIENTIFIC_DISTRIBUTION_LIMIT),
-    ) else {
+/// Whether `version` satisfies the catalogue range, a comma-separated list of
+/// `>=`, `>`, `<=`, `<`, `==` and `!=` clauses over plain releases (an empty
+/// range accepts any release). As in PEP 440, a pre-release sorts before its
+/// release and `<` excludes the pre-releases of its bound. Any other clause
+/// refuses.
+fn distribution_version_supported(version: &str, range: &str) -> bool {
+    use std::cmp::Ordering::{Equal, Greater, Less};
+    let Some((release, prerelease)) = version_release(version) else {
         return false;
     };
-    let from_minimum = match compare_releases(&release, &minimum) {
-        std::cmp::Ordering::Greater => true,
-        std::cmp::Ordering::Equal => !prerelease,
-        std::cmp::Ordering::Less => false,
-    };
-    from_minimum && compare_releases(&release, &limit).is_lt()
+    range
+        .split(',')
+        .map(str::trim)
+        .filter(|clause| !clause.is_empty())
+        .all(|clause| {
+            let operator_end = clause
+                .find(|character| !matches!(character, '<' | '>' | '=' | '!'))
+                .unwrap_or(clause.len());
+            let (operator, bound) = clause.split_at(operator_end);
+            let bound = bound.trim();
+            if !bound
+                .chars()
+                .all(|character| character.is_ascii_digit() || character == '.')
+            {
+                return false;
+            }
+            let Some((bound, _)) = version_release(bound) else {
+                return false;
+            };
+            let ordering = compare_releases(&release, &bound);
+            let exact = ordering == Equal && !prerelease;
+            match operator {
+                ">=" => ordering == Greater || exact,
+                ">" => ordering == Greater,
+                "<=" => ordering != Greater,
+                "<" => ordering == Less,
+                "==" => exact,
+                "!=" => !exact,
+                _ => false,
+            }
+        })
 }
 
-/// Check the reported nirs4all distribution against `policy`; return its version.
-fn checked_distribution(
-    object: &serde_json::Map<String, Value>,
-    policy: DistributionPolicy,
-) -> Result<String, ScientificCpythonUnavailable> {
-    let distribution_version = object
-        .get("distribution_version")
-        .and_then(Value::as_str)
-        .ok_or(ScientificCpythonUnavailable::DistributionTampered)?
-        .to_owned();
-    if object.get("distribution").and_then(Value::as_str) != Some("nirs4all") {
-        return Err(ScientificCpythonUnavailable::DistributionTampered);
-    }
-    if !distribution_version_supported(&distribution_version) {
-        return Err(ScientificCpythonUnavailable::DistributionVersionUnsupported);
-    }
-    if policy == DistributionPolicy::Packaged
-        && (distribution_version != PACKAGED_DISTRIBUTION_VERSION
-            || object
-                .get("distribution_manifest_sha256")
-                .and_then(Value::as_str)
-                != Some(SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256)
-            || !object
-                .get("distribution_record_sha256")
-                .and_then(Value::as_str)
-                .is_some_and(valid_lower_sha256)
-            || object
-                .get("distribution_files_verified")
-                .and_then(Value::as_bool)
-                != Some(true)
-            || object.get("selected_wheel_sha256").and_then(Value::as_str)
-                != Some(SCIENTIFIC_WHEEL_SHA256)
-            || object.get("source_commit").and_then(Value::as_str)
-                != Some(SCIENTIFIC_SOURCE_COMMIT))
-    {
-        return Err(ScientificCpythonUnavailable::DistributionTampered);
-    }
-    Ok(distribution_version)
-}
-
-fn parse_acquired_host(
-    identity: HostIdentity,
+/// Check the admission probe's report; return the admitted nirs4all version.
+fn admitted_distribution(
     output: &[u8],
-    policy: DistributionPolicy,
-) -> Result<AcquiredHost, ScientificCpythonUnavailable> {
+    range: &str,
+) -> Result<String, ScientificCpythonUnavailable> {
     let response: Value = serde_json::from_slice(output)
         .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
-    let object = response
-        .as_object()
-        .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-    if object.len() != 19
-        || object.get("schema").and_then(Value::as_str)
-            != Some("nirs4all.studio-scientific-cpython-host.v1")
-        || object.get("callable").and_then(Value::as_str)
-            != Some("nirs4all.studio_scientific_job_v1")
-        || object.get("network_ownership").and_then(Value::as_str) != Some("forbidden")
-        || !object.get("distribution_error").is_some_and(Value::is_null)
-    {
+    let version = response["version"]
+        .as_array()
+        .filter(|version| version.len() == 3)
+        .and_then(|version| Some((version[0].as_u64()?, version[1].as_u64()?)));
+    let (Some("nirs4all.studio-scientific-cpython-host.v2"), Some(implementation), Some(version)) = (
+        response["schema"].as_str(),
+        response["implementation"].as_str(),
+        version,
+    ) else {
         return Err(ScientificCpythonUnavailable::MalformedResponse);
-    }
-    let distribution_version = checked_distribution(object, policy)?;
-    if object.get("implementation").and_then(Value::as_str) != Some("cpython") {
+    };
+    if implementation != "cpython" {
         return Err(ScientificCpythonUnavailable::NotCpython);
     }
-    let version = object
-        .get("version")
-        .and_then(Value::as_array)
-        .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-    if version.len() != 3 || !version.iter().all(Value::is_u64) {
-        return Err(ScientificCpythonUnavailable::MalformedResponse);
-    }
-    let major = version[0]
-        .as_u64()
-        .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-    let minor = version[1]
-        .as_u64()
-        .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-    if major != 3 || minor < 11 {
+    if version.0 != 3 || version.1 < 11 {
         return Err(ScientificCpythonUnavailable::UnsupportedPythonVersion);
     }
-    if object.get("isolated").and_then(Value::as_bool) != Some(true) {
+    if response["isolated"] != true {
         return Err(ScientificCpythonUnavailable::IsolationDisabled);
     }
-    if object.get("network_bind_denied").and_then(Value::as_bool) != Some(true) {
+    if response["network_bind_denied"] != true {
         return Err(ScientificCpythonUnavailable::NetworkGuardFailed);
     }
-    let ready = object
-        .get("ready")
-        .and_then(Value::as_bool)
-        .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-    let callable_identity = if ready {
-        let callable_path = object
-            .get("callable_path")
-            .and_then(Value::as_str)
-            .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-        let expected_digest = object
-            .get("callable_sha256")
-            .and_then(Value::as_str)
-            .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-        if policy == DistributionPolicy::Packaged && expected_digest != SCIENTIFIC_CALLABLE_SHA256 {
-            return Err(ScientificCpythonUnavailable::CallableTampered);
-        }
-        let callable_identity =
-            host_identity_with_limit(Path::new(callable_path), MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)?;
-        if hex_digest(&callable_identity.sha256) != expected_digest {
-            return Err(ScientificCpythonUnavailable::CallableTampered);
-        }
-        Some(callable_identity)
-    } else {
-        if !object.get("callable_path").is_some_and(Value::is_null)
-            || !object.get("callable_sha256").is_some_and(Value::is_null)
-        {
-            return Err(ScientificCpythonUnavailable::MalformedResponse);
-        }
-        None
-    };
-    let distribution_stat_sha256 = (policy == DistributionPolicy::Packaged)
-        .then(|| {
-            object
-                .get("distribution_stat_sha256")
-                .and_then(Value::as_str)
-        })
-        .flatten()
-        .filter(|digest| valid_lower_sha256(digest))
-        .map(str::to_owned);
-    Ok(AcquiredHost {
-        identity,
-        callable: callable_identity,
-        distribution_version,
-        distribution_stat_sha256,
-    })
-}
-
-fn valid_lower_sha256(digest: &str) -> bool {
-    digest.len() == 64
-        && digest
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-fn host_identity(path: &Path) -> Result<HostIdentity, ScientificCpythonUnavailable> {
-    let metadata =
-        fs::symlink_metadata(path).map_err(|_| ScientificCpythonUnavailable::HostUnavailable)?;
-    if metadata.file_type().is_symlink() {
-        return Err(ScientificCpythonUnavailable::HostSymlinkUnsupported);
-    }
-    host_identity_with_limit(path, MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)
-}
-
-#[cfg(test)]
-fn packaged_runtime_identity(
-    host: &Path,
-    closure: &Path,
-    runtime_root: &Path,
-    site_packages: &Path,
-) -> Result<PackagedRuntimeIdentity, ScientificCpythonUnavailable> {
-    packaged_runtime_identity_with_policy(host, closure, runtime_root, site_packages, true)
-}
-
-fn packaged_runtime_identity_with_policy(
-    host: &Path,
-    closure: &Path,
-    runtime_root: &Path,
-    site_packages: &Path,
-    full_inventory_check: bool,
-) -> Result<PackagedRuntimeIdentity, ScientificCpythonUnavailable> {
-    let runtime_root_path = absolute_path(runtime_root)?;
-    let package_root = runtime_root_path
-        .parent()
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let host_path = absolute_path(host)?;
-    let closure_path = absolute_path(closure)?;
-    let site_packages_path = absolute_path(site_packages)?;
-    reject_symlink_below(package_root, &runtime_root_path)?;
-    reject_symlink_below(package_root, &host_path)?;
-    reject_symlink_below(package_root, &closure_path)?;
-    reject_symlink_below(package_root, &site_packages_path)?;
-    let runtime_root = runtime_root_path
-        .canonicalize()
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let runtime_metadata = fs::metadata(&runtime_root)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    if !runtime_metadata.is_dir() {
-        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
-    }
-    let site_packages = site_packages_path
-        .canonicalize()
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let site_metadata = fs::metadata(&site_packages)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let host = host_path
-        .canonicalize()
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let closure = host_identity_with_limit(&closure_path, 32 * 1024 * 1024)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    if !site_metadata.is_dir()
-        || !site_packages.starts_with(&runtime_root)
-        || !host.starts_with(&runtime_root)
-        || closure.canonical_path.parent() != runtime_root.parent()
-        || runtime_root.file_name().and_then(std::ffi::OsStr::to_str) != Some("python")
-        || runtime_root
-            .parent()
-            .and_then(Path::file_name)
-            .and_then(std::ffi::OsStr::to_str)
-            != Some("python-runtime")
-        || closure
-            .canonical_path
-            .file_name()
-            .and_then(std::ffi::OsStr::to_str)
-            != Some("PYTHON_PLUGIN_CLOSURE.json")
-    {
-        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
-    }
-    let (directories, files) = parse_runtime_closure(&closure, &runtime_root, &site_packages)?;
-    // Bundled package versions are pinned during installer qualification.
-    // Exhaustive installation scans belong to qualification, not app startup
-    // or readiness polling. Retain bounded checks of the selected entry points.
-    let changes = full_inventory_check
-        .then(|| warm_library_host::RuntimeChanges::watch(&runtime_root))
-        .flatten();
-    let snapshot = if full_inventory_check {
-        collect_runtime_snapshot(&runtime_root)?
-    } else {
-        RuntimeSnapshot {
-            directories: Vec::new(),
-            files: Vec::new(),
-        }
-    };
-    let identity = PackagedRuntimeIdentity {
-        runtime_root,
-        site_packages,
-        closure,
-        directories,
-        files,
-        snapshot: Arc::new(Mutex::new(snapshot.clone())),
-        full_hash_scans: Arc::new(AtomicUsize::new(0)),
-        changes,
-        full_inventory_check,
-    };
-    if full_inventory_check {
-        verify_packaged_runtime_full(&identity, &snapshot)?;
-    } else {
-        verify_packaged_runtime_anchor(&identity)?;
-    }
-    Ok(identity)
-}
-
-fn parse_runtime_closure(
-    closure: &HostIdentity,
-    runtime_root: &Path,
-    site_packages: &Path,
-) -> Result<(Vec<String>, Vec<RuntimeClosureFile>), ScientificCpythonUnavailable> {
-    let encoded = fs::read(&closure.canonical_path)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let value: Value = serde_json::from_slice(&encoded)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    let object = value
-        .as_object()
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    let backend_root = runtime_root
-        .parent()
-        .and_then(Path::parent)
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let site_packages_relative = manifest_relative_path(
-        site_packages
-            .strip_prefix(backend_root)
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?,
-    )?;
-    if object.len() != 5
-        || object.get("schema").and_then(Value::as_str)
-            != Some("nirs4all.studio-python-plugin-closure.v1")
-        || object.get("root").and_then(Value::as_str) != Some("python-runtime/python")
-        || object.get("site_packages").and_then(Value::as_str)
-            != Some(site_packages_relative.as_str())
-    {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    let directories = object
-        .get("directories")
-        .and_then(Value::as_array)
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    let files = object
-        .get("files")
-        .and_then(Value::as_array)
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    if directories.is_empty()
-        || directories.len() > 100_000
-        || files.is_empty()
-        || files.len() > 100_000
-    {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    let directories = directories
-        .iter()
-        .map(|entry| {
-            let relative = entry
-                .as_str()
-                .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
-            validate_manifest_path(relative, true)?;
-            Ok(relative.to_owned())
-        })
-        .collect::<Result<Vec<_>, ScientificCpythonUnavailable>>()?;
-    if directories.windows(2).any(|pair| pair[0] >= pair[1]) || !directories[0].is_empty() {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    let files = files
-        .iter()
-        .map(parse_runtime_closure_file)
-        .collect::<Result<Vec<_>, ScientificCpythonUnavailable>>()?;
-    if files
-        .windows(2)
-        .any(|pair| pair[0].relative_path >= pair[1].relative_path)
-    {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    Ok((directories, files))
-}
-
-fn parse_runtime_closure_file(
-    value: &Value,
-) -> Result<RuntimeClosureFile, ScientificCpythonUnavailable> {
-    let object = value
-        .as_object()
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    let relative_path = object
-        .get("path")
-        .and_then(Value::as_str)
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    let size = object
-        .get("size")
-        .and_then(Value::as_u64)
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    let digest = object
-        .get("sha256")
-        .and_then(Value::as_str)
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    if object.len() != 3 {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    validate_manifest_path(relative_path, false)?;
-    Ok(RuntimeClosureFile {
-        relative_path: relative_path.to_owned(),
-        size,
-        sha256: parse_hex_digest(digest)?,
-    })
-}
-
-fn validate_manifest_path(
-    relative: &str,
-    allow_root: bool,
-) -> Result<(), ScientificCpythonUnavailable> {
-    if (relative.is_empty() && allow_root)
-        || (!relative.is_empty()
-            && !relative.starts_with('/')
-            && !relative.contains('\\')
-            && relative
-                .split('/')
-                .all(|component| !component.is_empty() && component != "." && component != ".."))
-    {
-        Ok(())
-    } else {
-        Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-    }
-}
-
-fn parse_hex_digest(digest: &str) -> Result<[u8; 32], ScientificCpythonUnavailable> {
-    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    let mut decoded = [0_u8; 32];
-    for (index, chunk) in digest.as_bytes().as_chunks::<2>().0.iter().enumerate() {
-        decoded[index] = (hex_nibble(chunk[0])? << 4) | hex_nibble(chunk[1])?;
-    }
-    Ok(decoded)
-}
-
-const fn hex_nibble(byte: u8) -> Result<u8, ScientificCpythonUnavailable> {
-    match byte {
-        b'0'..=b'9' => Ok(byte - b'0'),
-        b'a'..=b'f' => Ok(byte - b'a' + 10),
-        _ => Err(ScientificCpythonUnavailable::RuntimeContractTampered),
-    }
-}
-
-fn manifest_relative_path(path: &Path) -> Result<String, ScientificCpythonUnavailable> {
-    let mut parts = Vec::new();
-    for component in path.components() {
-        let std::path::Component::Normal(part) = component else {
-            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-        };
-        parts.push(
-            part.to_str()
-                .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?,
-        );
-    }
-    Ok(parts.join("/"))
-}
-
-fn absolute_path(path: &Path) -> Result<PathBuf, ScientificCpythonUnavailable> {
-    if path.is_absolute() {
-        Ok(path.to_path_buf())
-    } else {
-        Ok(std::env::current_dir()
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?
-            .join(path))
-    }
-}
-
-fn reject_symlink_below(boundary: &Path, path: &Path) -> Result<(), ScientificCpythonUnavailable> {
-    let relative = path
-        .strip_prefix(boundary)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let mut current = boundary.to_path_buf();
-    for component in relative.components() {
-        match component {
-            std::path::Component::Normal(_) => current.push(component),
-            std::path::Component::CurDir => continue,
-            _ => return Err(ScientificCpythonUnavailable::RuntimeContractTampered),
-        }
-        let metadata = fs::symlink_metadata(&current)
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-        if metadata.file_type().is_symlink() {
-            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-        }
-    }
-    let boundary_metadata = fs::symlink_metadata(boundary)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    if boundary_metadata.file_type().is_symlink() || !boundary_metadata.is_dir() {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    Ok(())
-}
-
-fn canonical_directory_identity(path: &Path) -> Result<PathBuf, ScientificCpythonUnavailable> {
-    let metadata = fs::symlink_metadata(path)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    path.canonicalize()
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)
-}
-
-fn validate_runtime_availability(
-    identity: &PackagedRuntimeIdentity,
-) -> Result<(), ScientificCpythonUnavailable> {
-    identity.changes.as_ref().map_or_else(
-        || verify_packaged_runtime_identity(identity),
-        |changes| changes.validate(identity).map(|_| ()),
-    )
-}
-
-fn validate_runtime_availability_background(
-    identity: &PackagedRuntimeIdentity,
-) -> Result<(), ScientificCpythonUnavailable> {
-    identity.changes.as_ref().map_or_else(
-        || verify_packaged_runtime_identity(identity),
-        |changes| changes.validate_background(identity).map(|_| ()),
-    )
-}
-
-fn verify_packaged_runtime_identity(
-    identity: &PackagedRuntimeIdentity,
-) -> Result<(), ScientificCpythonUnavailable> {
-    verify_packaged_runtime_anchor(identity)?;
-    if !identity.full_inventory_check {
-        return Ok(());
-    }
-    let current = collect_runtime_snapshot(&identity.runtime_root)?;
-    let mut baseline = identity
-        .snapshot
-        .lock()
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    if current == *baseline && runtime_snapshot_cache_is_trustworthy() {
-        return Ok(());
-    }
-    verify_packaged_runtime_full(identity, &current)?;
-    if runtime_identity_changed(&baseline, &current) {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    *baseline = current;
-    drop(baseline);
-    Ok(())
-}
-
-#[cfg(any(unix, windows))]
-const fn runtime_snapshot_cache_is_trustworthy() -> bool {
-    true
-}
-
-#[cfg(not(any(unix, windows)))]
-const fn runtime_snapshot_cache_is_trustworthy() -> bool {
-    // Unix ctime and Windows FILE_BASIC_INFO.ChangeTime detect restored mtime.
-    // Other targets do not expose an equivalent change marker,
-    // so those targets retain the full cryptographic verification on every
-    // boundary instead of weakening the fail-closed contract.
-    false
-}
-
-fn verify_packaged_runtime_full(
-    identity: &PackagedRuntimeIdentity,
-    before: &RuntimeSnapshot,
-) -> Result<(), ScientificCpythonUnavailable> {
-    let scans = identity.full_hash_scans.fetch_add(1, Ordering::Relaxed) + 1;
-    if performance_diagnostics_enabled() {
+    // The metadata version is only meaningful when it describes the imported code.
+    if let Some(inconsistency) = response["distribution_inconsistency"].as_str() {
         eprintln!(
-            "Studio performance runtime_full_hash_scan count={scans} files={}",
-            before.files.len()
+            "Studio scientific host refused: {}",
+            bounded_process_diagnostic(inconsistency.as_bytes())
         );
+        return Err(ScientificCpythonUnavailable::DistributionInconsistent);
     }
-    verify_packaged_runtime_anchor(identity)?;
-    let (directories, files) = collect_runtime_inventory(&identity.runtime_root)?;
-    let after = collect_runtime_snapshot(&identity.runtime_root)?;
-    if before != &after || directories != identity.directories || files != identity.files {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    Ok(())
-}
-
-fn runtime_identity_changed(previous: &RuntimeSnapshot, current: &RuntimeSnapshot) -> bool {
-    previous.directories.len() != current.directories.len()
-        || previous.files.len() != current.files.len()
-        || previous
-            .directories
-            .iter()
-            .zip(&current.directories)
-            .chain(previous.files.iter().zip(&current.files))
-            .any(|(left, right)| {
-                left.relative_path != right.relative_path
-                    || left.device != right.device
-                    || left.inode != right.inode
-            })
-}
-
-fn verify_packaged_runtime_anchor(
-    identity: &PackagedRuntimeIdentity,
-) -> Result<(), ScientificCpythonUnavailable> {
-    let runtime_root = canonical_directory_identity(&identity.runtime_root)?;
-    let site_packages = canonical_directory_identity(&identity.site_packages)?;
-    let closure_metadata = fs::symlink_metadata(&identity.closure.canonical_path)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    if runtime_root != identity.runtime_root
-        || site_packages != identity.site_packages
-        || closure_metadata.file_type().is_symlink()
-        || !closure_metadata.is_file()
-        || !site_packages.starts_with(&runtime_root)
-    {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    verify_identity(&identity.closure)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)
-}
-
-fn collect_runtime_inventory(
-    runtime_root: &Path,
-) -> Result<(Vec<String>, Vec<RuntimeClosureFile>), ScientificCpythonUnavailable> {
-    let mut pending = vec![runtime_root.to_path_buf()];
-    let mut directories = Vec::new();
-    let mut discovered = Vec::new();
-    while let Some(directory) = pending.pop() {
-        let relative = directory
-            .strip_prefix(runtime_root)
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-        directories.push(manifest_relative_path(relative)?);
-        let entries = fs::read_dir(&directory)
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-        for entry in entries {
-            let entry = entry.map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-            let path = entry.path();
-            let metadata = fs::symlink_metadata(&path)
-                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-            if metadata.file_type().is_symlink() {
-                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-            }
-            if metadata.is_dir() {
-                if directories.len() + pending.len() >= 100_000 {
-                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-                pending.push(path);
-            } else if metadata.is_file() {
-                if discovered.len() >= 100_000 {
-                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-                let relative = path
-                    .strip_prefix(runtime_root)
-                    .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-                let relative_path = manifest_relative_path(relative)?;
-                discovered.push((path, relative_path, metadata.len()));
-            } else {
-                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-            }
-        }
-    }
-    // Hashing dominates the scan. Workers pull the next file from one shared
-    // cursor because sizes are very uneven (native libraries versus stubs); the
-    // sorted result is independent of scheduling.
-    let next = AtomicUsize::new(0);
-    let mut files = collect_snapshot_worker_results(discovered.len().clamp(1, 8), |_| {
-        let mut hashed = Vec::new();
-        while let Some((path, relative_path, size)) =
-            discovered.get(next.fetch_add(1, Ordering::Relaxed))
-        {
-            hashed.push(RuntimeClosureFile {
-                relative_path: relative_path.clone(),
-                size: *size,
-                sha256: hash_file(path)
-                    .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?,
-            });
-        }
-        Ok(hashed)
-    })?;
-    directories.sort();
-    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-    Ok((directories, files))
-}
-
-#[cfg(not(windows))]
-fn collect_runtime_snapshot(
-    runtime_root: &Path,
-) -> Result<RuntimeSnapshot, ScientificCpythonUnavailable> {
-    let _timing = BoundaryTiming::start("runtime_snapshot");
-    let mut pending = vec![runtime_root.to_path_buf()];
-    let mut directories = Vec::new();
-    let mut files = Vec::new();
-    while let Some(directory) = pending.pop() {
-        let relative = directory
-            .strip_prefix(runtime_root)
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-        let metadata = fs::symlink_metadata(&directory)
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-        if metadata.file_type().is_symlink() || !metadata.is_dir() {
-            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-        }
-        directories.push(runtime_path_snapshot(&directory, relative, &metadata)?);
-        let entries = fs::read_dir(&directory)
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-        for entry in entries {
-            let entry = entry.map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-            let path = entry.path();
-            let metadata = fs::symlink_metadata(&path)
-                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-            if metadata.file_type().is_symlink() {
-                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-            }
-            if metadata.is_dir() {
-                if directories.len() + pending.len() >= 100_000 {
-                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-                pending.push(path);
-            } else if metadata.is_file() {
-                if files.len() >= 100_000 {
-                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-                let relative = path
-                    .strip_prefix(runtime_root)
-                    .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-                files.push(runtime_path_snapshot(&path, relative, &metadata)?);
-            } else {
-                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-            }
-        }
-    }
-    directories.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-    if performance_diagnostics_enabled() {
-        eprintln!(
-            "Studio performance runtime_metadata_scan files={} directories={}",
-            files.len(),
-            directories.len()
-        );
-    }
-    Ok(RuntimeSnapshot { directories, files })
-}
-
-#[cfg(unix)]
-fn runtime_path_snapshot(
-    _path: &Path,
-    relative: &Path,
-    metadata: &fs::Metadata,
-) -> Result<RuntimePathSnapshot, ScientificCpythonUnavailable> {
-    use std::os::unix::fs::MetadataExt;
-
-    Ok(RuntimePathSnapshot {
-        relative_path: manifest_relative_path(relative)?,
-        size: metadata.len(),
-        device: metadata.dev(),
-        inode: u128::from(metadata.ino()),
-        modified_nanos: i128::from(metadata.mtime()) * 1_000_000_000
-            + i128::from(metadata.mtime_nsec()),
-        changed_nanos: i128::from(metadata.ctime()) * 1_000_000_000
-            + i128::from(metadata.ctime_nsec()),
-    })
-}
-
-// Windows must open every entry: directory timestamps can remain stale while
-// a hard-link writer is open. Parallelism changes scheduling, never the marker.
-#[cfg(windows)]
-fn windows_runtime_entry(
-    path: &Path,
-    runtime_root: &Path,
-    expected_directory: bool,
-) -> Result<RuntimePathSnapshot, ScientificCpythonUnavailable> {
-    let entry = studio_windows_job::file_entry_stamp(path)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    if entry.is_directory != expected_directory || entry.stamp.changed <= 0 {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    let relative = path
-        .strip_prefix(runtime_root)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-    let stamp = entry.stamp;
-    Ok(RuntimePathSnapshot {
-        relative_path: manifest_relative_path(relative)?,
-        size: stamp.size,
-        device: stamp.volume,
-        inode: stamp.file_id,
-        modified_nanos: i128::from(stamp.modified) * 100,
-        changed_nanos: i128::from(stamp.changed) * 100,
-    })
-}
-
-#[cfg(windows)]
-fn collect_runtime_snapshot(
-    runtime_root: &Path,
-) -> Result<RuntimeSnapshot, ScientificCpythonUnavailable> {
-    let _timing = BoundaryTiming::start("runtime_snapshot");
-    let mut pending = vec![runtime_root.to_path_buf()];
-    let mut directories = Vec::new();
-    let mut directory_paths = Vec::new();
-    let mut file_paths = Vec::new();
-    while let Some(directory) = pending.pop() {
-        // Stamp before discovery and again after file sampling: inventory races
-        // remain fail-closed even though metadata work is scheduled in parallel.
-        directories.push(windows_runtime_entry(&directory, runtime_root, true)?);
-        directory_paths.push(directory.clone());
-        for entry in fs::read_dir(&directory)
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?
-        {
-            let entry = entry.map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-            let kind = entry
-                .file_type()
-                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-            if kind.is_dir() {
-                if directories.len() + pending.len() >= 100_000 {
-                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-                pending.push(entry.path());
-            } else if kind.is_file() {
-                if file_paths.len() >= 100_000 {
-                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-                file_paths.push(entry.path());
-            } else {
-                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-            }
-        }
-    }
-    // One bounded pool for the whole inventory, not one pool per directory.
-    let workers = file_paths.len().clamp(1, 8);
-    let chunk_size = file_paths.len().div_ceil(workers).max(1);
-    let chunks: Vec<_> = file_paths.chunks(chunk_size).collect();
-    let mut files = collect_snapshot_worker_results(chunks.len(), |index| {
-        chunks[index]
-            .iter()
-            .map(|path| windows_runtime_entry(path, runtime_root, false))
-            .collect()
-    })?;
-    for (path, before) in directory_paths.iter().zip(&directories) {
-        if windows_runtime_entry(path, runtime_root, true)? != *before {
-            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-        }
-    }
-    directories.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-    if performance_diagnostics_enabled() {
-        eprintln!(
-            "Studio performance runtime_metadata_scan files={} directories={}",
-            files.len(),
-            directories.len()
-        );
-    }
-    Ok(RuntimeSnapshot { directories, files })
-}
-
-// Join every started worker explicitly even when an earlier worker failed.
-// Neither an OS spawn refusal nor a worker panic may unwind the validator mutex.
-fn collect_snapshot_worker_results<T: Send>(
-    worker_count: usize,
-    operation: impl Fn(usize) -> Result<Vec<T>, ScientificCpythonUnavailable> + Sync,
-) -> Result<Vec<T>, ScientificCpythonUnavailable> {
-    if worker_count > 8 {
-        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-    }
-    std::thread::scope(|scope| {
-        let mut handles = Vec::with_capacity(worker_count);
-        let mut failure = None;
-        for index in 0..worker_count {
-            let operation = &operation;
-            if let Ok(handle) = std::thread::Builder::new()
-                .name(format!("studio-snapshot-{index}"))
-                .spawn_scoped(scope, move || operation(index))
-            {
-                handles.push(handle);
-            } else {
-                failure = Some(ScientificCpythonUnavailable::RuntimeContractTampered);
-                break;
-            }
-        }
-        let mut values = Vec::new();
-        for handle in handles {
-            match handle.join() {
-                Ok(Ok(result)) => values.extend(result),
-                Ok(Err(error)) => {
-                    failure.get_or_insert(error);
-                }
-                Err(_) => {
-                    failure.get_or_insert(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-            }
-        }
-        failure.map_or_else(|| Ok(values), Err)
-    })
-}
-
-#[cfg(not(any(unix, windows)))]
-fn runtime_path_snapshot(
-    _path: &Path,
-    relative: &Path,
-    metadata: &fs::Metadata,
-) -> Result<RuntimePathSnapshot, ScientificCpythonUnavailable> {
-    fn nanos(value: Result<SystemTime, std::io::Error>) -> i128 {
-        value
-            .ok()
-            .and_then(|time| time.duration_since(SystemTime::UNIX_EPOCH).ok())
-            .and_then(|duration| i128::try_from(duration.as_nanos()).ok())
-            .unwrap_or_default()
-    }
-
-    Ok(RuntimePathSnapshot {
-        relative_path: manifest_relative_path(relative)?,
-        size: metadata.len(),
-        device: 0,
-        inode: 0,
-        modified_nanos: nanos(metadata.modified()),
-        changed_nanos: nanos(metadata.created()),
-    })
-}
-
-fn host_identity_with_limit(
-    path: &Path,
-    maximum_bytes: u64,
-) -> Result<HostIdentity, ScientificCpythonUnavailable> {
-    let canonical_path = path
-        .canonicalize()
-        .map_err(|_| ScientificCpythonUnavailable::HostUnavailable)?;
-    let metadata =
-        fs::metadata(&canonical_path).map_err(|_| ScientificCpythonUnavailable::HostUnavailable)?;
-    if !metadata.is_file() || metadata.len() == 0 {
-        return Err(ScientificCpythonUnavailable::HostUnavailable);
-    }
-    if metadata.len() > maximum_bytes {
-        return Err(ScientificCpythonUnavailable::HostTooLarge);
-    }
-    let sha256 = hash_file(&canonical_path)?;
-    Ok(HostIdentity {
-        canonical_path,
-        selected_site_packages: None,
-        size: metadata.len(),
-        sha256,
-    })
-}
-
-fn hex_digest(digest: &[u8; 32]) -> String {
-    use std::fmt::Write as _;
-
-    digest
-        .iter()
-        .fold(String::with_capacity(64), |mut hex, byte| {
-            write!(&mut hex, "{byte:02x}").expect("writing to String cannot fail");
-            hex
-        })
-}
-
-fn verify_identity(identity: &HostIdentity) -> Result<(), ScientificCpythonUnavailable> {
-    let metadata = fs::metadata(&identity.canonical_path)
-        .map_err(|_| ScientificCpythonUnavailable::HostTampered)?;
-    if !metadata.is_file()
-        || metadata.len() != identity.size
-        || hash_file(&identity.canonical_path)
-            .map_err(|_| ScientificCpythonUnavailable::HostTampered)?
-            != identity.sha256
-    {
-        return Err(ScientificCpythonUnavailable::HostTampered);
-    }
-    Ok(())
-}
-
-fn hash_file(path: &Path) -> Result<[u8; 32], ScientificCpythonUnavailable> {
-    let mut file = File::open(path).map_err(|_| ScientificCpythonUnavailable::HostUnavailable)?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0_u8; 8 * 1024];
-    loop {
-        let count = file
-            .read(&mut buffer)
-            .map_err(|_| ScientificCpythonUnavailable::HostUnavailable)?;
-        if count == 0 {
-            break;
-        }
-        digest.update(&buffer[..count]);
-    }
-    Ok(digest.finalize().into())
-}
-
-fn run_preflight(
-    path: &Path,
-    site_packages: Option<&Path>,
-) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
-    run_preflight_with_timeout(path, site_packages, SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT)
-}
-
-fn run_preflight_with_timeout(
-    path: &Path,
-    site_packages: Option<&Path>,
-    timeout: Duration,
-) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
-    run_selected_preflight(path, site_packages, None, timeout)
-}
-
-fn run_selected_preflight(
-    path: &Path,
-    site_packages: Option<&Path>,
-    selected_site: Option<&Path>,
-    timeout: Duration,
-) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
-    let scratch = ScratchDirectory::create()?;
-    let mut command = contained_scientific_command(path)?;
-    let isolated_packaged = site_packages.is_some();
-    let site_packages = site_packages
-        .and_then(Path::to_str)
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)
-        .or_else(|error| {
-            if site_packages.is_none() {
-                Ok("")
-            } else {
-                Err(error)
-            }
-        })?;
-    if isolated_packaged || selected_site.is_some() {
-        command.args(["-I", "-S", "-B", "-c", PREFLIGHT_SCRIPT, site_packages]);
-    } else {
-        command.args(["-I", "-B", "-c", PREFLIGHT_SCRIPT, site_packages]);
-    }
-    command
-        .env_clear()
-        .env("PYTHONDONTWRITEBYTECODE", "1")
-        .env("PYTHONNOUSERSITE", "1")
-        .env("TMPDIR", &scratch.path)
-        .env("TMP", &scratch.path)
-        .env("TEMP", &scratch.path)
-        .current_dir(&scratch.path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    if let Some(selected_site) = selected_site {
-        command.env("NIRS4ALL_SELECTED_SITE_PACKAGES", selected_site);
-    }
-    configure_windows_runtime_environment(&mut command)?;
-    run_configured_process(
-        command,
-        timeout,
-        MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES,
-        MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES,
-    )
-}
-
-#[cfg(all(test, unix))]
-fn run_process(
-    path: &Path,
-    script: &str,
-    timeout: Duration,
-    stdout_limit: usize,
-    stderr_limit: usize,
-) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
-    let scratch = ScratchDirectory::create()?;
-    let mut command = contained_scientific_command(path)?;
-    command
-        .args(["-I", "-S", "-B", "-c", script])
-        .env_clear()
-        .env("PYTHONDONTWRITEBYTECODE", "1")
-        .env("PYTHONNOUSERSITE", "1")
-        .env("TMPDIR", &scratch.path)
-        .env("TMP", &scratch.path)
-        .env("TEMP", &scratch.path)
-        .current_dir(&scratch.path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    run_configured_process(command, timeout, stdout_limit, stderr_limit)
-}
-
-fn run_configured_process(
-    mut command: Command,
-    timeout: Duration,
-    stdout_limit: usize,
-    stderr_limit: usize,
-) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-    let mut child = command
-        .spawn()
-        .map_err(|_| ScientificCpythonUnavailable::SpawnFailed)?;
-    let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
-        let _ = terminate_worker(&mut child);
-        return Err(ScientificCpythonUnavailable::OutputReadFailed);
+    let Some(distribution_version) = response["distribution_version"].as_str() else {
+        return Err(ScientificCpythonUnavailable::DistributionMissing);
     };
-    let stdout_reader = std::thread::spawn(move || read_bounded(stdout, stdout_limit));
-    let stderr_reader = std::thread::spawn(move || read_bounded(stderr, stderr_limit));
-    let started_at = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if started_at.elapsed() >= timeout => {
-                let _ = terminate_worker(&mut child);
-                return Err(ScientificCpythonUnavailable::TimedOut);
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
-            Err(_) => {
-                let _ = terminate_worker(&mut child);
-                return Err(ScientificCpythonUnavailable::ProcessFailed);
-            }
-        }
-    };
-    let (stdout, stdout_exceeded) = join_reader(stdout_reader)?;
-    let (stderr, stderr_exceeded) = join_reader(stderr_reader)?;
-    if stdout_exceeded {
-        return Err(ScientificCpythonUnavailable::StdoutTooLarge);
-    }
-    if stderr_exceeded {
+    if !distribution_version_supported(distribution_version, range) {
         eprintln!(
-            "Scientific CPython preflight stderr exceeded its limit: {}",
-            bounded_process_diagnostic(&stderr)
+            "Studio scientific host refused: nirs4all {distribution_version} is outside {range}"
         );
-        return Err(ScientificCpythonUnavailable::StderrTooLarge);
+        return Err(ScientificCpythonUnavailable::DistributionVersionUnsupported);
     }
-    if !status.success() {
+    if let Some(error) = response["import_error"].as_str() {
         eprintln!(
-            "Scientific CPython preflight exited with {status}: {}",
-            bounded_process_diagnostic(&stderr)
+            "Studio scientific host refused: nirs4all {distribution_version} did not import: {}",
+            bounded_process_diagnostic(error.as_bytes())
         );
-        return Err(ScientificCpythonUnavailable::ProcessFailed);
+        return Err(ScientificCpythonUnavailable::LibraryImportFailed);
     }
-    Ok(stdout)
+    if response["ready"] != true {
+        return Err(ScientificCpythonUnavailable::CallableUnavailable);
+    }
+    Ok(distribution_version.to_owned())
 }
 
 fn bounded_process_diagnostic(bytes: &[u8]) -> String {
@@ -2395,10 +944,10 @@ fn configure_windows_runtime_environment(
     command: &mut Command,
 ) -> Result<(), ScientificCpythonUnavailable> {
     let configured = std::env::var_os("SystemRoot")
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+        .ok_or(ScientificCpythonUnavailable::WindowsSystemRootUnavailable)?;
     let requested = PathBuf::from(configured);
     let trusted = studio_windows_job::system_windows_directory()
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+        .map_err(|_| ScientificCpythonUnavailable::WindowsSystemRootUnavailable)?;
     let canonical = validated_windows_system_root(&requested, &trusted)?;
     let architecture = windows_processor_architecture()
         .ok_or(ScientificCpythonUnavailable::PlatformKillTreeUnqualified)?;
@@ -2414,21 +963,21 @@ fn validated_windows_system_root(
     trusted: &Path,
 ) -> Result<PathBuf, ScientificCpythonUnavailable> {
     if !requested.is_absolute() {
-        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
+        return Err(ScientificCpythonUnavailable::WindowsSystemRootUnavailable);
     }
     let metadata = fs::symlink_metadata(requested)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+        .map_err(|_| ScientificCpythonUnavailable::WindowsSystemRootUnavailable)?;
     let canonical = fs::canonicalize(trusted)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+        .map_err(|_| ScientificCpythonUnavailable::WindowsSystemRootUnavailable)?;
     let system32 = canonical.join("System32");
     if metadata.file_type().is_symlink()
         || !metadata.is_dir()
         || !system32.is_dir()
         || canonical.components().count() != 3
         || !same_file::is_same_file(requested, trusted)
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?
+            .map_err(|_| ScientificCpythonUnavailable::WindowsSystemRootUnavailable)?
     {
-        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
+        return Err(ScientificCpythonUnavailable::WindowsSystemRootUnavailable);
     }
     Ok(canonical)
 }
@@ -2502,9 +1051,7 @@ pub fn run_windows_job_launcher(
 }
 
 fn run_scientific_process(
-    host: &HostIdentity,
-    callable: &HostIdentity,
-    packaged_runtime: Option<&PackagedRuntimeIdentity>,
+    host: &ScientificHost,
     input: &[u8],
     cancelled: &AtomicBool,
     progress_terminal: Option<Arc<dyn ScientificJobTerminal>>,
@@ -2512,8 +1059,6 @@ fn run_scientific_process(
     let mut diagnostic = None;
     let result = run_scientific_process_with_progress(
         host,
-        callable,
-        packaged_runtime,
         input,
         cancelled,
         SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT,
@@ -2599,62 +1144,23 @@ fn request_limits(request: &Value) -> (usize, usize) {
 }
 
 fn run_scientific_process_with_timeout(
-    host: &HostIdentity,
-    callable: &HostIdentity,
-    packaged_runtime: Option<&PackagedRuntimeIdentity>,
+    host: &ScientificHost,
     input: &[u8],
     cancelled: &AtomicBool,
     execution_timeout: Duration,
 ) -> Result<Value, ScientificCpythonUnavailable> {
-    run_scientific_process_with_diagnostic(
-        host,
-        callable,
-        packaged_runtime,
-        input,
-        cancelled,
-        execution_timeout,
-        &mut None,
-    )
+    run_scientific_process_with_progress(host, input, cancelled, execution_timeout, &mut None, None)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run_scientific_process_with_diagnostic(
-    host: &HostIdentity,
-    callable: &HostIdentity,
-    packaged_runtime: Option<&PackagedRuntimeIdentity>,
-    input: &[u8],
-    cancelled: &AtomicBool,
-    execution_timeout: Duration,
-    diagnostic: &mut Option<String>,
-) -> Result<Value, ScientificCpythonUnavailable> {
-    run_scientific_process_with_progress(
-        host,
-        callable,
-        packaged_runtime,
-        input,
-        cancelled,
-        execution_timeout,
-        diagnostic,
-        None,
-    )
-}
-
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)] // One bounded child lifecycle: spawn, stream, cancel, reap.
+#[allow(clippy::too_many_lines)] // One bounded child lifecycle: spawn, stream, cancel, reap.
 fn run_scientific_process_with_progress(
-    host: &HostIdentity,
-    callable: &HostIdentity,
-    packaged_runtime: Option<&PackagedRuntimeIdentity>,
+    host: &ScientificHost,
     input: &[u8],
     cancelled: &AtomicBool,
     execution_timeout: Duration,
     diagnostic: &mut Option<String>,
     progress_terminal: Option<Arc<dyn ScientificJobTerminal>>,
 ) -> Result<Value, ScientificCpythonUnavailable> {
-    verify_identity(host)?;
-    verify_identity(callable).map_err(|_| ScientificCpythonUnavailable::CallableTampered)?;
-    if let Some(identity) = packaged_runtime {
-        verify_packaged_runtime_identity(identity)?;
-    }
     let request: Value =
         serde_json::from_slice(input).map_err(|_| ScientificCpythonUnavailable::InvalidRequest)?;
     let (input_limit, output_limit) = request_limits(&request);
@@ -2679,17 +1185,10 @@ fn run_scientific_process_with_progress(
         .map(str::to_owned)
         .ok_or(ScientificCpythonUnavailable::InvalidRequest)?;
     let scratch = ScratchDirectory::create()?;
-    let site_packages = packaged_runtime.map(|identity| identity.site_packages.as_path());
-    let mut command = scientific_worker_command(host, callable, site_packages, &scratch.path)?;
+    let mut command = scientific_worker_command(host, &scratch.path, EXECUTION_SCRIPT)?;
     let mut child = command
         .spawn()
         .map_err(|_| ScientificCpythonUnavailable::SpawnFailed)?;
-    if let Some(identity) = packaged_runtime {
-        if let Err(error) = verify_packaged_runtime_identity(identity) {
-            let _ = terminate_worker(&mut child);
-            return Err(error);
-        }
-    }
     let (Some(mut stdin), Some(stdout), Some(stderr)) =
         (child.stdin.take(), child.stdout.take(), child.stderr.take())
     else {
@@ -2721,9 +1220,6 @@ fn run_scientific_process_with_progress(
     });
     let (status, cancellation_observed, timed_out) =
         wait_for_worker(&mut child, cancelled, execution_timeout)?;
-    if let Some(identity) = packaged_runtime {
-        verify_packaged_runtime_identity(identity)?;
-    }
     let stdin_result = stdin_writer
         .join()
         .map_err(|_| ScientificCpythonUnavailable::ProcessFailed)?;
@@ -2861,62 +1357,21 @@ fn validate_library_facade_response(
     Ok(())
 }
 
+/// One isolated host process running `script` with the selected environment,
+/// the application's adapters and the admitted nirs4all version as arguments.
 fn scientific_worker_command(
-    host: &HostIdentity,
-    callable: &HostIdentity,
-    site_packages: Option<&Path>,
-    scratch: &Path,
-) -> Result<Command, ScientificCpythonUnavailable> {
-    scientific_worker_command_with_script(host, callable, site_packages, scratch, EXECUTION_SCRIPT)
-}
-
-fn scientific_worker_command_with_script(
-    host: &HostIdentity,
-    callable: &HostIdentity,
-    site_packages: Option<&Path>,
+    host: &ScientificHost,
     scratch: &Path,
     script: &str,
 ) -> Result<Command, ScientificCpythonUnavailable> {
-    let mut command = contained_scientific_command(&host.canonical_path)?;
-    let isolated_packaged = site_packages.is_some();
-    let site_packages = site_packages
-        .and_then(Path::to_str)
-        .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)
-        .or_else(|error| {
-            if site_packages.is_none() {
-                Ok("")
-            } else {
-                Err(error)
-            }
-        })?;
-    let callable_path = callable
-        .canonical_path
-        .to_str()
-        .ok_or(ScientificCpythonUnavailable::CallableTampered)?;
-    let callable_digest = hex_digest(&callable.sha256);
-    if isolated_packaged || host.selected_site_packages.is_some() {
-        command.args([
-            "-I",
-            "-S",
-            "-B",
-            "-c",
-            script,
-            site_packages,
-            callable_path,
-            &callable_digest,
-        ]);
-    } else {
-        command.args([
-            "-I",
-            "-B",
-            "-c",
-            script,
-            site_packages,
-            callable_path,
-            &callable_digest,
-        ]);
-    }
+    let mut command = contained_scientific_command(&host.python)?;
     command
+        .args(["-I", "-S", "-B", "-c", script])
+        .args([
+            host.site_packages.as_os_str(),
+            host.adapters.as_os_str(),
+            OsStr::new(&host.distribution_version),
+        ])
         .env_clear()
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("PYTHONNOUSERSITE", "1")
@@ -2931,9 +1386,6 @@ fn scientific_worker_command_with_script(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if let Some(selected_site) = host.selected_site_packages.as_deref() {
-        command.env("NIRS4ALL_SELECTED_SITE_PACKAGES", selected_site);
-    }
     configure_windows_runtime_environment(&mut command)?;
     #[cfg(unix)]
     {
@@ -3854,232 +2306,24 @@ progress_tick()
             assert!(message.ends_with("s elapsed"), "{message}");
         }
     }
-    #[cfg(windows)]
-    fn serial_windows_snapshot(
-        runtime_root: &Path,
-    ) -> Result<RuntimeSnapshot, ScientificCpythonUnavailable> {
-        let mut pending = vec![runtime_root.to_path_buf()];
-        let mut directories = Vec::new();
-        let mut files = Vec::new();
-        while let Some(directory) = pending.pop() {
-            let relative = directory
-                .strip_prefix(runtime_root)
-                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-            let metadata = fs::symlink_metadata(&directory)
-                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-            if metadata.file_type().is_symlink() || !metadata.is_dir() {
-                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-            }
-            directories.push(serial_windows_path_snapshot(
-                &directory, relative, &metadata,
-            )?);
-            let entries = fs::read_dir(&directory)
-                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-            for entry in entries {
-                let entry =
-                    entry.map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-                let path = entry.path();
-                let metadata = fs::symlink_metadata(&path)
-                    .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-                if metadata.file_type().is_symlink() {
-                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-                if metadata.is_dir() {
-                    if directories.len() + pending.len() >= 100_000 {
-                        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                    }
-                    pending.push(path);
-                } else if metadata.is_file() {
-                    if files.len() >= 100_000 {
-                        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                    }
-                    let relative = path
-                        .strip_prefix(runtime_root)
-                        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-                    files.push(serial_windows_path_snapshot(&path, relative, &metadata)?);
-                } else {
-                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-                }
-            }
-        }
-        directories.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-        files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-        Ok(RuntimeSnapshot { directories, files })
-    }
-
-    #[cfg(windows)]
-    fn serial_windows_path_snapshot(
-        path: &Path,
-        relative: &Path,
-        metadata: &fs::Metadata,
-    ) -> Result<RuntimePathSnapshot, ScientificCpythonUnavailable> {
-        let stamp = studio_windows_job::file_change_stamp(path)
-            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
-        if stamp.size != metadata.len() || stamp.changed <= 0 {
-            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
-        }
-        Ok(RuntimePathSnapshot {
-            relative_path: manifest_relative_path(relative)?,
-            size: stamp.size,
-            device: stamp.volume,
-            inode: stamp.file_id,
-            modified_nanos: i128::from(stamp.modified) * 100,
-            changed_nanos: i128::from(stamp.changed) * 100,
-        })
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn windows_snapshot_matches_serial_and_detects_open_hard_link_edit() {
-        use std::io::{Seek, SeekFrom, Write};
-        let runtime = tempfile::tempdir().unwrap();
-        let outside = tempfile::tempdir().unwrap();
-        for directory in 0..16 {
-            let root = runtime.path().join(format!("directory-{directory}"));
-            fs::create_dir(&root).unwrap();
-            for file in 0..16 {
-                fs::write(root.join(format!("member-{file}.py")), b"VALUE=1\n").unwrap();
-            }
-        }
-        let baseline = collect_runtime_snapshot(runtime.path()).unwrap();
-        assert_eq!(baseline, serial_windows_snapshot(runtime.path()).unwrap());
-        let member = runtime.path().join("directory-0/member-0.py");
-        let modified = fs::metadata(&member).unwrap().modified().unwrap();
-        let link = outside.path().join("external-writer.py");
-        fs::hard_link(&member, &link).unwrap();
-        // Obtain a fresh baseline after the link itself changed ChangeTime.
-        let baseline = collect_runtime_snapshot(runtime.path()).unwrap();
-        let mut writer = fs::OpenOptions::new().write(true).open(&link).unwrap();
-        std::thread::sleep(Duration::from_millis(20));
-        writer.seek(SeekFrom::Start(0)).unwrap();
-        writer.write_all(b"VALUE=2\n").unwrap();
-        writer.flush().unwrap();
-        writer
-            .set_times(fs::FileTimes::new().set_modified(modified))
-            .unwrap();
-        // Optimized snapshot FIRST: a serial handle must not refresh a stale
-        // directory index before the implementation under test samples it.
-        let changed = collect_runtime_snapshot(runtime.path()).unwrap();
-        assert_ne!(baseline, changed);
-        assert_eq!(changed, serial_windows_snapshot(runtime.path()).unwrap());
-        drop(writer);
-        let replacement = runtime.path().join("directory-0/replacement.py");
-        fs::write(&replacement, b"VALUE=2\n").unwrap();
-        fs::remove_file(&member).unwrap();
-        fs::rename(&replacement, &member).unwrap();
-        assert_ne!(changed, collect_runtime_snapshot(runtime.path()).unwrap());
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn windows_snapshot_rejects_directory_junction() {
-        let runtime = tempfile::tempdir().unwrap();
-        let outside = tempfile::tempdir().unwrap();
-        let junction = runtime.path().join("escaping-junction");
-        let status = std::process::Command::new("cmd")
-            .args(["/C", "mklink", "/J"])
-            .arg(&junction)
-            .arg(outside.path())
-            .output()
-            .unwrap();
-        assert!(
-            status.status.success(),
-            "{}",
-            String::from_utf8_lossy(&status.stderr)
-        );
-        assert_eq!(
-            collect_runtime_snapshot(runtime.path()),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-        fs::remove_dir(junction).unwrap();
-    }
-
     use super::*;
-
-    #[test]
-    fn runtime_inventory_hashes_in_parallel_and_stays_sorted() {
-        let root = tempfile::tempdir().unwrap();
-        for directory in ["b", "a/nested", "c"] {
-            fs::create_dir_all(root.path().join(directory)).unwrap();
-        }
-        // More files than workers, with sizes that make completion order differ.
-        let mut expected = Vec::new();
-        for index in 0..40_usize {
-            let relative = format!("{}/file-{index:02}.bin", ["a/nested", "b", "c"][index % 3]);
-            let contents =
-                vec![u8::try_from(index).unwrap(); if index % 7 == 0 { 600_000 } else { index }];
-            fs::write(root.path().join(&relative), &contents).unwrap();
-            expected.push(RuntimeClosureFile {
-                relative_path: relative,
-                size: contents.len() as u64,
-                sha256: Sha256::digest(&contents).into(),
-            });
-        }
-        expected.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-        let (directories, files) = collect_runtime_inventory(root.path()).unwrap();
-        assert_eq!(files, expected);
-        assert_eq!(directories, ["", "a", "a/nested", "b", "c"]);
-        let (_, again) = collect_runtime_inventory(root.path()).unwrap();
-        assert_eq!(again, expected);
-    }
-
-    #[test]
-    fn snapshot_worker_failure_joins_later_panics_without_poisoning_validator() {
-        let validated = Mutex::new(());
-        let completed = std::sync::atomic::AtomicBool::new(false);
-        let guard = validated.lock().unwrap();
-        let result = collect_snapshot_worker_results::<u8>(3, |index| match index {
-            0 => Err(ScientificCpythonUnavailable::RuntimeContractTampered),
-            1 => panic!("synthetic snapshot worker failure"),
-            _ => {
-                completed.store(true, Ordering::SeqCst);
-                Ok(vec![2])
-            }
-        });
-        assert_eq!(
-            result,
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-        assert!(
-            completed.load(Ordering::SeqCst),
-            "All started workers must be joined"
-        );
-        drop(guard);
-        assert!(!validated.is_poisoned());
-        assert_eq!(
-            collect_snapshot_worker_results(2, |index| Ok(vec![index])).unwrap(),
-            vec![0, 1]
-        );
-        assert_eq!(
-            collect_snapshot_worker_results::<u8>(9, |_| panic!("No unbounded spawn")),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-    }
 
     #[cfg(unix)]
     #[test]
     fn document_adapters_survive_slow_cold_imports() {
         let directory = tempfile::tempdir().unwrap();
         let host = slow_document_host(directory.path());
-        // Both interactive workers must survive their initial cold import.
-        // Setup, preview and pipeline rendering must survive that delay
-        // beyond 15 seconds. No optional Python is needed by this fixture.
+        // Both interactive workers must survive their initial cold import:
+        // preview and pipeline rendering wait beyond 15 seconds. No optional
+        // Python is needed by this fixture.
         let results = std::thread::scope(|scope| {
-            let handles = [
-                "config.dependencies",
-                "config.compare",
-                "dataset.preview",
-                "pipeline.render",
-            ]
-            .map(|operation| {
+            let handles = ["dataset.preview", "pipeline.render"].map(|operation| {
                 let host = &host;
                 scope.spawn(move || host.adapt_document(operation, &serde_json::json!({})))
             });
             handles.map(|handle| handle.join().unwrap())
         });
-        let [inventory, comparison, preview, rendering] = results;
-        assert_eq!(inventory.unwrap()["runtime_valid"], true);
-        assert_eq!(comparison.unwrap()["is_aligned"], true);
+        let [preview, rendering] = results;
         let preview = preview.unwrap();
         assert_eq!(preview["success"], true);
         assert_eq!(preview["summary"]["num_samples"], 1);
@@ -4308,18 +2552,19 @@ progress_tick()
             return;
         };
         let config = tempfile::tempdir().unwrap();
-        let executor = CpythonScientificJobExecutor::acquire_existing_with_config_dir(
+        let executor = CpythonScientificJobExecutor::acquire(
             &python,
             site_packages,
-            config.path(),
+            adapters_fixture(config.path()),
+            config.path().join("config"),
         );
         assert!(
-            executor.callable_identity.is_some(),
+            executor.library_facades_available(),
             "{}",
             executor.unavailable_reason()
         );
         assert_eq!(
-            executor.identity.as_ref().unwrap().canonical_path,
+            executor.host.as_ref().unwrap().python,
             std::path::absolute(&python).unwrap()
         );
         let process_id = executor.warm_workers[0]
@@ -4352,7 +2597,8 @@ progress_tick()
             nix::sys::signal::Signal::SIGKILL,
         )
         .unwrap();
-        std::thread::sleep(Duration::from_millis(20));
+        // A process holding the scientific stack takes a moment to be torn down.
+        std::thread::sleep(Duration::from_millis(500));
         assert_eq!(executor.invoke_library_facade(&request).unwrap(), first);
         assert_ne!(
             executor.warm_workers[0]
@@ -4394,61 +2640,37 @@ progress_tick()
         path
     }
 
+    /// The application's adapters directory, written from the compiled manifest.
     #[cfg(unix)]
-    fn slow_document_host(root: &Path) -> CpythonScientificJobExecutor {
-        let runtime = root.join("python-runtime");
-        let python_root = runtime.join("python");
-        let site_packages = python_root.join("lib/python3.11/site-packages");
-        let adapters = site_packages.join("studio_document_adapters");
+    fn adapters_fixture(root: &Path) -> PathBuf {
+        let directory = root.join("adapters");
         let repository = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
         let manifest: Value = serde_json::from_str(include_str!(
             "../contracts/studio_document_adapters_v1.json"
         ))
         .unwrap();
-        // Use the actual compiled adapter bytes so adapt_document exercises
-        // its normal manifest verification instead of bypassing admission.
         for entry in manifest["files"].as_array().unwrap() {
             let relative = entry["path"].as_str().unwrap();
-            let target = adapters.join(relative);
-            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            let target = directory.join("studio_document_adapters").join(relative);
+            std::fs::create_dir_all(target.parent().unwrap()).unwrap();
             if relative.ends_with("__init__.py") {
-                fs::write(
+                std::fs::write(
                     target,
                     "\"\"\"Pure document translation package; no HTTP or application state.\"\"\"\n",
                 )
                 .unwrap();
             } else {
-                fs::copy(repository.join(relative), target).unwrap();
+                std::fs::copy(repository.join(relative), target).unwrap();
             }
         }
-        let host = shell_host(
-            &python_root.join("bin"),
-            "python3",
-            r#"sleep 16
-while IFS= read -r request; do
-case "$request" in
-  *config.dependencies*) result='{"read_only":true,"runtime_valid":true,"nirs4all_installed":true,"categories":[]}' ;;
-  *config.compare*) result='{"is_aligned":true,"profile":"cpu","packages":[]}' ;;
-  *dataset.preview*) result='{"success":true,"error":null,"summary":{"num_samples":1,"num_features":2},"spectra_preview":null}' ;;
-  *) result='{"json":"{}","yaml":"{}","filename":"pipeline.yaml"}' ;;
-esac
-printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":%s,"error":null}' "$result" | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(4,"little")+data);sys.stdout.buffer.flush()'
-done"#,
-        );
-        let callable = site_packages.join("studio_scientific.py");
-        fs::write(&callable, "def studio_scientific_job_v1(request): pass\n").unwrap();
-        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
-        write_runtime_closure(&python_root, &site_packages, &closure);
+        directory
+    }
+
+    /// An executor whose host was admitted, without running a probe.
+    #[cfg(unix)]
+    fn admitted_executor(python: &Path, root: &Path) -> CpythonScientificJobExecutor {
         CpythonScientificJobExecutor {
-            identity: Some(host_identity(&host).unwrap()),
-            distribution_version: Some(SCIENTIFIC_DISTRIBUTION_VERSION.into()),
-            callable_identity: Some(host_identity(&callable).unwrap()),
-            packaged_runtime: Some(
-                packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap(),
-            ),
-            existing_site_packages: None,
-            selected_library: None,
-            adapter_verification: Mutex::new(None),
+            host: Some(test_host(python, root)),
             dataset_cache_scope: NEXT_DATASET_CACHE_SCOPE.fetch_add(1, Ordering::Relaxed),
             acquisition: ScientificCpythonUnavailable::RequestResolverUnavailable,
             resolver: ScientificRequestResolver::new(root.join("config")),
@@ -4459,156 +2681,406 @@ done"#,
     }
 
     #[cfg(unix)]
-    #[test]
-    fn cached_adapter_attestation_rechecks_same_size_change_with_restored_mtime() {
-        let root = tempfile::tempdir().unwrap();
-        let mut executor = slow_document_host(root.path());
-        let site_packages = executor.packaged_runtime.take().unwrap().site_packages;
-        executor.existing_site_packages = Some(site_packages.clone());
-        executor.verify_document_adapters(&site_packages).unwrap();
-        let initial = executor.adapter_verification.lock().unwrap().clone();
-        for _ in 0..5 {
-            executor.verify_document_adapters(&site_packages).unwrap();
+    fn test_host(python: &Path, root: &Path) -> ScientificHost {
+        ScientificHost {
+            python: python.to_path_buf(),
+            site_packages: root.join("site-packages"),
+            adapters: root.join("adapters"),
+            distribution_version: "2.3.4".into(),
         }
-        assert_eq!(*executor.adapter_verification.lock().unwrap(), initial);
-        let source = site_packages.join("studio_document_adapters/api/library_documents.py");
-        let modified = fs::metadata(&source).unwrap().modified().unwrap();
-        let mut contents = fs::read(&source).unwrap();
-        contents[0] ^= 1;
-        std::thread::sleep(Duration::from_millis(10));
-        fs::write(&source, contents).unwrap();
-        fs::File::options()
-            .write(true)
-            .open(&source)
-            .unwrap()
-            .set_times(fs::FileTimes::new().set_modified(modified))
-            .unwrap();
-        assert!(executor.verify_document_adapters(&site_packages).is_err());
-    }
-
-    #[cfg(any(unix, windows))]
-    fn write_runtime_closure(runtime_root: &Path, site_packages: &Path, closure: &Path) {
-        let (directories, files) = collect_runtime_inventory(runtime_root).unwrap();
-        let encoded_files = files
-            .iter()
-            .map(|file| {
-                serde_json::json!({
-                    "path": file.relative_path,
-                    "size": file.size,
-                    "sha256": hex_digest(&file.sha256),
-                })
-            })
-            .collect::<Vec<_>>();
-        fs::write(
-            closure,
-            serde_json::to_vec(&serde_json::json!({
-                "schema": "nirs4all.studio-python-plugin-closure.v1",
-                "root": "python-runtime/python",
-                "site_packages": format!(
-                    "python-runtime/python/{}",
-                    manifest_relative_path(site_packages.strip_prefix(runtime_root).unwrap()).unwrap()
-                ),
-                "directories": directories,
-                "files": encoded_files,
-            }))
-            .unwrap(),
-        )
-        .unwrap();
     }
 
     #[cfg(unix)]
-    fn attested_unready_host_response(implementation: &str) -> String {
-        format!(
-            r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_record_sha256":"0000000000000000000000000000000000000000000000000000000000000000","distribution_stat_sha256":null,"distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
-        )
+    fn slow_document_host(root: &Path) -> CpythonScientificJobExecutor {
+        let host = shell_host(
+            &root.join("bin"),
+            "python3",
+            r#"sleep 16
+while IFS= read -r request; do
+case "$request" in
+  *dataset.preview*) result='{"success":true,"error":null,"summary":{"num_samples":1,"num_features":2},"spectra_preview":null}' ;;
+  *) result='{"json":"{}","yaml":"{}","filename":"pipeline.yaml"}' ;;
+esac
+printf '{"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":true,"result":%s,"error":null}' "$result" | /usr/bin/python3 -c 'import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(len(data).to_bytes(4,"little")+data);sys.stdout.buffer.flush()'
+done"#,
+        );
+        admitted_executor(&host, root)
     }
 
-    const SUPPORTED_VERSION_CASES: [(&str, bool); 14] = [
-        ("1.4.14", false),
-        ("1.4.15", false),
-        ("1.4.16", true),
-        ("1.4.17", true),
-        ("1.4.99.post1", true),
-        ("1.4.16.0", true),
-        ("1.4.13", false),
-        ("1.4.16rc1", false),
-        ("1.4.16.dev0", false),
-        ("1.5", false),
-        ("1.5.0", false),
-        ("1.5.0rc1", false),
-        ("2.0.0", false),
-        ("unknown", false),
-    ];
+    /// An admission report as the probe prints it, with selected fields replaced.
+    fn probe_report(changes: &Value) -> Vec<u8> {
+        let mut report = serde_json::json!({
+            "schema": "nirs4all.studio-scientific-cpython-host.v2",
+            "implementation": "cpython",
+            "version": [3, 11, 13],
+            "isolated": true,
+            "network_bind_denied": true,
+            "distribution_version": "2.3.4",
+            "distribution_inconsistency": null,
+            "import_error": null,
+            "ready": true,
+        });
+        for (key, value) in changes.as_object().unwrap() {
+            report[key] = value.clone();
+        }
+        serde_json::to_vec(&report).unwrap()
+    }
 
     #[test]
-    fn selected_environments_accept_the_studio_nirs4all_range() {
-        assert_eq!(
-            SCIENTIFIC_DISTRIBUTION_REQUIREMENT,
-            format!(">={SCIENTIFIC_DISTRIBUTION_VERSION},<{SCIENTIFIC_DISTRIBUTION_LIMIT}")
-        );
-        for (version, supported) in SUPPORTED_VERSION_CASES {
+    fn range_check_follows_pep_440_ordering_for_the_supported_clauses() {
+        for (version, supported) in [
+            ("2.3.2", false),
+            ("2.3.3", false),
+            ("2.3.4", true),
+            ("2.3.5", true),
+            ("2.3.5rc1", true),
+            ("2.3.99.post1", true),
+            ("2.3.4.0", true),
+            ("2.3.4+local.build", true),
+            ("2.3.4rc1", false),
+            ("2.3.4.dev0", false),
+            ("2.4", false),
+            ("2.4.0", false),
+            ("2.4.0rc1", false),
+            ("3.0.0", false),
+            ("unknown", false),
+        ] {
             assert_eq!(
-                distribution_version_supported(version),
+                distribution_version_supported(version, ">=2.3.4,<2.4"),
                 supported,
                 "{version}"
             );
         }
-        // The worker re-checks the same bounds in Python before each request.
-        let to_list = |version: &str| format!("[{}]", version.replace('.', ","));
-        let helper = EXECUTION_SCRIPT
-            .split_once("def studio_distribution_supported(version):")
-            .unwrap()
-            .1
-            .split_once("raw=sys.stdin.buffer.read(33554433)")
-            .unwrap()
-            .0;
-        assert!(helper.contains(&format!(
-            "minimum=compare({})",
-            to_list(SCIENTIFIC_DISTRIBUTION_VERSION)
-        )));
-        assert!(helper.contains(&format!(
-            "compare({})<0",
-            to_list(SCIENTIFIC_DISTRIBUTION_LIMIT)
-        )));
-        assert!(PREFLIGHT_SCRIPT.contains(SCIENTIFIC_WHEEL_SHA256));
-        assert!(PREFLIGHT_SCRIPT.contains(SCIENTIFIC_SOURCE_COMMIT));
-        assert!(EXECUTION_SCRIPT.contains(SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256));
-        assert!(EXECUTION_SCRIPT.contains(&format!(
-            "if sys.argv[1]:\n    if distribution.version != \"{PACKAGED_DISTRIBUTION_VERSION}\":"
-        )));
-        assert!(EXECUTION_SCRIPT.contains(
-            "if not studio_distribution_supported(distribution.version):\n    raise RuntimeError(\"scientific distribution version unsupported\")\nif sys.argv[1]:"
+        assert!(distribution_version_supported("0.1", ""));
+        assert!(distribution_version_supported(
+            "2.0",
+            ">1.9, <=2.0, !=1.9.5"
         ));
+        assert!(!distribution_version_supported("4.9.5", ">4.9,!=4.9.5"));
+        assert!(distribution_version_supported("2.3.4", "==2.3.4"));
+        for unsupported in ["~=2.3", "==2.3.*", "===2.3.4", "2.3.4", ">=latest"] {
+            assert!(
+                !distribution_version_supported("2.3.4", unsupported),
+                "{unsupported}"
+            );
+        }
+    }
+
+    #[test]
+    fn admitted_range_comes_from_the_embedded_catalogue() {
+        let catalogue: Value =
+            serde_json::from_str(include_str!("../../recommended-config.json")).unwrap();
+        let required = catalogue["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|package| package["name"] == "nirs4all")
+            .unwrap();
+        let range = crate::recommended_config::nirs4all_range().unwrap();
+        assert_eq!(required["range"], range.as_str());
+        assert_ne!(range, "");
+        // The version Studio installs is one it admits.
+        let install = required["install"].as_str().unwrap();
+        assert_eq!(
+            admitted_distribution(
+                &probe_report(&serde_json::json!({"distribution_version": install})),
+                &range
+            )
+            .as_deref(),
+            Ok(install)
+        );
+        // No host script repeats a version: the worker receives the admitted one.
+        for script in [PREFLIGHT_SCRIPT, EXECUTION_SCRIPT] {
+            assert!(!script.contains(install), "{install} repeated in a script");
+        }
+        assert!(
+            EXECUTION_SCRIPT.contains("importlib.metadata.version(\"nirs4all\") != sys.argv[3]")
+        );
+    }
+
+    #[test]
+    fn admission_reports_the_first_real_refusal() {
+        use ScientificCpythonUnavailable as Refusal;
+        let range = ">=2.3.4,<2.4";
+        for (changes, expected) in [
+            (
+                serde_json::json!({"implementation": "pypy"}),
+                Refusal::NotCpython,
+            ),
+            (
+                serde_json::json!({"version": [3, 10, 12]}),
+                Refusal::UnsupportedPythonVersion,
+            ),
+            (
+                serde_json::json!({"isolated": false}),
+                Refusal::IsolationDisabled,
+            ),
+            (
+                serde_json::json!({"network_bind_denied": false}),
+                Refusal::NetworkGuardFailed,
+            ),
+            (
+                serde_json::json!({"distribution_version": null, "ready": false}),
+                Refusal::DistributionMissing,
+            ),
+            (
+                serde_json::json!({"distribution_version": null, "ready": false,
+                    "distribution_inconsistency": "2 nirs4all distributions are installed"}),
+                Refusal::DistributionInconsistent,
+            ),
+            (
+                serde_json::json!({"ready": false,
+                    "distribution_inconsistency": "nirs4all is imported from elsewhere"}),
+                Refusal::DistributionInconsistent,
+            ),
+            (
+                serde_json::json!({"distribution_version": "2.4.0"}),
+                Refusal::DistributionVersionUnsupported,
+            ),
+            (
+                serde_json::json!({"distribution_version": "2.3.3"}),
+                Refusal::DistributionVersionUnsupported,
+            ),
+            (
+                serde_json::json!({"import_error": "ImportError: missing dependency", "ready": false}),
+                Refusal::LibraryImportFailed,
+            ),
+            (
+                serde_json::json!({"ready": false}),
+                Refusal::CallableUnavailable,
+            ),
+            (
+                serde_json::json!({"schema": "other"}),
+                Refusal::MalformedResponse,
+            ),
+            (
+                serde_json::json!({"version": "3.11"}),
+                Refusal::MalformedResponse,
+            ),
+        ] {
+            assert_eq!(
+                admitted_distribution(&probe_report(&changes), range),
+                Err(expected),
+                "{changes}"
+            );
+        }
+        assert_eq!(
+            admitted_distribution(b"nope", range),
+            Err(Refusal::MalformedResponse)
+        );
+        assert_eq!(
+            admitted_distribution(&probe_report(&serde_json::json!({})), range).as_deref(),
+            Ok("2.3.4")
+        );
+        assert_eq!(
+            Refusal::DistributionMissing.reason(),
+            "scientific_distribution_missing"
+        );
+        assert_eq!(
+            Refusal::DistributionInconsistent.reason(),
+            "scientific_distribution_inconsistent"
+        );
+        assert_eq!(
+            Refusal::DistributionVersionUnsupported.reason(),
+            "scientific_distribution_version_unsupported"
+        );
+    }
+
+    /// A real virtual environment without pip, on a supported interpreter.
+    #[cfg(unix)]
+    fn virtual_environment(root: &Path) -> Option<(PathBuf, PathBuf)> {
+        let base = ["python3.13", "python3.12", "python3.11", "python3"]
+            .into_iter()
+            .find(|name| {
+                Command::new(name)
+                    .args([
+                        "-I",
+                        "-B",
+                        "-c",
+                        "import sys; sys.exit(sys.version_info < (3, 11))",
+                    ])
+                    .status()
+                    .is_ok_and(|status| status.success())
+            })?;
+        let venv = root.join("venv");
+        let created = Command::new(base)
+            .args(["-I", "-m", "venv", "--without-pip"])
+            .arg(&venv)
+            .status()
+            .unwrap();
+        assert!(created.success());
+        let site_packages = std::fs::read_dir(venv.join("lib"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path()
+            .join("site-packages");
+        Some((venv.join("bin/python"), site_packages))
+    }
+
+    /// Distribution metadata for a nirs4all release, without any module.
+    #[cfg(unix)]
+    fn write_nirs4all_metadata(site_packages: &Path, version: &str) -> PathBuf {
+        let metadata = site_packages.join(format!("nirs4all-{version}.dist-info"));
+        std::fs::create_dir_all(&metadata).unwrap();
+        std::fs::write(
+            metadata.join("METADATA"),
+            format!("Metadata-Version: 2.1\nName: nirs4all\nVersion: {version}\n"),
+        )
+        .unwrap();
+        metadata
+    }
+
+    #[cfg(unix)]
+    const STUDIO_CALLABLES: &str =
+        "def studio_scientific_job_v1(request): return request\ndef studio_scientific_job_v2(request): return request\n";
+
+    #[cfg(unix)]
+    fn write_nirs4all_package(directory: &Path, source: &str) {
+        std::fs::create_dir_all(directory.join("nirs4all")).unwrap();
+        std::fs::write(directory.join("nirs4all/__init__.py"), source).unwrap();
     }
 
     #[cfg(unix)]
     #[test]
-    fn worker_version_check_matches_the_rust_range() {
-        if !Command::new("python3")
-            .arg("-c")
-            .arg("pass")
-            .status()
-            .is_ok_and(|status| status.success())
-        {
+    fn admission_accepts_in_range_and_editable_installs_and_names_each_refusal() {
+        let root = tempfile::tempdir().unwrap();
+        let Some((python, site_packages)) = virtual_environment(root.path()) else {
             return;
-        }
-        let helper = EXECUTION_SCRIPT
-            .split_once("raw=sys.stdin.buffer.read(33554433)")
-            .unwrap()
-            .0
-            .split_once("def studio_distribution_supported(version):")
-            .unwrap()
-            .1;
-        let versions: Vec<_> = SUPPORTED_VERSION_CASES
-            .iter()
-            .map(|(version, _)| *version)
-            .collect();
-        let script = format!(
-            "import json,sys\ndef studio_distribution_supported(version):{helper}print(json.dumps([studio_distribution_supported(v) for v in json.loads(sys.argv[1])]))\n"
+        };
+        let adapters = adapters_fixture(root.path());
+        let acquire = || {
+            CpythonScientificJobExecutor::acquire(
+                &python,
+                &site_packages,
+                &adapters,
+                root.path().join("config"),
+            )
+        };
+
+        // No nirs4all distribution at all.
+        assert_eq!(
+            acquire().unavailable_reason(),
+            "scientific_distribution_missing"
         );
-        let output = Command::new("python3")
-            .args(["-I", "-B", "-c", &script])
-            .arg(serde_json::to_string(&versions).unwrap())
+
+        // A release outside the catalogue range, read from metadata only.
+        let outside = write_nirs4all_metadata(&site_packages, "0.0.1");
+        write_nirs4all_package(
+            &site_packages,
+            "raise RuntimeError('must not be imported')\n",
+        );
+        assert_eq!(
+            acquire().unavailable_reason(),
+            "scientific_distribution_version_unsupported"
+        );
+        std::fs::remove_dir_all(outside).unwrap();
+
+        // The version Studio installs, as a regular wheel layout.
+        let catalogue: Value =
+            serde_json::from_str(include_str!("../../recommended-config.json")).unwrap();
+        let install = catalogue["required"][0]["install"].as_str().unwrap();
+        assert_eq!(catalogue["required"][0]["name"], "nirs4all");
+        let wheel = write_nirs4all_metadata(&site_packages, install);
+        assert_eq!(
+            acquire().unavailable_reason(),
+            "scientific_library_import_failed"
+        );
+        write_nirs4all_package(&site_packages, "VALUE = 1\n");
+        assert_eq!(
+            acquire().unavailable_reason(),
+            "scientific_callable_unavailable"
+        );
+        write_nirs4all_package(&site_packages, STUDIO_CALLABLES);
+        let admitted = acquire();
+        assert!(
+            admitted.library_facades_available(),
+            "{}",
+            admitted.unavailable_reason()
+        );
+        assert_eq!(admitted.distribution_version(), Some(install));
+        // The selected environment is kept: a venv interpreter is a link.
+        assert_eq!(admitted.host.as_ref().unwrap().python, python);
+        assert!(admitted.warm_workers[0].lock().unwrap().is_some());
+        drop(admitted);
+
+        // An interrupted installation left the metadata of two releases: the
+        // in-range one cannot be trusted to describe the files that import.
+        let leftover = write_nirs4all_metadata(&site_packages, "0.0.1");
+        assert_eq!(
+            acquire().unavailable_reason(),
+            "scientific_distribution_inconsistent"
+        );
+        std::fs::remove_dir_all(leftover).unwrap();
+        std::fs::remove_dir_all(wheel).unwrap();
+        std::fs::remove_dir_all(site_packages.join("nirs4all")).unwrap();
+
+        // In-range metadata whose package is imported from another directory is
+        // stale: it describes files that are not the ones that run.
+        let checkout = root.path().join("checkout");
+        write_nirs4all_package(&checkout, STUDIO_CALLABLES);
+        let editable = write_nirs4all_metadata(&site_packages, install);
+        std::fs::write(
+            site_packages.join("__editable__.nirs4all.pth"),
+            format!("{}\n", checkout.display()),
+        )
+        .unwrap();
+        assert_eq!(
+            acquire().unavailable_reason(),
+            "scientific_distribution_inconsistent"
+        );
+
+        // Unless it is an editable install of that release: the package then
+        // legitimately lives in a source checkout, site-packages holds only
+        // metadata and a path file.
+        std::fs::write(
+            editable.join("direct_url.json"),
+            serde_json::json!({"url": format!("file://{}", checkout.display()), "dir_info": {"editable": true}})
+                .to_string(),
+        )
+        .unwrap();
+        let admitted = acquire();
+        assert!(
+            admitted.library_facades_available(),
+            "{}",
+            admitted.unavailable_reason()
+        );
+        assert_eq!(admitted.distribution_version(), Some(install));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn adapters_are_imported_from_the_application_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let Some((python, site_packages)) = virtual_environment(root.path()) else {
+            return;
+        };
+        // A copy left in the environment by an older Studio must not win.
+        let stale = site_packages.join("studio_document_adapters");
+        std::fs::create_dir_all(&stale).unwrap();
+        std::fs::write(stale.join("__init__.py"), "SOURCE = 'environment'\n").unwrap();
+        let adapters = root.path().join("application-adapters");
+        std::fs::create_dir_all(adapters.join("studio_document_adapters")).unwrap();
+        std::fs::write(
+            adapters.join("studio_document_adapters/__init__.py"),
+            "SOURCE = 'application'\n",
+        )
+        .unwrap();
+        let host = ScientificHost {
+            python,
+            site_packages,
+            adapters,
+            distribution_version: String::new(),
+        };
+        let scratch = ScratchDirectory::create().unwrap();
+        let script = concat!(
+            host_bootstrap!(),
+            "import studio_document_adapters\nprint(studio_document_adapters.SOURCE)\n"
+        );
+        let output = scientific_worker_command(&host, &scratch.path, script)
+            .unwrap()
+            .stdin(Stdio::null())
             .output()
             .unwrap();
         assert!(
@@ -4616,153 +3088,46 @@ done"#,
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let expected: Vec<_> = SUPPORTED_VERSION_CASES
-            .iter()
-            .map(|(_, supported)| *supported)
-            .collect();
         assert_eq!(
-            serde_json::from_slice::<Vec<bool>>(&output.stdout).unwrap(),
-            expected
+            String::from_utf8_lossy(&output.stdout).trim(),
+            "application"
         );
     }
 
-    fn preflight_output(version: &str, callable: &Path) -> Vec<u8> {
-        let digest = hex_digest(&host_identity(callable).unwrap().sha256);
-        serde_json::to_vec(&serde_json::json!({
-            "callable": "nirs4all.studio_scientific_job_v1",
-            "callable_path": callable,
-            "callable_sha256": digest,
-            "distribution": "nirs4all",
-            "distribution_error": null,
-            // A PyPI or locally built wheel: not the packaged attested identity.
-            "distribution_files_verified": false,
-            "distribution_manifest_sha256": "1".repeat(64),
-            "distribution_record_sha256": "2".repeat(64),
-            "distribution_stat_sha256": null,
-            "distribution_version": version,
-            "implementation": "cpython",
-            "isolated": true,
-            "network_bind_denied": true,
-            "network_ownership": "forbidden",
-            "ready": true,
-            "schema": "nirs4all.studio-scientific-cpython-host.v1",
-            "selected_wheel_sha256": SCIENTIFIC_WHEEL_SHA256,
-            "source_commit": SCIENTIFIC_SOURCE_COMMIT,
-            "version": [3, 11, 13],
-        }))
-        .unwrap()
-    }
-
+    #[cfg(unix)]
     #[test]
-    fn only_the_packaged_runtime_requires_the_attested_distribution_identity() {
+    fn acquisition_refuses_missing_or_altered_application_adapters() {
         let root = tempfile::tempdir().unwrap();
-        let callable = root.path().join("studio_scientific.py");
-        fs::write(
-            &callable,
-            "def studio_scientific_job_v1(request): return request\n",
-        )
-        .unwrap();
-        let host = host_identity(&callable).unwrap();
-        for version in ["1.4.16", "1.4.17"] {
-            let acquired = parse_acquired_host(
-                host.clone(),
-                &preflight_output(version, &callable),
-                DistributionPolicy::Selected,
-            )
-            .unwrap();
-            assert_eq!(acquired.distribution_version, version);
-            assert!(acquired.callable.is_some());
+        let host = shell_host(&root.path().join("bin"), "python3", "exit 0");
+        let site_packages = root.path().join("site-packages");
+        std::fs::create_dir_all(&site_packages).unwrap();
+        let adapters = adapters_fixture(root.path());
+        let member = adapters.join("studio_document_adapters/api/library_documents.py");
+        let original = std::fs::read(&member).unwrap();
+        std::fs::write(&member, b"pass\n").unwrap();
+        for directory in [adapters.clone(), root.path().join("missing-adapters")] {
             assert_eq!(
-                parse_acquired_host(
-                    host.clone(),
-                    &preflight_output(version, &callable),
-                    DistributionPolicy::Packaged,
+                CpythonScientificJobExecutor::acquire(
+                    &host,
+                    &site_packages,
+                    directory,
+                    root.path().join("config")
                 )
-                .unwrap_err(),
-                ScientificCpythonUnavailable::DistributionTampered
+                .unavailable_reason(),
+                "studio_adapters_unavailable"
             );
         }
-        for version in ["1.4.13", "1.4.14", "1.4.15", "1.5.0"] {
-            for policy in [DistributionPolicy::Selected, DistributionPolicy::Packaged] {
-                assert_eq!(
-                    parse_acquired_host(
-                        host.clone(),
-                        &preflight_output(version, &callable),
-                        policy
-                    )
-                    .unwrap_err(),
-                    ScientificCpythonUnavailable::DistributionVersionUnsupported
-                );
-            }
-        }
+        // With the application's own bytes the probe is reached.
+        std::fs::write(&member, original).unwrap();
         assert_eq!(
-            ScientificCpythonUnavailable::DistributionVersionUnsupported.reason(),
-            "scientific_distribution_version_unsupported"
-        );
-    }
-
-    #[test]
-    fn contract_is_honest_about_the_bounded_platform_capability() {
-        let contract: Value = serde_json::from_str(SCIENTIFIC_CPYTHON_HOST_CONTRACT).unwrap();
-        assert_eq!(
-            contract["schema"],
-            "nirs4all.studio-scientific-cpython-host.v1"
-        );
-        assert_eq!(contract["product_owner"], "studio-sidecar-rust");
-        assert_eq!(contract["python_role"], "library-plugin-host-only");
-        assert_eq!(contract["required_implementation"], "cpython");
-        assert_eq!(contract["minimum_python_version"], "3.11");
-        assert_eq!(contract["runtime_discovery"], "packaged_contract_only");
-        assert_eq!(
-            contract["runtime_closure"],
-            "exact_path_size_sha256_inventory_without_symlinks_or_special_files"
-        );
-        assert_eq!(
-            contract["python_flags"],
-            serde_json::json!(["-I", "-S", "-B"])
-        );
-        assert_eq!(
-            contract["stdlib_gui"],
-            "tkinter_and__tkinter_pruned_from_headless_plugin_closure"
-        );
-        assert_eq!(contract["selected_source_commit"], SCIENTIFIC_SOURCE_COMMIT);
-        assert_eq!(
-            contract["selected_distribution_version"],
-            PACKAGED_DISTRIBUTION_VERSION
-        );
-        assert!(distribution_version_supported(
-            PACKAGED_DISTRIBUTION_VERSION
-        ));
-        assert_eq!(contract["selected_wheel_sha256"], SCIENTIFIC_WHEEL_SHA256);
-        assert_eq!(
-            contract["training_execution_timeout_ms"].as_u64(),
-            u64::try_from(SCIENTIFIC_CPYTHON_TRAINING_TIMEOUT.as_millis()).ok()
-        );
-        assert!(contract
-            .get("selected_distribution_record_sha256")
-            .is_none());
-        assert_eq!(
-            contract["selected_installed_manifest_sha256"],
-            SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256
-        );
-        assert_eq!(
-            contract["selected_callable_sha256"],
-            SCIENTIFIC_CALLABLE_SHA256
-        );
-        assert_eq!(contract["network_ownership"], "forbidden");
-        assert_eq!(contract["network_bind_self_test"], "required");
-        assert_eq!(contract["http_backend"], "forbidden");
-        assert_eq!(contract["terminal_callback_owner"], "studio-sidecar-rust");
-        assert_eq!(contract["execution_bridge_implemented"], true);
-        assert_eq!(contract["studio_payload_resolver_implemented"], true);
-        assert_eq!(
-            contract["scientific_execution_capability"],
-            "unix_process_group_or_windows_kill_on_close_job_with_exact_host_callable_io_and_saved_slice_preflight"
-        );
-        assert_eq!(contract["windows_capability"], true);
-        assert_eq!(
-            contract["windows_process_tree"],
-            "sidecar_launcher_assigned_to_kill_on_close_job_before_cpython_spawn"
+            CpythonScientificJobExecutor::acquire(
+                &host,
+                &site_packages,
+                &adapters,
+                root.path().join("config")
+            )
+            .unavailable_reason(),
+            "python_host_output_read_failed"
         );
     }
 
@@ -4850,215 +3215,31 @@ done"#,
 
     #[cfg(unix)]
     #[test]
-    #[ignore = "requires STUDIO_BENCH_RUNTIME_ROOT with a real packaged runtime"]
-    fn benchmark_historical_packaged_runtime_refusal_phases() {
-        let root = PathBuf::from(
-            std::env::var_os("STUDIO_BENCH_RUNTIME_ROOT").expect("packaged runtime path"),
-        );
-        let python = root.join("python");
-        let host = python.join("bin/python3.11");
-        let site = python.join("lib/python3.11/site-packages");
-        let started = Instant::now();
-        let runtime = packaged_runtime_identity(
-            &host,
-            &root.join("PYTHON_PLUGIN_CLOSURE.json"),
-            &python,
-            &site,
-        )
-        .unwrap();
-        eprintln!("runtime full validation: {:?}", started.elapsed());
-        let started = Instant::now();
-        let host = host_identity(&host).unwrap();
-        eprintln!("host SHA: {:?}", started.elapsed());
-        let started = Instant::now();
-        let (worker, output) = warm_library_host::Worker::acquire(
-            &host,
-            Some(&runtime),
-            None,
-            SCIENTIFIC_CPYTHON_COLD_PREFLIGHT_TIMEOUT,
-        )
-        .unwrap();
-        eprintln!("preflight + warm acquisition: {:?}", started.elapsed());
-        assert_eq!(
-            parse_acquired_host(host, &output, DistributionPolicy::Packaged).unwrap_err(),
-            ScientificCpythonUnavailable::DistributionVersionUnsupported
-        );
-        drop(worker);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn acquisition_is_sticky_and_detects_later_host_tamper() {
-        let root = test_directory("identity");
-        let missing = root.join("missing-python");
-        let unavailable = CpythonScientificJobExecutor::acquire(&missing);
-        assert_eq!(unavailable.unavailable_reason(), "python_host_unavailable");
-        let valid_json = attested_unready_host_response("cpython");
-        let host = shell_host(&root, "python-host", &valid_json);
-        fs::rename(&host, &missing).unwrap();
-        assert_eq!(unavailable.unavailable_reason(), "python_host_unavailable");
-
-        let acquired = CpythonScientificJobExecutor::acquire(&missing);
-        assert_eq!(
-            acquired.unavailable_reason(),
-            "scientific_callable_unavailable"
-        );
-        fs::write(&missing, "tampered-host").unwrap();
-        assert_eq!(acquired.unavailable_reason(), "python_host_tampered");
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[cfg(any(unix, windows))]
-    #[test]
-    fn unchanged_runtime_skips_content_reads_and_restored_mtime_does_not_hide_edits() {
+    fn missing_interpreter_or_environment_is_reported_as_unavailable() {
         let root = tempfile::tempdir().unwrap();
-        let runtime = root.path().join("python-runtime");
-        let python = runtime.join("python");
-        let site = python.join("site-packages");
-        fs::create_dir_all(&site).unwrap();
-        let host = python.join("python-host");
-        fs::write(&host, "host identity").unwrap();
-        let member = site.join("large-library.bin");
-        let mut contents = vec![42_u8; 32 * 1024 * 1024];
-        fs::write(&member, &contents).unwrap();
-        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
-        write_runtime_closure(&python, &site, &closure);
-        let identity = packaged_runtime_identity(&host, &closure, &python, &site).unwrap();
-        assert_eq!(identity.full_hash_scans.load(Ordering::Relaxed), 1);
-        let start = Instant::now();
-        for _ in 0..20 {
-            verify_packaged_runtime_identity(&identity).unwrap();
-        }
-        eprintln!(
-            "20 runtime checks, 32 MiB immutable member: {:?}",
-            start.elapsed()
+        let adapters = adapters_fixture(root.path());
+        let site_packages = root.path().join("site-packages");
+        std::fs::create_dir_all(&site_packages).unwrap();
+        let missing = CpythonScientificJobExecutor::acquire(
+            root.path().join("missing-python"),
+            &site_packages,
+            &adapters,
+            root.path().join("config"),
         );
+        assert_eq!(missing.unavailable_reason(), "python_host_unavailable");
+        assert!(!missing.library_facades_available());
+        assert!(!missing.acquisition_timed_out());
+        let host = shell_host(&root.path().join("bin"), "python3", "exit 0");
         assert_eq!(
-            identity.full_hash_scans.load(Ordering::Relaxed),
-            1,
-            "unchanged request boundaries must not rehash the runtime"
+            CpythonScientificJobExecutor::acquire(
+                &host,
+                root.path().join("missing-site-packages"),
+                &adapters,
+                root.path().join("config"),
+            )
+            .unavailable_reason(),
+            "python_host_unavailable"
         );
-        let modified = fs::metadata(&member).unwrap().modified().unwrap();
-        std::thread::sleep(Duration::from_millis(20));
-        contents[0] = 43;
-        fs::write(&member, &contents).unwrap();
-        File::options()
-            .write(true)
-            .open(&member)
-            .unwrap()
-            .set_times(fs::FileTimes::new().set_modified(modified))
-            .unwrap();
-        assert_eq!(
-            verify_packaged_runtime_identity(&identity),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-        assert_eq!(identity.full_hash_scans.load(Ordering::Relaxed), 2);
-    }
-
-    #[cfg(any(unix, windows))]
-    #[test]
-    fn runtime_notifications_invalidate_cached_installation_verification() {
-        let root = tempfile::tempdir().unwrap();
-        let python = root.path().join("python-runtime/python");
-        let site = python.join("site-packages");
-        fs::create_dir_all(&site).unwrap();
-        let host = python.join("python-host");
-        fs::write(&host, "host identity").unwrap();
-        let member = site.join("library.py");
-        fs::write(&member, "value = 1").unwrap();
-        let closure = python.parent().unwrap().join("PYTHON_PLUGIN_CLOSURE.json");
-        write_runtime_closure(&python, &site, &closure);
-        let runtime = packaged_runtime_identity(&host, &closure, &python, &site).unwrap();
-        let changes = runtime
-            .changes
-            .as_ref()
-            .expect("local filesystem supports notifications");
-        let initial = changes.validate(&runtime).unwrap();
-        for _ in 0..100 {
-            assert_eq!(changes.validate(&runtime).unwrap(), initial);
-        }
-        assert_eq!(runtime.full_hash_scans.load(Ordering::Relaxed), 1);
-        let modified = fs::metadata(&member).unwrap().modified().unwrap();
-        fs::write(&member, "value = 2").unwrap();
-        File::options()
-            .write(true)
-            .open(&member)
-            .unwrap()
-            .set_times(fs::FileTimes::new().set_modified(modified))
-            .unwrap();
-        let start = Instant::now();
-        loop {
-            match changes.validate(&runtime) {
-                Err(ScientificCpythonUnavailable::RuntimeContractTampered) => break,
-                Ok(_) if start.elapsed() < Duration::from_secs(3) => {
-                    std::thread::sleep(Duration::from_millis(5));
-                }
-                result => panic!("runtime watcher did not invalidate content mutation: {result:?}"),
-            }
-        }
-    }
-
-    #[cfg(any(unix, windows))]
-    #[test]
-    fn prediction_read_burst_defers_readiness_but_keeps_real_tamper_checks() {
-        let root = tempfile::tempdir().unwrap();
-        let python = root.path().join("python-runtime/python");
-        let site = python.join("site-packages");
-        fs::create_dir_all(&site).unwrap();
-        let host = python.join("python-host");
-        fs::write(&host, "host identity").unwrap();
-        let member = site.join("library.py");
-        fs::write(&member, "value = 1").unwrap();
-        let closure = python.parent().unwrap().join("PYTHON_PLUGIN_CLOSURE.json");
-        write_runtime_closure(&python, &site, &closure);
-        let runtime = packaged_runtime_identity(&host, &closure, &python, &site).unwrap();
-        let changes = runtime.changes.as_ref().unwrap();
-        changes.validate_background(&runtime).unwrap();
-        assert!(changes
-            .prediction_read_activity("dataset.preview")
-            .unwrap()
-            .is_none());
-        let activity = changes
-            .prediction_read_activity("results.arrays")
-            .unwrap()
-            .unwrap();
-        let background_runtime = runtime.clone();
-        let (send, receive) = std::sync::mpsc::channel();
-        let background = std::thread::spawn(move || {
-            let result = background_runtime
-                .changes
-                .as_ref()
-                .unwrap()
-                .validate_background(&background_runtime);
-            send.send(result).unwrap();
-        });
-        assert!(receive.recv_timeout(Duration::from_millis(50)).is_err());
-        let modified = fs::metadata(&member).unwrap().modified().unwrap();
-        fs::write(&member, "value = 2").unwrap();
-        File::options()
-            .write(true)
-            .open(&member)
-            .unwrap()
-            .set_times(fs::FileTimes::new().set_modified(modified))
-            .unwrap();
-        // Deferring a background scan must never defer the read's own guard.
-        let started = Instant::now();
-        loop {
-            match changes.validate(&runtime) {
-                Err(ScientificCpythonUnavailable::RuntimeContractTampered) => break,
-                Ok(_) if started.elapsed() < Duration::from_secs(3) => {
-                    std::thread::sleep(Duration::from_millis(5));
-                }
-                other => panic!("foreground guard failed to detect mutation: {other:?}"),
-            }
-        }
-        assert!(receive.try_recv().is_err());
-        drop(activity);
-        assert_eq!(
-            receive.recv_timeout(Duration::from_secs(3)).unwrap(),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-        background.join().unwrap();
     }
 
     #[cfg(unix)]
@@ -5068,288 +3249,21 @@ done"#,
 
     #[cfg(unix)]
     #[test]
-    fn packaged_acquisition_passes_the_recorded_stat_identity_and_cold_budget() {
-        let root = tempfile::tempdir().unwrap();
-        let runtime = root.path().join("python-runtime");
-        let python_root = runtime.join("python");
-        let site_packages = python_root.join("lib/python3.11/site-packages");
-        fs::create_dir_all(&site_packages).unwrap();
-        let observed = root.path().join("observed-stat");
-        let host = shell_host(
-            &python_root.join("bin"),
-            "python3",
-            &format!(
-                "printf '%s' \"${{{VERIFIED_DISTRIBUTION_STAT_ENV}:-none}}\" > '{}'\n{}",
-                observed.display(),
-                framed_host_response(&attested_unready_host_response("cpython"))
-            ),
-        );
-        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
-        fs::write(
-            site_packages.join("attested_plugin.py"),
-            "ATTESTED = True\n",
-        )
-        .unwrap();
-        write_runtime_closure(&python_root, &site_packages, &closure);
-        let config = root.path().join("config");
-        let acquire = || {
-            let identity =
-                packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap();
-            let key = host_verification_cache::VerificationKey::new(
-                &host_identity(&host).unwrap(),
-                Some(&identity.site_packages),
-                Some(&identity.closure),
-            );
-            let executor = CpythonScientificJobExecutor::acquire_inner(
-                &host,
-                Some(identity),
-                None,
-                config.clone(),
-            );
-            assert_eq!(
-                executor.unavailable_reason(),
-                "scientific_callable_unavailable"
-            );
-            key
-        };
-        // No record: a full verification within the cold budget.
-        let key = acquire();
-        assert_eq!(fs::read_to_string(&observed).unwrap(), "none");
-        // The current distribution passes admission, but an unready callable is never cached.
-        let cache = host_verification_cache::VerificationCache::new(&config);
-        assert_eq!(cache.lookup(&key), None);
-        assert_eq!(
-            preflight_budget(None),
-            SCIENTIFIC_CPYTHON_COLD_PREFLIGHT_TIMEOUT
-        );
-
-        let digest = "ab".repeat(32);
-        cache.record(&key, Some(&digest));
-        acquire();
-        assert_eq!(fs::read_to_string(&observed).unwrap(), digest);
-        assert_eq!(
-            preflight_budget(cache.lookup(&key).as_ref()),
-            SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn selected_acquisition_records_a_ready_host_once_admitted() {
-        let root = tempfile::tempdir().unwrap();
-        let site = root.path().join("site-packages");
-        fs::create_dir_all(site.join("nirs4all")).unwrap();
-        fs::create_dir_all(site.join("nirs4all-1.4.16.dist-info")).unwrap();
-        let callable = site.join("nirs4all/__init__.py");
-        fs::write(
-            &callable,
-            "def studio_scientific_job_v1(request): return request\n",
-        )
-        .unwrap();
-        let response = String::from_utf8(preflight_output("1.4.16", &callable)).unwrap();
-        let host = shell_host(
-            &root.path().join("bin"),
-            "python3",
-            &framed_host_response(&format!("printf '%s' '{response}'")),
-        );
-        let config = root.path().join("config");
-        let executor =
-            CpythonScientificJobExecutor::acquire_existing_with_config_dir(&host, &site, &config);
-        assert!(
-            executor.callable_identity.is_some(),
-            "{}",
-            executor.unavailable_reason()
-        );
-        assert_eq!(executor.distribution_version(), Some("1.4.16"));
-        let mut identity = host_identity(&host).unwrap();
-        identity.canonical_path = std::path::absolute(&host).unwrap();
-        let key = host_verification_cache::VerificationKey::new(&identity, Some(&site), None);
-        assert_eq!(
-            host_verification_cache::VerificationCache::new(&config)
-                .lookup(&key)
-                .map(|verified| verified.distribution_stat_sha256),
-            Some(None)
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn packaged_runtime_contract_is_adjacent_sticky_and_symlink_closed() {
-        let root = test_directory("packaged-runtime");
-        let runtime = root.join("python-runtime");
-        let python_root = runtime.join("python");
-        let site_packages = python_root.join("lib/python3.11/site-packages");
-        fs::create_dir_all(&site_packages).unwrap();
-        let valid_json = attested_unready_host_response("cpython");
-        let framed = framed_host_response(&valid_json);
-        let host = shell_host(&python_root.join("bin"), "python3", &framed);
-        let package_member = site_packages.join("attested_plugin.py");
-        fs::write(&package_member, "ATTESTED = True\n").unwrap();
-        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
-        write_runtime_closure(&python_root, &site_packages, &closure);
-        let identity =
-            packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap();
-        let acquired = CpythonScientificJobExecutor::acquire_inner(
-            &host,
-            Some(identity),
-            None,
-            root.join("config"),
-        );
-        // The current SDK identity is admitted; this fixture deliberately has
-        // no callable. Runtime inventory/tamper checks remain active below.
-        assert_eq!(
-            acquired.unavailable_reason(),
-            "scientific_callable_unavailable"
-        );
-        let packaged = acquired.packaged_runtime.as_ref().unwrap();
-        assert_eq!(packaged.full_hash_scans.load(Ordering::Relaxed), 1);
-        verify_packaged_runtime_identity(packaged).unwrap();
-        verify_packaged_runtime_identity(packaged).unwrap();
-        assert_eq!(packaged.full_hash_scans.load(Ordering::Relaxed), 1);
-
-        let original_mtime = fs::metadata(&package_member).unwrap().modified().unwrap();
-        fs::write(&package_member, "ATTESTED = Nope\n").unwrap();
-        File::options()
-            .write(true)
-            .open(&package_member)
-            .unwrap()
-            .set_times(fs::FileTimes::new().set_modified(original_mtime))
-            .unwrap();
-        assert_eq!(
-            fs::metadata(&package_member).unwrap().modified().unwrap(),
-            original_mtime
-        );
-        assert_eq!(
-            verify_packaged_runtime_identity(packaged),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-        assert_eq!(packaged.full_hash_scans.load(Ordering::Relaxed), 2);
-        fs::write(&package_member, "ATTESTED = True\n").unwrap();
-        verify_packaged_runtime_identity(packaged).unwrap();
-        assert_eq!(packaged.full_hash_scans.load(Ordering::Relaxed), 3);
-        fs::write(&closure, "tampered-closure").unwrap();
-        // Filesystem notifications invalidate the readiness cache asynchronously.
-        // Keep the exact refusal assertion, allowing bounded event delivery.
-        let deadline = Instant::now() + Duration::from_secs(3);
-        loop {
-            let reason = acquired.unavailable_reason();
-            if reason == "python_runtime_contract_tampered" {
-                break;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "runtime notification did not invalidate the modified closure: {reason}"
-            );
-            std::thread::sleep(Duration::from_millis(5));
-        }
-
-        let absent = CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
-            &host,
-            runtime.join("absent.json"),
-            &python_root,
-            &site_packages,
-            root.join("config"),
-        );
-        assert_eq!(
-            absent.unavailable_reason(),
-            "python_runtime_contract_unavailable"
-        );
-
-        let outside_site = root.join("outside-site");
-        fs::create_dir_all(&outside_site).unwrap();
-        fs::remove_dir_all(&site_packages).unwrap();
-        std::os::unix::fs::symlink(&outside_site, &site_packages).unwrap();
-        let substituted = CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
-            &host,
-            &closure,
-            &python_root,
-            &site_packages,
-            root.join("config"),
-        );
-        assert_eq!(
-            substituted.unavailable_reason(),
-            "python_runtime_contract_tampered"
-        );
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn product_runtime_selection_does_not_scan_installed_packages() {
-        let root = tempfile::tempdir().unwrap();
-        let runtime = root.path().join("python-runtime");
-        let python_root = runtime.join("python");
-        let site_packages = python_root.join("Lib/site-packages");
-        fs::create_dir_all(&site_packages).unwrap();
-        let host = python_root.join("python.exe");
-        fs::write(&host, "selected interpreter").unwrap();
-        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
-        write_runtime_closure(&python_root, &site_packages, &closure);
-        // Package contents are qualified at build time; product startup must
-        // not repeat that recursive inventory or hash every installed file.
-        fs::write(
-            site_packages.join("installed-package.txt"),
-            "package contents",
-        )
-        .unwrap();
-        let identity = packaged_runtime_identity_with_policy(
-            &host,
-            &closure,
-            &python_root,
-            &site_packages,
-            false,
-        )
-        .unwrap();
-        verify_packaged_runtime_identity(&identity).unwrap();
-        assert_eq!(identity.full_hash_scans.load(Ordering::Relaxed), 0);
-        assert_eq!(identity.snapshot.lock().unwrap().files, []);
-        fs::write(&closure, "changed manifest").unwrap();
-        assert_eq!(
-            verify_packaged_runtime_identity(&identity),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
     fn first_launch_library_readiness_does_not_require_a_saved_dataset_catalogue() {
         let directory = tempfile::tempdir().unwrap();
-        let runtime = directory.path().join("python-runtime");
-        let python_root = runtime.join("python");
-        let site_packages = python_root.join("lib/python3.11/site-packages");
-        fs::create_dir_all(&site_packages).unwrap();
-        let host = shell_host(&python_root.join("bin"), "python3", "exit 0");
-        let callable = site_packages.join("studio_scientific.py");
-        fs::write(&callable, "def studio_scientific_job_v1(request): pass\n").unwrap();
-        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
-        write_runtime_closure(&python_root, &site_packages, &closure);
-        let config = directory.path().join("fresh-config");
-        // Model a successfully attested host on the very first launch. The
-        // saved-run resolver is deliberately absent: inline library features
-        // and setup must be usable before the user registers any datasets.
-        let scientific_host = Arc::new(CpythonScientificJobExecutor {
-            identity: Some(host_identity(&host).unwrap()),
-            distribution_version: Some(SCIENTIFIC_DISTRIBUTION_VERSION.into()),
-            callable_identity: Some(host_identity(&callable).unwrap()),
-            packaged_runtime: Some(
-                packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap(),
-            ),
-            existing_site_packages: None,
-            selected_library: None,
-            adapter_verification: Mutex::new(None),
-            dataset_cache_scope: NEXT_DATASET_CACHE_SCOPE.fetch_add(1, Ordering::Relaxed),
-            acquisition: ScientificCpythonUnavailable::RequestResolverUnavailable,
-            resolver: ScientificRequestResolver::new(config.clone()),
-            running: Arc::new(Mutex::new(BTreeMap::new())),
-            terminal_callback_failed: Arc::new(AtomicBool::new(false)),
-            warm_workers: std::array::from_fn(|_| Mutex::new(None)),
-        });
+        let host = shell_host(&directory.path().join("bin"), "python3", "exit 0");
+        let config = directory.path().join("config");
+        // Model an admitted host on the very first launch. The saved-run
+        // resolver is deliberately absent: inline library features and setup
+        // must be usable before the user registers any datasets.
+        let scientific_host = Arc::new(admitted_executor(&host, directory.path()));
         assert!(!scientific_host.resolver.is_configured());
         assert!(!scientific_host.is_selected());
         assert!(scientific_host.library_facades_available());
         let executor: Arc<dyn ScientificJobExecutor> = scientific_host.clone();
         let native_jobs = Arc::new(crate::NativeJobRuntime::with_executor(executor));
         let mut state =
-            crate::SidecarState::with_native_jobs_and_app_settings_dir(native_jobs, config);
+            crate::SidecarState::with_native_jobs_and_app_settings_dir(native_jobs, config.clone());
         state.scientific_host = Some(scientific_host);
 
         let readiness: Value = serde_json::from_str(&state.legacy_readiness_json()).unwrap();
@@ -5358,37 +3272,37 @@ done"#,
         let capabilities: Value = serde_json::from_str(&state.capabilities_json()).unwrap();
         assert_eq!(capabilities["features"]["scientific_execution"], false);
 
-        // A real runtime refusal must still block setup and inline features.
-        fs::write(&closure, "tampered closure").unwrap();
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let refused = loop {
-            let value: Value = serde_json::from_str(&state.legacy_readiness_json()).unwrap();
-            if value["ml_ready"] == false {
-                break value;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "runtime notification did not invalidate readiness"
-            );
-            std::thread::sleep(Duration::from_millis(5));
-        };
-        assert_eq!(refused["ml_ready"], false);
-        assert!(!refused["ml_error"].is_null());
+        // A refused host blocks setup and inline features, with its reason.
+        let refused = Arc::new(CpythonScientificJobExecutor::unavailable(
+            ScientificCpythonUnavailable::DistributionVersionUnsupported,
+            config.clone(),
+        ));
+        let executor: Arc<dyn ScientificJobExecutor> = refused.clone();
+        let native_jobs = Arc::new(crate::NativeJobRuntime::with_executor(executor));
+        let mut state =
+            crate::SidecarState::with_native_jobs_and_app_settings_dir(native_jobs, config);
+        state.scientific_host = Some(refused);
+        let readiness: Value = serde_json::from_str(&state.legacy_readiness_json()).unwrap();
+        assert_eq!(readiness["ml_ready"], false);
+        assert_eq!(
+            readiness["ml_error"],
+            "scientific_distribution_version_unsupported"
+        );
     }
 
     #[cfg(unix)]
     #[test]
-    fn capability_projection_keeps_rust_polling_independent_and_refuses_tampered_science() {
+    fn capability_projection_keeps_rust_polling_independent_of_the_scientific_host() {
         let directory = tempfile::tempdir().unwrap();
-        let scientific_host = Arc::new(slow_document_host(directory.path()));
-        assert!(scientific_host.library_facades_available());
+        let host = shell_host(&directory.path().join("bin"), "python3", "exit 0");
+        let scientific_host = Arc::new(admitted_executor(&host, directory.path()));
         let executor: Arc<dyn ScientificJobExecutor> = scientific_host.clone();
         let native_jobs = Arc::new(crate::NativeJobRuntime::with_executor(executor));
         let mut state = crate::SidecarState::with_native_jobs_and_app_settings_dir(
             native_jobs,
             directory.path().join("config"),
         );
-        state.scientific_host = Some(Arc::clone(&scientific_host));
+        state.scientific_host = Some(scientific_host);
         let before: Value = serde_json::from_str(&state.capabilities_json()).unwrap();
         assert_eq!(before["features"]["playground_routes"], true);
 
@@ -5407,18 +3321,11 @@ done"#,
             false
         );
 
-        let closure = directory
-            .path()
-            .join("python-runtime/PYTHON_PLUGIN_CLOSURE.json");
-        fs::write(closure, "tampered closure").unwrap();
-        let deadline = Instant::now() + Duration::from_secs(3);
-        while scientific_host.library_facades_available() {
-            assert!(
-                Instant::now() < deadline,
-                "runtime notification did not invalidate scientific capabilities"
-            );
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        // Without an admitted host, Rust polling still answers and science is off.
+        state.scientific_host = Some(Arc::new(CpythonScientificJobExecutor::unavailable(
+            ScientificCpythonUnavailable::DistributionMissing,
+            directory.path().join("config"),
+        )));
         let polling = crate::route_request(
             &mut state,
             "GET",
@@ -5473,162 +3380,6 @@ done"#,
 
     #[cfg(unix)]
     #[test]
-    fn cached_runtime_snapshot_rejects_add_remove_and_inode_replacement() {
-        fn packaged(label: &str) -> (PathBuf, PathBuf, PackagedRuntimeIdentity) {
-            let root = test_directory(label);
-            let runtime = root.join("python-runtime");
-            let python_root = runtime.join("python");
-            let site_packages = python_root.join("lib/python3.11/site-packages");
-            fs::create_dir_all(&site_packages).unwrap();
-            let host = shell_host(&python_root.join("bin"), "python3", "exit 0");
-            let member = site_packages.join("attested_plugin.py");
-            fs::write(&member, "ATTESTED = True\n").unwrap();
-            let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
-            write_runtime_closure(&python_root, &site_packages, &closure);
-            let identity =
-                packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap();
-            (root, member, identity)
-        }
-
-        let (inventory_root, member, inventory) = packaged("snapshot-inventory-drift");
-        let unexpected = member.with_file_name("unexpected.py");
-        fs::write(&unexpected, "UNATTESTED = True\n").unwrap();
-        assert_eq!(
-            verify_packaged_runtime_identity(&inventory),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-        fs::remove_file(&unexpected).unwrap();
-        verify_packaged_runtime_identity(&inventory).unwrap();
-        fs::remove_file(&member).unwrap();
-        assert_eq!(
-            verify_packaged_runtime_identity(&inventory),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-        fs::remove_dir_all(inventory_root).unwrap();
-
-        let (replacement_root, member, replacement) = packaged("snapshot-inode-drift");
-        let substitute = member.with_file_name("substitute.py");
-        fs::write(&substitute, fs::read(&member).unwrap()).unwrap();
-        fs::rename(&substitute, &member).unwrap();
-        assert_eq!(
-            verify_packaged_runtime_identity(&replacement),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-        fs::remove_dir_all(replacement_root).unwrap();
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn worker_revalidates_runtime_before_spawn_and_after_execution() {
-        let root = test_directory("worker-runtime-drift");
-        let runtime = root.join("python-runtime");
-        let python_root = runtime.join("python");
-        let site_packages = python_root.join("lib/python3.11/site-packages");
-        fs::create_dir_all(&site_packages).unwrap();
-        let host = shell_host(
-            &python_root.join("bin"),
-            "python3",
-            "sleep 0.2; printf '%s' '{\"engine\":\"dag-ml\",\"job_id\":\"drift-job\",\"result\":{\"metric\":\"rmse\",\"model\":\"pls_regression\",\"prediction_count\":4,\"task_type\":\"regression\",\"training_score\":0.1,\"validation_score\":0.2},\"schema\":\"nirs4all.studio-scientific-job-result.v1\"}'",
-        );
-        let callable_path = site_packages.join("studio_scientific.py");
-        fs::write(
-            &callable_path,
-            "def studio_scientific_job_v1(request): pass\n",
-        )
-        .unwrap();
-        let member = site_packages.join("attested_member.py");
-        fs::write(&member, "ATTESTED = True\n").unwrap();
-        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
-        write_runtime_closure(&python_root, &site_packages, &closure);
-        let packaged =
-            packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap();
-        let acquired_host = host_identity(&host).unwrap();
-        let callable_identity = host_identity(&callable_path).unwrap();
-        let request = serde_json::to_vec(&serde_json::json!({"job_id": "drift-job"})).unwrap();
-        let cancelled = AtomicBool::new(false);
-
-        fs::write(&member, "ATTESTED = False\n").unwrap();
-        assert_eq!(
-            run_scientific_process_with_timeout(
-                &acquired_host,
-                &callable_identity,
-                Some(&packaged),
-                &request,
-                &cancelled,
-                Duration::from_secs(1),
-            ),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-
-        fs::write(&member, "ATTESTED = True\n").unwrap();
-        let member_for_thread = member;
-        let mutation = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(50));
-            fs::write(member_for_thread, "ATTESTED = False\n").unwrap();
-        });
-        assert_eq!(
-            run_scientific_process_with_timeout(
-                &acquired_host,
-                &callable_identity,
-                Some(&packaged),
-                &request,
-                &cancelled,
-                Duration::from_secs(1),
-            ),
-            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
-        );
-        mutation.join().unwrap();
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn scientific_callable_accepts_path_alias_but_refuses_substitution() {
-        use std::os::unix::fs::symlink;
-
-        let root = test_directory("callable-path-alias");
-        fs::create_dir_all(&root).unwrap();
-        let callable = root.join("callable.py");
-        let alias = root.join("callable-alias.py");
-        let substitute = root.join("substitute.py");
-        fs::write(&callable, "def target(): pass\n").unwrap();
-        fs::write(&substitute, "def target(): pass\n").unwrap();
-        symlink(&callable, &alias).unwrap();
-        let digest = hex_digest(&host_identity(&callable).unwrap().sha256);
-        let identity_check = EXECUTION_SCRIPT
-            .split_once("actual_path=os.path.realpath(inspect.getsourcefile(target))")
-            .unwrap()
-            .1
-            .split_once("import contextlib")
-            .unwrap()
-            .0;
-        let script = format!(
-            "import hashlib, inspect, os, runpy, sys\ntarget=runpy.run_path(sys.argv[1])[\"target\"]\nactual_path=os.path.realpath(inspect.getsourcefile(target)){identity_check}"
-        );
-        for (expected_path, expected_digest, accepted) in [
-            (&alias, digest.as_str(), true),
-            (&substitute, digest.as_str(), false),
-            (&alias, "wrong-content-digest", false),
-        ] {
-            let output = Command::new("/usr/bin/python3")
-                .args(["-I", "-B", "-c", &script])
-                .arg(&callable)
-                .arg(expected_path)
-                .arg(expected_digest)
-                .output()
-                .unwrap();
-            assert_eq!(
-                output.status.success(),
-                accepted,
-                "{}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[cfg(unix)]
-    #[test]
     fn failed_training_worker_retains_bounded_exception_diagnostic() {
         let root = test_directory("training-diagnostic");
         let host = shell_host(
@@ -5636,12 +3387,8 @@ done"#,
             "python",
             "cat >/dev/null; head -c 6000 /dev/zero | tr '\\000' x >&2; printf '\\nModuleNotFoundError: No module named tabpfn\\n' >&2; exit 1",
         );
-        let callable = root.join("callable.py");
-        fs::write(&callable, "# attested callable").unwrap();
         let (result, diagnostic) = run_scientific_process(
-            &host_identity(&host).unwrap(),
-            &host_identity(&callable).unwrap(),
-            None,
+            &test_host(&host, &root),
             br#"{"job_id":"diagnostic-job"}"#,
             &AtomicBool::new(false),
             None,
@@ -5656,46 +3403,60 @@ done"#,
 
     #[cfg(unix)]
     #[test]
-    fn process_boundary_refuses_timeout_malformed_and_oversized_streams() {
-        let root = test_directory("limits");
-        let malformed = shell_host(&root, "malformed", "printf nope");
-        assert_eq!(
-            CpythonScientificJobExecutor::acquire(&malformed).unavailable_reason(),
-            "python_host_malformed_response"
-        );
-        let impostor = shell_host(&root, "impostor", &attested_unready_host_response("pypy"));
-        assert_eq!(
-            CpythonScientificJobExecutor::acquire(&impostor).unavailable_reason(),
-            "python_host_not_cpython"
-        );
-        let timeout = shell_host(&root, "timeout", "sleep 2");
-        assert_eq!(
-            run_process(&timeout, "ignored", Duration::from_millis(50), 32, 32),
-            Err(ScientificCpythonUnavailable::TimedOut)
-        );
-        let stdout = shell_host(&root, "stdout", "printf 12345");
-        assert_eq!(
-            run_process(&stdout, "ignored", Duration::from_secs(1), 4, 32),
-            Err(ScientificCpythonUnavailable::StdoutTooLarge)
-        );
-        let stderr = shell_host(&root, "stderr", "printf 12345 >&2; exit 1");
-        assert_eq!(
-            run_process(&stderr, "ignored", Duration::from_secs(1), 32, 4),
-            Err(ScientificCpythonUnavailable::StderrTooLarge)
-        );
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn preflight_timeout_remains_bounded_without_waiting_for_product_budget() {
-        let root = test_directory("preflight-timeout");
-        let timeout = shell_host(&root, "timeout", "sleep 2");
-        assert_eq!(
-            run_preflight_with_timeout(&timeout, None, Duration::from_millis(50)),
-            Err(ScientificCpythonUnavailable::TimedOut)
-        );
-        fs::remove_dir_all(root).unwrap();
+    fn acquisition_refuses_malformed_impostor_slow_and_oversized_probes() {
+        let root = tempfile::tempdir().unwrap();
+        let adapters = adapters_fixture(root.path());
+        let site_packages = root.path().join("site-packages");
+        std::fs::create_dir_all(&site_packages).unwrap();
+        let impostor =
+            String::from_utf8(probe_report(&serde_json::json!({"implementation": "pypy"})))
+                .unwrap();
+        for (name, body, timeout, expected) in [
+            (
+                "malformed",
+                framed_host_response("printf nope"),
+                Duration::from_secs(5),
+                "python_host_malformed_response",
+            ),
+            (
+                "impostor",
+                framed_host_response(&format!("printf '%s' '{impostor}'")),
+                Duration::from_secs(5),
+                "python_host_not_cpython",
+            ),
+            (
+                "oversized",
+                framed_host_response("head -c 9000 /dev/zero | tr '\\000' x"),
+                Duration::from_secs(5),
+                "python_host_stdout_too_large",
+            ),
+            (
+                "silent",
+                "exit 3".to_owned(),
+                Duration::from_secs(5),
+                "python_host_output_read_failed",
+            ),
+            (
+                "slow",
+                "sleep 2".to_owned(),
+                Duration::from_millis(50),
+                "python_host_timed_out",
+            ),
+        ] {
+            let host = shell_host(&root.path().join("bin"), name, &body);
+            let started = Instant::now();
+            let executor = CpythonScientificJobExecutor::acquire_within(
+                &host,
+                &site_packages,
+                &adapters,
+                root.path().join("config"),
+                timeout,
+            );
+            assert_eq!(executor.unavailable_reason(), expected, "{name}");
+            assert_eq!(executor.acquisition_timed_out(), name == "slow");
+            // A timeout ends the probe instead of waiting for the host to exit.
+            assert!(name != "slow" || started.elapsed() < Duration::from_secs(2));
+        }
     }
 
     #[test]
@@ -5760,7 +3521,7 @@ done"#,
         let trusted = studio_windows_job::system_windows_directory().unwrap();
         assert_eq!(
             validated_windows_system_root(fake.path(), &trusted),
-            Err(ScientificCpythonUnavailable::RuntimeContractUnavailable)
+            Err(ScientificCpythonUnavailable::WindowsSystemRootUnavailable)
         );
     }
 
@@ -5769,13 +3530,6 @@ done"#,
     fn execution_timeout_and_cancel_remove_worker_temp_roots() {
         let root = test_directory("worker-cleanup");
         fs::create_dir_all(&root).unwrap();
-        let callable_path = root.join("callable.py");
-        fs::write(
-            &callable_path,
-            "def studio_scientific_job_v1(value): return value\n",
-        )
-        .unwrap();
-        let callable = host_identity(&callable_path).unwrap();
         let request = br#"{"job_id":"run_native_cleanup"}"#;
 
         let timeout_witness = root.join("timeout-witness");
@@ -5787,12 +3541,9 @@ done"#,
                 timeout_witness.display()
             ),
         );
-        let timeout_host = host_identity(&timeout_host_path).unwrap();
         assert_eq!(
             run_scientific_process_with_timeout(
-                &timeout_host,
-                &callable,
-                None,
+                &test_host(&timeout_host_path, &root),
                 request,
                 &AtomicBool::new(false),
                 Duration::from_millis(50),
@@ -5811,7 +3562,6 @@ done"#,
                 cancel_witness.display()
             ),
         );
-        let cancel_host = host_identity(&cancel_host_path).unwrap();
         let cancelled = Arc::new(AtomicBool::new(false));
         let signal = Arc::clone(&cancelled);
         let cancel_thread = std::thread::spawn(move || {
@@ -5820,9 +3570,7 @@ done"#,
         });
         assert_eq!(
             run_scientific_process_with_timeout(
-                &cancel_host,
-                &callable,
-                None,
+                &test_host(&cancel_host_path, &root),
                 request,
                 &cancelled,
                 Duration::from_secs(1),
@@ -5838,41 +3586,25 @@ done"#,
     #[cfg(unix)]
     #[test]
     fn real_cpython_audit_hook_denies_listener_ownership() {
-        let supported = Command::new("sh")
-            .args(["-c", "command -v python3.11"])
-            .output()
-            .unwrap();
-        let supported_available = supported.status.success();
-        let discovered = if supported_available {
-            supported
-        } else {
-            Command::new("sh")
-                .args(["-c", "command -v python3"])
-                .output()
-                .unwrap()
-        };
-        if !discovered.status.success() {
+        if !Command::new("python3")
+            .args(["-I", "-B", "-c", "pass"])
+            .status()
+            .is_ok_and(|status| status.success())
+        {
             return;
         }
-        // A test venv commonly exposes python3.11 as a symlink. Exercise the
-        // audit hook through the real interpreter: product acquisition rightly
-        // rejects symlinked hosts before it can reach this boundary.
-        let python = fs::canonicalize(PathBuf::from(
-            String::from_utf8(discovered.stdout).unwrap().trim(),
-        ))
-        .unwrap();
-        let acquired = CpythonScientificJobExecutor::acquire(&python);
-        let reason = acquired.unavailable_reason();
-        assert!(
-            matches!(
-                reason,
-                "scientific_callable_unavailable"
-                    | "scientific_request_resolver_unavailable"
-                    | "scientific_distribution_tampered"
-                    | "python_host_malformed_response"
-            ) || (!supported_available && reason == "python_host_version_unsupported"),
-            "unexpected preflight reason: {reason}"
-        );
+        let run = |script: &str| {
+            let output = Command::new("python3")
+                .args(["-I", "-S", "-B", "-c", script])
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            serde_json::from_slice::<Value>(&output.stdout).unwrap()
+        };
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         drop(listener);
@@ -5886,11 +3618,7 @@ done"#,
              print(json.dumps({{'denied':denied}}))\n",
             address.port()
         );
-        let output = run_process(&python, &script, Duration::from_secs(2), 1024, 1024).unwrap();
-        assert_eq!(
-            serde_json::from_slice::<Value>(&output).unwrap(),
-            serde_json::json!({"denied": true})
-        );
+        assert_eq!(run(&script), serde_json::json!({"denied": true}));
         TcpListener::bind(address).unwrap();
 
         let http_script = "import http.server,json,sys\n\
@@ -5900,25 +3628,24 @@ done"#,
             try: http.server.HTTPServer(('127.0.0.1',0),http.server.BaseHTTPRequestHandler)\n\
             except RuntimeError: denied=True\n\
             print(json.dumps({'http_listener_denied':denied}))\n";
-        let output = run_process(&python, http_script, Duration::from_secs(2), 1024, 1024).unwrap();
         assert_eq!(
-            serde_json::from_slice::<Value>(&output).unwrap(),
+            run(http_script),
             serde_json::json!({"http_listener_denied": true})
         );
 
         // Exercise the actual production hook. Optional font discovery catches
         // OSError and falls back to bundled fonts; no subprocess is permitted.
-        for source in [PREFLIGHT_SCRIPT, EXECUTION_SCRIPT] {
-            let hook = source.split("if sys.argv[1]:").next().unwrap();
-            let script = format!(
-                "{hook}\nimport subprocess\ndenied=False\ntry: subprocess.check_output(['fc-list'])\nexcept OSError: denied=True\nprint(json.dumps({{'spawn_denied':denied}}))\n"
-            );
-            let output = run_process(&python, &script, Duration::from_secs(2), 1024, 1024).unwrap();
-            assert_eq!(
-                serde_json::from_slice::<Value>(&output).unwrap(),
-                serde_json::json!({"spawn_denied": true})
-            );
+        let hook = host_bootstrap!()
+            .split("# Load the selected environment")
+            .next()
+            .unwrap();
+        for script in [PREFLIGHT_SCRIPT, EXECUTION_SCRIPT] {
+            assert!(script.starts_with(hook));
         }
+        let script = format!(
+            "{hook}\nimport subprocess\ndenied=False\ntry: subprocess.check_output(['fc-list'])\nexcept OSError: denied=True\nprint(json.dumps({{'spawn_denied':denied}}))\n"
+        );
+        assert_eq!(run(&script), serde_json::json!({"spawn_denied": true}));
 
         let spawn_script = "import json,os,sys\n\
             def deny(event,args):\n if event in {'subprocess.Popen','os.system','os.spawn','os.posix_spawn','os.fork','os.forkpty','os.exec','pty.spawn'}: raise RuntimeError('denied')\n\
@@ -5927,10 +3654,8 @@ done"#,
             try: os.spawnv(os.P_WAIT,'/bin/true',['true'])\n\
             except RuntimeError: denied=True\n\
             print(json.dumps({'spawnv_denied':denied}))\n";
-        let output =
-            run_process(&python, spawn_script, Duration::from_secs(2), 1024, 1024).unwrap();
         assert_eq!(
-            serde_json::from_slice::<Value>(&output).unwrap(),
+            run(spawn_script),
             serde_json::json!({"spawnv_denied": true})
         );
     }

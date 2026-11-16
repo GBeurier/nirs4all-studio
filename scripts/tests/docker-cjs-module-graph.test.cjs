@@ -16,16 +16,16 @@ function fixture(t, files) {
 }
 function verify(root, copies) {
   return assertDockerCjsModuleGraph({ projectRoot: root,
-    dockerfile: `FROM node:24 AS python-plugin-runtime\nWORKDIR /build\n${copies}\n`,
-    stageName: "python-plugin-runtime", entrypoints: ["scripts/main.cjs"] });
+    dockerfile: `FROM node:24 AS python-environment\nWORKDIR /build\n${copies}\n`,
+    stageName: "python-environment", entrypoints: ["scripts/main.cjs"] });
 }
 
 test("actual Python build stage has a closed CommonJS dependency graph", () => {
   const root = path.resolve(__dirname, "../..");
   assertDockerCjsModuleGraph({ projectRoot: root,
     dockerfile: fs.readFileSync(path.join(root, "Dockerfile"), "utf8"),
-    stageName: "python-plugin-runtime",
-    entrypoints: ["scripts/bake-python-plugin-runtime.cjs", "scripts/setup-python-env.cjs"] });
+    stageName: "python-environment",
+    entrypoints: ["scripts/fetch-uv.cjs", "scripts/build-wheelhouse.cjs", "scripts/build-offline-payload.cjs", "scripts/provision-environment.cjs"] });
 });
 
 test("checks an arbitrary deferred transitive require rather than one helper name", (t) => {

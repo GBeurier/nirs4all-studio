@@ -31,10 +31,8 @@
 const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const {
-  LITE_PROFILE,
-  STANDALONE_V1_PROFILE,
-} = require("./python-runtime-config.cjs");
+const STANDALONE_V1_PROFILE = "cpu";
+const LITE_PROFILE = "cpu-lite";
 const { resolveSpawnCommand } = require("./spawn-command.cjs");
 const { verifyRuntimeContract } = require("./native-runtime-contract.cjs");
 

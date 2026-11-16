@@ -17,6 +17,8 @@ export interface CommandOptions {
   /** Base delay (ms) for exponential backoff between retries. Default 2000. */
   retryBaseMs?: number;
   timeoutMs?: number;
+  /** Variables added to the inherited environment. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -58,6 +60,7 @@ export function runCommand(command: string, args: string[], options?: CommandOpt
     const proc = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
       shell: false,
+      ...(options?.env ? { env: { ...process.env, ...options.env } } : {}),
       windowsHide: isWindows,
     });
 
@@ -74,7 +77,7 @@ export function runCommand(command: string, args: string[], options?: CommandOpt
       else resolve();
     };
 
-    // Drain both pipes immediately. An unread stdout pipe can block pip forever.
+    // Drain both pipes immediately. An unread pipe can block the installer forever.
     for (const stream of [proc.stdout, proc.stderr]) {
       if (!stream) continue;
       const decoder = new StringDecoder("utf8");
@@ -117,7 +120,8 @@ export function runCommand(command: string, args: string[], options?: CommandOpt
     proc.on("close", (code) => {
       if (finished) return;
       if (code === 0) complete();
-      else complete(new Error(`Command "${commandLabel}" failed (code ${code}): ${stderr.slice(0, 500)}`));
+      // `output` (the redacted end of the command's output) lets a caller quote the tool's own explanation.
+      else complete(Object.assign(new Error(`Command "${commandLabel}" failed (code ${code}): ${stderr.slice(0, 500)}`), { output: stderr }));
     });
 
     proc.on("error", (error) => {

@@ -1,11 +1,16 @@
 /**
- * Smoke-test a packaged standalone archive that has already been extracted.
+ * Smoke-test an unpacked or installed Studio application.
  *
- * The goal is to validate the real bundled runtime path:
- *   - launch the packaged Electron app with offline forced via env
+ * The goal is to validate what a packaged application ships and that it runs
+ * on an environment made from it:
+ *   - create the Python environment with the shipped uv from the shipped
+ *     wheels. With the offline payload nothing comes from the network, and
+ *     the default recommended packages are installed too: the payload must
+ *     be complete on this platform
+ *   - launch the packaged Electron app on that environment in a private profile
  *   - force a deterministic Rust control-plane port
- *   - wait for sidecar-specific readiness and capabilities
- *   - explicitly preflight the bundled CPython library/plugin host
+ *   - wait for the sidecar and for the scientific host to be ready, then
+ *     exercise the Playground and dataset routes through the Rust sidecar
  *
  * Usage:
  *   node scripts/smoke-archive-standalone.cjs --extracted-root <path> [options]
@@ -19,13 +24,13 @@ const path = require("path");
 const { createServer } = require("net");
 const packageJson = require("../package.json");
 const { verifyRuntimeContract } = require("./native-runtime-contract.cjs");
+const { provisionEnvironment } = require("./provision-environment.cjs");
+const { lockedRecommendedNames, readLock, targetKey } = require("./python-wheel-lock.cjs");
 
 const DEFAULT_APP_NAME = "nirs4all Studio";
 const DEFAULT_TIMEOUT_MS = 180000;
 const DEFAULT_POLL_INTERVAL_MS = 1000;
-const PLUGIN_PREFLIGHT_REQUEST_TIMEOUT_MS = 75000;
 const ARCHIVE_SMOKE_SESSION_TOKEN_ENV = "NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN";
-const MAX_DIAGNOSTIC_RESPONSE_BYTES = 4096;
 const MAX_DIAGNOSTIC_LINE_BYTES = 2048;
 
 function printHelp() {
@@ -172,17 +177,11 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
   if (platformId === "darwin") {
     const appBundle = findMacAppBundle(extractedRoot, appName);
     const resourcesDir = path.join(appBundle, "Contents", "Resources");
-    const runtimeRoot = path.join(resourcesDir, "backend", "python-runtime");
     return {
       appRoot: appBundle,
       backendRoot: path.join(resourcesDir, "backend"),
       executablePath: path.join(appBundle, "Contents", "MacOS", appName),
-      runtimeReadyPath: path.join(runtimeRoot, "PLUGIN_RUNTIME_READY.json"),
       nativeSidecarPath: path.join(resourcesDir, "backend", "native", nativeSidecarName),
-      bundledPythonPath: path.join(runtimeRoot, "python", "bin", "python3"),
-      bundledPythonCandidates: [
-        path.join(runtimeRoot, "python", "bin", "python3"),
-      ],
     };
   }
 
@@ -192,25 +191,11 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
       ? (process.env.NIRS4ALL_APP_EXE || packageJson.name)
       : appName;
   const appRoot = findDirectoryAppRoot(extractedRoot, executableName);
-  const runtimeRoot = path.join(appRoot, "resources", "backend", "python-runtime");
   return {
     appRoot,
     backendRoot: path.join(appRoot, "resources", "backend"),
     executablePath: path.join(appRoot, executableName),
-    runtimeReadyPath: path.join(runtimeRoot, "PLUGIN_RUNTIME_READY.json"),
     nativeSidecarPath: path.join(appRoot, "resources", "backend", "native", nativeSidecarName),
-    bundledPythonPath:
-      platformId === "win32"
-        ? path.join(runtimeRoot, "python", "python.exe")
-        : path.join(runtimeRoot, "python", "bin", "python3"),
-    bundledPythonCandidates:
-      platformId === "win32"
-        ? [
-            path.join(runtimeRoot, "python", "python.exe"),
-          ]
-        : [
-            path.join(runtimeRoot, "python", "bin", "python3"),
-          ],
   };
 }
 
@@ -226,7 +211,7 @@ function verifyLaunchRuntimeContract(launchLayout, platformId, arch = process.ar
     artifactBoundaryRoot: launchLayout.appRoot,
     platform: platformId,
     arch,
-    requireBundledPythonPlugin: true,
+    requirePythonPayload: true,
     requireBundledMethods: true,
   });
 }
@@ -241,85 +226,13 @@ function delay(ms) {
   });
 }
 
-function pluginPreflightTimeoutMs(remainingMs) {
-  return Math.max(1, Math.min(PLUGIN_PREFLIGHT_REQUEST_TIMEOUT_MS, remainingMs));
-}
-
-function collectRuntimePathLeaks(runtimeRoot, disallowedFragments) {
-  const leaks = [];
-  const queue = [runtimeRoot];
-  const binaryExtensions = new Set([".a", ".dll", ".dylib", ".exe", ".lib", ".pdb", ".pyc", ".pyd", ".so", ".whl", ".zip"]);
-
-  while (queue.length > 0) {
-    const currentDir = queue.pop();
-    if (!currentDir || !fs.existsSync(currentDir)) {
-      continue;
-    }
-
-    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
-      const entryPath = path.join(currentDir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name === "__pycache__") {
-          continue;
-        }
-        queue.push(entryPath);
-        continue;
-      }
-
-      try {
-        const stat = fs.lstatSync(entryPath);
-        if (stat.isSymbolicLink()) {
-          const target = fs.readlinkSync(entryPath);
-          const matched = disallowedFragments.filter((fragment) => fragment && target.includes(fragment));
-          if (matched.length > 0) {
-            leaks.push({ path: entryPath, kind: "symlink", matches: matched });
-          }
-          continue;
-        }
-
-        if (!stat.isFile() || stat.size > 1024 * 1024) {
-          continue;
-        }
-
-        const ext = path.extname(entry.name).toLowerCase();
-        const parentName = path.basename(path.dirname(entryPath));
-        const shouldInspect = entry.name === "pyvenv.cfg"
-          || parentName === "Scripts"
-          || parentName === "bin"
-          || [".cfg", ".pth"].includes(ext)
-          || entry.name.startsWith("activate");
-        if (!shouldInspect || binaryExtensions.has(ext)) {
-          continue;
-        }
-
-        const buffer = fs.readFileSync(entryPath);
-        if (buffer.includes(0)) {
-          continue;
-        }
-
-        const text = buffer.toString("utf-8");
-        const matched = disallowedFragments.filter((fragment) => fragment && text.includes(fragment));
-        if (matched.length > 0) {
-          leaks.push({ path: entryPath, kind: "text", matches: matched });
-        }
-      } catch {
-        // Ignore unreadable runtime files during leak scanning.
-      }
-    }
-  }
-
-  return leaks;
-}
-
-function buildSandboxEnv(platformId, sandboxRoot, port, timeoutMs = DEFAULT_TIMEOUT_MS) {
+function buildSandboxEnv(platformId, sandboxRoot, port) {
   const env = {
     ...process.env,
     CI: "1",
     ELECTRON_ENABLE_LOGGING: "1",
     NIRS4ALL_OFFLINE: "1",
     NIRS4ALL_NATIVE_SIDECAR_PORT: String(port),
-    NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS: String(timeoutMs),
-    NIRS4ALL_PLUGIN_PACKAGE_VERIFY_TIMEOUT_MS: String(timeoutMs),
     // The Electron main process accepts this fresh credential only under CI,
     // then passes it to the sidecar under the ordinary private session name.
     // This lets the external harness exercise the authenticated product routes
@@ -440,12 +353,30 @@ async function cleanupSandboxRoot(sandboxRoot, options = {}) {
   }
 }
 
+/**
+ * Create the environment where Studio creates its own and record it as the
+ * selection that the application reads at startup from its data directory.
+ * An offline payload must also provide every default recommended package.
+ */
+async function provisionSelectedEnvironment(backendRoot, userDataDir) {
+  const offlinePayload = fs.existsSync(path.join(backendRoot, "offline"));
+  const environment = await provisionEnvironment({
+    backendRoot,
+    envDir: path.join(userDataDir, "python-env"),
+    recommended: offlinePayload ? lockedRecommendedNames(readLock(targetKey(process.platform, process.arch))) : [],
+  });
+  fs.writeFileSync(
+    path.join(userDataDir, "env-settings.json"),
+    `${JSON.stringify({ pythonPath: environment.pythonPath }, null, 2)}\n`,
+  );
+  return environment;
+}
+
+/** Wait for the sidecar, then for the scientific host of the selected environment. */
 async function waitForReady(port, timeoutMs, child, outputBuffer, sessionToken) {
   const deadline = Date.now() + timeoutMs;
   const healthUrl = `http://127.0.0.1:${port}/sidecar/v1/health`;
-  const capabilitiesUrl = `http://127.0.0.1:${port}/sidecar/v1/capabilities`;
   const readinessUrl = `http://127.0.0.1:${port}/api/system/readiness`;
-  const pluginPreflightUrl = `http://127.0.0.1:${port}/sidecar/v1/python/preflight`;
   const headers = { "X-Nirs4all-Session": sessionToken };
   let lastFailure = "no response";
 
@@ -468,33 +399,24 @@ async function waitForReady(port, timeoutMs, child, outputBuffer, sessionToken) 
             signal: AbortSignal.timeout(3000),
           });
           const readinessPayload = readinessResponse.ok ? await readinessResponse.json() : null;
-          if (readinessPayload?.ml_loading !== false) {
-            lastFailure = `scientific host still loading: ${JSON.stringify(readinessPayload)}`;
-            await delay(DEFAULT_POLL_INTERVAL_MS);
-            continue;
+          if (readinessPayload?.ml_ready === true) {
+            return { healthPayload, readinessPayload };
           }
-          const capabilitiesResponse = await fetch(capabilitiesUrl, {
-            headers,
-            signal: AbortSignal.timeout(3000),
-          });
-          const capabilitiesPayload = capabilitiesResponse.ok ? await capabilitiesResponse.json() : null;
-          const pluginResponse = await fetch(pluginPreflightUrl, {
-            headers,
-            signal: AbortSignal.timeout(pluginPreflightTimeoutMs(deadline - Date.now())),
-          });
-          const pluginPayload = pluginResponse.ok ? await pluginResponse.json() : null;
-          return {
-            healthPayload,
-            capabilitiesPayload,
-            pluginPayload,
-            pluginStatus: pluginResponse.status,
-          };
+          if (readinessPayload?.ml_loading === false) {
+            throw new ScientificHostError(
+              `The scientific host did not start on the provisioned environment: ${JSON.stringify(readinessPayload)}`
+              + `\n${outputBuffer.join("\n")}`,
+            );
+          }
+          lastFailure = `scientific host still loading: ${JSON.stringify(readinessPayload)}`;
+        } else {
+          lastFailure = `health payload not ready: ${JSON.stringify(healthPayload)}`;
         }
-        lastFailure = `health payload not ready: ${JSON.stringify(healthPayload)}`;
       } else {
         lastFailure = `health HTTP ${healthResponse.status}: ${await healthResponse.text()}`;
       }
     } catch (error) {
+      if (error instanceof ScientificHostError) throw error;
       lastFailure = error instanceof Error ? error.message : String(error);
     }
 
@@ -502,8 +424,23 @@ async function waitForReady(port, timeoutMs, child, outputBuffer, sessionToken) 
   }
 
   throw new Error(
-    `Timed out waiting for ${healthUrl}; last failure: ${lastFailure}.\n${outputBuffer.join("\n")}`,
+    `Timed out waiting for ${readinessUrl}; last failure: ${lastFailure}.\n${outputBuffer.join("\n")}`,
   );
+}
+
+class ScientificHostError extends Error {}
+
+/** The sidecar must run the interpreter Studio selected, with nirs4all importable. */
+async function verifySelectedEnvironment(port, sessionToken, pythonPath) {
+  const response = await fetch(`http://127.0.0.1:${port}/api/system/env-coherence`, {
+    headers: { "X-Nirs4all-Session": sessionToken },
+    signal: AbortSignal.timeout(60000),
+  });
+  const coherence = response.ok ? await response.json() : { status: response.status, body: await response.text() };
+  if (coherence.configured_python !== pythonPath || coherence.coherent !== true || coherence.core_ready !== true) {
+    throw new Error(`The sidecar does not use the provisioned environment ${pythonPath}: ${JSON.stringify(coherence)}`);
+  }
+  return coherence;
 }
 
 /** Prove the migrated product is scientifically usable without a Python HTTP
@@ -577,29 +514,6 @@ async function waitForNativeScientificReady(port, timeoutMs, child, outputBuffer
   );
 }
 
-async function probeNativeScientificSurface(port, timeoutMs, child, outputBuffer, sessionToken) {
-  return waitForNativeScientificReady(port, timeoutMs, child, outputBuffer, sessionToken);
-}
-
-async function scientificUnavailabilityDiagnostic(port, sessionToken) {
-  try {
-    const response = await fetch(`http://127.0.0.1:${port}/api/runs/run-groups`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Nirs4all-Session": sessionToken,
-      },
-      body: "{}",
-      signal: AbortSignal.timeout(3000),
-    });
-    const encoded = Buffer.from(await response.text(), "utf8");
-    const body = encoded.subarray(0, MAX_DIAGNOSTIC_RESPONSE_BYTES).toString("utf8");
-    return `HTTP ${response.status}: ${body}`;
-  } catch (error) {
-    return `unavailable: ${error instanceof Error ? error.message : String(error)}`;
-  }
-}
-
 function pushOutput(buffer, label, chunk) {
   const text = chunk.toString().trim();
   if (!text) {
@@ -647,11 +561,7 @@ async function smokeArchiveStandalone(rawConfig) {
   const config = assertValidConfig(rawConfig);
   const launchLayout = resolveLaunchLayout(config.extractedRoot, config.platform, config.appName);
   ensurePathExists(launchLayout.executablePath, "Packaged executable");
-  ensurePathExists(launchLayout.runtimeReadyPath, "Bundled runtime marker");
   ensurePathExists(launchLayout.nativeSidecarPath, "Native Studio sidecar");
-  const bundledPythonPath = launchLayout.bundledPythonCandidates.find((candidate) => fs.existsSync(candidate))
-    ?? launchLayout.bundledPythonPath;
-  ensurePathExists(bundledPythonPath, "Bundled Python");
   const verifiedRuntime = verifyLaunchRuntimeContract(
     launchLayout,
     config.platform,
@@ -659,38 +569,28 @@ async function smokeArchiveStandalone(rawConfig) {
   if (verifiedRuntime.sidecarPath !== launchLayout.nativeSidecarPath) {
     throw new Error("Runtime contract did not select the packaged native sidecar");
   }
-  if (verifiedRuntime.pythonPluginHostPath !== bundledPythonPath) {
-    throw new Error("Runtime contract did not select the bundled Python plugin host");
-  }
-
-  const pathLeaks = collectRuntimePathLeaks(
-    path.dirname(launchLayout.runtimeReadyPath),
-    [process.cwd(), path.resolve("backend-dist")],
-  );
-  if (pathLeaks.length > 0) {
-    const sample = pathLeaks
-      .slice(0, 5)
-      .map((leak) => `${leak.kind}:${leak.path} -> ${leak.matches.join(", ")}`)
-      .join("\n");
-    throw new Error(`Bundled runtime still references the build workspace.\n${sample}`);
-  }
 
   const port = await choosePort(config.port);
   const sandboxRoot = config.sandboxRoot || fs.mkdtempSync(path.join(os.tmpdir(), "n4a-archive-smoke-"));
-  const env = buildSandboxEnv(config.platform, sandboxRoot, port, config.timeoutMs);
+  const env = buildSandboxEnv(config.platform, sandboxRoot, port);
+  const userDataDir = path.join(sandboxRoot, "electron-user-data");
   const outputBuffer = [];
 
   console.log(`Smoke root:     ${config.extractedRoot}`);
   console.log(`Executable:     ${launchLayout.executablePath}`);
-  console.log(`Bundled Python: ${bundledPythonPath}`);
   console.log(`Native sidecar: ${launchLayout.nativeSidecarPath}`);
   console.log(`Sandbox:        ${sandboxRoot}`);
   console.log(`Sidecar port:   ${port}`);
 
+  const environment = await provisionSelectedEnvironment(launchLayout.backendRoot, userDataDir);
+  console.log(`Environment:    ${environment.pythonPath}${environment.offline ? " (offline payload)" : ""}`);
+
   // An extracted package on a hosted runner may lack a usable setuid zygote.
   // Opt in only for that candidate smoke; normal launches still exercise it.
-  const launchArgs = config.platform === "linux" && process.env.N4A_SMOKE_ELECTRON_NO_SANDBOX === "1"
-    ? ["--no-sandbox"] : [];
+  const launchArgs = [
+    `--user-data-dir=${userDataDir}`,
+    ...(config.platform === "linux" && process.env.N4A_SMOKE_ELECTRON_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
+  ];
   const child = spawn(launchLayout.executablePath, launchArgs, {
     cwd: launchLayout.appRoot,
     env,
@@ -702,58 +602,19 @@ async function smokeArchiveStandalone(rawConfig) {
   child.stderr?.on("data", (chunk) => pushOutput(outputBuffer, "stderr", chunk));
 
   try {
-    const { healthPayload, capabilitiesPayload, pluginPayload, pluginStatus } =
-      await waitForReady(
-        port,
-        config.timeoutMs,
-        child,
-        outputBuffer,
-        env[ARCHIVE_SMOKE_SESSION_TOKEN_ENV],
-      );
+    const sessionToken = env[ARCHIVE_SMOKE_SESSION_TOKEN_ENV];
+    const { healthPayload } = await waitForReady(port, config.timeoutMs, child, outputBuffer, sessionToken);
     if (healthPayload.protocol_version !== "studio-sidecar-r1") {
       throw new Error(`Unexpected sidecar protocol: ${healthPayload.protocol_version ?? "undefined"}`);
     }
-    if (
-      capabilitiesPayload?.features?.scientific_execution !== false ||
-      capabilitiesPayload?.features?.native_archive_v2_training !== true ||
-      capabilitiesPayload?.features?.playground_routes !== true ||
-      capabilitiesPayload?.features?.dataset_synthetic_generation_routes !== true ||
-      capabilitiesPayload?.features?.legacy_api_routes !== false ||
-      capabilitiesPayload?.features?.python_plugin_preflight !== true
-    ) {
-      const scientificDiagnostic = await scientificUnavailabilityDiagnostic(
-        port,
-        env[ARCHIVE_SMOKE_SESSION_TOKEN_ENV],
-      );
-      throw new Error(
-        `Unexpected native capabilities: ${JSON.stringify(capabilitiesPayload)}`
-        + `\nScientific executor diagnostic: ${scientificDiagnostic}`
-        + `\nBounded application output:\n${outputBuffer.join("\n")}`,
-      );
-    }
-    if (
-      pluginStatus !== 200 ||
-      pluginPayload?.python_plugin_host !== "ready" ||
-      pluginPayload?.nirs4all_import !== true ||
-      pluginPayload?.scientific_execution !== "unavailable"
-    ) {
-      throw new Error(`Bundled Python plugin-host preflight failed: ${JSON.stringify(pluginPayload)}`);
-    }
-    await probeNativeScientificSurface(
-      port,
-      config.timeoutMs,
-      child,
-      outputBuffer,
-      env[ARCHIVE_SMOKE_SESSION_TOKEN_ENV],
-    );
-
-    await verifyInstalledProduct(port, env[ARCHIVE_SMOKE_SESSION_TOKEN_ENV]);
+    await verifySelectedEnvironment(port, sessionToken, environment.pythonPath);
+    await waitForNativeScientificReady(port, config.timeoutMs, child, outputBuffer, sessionToken);
+    await verifyInstalledProduct(port, sessionToken);
 
     console.log("Smoke check passed.");
-    console.log(`  product backend: Rust sidecar (${healthPayload.protocol_version})`);
-    console.log(`  Python role:     explicit library/plugin host (${pluginPayload.bridge})`);
+    console.log(`  product backend:  Rust sidecar (${healthPayload.protocol_version})`);
+    console.log(`  Python:           environment created by the shipped uv${environment.offline ? " from the offline payload alone, with the default recommended packages" : ""}`);
     console.log("  Scientific probe: native training ready + inline Playground facade executed");
-    console.log("  Python HTTP fallback: not selected");
   } finally {
     await terminateApp(child);
     if (!config.keepSandbox && !config.sandboxRoot) {
@@ -762,7 +623,7 @@ async function smokeArchiveStandalone(rawConfig) {
   }
 }
 
-/** Verify the installed package inventory and the exact dataset wizard path. */
+/** Verify the exact dataset wizard path through the installed product. */
 async function verifyInstalledProduct(port, sessionToken) {
   const headers = { "Content-Type": "application/json", "X-Nirs4all-Session": sessionToken };
   const request = async (route, body) => {
@@ -774,16 +635,6 @@ async function verifyInstalledProduct(port, sessionToken) {
     if (!response.ok) throw new Error(`Installed product ${route}: HTTP ${response.status}: ${await response.text()}`);
     return response.json();
   };
-  const diff = await request("/config/diff?profile=cpu&include_optional=false");
-  if (diff.is_aligned !== true || diff.missing_count !== 0 || diff.misaligned_count !== 0) {
-    throw new Error(`Installed CPU packages are incomplete: ${JSON.stringify(diff)}`);
-  }
-  const inventory = await request("/updates/dependencies");
-  const installed = new Set((inventory.categories ?? []).flatMap(category => category.packages)
-    .filter(pkg => pkg.is_installed && pkg.installed_version).map(pkg => pkg.name));
-  if (!inventory.nirs4all_installed || !installed.has("shap") || !installed.has("matplotlib")) {
-    throw new Error(`Installed dependency inventory is incomplete: ${JSON.stringify(inventory)}`);
-  }
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "studio-wizard-smoke-"));
   try {
     fs.writeFileSync(path.join(fixture, "Xtrain.csv"), "1000;1100\n1;2\n3;4\n");
@@ -839,7 +690,7 @@ async function verifyInstalledProduct(port, sessionToken) {
     if (refreshed.success !== true || refreshed.dataset?.num_samples !== 2) {
       throw new Error(`Saved dataset refresh failed: ${JSON.stringify(refreshed)}`);
     }
-    return { packages: diff, inventory, preview };
+    return { preview };
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });
   }
@@ -865,18 +716,17 @@ module.exports = {
   assertValidConfig,
   buildSandboxEnv,
   cleanupSandboxRoot,
-  collectRuntimePathLeaks,
   isRetryableCleanupError,
   parseArgs,
-  pluginPreflightTimeoutMs,
+  provisionSelectedEnvironment,
   pushOutput,
-  probeNativeScientificSurface,
   removePathWithRetries,
   resolveLaunchLayout,
-  scientificUnavailabilityDiagnostic,
   verifyLaunchRuntimeContract,
   smokeArchiveStandalone,
   waitForChildExit,
   waitForNativeScientificReady,
   verifyInstalledProduct,
+  verifySelectedEnvironment,
+  waitForReady,
 };

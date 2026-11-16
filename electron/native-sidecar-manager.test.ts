@@ -1,5 +1,4 @@
 import { EventEmitter } from "node:events";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,17 +6,15 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const childProcessMocks = vi.hoisted(() => ({ spawn: vi.fn() }));
+const contractMocks = vi.hoisted(() => ({ verifyPackagedRuntimeContract: vi.fn() }));
 
 vi.mock("node:child_process", () => ({ spawn: childProcessMocks.spawn }));
+// The packaged contract has its own tests; here it only names the verified sidecar.
+vi.mock("./packaged-runtime-contract", () => contractMocks);
 
 const tempDirs: string[] = [];
 const fixturePlatform = process.platform;
-const fixtureSidecarName = fixturePlatform === "win32"
-  ? "studio-sidecar.exe" : "studio-sidecar";
-const fixturePythonMember = fixturePlatform === "win32" ? "python.exe" : "bin/python3";
-const fixtureSitePackagesMember = fixturePlatform === "win32"
-  ? "Lib/site-packages" : "lib/python3.11/site-packages";
-const contractPath = (value: string) => value.split(path.sep).join("/");
+const READY_LINE = 'STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n';
 
 function makeExecutable(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-sidecar-manager-"));
@@ -39,142 +36,23 @@ function makeProcess() {
   return process;
 }
 
-function writePackagedContract(
-  resourcesPath: string,
-  sidecarPath: string,
-  pythonPath: string,
-): void {
-  const backendRoot = path.join(resourcesPath, "backend");
-  const sitePackagesPath = path.join(
-    backendRoot,
-    "python-runtime",
-    "python",
-    ...fixtureSitePackagesMember.split("/"),
-  );
-  const packagePath = path.join(sitePackagesPath, "nirs4all.py");
-  fs.mkdirSync(sitePackagesPath, { recursive: true });
-  fs.writeFileSync(packagePath, "def studio_scientific_job_v1(): pass\n");
-  const describe = (filePath: string, memberPath: string) => {
-    const content = fs.readFileSync(filePath);
-    return {
-      path: memberPath,
-      size: content.length,
-      sha256: createHash("sha256").update(content).digest("hex"),
-    };
-  };
-  const runtimeRoot = path.join(backendRoot, "python-runtime", "python");
-  const closure = {
-    schema: "nirs4all.studio-python-plugin-closure.v1",
-    root: "python-runtime/python",
-    site_packages: `python-runtime/python/${fixtureSitePackagesMember}`,
-    directories: fixturePlatform === "win32"
-      ? ["", "Lib", "Lib/site-packages"]
-      : ["", "bin", "lib", "lib/python3.11", "lib/python3.11/site-packages"],
-    files: [pythonPath, packagePath]
-      .map((filePath) => describe(
-        filePath, contractPath(path.relative(runtimeRoot, filePath)),
-      ))
-      .sort((left, right) => Buffer.compare(
-        Buffer.from(left.path, "utf8"), Buffer.from(right.path, "utf8"),
-      )),
-  };
-  const closurePath = path.join(
-    backendRoot,
-    "python-runtime",
-    "PYTHON_PLUGIN_CLOSURE.json",
-  );
-  fs.writeFileSync(closurePath, `${JSON.stringify(closure)}\n`);
-  const markerPath = path.join(
-    backendRoot,
-    "python-runtime",
-    "PLUGIN_RUNTIME_READY.json",
-  );
-  fs.writeFileSync(markerPath, JSON.stringify({
-    schema: "nirs4all.studio-python-plugin-runtime.v1",
-    python_role: "library-plugin-host-only",
-    product_backend: "rust-sidecar",
-    transport: "bounded-cpython-stdio-v1",
-    http_listener: "forbidden",
-    source_commit: "28c51162fc4d31d674c6606d608367a5f4b32b0e",
-    wheel_sha256: "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4",
-    distribution: "nirs4all",
-    distribution_version: "1.4.16",
-    installed_manifest_sha256: "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f",
-    platform: fixturePlatform,
-    arch: process.arch,
-    forbidden_distributions: [
-      "fastapi", "httptools", "python-multipart", "sentry-sdk", "starlette",
-      "uvicorn", "uvloop", "watchfiles", "websockets",
-    ],
-  }));
-  fs.writeFileSync(
-    path.join(
-      resourcesPath,
-      "backend",
-      "native",
-      "STUDIO_RUNTIME_CONTRACT.json",
-    ),
-    JSON.stringify({
-      schema: "nirs4all.studio-packaged-runtime.v1",
-      platform: fixturePlatform,
-      arch: process.arch,
-      product_backend: "rust-sidecar",
-      python_role: "library-plugin-host-only",
-      sidecar: describe(sidecarPath, `native/${fixtureSidecarName}`),
-      ...(fixturePlatform === "win32" ? {
-        native_runtime_linkage: {
-          profile: "studio-msvc-static-crt-v1",
-          methods_cmake_runtime: "MultiThreaded",
-          sidecar_rust_target_feature: "+crt-static",
-          forbidden_dynamic_import_prefixes: ["MSVCP", "VCRUNTIME"],
-        },
-      } : {}),
-      python_plugin_host: {
-        mode: "bundled-required",
-        member: describe(
-          pythonPath,
-          `python-runtime/python/${fixturePythonMember}`,
-        ),
-        closure: describe(
-          closurePath,
-          "python-runtime/PYTHON_PLUGIN_CLOSURE.json",
-        ),
-        runtime_root: "python-runtime/python",
-        site_packages: `python-runtime/python/${fixtureSitePackagesMember}`,
-        marker: describe(
-          markerPath,
-          "python-runtime/PLUGIN_RUNTIME_READY.json",
-        ),
-      },
-      methods_library: {
-        mode: "unavailable",
-        member: null,
-        abi: { major: 2, minor: 22 },
-        source: {
-          commit: "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
-          tree: "61406cd2cf11204273a9972e4f268acfde7eb424",
-          project_version: "1.3.15",
-        },
-      },
-    }),
-  );
-}
-
 afterEach(() => {
   delete process.env.NIRS4ALL_NATIVE_SIDECAR_PATH;
   delete process.env.NIRS4ALL_NATIVE_SIDECAR_PORT;
   delete process.env.NIRS4ALL_ENABLE_NATIVE_SIDECAR;
   delete process.env.NIRS4ALL_PYTHON_PLUGIN_HOST;
-  delete process.env.NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED;
+  delete process.env.NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES;
   delete process.env.NIRS4ALL_SCIENTIFIC_EXECUTOR;
+  delete process.env.NIRS4ALL_STUDIO_ADAPTERS_DIR;
+  delete process.env.NIRS4ALL_ALL_IN_ONE;
+  delete process.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE;
   delete process.env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN;
   delete process.env.NIRS4ALL_APP_DIR;
   delete process.env.NIRS4ALL_APP_EXE;
   delete process.env.NIRS4ALL_ELECTRON_PID;
   delete process.env.NIRS4ALL_ELECTRON;
-  delete process.env.NIRS4ALL_ALL_IN_ONE;
-  delete process.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE;
   childProcessMocks.spawn.mockReset();
+  contractMocks.verifyPackagedRuntimeContract.mockReset();
   vi.resetModules();
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
@@ -183,28 +61,6 @@ afterEach(() => {
 });
 
 describe("NativeSidecarManager", () => {
-  it("accepts only the closed regular all-in-one ownership marker", async () => {
-    const { isAttestedAllInOneResources } = await import("./native-sidecar-manager");
-    const resourcesPath = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-all-in-one-marker-"));
-    tempDirs.push(resourcesPath);
-    const markerPath = path.join(resourcesPath, "all-in-one-runtime.json");
-
-    expect(isAttestedAllInOneResources(resourcesPath)).toBe(false);
-    fs.writeFileSync(markerPath, "{}");
-    expect(isAttestedAllInOneResources(resourcesPath)).toBe(false);
-    fs.writeFileSync(markerPath, JSON.stringify({
-      schema_id: "nirs4all.studio-all-in-one-runtime.v1",
-      owns_install_tree: true,
-      unexpected: true,
-    }));
-    expect(isAttestedAllInOneResources(resourcesPath)).toBe(false);
-    fs.writeFileSync(markerPath, JSON.stringify({
-      schema_id: "nirs4all.studio-all-in-one-runtime.v1",
-      owns_install_tree: true,
-    }));
-    expect(isAttestedAllInOneResources(resourcesPath)).toBe(true);
-  });
-
   it("accepts an explicit random archive-smoke token only inside CI", async () => {
     const { createNativeSessionToken } = await import("./native-sidecar-manager");
     const token = "A".repeat(64);
@@ -263,25 +119,16 @@ describe("NativeSidecarManager", () => {
     expect(childProcessMocks.spawn).not.toHaveBeenCalled();
   });
 
-  it("refuses a packaged sidecar without its content contract", async () => {
-    const resourcesPath = fs.mkdtempSync(
-      path.join(os.tmpdir(), "n4a-packaged-sidecar-missing-contract-"),
-    );
-    tempDirs.push(resourcesPath);
-    const sidecarPath = path.join(
-      resourcesPath,
-      "backend",
-      "native",
-      fixtureSidecarName,
-    );
-    fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
-    fs.writeFileSync(sidecarPath, "unverified");
+  it("refuses a packaged sidecar whose content contract does not verify", async () => {
+    contractMocks.verifyPackagedRuntimeContract.mockImplementation(() => {
+      throw new Error("Packaged runtime contract not found: STUDIO_RUNTIME_CONTRACT.json");
+    });
     const { NativeSidecarManager } = await import("./native-sidecar-manager");
 
     await expect(
       new NativeSidecarManager().start({
         allowPackagedResource: true,
-        resourcesPath,
+        resourcesPath: "/app/resources",
         platform: fixturePlatform,
         arch: process.arch,
       }),
@@ -289,71 +136,54 @@ describe("NativeSidecarManager", () => {
       status: "error",
       error: expect.stringContaining("Packaged runtime contract not found"),
     });
+    expect(contractMocks.verifyPackagedRuntimeContract).toHaveBeenCalledWith({
+      resourcesPath: "/app/resources", platform: fixturePlatform, arch: process.arch,
+    });
     expect(childProcessMocks.spawn).not.toHaveBeenCalled();
   });
 
-  it("keeps Rust selected when the bundled Python plugin host disappears", async () => {
-    const resourcesPath = fs.mkdtempSync(
-      path.join(os.tmpdir(), "n4a-packaged-sidecar-no-python-"),
-    );
-    tempDirs.push(resourcesPath);
-    const sidecarPath = path.join(resourcesPath, "backend", "native", fixtureSidecarName);
-    const pythonPath = path.join(
-      resourcesPath,
-      "backend",
-      "python-runtime",
-      "python",
-      ...fixturePythonMember.split("/"),
-    );
-    fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.writeFileSync(sidecarPath, "verified-rust-sidecar");
-    fs.writeFileSync(pythonPath, "verified-python-host");
-    writePackagedContract(resourcesPath, sidecarPath, pythonPath);
-    fs.rmSync(pythonPath);
-
+  it("starts the verified packaged sidecar without Python when no environment is usable", async () => {
+    const sidecarPath = makeExecutable();
+    contractMocks.verifyPackagedRuntimeContract.mockReturnValue({ sidecarPath });
+    // Variables of the launching shell never select an interpreter.
+    process.env.NIRS4ALL_PYTHON_PLUGIN_HOST = "/user/venv/bin/python";
+    process.env.NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES = "/user/venv/lib/site-packages";
+    process.env.NIRS4ALL_SCIENTIFIC_EXECUTOR = "cpython-stdio-v1";
+    process.env.NIRS4ALL_STUDIO_ADAPTERS_DIR = "/user/adapters";
+    // Nor may stray updater variables enable an in-place update of the installation.
+    process.env.NIRS4ALL_ALL_IN_ONE = "true";
+    process.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE = "true";
     const child = makeProcess();
     childProcessMocks.spawn.mockReturnValue(child);
     const { NativeSidecarManager } = await import("./native-sidecar-manager");
-    const manager = new NativeSidecarManager();
-    const startup = manager.start({
+
+    const startup = new NativeSidecarManager().start({
       allowPackagedResource: true,
-      resourcesPath,
+      resourcesPath: "/app/resources",
       platform: fixturePlatform,
       arch: process.arch,
+      // Adapters alone do not configure a host.
+      studioAdaptersDir: "/app/resources/backend/adapters",
     });
-    const spawnOptions = childProcessMocks.spawn.mock.calls[0]?.[2] as {
-      env: NodeJS.ProcessEnv;
-    };
+    const spawnOptions = childProcessMocks.spawn.mock.calls[0]?.[2] as { env: NodeJS.ProcessEnv };
     expect(childProcessMocks.spawn).toHaveBeenCalledTimes(1);
     expect(childProcessMocks.spawn.mock.calls[0]?.[0]).toBe(sidecarPath);
-    expect(childProcessMocks.spawn.mock.calls[0]?.[1]).toEqual([
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-    ]);
-    expect(childProcessMocks.spawn.mock.calls[0]?.[0]).toBe(sidecarPath);
+    expect(childProcessMocks.spawn.mock.calls[0]?.[1]).toEqual(["--host", "127.0.0.1", "--port", "0"]);
     expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST).toBeUndefined();
+    expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES).toBeUndefined();
     expect(spawnOptions.env.NIRS4ALL_SCIENTIFIC_EXECUTOR).toBeUndefined();
-    child.stdout.emit(
-      "data",
-      Buffer.from(
-        'STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n',
-      ),
-    );
+    expect(spawnOptions.env.NIRS4ALL_STUDIO_ADAPTERS_DIR).toBeUndefined();
+    expect(spawnOptions.env.NIRS4ALL_ALL_IN_ONE).toBeUndefined();
+    expect(spawnOptions.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBeUndefined();
+    child.stdout.emit("data", Buffer.from(READY_LINE));
     await expect(startup).resolves.toMatchObject({
       status: "running",
       pythonPluginHostConfigured: false,
-      pythonPluginHostError: expect.stringContaining(
-        "Bundled Python plugin host not found",
-      ),
     });
   });
 
   it("launches only a loopback sidecar and records its readiness contract", async () => {
     process.env.NIRS4ALL_NATIVE_SIDECAR_PATH = makeExecutable();
-    process.env.NIRS4ALL_PYTHON_PLUGIN_HOST = "/plugin-host/python";
     const child = makeProcess();
     childProcessMocks.spawn.mockReturnValue(child);
     const { NativeSidecarManager } = await import("./native-sidecar-manager");
@@ -363,22 +193,13 @@ describe("NativeSidecarManager", () => {
     expect(childProcessMocks.spawn).toHaveBeenCalledWith(
       path.resolve(process.env.NIRS4ALL_NATIVE_SIDECAR_PATH),
       ["--host", "127.0.0.1", "--port", "0"],
-      expect.objectContaining({
-        env: expect.objectContaining({
-          NIRS4ALL_PYTHON_PLUGIN_HOST: "/plugin-host/python",
-        }),
-        windowsHide: true,
-      }),
+      expect.objectContaining({ windowsHide: true }),
     );
+    // An explicit development binary is not checked against the packaged contract.
+    expect(contractMocks.verifyPackagedRuntimeContract).not.toHaveBeenCalled();
     const developmentEnvironment = childProcessMocks.spawn.mock.calls[0]?.[2]
       ?.env as NodeJS.ProcessEnv;
-    expect(developmentEnvironment.NIRS4ALL_SCIENTIFIC_EXECUTOR).toBeUndefined();
-    child.stdout.emit(
-      "data",
-      Buffer.from(
-        'STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n',
-      ),
-    );
+    child.stdout.emit("data", Buffer.from(READY_LINE));
 
     await expect(startup).resolves.toMatchObject({
       status: "running",
@@ -386,6 +207,7 @@ describe("NativeSidecarManager", () => {
       port: 43123,
       protocolVersion: "studio-sidecar-r1",
       url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: false,
     });
     const token = developmentEnvironment.NIRS4ALL_STUDIO_SESSION_TOKEN;
     expect(token).toMatch(/^[a-f0-9]{64}$/);
@@ -401,140 +223,43 @@ describe("NativeSidecarManager", () => {
     expect(manager.sessionHeaders("http://127.0.0.1:43123/api/health")).toEqual({});
   });
 
-  it("passes the selected interpreter and product runtime metadata to the sidecar", async () => {
+  it("hands the selected interpreter, its packages, the stdio executor and Studio's adapters to the sidecar", async () => {
     process.env.NIRS4ALL_NATIVE_SIDECAR_PATH = makeExecutable();
+    process.env.NIRS4ALL_PYTHON_PLUGIN_HOST = "/inherited/python";
     process.env.NIRS4ALL_APP_DIR = "/spoofed/app";
     process.env.NIRS4ALL_APP_EXE = "spoofed.exe";
     process.env.NIRS4ALL_ELECTRON_PID = "999999";
-    process.env.NIRS4ALL_ALL_IN_ONE = "true";
     const child = makeProcess();
     childProcessMocks.spawn.mockReturnValue(child);
     const { NativeSidecarManager } = await import("./native-sidecar-manager");
     const manager = new NativeSidecarManager();
 
     const startup = manager.start({
-      pythonPluginHost: "/selected-runtime/python",
-      runtimeMode: "bundled",
-      runtimeKind: "bundled",
-      buildInfoPath: "/resources/backend/python-runtime/build_info.json",
-      appVersion: "0.9.1",
+      pythonPluginHost: "/data/python-env/venv/bin/python",
+      pythonPluginSitePackages: "/data/python-env/venv/lib/python3.11/site-packages",
+      studioAdaptersDir: "/app/resources/backend/adapters",
+      buildInfoPath: "/app/resources/backend/build_info.json",
+      appVersion: "0.16.0",
     });
-    expect(childProcessMocks.spawn).toHaveBeenCalledWith(
-      path.resolve(process.env.NIRS4ALL_NATIVE_SIDECAR_PATH),
-      ["--host", "127.0.0.1", "--port", "0"],
-      expect.objectContaining({
-        env: expect.objectContaining({
-          NIRS4ALL_PYTHON_PLUGIN_HOST: "/selected-runtime/python",
-          NIRS4ALL_RUNTIME_MODE: "bundled",
-          NIRS4ALL_RUNTIME_KIND: "bundled",
-          NIRS4ALL_BUILD_INFO_PATH:
-            "/resources/backend/python-runtime/build_info.json",
-          NIRS4ALL_APP_VERSION: "0.9.1",
-        }),
-        windowsHide: true,
-      }),
-    );
-    const selectedEnvironment = childProcessMocks.spawn.mock.calls[0]?.[2]
-      ?.env as NodeJS.ProcessEnv;
-    expect(selectedEnvironment.NIRS4ALL_SCIENTIFIC_EXECUTOR).toBeUndefined();
-    expect(selectedEnvironment.NIRS4ALL_APP_DIR).toBe(path.dirname(process.execPath));
-    expect(selectedEnvironment.NIRS4ALL_APP_EXE).toBe(path.basename(process.execPath));
-    expect(selectedEnvironment.NIRS4ALL_ELECTRON_PID).toBe(process.pid.toString());
-    expect(selectedEnvironment.NIRS4ALL_ELECTRON).toBe("true");
-    expect(selectedEnvironment.NIRS4ALL_ALL_IN_ONE).toBe("false");
-    expect(selectedEnvironment.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBe("false");
-    child.stdout.emit(
-      "data",
-      Buffer.from(
-        'STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n',
-      ),
-    );
-    await expect(startup).resolves.toMatchObject({
-      status: "running",
-      pythonPluginHostConfigured: true,
+    const environment = childProcessMocks.spawn.mock.calls[0]?.[2]?.env as NodeJS.ProcessEnv;
+    const python = Object.fromEntries(Object.entries(environment).filter(([name]) => (
+      /^NIRS4ALL_(PYTHON_|SCIENTIFIC_|STUDIO_ADAPTERS)/.test(name)
+    )));
+    expect(python).toEqual({
+      NIRS4ALL_PYTHON_PLUGIN_HOST: "/data/python-env/venv/bin/python",
+      NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES: "/data/python-env/venv/lib/python3.11/site-packages",
+      NIRS4ALL_SCIENTIFIC_EXECUTOR: "cpython-stdio-v1",
+      NIRS4ALL_STUDIO_ADAPTERS_DIR: "/app/resources/backend/adapters",
     });
-  });
-
-  it.each(["bundled", "custom", "managed"])("honors an explicit %s runtime in a verified packaged product", async (runtimeKind) => {
-    const resourcesPath = fs.mkdtempSync(
-      path.join(os.tmpdir(), "n4a-packaged-sidecar-strict-python-"),
-    );
-    tempDirs.push(resourcesPath);
-    const sidecarPath = path.join(
-      resourcesPath,
-      "backend",
-      "native",
-      fixtureSidecarName,
-    );
-    const pythonPath = path.join(
-      resourcesPath,
-      "backend",
-      "python-runtime",
-      "python",
-      ...fixturePythonMember.split("/"),
-    );
-    fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.writeFileSync(sidecarPath, "verified-rust-sidecar");
-    fs.writeFileSync(pythonPath, "verified-python-host");
-    fs.writeFileSync(
-      path.join(resourcesPath, "all-in-one-runtime.json"),
-      JSON.stringify({
-        schema_id: "nirs4all.studio-all-in-one-runtime.v1",
-        owns_install_tree: true,
-      }),
-    );
-    writePackagedContract(resourcesPath, sidecarPath, pythonPath);
-    process.env.NIRS4ALL_PYTHON_PLUGIN_HOST = "/user/venv/bin/python";
-
-    const child = makeProcess();
-    childProcessMocks.spawn.mockReturnValue(child);
-    const { NativeSidecarManager } = await import("./native-sidecar-manager");
-    const startup = new NativeSidecarManager().start({
-      allowPackagedResource: true,
-      resourcesPath,
-      platform: fixturePlatform,
-      arch: process.arch,
-      pythonPluginHost: "/managed/runtime/bin/python",
-      runtimeKind,
-      pythonPluginSitePackages: "/managed/runtime/site-packages",
-    });
-    const spawnOptions = childProcessMocks.spawn.mock.calls[0]?.[2] as {
-      env: NodeJS.ProcessEnv;
-    };
-    expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST).toBe(runtimeKind === "bundled" ? pythonPath : "/managed/runtime/bin/python");
-    expect(childProcessMocks.spawn).toHaveBeenCalledTimes(1);
-    expect(childProcessMocks.spawn.mock.calls[0]?.[0]).toBe(sidecarPath);
-    expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST).not.toContain("venv");
-    expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_CLOSURE).toBe(
-      runtimeKind === "bundled" ? path.join(
-        resourcesPath,
-        "backend",
-        "python-runtime",
-        "PYTHON_PLUGIN_CLOSURE.json",
-      ) : undefined,
-    );
-    expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES).toBe(
-      runtimeKind === "bundled" ? path.join(
-        resourcesPath,
-        "backend",
-        "python-runtime",
-        "python",
-        ...fixtureSitePackagesMember.split("/"),
-      ) : "/managed/runtime/site-packages",
-    );
-    expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED).toBe(runtimeKind === "bundled" ? "true" : undefined);
-    expect(spawnOptions.env.NIRS4ALL_SCIENTIFIC_EXECUTOR).toBe(
-      "cpython-stdio-v1",
-    );
-    expect(spawnOptions.env.NIRS4ALL_ALL_IN_ONE).toBe("true");
-    expect(spawnOptions.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBe("true");
-    child.stdout.emit(
-      "data",
-      Buffer.from(
-        'STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n',
-      ),
-    );
+    expect(environment.NIRS4ALL_BUILD_INFO_PATH).toBe("/app/resources/backend/build_info.json");
+    expect(environment.NIRS4ALL_APP_VERSION).toBe("0.16.0");
+    expect(environment.NIRS4ALL_APP_DIR).toBe(path.dirname(process.execPath));
+    expect(environment.NIRS4ALL_APP_EXE).toBe(path.basename(process.execPath));
+    expect(environment.NIRS4ALL_ELECTRON_PID).toBe(process.pid.toString());
+    expect(environment.NIRS4ALL_ELECTRON).toBe("true");
+    // No runtime kind or mode label exists any more.
+    expect(Object.keys(environment).filter((name) => name.startsWith("NIRS4ALL_RUNTIME_"))).toEqual([]);
+    child.stdout.emit("data", Buffer.from(READY_LINE));
     await expect(startup).resolves.toMatchObject({
       status: "running",
       pythonPluginHostConfigured: true,

@@ -240,35 +240,12 @@ fn cli_smoke_prints_r1_readiness_without_starting_a_server() {
     assert_eq!(readiness["scientific_execution"], "unavailable");
 }
 
-fn assert_runtime_status_legacy_shape(body: &Value) {
-    for key in ["runtime", "venv"] {
-        let runtime = body[key].as_object().unwrap();
-        assert!(runtime["path"].is_string());
-        assert!(runtime["exists"].is_boolean());
-        assert!(runtime["is_valid"].is_boolean());
-        assert!(runtime["python_executable"].is_string());
-        assert!(runtime["size_bytes"].is_u64());
-    }
-    assert!(body["packages"].is_array());
-    assert!(body["nirs4all_version"].is_string() || body["nirs4all_version"].is_null());
-}
-
 #[test]
-fn configured_python_plugin_host_can_import_nirs4all_without_enabling_execution() {
+fn configured_python_plugin_host_reports_its_environment_without_enabling_execution() {
     let Ok(python_plugin_host) = std::env::var("NIRS4ALL_TEST_PYTHON_PLUGIN_HOST") else {
         return;
     };
     let mut state = SidecarState::with_python_plugin_host(python_plugin_host);
-    let response = route_request(&mut state, "GET", "/sidecar/v1/python/preflight");
-    assert_eq!(
-        response.status, 200,
-        "configured Python plugin host preflight"
-    );
-    let body: Value = serde_json::from_str(&response.body).unwrap();
-    assert_eq!(body["bridge"], "python-subprocess");
-    assert_eq!(body["nirs4all_import"], true);
-    assert_eq!(body["scientific_execution"], "unavailable");
-
     let capabilities = route_request(&mut state, "GET", "/api/system/capabilities");
     assert_eq!(
         capabilities.status, 200,
@@ -309,43 +286,17 @@ fn configured_python_plugin_host_can_import_nirs4all_without_enabling_execution(
         version_body["nirs4all_version"].is_string() || version_body["nirs4all_version"].is_null()
     );
 
-    let runtime_status = route_request(&mut state, "GET", "/api/updates/runtime/status");
-    assert_eq!(
-        runtime_status.status, 200,
-        "configured Python runtime-status bridge"
-    );
-    let runtime_status_body: Value = serde_json::from_str(&runtime_status.body).unwrap();
-    assert_runtime_status_legacy_shape(&runtime_status_body);
-
     let system_build = route_request(&mut state, "GET", "/api/system/build");
-    assert_eq!(
-        system_build.status, 200,
-        "configured Python build inventory bridge"
-    );
+    assert_eq!(system_build.status, 200, "native build inventory");
     let system_build_body: Value = serde_json::from_str(&system_build.body).unwrap();
     assert!(system_build_body["build"]["flavor"].is_string());
     assert!(system_build_body["build"]["gpu_enabled"].is_boolean());
-    assert!(system_build_body["gpu"]["cuda_available"].is_boolean());
-    assert!(system_build_body["gpu"]["metal_available"].is_boolean());
-    assert!(system_build_body["gpu"]["backends"].is_object());
-    assert!(system_build_body["runtime_mode"].is_string());
-    assert!(system_build_body["is_frozen"].is_boolean());
-    assert_eq!(
-        system_build_body["summary"]["gpu_available"].as_bool(),
-        Some(
-            system_build_body["gpu"]["cuda_available"]
-                .as_bool()
-                .unwrap()
-                || system_build_body["gpu"]["metal_available"]
-                    .as_bool()
-                    .unwrap(),
-        )
-    );
+    assert!(system_build_body.get("gpu").is_none());
 
     let runtime = route_request(&mut state, "GET", "/api/system/env-coherence");
     assert_eq!(runtime.status, 200, "configured Python runtime bridge");
     let runtime_body: Value = serde_json::from_str(&runtime.body).unwrap();
-    assert_eq!(runtime_body["runtime_kind"], "python_plugin_host");
+    assert!(runtime_body.get("runtime_kind").is_none());
     assert_eq!(runtime_body["core_ready"], true);
     assert_eq!(runtime_body["missing_core_packages"], serde_json::json!([]));
     assert_eq!(runtime_body["python_match"], true);

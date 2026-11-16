@@ -87,31 +87,10 @@ def test_absolute_elf_dependency_with_spaces_must_still_be_bundled(tmp_path, bun
             closure.scan_runtime(runtime)
 
 
-def test_linux_release_gates_run_clean_qualification_before_publication():
+def test_appimage_hotfix_gate_runs_clean_qualification_before_its_smoke():
     import yaml
 
     root = SCRIPT.parents[1]
-    release = yaml.safe_load((root / ".github/workflows/release-unified.yml").read_text(encoding="utf-8"))
-    assert not any(name.startswith("archive-") for name in release["jobs"])
-    for job_name in ["installer-linux"]:
-        steps = release["jobs"][job_name]["steps"]
-        checkout = next(step for step in steps if step.get("name") == "Checkout Linux packaging helpers")
-        assert checkout["with"]["ref"] == "${{ github.sha }}"
-        assert steps[0]["with"]["ref"] == "${{ needs.prepare.outputs.checkout_ref }}"
-        bundle_step = next(index for index, step in enumerate(steps) if "bundle-linux-openmp.py --runtime-root" in step.get("run", ""))
-        seal = next(index for index, step in enumerate(steps) if "build-native-sidecar.cjs" in step.get("run", ""))
-        assert bundle_step < seal
-        clean = next(index for index, step in enumerate(steps) if "verify-linux-cpu-closure.py" in step.get("run", ""))
-        upload = next(index for index, step in enumerate(steps) if step.get("uses", "").startswith("actions/upload-artifact"))
-        assert clean < upload
-        assert steps[clean].get("continue-on-error") is not True
-        proof = steps[clean + 1]
-        assert proof["uses"] == "actions/upload-artifact@v4"
-        assert proof["with"]["name"] == f"{job_name}-cpu-closure-proof"
-        kind = job_name.removesuffix("-linux")
-        assert proof["with"]["path"] == "${{ runner.temp }}/linux-" + kind + "-cpu-closure.json"
-        assert proof["with"]["if-no-files-found"] == "error"
-        assert proof["with"]["retention-days"] == 14
     appimage = yaml.safe_load((root / ".github/workflows/qualify-appimage-hotfix.yml").read_text(encoding="utf-8"))
     steps = appimage["jobs"]["appimage"]["steps"]
     commands = "\n".join(step.get("run", "") for step in steps)

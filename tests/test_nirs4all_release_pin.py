@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import base64
-import csv
 import hashlib
-import importlib.util
-import io
 import json
 import os
 import re
@@ -12,13 +8,16 @@ import shutil
 import subprocess
 import sys
 import tomllib
-import zipfile
 from pathlib import Path
 
-import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+WHEEL_LOCK_TARGETS = ["linux-x64", "win32-x64", "darwin-arm64"]
+
+
+def _wheel_lock(target: str) -> dict:
+    return json.loads((ROOT / f"build/constraints/python-wheels-{target}.json").read_text(encoding="utf-8"))
 
 
 def test_sidecar_resolves_selected_native_releases() -> None:
@@ -62,14 +61,14 @@ def test_historical_published_registry_cohort_is_unchanged() -> None:
 def test_release_workflow_uses_the_exact_public_sdk_wheel() -> None:
     workflow = (ROOT / ".github/workflows/release-unified.yml").read_text(encoding="utf-8")
     parsed = yaml.safe_load(workflow)
-    contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_sdk1416_v1.json").read_text())
+    cohort = json.loads((ROOT / "build/runtime-cohort.json").read_text())
+    sdk = cohort["sdk"]
     environment = dict(os.environ) | {key: "" if value is None else str(value) for key, value in parsed["env"].items()}
-    assert environment["NIRS4ALL_PUBLICATION_STATUS"] == contract["publication_status"] == "published-registry"
-    assert contract["public_registry_verified"] is True
-    assert environment["NIRS4ALL_LIBRARY_REF"] == contract["selected_source_commit"]
-    assert environment["NIRS4ALL_WHEEL_URL"] == contract["selected_wheel_url"]
-    assert environment["NIRS4ALL_WHEEL_SHA256"] == contract["selected_wheel_sha256"]
-    assert environment["NIRS4ALL_SOURCE_URL"] == f"https://github.com/GBeurier/nirs4all/archive/{contract['selected_source_commit']}.tar.gz"
+    assert environment["NIRS4ALL_PUBLICATION_STATUS"] == sdk["publication_status"] == "published-registry"
+    assert environment["NIRS4ALL_LIBRARY_REF"] == sdk["source_sha"]
+    assert environment["NIRS4ALL_WHEEL_URL"] == sdk["wheel_url"]
+    assert environment["NIRS4ALL_WHEEL_SHA256"] == sdk["wheel_sha256"]
+    assert environment["NIRS4ALL_SOURCE_URL"] == f"https://github.com/GBeurier/nirs4all/archive/{sdk['source_sha']}.tar.gz"
     validation = next(step["run"] for step in parsed["jobs"]["prepare"]["steps"]
                       if step.get("name") == "Validate pinned runtime dependency refs")
     bash = str(Path(shutil.which("git")).parents[1] / "bin/bash.exe") if sys.platform == "win32" else "bash"
@@ -80,7 +79,6 @@ def test_release_workflow_uses_the_exact_public_sdk_wheel() -> None:
                     {"NIRS4ALL_SOURCE_URL": "https://github.com/GBeurier/nirs4all/archive/main.tar.gz"},
                     {"DAG_ML_REF": "main"}):
         assert subprocess.run([bash, "-c", validation], env=environment | changed, cwd=ROOT, capture_output=True).returncode != 0
-    cohort = json.loads((ROOT / "build/runtime-cohort.json").read_text())
     for key, prefix, repository in [("dag", "DAG_ML", "dag-ml"), ("dag_data", "DAG_ML_DATA", "dag-ml-data")]:
         reference = environment[f"{prefix}_REF"]
         assert re.fullmatch(r"[0-9a-f]{40}", reference)
@@ -89,148 +87,82 @@ def test_release_workflow_uses_the_exact_public_sdk_wheel() -> None:
     assert "NIRS4ALL_TOOLS" not in workflow
 
 
-def test_reused_environment_range_is_shared_with_the_sidecar() -> None:
-    script = ("const c=require('./scripts/python-runtime-config.cjs');"
-              "console.log(JSON.stringify([c.PLUGIN_DISTRIBUTION_VERSION,c.PLUGIN_DISTRIBUTION_REQUIREMENT,c.REUSABLE_RUNTIME_PACKAGES]))")
-    result = subprocess.run(["node", "-e", script], cwd=ROOT, capture_output=True, text=True, check=True)
-    version, requirement, packages = json.loads(result.stdout)
-    source = (ROOT / "sidecar/src/scientific_cpython.rs").read_text(encoding="utf-8")
-    rust_requirement = re.search(r'pub const SCIENTIFIC_DISTRIBUTION_REQUIREMENT: &str = "([^"]+)";', source)
-    assert rust_requirement is not None
-    assert f'pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "{version}";' in source
-    # Custom/managed: the required nirs4all release up to the next minor; the
-    # bundled runtime alone keeps the exact attested identity.
-    assert version == "1.4.16"
-    assert requirement == rust_requirement.group(1) == ">=1.4.16,<1.5"
-    assert packages[0] == f"nirs4all{requirement}"
-    # nirs4all's own declared ranges for its native dependencies.
-    assert "nirs4all-io>=0.3.0,<0.4" in packages
-    assert "nirs4all-methods>=1.3.15,<2" in packages
-    assert not any("==" in package for package in packages)
+def _required_nirs4all() -> dict[str, str]:
+    """The catalogue entry that owns the accepted nirs4all range and the installed version."""
+    config = json.loads((ROOT / "recommended-config.json").read_text(encoding="utf-8"))
+    return next(package for package in config["required"] if package["name"] == "nirs4all")
+
+
+def test_nirs4all_range_has_a_single_source() -> None:
+    config = json.loads((ROOT / "recommended-config.json").read_text(encoding="utf-8"))
+    nirs4all = _required_nirs4all()
+    assert nirs4all["range"] and nirs4all["install"]
+    # The build scripts carry no package version: every wheel lock records the
+    # catalogue's exact requirements and is refused once they differ.
+    for script in ["python-runtime-config.cjs", "python-wheel-lock.cjs", "build-wheelhouse.cjs", "provision-environment.cjs"]:
+        assert nirs4all["install"] not in (ROOT / "scripts" / script).read_text(encoding="utf-8"), script
+    for target in WHEEL_LOCK_TARGETS:
+        assert _wheel_lock(target)["requirements"]["required"] == [f"{package['name']}=={package['install']}" for package in config["required"]]
+    # The sidecar embeds the same catalogue: no Rust source, embedded host
+    # script or Rust test repeats the range or the installed version.
+    assert 'include_str!("../../recommended-config.json")' in (ROOT / "sidecar/src/recommended_config.rs").read_text(encoding="utf-8")
+    sources = [*(ROOT / "sidecar/src").rglob("*.rs"), *(ROOT / "sidecar/tests").glob("*.rs")]
+    assert len(sources) > 40
+    for path in sources:
+        source = path.read_text(encoding="utf-8")
+        assert nirs4all["range"] not in source, path
+        assert nirs4all["install"] not in source, path
 
 
 def test_recommended_profiles_use_single_nirs4all_version() -> None:
     config = json.loads((ROOT / "recommended-config.json").read_text(encoding="utf-8"))
-    version = config["nirs4all"]
+    nirs4all = _required_nirs4all()
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     app_version = json.loads((ROOT / "version.json").read_text(encoding="utf-8"))
 
     # The remote-config resolver compares app_version with its cached copy.
     assert config["app_version"] == package["version"] == app_version["version"]
+    assert config["nirs4all"] == nirs4all["install"]
 
     for profile in config["profiles"].values():
         package = profile.get("packages", {}).get("nirs4all")
         if package is None:
             continue
-        assert package["recommended"] == version
-        # Root chose the coherent current cohort floor; this is not an API-origin claim.
-        assert package["min"] == ">=1.4.16,<1.5"
+        assert package["recommended"] == nirs4all["install"]
+        assert package["min"] == nirs4all["range"]
 
 
-def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> None:
+def test_release_installers_stage_the_locked_payload_instead_of_a_python_runtime() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
-
-    assert "  pinned-plugin-wheels:\n" in workflow
-    assert workflow.count("needs: [prepare, pinned-plugin-wheels]") == 4
-    assert workflow.count("name: Download canonical plugin wheels") == 4
-    version = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_sdk1416_v1.json").read_text())["selected_distribution_version"]
-    assert workflow.count(f"--plugin-wheel _deps/pinned-plugin-wheels/nirs4all-{version}-py3-none-any.whl") == 4
-    assert "--tools-wheel" not in workflow
     parsed = yaml.safe_load(workflow)
-    acquisition = next(step["run"] for step in parsed["jobs"]["pinned-plugin-wheels"]["steps"]
-                       if step.get("name") == "Download and verify canonical plugin wheel")
-    assert "urllib.request.urlretrieve" in acquisition
-    assert "dist/pinned-plugin-wheels/nirs4all-1.4.16-py3-none-any.whl" in acquisition
-    assert "sha256sum --check --strict" in acquisition
-    assert "--build-plugin-wheel" not in acquisition
-    assert "nirs4all_tools" not in acquisition
-    assert "pip wheel" not in acquisition
 
-
-def _wheel_normalizer():
-    specification = importlib.util.spec_from_file_location("plugin_wheel_normalizer", ROOT / "scripts/normalize-plugin-wheel.py")
-    module = importlib.util.module_from_spec(specification)
-    specification.loader.exec_module(module)
-    return module.normalize_wheel
-
-
-def _test_wheel(path: Path, *, windows: bool = False, corruption: bool = False, extra: bool = False) -> str:
-    metadata_name = "nirs4all-1.4.15.dist-info/METADATA"
-    record_name = "nirs4all-1.4.15.dist-info/RECORD"
-    payloads = {"nirs4all/example.py": b"scientific_code = 'preserved'\n",
-                metadata_name: b"Metadata-Version: 2.4\nName: nirs4all\nVersion: 1.4.15\n\nDescription\n",
-                "nirs4all-1.4.15.dist-info/WHEEL": b"Wheel-Version: 1.0\nTag: py3-none-any\n"}
-
-    def record_rows():
-        return [(name, "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).decode().rstrip("="), str(len(payload)))
-                for name, payload in sorted(payloads.items())]
-
-    canonical_rows = record_rows()
-    manifest = hashlib.sha256("".join(",".join(row) + "\n" for row in canonical_rows).encode()).hexdigest()
-    if windows:
-        payloads[metadata_name] = payloads[metadata_name].replace(b"\n", b"\r\n")
-    output = io.StringIO()
-    csv.writer(output, lineterminator="\n").writerows(record_rows() + [(record_name, "", "")])
-    payloads[record_name] = output.getvalue().encode()
-    if corruption:
-        payloads["nirs4all/example.py"] = b"changed scientific code\n"
-    if extra:
-        payloads["nirs4all/unrecorded.py"] = b"unrecorded code\n"
-    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name, payload in reversed(list(payloads.items())) if windows else payloads.items():
-            info = zipfile.ZipInfo(name, (2026, 10, 10 if windows else 9, 1, 2, 4))
-            info.create_system = 0 if windows else 3
-            info.external_attr = (0o100666 if windows else 0o100755) << 16
-            archive.writestr(info, payload)
-    return manifest
-
-
-def test_wheel_normalization_is_portable_and_preserves_owner_payloads(tmp_path: Path) -> None:
-    linux, windows = tmp_path / "linux.whl", tmp_path / "windows.whl"
-    expected = _test_wheel(linux)
-    assert expected == _test_wheel(windows, windows=True)
-    normalize = _wheel_normalizer()
-    left, right = tmp_path / "left.whl", tmp_path / "right.whl"
-    assert normalize(linux, left, 1791533216, expected) == normalize(windows, right, 1791533216, expected)
-    assert left.read_bytes() == right.read_bytes()
-    with zipfile.ZipFile(left) as archive:
-        assert archive.read("nirs4all/example.py") == b"scientific_code = 'preserved'\n"
-        assert archive.namelist() == sorted(archive.namelist())
-        assert all(item.create_system == 3 and item.external_attr >> 16 == 0o100644 and item.compress_type == zipfile.ZIP_STORED
-                   and item.date_time == (2026, 10, 9, 8, 6, 56) for item in archive.infolist())
-
-
-@pytest.mark.parametrize("corruption,extra", [(True, False), (False, True)])
-def test_wheel_normalization_rejects_unverified_input_without_replacing_output(tmp_path: Path, corruption: bool, extra: bool) -> None:
-    source, destination = tmp_path / "input.whl", tmp_path / "output.whl"
-    expected = _test_wheel(source, corruption=corruption, extra=extra)
-    destination.write_bytes(b"existing qualified wheel")
-    with pytest.raises(ValueError, match="content mismatch|complete inventory"):
-        _wheel_normalizer()(source, destination, 1791533216, expected)
-    assert destination.read_bytes() == b"existing qualified wheel"
-
-
-def test_wheel_normalization_rejects_a_different_installed_manifest(tmp_path: Path) -> None:
-    source, destination = tmp_path / "input.whl", tmp_path / "output.whl"
-    _test_wheel(source)
-    with pytest.raises(ValueError, match="installed manifest mismatch"):
-        _wheel_normalizer()(source, destination, 1791533216, "0" * 64)
-    assert not destination.exists()
-
-
-def test_runtime_prunes_only_the_exact_additional_windows_launcher_record(tmp_path: Path) -> None:
-    record = tmp_path / "python/Lib/site-packages/example.dist-info/RECORD"
-    record.parent.mkdir(parents=True)
-    record.write_text("../../Scripts/nirs4all.exe,sha256=generated,1\n"
-                      "../../Scripts/unrelated.exe,sha256=keep,2\n"
-                      "../../other/source.py,sha256=keep,3\n"
-                      "example/module.py,sha256=keep,4\n", encoding="utf-8")
-    script = "require('./scripts/setup-python-env.cjs').removePrunedLauncherRecordRows(process.argv[1],process.argv[2]).catch(e=>{console.error(e);process.exit(1)})"
-    result = subprocess.run(["node", "-e", script, sys.executable, str(tmp_path)], cwd=ROOT, capture_output=True)
-    assert result.returncode == 0, result.stderr.decode()
-    assert "nirs4all.exe" not in record.read_text(encoding="utf-8")
-    assert "unrelated.exe" in record.read_text(encoding="utf-8")
-    assert "../../other/source.py" in record.read_text(encoding="utf-8")
+    assert "pinned-plugin-wheels" not in parsed["jobs"]
+    for forbidden in ["--plugin-wheel", "pip wheel", "pip install", "python-runtime", "bake-python-plugin-runtime"]:
+        assert forbidden not in workflow
+    staging = [
+        "node scripts/fetch-uv.cjs",
+        "node scripts/build-wheelhouse.cjs",
+        "node scripts/studio-document-adapters.cjs --install backend-dist/adapters",
+    ]
+    for name in ["installer-linux", "installer-windows"]:
+        job = parsed["jobs"][name]
+        assert job["needs"] == "prepare"
+        assert [leg["variant"] for leg in job["strategy"]["matrix"]["include"]] == ["standard", "offline"]
+        staged = next(step["run"] for step in job["steps"] if step.get("name") == "Stage uv, required wheels and document adapters")
+        assert staged.splitlines() == staging
+        offline = next(step for step in job["steps"] if step.get("name") == "Stage offline payload")
+        assert offline["if"] == "matrix.variant == 'offline'"
+        assert offline["run"] == "node scripts/build-offline-payload.cjs"
+    # The macOS application embeds no wheels: they become a release asset, and there is no offline variant.
+    macos = parsed["jobs"]["installer-macos-arm64"]
+    assert "strategy" not in macos
+    assert not any("build-offline-payload" in step.get("run", "") for step in macos["steps"])
+    staged = next(step["run"] for step in macos["steps"] if "build-wheelhouse.cjs" in step.get("run", ""))
+    assert staged.splitlines() == [
+        *staging,
+        "node scripts/pack-remote-wheelhouse.cjs --tag '${{ needs.prepare.outputs.tag }}' --version '${{ needs.prepare.outputs.version }}'",
+        "test ! -e backend-dist/wheels",
+    ]
 
 
 def test_generated_operator_registries_are_from_the_published_runtime() -> None:
@@ -247,37 +179,17 @@ def test_generated_operator_registries_are_from_the_published_runtime() -> None:
     assert len(python_versions) == 1
 
 
-def test_historical_release_rebuilds_and_compares_its_exact_plugin_closure_twice() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
-    constraints = (ROOT / "build" / "constraints" / "plugin-runtime-cpython311.txt").read_text(encoding="utf-8")
-
-    assert "node scripts/verify-plugin-runtime-reproducibility.cjs" in workflow
-    assert "plugin-runtime-reproducibility-${{ runner.os }}-${{ runner.arch }}.json" in workflow
-    assert "nirs4all==1.4.15" in constraints
-    assert "nirs4all-core==0.4.7" in constraints
-    assert "nirs4all-io==0.2.14" in constraints
-    assert "dag-ml-data==0.2.16" in constraints
-    assert "nirs4all-methods==1.3.13" in constraints
-    assert "pls4all==1.3.13" in constraints
-    # The historical SDK closure retains its own published DAG 0.3.44 cohort.
-    assert "dag-ml==0.3.44" in constraints
-    assert "nirs4all-formats==0.2.14" in constraints
-    assert "nirs4all-tools" not in constraints
-    assert "duckdb" not in constraints
-    assert "scikit-learn==1.9.0" in constraints
-
-
-def test_current_shipping_constraints_select_the_public_sdk_and_owner_cohort() -> None:
-    constraints = (ROOT / "build/constraints/plugin-runtime-cpython311-sdk1416.txt").read_text()
-    assert "SDK 1.4.16 is public (Root run 42612130615)" in constraints
-    for requirement in [
-        "nirs4all==1.4.16", "nirs4all-core==0.5.0", "nirs4all-io==0.3.1",
-        "dag-ml==0.4.0", "dag-ml-data==0.2.16", "nirs4all-methods==1.3.15", "pls4all==1.3.15",
-        "nirs4all-formats==0.2.16",
-    ]:
-        assert requirement in constraints.splitlines()
+def test_wheel_locks_select_the_public_sdk_and_owner_cohort() -> None:
+    config = json.loads((ROOT / "recommended-config.json").read_text(encoding="utf-8"))
+    for target in WHEEL_LOCK_TARGETS:
+        locked = {package["name"]: package for package in _wheel_lock(target)["packages"]}
+        for package in config["required"]:
+            assert locked[package["name"]]["version"] == package["install"], (target, package["name"])
+        assert all(re.fullmatch(r"[0-9a-f]{64}", package["sha256"]) for package in locked.values())
+        assert "nirs4all-tools" not in locked
+        assert "duckdb" not in locked
     cohort = json.loads((ROOT / "sidecar/contracts/studio_native_source_cohort_v2.json").read_text())
-    assert cohort["sdk_selection"]["requirement"] == ">=1.4.16,<1.5"
+    assert cohort["sdk_selection"]["requirement"] == _required_nirs4all()["range"]
     assert cohort["sdk_selection"]["publication_status"] == "published-registry"
     assert cohort["packaged_methods_identity"] == {
         "commit": "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
@@ -287,30 +199,24 @@ def test_current_shipping_constraints_select_the_public_sdk_and_owner_cohort() -
 
 
 def test_current_public_wheel_identity_is_shared_by_shipping_consumers() -> None:
-    contract = json.loads((ROOT / "sidecar/contracts/studio_scientific_cpython_host_sdk1416_v1.json").read_text())
-    assert contract["selected_source_commit"] == "28c51162fc4d31d674c6606d608367a5f4b32b0e"
-    assert contract["selected_wheel_sha256"] == "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4"
-    assert contract["selected_distribution_version"] == "1.4.16"
-    assert contract["selected_installed_manifest_sha256"] == "28a28d93a69ad763139ac688d25b9dc63171968cb921c0b28b98b428c446967f"
-    assert contract["publication_status"] == "published-registry"
-    assert contract["public_registry_verified"] is True
-    assert contract["selected_wheel_url"].endswith("/nirs4all-1.4.16-py3-none-any.whl")
-    result = subprocess.run(["node", "-e", "console.log(JSON.stringify(require('./scripts/bake-python-plugin-runtime.cjs').expectedMarker()))"],
-                            cwd=ROOT, capture_output=True, text=True, check=True)
-    marker = json.loads(result.stdout)
-    for field, selected in [("source_commit", "selected_source_commit"), ("wheel_sha256", "selected_wheel_sha256"),
-                            ("distribution_version", "selected_distribution_version"),
-                            ("installed_manifest_sha256", "selected_installed_manifest_sha256")]:
-        assert marker[field] == contract[selected]
-    constraints = ROOT / marker["constraints"]["path"]
-    assert constraints.name == "plugin-runtime-cpython311-sdk1416.txt"
-    assert hashlib.sha256(constraints.read_bytes()).hexdigest() == marker["constraints"]["sha256"]
-    for path in ["scripts/setup-python-env.cjs", "electron/packaged-runtime-contract.ts", "sidecar/src/scientific_cpython.rs"]:
-        source = (ROOT / path).read_text()
-        for field in ["selected_source_commit", "selected_wheel_sha256"]:
-            assert contract[field] in source
-    rust = (ROOT / "sidecar/src/scientific_cpython.rs").read_text()
-    assert 'include_str!("../contracts/studio_scientific_cpython_host_sdk1416_v1.json")' in rust
+    sdk = json.loads((ROOT / "build/runtime-cohort.json").read_text())["sdk"]
+    assert sdk["source_sha"] == "28c51162fc4d31d674c6606d608367a5f4b32b0e"
+    assert sdk["wheel_sha256"] == "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4"
+    assert sdk["version"] == _required_nirs4all()["install"]
+    assert sdk["publication_status"] == "published-registry"
+    assert sdk["wheel_url"].endswith(f"/nirs4all-{sdk['version']}-py3-none-any.whl")
+    # Every installer ships the same public SDK wheel bytes, on every target.
+    for target in WHEEL_LOCK_TARGETS:
+        locked = next(package for package in _wheel_lock(target)["packages"] if package["name"] == "nirs4all")
+        assert (locked["version"], locked["url"], locked["sha256"]) == (sdk["version"], sdk["wheel_url"], sdk["wheel_sha256"])
+    # The sidecar admits an environment by Python version, nirs4all range and
+    # importability: it embeds no host contract, wheel digest or source commit.
+    assert not list((ROOT / "sidecar/contracts").glob("studio_scientific_cpython_host*"))
+    for path in (ROOT / "sidecar/src").rglob("*.rs"):
+        rust = path.read_text(encoding="utf-8")
+        assert "studio_scientific_cpython_host" not in rust, path
+        for field in ["source_sha", "wheel_sha256"]:
+            assert sdk[field] not in rust, path
     policy = json.loads((ROOT / "qualification/policy.json").read_text())
     for gate in policy["gates"]:
         if "packaged" in gate["id"] or "application-migration" in gate["id"]:
@@ -327,25 +233,27 @@ def test_release_dispatch_only_publishes_when_explicitly_requested() -> None:
         assert step["if"] == "needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.skip_docker != 'true'"
 
 
-def test_release_packaged_ui_smoke_is_blocking_and_checksums_use_basenames() -> None:
+def test_release_first_launch_smoke_is_blocking_and_checksums_use_basenames() -> None:
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8"))
 
     installers = {name: job for name, job in workflow["jobs"].items() if name.startswith("installer-")}
-    assert set(installers) == {"installer-linux", "installer-windows", "installer-macos-x64", "installer-macos-arm64"}
+    assert set(installers) == {"installer-linux", "installer-windows", "installer-macos-arm64"}
     release = workflow["jobs"]["release"]
     for name, job in installers.items():
         assert name in release["needs"]
         assert f"needs.{name}.result == 'success'" in release["if"]
         steps = job["steps"]
-        qualification = next(i for i, step in enumerate(steps) if "scripts/smoke-packaged-ui.cjs" in step.get("run", ""))
+        qualification = next(i for i, step in enumerate(steps) if "scripts/smoke-archive-standalone.cjs" in step.get("run", ""))
         upload = next(i for i, step in enumerate(steps) if step.get("name") == "Upload artifacts")
         assert qualification < upload
         qualifier = steps[qualification]["run"]
+        assert "scripts/smoke-packaged-ui.cjs" in qualifier
         assert "--installer" in qualifier
-        assert "--timeout-ms 120000" in qualifier
+        assert qualifier.count("--timeout-ms 240000") == 2
+        assert "if" not in steps[qualification]
         assert not steps[qualification].get("continue-on-error", False)
         assert "checkout_ref" in steps[qualification]["env"]["RELEASE_SOURCE_SHA"]
-        assert "INSTALLER_BASELINE" not in steps[qualification].get("env", {})
+        assert steps[upload]["with"]["name"].endswith("-payload")
         checksum = next(step["run"] for step in steps if step.get("name") == "Generate checksums")
         if name == "installer-windows":
             assert "$($_.Name)" in checksum

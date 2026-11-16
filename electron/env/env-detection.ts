@@ -1,162 +1,102 @@
 /**
- * Discovery of existing Python environments on the host.
+ * Detection of the Python environments on this machine.
  *
- * `checkPythonEnv` spawns an interpreter to read its version + core-package
- * presence and classifies the result. `detectExistingEnvs` gathers candidates
- * across ecosystems, classifies them in parallel, then sorts and de-duplicates
- * by env root behind a short-TTL in-memory cache. EnvManager passes the env
- * directory and the configured interpreter; it never holds this discovery state.
+ * Candidate interpreters come from `python-discovery`; each one gets a single
+ * metadata inventory (bounded parallelism) and a report. Results are sorted,
+ * de-duplicated by environment root and kept in a short in-memory cache,
+ * because the settings page can ask several times in a row.
  */
 
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 
-import { REUSABLE_RUNTIME_PACKAGES } from "./env-inspection";
-import { PYTHON_REQUIREMENT_HELPERS } from "./requirement-specs";
-import type { DetectedEnv } from "./env-inspection";
-import {
-  gatherPythonCandidates,
-  getEnvRootForPythonPath,
-  normalizeDetectedPath,
-} from "./python-discovery";
-import {
-  compareDetectedEnvs,
-  detectBundledRuntime,
-  getEnvKind,
-  getManagedPythonPath,
-  isLikelyWritable,
-} from "./runtime-paths";
+import type { PythonEnvKind, PythonEnvReport } from "../../src/types/pythonEnvironment";
+import { evaluateInventory, takeInventory } from "./inventory";
+import { canonicalPythonPath, gatherPythonCandidates, normalizeDetectedPath } from "./python-discovery";
+import { getVenvPythonPath } from "./runtime-paths";
 
-const isWindows = process.platform === "win32";
+const DETECTION_TTL_MS = 30_000;
+/** Interpreters inspected at once: enough to be quick, few enough not to stall a busy disk. */
+const INVENTORY_CONCURRENCY = 4;
 
-// Short-TTL in-memory cache for detectExistingEnvs(). Scanning PATH and
-// spawning Python for every candidate is expensive, and the Settings UI can
-// trigger it multiple times in quick succession. This cache is intentionally
-// module-scope and non-persistent — the separate on-disk verify cache
-// (verify-cache.json) covers ensureBackendPackages() and must not be
-// co-mingled with this transient cache.
-const DETECT_ENVS_TTL_MS = 30_000;
-let detectEnvsCache: { key: string; expiresAt: number; result: DetectedEnv[] } | null = null;
+let detectionCache: { key: string; expiresAt: number; result: PythonEnvReport[] } | null = null;
 
-export interface DetectEnvsContext {
-  /** Default managed-env directory. */
-  envDir: string;
-  /** The persisted custom interpreter, if any. */
-  customPythonPath: string | null;
-  /** The interpreter Electron is currently configured to use, for sort priority. */
-  configuredPythonPath: string | null;
+/** Forget the cached detection after packages or the selection changed. */
+export function clearDetectionCache(): void {
+  detectionCache = null;
 }
 
-const CHECK_PYTHON_ENV_TIMEOUT_MS = 30_000;
-
-/** Check a Python executable and return info if it's 3.11+. */
-export function checkPythonEnv(envDir: string, pythonPath: string): Promise<DetectedEnv | null> {
-  const corePackageSpecs = JSON.stringify(REUSABLE_RUNTIME_PACKAGES);
-  return new Promise((resolve) => {
-    execFile(
-      pythonPath,
-      [
-        "-c",
-        "import sys\n"
-        + "from importlib import metadata as importlib_metadata\n"
-        + PYTHON_REQUIREMENT_HELPERS
-        + "print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')\n"
-        + "installed = {}\n"
-        + "normalize = lambda name: name.replace('-', '_').replace('.', '_').lower()\n"
-        + "for dist in importlib_metadata.distributions():\n"
-        + "    name = dist.metadata.get('Name')\n"
-        + "    if name:\n"
-        + "        installed.setdefault(normalize(name), dist.version)\n"
-        + `core = ${corePackageSpecs}\n`
-        + "print('nirs4all' in installed)\n"
-        + "print(all(requirement_issue(spec, installed.get(normalize(requirement_name(spec)))) is None for spec in core))",
-      ],
-      // Cold interpreters (antivirus scans after an update) can need more than 15 s.
-      { timeout: CHECK_PYTHON_ENV_TIMEOUT_MS, windowsHide: isWindows },
-      (error, stdout) => {
-        if (error) {
-          if ((error as { killed?: boolean }).killed) {
-            console.warn(`[EnvManager] ${pythonPath} did not answer within ${CHECK_PYTHON_ENV_TIMEOUT_MS / 1000} s and is not listed`);
-          }
-          resolve(null);
-          return;
-        }
-        const lines = stdout.trim().split("\n");
-        if (lines.length < 3) { resolve(null); return; }
-        const version = lines[0].trim();
-        const [major, minor] = version.split(".").map(Number);
-        if (major < 3 || (major === 3 && minor < 11)) { resolve(null); return; }
-        const hasNirs4all = lines[1].trim() === "True";
-        const hasCorePackages = lines[2].trim() === "True";
-        const envRoot = getEnvRootForPythonPath(pythonPath);
-        resolve({
-          path: envRoot,
-          pythonPath,
-          pythonVersion: version,
-          hasNirs4all,
-          hasCorePackages,
-          envKind: getEnvKind(envDir, envRoot, pythonPath),
-          writable: isLikelyWritable(envRoot, pythonPath),
-        });
-      },
-    );
-  });
+export interface DetectionContext {
+  /** Directory of the environment Studio creates in its data directory. */
+  studioEnvDir: string;
+  selectedPythonPath: string | null;
 }
+
+const KIND_ORDER: Record<PythonEnvKind, number> = { studio: 0, conda: 1, venv: 2, system: 3 };
 
 /**
- * Detect existing Python environments on the system.
- *
- * Results are cached in-memory for a short TTL, keyed on a hash of the active
- * discovery inputs (`process.cwd()`, `PATH`, and key Python manager env vars).
- * The cache is intentionally transient and separate from the persistent verify
- * cache used by ensureBackendPackages().
+ * Order: the selected environment, then usable ones, writable ones, the kind,
+ * the newest Python and finally the path as a stable tiebreak.
  */
-export async function detectExistingEnvs(ctx: DetectEnvsContext): Promise<DetectedEnv[]> {
-  const cacheKey = createHash("sha1")
-    .update(process.platform)
-    .update("\u0000")
-    .update(process.cwd())
-    .update("\u0000")
-    .update(process.env.PATH || "")
-    .update("\u0000")
-    .update(process.env.CONDA_EXE || "")
-    .update("\u0000")
-    .update(process.env.PYENV_ROOT || "")
-    .update("\u0000")
-    .update(JSON.stringify(ctx))
-    .digest("hex");
-  const now = Date.now();
-  if (detectEnvsCache && detectEnvsCache.key === cacheKey && detectEnvsCache.expiresAt > now) {
-    return detectEnvsCache.result.slice();
-  }
+export function compareReports(selectedPythonPath: string | null, left: PythonEnvReport, right: PythonEnvReport): number {
+  // Reports carry canonical paths, so the selected one is equal as a string.
+  const isSelected = (report: PythonEnvReport) => Number(report.pythonPath === selectedPythonPath);
+  return isSelected(right) - isSelected(left)
+    || Number(right.usable) - Number(left.usable)
+    || Number(right.writable) - Number(left.writable)
+    || KIND_ORDER[left.kind] - KIND_ORDER[right.kind]
+    || right.pythonVersion.localeCompare(left.pythonVersion, undefined, { numeric: true })
+    || left.envRoot.localeCompare(right.envRoot, undefined, { numeric: true, sensitivity: "base" });
+}
 
-  const candidatePaths = await gatherPythonCandidates([
-    ctx.customPythonPath,
-    getManagedPythonPath(ctx.envDir),
-    detectBundledRuntime()?.pythonPath,
-  ]);
-
-  const detected = (await Promise.all(
-    candidatePaths.map((candidate) => checkPythonEnv(ctx.envDir, candidate)),
-  )).filter((env): env is DetectedEnv => Boolean(env));
-
-  const envs: DetectedEnv[] = [];
-  const seenEnvRoots = new Set<string>();
-  for (const env of detected.sort((left, right) => compareDetectedEnvs(ctx.configuredPythonPath, left, right))) {
-    const envKey = normalizeDetectedPath(env.path);
-    if (seenEnvRoots.has(envKey)) {
-      continue;
+async function mapBounded<T, R>(items: readonly T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await task(items[index]);
     }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
-    seenEnvRoots.add(envKey);
-    envs.push(env);
+/** Report every Python 3.11+ environment found on this machine, the selected one first. */
+export async function detectEnvironments(context: DetectionContext, refresh = false): Promise<PythonEnvReport[]> {
+  const key = createHash("sha1")
+    .update([
+      process.cwd(), process.env.PATH ?? "", process.env.CONDA_EXE ?? "", process.env.PYENV_ROOT ?? "",
+      JSON.stringify(context),
+    ].join("\u0000"))
+    .digest("hex");
+  if (!refresh && detectionCache && detectionCache.key === key && detectionCache.expiresAt > Date.now()) {
+    return detectionCache.result.slice();
   }
 
-  detectEnvsCache = {
-    key: cacheKey,
-    expiresAt: Date.now() + DETECT_ENVS_TTL_MS,
-    result: envs.slice(),
-  };
+  const candidates = await gatherPythonCandidates([
+    context.selectedPythonPath,
+    getVenvPythonPath(context.studioEnvDir),
+  ]);
+  const reports = (await mapBounded(candidates, INVENTORY_CONCURRENCY, async (candidate) => {
+    const pythonPath = canonicalPythonPath(candidate, context.selectedPythonPath);
+    try {
+      return evaluateInventory(pythonPath, await takeInventory(pythonPath), context.studioEnvDir);
+    } catch {
+      // Not a usable Python 3.11+ interpreter: it is simply not listed.
+      return null;
+    }
+  })).filter((report): report is PythonEnvReport => report !== null);
 
-  return envs;
+  const result: PythonEnvReport[] = [];
+  const seenRoots = new Set<string>();
+  for (const report of reports.sort((left, right) => compareReports(context.selectedPythonPath, left, right))) {
+    const root = normalizeDetectedPath(report.envRoot);
+    if (seenRoots.has(root)) continue;
+    seenRoots.add(root);
+    result.push(report);
+  }
+
+  detectionCache = { key, expiresAt: Date.now() + DETECTION_TTL_MS, result: result.slice() };
+  return result;
 }

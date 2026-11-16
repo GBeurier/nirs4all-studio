@@ -367,9 +367,9 @@ describe("renderer transport preselection", () => {
       () => ({ ...running(), pythonPluginHostConfigured: false }), request))
       .resolves.toMatchObject({ target: "reject", reason: "native_python_host_unavailable" });
   });
-  it("selects qualified inspection, prediction and setup routes with their capabilities", async () => {
+  it("selects qualified inspection, prediction and GPU detection routes with their capabilities", async () => {
     const request = vi.fn().mockImplementation(async () => capabilityResponse({
-      dataset_inspection_routes: true, recommended_config_routes: true, general_prediction_routes: true,
+      dataset_inspection_routes: true, gpu_detection_route: true, general_prediction_routes: true,
       python_plugin_preflight: true,
       workspace_run_history_route: true, workspace_run_listing_routes: true,
     }));
@@ -377,18 +377,14 @@ describe("renderer transport preselection", () => {
       ["GET", "/models/available"], ["POST", "/predict"], ["POST", "/predict/file"],
       ["GET", "/runs"], ["GET", "/runs/stats"], ["GET", "/runs?status=running,queued"],
       ["GET", "/workspaces/workspace_1/runs/enriched?project_id=project_1&limit=100&offset=0"],
-      ["GET", "/config/recommended?force_refresh=false"], ["GET", "/config/detect-gpu"],
-      ["GET", "/config/diff?profile=cpu&include_optional=true&include_latest=false"],
-      ["GET", "/updates/dependencies"], ["GET", "/updates/dependencies?force_refresh=true"],
-      ["POST", "/updates/dependencies/refresh"],
+      ["GET", "/config/detect-gpu"],
       ...["detect-files", "detect-unified", "detect-files-list", "scan-folder", "detect-format", "auto-detect", "validate-files", "preview"].map((operation) => ["POST", `/datasets/${operation}`]),
       ["GET", "/datasets/registered_1/preview?max_samples=5"], ["GET", "/datasets/registered_1/stats?partition=all"],
     ]) {
       await expect(preselectRendererTransport({ kind: "http", method, path }, running, request))
         .resolves.toMatchObject({ target: "native-sidecar", status: 200 });
     }
-    for (const path of ["/config/diff?include_optional=1", "/config/diff?profile=cpu&profile=gpu", "/config/recommended?bad=true",
-      "/updates/dependencies?force_refresh=1", "/updates/dependencies?force_refresh=true&force_refresh=false",
+    for (const path of ["/config/detect-gpu?refresh=true",
       "/datasets/registered_1/preview?max_samples=-1", "/datasets/registered_1/stats?partition=other", "/models/available?bad=1",
       "/runs?status=oops", "/runs/stats?status=running", "/workspaces/workspace_1/runs/enriched?limit=1&limit=2", "/predict/models/available"]) {
       await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
@@ -396,8 +392,21 @@ describe("renderer transport preselection", () => {
     }
     await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/datasets/preview-upload" }, running, request))
       .resolves.toMatchObject({ target: "reject" });
-    for (const path of ["/updates/dependencies/install", "/updates/dependencies/uninstall", "/updates/dependencies/refresh?force_refresh=true", "/config/align"]) {
-      await expect(preselectRendererTransport({ kind: "http", method: "POST", path }, running, request))
+    await expect(preselectRendererTransport({ kind: "http", method: "GET", path: "/config/detect-gpu" },
+      () => ({ ...running(), pythonPluginHostConfigured: false }), request))
+      .resolves.toMatchObject({ target: "reject", reason: "native_python_host_unavailable" });
+    // Environment setup, package installation and runtime status belong to the
+    // Electron main process: the sidecar no longer serves these routes.
+    for (const [method, path] of [
+      ["GET", "/config/recommended"], ["GET", "/config/recommended?force_refresh=false"],
+      ["GET", "/config/diff?profile=cpu&include_optional=true&include_latest=false"],
+      ["GET", "/config/setup-status"], ["POST", "/config/complete-setup"], ["POST", "/config/skip-setup"],
+      ["POST", "/config/align"],
+      ["GET", "/updates/dependencies"], ["GET", "/updates/dependencies?force_refresh=true"],
+      ...["refresh", "install", "revert", "update", "uninstall"].map((action) => ["POST", `/updates/dependencies/${action}`]),
+      ["GET", "/updates/runtime/status"], ["GET", "/updates/runtime/snapshots"],
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, request))
         .resolves.toMatchObject({ target: "reject" });
     }
     await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/predict" },
@@ -419,7 +428,7 @@ describe("renderer transport preselection", () => {
       ["POST", "/workspace/select"], ["GET", "/workspace/list"],
       ["GET", "/pipelines"], ["POST", "/pipelines"],
       ["GET", "/pipelines/pipeline_1"], ["PUT", "/pipelines/pipeline_1"],
-      ["DELETE", "/pipelines/pipeline_1"], ["GET", "/config/setup-status"],
+      ["DELETE", "/pipelines/pipeline_1"],
       ["GET", "/datasets"], ["POST", "/datasets/link"], ["PUT", "/datasets/dataset_1"],
     ]) {
       await expect(preselectRendererTransport({ kind: "http", method, path },

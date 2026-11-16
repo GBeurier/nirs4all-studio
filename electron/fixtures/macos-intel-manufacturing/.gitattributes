@@ -1,2 +1,0 @@
-# Byte-for-byte historical SHA-256 inputs; never rewrite line endings.
-*.source -text

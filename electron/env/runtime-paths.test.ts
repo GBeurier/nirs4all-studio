@@ -1,37 +1,45 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
-import type { DetectedEnv } from "./env-inspection";
-import { compareDetectedEnvs, isBundledRuntimeLayoutPath } from "./runtime-paths";
+import { afterEach, describe, expect, it } from "vitest";
 
-function env(overrides: Partial<DetectedEnv>): DetectedEnv {
-  return {
-    path: "/envs/default",
-    pythonPath: "/envs/default/bin/python",
-    pythonVersion: "3.11.9",
-    hasNirs4all: true,
-    hasCorePackages: true,
-    envKind: "venv",
-    writable: true,
-    ...overrides,
-  };
-}
+import { getEnvKind, getStandalonePythonPath, getStudioEnvDir, getVenvPythonPath } from "./runtime-paths";
 
-describe("detected environment ordering", () => {
-  it("lists the included runtime first after the configured interpreter", () => {
-    const configured = env({ path: "/envs/configured", pythonPath: "/envs/configured/bin/python", hasCorePackages: false });
-    const writable = env({ path: "/envs/work", pythonPath: "/envs/work/bin/python" });
-    const bundled = env({ path: "/app/python", pythonPath: "/app/python/bin/python3", envKind: "bundled", writable: false });
-
-    const sorted = [writable, bundled, configured].sort((left, right) => compareDetectedEnvs(configured.pythonPath, left, right));
-
-    expect(sorted.map((candidate) => candidate.path)).toEqual(["/envs/configured", "/app/python", "/envs/work"]);
-  });
+const roots: string[] = [];
+afterEach(() => {
+  for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
-describe("included runtime layout", () => {
-  it("recognizes interpreters of the included runtime from any install location", () => {
-    expect(isBundledRuntimeLayoutPath("C:\\Program Files\\nirs4all Studio\\resources\\backend\\python-runtime\\python\\python.exe")).toBe(true);
-    expect(isBundledRuntimeLayoutPath("/Applications/nirs4all Studio.app/Contents/Resources/backend/python-runtime/python/bin/python3")).toBe(true);
-    expect(isBundledRuntimeLayoutPath("/home/user/.venvs/nirs/bin/python")).toBe(false);
+describe("environment layout", () => {
+  it("places Studio's environment and its runtime under the data directory", () => {
+    const studioEnvDir = getStudioEnvDir(path.join("data", "studio"));
+    expect(studioEnvDir).toBe(path.join("data", "studio", "python-env"));
+    expect(getVenvPythonPath(studioEnvDir)).toBe(process.platform === "win32"
+      ? path.join(studioEnvDir, "venv", "Scripts", "python.exe")
+      : path.join(studioEnvDir, "venv", "bin", "python"));
+    expect(getStandalonePythonPath(studioEnvDir)).toBe(process.platform === "win32"
+      ? path.join(studioEnvDir, "python", "python.exe")
+      : path.join(studioEnvDir, "python", "bin", "python3"));
+  });
+
+  it("classifies an environment root by ownership first, then by layout", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-env-kind-"));
+    roots.push(root);
+    const studioEnvDir = path.join(root, "user-data", "python-env");
+    const conda = path.join(root, "conda");
+    const venv = path.join(root, "venv");
+    const system = path.join(root, "system");
+    fs.mkdirSync(path.join(conda, "conda-meta"), { recursive: true });
+    fs.mkdirSync(venv);
+    fs.writeFileSync(path.join(venv, "pyvenv.cfg"), "");
+    fs.mkdirSync(system);
+
+    expect(getEnvKind(studioEnvDir, path.join(studioEnvDir, "venv"))).toBe("studio");
+    expect(getEnvKind(studioEnvDir, conda)).toBe("conda");
+    expect(getEnvKind(studioEnvDir, venv)).toBe("venv");
+    expect(getEnvKind(studioEnvDir, system)).toBe("system");
+    // A sibling whose name merely starts with the same prefix is not Studio's.
+    expect(getEnvKind(studioEnvDir, `${studioEnvDir}-backup`)).toBe("system");
   });
 });

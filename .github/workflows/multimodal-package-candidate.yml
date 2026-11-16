@@ -295,19 +295,6 @@ jobs:
           shopt -s nullglob
           nirs_wheels=(candidate-wheels/nirs4all-*.whl)
           test "${#nirs_wheels[@]}" -eq 1
-          python - "${nirs_wheels[0]}" <<'PY'
-          import hashlib
-          import json
-          from pathlib import Path
-          import sys
-          from zipfile import ZipFile
-          contract = json.loads(Path('sidecar/contracts/studio_scientific_cpython_host_v1.json').read_text())
-          with ZipFile(sys.argv[1]) as wheel:
-              payload = wheel.read('nirs4all/api/studio_scientific.py')
-          digest = hashlib.sha256(payload).hexdigest()
-          assert digest == contract['selected_callable_sha256'], f'Candidate callable digest mismatch: {digest}'
-          print(f'Canonical nirs4all callable SHA-256: {digest}')
-          PY
           cd candidate-io
           python -m maturin build --locked --release -m bindings/python/Cargo.toml --interpreter python --out ../candidate-wheels
           cd ../candidate-dag

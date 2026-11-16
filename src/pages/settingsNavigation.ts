@@ -4,6 +4,7 @@ export const SETTINGS_TABS = [
   { value: "general", labelKey: "settings.tabs.general" },
   { value: "workspaces", labelKey: "settings.tabs.workspace" },
   { value: "data", labelKey: "settings.tabs.data" },
+  { value: "python", labelKey: "settings.tabs.python" },
   { value: "updates", labelKey: "settings.tabs.updates" },
   { value: "advanced", labelKey: "settings.tabs.advanced" },
 ] as const;

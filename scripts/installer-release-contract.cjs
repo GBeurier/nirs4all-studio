@@ -460,7 +460,7 @@ function verifyDiscoveredOutputs({
         artifactBoundaryRoot: output.artifactBoundaryRoot,
         platform: output.platform,
         arch: output.platform === "darwin" ? process.arch : "x64",
-        requireBundledPythonPlugin: true,
+        requirePythonPayload: true,
         requireBundledMethods: true,
       });
     };

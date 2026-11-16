@@ -4,6 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { assertDockerCjsModuleGraph } = require("./docker-cjs-module-graph.cjs");
+const { TARGETS: lockTargets } = require("./python-wheel-lock.cjs");
 const {
   MANIFEST: adapterManifest,
   SOURCE_FILES: adapterSourceFiles,
@@ -34,7 +35,7 @@ if (rustImageArgs.length !== 1 || rustImageArgs[0] !== "ARG RUST_IMAGE=rust:1.96
 
 requireText(dockerfile, "FROM ${NODE_IMAGE} AS frontend", "frontend build stage");
 requireText(dockerfile, "FROM ${RUST_IMAGE} AS sidecar", "Rust sidecar build stage");
-requireText(dockerfile, "FROM ${NODE_IMAGE} AS python-plugin-runtime", "bounded CPython plugin build stage");
+requireText(dockerfile, "FROM ${NODE_IMAGE} AS python-environment", "catalogue-driven Python environment build stage");
 requireText(dockerfile, "FROM ${NGINX_IMAGE} AS runtime", "minimal web runtime stage");
 const runtimeStage = dockerfile.split("FROM ${NGINX_IMAGE} AS runtime")[1] || "";
 for (const dependency of ["libtbb12", "libgomp1"]) {
@@ -45,11 +46,6 @@ for (const dependency of ["libtbb12", "libgomp1"]) {
 requireText(dockerfile, "FROM scratch AS studio-document-adapter-sources", "closed document adapter source stage");
 requireText(
   dockerfile,
-  "COPY --from=studio-document-adapter-sources / /build/",
-  "document adapter sources in plugin builder",
-);
-requireText(
-  dockerfile,
   "COPY --from=studio-document-adapter-sources / /",
   "document adapter sources in native contract verifier",
 );
@@ -57,21 +53,25 @@ try {
   assertDockerCjsModuleGraph({
     projectRoot: root,
     dockerfile,
-    stageName: "python-plugin-runtime",
-    entrypoints: ["scripts/bake-python-plugin-runtime.cjs", "scripts/setup-python-env.cjs"],
+    stageName: "python-environment",
+    entrypoints: ["scripts/fetch-uv.cjs", "scripts/build-wheelhouse.cjs", "scripts/build-offline-payload.cjs", "scripts/provision-environment.cjs"],
   });
 } catch (error) {
   errors.push(error.message);
 }
 requireText(
   dockerfile,
-  "COPY scripts/normalize-plugin-wheel.py scripts/",
-  "SDK wheel normalization helper in plugin builder",
+  "COPY build/constraints/python-wheels-linux-x64.json build/constraints/",
+  "hash-pinned wheel lock of the required cohort",
 );
+requireText(dockerfile, "node scripts/fetch-uv.cjs --platform linux --arch x64", "pinned uv");
+requireText(dockerfile, "node scripts/build-wheelhouse.cjs --platform linux --arch x64", "locked required wheels");
+requireText(dockerfile, "node scripts/build-offline-payload.cjs --platform linux --arch x64 --image", "locked image closure installed without an index");
+requireText(dockerfile, "--env-dir /opt/nirs4all/python-env", "environment created at its final image path");
 requireText(
   dockerfile,
-  "COPY build/constraints/plugin-runtime-cpython311-sdk1416.txt build/constraints/plugin-runtime-cpython311-sdk1416.txt",
-  "mandatory CPython constraints in plugin builder project root",
+  `--recommended ${lockTargets["linux-x64"].imageExtras.join(",")}`,
+  "the image extras that the Linux lock resolves",
 );
 requireText(
   dockerfile,
@@ -90,28 +90,23 @@ requireText(
 );
 requireText(
   dockerfile,
-  "COPY --from=studio-document-adapter-sources /api/library_runtime_config.py api/library_runtime_config.py",
-  "Rust runtime package inventory probe compile source",
-);
-requireText(
-  dockerfile,
   "COPY recommended-config.json recommended-config.json",
-  "Rust recommended profile compile source",
+  "Rust package catalogue compile source",
 );
 requireText(
   dockerfile,
-  "COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/python-runtime-config.cjs scripts/methods-public-wheel-profile.json /contract-scripts/",
+  "COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/methods-public-wheel-profile.json /contract-scripts/",
   "complete native contract verifier module graph",
 );
 requireText(
   dockerfile,
   "COPY recommended-config.json /recommended-config.json",
-  "recommended SDK version for native contract verifier",
+  "package catalogue for native contract verifier",
 );
 requireText(
   dockerfile,
-  "COPY build/constraints/plugin-runtime-cpython311-sdk1416.txt /build/constraints/plugin-runtime-cpython311-sdk1416.txt",
-  "mandatory CPython constraints for native runtime verification",
+  "node /contract-scripts/studio-document-adapters.cjs --install /product/backend/adapters",
+  "attested document adapters beside the sidecar",
 );
 requireText(
   dockerfile,
@@ -129,16 +124,17 @@ requireText(dockerfile, "NIRS4ALL_METHODS_SHA256", "native Methods content ident
 requireText(dockerfile, "COPY scripts/methods-public-wheel-profile.json scripts/methods-public-wheel-profile.json", "Rust compiled public Methods selection");
 requireText(dockerfile, "ARG NIRS4ALL_METHODS_IDENTITY_PROFILE=public-wheel", "public artifact identity default");
 requireText(dockerfile, "c.verifyRuntimeContract", "packaged runtime contract verification");
-requireText(dockerfile, "requireBundledPythonPlugin:true", "mandatory CPython plugin policy");
 requireText(dockerfile, "requireBundledMethods:true", "mandatory Methods policy");
 requireText(dockerfile, "COPY --from=native-runtime-contract", "closed native backend copy");
+requireText(dockerfile, "COPY --from=python-environment --chown=nginx:nginx /opt/nirs4all/python-env/ /opt/nirs4all/python-env/", "environment copy at its build path");
 requireText(dockerfile, "USER nginx", "unprivileged runtime user");
-requireText(dockerfile, "NIRS4ALL_PYTHON_PLUGIN_HOST=/opt/nirs4all/backend/python-runtime/python/bin/python3", "bounded CPython host path");
-requireText(dockerfile, "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED=true", "bundled CPython identity");
+requireText(dockerfile, "NIRS4ALL_PYTHON_PLUGIN_HOST=/opt/nirs4all/python-env/venv/bin/python", "bounded CPython host path");
+requireText(dockerfile, "NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES=/opt/nirs4all/python-env/venv/lib/python3.11/site-packages", "environment package directory");
+requireText(dockerfile, "NIRS4ALL_STUDIO_ADAPTERS_DIR=/opt/nirs4all/backend/adapters", "document adapters directory");
 requireText(dockerfile, "NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1", "stdio scientific executor selection");
 requireText(dockerfile, "! command -v python", "no ambient Python command");
 requireText(dockerfile, "! command -v python3", "no ambient Python 3 command");
-requireText(dockerfile, "find /opt/nirs4all/backend/python-runtime/python -type f", "complete CPython ELF dependency scan");
+requireText(dockerfile, "find /opt/nirs4all/python-env -type f", "complete CPython ELF dependency scan");
 requireText(dockerfile, 'LD_LIBRARY_PATH="${object_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "$object"', "wheel-local ELF dependency resolution");
 requireText(dockerfile, "ELF dependency missing", "fail-closed CPython ELF dependency result");
 requireText(dockerfile, "import scipy.linalg", "native SciPy import smoke");
@@ -152,6 +148,7 @@ forbid(dockerfile, /COPY\s+(?:main\.py|api\/|websocket\/|requirements)/im, "Pyth
 forbid(dockerfile, /uvicorn|gunicorn|fastapi/im, "Python HTTP server");
 forbid(dockerfile, /NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC/im, "Python HTTP diagnostic owner");
 forbid(dockerfile, /INSTALL_GPU|SOURCE_URL/im, "legacy Python/GPU build argument");
+forbid(dockerfile, /NIRS4ALL_PYTHON_PLUGIN_(?:HOST_BUNDLED|CLOSURE|RUNTIME_ROOT)/, "bundled runtime variable");
 
 requireText(nginx, "server 127.0.0.1:8001;", "loopback sidecar upstream");
 requireText(nginx, "listen 8000;", "single public listener");
@@ -179,7 +176,7 @@ requireText(entrypoint, '${NIRS4ALL_STUDIO_TRUSTED_LOCAL_ONLY:-}', "explicit loc
 requireText(entrypoint, 'nginx -t', "proxy startup configuration validation");
 forbid(entrypoint, /python|uvicorn|main\.py|scheduler|fallback/im, "non-sidecar backend path");
 
-for (const excluded of ["api/", "websocket/", "main.py", "requirements*.txt", "backend.spec"]) {
+for (const excluded of ["api/", "websocket/", "main.py", "requirements*.txt"]) {
   requireText(dockerignore, excluded, "Python backend context exclusion");
 }
 for (const adapterSource of adapterSourceFiles) {
@@ -189,10 +186,9 @@ for (const adapterSource of adapterSourceFiles) {
 requireText(dockerfile, '"src/data/nodes/definitions/"', "document adapter node definitions inventory");
 requireText(dockerfile, '"src/data/nodes/generated/canonical-registry.json"', "canonical node registry inventory");
 requireText(dockerfile, `"${adapterManifest}"`, "document adapter manifest inventory");
-requireText(dockerignore, "!recommended-config.json", "plugin build configuration inclusion");
+requireText(dockerignore, "!recommended-config.json", "package catalogue inclusion");
 for (const compileSource of [
   "api/shared/system_info.py",
-  "api/library_runtime_config.py",
   "api/synthetic_datasets.json",
   "api/presets/complex_pls.yaml",
   "api/presets/complex_trees.yaml",
@@ -212,8 +208,8 @@ requireText(dockerignore, "!build/", "constraints parent context allowlist");
 requireText(dockerignore, "!build/constraints/", "constraints directory context allowlist");
 requireText(
   dockerignore,
-  "!build/constraints/plugin-runtime-cpython311-sdk1416.txt",
-  "mandatory CPython constraints context allowlist",
+  "!build/constraints/python-wheels-linux-x64.json",
+  "wheel lock context allowlist",
 );
 forbid(dockerignore, /^(?:postcss\.config\.js|tailwind\.config\.ts)\/?$/m, "frontend CSS build configuration exclusion");
 
