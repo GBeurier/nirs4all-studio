@@ -1,1405 +1,675 @@
+// @vitest-environment node
 import fs from "node:fs";
-import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const childProcessMocks = vi.hoisted(() => ({
-  execFile: vi.fn(),
-  spawn: vi.fn(),
+import type { PythonEnvState } from "../src/types/pythonEnvironment";
+
+vi.mock("./env/inventory", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./env/inventory")>()),
+  takeInventory: vi.fn(),
 }));
-
-vi.mock("./env/runtime-adapters", () => ({
-  prepareRuntimeAdapters: vi.fn(async (pythonPath: string) => path.join(path.dirname(pythonPath), "site-packages")),
+vi.mock("./env/uv", () => ({
+  installRecommendedPackages: vi.fn(),
+  installRequiredPackages: vi.fn(),
+  resolveUvPayload: vi.fn(() => ({ wheelhouse: null, offline: null })),
 }));
-vi.mock("./env/runtime-version-check", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./env/runtime-version-check")>()),
-  checkRuntimePackageVersions: vi.fn(async () => ({ issues: [] as string[], versions: {} as Record<string, string | null> })),
-}));
+vi.mock("./env/provisioning", () => ({ createStudioEnvironment: vi.fn() }));
+vi.mock("./env/env-detection", () => ({ clearDetectionCache: vi.fn(), detectEnvironments: vi.fn(async () => []) }));
 
-const fakeApp = {
-  getPath: vi.fn(),
-  getVersion: vi.fn(() => "0.3.1"),
-};
+import { EnvManager } from "./env-manager";
+import { REQUIRED_PACKAGES } from "./env/catalogue";
+import { clearDetectionCache, detectEnvironments } from "./env/env-detection";
+import { takeInventory } from "./env/inventory";
+import type { PythonInventory } from "./env/inventory";
+import { createStudioEnvironment } from "./env/provisioning";
+import { installRecommendedPackages, installRequiredPackages, resolveUvPayload } from "./env/uv";
 
-vi.mock("node:child_process", () => ({
-  execFile: childProcessMocks.execFile,
-  spawn: childProcessMocks.spawn,
-}));
+const COHORT = Object.fromEntries(REQUIRED_PACKAGES.map((spec) => [spec.name, spec.install]));
+let root: string;
+let userDataDir: string;
+let settingsPath: string;
+/** What each interpreter's package listing currently returns. */
+let inventories: Map<string, PythonInventory>;
+let restartHost: ReturnType<typeof vi.fn<() => Promise<void>>>;
 
-vi.mock("electron", () => ({
-  default: {
-    app: fakeApp,
-  },
-  app: fakeApp,
-}));
+/** Create an interpreter file and its package directory, and register its inventory. */
+function environment(name: string, overrides: Partial<PythonInventory> = {}): string {
+  const pythonPath = path.join(root, name, "bin", "python");
+  const purelib = path.join(root, name, "lib", "site-packages");
+  fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+  fs.mkdirSync(purelib, { recursive: true });
+  fs.writeFileSync(pythonPath, "");
+  inventories.set(pythonPath, {
+    pythonVersion: "3.11.13",
+    distributions: { ...COHORT },
+    editable: [],
+    externallyManaged: false,
+    purelib,
+    purelibWritable: true,
+    ...overrides,
+  });
+  return pythonPath;
+}
 
-const tempDirs: string[] = [];
-const originalResourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
-const originalCwd = process.cwd();
+function setDistributions(pythonPath: string, distributions: Record<string, string>): void {
+  inventories.set(pythonPath, { ...inventories.get(pythonPath)!, distributions });
+}
 
-function makeUserDataDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-env-"));
-  tempDirs.push(dir);
-  (globalThis as { __NIRS4ALL_TEST_APP__?: typeof fakeApp }).__NIRS4ALL_TEST_APP__ =
-    fakeApp;
-  fakeApp.getPath.mockImplementation(() => dir);
-  return dir;
+function select(pythonPath: string): void {
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.writeFileSync(settingsPath, JSON.stringify({ pythonPath }));
+}
+
+function persistedSelection(): unknown {
+  return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+}
+
+function manager(): EnvManager {
+  return new EnvManager({ userDataDir, restartHost });
+}
+
+/** A manager whose startup check already ran on `pythonPath`. */
+async function startedOn(pythonPath: string): Promise<EnvManager> {
+  select(pythonPath);
+  const env = manager();
+  await env.startupCheck();
+  vi.mocked(takeInventory).mockClear();
+  return env;
 }
 
 beforeEach(() => {
-  childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
-    const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
-    callback(null, "", "");
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-env-manager-"));
+  userDataDir = path.join(root, "user-data");
+  settingsPath = path.join(userDataDir, "env-settings.json");
+  inventories = new Map();
+  restartHost = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+  vi.mocked(takeInventory).mockImplementation(async (pythonPath) => {
+    const inventory = inventories.get(pythonPath);
+    if (!inventory) throw new Error("This file could not be run as a Python 3.11+ interpreter: spawn ENOEXEC");
+    return inventory;
   });
+  vi.mocked(installRequiredPackages).mockImplementation(async (pythonPath) => {
+    setDistributions(pythonPath, { ...inventories.get(pythonPath)!.distributions, ...COHORT });
+  });
+  vi.mocked(installRecommendedPackages).mockResolvedValue(undefined);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllEnvs();
-  vi.resetModules();
-  childProcessMocks.execFile.mockReset();
-  childProcessMocks.spawn.mockReset();
-  fakeApp.getPath.mockReset();
-  fakeApp.getVersion.mockReset();
-  fakeApp.getVersion.mockReturnValue("0.3.1");
-  process.chdir(originalCwd);
-
-  delete process.env.PORTABLE_EXECUTABLE_FILE;
-  delete (globalThis as { __NIRS4ALL_TEST_APP__?: typeof fakeApp })
-    .__NIRS4ALL_TEST_APP__;
-  (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = originalResourcesPath;
-
-  while (tempDirs.length > 0) {
-    const dir = tempDirs.pop();
-    if (dir && fs.existsSync(dir)) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  }
+  vi.restoreAllMocks();
+  vi.mocked(takeInventory).mockReset();
+  vi.mocked(installRequiredPackages).mockReset();
+  vi.mocked(installRecommendedPackages).mockReset();
+  vi.mocked(createStudioEnvironment).mockReset();
+  vi.mocked(clearDetectionCache).mockClear();
+  vi.mocked(detectEnvironments).mockClear();
+  fs.rmSync(root, { recursive: true, force: true });
 });
 
-describe("EnvManager", () => {
-  it("reports repair availability through Electron without a running Python host", async () => {
-    const dir = makeUserDataDir();
-    const pythonPath = path.join(dir, "selected", "python.exe");
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+describe("startup check", () => {
+  it("is unconfigured when no environment was ever selected", async () => {
+    const env = manager();
+
+    expect(await env.startupCheck()).toEqual({
+      phase: "unconfigured", selectedPythonPath: null, selected: null, offlineInstall: false,
+    });
+    expect(env.getHost()).toBeNull();
+    expect(takeInventory).not.toHaveBeenCalled();
+  });
+
+  it("does not migrate the included runtime of earlier releases", async () => {
+    fs.mkdirSync(userDataDir, { recursive: true });
+    fs.writeFileSync(settingsPath, JSON.stringify({ runtime: "bundled", appVersion: "0.15.11", skipWizardOnLaunch: true }));
+
+    expect((await manager().startupCheck()).phase).toBe("unconfigured");
+  });
+
+  it("keeps the selection but asks for setup again when the interpreter no longer exists", async () => {
+    const missing = path.join(root, "moved", "bin", "python");
+    select(missing);
+    const env = manager();
+
+    expect(await env.startupCheck()).toMatchObject({
+      phase: "unconfigured",
+      selectedPythonPath: missing,
+      selected: null,
+      problem: { code: "interpreter_missing", message: expect.stringContaining(missing) },
+    });
+    expect(env.getHost()).toBeNull();
+    expect(takeInventory).not.toHaveBeenCalled();
+    expect(persistedSelection()).toEqual({ pythonPath: missing });
+  });
+
+  it("is ready when every required package is within range, and hands the interpreter to the sidecar", async () => {
+    const pythonPath = environment("work", { distributions: { ...COHORT, nirs4all: "1.4.20", torch: "2.5.0" } });
+    select(pythonPath);
+    const env = manager();
+
+    const state = await env.startupCheck();
+
+    expect(state).toMatchObject({
+      phase: "ready",
+      selectedPythonPath: pythonPath,
+      selected: { pythonPath, usable: true, kind: "system", outdatedRecommendedCount: 1 },
+    });
+    expect(state.problem).toBeUndefined();
+    expect(state.activity).toBeUndefined();
+    expect(env.getHost()).toEqual({ pythonPath, sitePackages: inventories.get(pythonPath)!.purelib });
+    expect(installRequiredPackages).not.toHaveBeenCalled();
+    expect(restartHost).not.toHaveBeenCalled();
+  });
+
+  it("needs no Python subprocess on the next launch while the environment is unchanged", async () => {
+    const pythonPath = environment("work");
+    select(pythonPath);
+    await manager().startupCheck();
+    expect(takeInventory).toHaveBeenCalledTimes(1);
+
+    const relaunched = manager();
+    expect((await relaunched.startupCheck()).phase).toBe("ready");
+    expect(relaunched.getHost()?.pythonPath).toBe(pythonPath);
+    expect(takeInventory).toHaveBeenCalledTimes(1);
+
+    // A package was installed outside Studio: the package directory changed.
+    const later = new Date(Date.now() + 5_000);
+    fs.utimesSync(inventories.get(pythonPath)!.purelib, later, later);
+    await manager().startupCheck();
+    expect(takeInventory).toHaveBeenCalledTimes(2);
+  });
+
+  it("installs the required packages automatically when they are missing or out of range", async () => {
+    const pythonPath = environment("work", { distributions: { nirs4all: "1.4.10", "nirs4all-io": "0.3.1", numpy: "2.1.0" } });
+    select(pythonPath);
+    const env = manager();
+    const states: PythonEnvState[] = [];
+    env.onStateChange((state) => states.push(state));
+
+    const state = await env.startupCheck();
+
+    expect(installRequiredPackages).toHaveBeenCalledTimes(1);
+    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath, new Set());
+    expect(states.some((item) => item.phase === "busy" && item.activity?.kind === "updating_required" && item.activity.percent === null)).toBe(true);
+    expect(state).toMatchObject({ phase: "ready", selected: { usable: true } });
+    expect(state.activity).toBeUndefined();
+    expect(env.getHost()?.pythonPath).toBe(pythonPath);
+    // Studio opened the window itself afterwards: the sidecar is started by the caller, once.
+    expect(restartHost).not.toHaveBeenCalled();
+  });
+
+  it("still opens with a problem when the automatic installation fails", async () => {
+    const pythonPath = environment("work", { distributions: { nirs4all: "1.4.10" } });
+    select(pythonPath);
+    vi.mocked(installRequiredPackages).mockRejectedValueOnce(new Error("Command \"uv pip install\" failed (code 2): network unreachable"));
+    const env = manager();
+
+    const state = await env.startupCheck();
+
+    expect(state).toMatchObject({
+      phase: "needs_attention",
+      selectedPythonPath: pythonPath,
+      selected: { usable: false },
+      problem: { code: "required_update_failed", message: expect.stringContaining("network unreachable") },
+    });
+    expect(state.activity).toBeUndefined();
+    expect(env.getHost()).toBeNull();
+  });
+
+  it("reports a failed update when the packages are still out of range after installation", async () => {
+    const pythonPath = environment("work", { distributions: {} });
+    select(pythonPath);
+    vi.mocked(installRequiredPackages).mockResolvedValueOnce(undefined);
+
+    expect(await manager().startupCheck()).toMatchObject({
+      phase: "needs_attention",
+      problem: { code: "required_update_failed", message: expect.stringContaining("nirs4all (missing)") },
+    });
+  });
+
+  it.each([
+    ["read-only", { purelibWritable: false }],
+    ["managed by the operating system", { externallyManaged: true }],
+  ])("never installs into an environment that is %s", async (_label, overrides) => {
+    const pythonPath = environment("system", { distributions: { nirs4all: "1.4.10" }, ...overrides });
+    select(pythonPath);
+    const env = manager();
+
+    expect(await env.startupCheck()).toMatchObject({
+      phase: "needs_attention",
+      selected: { usable: false, writable: false },
+      problem: { code: "required_not_installable", message: expect.stringContaining("nirs4all 1.4.10 (required >=1.4.16,<1.5)") },
+    });
+    expect(installRequiredPackages).not.toHaveBeenCalled();
+    expect(env.getHost()).toBeNull();
+  });
+
+  it("never modifies an editable install that is out of range", async () => {
+    const pythonPath = environment("dev", { distributions: { ...COHORT, nirs4all: "1.5.0.dev0" }, editable: ["nirs4all"] });
+    select(pythonPath);
+    const env = manager();
+
+    const state = await env.startupCheck();
+
+    expect(state).toMatchObject({
+      phase: "needs_attention",
+      problem: { code: "required_not_installable", message: expect.stringContaining("editable") },
+    });
+    expect(state.selected?.required.find((item) => item.name === "nirs4all")?.status).toBe("editable");
+    expect(installRequiredPackages).not.toHaveBeenCalled();
+  });
+
+  it("uses an editable install within range and leaves it out of a repair of the other packages", async () => {
+    const { "nirs4all-core": _missing, ...withoutCore } = COHORT;
+    const pythonPath = environment("dev", { distributions: { ...withoutCore, nirs4all: "1.4.17" }, editable: ["nirs4all"] });
+    select(pythonPath);
+
+    expect((await manager().startupCheck()).phase).toBe("ready");
+    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath, new Set(["nirs4all"]));
+  });
+
+  it("needs attention when the selected file is not a usable interpreter", async () => {
+    const pythonPath = path.join(root, "not-python");
     fs.writeFileSync(pythonPath, "");
-    fs.writeFileSync(path.join(dir, "env-settings.json"), JSON.stringify({ pythonPath }));
-    const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-    vi.mocked(checkRuntimePackageVersions).mockResolvedValueOnce({ issues: ["nirs4all 1.0.3 installed; 1.4.16 required"], versions: { nirs4all: "1.0.3" } });
-    await expect(manager.checkPackageVersions()).resolves.toBe(false);
-    await expect(manager.getInfo()).resolves.toMatchObject({
-      pythonPath, status: "error", canInstallRequiredVersions: true,
+    select(pythonPath);
+
+    expect(await manager().startupCheck()).toMatchObject({
+      phase: "needs_attention",
+      selected: null,
+      problem: { code: "interpreter_missing", message: expect.stringContaining("Python 3.11+") },
     });
-    await expect(manager.checkPackageVersions(true)).resolves.toBe(true);
-    await expect(manager.getInfo()).resolves.toMatchObject({
-      status: "ready", canInstallRequiredVersions: false,
-    });
-    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
   });
-  it("does not recreate an existing managed environment when automatic setup is selected", async () => {
-    const dir = makeUserDataDir();
-    const venv = path.join(dir, "python-env", "venv");
-    fs.mkdirSync(venv, { recursive: true });
-    const sentinel = path.join(venv, "user-package.txt");
-    fs.writeFileSync(sentinel, "keep this package");
-    const { EnvManager } = await import("./env-manager");
-    await expect(new EnvManager().setup()).rejects.toThrow("already exists");
-    expect(fs.readFileSync(sentinel, "utf8")).toBe("keep this package");
-    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
-  });
-  it("reuses the saved interpreter across two launches and an app upgrade without installing", async () => {
-    const dir = makeUserDataDir();
-    const environmentRoot = path.join(dir, "Données");
-    const pythonPath = path.join(environmentRoot, process.platform === "win32" ? "python.exe" : "bin/python");
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.mkdirSync(path.join(environmentRoot, process.platform === "win32" ? "Lib/site-packages" : "lib/python3.11/site-packages"), { recursive: true });
-    fs.writeFileSync(pythonPath, "");
-    fs.writeFileSync(path.join(dir, "env-settings.json"), JSON.stringify({ pythonPath, appVersion: "0.15.3" }));
-    const { EnvManager } = await import("./env-manager");
-    for (const version of ["0.15.3", "0.15.4", "0.15.4"]) {
-      fakeApp.getVersion.mockReturnValue(version);
-      const manager = new EnvManager();
-      expect(manager.getConfiguredPythonPath()).toBe(pythonPath);
-      await expect(manager.ensureBackendPackages()).resolves.toBe(false);
-      expect(manager.getConfiguredPythonPath()).toBe(pythonPath);
-      expect(manager.shouldShowWizard()).toBe(false);
-    }
-    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+});
+
+describe("switching environment", () => {
+  it("installs what is needed, selects the environment and restarts the sidecar on it", async () => {
+    const previous = environment("previous");
+    const target = environment("target", { distributions: { numpy: "2.1.0" } });
+    const env = await startedOn(previous);
+    const hostDuringRestart: Array<string | undefined> = [];
+    restartHost.mockImplementation(async () => { hostDuringRestart.push(env.getHost()?.pythonPath); });
+
+    const result = await env.apply({ pythonPath: target, packages: ["torch", "xgboost"] });
+
+    expect(result).toMatchObject({ success: true, state: { phase: "ready", selectedPythonPath: target, selected: { usable: true } } });
+    expect(result.message).toBeUndefined();
+    expect(installRequiredPackages).toHaveBeenCalledWith(target, new Set());
+    expect(installRecommendedPackages).toHaveBeenCalledWith(target, ["torch", "xgboost"]);
+    expect(hostDuringRestart).toEqual([target]);
+    expect(persistedSelection()).toEqual({ pythonPath: target });
+    expect(clearDetectionCache).toHaveBeenCalled();
+    // The next launch reuses the inventory taken during the switch.
+    vi.mocked(takeInventory).mockClear();
+    await manager().startupCheck();
+    expect(takeInventory).not.toHaveBeenCalled();
   });
 
-  it("keeps the previous selection in memory and on disk when persistence fails", async () => {
-    const dir = makeUserDataDir();
-    const previous = path.join(dir, "previous", "python.exe");
-    const selected = path.join(dir, "selected", "python.exe");
-    for (const file of [previous, selected]) {
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, "");
-    }
-    fs.writeFileSync(path.join(dir, "env-settings.json"), JSON.stringify({ pythonPath: previous }));
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-    vi.spyOn(manager, "inspectExistingPython").mockResolvedValue({ success: true, message: "ready", info: {
-      path: path.dirname(selected), pythonPath: selected, pythonVersion: "3.11.13", hasNirs4all: true, hasCorePackages: true,
-      missingCorePackages: [], missingOptionalPackages: [], profileAlignmentGuess: null, envKind: "venv", writable: true,
-    } });
-    const rename = vi.spyOn(fs, "renameSync").mockImplementation(() => { throw new Error("EACCES"); });
-    try {
-      await expect(manager.applyExistingPython(selected)).resolves.toMatchObject({ success: false, message: expect.stringContaining("Could not save") });
-      expect(manager.getConfiguredPythonPath()).toBe(previous);
-      expect(JSON.parse(fs.readFileSync(path.join(dir, "env-settings.json"), "utf8")).pythonPath).toBe(previous);
-    } finally { rename.mockRestore(); }
-    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  it("does not reinstall required packages that are already within range", async () => {
+    const target = environment("target", { distributions: { ...COHORT, nirs4all: "1.4.18" } });
+    const env = await startedOn(environment("previous"));
+
+    expect((await env.apply({ pythonPath: target, packages: [] })).success).toBe(true);
+    expect(installRequiredPackages).not.toHaveBeenCalled();
+    expect(installRecommendedPackages).not.toHaveBeenCalled();
   });
 
-  it("reuses a complete environment offline even when package preparation was requested", async () => {
-    const dir = makeUserDataDir();
-    const selected = path.join(dir, "existing", "python.exe");
-    fs.mkdirSync(path.dirname(selected), { recursive: true });
-    fs.writeFileSync(selected, "");
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-    vi.spyOn(manager, "inspectExistingPython").mockResolvedValue({ success: true, message: "ready", info: {
-      path: path.dirname(selected), pythonPath: selected, pythonVersion: "3.11.13", hasNirs4all: true, hasCorePackages: true,
-      missingCorePackages: [], missingOptionalPackages: [], profileAlignmentGuess: null, envKind: "venv", writable: true,
-    } });
-    const network = await import("./env/network-probe");
-    const online = vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(false);
-    await expect(manager.applyExistingPython(selected, { installCorePackages: true })).resolves.toMatchObject({ success: true });
-    expect(manager.getConfiguredPythonPath()).toBe(selected);
-    expect(online).not.toHaveBeenCalled();
-    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  // The fixture uses the POSIX layout (`bin/python`).
+  it.skipIf(process.platform === "win32")("accepts an environment directory", async () => {
+    const target = environment("target");
+    const env = await startedOn(environment("previous"));
+
+    const result = await env.apply({ pythonPath: path.join(root, "target"), packages: [] });
+
+    expect(result).toMatchObject({ success: true, state: { selectedPythonPath: target } });
   });
 
-  it("revalidates a matching cache and clears it when a required module is missing", async () => {
-    const userDataDir = makeUserDataDir();
-    const root = path.join(userDataDir, "runtime");
-    const pythonPath = path.join(root, process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-    const sitePackages = path.join(root, process.platform === "win32" ? "Lib/site-packages" : "lib/python3.11/site-packages");
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.mkdirSync(path.join(sitePackages, "shap"), { recursive: true });
-    fs.writeFileSync(pythonPath, "");
-    fs.writeFileSync(path.join(sitePackages, "shap", "__init__.py"), "");
-    fs.writeFileSync(path.join(userDataDir, "env-settings.json"), JSON.stringify({ pythonPath }));
-    const network = await import("./env/network-probe");
-    vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(false);
-    childProcessMocks.execFile.mockImplementation((_command: string, args: string[], _options: unknown, callback: (error: Error | null) => void) => {
-      const importProbe = args.some((arg) => arg.includes("importlib.import_module"));
-      callback(importProbe && !fs.existsSync(path.join(sitePackages, "shap", "__init__.py")) ? new Error("missing shap") : null);
-    });
-    const { EnvManager } = await import("./env-manager");
-    const { computeEnvFingerprint } = await import("./env/verify-cache");
-    const manager = new EnvManager();
-    await expect(manager.ensureBackendPackages()).resolves.toBe(false);
-    const cachePath = path.join(userDataDir, "verify-cache.json");
-    expect(fs.existsSync(cachePath)).toBe(true);
-    const before = computeEnvFingerprint(manager.getEnvDir(), pythonPath);
-    fs.rmSync(path.join(sitePackages, "shap", "__init__.py"));
-    expect(computeEnvFingerprint(manager.getEnvDir(), pythonPath)).toBe(before);
-    await expect(manager.ensureBackendPackages()).rejects.toThrow("not importable");
-    expect(manager.getStatus()).toBe("error");
-    expect(fs.existsSync(cachePath)).toBe(false);
-    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  it("restores the previous selection when the sidecar cannot run the new environment", async () => {
+    const previous = environment("previous");
+    const target = environment("target");
+    const env = await startedOn(previous);
+    const hostDuringRestart: Array<string | undefined> = [];
+    restartHost
+      .mockImplementationOnce(async () => {
+        hostDuringRestart.push(env.getHost()?.pythonPath);
+        throw new Error("Studio could not load nirs4all in this Python environment (python_host_timed_out).");
+      })
+      .mockImplementationOnce(async () => { hostDuringRestart.push(env.getHost()?.pythonPath); });
+
+    const result = await env.apply({ pythonPath: target, packages: [] });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe("Studio could not load nirs4all in this Python environment (python_host_timed_out). Your previous environment selection has been restored.");
+    expect(result.state).toMatchObject({ phase: "ready", selectedPythonPath: previous, selected: { pythonPath: previous } });
+    expect(result.state.activity).toBeUndefined();
+    // First the new environment, then the previous one again.
+    expect(hostDuringRestart).toEqual([target, previous]);
+    expect(persistedSelection()).toEqual({ pythonPath: previous });
+    expect(env.getHost()?.pythonPath).toBe(previous);
   });
 
-  it("does not persist readiness when scientific imports still fail after installation", async () => {
-    const userDataDir = makeUserDataDir();
-    const pythonPath = path.join(userDataDir, "runtime", "python.exe");
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.writeFileSync(pythonPath, "");
-    fs.writeFileSync(path.join(userDataDir, "env-settings.json"), JSON.stringify({ pythonPath }));
-    const network = await import("./env/network-probe");
-    vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(true);
-    childProcessMocks.execFile.mockImplementation((_command: string, args: string[], _options: unknown, callback: (error: Error | null, stdout?: string) => void) => {
-      if (args.some((arg) => arg.includes("importlib.import_module"))) {
-        callback(new Error("nirs4all requires a compatible numpy"));
-      } else if (args.includes("check")) callback(new Error("pip check failed"), "shap requires a compatible numpy");
-      else callback(null);
-    });
-    childProcessMocks.spawn.mockImplementation(() => {
-      const child = Object.assign(new EventEmitter(), { pid: 1234, stderr: new EventEmitter(), stdout: new EventEmitter() });
-      process.nextTick(() => child.emit("close", 0));
-      return child;
-    });
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-    await expect(manager.ensureBackendPackages()).rejects.toThrow("compatible numpy");
-    expect(manager.getStatus()).toBe("error");
-    expect(fs.existsSync(path.join(userDataDir, "verify-cache.json"))).toBe(false);
+  it("restores an unconfigured state when the very first selection fails", async () => {
+    const target = environment("target");
+    const env = manager();
+    await env.startupCheck();
+    restartHost.mockRejectedValueOnce(new Error("The analysis backend could not be started."));
+
+    const result = await env.apply({ pythonPath: target, packages: [] });
+
+    expect(result).toMatchObject({ success: false, state: { phase: "unconfigured", selectedPythonPath: null, selected: null } });
+    expect(persistedSelection()).toEqual({});
+    expect(restartHost).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps a missing saved environment path so the user can recover its location", async () => {
-    const userDataDir = makeUserDataDir();
-    const settingsPath = path.join(userDataDir, "env-settings.json");
+  it("keeps the current selection when the target cannot be prepared", async () => {
+    const previous = environment("previous");
+    const readOnly = environment("read-only", { distributions: {}, purelibWritable: false });
+    const failing = environment("failing", { distributions: {} });
+    const env = await startedOn(previous);
 
-    fs.writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        pythonPath: path.join(userDataDir, "missing", "python.exe"),
-        appVersion: "0.3.1",
-      }),
-    );
+    const refused = await env.apply({ pythonPath: readOnly, packages: [] });
+    expect(refused).toMatchObject({ success: false, message: expect.stringContaining("cannot install packages in this environment") });
 
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
+    const unknownPackage = await env.apply({ pythonPath: failing, packages: ["requests"] });
+    expect(unknownPackage).toMatchObject({ success: false, message: expect.stringContaining("not in Studio's package catalogue") });
+    expect(installRequiredPackages).not.toHaveBeenCalled();
 
-    expect(manager.isReady()).toBe(false);
-    expect(manager.validateConfiguredState()).toBe(false);
-    expect(manager.shouldShowWizard()).toBe(true);
+    vi.mocked(installRequiredPackages).mockRejectedValueOnce(new Error("resolver conflict"));
+    const failed = await env.apply({ pythonPath: failing, packages: [] });
+    expect(failed).toMatchObject({ success: false, message: "resolver conflict" });
 
-    const saved = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
-      pythonPath?: string;
-    };
-    expect(saved.pythonPath).toBe(path.join(userDataDir, "missing", "python.exe"));
-    expect(manager.getConfiguredPythonPath()).toBeNull();
-    expect((await manager.getInfo()).error).toContain("previous Python environment");
+    const notPython = await env.apply({ pythonPath: path.join(root, "nowhere"), packages: [] });
+    expect(notPython).toMatchObject({ success: false, message: "No Python interpreter was found at this location." });
+
+    expect(restartHost).not.toHaveBeenCalled();
+    expect(persistedSelection()).toEqual({ pythonPath: previous });
+    expect(env.getState()).toMatchObject({ phase: "ready", selectedPythonPath: previous });
   });
 
-  it("fails fast when backend package repair is requested without a usable runtime", async () => {
-    makeUserDataDir();
+  it("runs one operation at a time", async () => {
+    const target = environment("target");
+    const env = await startedOn(environment("previous"));
+    let release: () => void = () => undefined;
+    restartHost.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
 
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
+    const first = env.apply({ pythonPath: target, packages: [] });
+    await vi.waitFor(() => expect(restartHost).toHaveBeenCalledTimes(1));
+    expect(env.getState()).toMatchObject({ phase: "busy", activity: { kind: "switching" } });
+    expect(await env.retry()).toMatchObject({ success: false, message: "Another Python environment operation is still running." });
+    release();
 
-    await expect(manager.ensureBackendPackages()).rejects.toThrow(
-      "Python environment is not configured or is missing",
-    );
+    expect((await first).success).toBe(true);
   });
+});
 
-  it("repairs missing packages without routing pip installs through a shell", async () => {
-    const userDataDir = makeUserDataDir();
-    const network = await import("./env/network-probe");
-    vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(true);
-    const settingsPath = path.join(userDataDir, "env-settings.json");
-    const pythonPath = path.join(userDataDir, "runtime", "python.exe");
-
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.writeFileSync(pythonPath, "");
-    fs.writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        pythonPath,
-        appVersion: "0.3.1",
-      }),
-    );
-
-    let verifyCalls = 0;
-    childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
-      const callback = args[args.length - 1] as (error: Error | null) => void;
-      verifyCalls += 1;
-      callback(verifyCalls === 1 ? new Error("missing packages") : null);
+describe("creating an environment", () => {
+  it("creates Studio's environment in its data directory, reports progress and switches to it", async () => {
+    const env = manager();
+    await env.startupCheck();
+    const activities: Array<[string | undefined, number | null | undefined]> = [];
+    env.onStateChange((state) => activities.push([state.activity?.kind, state.activity?.percent]));
+    const created = environment(path.join("user-data", "python-env", "venv"));
+    vi.mocked(createStudioEnvironment).mockImplementation(async (_baseDir, _packages, progress) => {
+      progress(30, "Extracting the Python runtime…");
+      return created;
     });
 
-    childProcessMocks.spawn.mockImplementation(() => {
-      const proc = new EventEmitter() as EventEmitter & {
-        pid: number;
-        stderr: EventEmitter;
-        stdout: EventEmitter;
-      };
-      proc.pid = 1234;
-      proc.stderr = new EventEmitter();
-      proc.stdout = new EventEmitter();
-      process.nextTick(() => proc.emit("close", 0));
-      return proc;
-    });
+    const result = await env.create({ packages: ["torch"] });
 
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    await expect(manager.ensureBackendPackages({ timeoutMs: 1000 })).resolves.toBe(true);
-
-    const spawnCalls = childProcessMocks.spawn.mock.calls;
-    expect(spawnCalls.length).toBeGreaterThanOrEqual(2);
-    expect(
-      spawnCalls.some(
-        ([command, args]) =>
-          command === pythonPath &&
-          Array.isArray(args) &&
-          args.includes("pip") &&
-          args.includes("install"),
-      ),
-    ).toBe(true);
-
-    for (const [, , options] of spawnCalls) {
-      expect(options).toMatchObject({ shell: false });
-    }
+    expect(createStudioEnvironment).toHaveBeenCalledWith(path.join(userDataDir, "python-env"), ["torch"], expect.any(Function));
+    expect(activities).toContainEqual(["creating", 0]);
+    expect(activities).toContainEqual(["creating", 30]);
+    expect(result).toMatchObject({ success: true, state: { phase: "ready", selectedPythonPath: created, selected: { kind: "studio" } } });
+    expect(restartHost).toHaveBeenCalledTimes(1);
+    expect(persistedSelection()).toEqual({ pythonPath: created });
   });
 
-  it("repairs a runtime that is missing the bounded nirs4all plugin entrypoint", async () => {
-    const userDataDir = makeUserDataDir();
-    const network = await import("./env/network-probe");
-    vi.spyOn(network, "probeNetworkOnline").mockResolvedValue(true);
-    const settingsPath = path.join(userDataDir, "env-settings.json");
-    const pythonPath = path.join(userDataDir, "runtime", "python.exe");
+  it("creates the environment in a folder of the chosen parent directory", async () => {
+    const env = manager();
+    await env.startupCheck();
+    const parent = path.join(root, "Shared tools");
+    const created = environment(path.join("Shared tools", "python-env", "venv"));
+    vi.mocked(createStudioEnvironment).mockResolvedValue(created);
 
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.writeFileSync(pythonPath, "");
-    fs.writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        pythonPath,
-        appVersion: "0.3.1",
-      }),
-    );
+    const result = await env.create({ directory: parent, packages: [] });
 
-    let heavyVerifyCalls = 0;
-    childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
-      const code = args[1] as string[];
-      const callback = args[args.length - 1] as (error: Error | null) => void;
-      if (Array.isArray(code) && code[1]?.includes("sys.version_info")) {
-        callback(null);
-        return;
-      }
-      heavyVerifyCalls += 1;
-      callback(heavyVerifyCalls === 1 ? new Error("missing nirs4all") : null);
-    });
-
-    childProcessMocks.spawn.mockImplementation(() => {
-      const proc = new EventEmitter() as EventEmitter & {
-        pid: number;
-        stderr: EventEmitter;
-        stdout: EventEmitter;
-      };
-      proc.pid = 5678;
-      proc.stderr = new EventEmitter();
-      proc.stdout = new EventEmitter();
-      process.nextTick(() => proc.emit("close", 0));
-      return proc;
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    await expect(manager.ensureBackendPackages({ timeoutMs: 1000 })).resolves.toBe(true);
-
-    expect(
-      childProcessMocks.spawn.mock.calls.some(
-        ([command, args]) =>
-          command === pythonPath &&
-          Array.isArray(args) &&
-          args.includes("pip") &&
-          args.includes("install"),
-      ),
-    ).toBe(true);
-
-    const installArgs = childProcessMocks.spawn.mock.calls
-      .filter(([, args]) => Array.isArray(args) && args.includes("install"))
-      .flatMap(([, args]) => args as string[]);
-    // The required nirs4all range; pip resolves io/methods within nirs4all's own ranges.
-    expect(installArgs).toEqual(expect.arrayContaining([
-      "nirs4all>=1.4.16,<1.5", "nirs4all-io>=0.3.0,<0.4", "nirs4all-methods>=1.3.15,<2", "only-if-needed",
-    ]));
-    expect(installArgs.some((arg) => arg.startsWith("nirs4all") && arg.includes("=="))).toBe(false);
-    expect(installArgs.some((arg) => arg.startsWith("shap") || arg.startsWith("matplotlib"))).toBe(false);
-    expect(installArgs.join(" ").toLowerCase()).not.toMatch(
-      /fastapi|uvicorn|python-multipart|sentry-sdk/,
-    );
+    expect(createStudioEnvironment).toHaveBeenCalledWith(path.join(parent, "python-env"), [], expect.any(Function));
+    expect(result).toMatchObject({ success: true, state: { selectedPythonPath: created } });
   });
 
-  it("annotates spawn failures with the exact command that could not be started", async () => {
-    makeUserDataDir();
+  it("keeps the previous selection when the creation fails", async () => {
+    const previous = environment("previous");
+    const env = await startedOn(previous);
+    vi.mocked(createStudioEnvironment).mockRejectedValue(new Error("A Python environment already exists in this folder."));
 
-    childProcessMocks.spawn.mockImplementation(() => {
-      const proc = new EventEmitter() as EventEmitter & {
-        pid: number;
-        stderr: EventEmitter;
-        stdout: EventEmitter;
-      };
-      proc.pid = 9876;
-      proc.stderr = new EventEmitter();
-      proc.stdout = new EventEmitter();
-      process.nextTick(() => proc.emit("error", Object.assign(new Error("spawn EPERM"), { code: "EPERM" })));
-      return proc;
-    });
+    const result = await env.create({ packages: [] });
 
-    const { runCommand } = await import("./env/process-utils");
-
-    await expect(
-      runCommand("python.exe", ["-m", "venv", "C:\\temp\\venv"]),
-    ).rejects.toThrow('Failed to start command "python.exe -m venv C:\\temp\\venv": spawn EPERM');
-  });
-
-  it.each(["0.9.3", "1.4.0"])("does not auto-install missing core packages when selecting Python with nirs4all %s", async (version) => {
-    const userDataDir = makeUserDataDir();
-    const pythonPath = path.join(userDataDir, "external-env", "python.exe");
-
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.writeFileSync(pythonPath, "");
-
-    childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
-      const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
-      callback(null, JSON.stringify({
-        version: "3.11.7",
-        installed: {
-          nirs4all: version,
-        },
-      }));
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    await expect(manager.useExistingPython(pythonPath)).resolves.toMatchObject({
+    expect(result).toMatchObject({
       success: false,
+      message: "A Python environment already exists in this folder.",
+      state: { phase: "ready", selectedPythonPath: previous },
     });
-    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
-    expect(manager.getConfiguredPythonPath()).toBeNull();
-  });
-
-  it("only installs core packages when the explicit apply path requests it", async () => {
-    const userDataDir = makeUserDataDir();
-    const settingsPath = path.join(userDataDir, "env-settings.json");
-    const pythonPath = path.join(userDataDir, "external-env", "python.exe");
-
-    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
-    fs.writeFileSync(pythonPath, "");
-
-    let inspectCalls = 0;
-    childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
-      const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
-      inspectCalls += 1;
-      callback(null, JSON.stringify({
-        version: "3.11.7",
-        installed: inspectCalls === 1
-          ? { nirs4all: "0.9.3" }
-          : {
-              nirs4all: "1.4.16",
-              "nirs4all-io": "0.3.1",
-              "nirs4all-methods": "1.3.15",
-              "nirs4all-formats": "0.2.16",
-              pyarrow: "25.0.1",
-              shap: "0.47.1",
-              matplotlib: "3.10.1",
-              fastapi: "0.111.0",
-              uvicorn: "0.30.0",
-              pydantic: "2.10.0",
-              "python-multipart": "0.0.20",
-              httpx: "0.27.0",
-              pyyaml: "6.0.2",
-              packaging: "24.2",
-              platformdirs: "4.3.6",
-              "sentry-sdk": "2.25.1",
-              orjson: "3.10.15",
-              msgpack: "1.1.0",
-            },
-      }));
-    });
-
-    childProcessMocks.spawn.mockImplementation(() => {
-      const proc = new EventEmitter() as EventEmitter & {
-        pid: number;
-        stderr: EventEmitter;
-        stdout: EventEmitter;
-      };
-      proc.pid = 3210;
-      proc.stderr = new EventEmitter();
-      proc.stdout = new EventEmitter();
-      process.nextTick(() => proc.emit("close", 0));
-      return proc;
-    });
-
-    const networkProbeModule = await import("./env/network-probe");
-    vi.spyOn(networkProbeModule, "probeNetworkOnline").mockResolvedValue(true);
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    await expect(
-      manager.applyExistingPython(pythonPath, { installCorePackages: true }),
-    ).resolves.toMatchObject({
-      success: true,
-    });
-
-    expect(
-      childProcessMocks.spawn.mock.calls.some(
-        ([command, args]) =>
-          command === pythonPath
-          && Array.isArray(args)
-          && args.includes("pip")
-          && args.includes("install"),
-      ),
-    ).toBe(true);
-
-    const saved = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
-      pythonPath?: string;
-    };
-    expect(saved.pythonPath).toBe(pythonPath);
-  });
-
-  it("switches from the managed runtime to an existing local venv root", async () => {
-    const userDataDir = makeUserDataDir();
-    const managedPython = process.platform === "win32"
-      ? path.join(userDataDir, "python-env", "venv", "Scripts", "python.exe")
-      : path.join(userDataDir, "python-env", "venv", "bin", "python");
-    const localEnvRoot = path.join(userDataDir, "workspace", ".venv");
-    const localPython = process.platform === "win32"
-      ? path.join(localEnvRoot, "Scripts", "python.exe")
-      : path.join(localEnvRoot, "bin", "python");
-    const settingsPath = path.join(userDataDir, "env-settings.json");
-
-    fs.mkdirSync(path.dirname(managedPython), { recursive: true });
-    fs.mkdirSync(path.dirname(localPython), { recursive: true });
-    fs.writeFileSync(managedPython, "");
-    fs.writeFileSync(localPython, "");
-    fs.writeFileSync(path.join(localEnvRoot, "pyvenv.cfg"), "home = test");
-
-    childProcessMocks.execFile.mockImplementation((command: string, ...args: unknown[]) => {
-      const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
-      if (command === localPython) {
-        callback(null, JSON.stringify({
-          version: "3.11.8",
-          installed: {
-            nirs4all: "1.4.16",
-              "nirs4all-io": "0.3.1",
-              "nirs4all-methods": "1.3.15",
-              "nirs4all-formats": "0.2.16",
-            pyarrow: "25.0.1",
-            shap: "0.47.1",
-            matplotlib: "3.10.1",
-            fastapi: "0.111.0",
-            uvicorn: "0.30.0",
-            pydantic: "2.10.0",
-            "python-multipart": "0.0.20",
-            httpx: "0.27.0",
-            pyyaml: "6.0.2",
-            packaging: "24.2",
-            platformdirs: "4.3.6",
-            "sentry-sdk": "2.25.1",
-            orjson: "3.10.15",
-            msgpack: "1.1.0",
-          },
-        }));
-        return;
-      }
-      callback(new Error(`unexpected command ${command}`));
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    expect(manager.getConfiguredRuntimeMode()).toBe("managed");
-
-    await expect(manager.applyExistingEnv(localEnvRoot)).resolves.toMatchObject({
-      success: true,
-      info: {
-        envKind: "venv",
-        pythonPath: localPython,
-      },
-    });
-
-    expect(manager.getConfiguredRuntimeMode()).toBe("custom");
-    expect(manager.getConfiguredPythonPath()).toBe(localPython);
-    const saved = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
-      pythonPath?: string;
-    };
-    expect(saved.pythonPath).toBe(localPython);
-  });
-
-  it("switches from the managed runtime to an inspected conda env", async () => {
-    const userDataDir = makeUserDataDir();
-    const managedPython = process.platform === "win32"
-      ? path.join(userDataDir, "python-env", "venv", "Scripts", "python.exe")
-      : path.join(userDataDir, "python-env", "venv", "bin", "python");
-    const condaEnvRoot = path.join(userDataDir, "miniconda3", "envs", "vision");
-    const condaPython = process.platform === "win32"
-      ? path.join(condaEnvRoot, "python.exe")
-      : path.join(condaEnvRoot, "bin", "python");
-
-    fs.mkdirSync(path.dirname(managedPython), { recursive: true });
-    fs.mkdirSync(path.dirname(condaPython), { recursive: true });
-    fs.mkdirSync(path.join(condaEnvRoot, "conda-meta"), { recursive: true });
-    fs.writeFileSync(managedPython, "");
-    fs.writeFileSync(condaPython, "");
-
-    childProcessMocks.execFile.mockImplementation((command: string, ...args: unknown[]) => {
-      const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
-      if (command === condaPython) {
-        callback(null, JSON.stringify({
-          version: "3.11.7",
-          installed: {
-            nirs4all: "1.4.16",
-              "nirs4all-io": "0.3.1",
-              "nirs4all-methods": "1.3.15",
-              "nirs4all-formats": "0.2.16",
-            pyarrow: "25.0.1",
-            shap: "0.47.1",
-            matplotlib: "3.10.1",
-            fastapi: "0.111.0",
-            uvicorn: "0.30.0",
-            pydantic: "2.10.0",
-            "python-multipart": "0.0.20",
-            httpx: "0.27.0",
-            pyyaml: "6.0.2",
-            packaging: "24.2",
-            platformdirs: "4.3.6",
-            "sentry-sdk": "2.25.1",
-            orjson: "3.10.15",
-            msgpack: "1.1.0",
-          },
-        }));
-        return;
-      }
-      callback(new Error(`unexpected command ${command}`));
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    await expect(manager.applyExistingEnv(condaEnvRoot)).resolves.toMatchObject({
-      success: true,
-      info: {
-        envKind: "conda",
-        pythonPath: condaPython,
-      },
-    });
-
-    expect(manager.getConfiguredPythonPath()).toBe(condaPython);
-    expect(manager.getConfiguredRuntimeMode()).toBe("custom");
-  });
-
-  it("retries the first venv bootstrap spawn and only deletes the cached tarball after setup succeeds", async () => {
-    const userDataDir = makeUserDataDir();
-    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = userDataDir;
-    vi.useFakeTimers();
-    let cachedTarballPath = "";
-    const baseDir = path.join(userDataDir, "python-env");
-    const pythonDir = path.join(baseDir, "python");
-    const embeddedPython = process.platform === "win32"
-      ? path.join(pythonDir, "python.exe")
-      : path.join(pythonDir, "bin", "python3");
-    const venvPython = process.platform === "win32"
-      ? path.join(baseDir, "venv", "Scripts", "python.exe")
-      : path.join(baseDir, "venv", "bin", "python");
-    let embeddedPythonAttempts = 0;
-
-    childProcessMocks.spawn.mockImplementation((command: string) => {
-      const proc = new EventEmitter() as EventEmitter & {
-        pid: number;
-        stderr: EventEmitter;
-        stdout: EventEmitter;
-      };
-      proc.pid = 4567;
-      proc.stderr = new EventEmitter();
-      proc.stdout = new EventEmitter();
-
-      process.nextTick(() => {
-        if (command === embeddedPython) {
-          embeddedPythonAttempts += 1;
-          if (embeddedPythonAttempts === 1) {
-            proc.emit("error", Object.assign(new Error("spawn EPERM"), { code: "EPERM" }));
-            return;
-          }
-
-          fs.mkdirSync(path.dirname(venvPython), { recursive: true });
-          fs.writeFileSync(venvPython, "");
-        }
-
-        proc.emit("close", 0);
-      });
-
-      return proc;
-    });
-
-    const installer = await import("./env/python-runtime-installer");
-    vi.spyOn(installer, "downloadFile").mockImplementation(async (_url: string, destPath: string) => {
-      cachedTarballPath = destPath;
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.writeFileSync(destPath, Buffer.alloc(11 * 1024 * 1024, 1));
-    });
-    vi.spyOn(installer, "extractTarball").mockImplementation(async (_tarPath: string, destDir: string) => {
-      expect(path.dirname(destDir)).toBe(baseDir);
-      expect(path.basename(destDir)).toMatch(/^\.python-extract-/);
-      const extractedPython = process.platform === "win32"
-        ? path.join(destDir, "python", "python.exe")
-        : path.join(destDir, "python", "bin", "python3");
-      fs.mkdirSync(path.dirname(extractedPython), { recursive: true });
-      fs.writeFileSync(extractedPython, "");
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    const setupPromise = manager.setup();
-    const setupExpectation = expect(setupPromise).resolves.toBeUndefined();
-    await vi.runAllTimersAsync();
-    await setupExpectation;
-
-    expect(embeddedPythonAttempts).toBe(2);
-    expect(cachedTarballPath).not.toBe("");
-    expect(fs.existsSync(cachedTarballPath)).toBe(false);
-  });
-
-  it("keeps the cached tarball when setup fails before the runtime is ready", async () => {
-    makeUserDataDir();
-    vi.useFakeTimers();
-    let cachedTarballPath = "";
-    let spawnAttempts = 0;
-    const baseDir = path.join(fakeApp.getPath("userData"), "python-env");
-    const embeddedPython = process.platform === "win32"
-      ? path.join(baseDir, "python", "python.exe")
-      : path.join(baseDir, "python", "bin", "python3");
-
-    childProcessMocks.spawn.mockImplementation(() => {
-      const proc = new EventEmitter() as EventEmitter & {
-        pid: number;
-        stderr: EventEmitter;
-        stdout: EventEmitter;
-      };
-      proc.pid = 2468;
-      proc.stderr = new EventEmitter();
-      proc.stdout = new EventEmitter();
-
-      process.nextTick(() => {
-        spawnAttempts += 1;
-        proc.emit("error", Object.assign(new Error("spawn EPERM"), { code: "EPERM" }));
-      });
-
-      return proc;
-    });
-
-    const installer = await import("./env/python-runtime-installer");
-    vi.spyOn(installer, "downloadFile").mockImplementation(async (_url: string, destPath: string) => {
-      cachedTarballPath = destPath;
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.writeFileSync(destPath, Buffer.alloc(11 * 1024 * 1024, 1));
-    });
-    vi.spyOn(installer, "extractTarball").mockImplementation(async (_tarPath: string, destDir: string) => {
-      const extractedPython = process.platform === "win32"
-        ? path.join(destDir, "python", "python.exe")
-        : path.join(destDir, "python", "bin", "python3");
-      fs.mkdirSync(path.dirname(extractedPython), { recursive: true });
-      fs.writeFileSync(extractedPython, "");
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    const setupPromise = manager.setup();
-    const setupExpectation = expect(setupPromise).rejects.toThrow(
-      `Failed to start command "${embeddedPython} -m venv ${path.join(baseDir, "venv")} --without-pip": spawn EPERM`,
-    );
-    await vi.runAllTimersAsync();
-    await setupExpectation;
-
-    expect(spawnAttempts).toBe(4);
-    expect(cachedTarballPath).not.toBe("");
-    expect(fs.existsSync(cachedTarballPath)).toBe(true);
-  });
-
-  it("switches back to the app-created managed runtime when setup runs in the default location", async () => {
-    const userDataDir = makeUserDataDir();
-    const settingsPath = path.join(userDataDir, "env-settings.json");
-    const customPython = process.platform === "win32"
-      ? path.join(userDataDir, "external-env", "python.exe")
-      : path.join(userDataDir, "external-env", "bin", "python");
-    const baseDir = path.join(userDataDir, "python-env");
-    const embeddedPython = process.platform === "win32"
-      ? path.join(baseDir, "python", "python.exe")
-      : path.join(baseDir, "python", "bin", "python3");
-    const managedPython = process.platform === "win32"
-      ? path.join(baseDir, "venv", "Scripts", "python.exe")
-      : path.join(baseDir, "venv", "bin", "python");
-
-    fs.mkdirSync(path.dirname(customPython), { recursive: true });
-    fs.writeFileSync(customPython, "");
-    fs.writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        pythonPath: customPython,
-        appVersion: "0.3.1",
-      }),
-    );
-
-    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = userDataDir;
-
-    childProcessMocks.spawn.mockImplementation((command: string) => {
-      const proc = new EventEmitter() as EventEmitter & {
-        pid: number;
-        stderr: EventEmitter;
-        stdout: EventEmitter;
-      };
-      proc.pid = 2468;
-      proc.stderr = new EventEmitter();
-      proc.stdout = new EventEmitter();
-
-      process.nextTick(() => {
-        if (command === embeddedPython) {
-          fs.mkdirSync(path.dirname(managedPython), { recursive: true });
-          fs.writeFileSync(managedPython, "");
-        }
-        proc.emit("close", 0);
-      });
-
-      return proc;
-    });
-
-    const installer = await import("./env/python-runtime-installer");
-    vi.spyOn(installer, "downloadFile").mockImplementation(async (_url: string, destPath: string) => {
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.writeFileSync(destPath, Buffer.alloc(11 * 1024 * 1024, 1));
-    });
-    vi.spyOn(installer, "extractTarball").mockImplementation(async (_tarPath: string, destDir: string) => {
-      const extractedPython = process.platform === "win32"
-        ? path.join(destDir, "python", "python.exe")
-        : path.join(destDir, "python", "bin", "python3");
-      fs.mkdirSync(path.dirname(extractedPython), { recursive: true });
-      fs.writeFileSync(extractedPython, "");
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    await expect(manager.setup()).resolves.toBeUndefined();
-
-    expect(manager.getConfiguredRuntimeMode()).toBe("managed");
-    expect(manager.getConfiguredPythonPath()).toBe(managedPython);
-
-    const saved = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
-      pythonPath?: string;
-    };
-    expect(saved.pythonPath).toBeUndefined();
-  });
-
-  it("preserves the saved custom runtime when a bundled runtime is available", async () => {
-    const userDataDir = makeUserDataDir();
-    const settingsPath = path.join(userDataDir, "env-settings.json");
-    const customPython = path.join(userDataDir, "custom-env", "python.exe");
-
-    fs.mkdirSync(path.dirname(customPython), { recursive: true });
-    fs.writeFileSync(customPython, "");
-    fs.writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        pythonPath: customPython,
-        appVersion: "0.3.1",
-      }),
-    );
-
-    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-bundled-"));
-    tempDirs.push(resourcesDir);
-    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
-
-    const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
-    const bundledPython = process.platform === "win32"
-      ? path.join(runtimeDir, "python", "python.exe")
-      : path.join(runtimeDir, "python", "bin", "python3");
-    const sitePackages = process.platform === "win32"
-      ? path.join(runtimeDir, "python", "Lib", "site-packages")
-      : path.join(runtimeDir, "python", "lib", "python3.11", "site-packages");
-
-    fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
-    fs.mkdirSync(sitePackages, { recursive: true });
-    fs.writeFileSync(path.join(runtimeDir, "RUNTIME_READY.json"), "{}");
-    fs.writeFileSync(bundledPython, "");
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    expect(manager.isBundled()).toBe(false);
-    expect(manager.getConfiguredRuntimeMode()).toBe("custom");
-    expect(manager.getConfiguredPythonPath()).toBe(customPython);
-    expect(manager.getPythonPath()).toBe(customPython);
-  });
-
-  it("verifies a bundled runtime without attempting any package repair", async () => {
-    makeUserDataDir();
-
-    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-bundled-"));
-    tempDirs.push(resourcesDir);
-    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
-
-    const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
-    const bundledPython = process.platform === "win32"
-      ? path.join(runtimeDir, "python", "python.exe")
-      : path.join(runtimeDir, "python", "bin", "python3");
-    const sitePackages = process.platform === "win32"
-      ? path.join(runtimeDir, "python", "Lib", "site-packages")
-      : path.join(runtimeDir, "python", "lib", "python3.11", "site-packages");
-
-    fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
-    fs.mkdirSync(sitePackages, { recursive: true });
-    fs.writeFileSync(path.join(runtimeDir, "PLUGIN_RUNTIME_READY.json"), "{}");
-    fs.writeFileSync(bundledPython, "");
-
-    childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
-      const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
-      callback(null, "", "");
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    expect(manager.isBundled()).toBe(true);
-    expect(manager.getConfiguredPythonPath()).toBe(bundledPython);
-    expect(manager.getSitePackages()).toBe(sitePackages);
-    await expect(manager.ensureBackendPackages()).resolves.toBe(false);
-    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
-    expect(childProcessMocks.execFile).toHaveBeenCalled();
-  });
-
-  it("verifies the selected custom interpreter even when a bundle is available", async () => {
-    vi.stubEnv("NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS", "45000");
-    const userDataDir = makeUserDataDir();
-    const settingsPath = path.join(userDataDir, "env-settings.json");
-    const customPython = path.join(userDataDir, "custom-env", "python.exe");
-
-    fs.mkdirSync(path.dirname(customPython), { recursive: true });
-    fs.writeFileSync(customPython, "");
-    fs.writeFileSync(
-      settingsPath,
-      JSON.stringify({
-        pythonPath: customPython,
-        appVersion: "0.3.1",
-      }),
-    );
-
-    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-bundled-verify-"));
-    tempDirs.push(resourcesDir);
-    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
-
-    const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
-    const bundledPython = process.platform === "win32"
-      ? path.join(runtimeDir, "python", "python.exe")
-      : path.join(runtimeDir, "python", "bin", "python3");
-    const sitePackages = process.platform === "win32"
-      ? path.join(runtimeDir, "python", "Lib", "site-packages")
-      : path.join(runtimeDir, "python", "lib", "python3.11", "site-packages");
-
-    fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
-    fs.mkdirSync(sitePackages, { recursive: true });
-    fs.writeFileSync(path.join(runtimeDir, "RUNTIME_READY.json"), "{}");
-    fs.writeFileSync(bundledPython, "");
-
-    childProcessMocks.execFile.mockImplementation((command: string, ...args: unknown[]) => {
-      const options = args[1] as { timeout?: number };
-      const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
-      expect(command).toBe(customPython);
-      expect(options.timeout).toBe(45000);
-      callback(null, "", "");
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    await expect(manager.verifyBackendRuntime()).resolves.toBe(true);
-    expect(childProcessMocks.execFile).toHaveBeenCalled();
-  });
-
-  it("falls back to the legacy bundled venv layout for previously baked archives", async () => {
-    makeUserDataDir();
-
-    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-bundled-legacy-"));
-    tempDirs.push(resourcesDir);
-    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
-
-    const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
-    const bundledPython = process.platform === "win32"
-      ? path.join(runtimeDir, "venv", "Scripts", "python.exe")
-      : path.join(runtimeDir, "venv", "bin", "python");
-    const sitePackages = process.platform === "win32"
-      ? path.join(runtimeDir, "venv", "Lib", "site-packages")
-      : path.join(runtimeDir, "venv", "lib", "python3.11", "site-packages");
-
-    fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
-    fs.mkdirSync(sitePackages, { recursive: true });
-    fs.writeFileSync(path.join(runtimeDir, "RUNTIME_READY.json"), "{}");
-    fs.writeFileSync(bundledPython, "");
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    expect(manager.isBundled()).toBe(true);
-    expect(manager.getPythonPath()).toBe(bundledPython);
-  });
-
-  it("tries alternate Python executable candidates when inspecting an env root", async () => {
-    const userDataDir = makeUserDataDir();
-    const envRoot = path.join(userDataDir, "mixed-env");
-    const firstCandidate = process.platform === "win32"
-      ? path.join(envRoot, "Scripts", "python.exe")
-      : path.join(envRoot, "bin", "python3");
-    const secondCandidate = process.platform === "win32"
-      ? path.join(envRoot, "python.exe")
-      : path.join(envRoot, "bin", "python");
-
-    fs.mkdirSync(path.dirname(firstCandidate), { recursive: true });
-    fs.mkdirSync(path.dirname(secondCandidate), { recursive: true });
-    fs.writeFileSync(firstCandidate, "");
-    fs.writeFileSync(secondCandidate, "");
-
-    childProcessMocks.execFile.mockImplementation((command: string, ...args: unknown[]) => {
-      const callback = args[args.length - 1] as (error: Error | null, stdout?: string) => void;
-      if (command === firstCandidate) {
-        callback(null, JSON.stringify({ version: "3.10.9", installed: {} }));
-        return;
-      }
-      if (command === secondCandidate) {
-        callback(null, JSON.stringify({ version: "3.11.9", installed: {} }));
-        return;
-      }
-      callback(new Error(`unexpected command ${command}`));
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    await expect(manager.inspectExistingEnv(envRoot)).resolves.toMatchObject({
-      success: true,
-      info: {
-        pythonPath: secondCandidate,
-      },
-    });
-  });
-
-  it("discovers managed, nearby, conda, and pyenv runtimes from the expanded search sources", async () => {
-    const userDataDir = makeUserDataDir();
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-discovery-workspace-"));
-    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-discovery-home-"));
-    tempDirs.push(workspaceDir, homeDir);
-
-    process.chdir(workspaceDir);
-    vi.stubEnv("PATH", "");
-    vi.stubEnv("HOME", homeDir);
-    vi.stubEnv("USERPROFILE", homeDir);
-    vi.stubEnv("PYENV_ROOT", path.join(homeDir, ".pyenv"));
-
-    const managedRoot = path.join(userDataDir, "python-env", "venv");
-    const managedPython = process.platform === "win32"
-      ? path.join(managedRoot, "Scripts", "python.exe")
-      : path.join(managedRoot, "bin", "python");
-    fs.mkdirSync(path.dirname(managedPython), { recursive: true });
-    fs.writeFileSync(managedPython, "");
-
-    const nearbyEnvRoot = path.join(workspaceDir, ".venv");
-    const nearbyPython = process.platform === "win32"
-      ? path.join(nearbyEnvRoot, "Scripts", "python.exe")
-      : path.join(nearbyEnvRoot, "bin", "python");
-    fs.mkdirSync(path.dirname(nearbyPython), { recursive: true });
-    fs.writeFileSync(nearbyPython, "");
-    fs.writeFileSync(path.join(nearbyEnvRoot, "pyvenv.cfg"), "home = test");
-
-    const childProjectEnvRoot = path.join(workspaceDir, "analysis-project", "venv");
-    const childProjectPython = process.platform === "win32"
-      ? path.join(childProjectEnvRoot, "Scripts", "python.exe")
-      : path.join(childProjectEnvRoot, "bin", "python");
-    fs.mkdirSync(path.dirname(childProjectPython), { recursive: true });
-    fs.writeFileSync(childProjectPython, "");
-    fs.writeFileSync(path.join(childProjectEnvRoot, "pyvenv.cfg"), "home = test");
-
-    const condaEnvRoot = path.join(homeDir, "miniconda3", "envs", "vision");
-    const condaPython = process.platform === "win32"
-      ? path.join(condaEnvRoot, "python.exe")
-      : path.join(condaEnvRoot, "bin", "python");
-    const condaExe = process.platform === "win32"
-      ? path.join(homeDir, "miniconda3", "Scripts", "conda.exe")
-      : path.join(homeDir, "miniconda3", "bin", "conda");
-    fs.mkdirSync(path.dirname(condaPython), { recursive: true });
-    fs.mkdirSync(path.join(condaEnvRoot, "conda-meta"), { recursive: true });
-    fs.writeFileSync(condaPython, "");
-    fs.mkdirSync(path.dirname(condaExe), { recursive: true });
-    fs.writeFileSync(condaExe, "");
-
-    const pyenvEnvRoot = process.platform === "win32"
-      ? path.join(homeDir, ".pyenv", "pyenv-win", "versions", "3.11.9")
-      : path.join(homeDir, ".pyenv", "versions", "3.11.9");
-    const pyenvPython = process.platform === "win32"
-      ? path.join(pyenvEnvRoot, "python.exe")
-      : path.join(pyenvEnvRoot, "bin", "python");
-    fs.mkdirSync(path.dirname(pyenvPython), { recursive: true });
-    fs.writeFileSync(pyenvPython, "");
-
-    const pythonOutputs = new Map([
-      [managedPython, "3.11.9\nTrue\nTrue"],
-      [nearbyPython, "3.11.8\nFalse\nFalse"],
-      [childProjectPython, "3.12.1\nTrue\nTrue"],
-      [condaPython, "3.11.7\nTrue\nTrue"],
-      [pyenvPython, "3.11.6\nTrue\nTrue"],
-    ]);
-
-    childProcessMocks.execFile.mockImplementation((command: string, ...args: unknown[]) => {
-      const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
-      const commandArgs = Array.isArray(args[0]) ? args[0] as string[] : [];
-
-      if (command === "py" && commandArgs[0] === "-0p") {
-        callback(null, "", "");
-        return;
-      }
-
-      if (commandArgs.join(" ") === "env list --json") {
-        if (command === "conda") {
-          callback(new Error("ENOENT"));
-          return;
-        }
-        callback(null, JSON.stringify({ envs: [condaEnvRoot] }), "");
-        return;
-      }
-
-      const stdout = pythonOutputs.get(command);
-      if (stdout) {
-        callback(null, stdout, "");
-        return;
-      }
-
-      callback(new Error(`unexpected command ${command}`));
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-    const envs = await manager.detectExistingEnvs();
-
-    expect(envs.map((env) => env.path)).toEqual(expect.arrayContaining([
-      managedRoot,
-      nearbyEnvRoot,
-      childProjectEnvRoot,
-      condaEnvRoot,
-      pyenvEnvRoot,
-    ]));
-    expect(envs.find((env) => env.path === managedRoot)).toMatchObject({
-      envKind: "managed",
-      hasCorePackages: true,
-      writable: true,
-    });
-    expect(envs.find((env) => env.path === nearbyEnvRoot)).toMatchObject({
-      envKind: "venv",
-      hasCorePackages: false,
-    });
-    expect(envs.find((env) => env.path === childProjectEnvRoot)).toMatchObject({
-      envKind: "venv",
-      hasCorePackages: true,
-    });
-    expect(envs.find((env) => env.path === condaEnvRoot)).toMatchObject({
-      envKind: "conda",
-      hasCorePackages: true,
-    });
-    expect(envs.find((env) => env.path === pyenvEnvRoot)).toMatchObject({
-      envKind: "system",
-      hasCorePackages: true,
-    });
-    expect(envs[0]?.path).toBe(managedRoot);
-  });
-
-  it.skipIf(process.platform === "win32")("keeps separate venvs that share the same Python binary", async () => {
-    const root = makeUserDataDir();
-    const base = path.join(root, "base-python");
-    fs.writeFileSync(base, "python");
-    for (const name of ["old-studio", "local"]) {
-      const environment = path.join(root, name);
-      fs.mkdirSync(path.join(environment, "bin"), { recursive: true });
-      fs.writeFileSync(path.join(environment, "pyvenv.cfg"), "home = /usr/bin");
-      for (const alias of ["python", "python3"]) fs.symlinkSync(base, path.join(environment, "bin", alias));
-    }
-    const { addPythonCandidate } = await import("./env/python-discovery");
-    const candidates = new Map<string, string>();
-    for (const name of ["old-studio", "local"]) {
-      for (const alias of ["python", "python3"]) addPythonCandidate(candidates, path.join(root, name, "bin", alias));
-    }
-    expect([...candidates.values()]).toEqual([
-      path.join(root, "old-studio", "bin", "python"),
-      path.join(root, "local", "bin", "python"),
-    ]);
-  });
-
-  it("deduplicates Windows launcher discoveries against PATH entries", async () => {
-    if (process.platform !== "win32") {
-      return;
-    }
-
-    makeUserDataDir();
-    const pathDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-launcher-path-"));
-    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-launcher-home-"));
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-launcher-workspace-"));
-    tempDirs.push(pathDir, homeDir, workspaceDir);
-
-    process.chdir(workspaceDir);
-    vi.stubEnv("PATH", pathDir);
-    vi.stubEnv("HOME", homeDir);
-    vi.stubEnv("USERPROFILE", homeDir);
-
-    const pathPython = path.join(pathDir, "python.exe");
-    const launcherOnlyRoot = path.join(homeDir, "launcher-only");
-    const launcherOnlyPython = path.join(launcherOnlyRoot, "python.exe");
-    fs.mkdirSync(path.dirname(pathPython), { recursive: true });
-    fs.mkdirSync(path.dirname(launcherOnlyPython), { recursive: true });
-    fs.writeFileSync(pathPython, "");
-    fs.writeFileSync(launcherOnlyPython, "");
-
-    childProcessMocks.execFile.mockImplementation((command: string, ...args: unknown[]) => {
-      const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
-      const commandArgs = Array.isArray(args[0]) ? args[0] as string[] : [];
-
-      if (command === "py" && commandArgs[0] === "-0p") {
-        callback(
-          null,
-          ` -V:3.12 ${pathPython}\n -V:3.11 ${launcherOnlyPython}`,
-          "",
-        );
-        return;
-      }
-
-      if (commandArgs.join(" ") === "env list --json") {
-        callback(new Error("ENOENT"));
-        return;
-      }
-
-      if (command === pathPython) {
-        callback(null, "3.12.1\nTrue\nTrue", "");
-        return;
-      }
-
-      if (command === launcherOnlyPython) {
-        callback(null, "3.11.9\nTrue\nTrue", "");
-        return;
-      }
-
-      callback(new Error(`unexpected command ${command}`));
-    });
-
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-    const envs = await manager.detectExistingEnvs();
-
-    expect(envs).toHaveLength(2);
-    expect(envs.map((env) => env.pythonPath)).toEqual(expect.arrayContaining([
-      pathPython,
-      launcherOnlyPython,
-    ]));
-    expect(
-      childProcessMocks.execFile.mock.calls.some(
-        ([command, args]) => command === "py" && Array.isArray(args) && args[0] === "-0p",
-      ),
-    ).toBe(true);
+    expect(restartHost).not.toHaveBeenCalled();
   });
 });
 
-describe("EnvManager included-runtime fallback", () => {
-  function makeBundledRuntime(): string {
-    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-bundled-"));
-    tempDirs.push(resourcesDir);
-    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
-    const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
-    const bundledPython = process.platform === "win32"
-      ? path.join(runtimeDir, "python", "python.exe")
-      : path.join(runtimeDir, "python", "bin", "python3");
-    fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
-    fs.mkdirSync(process.platform === "win32"
-      ? path.join(runtimeDir, "python", "Lib", "site-packages")
-      : path.join(runtimeDir, "python", "lib", "python3.11", "site-packages"), { recursive: true });
-    fs.writeFileSync(path.join(runtimeDir, "PLUGIN_RUNTIME_READY.json"), "{}");
-    fs.writeFileSync(bundledPython, "");
-    return bundledPython;
-  }
-
-  function selectCustomPython(userDataDir: string, create = true): string {
-    const customPython = path.join(userDataDir, "custom-env", "python.exe");
-    if (create) {
-      fs.mkdirSync(path.dirname(customPython), { recursive: true });
-      fs.writeFileSync(customPython, "");
-    }
-    fs.writeFileSync(path.join(userDataDir, "env-settings.json"), JSON.stringify({ pythonPath: customPython, appVersion: "0.3.1" }));
-    return customPython;
-  }
-
-  it("runs the included runtime for the session when the selected environment needs other versions", async () => {
-    const userDataDir = makeUserDataDir();
-    const customPython = selectCustomPython(userDataDir);
-    const bundledPython = makeBundledRuntime();
-    const issues = ["nirs4all 1.4.14 is installed; nirs4all>=1.4.16,<1.5 is required"];
-    const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
-    vi.mocked(checkRuntimePackageVersions).mockResolvedValue({ issues, versions: { nirs4all: "1.4.14", "nirs4all-io": null } });
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-
-    await expect(manager.checkPackageVersions(false, true)).resolves.toBe(true);
-
-    // One INFO line records the selection, versions found, compatibility and fallback.
-    const decisions = log.mock.calls.map(([line]) => String(line)).filter((line) => line.startsWith("[EnvManager] Python environment:"));
-    expect(decisions).toEqual([
-      `[EnvManager] Python environment: selected=custom | path=${customPython} | versions=nirs4all 1.4.14, nirs4all-io missing | compatible=false | issues=${issues[0]} | fallback=included runtime (selected environment is incompatible) | running=${bundledPython}`,
-    ]);
-    log.mockRestore();
-
-    expect(manager.getConfiguredRuntimeMode()).toBe("bundled");
-    expect(manager.getConfiguredPythonPath()).toBe(bundledPython);
-    await expect(manager.getInfo()).resolves.toMatchObject({
-      status: "ready",
-      pythonPath: bundledPython,
-      canInstallRequiredVersions: false,
-      runtimeFallback: { reason: "incompatible", selectedPythonPath: customPython, issues },
+describe("installing recommended packages", () => {
+  it("installs into the selected environment, refreshes its report and restarts the sidecar", async () => {
+    const pythonPath = environment("work");
+    const env = await startedOn(pythonPath);
+    vi.mocked(installRecommendedPackages).mockImplementationOnce(async () => {
+      setDistributions(pythonPath, { ...COHORT, torch: "2.6.0" });
     });
-    expect(manager.shouldShowWizard()).toBe(false);
-    // The selection is kept so the user can install the required versions into it.
-    expect(JSON.parse(fs.readFileSync(path.join(userDataDir, "env-settings.json"), "utf8")).pythonPath).toBe(customPython);
+
+    const result = await env.installPackages(["torch"]);
+
+    expect(installRecommendedPackages).toHaveBeenCalledWith(pythonPath, ["torch"]);
+    expect(result.success).toBe(true);
+    expect(result.state.selected?.recommended.find((item) => item.name === "torch")).toMatchObject({ installedVersion: "2.6.0", status: "ok" });
+    expect(restartHost).toHaveBeenCalledTimes(1);
   });
 
-  it("explains a missing selected environment and keeps it selected", async () => {
-    const userDataDir = makeUserDataDir();
-    const customPython = selectCustomPython(userDataDir, false);
-    const bundledPython = makeBundledRuntime();
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-    manager.validateConfiguredState();
+  it("repairs required packages that an installation moved out of range", async () => {
+    const pythonPath = environment("work");
+    const env = await startedOn(pythonPath);
+    vi.mocked(installRecommendedPackages).mockImplementationOnce(async () => {
+      setDistributions(pythonPath, { ...COHORT, "nirs4all-methods": "2.0.0" });
+    });
 
-    await expect(manager.checkPackageVersions(false, true)).resolves.toBe(true);
+    const result = await env.installPackages(["autogluon"]);
 
-    const info = await manager.getInfo();
-    expect(info.pythonPath).toBe(bundledPython);
-    expect(info.error).toBeUndefined();
-    expect(info.runtimeFallback).toEqual({ reason: "missing", selectedPythonPath: customPython, issues: [] });
+    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath, new Set());
+    expect(result).toMatchObject({ success: true, state: { phase: "ready" } });
   });
 
-  it("validates an explicit environment change without falling back", async () => {
-    const userDataDir = makeUserDataDir();
-    const customPython = selectCustomPython(userDataDir);
-    makeBundledRuntime();
-    const { checkRuntimePackageVersions } = await import("./env/runtime-version-check");
-    vi.mocked(checkRuntimePackageVersions).mockResolvedValue({ issues: ["nirs4all 1.0.3 is installed; 1.4.16 is required"], versions: { nirs4all: "1.0.3" } });
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
+  it("leaves the sidecar alone when the installation fails", async () => {
+    const env = await startedOn(environment("work"));
+    vi.mocked(installRecommendedPackages).mockRejectedValueOnce(new Error("No matching distribution"));
 
-    await expect(manager.checkPackageVersions(false, false)).resolves.toBe(false);
-
-    expect(manager.getConfiguredPythonPath()).toBe(customPython);
-    const info = await manager.getInfo();
-    expect(info.runtimeFallback).toBeUndefined();
-    expect(info.error).toContain("1.0.3 is installed");
+    expect(await env.installPackages(["catboost"])).toMatchObject({ success: false, message: "No matching distribution", state: { phase: "ready" } });
+    expect(restartHost).not.toHaveBeenCalled();
   });
 
-  it("restores a fallback session when an environment change is rolled back", async () => {
-    const userDataDir = makeUserDataDir();
-    selectCustomPython(userDataDir, false);
-    const bundledPython = makeBundledRuntime();
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-    await manager.checkPackageVersions(false, true);
-    const snapshot = manager.snapshotSelection();
+  it("restarts the sidecar after a failed installation that changed a required package", async () => {
+    const pythonPath = environment("work");
+    const env = await startedOn(pythonPath);
+    // The installation replaced nirs4all with another in-range version, then failed.
+    vi.mocked(installRecommendedPackages).mockImplementationOnce(async () => {
+      setDistributions(pythonPath, { ...COHORT, nirs4all: "1.4.18" });
+      throw new Error("No space left on device");
+    });
 
-    await manager.checkPackageVersions(false, false);
-    expect(manager.getConfiguredPythonPath()).toBeNull();
-    manager.restoreSelection(snapshot);
+    const result = await env.installPackages(["torch"]);
 
-    expect(manager.getConfiguredPythonPath()).toBe(bundledPython);
-    expect((await manager.getInfo()).runtimeFallback?.reason).toBe("missing");
+    expect(result).toMatchObject({ success: false, message: "No space left on device", state: { phase: "ready" } });
+    expect(result.state.selected?.required[0].installedVersion).toBe("1.4.18");
+    // Its workers would refuse the nirs4all version the running sidecar did not admit.
+    expect(restartHost).toHaveBeenCalledTimes(1);
   });
 
-  it("persists the included runtime as a marker and migrates a stale absolute path", async () => {
-    const userDataDir = makeUserDataDir();
-    const settingsPath = path.join(userDataDir, "env-settings.json");
-    const previousInstall = path.join(userDataDir, "Old Install", "resources", "backend", "python-runtime", "python", "python.exe");
-    fs.writeFileSync(settingsPath, JSON.stringify({ pythonPath: previousInstall, appVersion: "0.3.0" }));
-    fs.mkdirSync(path.dirname(path.join(userDataDir, "python-env", "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python")), { recursive: true });
-    fs.writeFileSync(path.join(userDataDir, "python-env", "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python"), "");
-    const bundledPython = makeBundledRuntime();
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
+  it("restarts the sidecar when a failed switch already changed nirs4all in the selected environment", async () => {
+    const { "dag-ml": _removed, ...withoutDagMl } = COHORT;
+    const pythonPath = environment("work", { distributions: { ...COHORT, nirs4all: "1.4.18" } });
+    const env = await startedOn(pythonPath);
+    // A required package was removed outside Studio; repairing it installs the exact cohort (nirs4all 1.4.16).
+    setDistributions(pythonPath, { ...withoutDagMl, nirs4all: "1.4.18" });
+    vi.mocked(installRecommendedPackages).mockRejectedValueOnce(new Error("No matching distribution"));
 
-    // The managed environment must not take over the migrated included-runtime selection.
-    expect(manager.getConfiguredRuntimeMode()).toBe("bundled");
-    expect(manager.getConfiguredPythonPath()).toBe(bundledPython);
-    manager.markWizardComplete(false);
-    expect(JSON.parse(fs.readFileSync(settingsPath, "utf8"))).toEqual({ runtime: "bundled", appVersion: "0.3.1" });
-    expect(new EnvManager().getConfiguredPythonPath()).toBe(bundledPython);
+    const result = await env.apply({ pythonPath, packages: ["catboost"] });
+
+    expect(installRequiredPackages).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ success: false, message: "No matching distribution", state: { phase: "ready", selectedPythonPath: pythonPath } });
+    expect(result.state.selected?.required[0].installedVersion).toBe("1.4.16");
+    expect(restartHost).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses when nothing usable is selected or the environment is read-only", async () => {
+    const unconfigured = manager();
+    await unconfigured.startupCheck();
+    expect(await unconfigured.installPackages(["torch"])).toMatchObject({ success: false, message: "No usable Python environment is selected." });
+
+    const readOnly = await startedOn(environment("system", { purelibWritable: false }));
+    expect(await readOnly.installPackages(["torch"])).toMatchObject({ success: false, message: expect.stringContaining("read-only") });
+    expect(installRecommendedPackages).not.toHaveBeenCalled();
+  });
+});
+
+describe("scientific host failures and retry", () => {
+  it("needs attention when the sidecar could not run a compatible environment, until a retry succeeds", async () => {
+    const pythonPath = environment("work");
+    const env = await startedOn(pythonPath);
+
+    env.reportHostFailure("Studio could not load nirs4all in this Python environment (import_failed).");
+
+    expect(env.getState()).toMatchObject({
+      phase: "needs_attention",
+      selected: { usable: true },
+      problem: { code: "host_failed", message: expect.stringContaining("import_failed") },
+    });
+    expect(env.getHost()).toBeNull();
+
+    const result = await env.retry();
+
+    expect(result).toMatchObject({ success: true, state: { phase: "ready" } });
+    expect(result.state.problem).toBeUndefined();
+    expect(restartHost).toHaveBeenCalledTimes(1);
+    expect(env.getHost()?.pythonPath).toBe(pythonPath);
+  });
+
+  it("reports the host failure again when the retry cannot start it", async () => {
+    const env = await startedOn(environment("work"));
+    restartHost.mockRejectedValueOnce(new Error("The analysis backend did not activate the selected Python environment."));
+
+    expect(await env.retry()).toMatchObject({
+      success: false,
+      message: "The analysis backend did not activate the selected Python environment.",
+      state: { phase: "needs_attention", problem: { code: "host_failed" } },
+    });
+  });
+
+  it("retries the installation of required packages and then starts the host", async () => {
+    const pythonPath = environment("work", { distributions: {} });
+    select(pythonPath);
+    vi.mocked(installRequiredPackages).mockRejectedValueOnce(new Error("offline"));
+    const env = manager();
+    expect((await env.startupCheck()).problem?.code).toBe("required_update_failed");
+
+    const result = await env.retry();
+
+    expect(installRequiredPackages).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ success: true, state: { phase: "ready" } });
+    expect(restartHost).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails a retry that still cannot make the environment usable, after restarting without Python", async () => {
+    const pythonPath = environment("system", { distributions: {}, purelibWritable: false });
+    const env = await startedOn(pythonPath);
+
+    expect(await env.retry()).toMatchObject({
+      success: false,
+      message: expect.stringContaining("cannot install packages"),
+      state: { phase: "needs_attention", problem: { code: "required_not_installable" } },
+    });
+    expect(restartHost).toHaveBeenCalledTimes(1);
+    expect(env.getHost()).toBeNull();
+  });
+});
+
+describe("interpreter path spelling", () => {
+  it("normalises the persisted path and reports every spelling of the selection as that one path", async () => {
+    const pythonPath = environment("work");
+    const variant = path.join(root, "work", "bin", "..", "bin", "python") + path.sep;
+    inventories.set(variant, inventories.get(pythonPath)!);
+    select(variant);
+    const env = manager();
+
+    const state = await env.startupCheck();
+
+    expect(state).toMatchObject({ phase: "ready", selectedPythonPath: pythonPath, selected: { pythonPath } });
+    expect(env.getHost()?.pythonPath).toBe(pythonPath);
+    expect((await env.inspect(variant)).report?.pythonPath).toBe(pythonPath);
+    const applied = await env.apply({ pythonPath: path.join(root, "work", ".", "bin", "python"), packages: [] });
+    expect(applied.state).toMatchObject({ selectedPythonPath: pythonPath, selected: { pythonPath } });
+    expect(persistedSelection()).toEqual({ pythonPath });
+  });
+
+  it("emits a normalised path for an environment that is not the selection", async () => {
+    const other = environment("other");
+    const env = await startedOn(environment("work"));
+
+    const inspected = await env.inspect(path.join(root, "other", "lib", "..", "bin", "python"));
+    const applied = await env.apply({ pythonPath: path.join(root, "other", "bin", ".", "python"), packages: [] });
+
+    expect(inspected.report).toMatchObject({ pythonPath: other, envRoot: path.join(root, "other") });
+    expect(applied.state.selectedPythonPath).toBe(other);
+  });
+});
+
+describe("new environment plan", () => {
+  it("lists what a created environment would contain without running Python", () => {
+    const plan = manager().describeNewEnvironment();
+
+    expect(plan.pythonVersion).toMatch(/^3\.11\.\d+$/);
+    expect(plan.required).toEqual(REQUIRED_PACKAGES.map((spec) => ({
+      name: spec.name, installedVersion: null, requiredRange: spec.range, targetVersion: spec.install, status: "missing",
+    })));
+    expect(plan.recommended.length).toBeGreaterThan(10);
+    expect(plan.recommended.every((item) => item.installedVersion === null && item.status === "missing" && !item.belowMinimum)).toBe(true);
+    expect(plan.recommended.find((item) => item.name === "torch")).toMatchObject({ defaultInstall: true, recommendedVersion: "2.6.0" });
+    expect(Object.keys(plan).sort()).toEqual(["pythonVersion", "recommended", "required"]);
+    expect(takeInventory).not.toHaveBeenCalled();
+  });
+});
+
+describe("inspection and detection", () => {
+  it("inspects an interpreter without changing the selection", async () => {
+    const previous = environment("previous");
+    const other = environment("other", { distributions: { nirs4all: "1.4.16" } });
+    const env = await startedOn(previous);
+
+    const inspected = await env.inspect(other);
+
+    expect(inspected.error).toBeUndefined();
+    expect(inspected.report).toMatchObject({ pythonPath: other, usable: false, writable: true });
+    expect(await env.inspect(path.join(root, "nowhere"))).toEqual({ error: "No Python interpreter was found at this location." });
+    expect(await env.inspect(root)).toEqual({ error: "No Python interpreter was found in this folder." });
+    expect(env.getState().selectedPythonPath).toBe(previous);
+    expect(installRequiredPackages).not.toHaveBeenCalled();
+  });
+
+  it("detects environments around Studio's own directory and the current selection", async () => {
+    const pythonPath = environment("work");
+    const env = await startedOn(pythonPath);
+
+    await env.detect(true);
+
+    expect(detectEnvironments).toHaveBeenCalledWith({ studioEnvDir: path.join(userDataDir, "python-env"), selectedPythonPath: pythonPath }, true);
+  });
+
+  it("reports an offline installation", async () => {
+    vi.mocked(resolveUvPayload).mockReturnValueOnce({ wheelhouse: null, offline: path.join(root, "offline") });
+    expect(manager().getState().offlineInstall).toBe(true);
   });
 });

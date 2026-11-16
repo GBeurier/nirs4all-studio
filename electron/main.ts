@@ -8,9 +8,16 @@ import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 import type { BrowserWindow as BrowserWindowInstance } from "electron";
 import type { ErrorEvent as SentryErrorEvent } from "@sentry/electron/main";
+import type {
+  ApplyPythonEnvRequest,
+  CreatePythonEnvRequest,
+  PythonEnvState,
+} from "../src/types/pythonEnvironment";
 import { EnvManager } from "./env-manager";
-import { loadNetworkTrust, loadPythonRuntimeConfig } from "./env/external-config";
+import { loadNetworkTrust } from "./env/external-config";
 import { getInstallLog, subscribeInstallLog } from "./env/install-log";
+import { samePythonPath } from "./env/python-discovery";
+import { resolveStudioAdaptersDir } from "./env/studio-adapters";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { ensureDesktopWorkspace } from "./default-workspace";
 import { resolveDocumentsDirectory } from "./workspace-location";
@@ -27,8 +34,6 @@ import {
 } from "./telemetry-consent";
 
 loadNetworkTrust().configureSystemTrust();
-const { PLUGIN_DISTRIBUTION_REQUIREMENT: REQUIRED_NIRS4ALL_RANGE } =
-  loadPythonRuntimeConfig<{ PLUGIN_DISTRIBUTION_REQUIREMENT: string }>();
 const portableLayout = applyPortablePathOverrides(app);
 
 const SENTRY_DSN_DEFAULT =
@@ -128,53 +133,48 @@ if (portableLayout) {
 }
 if (SentryMain) console.log("Sentry crash reporting enabled (main process)");
 
-const envManager = new EnvManager();
+const envManager = new EnvManager({
+  userDataDir: app.getPath("userData"),
+  restartHost: restartScientificHost,
+});
 const nativeSidecarManager = new NativeSidecarManager();
 let nativePythonPluginHostStale = false;
+/** Incremented at every sidecar restart, so that a check of an earlier sidecar is ignored. */
+let sidecarGeneration = 0;
 console.log("Rust-only renderer transport; Python is restricted to bounded stdio plugins");
 
-function nativeSidecarStartOptions(pythonPackagesCompatible = true) {
-  const configuredRuntime = envManager.getConfiguredRuntimeMode();
-  const runtimeMode = configuredRuntime === "bundled"
-    ? "bundled"
-    : configuredRuntime === "none"
-      ? (app.isPackaged ? "pyinstaller" : "development")
-      : (app.isPackaged ? "managed" : "development");
-  const runtimeKind = configuredRuntime === "none"
-    ? (app.isPackaged ? "pyinstaller" : "development")
-    : configuredRuntime;
-  const resourceRoot = process.resourcesPath ?? process.cwd();
-  const buildInfoCandidates = app.isPackaged
-    ? [
-        path.join(resourceRoot, "backend", "python-runtime", "build_info.json"),
-        path.join(resourceRoot, "backend", "build_info.json"),
-      ]
-    : [path.join(process.cwd(), "backend-dist", "build_info.json")];
+/** Studio's document adapters; without them the sidecar reports why the host is unavailable. */
+function studioAdaptersDir(): string | null {
+  try {
+    return resolveStudioAdaptersDir({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      cacheDir: path.join(app.getPath("userData"), "studio-adapters"),
+    });
+  } catch (error) {
+    console.error("Studio document adapters are unavailable:", error);
+    return null;
+  }
+}
 
+function nativeSidecarStartOptions() {
+  const host = envManager.getHost();
+  const buildInfoPath = app.isPackaged
+    ? path.join(process.resourcesPath, "backend", "build_info.json")
+    : path.join(process.cwd(), "backend-dist", "build_info.json");
   return {
     allowPackagedResource: app.isPackaged,
-    pythonPluginHost: pythonPackagesCompatible ? envManager.getConfiguredPythonPath() : null,
-    pythonPluginSitePackages: pythonPackagesCompatible ? envManager.getSitePackages() : null,
-    runtimeMode,
-    runtimeKind,
-    buildInfoPath: buildInfoCandidates.find((candidate) => fs.existsSync(candidate)) ?? null,
+    pythonPluginHost: host?.pythonPath ?? null,
+    pythonPluginSitePackages: host?.sitePackages ?? null,
+    studioAdaptersDir: host ? studioAdaptersDir() : null,
+    buildInfoPath: fs.existsSync(buildInfoPath) ? buildInfoPath : null,
     appVersion: app.getVersion(),
   };
 }
 
-/**
- * Start the Rust sidecar on the selected Python runtime. Packaged builds run
- * the included runtime when the selection is missing or incompatible, unless
- * the caller is validating an explicit user change of environment.
- */
-async function startNativeSidecar(
-  forceVersionCheck = false,
-  allowBundledFallback = app.isPackaged,
-): Promise<void> {
-  const compatible = await envManager.checkPackageVersions(forceVersionCheck, allowBundledFallback);
-  try { if (compatible) await envManager.prepareSelectedRuntimeAdapters(); }
-  catch (error) { console.warn("Selected environment needs Studio adapter preparation:", error); }
-  const info = await nativeSidecarManager.start(nativeSidecarStartOptions(compatible));
+/** Start the Rust sidecar on the selected environment, or without Python when none is usable. */
+async function startNativeSidecar(): Promise<void> {
+  const info = await nativeSidecarManager.start(nativeSidecarStartOptions());
   if (info.status === "running") {
     if (info.url) {
       await ensureDesktopWorkspace(info.url, resolveDocumentsDirectory(name => app.getPath(name)), nativeSidecarManager.authenticatedFetch);
@@ -183,11 +183,6 @@ async function startNativeSidecar(
     console.log(
       `Native Studio sidecar ready at ${info.url} (${info.protocolVersion})`,
     );
-    if (info.pythonPluginHostError) {
-      console.error(
-        `Bundled Python plugin host disabled: ${info.pythonPluginHostError}`,
-      );
-    }
     return;
   }
   if (app.isPackaged || info.status === "error") {
@@ -221,57 +216,49 @@ async function waitForScientificAcquisition(url: string) {
   }
 }
 
-async function applyPythonRuntimeChange<T extends { success: boolean }>(
-  change: () => Promise<T>,
-): Promise<T> {
-  const previous = envManager.snapshotSelection();
-  try {
-    const result = await change();
-    if (!result.success) return result;
-    nativePythonPluginHostStale = true;
-    await nativeSidecarManager.stop();
-    await startNativeSidecar(false, false);
-    const info = nativeSidecarManager.getInfo();
-    if (!info.url) throw new Error("The analysis backend could not be started.");
-    const [{ response: readinessResponse, readiness }, coherenceResponse] = await Promise.all([
-      waitForScientificAcquisition(info.url),
-      nativeSidecarManager.authenticatedFetch(`${info.url}/api/system/env-coherence`),
-    ]);
-    const coherence = await coherenceResponse.json() as { coherent?: boolean; running_python?: string };
-    if (!readinessResponse.ok || readiness.ml_ready !== true) {
-      console.error("Selected scientific library could not be activated:", readiness.ml_error);
-      throw new Error(readiness.ml_error === "scientific_distribution_version_unsupported"
-        ? `This environment has an unsupported nirs4all version. Choose Studio's included environment or install nirs4all${REQUIRED_NIRS4ALL_RANGE}.`
-        : readiness.ml_error === "scientific_distribution_tampered"
-        ? "The installed nirs4all package could not be verified. Reinstall nirs4all in this environment or choose another environment."
-        : "Studio could not load the scientific library in this Python environment. Prepare its required packages or choose another environment.");
-    }
-    if (!coherenceResponse.ok || coherence.coherent !== true || !coherence.running_python) {
-      throw new Error("The analysis backend did not activate the selected Python environment.");
-    }
-    const expectedPython = envManager.getConfiguredPythonPath();
-    const normalizePython = (value: string) => process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
-    if (!expectedPython || normalizePython(expectedPython) !== normalizePython(coherence.running_python)) {
-      throw new Error("The analysis backend is using a different Python interpreter than the one you selected.");
-    }
-    const setupResponse = await nativeSidecarManager.authenticatedFetch(`${info.url}/api/config/setup-status`);
-    const setup = await setupResponse.json() as { setup_completed?: boolean };
-    if (!setupResponse.ok) throw new Error("Studio could not save the environment setup.");
-    if (setup.setup_completed !== true) {
-      const completion = await nativeSidecarManager.authenticatedFetch(`${info.url}/api/config/complete-setup`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile: "cpu" }),
-      });
-      if (!completion.ok) throw new Error("Studio could not complete the environment setup.");
-    }
-    envManager.markWizardComplete(false);
-    return result;
-  } catch (error) {
-    envManager.restoreSelection(previous);
-    try { await nativeSidecarManager.stop(); await startNativeSidecar(); }
-    catch (restoreError) { console.error("Could not restart the previous environment:", restoreError); }
-    const message = loadNetworkTrust().explainNetworkError(error).message;
-    throw new Error(`${message} Your previous environment selection has been restored.`);
+/** Plain words for the sidecar's host acquisition reason codes (`ml_error`); others are shown as codes. */
+const HOST_FAILURE_REASONS: Record<string, string> = {
+  studio_adapters_unavailable: "Studio's own Python adapters are missing from this installation",
+  scientific_distribution_missing: "nirs4all is not installed in it",
+  scientific_distribution_version_unsupported: "its nirs4all version is outside the range Studio requires",
+  scientific_library_import_failed: "nirs4all is installed but could not be imported",
+  python_host_windows_system_root_unavailable: "Windows did not give Python its system directory (SystemRoot)",
+};
+
+/** Confirm that the running sidecar loaded the scientific library from `expectedPython`. */
+async function confirmScientificHost(expectedPython: string): Promise<void> {
+  const info = nativeSidecarManager.getInfo();
+  if (!info.url) throw new Error("The analysis backend could not be started.");
+  const [{ response: readinessResponse, readiness }, coherenceResponse] = await Promise.all([
+    waitForScientificAcquisition(info.url),
+    nativeSidecarManager.authenticatedFetch(`${info.url}/api/system/env-coherence`),
+  ]);
+  const coherence = await coherenceResponse.json() as { coherent?: boolean; running_python?: string };
+  if (!readinessResponse.ok || readiness.ml_ready !== true) {
+    const code = readiness.ml_error;
+    const reason = code ? `${HOST_FAILURE_REASONS[code] ?? "the sidecar reported"} (${code})` : "no reason was reported";
+    throw new Error(`Studio could not start nirs4all in this Python environment: ${reason}.`);
   }
+  if (!coherenceResponse.ok || coherence.coherent !== true || !coherence.running_python) {
+    throw new Error("The analysis backend did not activate the selected Python environment.");
+  }
+  if (!samePythonPath(expectedPython, coherence.running_python)) {
+    throw new Error("The analysis backend is using a different Python interpreter than the one you selected.");
+  }
+}
+
+/**
+ * Restart the sidecar on the environment manager's current selection and
+ * confirm it. The environment manager restores the previous selection and
+ * calls this again when it rejects.
+ */
+async function restartScientificHost(): Promise<void> {
+  sidecarGeneration += 1;
+  nativePythonPluginHostStale = true;
+  await nativeSidecarManager.stop();
+  await startNativeSidecar();
+  const host = envManager.getHost();
+  if (host) await confirmScientificHost(host.pythonPath);
 }
 
 let mainWindow: BrowserWindowInstance | null = null;
@@ -311,9 +298,8 @@ const STUDIO_ENTRYPOINT = VITE_DEV_SERVER_URL ?? pathToFileURL(path.join(DIST_PA
 const isDev = VITE_DEV_SERVER_URL !== undefined;
 const devMode = isDev || app.commandLine.hasSwitch("dev");
 
-// --offline: forces offline mode for this process and the spawned Python backend.
-// The env var is inherited by backend-manager's spawn calls (they splat process.env),
-// so the Python side reads NIRS4ALL_OFFLINE via api/network_state.py.
+// --offline: forces offline mode for this process and the sidecar, which
+// inherits the variable.
 if (
   app.commandLine.hasSwitch("offline") ||
   process.argv.includes("--offline")
@@ -604,8 +590,9 @@ ipcMain.handle("control:getInfo", () => {
 
 async function restartNativeBackend() {
   try {
+    sidecarGeneration += 1;
     await nativeSidecarManager.stop();
-    await startNativeSidecar(true);
+    await startNativeSidecar();
     const info = getNativeSidecarInfo();
     return { success: true, port: info.port ?? undefined };
   } catch (error) {
@@ -619,11 +606,7 @@ async function restartNativeBackend() {
 ipcMain.handle("backend:restart", (_event, _options) =>
   restartNativeBackend());
 
-// IPC Handlers for Python environment management
-ipcMain.handle("env:getStatus", () => {
-  return envManager.getStatus();
-});
-
+// The install log is shared by every environment operation.
 ipcMain.handle("env:getInstallLog", () => getInstallLog());
 subscribeInstallLog((snapshot) => {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -631,106 +614,98 @@ subscribeInstallLog((snapshot) => {
   }
 });
 
-ipcMain.handle("env:isReady", () => {
-  return envManager.isReady();
-});
+// IPC handlers of the Python environment contract (src/types/pythonEnvironment.ts).
+function requireString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.trim() === "") throw new Error(`${label} must be a non-empty string`);
+  return value;
+}
 
-ipcMain.handle("env:getInfo", async () => {
-  const { pythonPluginHostError } = getNativeSidecarInfo();
-  return { ...await envManager.getInfo(), ...(pythonPluginHostError ? { pythonHostError: pythonPluginHostError } : {}) };
-});
+function requirePackageNames(value: unknown): string[] {
+  if (!Array.isArray(value) || !value.every((name) => typeof name === "string")) {
+    throw new Error("packages must be a list of package names");
+  }
+  return value as string[];
+}
 
-ipcMain.handle("env:detectExisting", async () => {
-  return envManager.detectExistingEnvs();
-});
+/** One plain line on the splash while a startup operation runs; the renderer gets every state. */
+function publishPythonEnvState(state: PythonEnvState): void {
+  if (state.activity && splashWindow && !splashWindow.isDestroyed()) {
+    void splashWindow.webContents
+      .executeJavaScript(`window.showStartupProgress(${JSON.stringify(state.activity.detail)})`)
+      .catch(() => undefined);
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("pythonEnv:state", state);
+}
+envManager.onStateChange(publishPythonEnvState);
 
-ipcMain.handle("env:inspectExisting", async (_, envPath: string) => {
-  return envManager.inspectExistingEnv(envPath);
-});
+ipcMain.handle("pythonEnv:getState", () => envManager.getState());
 
-ipcMain.handle("env:inspectExistingPython", async (_, pythonPath: string) => {
-  return envManager.inspectExistingPython(pythonPath);
-});
+ipcMain.handle("pythonEnv:detect", (_event, refresh?: unknown) => envManager.detect(refresh === true));
 
-ipcMain.handle("env:useExisting", async (_, envPath: string) => {
-  return applyPythonRuntimeChange(() => envManager.useExistingEnv(envPath));
-});
+ipcMain.handle("pythonEnv:inspect", (_event, target: unknown) =>
+  envManager.inspect(requireString(target, "path")));
 
-ipcMain.handle("env:useExistingPython", async (_, pythonPath: string) => {
-  return applyPythonRuntimeChange(() =>
-    envManager.useExistingPython(pythonPath));
-});
+ipcMain.handle("pythonEnv:describeNewEnvironment", () => envManager.describeNewEnvironment());
 
-ipcMain.handle(
-  "env:applyExisting",
-  async (_, envPath: string, options?: { installCorePackages?: boolean }) => {
-    return applyPythonRuntimeChange(() =>
-      envManager.applyExistingEnv(envPath, options));
-  },
-);
-
-ipcMain.handle(
-  "env:applyExistingPython",
-  async (
-    _,
-    pythonPath: string,
-    options?: { installCorePackages?: boolean },
-  ) => {
-    return applyPythonRuntimeChange(() =>
-      envManager.applyExistingPython(pythonPath, options));
-  },
-);
-
-ipcMain.handle("dialog:selectPythonExe", async () => {
+ipcMain.handle("pythonEnv:browse", async () => {
   if (!mainWindow) return null;
-  const filters =
-    process.platform === "win32"
-      ? [{ name: "Python Executable", extensions: ["exe"] }]
-      : [{ name: "All Files", extensions: ["*"] }];
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Select Python executable",
     properties: ["openFile"],
-    filters,
+    filters: process.platform === "win32"
+      ? [{ name: "Python Executable", extensions: ["exe"] }]
+      : [{ name: "All Files", extensions: ["*"] }],
   });
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle("env:shouldShowWizard", () => {
-  return envManager.shouldShowWizard();
+ipcMain.handle("pythonEnv:chooseDirectory", async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose where to create the Python environment",
+    properties: ["openDirectory", "createDirectory"],
+  });
+  return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle("env:markWizardComplete", (_, skipNextTime: boolean) => {
-  envManager.markWizardComplete(skipNextTime);
+ipcMain.handle("pythonEnv:apply", (_event, request: Partial<ApplyPythonEnvRequest> | null) =>
+  envManager.apply({
+    pythonPath: requireString(request?.pythonPath, "pythonPath"),
+    packages: requirePackageNames(request?.packages),
+  }));
+
+ipcMain.handle("pythonEnv:create", async (_event, request: Partial<CreatePythonEnvRequest> | null) => {
+  const result = await envManager.create({
+    ...(request?.directory === undefined ? {} : { directory: requireString(request.directory, "directory") }),
+    packages: requirePackageNames(request?.packages),
+  });
+  if (!result.success) SentryMain?.captureException(new Error(result.message), { tags: { component: "env-setup" } });
+  return result;
 });
 
-ipcMain.handle("env:getCurrentEnvSummary", async () => {
-  return envManager.getCurrentEnvSummary();
-});
+ipcMain.handle("pythonEnv:installPackages", (_event, packages: unknown) =>
+  envManager.installPackages(requirePackageNames(packages)));
 
-ipcMain.handle("env:isPortable", () => {
-  return envManager.isPortable();
-});
+ipcMain.handle("pythonEnv:retry", () => envManager.retry());
 
-ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
-  try {
-    return await applyPythonRuntimeChange(async () => {
-      await envManager.setup((percent, step, detail) => {
-        // Broadcast progress to all renderer windows
-        const windows = BrowserWindow.getAllWindows();
-        for (const win of windows) {
-          win.webContents.send("env:setupProgress", { percent, step, detail });
-        }
-      }, targetDir);
-      return { success: true };
+/**
+ * Startup: settle the Python environment (installing required packages when
+ * needed), start the sidecar on it, then confirm the host in the background so
+ * that the window is not delayed by the scientific library's cold start.
+ */
+async function startControlPlane(): Promise<void> {
+  await envManager.startupCheck();
+  await startNativeSidecar();
+  const host = envManager.getHost();
+  if (host) {
+    const generation = sidecarGeneration;
+    void confirmScientificHost(host.pythonPath).catch((error) => {
+      // A sidecar restarted meanwhile is confirmed by the operation that restarted it.
+      if (generation !== sidecarGeneration) return;
+      envManager.reportHostFailure(error instanceof Error ? error.message : String(error));
     });
-  } catch (error) {
-    SentryMain?.captureException(error, { tags: { component: "env-setup" } });
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
   }
-});
+}
 
 // App lifecycle
 app.whenReady().then(async () => {
@@ -746,17 +721,12 @@ app.whenReady().then(async () => {
   // Show splash screen immediately (gives visual feedback during startup)
   splashWindow = createSplashWindow();
 
-  // Validate persisted runtime state before we decide whether startup can reuse
-  // it. This clears stale custom/portable paths instead of failing later in a
-  // less obvious backend-start step.
-  envManager.validateConfiguredState();
-
   // Packaged products always start the Rust control plane. The default session
   // refuses every unmigrated renderer route. The
   // bounded CPython stdio host remains an optional sidecar dependency.
   console.log("Creating native session (renderer owner: Rust sidecar)");
   await startNativeSession({
-    startControlPlane: startNativeSidecar,
+    startControlPlane,
     createWindow,
   });
 

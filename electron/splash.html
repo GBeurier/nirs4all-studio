@@ -463,6 +463,15 @@
 
     const el = document.getElementById("statusText");
     let lastIdx = -1;
+    let progressLine = null;
+    // Called by the main process while a startup operation runs (for example
+    // an update of the required Python packages): one plain line replaces the
+    // rotating messages.
+    window.showStartupProgress = function(text) {
+      progressLine = text;
+      el.textContent = text;
+      el.style.opacity = "1";
+    };
     function pickRandom() {
       let idx;
       do { idx = Math.floor(Math.random() * messages.length); } while (idx === lastIdx);
@@ -470,6 +479,7 @@
       return messages[idx];
     }
     function cycle() {
+      if (progressLine !== null) return;
       const text = pickRandom();
       el.innerHTML = "";
       el.style.opacity = "1";
@@ -482,6 +492,7 @@
       });
       var hold = text.length * 25 + 400 + 2200;
       setTimeout(function() {
+        if (progressLine !== null) return;
         el.style.opacity = "0";
         setTimeout(cycle, 450);
       }, hold);

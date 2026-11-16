@@ -11,6 +11,7 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
   PLUGIN_DISTRIBUTION_VERSION: string;
   PLUGIN_HOST_PACKAGES: string[];
   REQUIRED_METHODS_ABI: number[];
+  REQUIRED_PACKAGES: Array<{ name: string; range: string; install: string }>;
   REUSABLE_RUNTIME_PACKAGES: string[];
   PRODUCT_PROFILES: Record<string, { extraPackageNames: string[] }>;
   STANDALONE_V1_PROFILE: string;
@@ -19,16 +20,29 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
   getProfilePackageInstallSpecs(profileId: string, options?: { platform?: string }): string[];
   resolveProfileForFlavor(flavor: string, platform?: string): string;
 };
+const recommendedConfig = require("../recommended-config.json") as {
+  required: Array<{ name: string; range: string; install: string }>;
+};
 const transitionalHttpConfig = require("../scripts/python-http-runtime-config.cjs") as {
   BACKEND_COMMON_PACKAGES: string[];
 };
 
 describe("python-runtime-config", () => {
-  it("accepts version ranges in reused environments and pins only the bundled cohort", () => {
+  it("derives the required ranges and exact versions from the catalogue's required block", () => {
+    expect(runtimeConfig.REQUIRED_PACKAGES).toEqual(recommendedConfig.required);
+    expect(runtimeConfig.REQUIRED_PACKAGES).toEqual([
+      { name: "nirs4all", range: ">=1.4.16,<1.5", install: "1.4.16" },
+      { name: "nirs4all-core", range: "", install: "0.5.0" },
+      { name: "dag-ml", range: "", install: "0.4.0" },
+      { name: "dag-ml-data", range: "", install: "0.2.16" },
+      { name: "nirs4all-io", range: ">=0.3.0,<0.4", install: "0.3.1" },
+      { name: "nirs4all-methods", range: ">=1.3.15,<2", install: "1.3.15" },
+      { name: "nirs4all-formats", range: "", install: "0.2.16" },
+    ]);
     // nirs4all: the Studio-required release up to the next minor; io/methods: nirs4all's own declared ranges.
     expect(runtimeConfig.PLUGIN_DISTRIBUTION_REQUIREMENT).toBe(">=1.4.16,<1.5");
     expect(runtimeConfig.REUSABLE_RUNTIME_PACKAGES).toEqual([
-      "nirs4all>=1.4.16,<1.5", "nirs4all-io>=0.3.0,<0.4", "nirs4all-methods>=1.3.15,<2", "nirs4all-formats",
+      "nirs4all>=1.4.16,<1.5", "nirs4all-core", "dag-ml", "dag-ml-data", "nirs4all-io>=0.3.0,<0.4", "nirs4all-methods>=1.3.15,<2", "nirs4all-formats",
     ]);
     expect(runtimeConfig.REQUIRED_METHODS_ABI).toEqual([2, 22]);
   });

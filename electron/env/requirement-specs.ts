@@ -1,25 +1,11 @@
 /**
- * Version-range checks for the packages Studio requires in a reused Python
- * environment (`REUSABLE_RUNTIME_PACKAGES` in scripts/python-runtime-config.cjs).
+ * Version-range checks against the package catalogue (recommended-config.json).
  *
- * The TypeScript and Python implementations accept the same small PEP 440
- * subset: comma-separated `==`, `!=`, `>=`, `>`, `<=` and `<` clauses over
- * numeric release segments. A pre-release or development version sorts before
- * its release, and `<V` also excludes pre-releases of `V`. Unknown operators
- * fail closed.
+ * Accepts a small PEP 440 subset: comma-separated `==`, `!=`, `>=`, `>`, `<=`
+ * and `<` clauses over numeric release segments. A pre-release or development
+ * version sorts before its release, and `<V` also excludes pre-releases of
+ * `V`. Unknown operators fail closed. An empty specifier accepts any version.
  */
-
-export interface RequirementSpec {
-  name: string;
-  /** The version specifier without the package name, e.g. `>=1.4.14,<1.5`; empty when any version is accepted. */
-  specifier: string;
-}
-
-export function parseRequirement(spec: string): RequirementSpec {
-  const match = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(.*)$/.exec(spec);
-  if (!match) throw new Error(`Invalid package requirement: ${spec}`);
-  return { name: match[1], specifier: match[2].trim() };
-}
 
 function versionKey(value: string): { release: number[]; prerelease: boolean } | null {
   const match = /^\s*v?(\d+(?:\.\d+)*)(.*)$/i.exec(value);
@@ -63,55 +49,3 @@ export function versionSatisfies(version: string, specifier: string): boolean {
   }
   return true;
 }
-
-/** Describe why an installed distribution does not satisfy a requirement, or null when it does. */
-export function requirementIssue(spec: string, installedVersion: string | null | undefined): string | null {
-  const { name, specifier } = parseRequirement(spec);
-  if (!installedVersion) return `${name} is missing`;
-  return specifier && !versionSatisfies(installedVersion, specifier)
-    ? `${name} ${installedVersion} is installed; ${name}${specifier} is required`
-    : null;
-}
-
-/**
- * Python implementation of {@link requirementIssue}, embedded in interpreter
- * probes. Defines `requirement_name(spec)` and `requirement_issue(spec, installed)`.
- */
-export const PYTHON_REQUIREMENT_HELPERS = `import re as _requirement_re
-def requirement_name(spec):
-    return _requirement_re.match(r"\\s*([A-Za-z0-9][A-Za-z0-9._-]*)", spec).group(1)
-def _version_key(value):
-    match = _requirement_re.match(r"\\s*v?(\\d+(?:\\.\\d+)*)(.*)$", value, _requirement_re.I)
-    if not match:
-        return None
-    prerelease = bool(_requirement_re.match(r"[-_.]?(a|b|c|rc|alpha|beta|pre|preview|dev)", match.group(2).strip(), _requirement_re.I))
-    return [int(part) for part in match.group(1).split(".")], prerelease
-def _compare_releases(left, right):
-    length = max(len(left), len(right))
-    left = left + [0] * (length - len(left))
-    right = right + [0] * (length - len(right))
-    return (left > right) - (left < right)
-def version_satisfies(version, specifier):
-    installed = _version_key(version)
-    if installed is None:
-        return False
-    for clause in [part.strip() for part in specifier.split(",") if part.strip()]:
-        match = _requirement_re.match(r"(==|!=|>=|<=|>|<)\\s*(.+)$", clause)
-        bound = _version_key(match.group(2)) if match else None
-        if bound is None:
-            return False
-        release = _compare_releases(installed[0], bound[0])
-        ordered = release if release else int(not installed[1]) - int(not bound[1])
-        satisfied = {"==": ordered == 0, "!=": ordered != 0, ">=": ordered >= 0, ">": ordered > 0, "<=": ordered <= 0, "<": release < 0}[match.group(1)]
-        if not satisfied:
-            return False
-    return True
-def requirement_issue(spec, installed):
-    name = requirement_name(spec)
-    specifier = spec.strip()[len(name):].strip()
-    if not installed:
-        return name + " is missing"
-    if specifier and not version_satisfies(installed, specifier):
-        return name + " " + installed + " is installed; " + name + specifier + " is required"
-    return None
-`;

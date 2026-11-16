@@ -33,6 +33,41 @@ export function normalizeDetectedPath(candidate: string): string {
   return isWindows ? normalized.toLowerCase() : normalized;
 }
 
+/**
+ * One spelling per interpreter path: native separators, no `.` or `..`
+ * segment, no trailing separator. Symbolic links are kept, because a virtual
+ * environment is identified by its own interpreter path, not by the base
+ * interpreter it links to.
+ */
+export function normalizePythonPath(pythonPath: string, platform: NodeJS.Platform = process.platform): string {
+  const flavour = platform === "win32" ? path.win32 : path.posix;
+  const normalized = flavour.normalize(pythonPath);
+  const root = flavour.parse(normalized).root;
+  const trimmed = normalized.replace(platform === "win32" ? /[\\/]+$/ : /\/+$/, "");
+  return trimmed.length < root.length ? root : trimmed;
+}
+
+/** Whether two spellings name the same interpreter; Windows paths may differ by case. */
+export function samePythonPath(left: string, right: string, platform: NodeJS.Platform = process.platform): boolean {
+  const [first, second] = [left, right].map((value) => normalizePythonPath(value, platform));
+  return platform === "win32" ? first.toLowerCase() === second.toLowerCase() : first === second;
+}
+
+/**
+ * The spelling Studio emits for an interpreter, in the state, detection,
+ * inspection and results alike. The selected environment keeps its own
+ * spelling, so the renderer can compare paths as plain strings.
+ */
+export function canonicalPythonPath(
+  pythonPath: string,
+  selectedPythonPath: string | null,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return selectedPythonPath !== null && samePythonPath(pythonPath, selectedPythonPath, platform)
+    ? selectedPythonPath
+    : normalizePythonPath(pythonPath, platform);
+}
+
 export function getEnvRootForPythonPath(pythonPath: string): string {
   const dir = path.dirname(pythonPath);
   const dirName = path.basename(dir).toLowerCase();
@@ -336,8 +371,8 @@ export function listPyenvPythonCandidates(): string[] {
 
 /**
  * Gather every Python interpreter candidate across all ecosystems, deduplicated
- * by realpath. Seed candidates (configured / managed / bundled interpreters)
- * are added first so they win the dedupe.
+ * by realpath. Seed candidates (the selected interpreter and Studio's own
+ * environment) are added first so they win the dedupe.
  *
  * The cheap synchronous sources (PATH, home venvs, nearby projects, pyenv) and
  * the slower async probes (the Windows `py` launcher and `conda env list`,

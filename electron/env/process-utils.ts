@@ -17,6 +17,8 @@ export interface CommandOptions {
   /** Base delay (ms) for exponential backoff between retries. Default 2000. */
   retryBaseMs?: number;
   timeoutMs?: number;
+  /** Variables added to the inherited environment. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -58,6 +60,7 @@ export function runCommand(command: string, args: string[], options?: CommandOpt
     const proc = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
       shell: false,
+      ...(options?.env ? { env: { ...process.env, ...options.env } } : {}),
       windowsHide: isWindows,
     });
 
@@ -74,7 +77,7 @@ export function runCommand(command: string, args: string[], options?: CommandOpt
       else resolve();
     };
 
-    // Drain both pipes immediately. An unread stdout pipe can block pip forever.
+    // Drain both pipes immediately. An unread pipe can block the installer forever.
     for (const stream of [proc.stdout, proc.stderr]) {
       if (!stream) continue;
       const decoder = new StringDecoder("utf8");

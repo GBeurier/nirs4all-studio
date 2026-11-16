@@ -7,27 +7,19 @@ import { verifyPackagedRuntimeContract } from "./packaged-runtime-contract";
 const SIDECAR_PATH_ENV = "NIRS4ALL_NATIVE_SIDECAR_PATH";
 const SIDECAR_PORT_ENV = "NIRS4ALL_NATIVE_SIDECAR_PORT";
 const SIDECAR_ENABLE_PACKAGED_ENV = "NIRS4ALL_ENABLE_NATIVE_SIDECAR";
+// The whole Python hand-off: the selected interpreter, its package directory,
+// the stdio executor and the adapters shipped with Studio.
 const PYTHON_PLUGIN_HOST_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST";
-const PYTHON_PLUGIN_HOST_BUNDLED_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
-const PYTHON_PLUGIN_CLOSURE_ENV = "NIRS4ALL_PYTHON_PLUGIN_CLOSURE";
-const PYTHON_PLUGIN_RUNTIME_ROOT_ENV = "NIRS4ALL_PYTHON_PLUGIN_RUNTIME_ROOT";
 const PYTHON_PLUGIN_SITE_PACKAGES_ENV =
   "NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES";
 const SCIENTIFIC_EXECUTOR_ENV = "NIRS4ALL_SCIENTIFIC_EXECUTOR";
-const RUNTIME_MODE_ENV = "NIRS4ALL_RUNTIME_MODE";
-const RUNTIME_KIND_ENV = "NIRS4ALL_RUNTIME_KIND";
+const STUDIO_ADAPTERS_DIR_ENV = "NIRS4ALL_STUDIO_ADAPTERS_DIR";
 const BUILD_INFO_PATH_ENV = "NIRS4ALL_BUILD_INFO_PATH";
 const APP_VERSION_ENV = "NIRS4ALL_APP_VERSION";
 const APP_DIR_ENV = "NIRS4ALL_APP_DIR";
 const APP_EXE_ENV = "NIRS4ALL_APP_EXE";
 const ELECTRON_PID_ENV = "NIRS4ALL_ELECTRON_PID";
 const ELECTRON_ENV = "NIRS4ALL_ELECTRON";
-const ALL_IN_ONE_ENV = "NIRS4ALL_ALL_IN_ONE";
-const BUNDLED_RUNTIME_AVAILABLE_ENV =
-  "NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE";
-const ALL_IN_ONE_MARKER = "all-in-one-runtime.json";
-const ALL_IN_ONE_MARKER_SCHEMA = "nirs4all.studio-all-in-one-runtime.v1";
-const MAX_ALL_IN_ONE_MARKER_BYTES = 1024;
 const ARCHIVE_SMOKE_SESSION_TOKEN_ENV =
   "NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN";
 const SIDECAR_READY_PREFIX = "STUDIO_SIDECAR_READY ";
@@ -83,31 +75,6 @@ export function createNativeSessionToken(
   return randomBytes(32).toString("hex");
 }
 
-export function isAttestedAllInOneResources(resourcesPath: string): boolean {
-  const markerPath = path.join(resourcesPath, ALL_IN_ONE_MARKER);
-  try {
-    const metadata = fs.lstatSync(markerPath);
-    if (
-      !metadata.isFile()
-      || metadata.isSymbolicLink()
-      || metadata.size > MAX_ALL_IN_ONE_MARKER_BYTES
-    ) {
-      return false;
-    }
-    const marker: unknown = JSON.parse(fs.readFileSync(markerPath, "utf8"));
-    if (!marker || typeof marker !== "object" || Array.isArray(marker)) return false;
-    const record = marker as Record<string, unknown>;
-    const keys = Object.keys(record).sort();
-    return keys.length === 2
-      && keys[0] === "owns_install_tree"
-      && keys[1] === "schema_id"
-      && record.schema_id === ALL_IN_ONE_MARKER_SCHEMA
-      && record.owns_install_tree === true;
-  } catch {
-    return false;
-  }
-}
-
 export type NativeSidecarStatus =
   "disabled" | "starting" | "running" | "stopped" | "error";
 
@@ -118,7 +85,6 @@ export interface NativeSidecarInfo {
   protocolVersion: string | null;
   url: string | null;
   pythonPluginHostConfigured: boolean;
-  pythonPluginHostError?: string;
   error?: string;
 }
 
@@ -138,13 +104,12 @@ export interface NativeSidecarPathOptions {
 export interface NativeSidecarStartOptions {
   /** Start the packaged binary without requiring a diagnostic environment flag. */
   allowPackagedResource?: boolean;
-  /** Explicit library/plugin interpreter; never an HTTP backend command. */
+  /** The selected interpreter; never an HTTP backend command. Null starts the sidecar without Python. */
   pythonPluginHost?: string | null;
+  /** Package directory of the selected interpreter. */
   pythonPluginSitePackages?: string | null;
-  /** Product runtime metadata for Rust-owned system inventory responses. */
-  runtimeMode?: string | null;
-  /** Distinguishes bundled, managed, custom, and development plugin hosts. */
-  runtimeKind?: string | null;
+  /** Directory that contains Studio's `studio_document_adapters/` package. */
+  studioAdaptersDir?: string | null;
   /** Packaged build metadata selected by Electron, never a renderer input. */
   buildInfoPath?: string | null;
   /** Product version supplied by Electron for Rust-owned version inventory. */
@@ -192,7 +157,6 @@ export class NativeSidecarManager {
   private port: number | null = null;
   private protocolVersion: string | null = null;
   private pythonPluginHostConfigured = false;
-  private pythonPluginHostError: string | null = null;
   private lastError: string | null = null;
   private sessionToken: string | null = null;
 
@@ -227,9 +191,6 @@ export class NativeSidecarManager {
           ? `http://${this.host}:${this.port}`
           : null,
       ...(this.lastError ? { error: this.lastError } : {}),
-      ...(this.pythonPluginHostError
-        ? { pythonPluginHostError: this.pythonPluginHostError }
-        : {}),
     };
   }
 
@@ -255,7 +216,6 @@ export class NativeSidecarManager {
       this.port = null;
       this.protocolVersion = null;
       this.pythonPluginHostConfigured = false;
-      this.pythonPluginHostError = null;
       this.lastError = null;
       return this.getInfo();
     }
@@ -264,12 +224,6 @@ export class NativeSidecarManager {
     }
 
     const explicitSidecar = process.env[SIDECAR_PATH_ENV]?.trim();
-    const packagedProduct = packagedResourceEnabled && !explicitSidecar;
-    let verifiedBundledPython: string | null = null;
-    let verifiedBundledClosure: string | null = null;
-    let verifiedBundledRuntimeRoot: string | null = null;
-    let verifiedBundledSitePackages: string | null = null;
-    this.pythonPluginHostError = null;
     if (packagedResourceEnabled && !explicitSidecar) {
       const resourcesPath = options.resourcesPath ?? electronProcess.resourcesPath;
       if (!resourcesPath) {
@@ -278,17 +232,11 @@ export class NativeSidecarManager {
         );
       }
       try {
-        const verified = verifyPackagedRuntimeContract({
+        configuredPath = verifyPackagedRuntimeContract({
           resourcesPath,
           platform: options.platform,
           arch: options.arch,
-        });
-        configuredPath = verified.sidecarPath;
-        verifiedBundledPython = verified.pythonPluginHostPath;
-        verifiedBundledClosure = verified.pythonClosurePath;
-        verifiedBundledRuntimeRoot = verified.pythonRuntimeRoot;
-        verifiedBundledSitePackages = verified.pythonSitePackagesPath;
-        this.pythonPluginHostError = verified.pythonPluginHostError;
+        }).sidecarPath;
       } catch (error) {
         return this.failBeforeSpawn(
           error instanceof Error ? error.message : String(error),
@@ -322,15 +270,8 @@ export class NativeSidecarManager {
     this.pythonPluginHostConfigured = false;
 
     let child: ChildProcess;
-    const explicitPythonPluginHost =
-      process.env[PYTHON_PLUGIN_HOST_ENV]?.trim();
-    const selectedPythonPluginHost = options.pythonPluginHost?.trim();
-    const selectedUserRuntime = options.runtimeKind === "custom" || options.runtimeKind === "managed";
-    const usesBundledHost = packagedProduct && !selectedUserRuntime;
-    const pythonPluginHost = usesBundledHost
-      ? verifiedBundledPython
-      : selectedPythonPluginHost || (!packagedProduct ? explicitPythonPluginHost : null) || null;
-    this.pythonPluginHostConfigured = Boolean(pythonPluginHost);
+    const pythonPluginHost = options.pythonPluginHost?.trim() || null;
+    this.pythonPluginHostConfigured = pythonPluginHost !== null;
     const childEnvironment: NodeJS.ProcessEnv = { ...process.env };
     this.sessionToken = createNativeSessionToken();
     childEnvironment.NIRS4ALL_STUDIO_SESSION_TOKEN = this.sessionToken;
@@ -338,45 +279,18 @@ export class NativeSidecarManager {
     // smoke-harness override name that the parent process used to select it.
     delete childEnvironment[ARCHIVE_SMOKE_SESSION_TOKEN_ENV];
     delete childEnvironment.NIRS4ALL_STUDIO_ALLOWED_ORIGINS;
-    delete childEnvironment[PYTHON_PLUGIN_HOST_ENV];
-    delete childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV];
-    delete childEnvironment[PYTHON_PLUGIN_CLOSURE_ENV];
-    delete childEnvironment[PYTHON_PLUGIN_RUNTIME_ROOT_ENV];
-    delete childEnvironment[PYTHON_PLUGIN_SITE_PACKAGES_ENV];
-    delete childEnvironment[SCIENTIFIC_EXECUTOR_ENV];
-    delete childEnvironment[APP_DIR_ENV];
-    delete childEnvironment[APP_EXE_ENV];
-    delete childEnvironment[ELECTRON_PID_ENV];
-    delete childEnvironment[ELECTRON_ENV];
-    delete childEnvironment[ALL_IN_ONE_ENV];
-    delete childEnvironment[BUNDLED_RUNTIME_AVAILABLE_ENV];
+    // Only Electron's selection reaches the sidecar, never inherited variables.
+    for (const name of [PYTHON_PLUGIN_HOST_ENV, PYTHON_PLUGIN_SITE_PACKAGES_ENV, SCIENTIFIC_EXECUTOR_ENV, STUDIO_ADAPTERS_DIR_ENV]) {
+      delete childEnvironment[name];
+    }
     if (pythonPluginHost) {
       childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
-      if (usesBundledHost || selectedUserRuntime) childEnvironment[SCIENTIFIC_EXECUTOR_ENV] = "cpython-stdio-v1";
-      if (usesBundledHost) {
-        if (
-          !verifiedBundledClosure ||
-          !verifiedBundledRuntimeRoot ||
-          !verifiedBundledSitePackages
-        ) {
-          return this.failBeforeSpawn(
-            "Packaged Python plugin host is missing its verified closure",
-          );
-        }
-        childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV] = "true";
-        childEnvironment[PYTHON_PLUGIN_CLOSURE_ENV] = verifiedBundledClosure;
-        childEnvironment[PYTHON_PLUGIN_RUNTIME_ROOT_ENV] =
-          verifiedBundledRuntimeRoot;
-        childEnvironment[PYTHON_PLUGIN_SITE_PACKAGES_ENV] =
-          verifiedBundledSitePackages;
-      } else if (options.pythonPluginSitePackages?.trim()) {
+      childEnvironment[SCIENTIFIC_EXECUTOR_ENV] = "cpython-stdio-v1";
+      if (options.pythonPluginSitePackages?.trim())
         childEnvironment[PYTHON_PLUGIN_SITE_PACKAGES_ENV] = options.pythonPluginSitePackages.trim();
-      }
+      if (options.studioAdaptersDir?.trim())
+        childEnvironment[STUDIO_ADAPTERS_DIR_ENV] = options.studioAdaptersDir.trim();
     }
-    if (options.runtimeMode?.trim())
-      childEnvironment[RUNTIME_MODE_ENV] = options.runtimeMode.trim();
-    if (options.runtimeKind?.trim())
-      childEnvironment[RUNTIME_KIND_ENV] = options.runtimeKind.trim();
     if (options.buildInfoPath?.trim())
       childEnvironment[BUILD_INFO_PATH_ENV] = options.buildInfoPath.trim();
     if (options.appVersion?.trim())
@@ -385,16 +299,6 @@ export class NativeSidecarManager {
     childEnvironment[APP_EXE_ENV] = path.basename(process.execPath);
     childEnvironment[ELECTRON_PID_ENV] = process.pid.toString();
     childEnvironment[ELECTRON_ENV] = "true";
-    childEnvironment[BUNDLED_RUNTIME_AVAILABLE_ENV] = verifiedBundledPython
-      ? "true"
-      : "false";
-    const packagedResourcesPath = options.resourcesPath ?? electronProcess.resourcesPath;
-    childEnvironment[ALL_IN_ONE_ENV] = packagedProduct
-      && Boolean(verifiedBundledPython)
-      && packagedResourcesPath
-      && isAttestedAllInOneResources(packagedResourcesPath)
-      ? "true"
-      : "false";
     try {
       child = spawn(
         binaryPath,
@@ -535,7 +439,6 @@ export class NativeSidecarManager {
     this.port = null;
     this.protocolVersion = null;
     this.pythonPluginHostConfigured = false;
-    this.pythonPluginHostError = null;
     return this.getInfo();
   }
 

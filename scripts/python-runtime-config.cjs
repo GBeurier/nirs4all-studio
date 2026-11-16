@@ -18,19 +18,19 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
   }),
 });
 
-// The managed runtime is a bounded Rust -> Python stdio plugin host. Keep its
-// package list exact and intentionally small: Python HTTP/control-plane
-// dependencies live in python-http-runtime-config.cjs, which is source/dev only.
-const PLUGIN_DISTRIBUTION_VERSION = recommendedConfig.nirs4all;
-// Exact public SDK and owner pins; each bundled host is verified by the bake.
-// These selections do not attest an installed or packaged runtime.
+// recommended-config.json `required` is the single source for nirs4all and its
+// owner packages: `range` is what an environment must satisfy, `install` is the
+// exact qualified cohort Studio installs. Everything below is derived from it.
+const REQUIRED_PACKAGES = Object.freeze(recommendedConfig.required.map((spec) => Object.freeze({ ...spec })));
+const REQUIRED_NIRS4ALL = REQUIRED_PACKAGES.find((spec) => spec.name === "nirs4all");
+const PLUGIN_DISTRIBUTION_VERSION = REQUIRED_NIRS4ALL.install;
+const PLUGIN_DISTRIBUTION_REQUIREMENT = REQUIRED_NIRS4ALL.range;
+// Accepted ranges, as requirement strings (`name` alone when any version is accepted).
+const REUSABLE_RUNTIME_PACKAGES = Object.freeze(REQUIRED_PACKAGES.map((spec) => `${spec.name}${spec.range}`));
+// Exact pins of the historical packaged runtime bake: the owner cohort plus the
+// extras that bake installed. Only the build scripts still read these.
 const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
-  "nirs4all-core==0.5.0",
-  "dag-ml==0.4.0",
-  "dag-ml-data==0.2.16",
-  "nirs4all-io==0.3.1",
-  "nirs4all-methods==1.3.15",
-  "nirs4all-formats==0.2.16",
+  ...REQUIRED_PACKAGES.filter((spec) => spec !== REQUIRED_NIRS4ALL).map((spec) => `${spec.name}==${spec.install}`),
   "pyarrow==25.0.1",
   "shap==0.47.1",
   "matplotlib==3.10.1",
@@ -39,24 +39,6 @@ const PLUGIN_SUPPORT_PACKAGES = Object.freeze([
 const PLUGIN_HOST_PACKAGES = Object.freeze([
   `nirs4all==${PLUGIN_DISTRIBUTION_VERSION}`,
   ...PLUGIN_SUPPORT_PACKAGES,
-]);
-// Custom and managed environments accept version ranges; only the bundled
-// runtime is pinned (and attested) exactly. Studio talks to nirs4all through
-// named, schema-versioned callables. The minimum is the chosen current
-// qualified cohort floor; older SDK patch releases are not admitted.
-// The Rust sidecar enforces the same range (scientific_cpython.rs).
-const [PLUGIN_DISTRIBUTION_MAJOR, PLUGIN_DISTRIBUTION_MINOR] = PLUGIN_DISTRIBUTION_VERSION.split(".").map(Number);
-const PLUGIN_DISTRIBUTION_REQUIREMENT =
-  `>=${PLUGIN_DISTRIBUTION_VERSION},<${PLUGIN_DISTRIBUTION_MAJOR}.${PLUGIN_DISTRIBUTION_MINOR + 1}`;
-// nirs4all-io and nirs4all-methods follow nirs4all's own declared ranges; the
-// native Methods ABI is checked separately when an environment is validated.
-// The same specs drive the compatibility check and "Install required versions",
-// where pip resolves io/methods within these ranges.
-const REUSABLE_RUNTIME_PACKAGES = Object.freeze([
-  `nirs4all${PLUGIN_DISTRIBUTION_REQUIREMENT}`,
-  "nirs4all-io>=0.3.0,<0.4",
-  "nirs4all-methods>=1.3.15,<2",
-  "nirs4all-formats",
 ]);
 // Native ABI exposed by nirs4all-methods (n4m.abi_version()[:2]).
 const REQUIRED_METHODS_ABI = Object.freeze([2, 22]);
@@ -338,6 +320,7 @@ function resolveProfileForFlavor(flavor, platform = process.platform) {
 const MANAGED_RUNTIME_PACKAGES = PLUGIN_HOST_PACKAGES;
 
 module.exports = {
+  REQUIRED_PACKAGES,
   REUSABLE_RUNTIME_PACKAGES,
   assertProfileSupportedOnPlatform,
   LEGACY_FLAVOR_TO_PROFILE,

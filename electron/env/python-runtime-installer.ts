@@ -1,11 +1,7 @@
 /**
- * Stateless installer primitives for provisioning the managed Python runtime:
- * downloading the python-build-standalone archive, extracting it, and clearing
- * the macOS Gatekeeper quarantine attribute.
- *
- * These are free functions with no dependency on EnvManager state. The
- * stateful orchestration (status transitions, venv creation, package install,
- * settings persistence) stays on EnvManager.setup(), which composes these.
+ * Stateless primitives for obtaining the python-build-standalone runtime of a
+ * Studio environment: downloading the archive, extracting it, and clearing the
+ * macOS Gatekeeper quarantine attribute. `provisioning.ts` composes them.
  */
 
 import { execFile } from "node:child_process";
