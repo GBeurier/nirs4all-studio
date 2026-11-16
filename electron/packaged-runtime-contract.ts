@@ -189,8 +189,9 @@ function hasValidPlatformSignature(
 /**
  * Verify the product-owned Rust backend before spawn, and that the packaged
  * application still carries what environment setup needs: the shipped uv, the
- * document adapters and the required packages (embedded wheels, or on macOS
- * the description of the release asset that carries them). Python itself is
+ * document adapters and, in Windows and Linux installers, the embedded wheels
+ * of the required packages. The macOS application carries no wheels: it
+ * installs the required packages from the package index. Python itself is
  * never part of the package.
  */
 export function verifyPackagedRuntimeContract({
@@ -304,23 +305,15 @@ export function verifyPackagedRuntimeContract({
   if (!fs.existsSync(uvPath)) {
     throw new Error(`Packaged uv not found: ${uvPath}`);
   }
+  const wheelsPath = path.join(backendRoot, "wheels");
   if (platform === "darwin") {
-    const manifestPath = path.join(backendRoot, "wheelhouse.json");
-    let manifest: Record<string, unknown> = {};
-    try {
-      manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
-    } catch {
-      // Reported below with the missing-field case.
+    for (const unexpected of [wheelsPath, path.join(backendRoot, "wheelhouse.json")]) {
+      if (fs.existsSync(unexpected)) {
+        throw new Error(`A macOS package carries no required wheels; unexpected: ${unexpected}`);
+      }
     }
-    if (
-      typeof manifest.url !== "string" || !/^https:\/\/\S+$/.test(manifest.url) ||
-      typeof manifest.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(manifest.sha256) ||
-      typeof manifest.filename !== "string" || !manifest.filename.endsWith(".tar.gz")
-    ) {
-      throw new Error(`Packaged wheelhouse description is missing or invalid: ${manifestPath}`);
-    }
-  } else if (!fs.existsSync(path.join(backendRoot, "wheels"))) {
-    throw new Error(`Packaged wheels not found: ${path.join(backendRoot, "wheels")}`);
+  } else if (!fs.existsSync(wheelsPath)) {
+    throw new Error(`Packaged wheels not found: ${wheelsPath}`);
   }
   const adaptersPath = path.join(backendRoot, "adapters", "studio_document_adapters");
   if (!fs.existsSync(adaptersPath)) {

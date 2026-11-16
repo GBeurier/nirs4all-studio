@@ -54,14 +54,10 @@ function requireCanonicalFile(filePath, label) {
   return resolved;
 }
 
+/** macOS is supported on Apple Silicon only. */
 function normalizeMacArch(arch) {
-  if (typeof arch === "string") {
-    if (["x64", "arm64"].includes(arch)) return arch;
-    throw new Error(`Unsupported macOS attested runtime architecture: ${arch}`);
-  }
-  const { Arch } = require("builder-util");
-  const normalized = Arch[arch];
-  if (!["x64", "arm64"].includes(normalized)) {
+  const normalized = typeof arch === "string" ? arch : require("builder-util").Arch[arch];
+  if (normalized !== "arm64") {
     throw new Error(`Unsupported macOS attested runtime architecture: ${String(normalized)}`);
   }
   return normalized;
@@ -121,20 +117,12 @@ async function resolveElectronBuilderSigningIdentity(
   }
   if (identity) return identity.hash || identity.name;
 
-  const arch = normalizeMacArch(context.arch);
-  if (arch === "arm64" && !context.packager.forceCodeSigning) return "-";
-  if (
-    context.packager.forceCodeSigning ||
-    qualifier ||
-    keychainFile ||
-    process.env.CSC_LINK ||
-    process.env.CSC_NAME
-  ) {
-    throw new Error(
-      "macOS application signing was requested but no identity can pre-sign the attested runtime",
-    );
-  }
-  return null;
+  normalizeMacArch(context.arch);
+  // Without an identity, electron-builder signs an Apple Silicon application ad hoc.
+  if (!context.packager.forceCodeSigning) return "-";
+  throw new Error(
+    "macOS application signing was requested but no identity can pre-sign the attested runtime",
+  );
 }
 
 function resolveInheritedEntitlements(context, signingIdentity) {

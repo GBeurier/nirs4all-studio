@@ -17,7 +17,7 @@ const catalogueFile = require("../../recommended-config.json") as { nirs4all: st
 describe("package catalogue", () => {
   it("requires nirs4all and its owner packages, each installable within its own range", () => {
     expect(REQUIRED_PACKAGES.map((spec) => spec.name)).toEqual([
-      "nirs4all", "nirs4all-core", "dag-ml", "dag-ml-data", "nirs4all-io", "nirs4all-methods", "nirs4all-formats",
+      "nirs4all", "nirs4all-core", "dag-ml", "dag-ml-data", "nirs4all-io", "nirs4all-methods",
     ]);
     for (const spec of REQUIRED_PACKAGES) {
       expect(versionSatisfies(spec.install, spec.range), `${spec.name} ${spec.install} within '${spec.range}'`).toBe(true);
@@ -37,7 +37,9 @@ describe("package catalogue", () => {
       expect(spec.description, spec.name).toBeTruthy();
       expect(versionSatisfies(spec.recommended, spec.min), `${spec.name} ${spec.recommended} meets '${spec.min}'`).toBe(true);
     }
-    expect(RECOMMENDED_PACKAGES.find((spec) => spec.name === "torch")).toMatchObject({ defaultInstall: true, recommended: "2.6.0" });
+    // PyTorch is installed on request, when a neural-network model is selected.
+    expect(RECOMMENDED_PACKAGES.find((spec) => spec.name === "torch")).toMatchObject({ defaultInstall: false, recommended: "2.6.0" });
+    expect(RECOMMENDED_PACKAGES.find((spec) => spec.name === "xgboost")).toMatchObject({ defaultInstall: true, recommended: "3.0.0" });
     expect(RECOMMENDED_PACKAGES.find((spec) => spec.name === "autogluon")).toMatchObject({ defaultInstall: false, python: "<3.13" });
   });
 

@@ -380,22 +380,6 @@ async function createWindow() {
   });
 }
 
-// IPC Handler for update-triggered app quit
-// After apply_webapp_update launches the updater script (which waits for our PID
-// to die), we quit so it can proceed with the file copy and relaunch.
-ipcMain.handle("app:quitForUpdate", () => {
-  console.log("Quitting for update — updater script will relaunch the app");
-  // Small delay so the IPC response reaches the renderer before we exit
-  setTimeout(() => app.quit(), 500);
-  // Hard deadline: if the normal quit flow gets stuck (before-quit handler,
-  // backend stop, window close), force-exit so the updater script can proceed.
-  setTimeout(() => {
-    console.error("Force exiting — normal quit did not complete within 10 s");
-    process.exit(0);
-  }, 10_000);
-  return { success: true };
-});
-
 // IPC Handlers for file dialogs
 ipcMain.handle("workspace:defaultLocation", () => path.join(resolveDocumentsDirectory(name => app.getPath(name)), "nirs4all Studio"));
 

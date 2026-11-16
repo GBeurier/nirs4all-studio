@@ -15,8 +15,10 @@ const repo = path.resolve(__dirname, "..");
 const image = process.argv[2] || "nirs4all-studio:native-ci";
 const sidecarIndex = process.argv.indexOf("--sidecar");
 const sidecar = sidecarIndex < 0 ? null : path.resolve(process.argv[sidecarIndex + 1]);
-const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "studio-docker-access-"));
 const containers = [];
+let temporary = null;
+/** The renderer settles within a few seconds; a page still busy after this never will. */
+const NETWORK_IDLE_TIMEOUT_MS = 30000;
 const credential = "studio-access-test-password";
 const authorization = `Basic ${Buffer.from(`tester:${credential}`).toString("base64")}`;
 const docker = (...args) => execFileSync("docker", args, { encoding: "utf8", timeout: 30000 });
@@ -73,7 +75,56 @@ function websocketStatus(url, headers) {
   });
 }
 
+/** The browser's own account of the page's requests: those that failed, with its reason, and those still in flight. */
+function trackBrowserRequests(page) {
+  const describe = (request) => `${request.method()} ${new URL(request.url()).pathname}`;
+  const pending = new Set();
+  const failed = [];
+  page.on("request", (request) => pending.add(request));
+  page.on("requestfinished", (request) => pending.delete(request));
+  page.on("requestfailed", (request) => {
+    pending.delete(request);
+    failed.push(`${describe(request)}: ${request.failure()?.errorText ?? "unknown"}`);
+  });
+  const list = (entries) => entries.join("; ") || "none recorded";
+  return { failed: () => list(failed), pending: () => list([...pending].map(describe)) };
+}
+
+/** Authenticated navigation, fetch, JSON mutation and WebSocket from an actual page. */
+async function browserAccessChecks(page, url, networkIdleTimeout = NETWORK_IDLE_TIMEOUT_MS) {
+  // A probe that fails only says "Failed to fetch": keep the browser's own reason for every failed request.
+  const requests = trackBrowserRequests(page);
+  try {
+    assert.equal((await page.goto(url)).status(), 200);
+    // `goto` returns at the load event, when the renderer starts its own burst of API requests and opens
+    // its WebSocket. The probes below are about access control, not about that startup: run them once
+    // the page has no request in flight, so they never share connections with it.
+    try {
+      await page.waitForLoadState("networkidle", { timeout: networkIdleTimeout });
+    } catch (error) {
+      if (error.name !== "TimeoutError") throw error;
+      throw new Error(`The page still had requests in flight after ${networkIdleTimeout} ms (network idle timed out). `
+        + `Pending browser requests: ${requests.pending()}`, { cause: error });
+    }
+    assert.equal(await page.evaluate(() => fetch("/api/health").then((response) => response.status)), 200);
+    assert.equal(await page.evaluate(() => fetch("/api/app/favorites", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pipeline_id: "browser-auth-probe" }),
+    }).then((response) => response.status)), 200);
+    assert.equal(await page.evaluate(() => new Promise((resolve, reject) => {
+      const socket = new WebSocket(`${location.origin.replace("http:", "ws:")}/ws`);
+      const timeout = setTimeout(() => reject(new Error("Browser WebSocket timeout")), 5000);
+      socket.onopen = () => { clearTimeout(timeout); socket.close(); resolve("connected"); };
+      socket.onerror = () => { clearTimeout(timeout); reject(new Error("Browser WebSocket refused")); };
+    })), "connected");
+  } catch (error) {
+    // A new error: the stack of the original one was built with its first message, and the stack is what is printed.
+    throw new Error(`${error.message}\nFailed browser requests: ${requests.failed()}`, { cause: error });
+  }
+}
+
 async function main() {
+  temporary = fs.mkdtempSync(path.join(os.tmpdir(), "studio-docker-access-"));
   const missing = start("missing", []);
   for (let attempt = 0; attempt < 40; attempt++) {
     if (docker("inspect", "--format", "{{.State.Running}}", missing).trim() === "false") break;
@@ -119,19 +170,7 @@ async function main() {
       executablePath: process.env.NIRS4ALL_TEST_CHROMIUM_PATH || undefined });
     try {
       const context = await browser.newContext({ httpCredentials: { username: "tester", password: credential } });
-      const page = await context.newPage();
-      assert.equal((await page.goto(securedUrl)).status(), 200);
-      assert.equal(await page.evaluate(() => fetch("/api/health").then((response) => response.status)), 200);
-      assert.equal(await page.evaluate(() => fetch("/api/app/favorites", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pipeline_id: "browser-auth-probe" }),
-      }).then((response) => response.status)), 200);
-      assert.equal(await page.evaluate(() => new Promise((resolve, reject) => {
-        const socket = new WebSocket(`${location.origin.replace("http:", "ws:")}/ws`);
-        const timeout = setTimeout(() => reject(new Error("Browser WebSocket timeout")), 5000);
-        socket.onopen = () => { clearTimeout(timeout); socket.close(); resolve("connected"); };
-        socket.onerror = () => { clearTimeout(timeout); reject(new Error("Browser WebSocket refused")); };
-      })), "connected");
+      await browserAccessChecks(await context.newPage(), securedUrl);
       console.log("PASS actual Chromium authenticated navigation, fetch, JSON mutation and WebSocket");
     } finally {
       await browser.close();
@@ -140,12 +179,16 @@ async function main() {
   console.log(`PASS Docker access: default refusal; explicit local mode; authenticated SPA/HTTP/WS; cross-origin and public health refusal (${sidecar ? "transport-only build" : "product image"})`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-}).finally(() => {
-  for (const name of containers) {
-    try { docker("rm", "--force", name); } catch { /* Only test-owned containers. */ }
-  }
-  fs.rmSync(temporary, { recursive: true, force: true });
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  }).finally(() => {
+    for (const name of containers) {
+      try { docker("rm", "--force", name); } catch { /* Only test-owned containers. */ }
+    }
+    if (temporary) fs.rmSync(temporary, { recursive: true, force: true });
+  });
+}
+
+module.exports = { browserAccessChecks };

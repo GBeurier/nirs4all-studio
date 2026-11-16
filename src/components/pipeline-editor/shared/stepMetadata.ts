@@ -12,6 +12,8 @@ import {
 import { stepOptions } from "../stepOptions";
 import type { PipelineStep, StepOption, StepType } from "../types";
 import { useDeepLearningAvailable } from "@/hooks/useBackendCapabilities";
+import { usePyTorchInstallPrompt } from "@/context/usePyTorchInstallPrompt";
+import { requiresPyTorch } from "@/lib/pytorchRequirement";
 
 export type StepMetadataRegistry = Pick<
   NodeRegistryContextValue,
@@ -41,9 +43,13 @@ export interface StepMetadataCatalog {
 
 export interface StepMetadataCatalogOptions {
   tierLevel?: TierLevel;
-  /** Hide deep-learning operators (used in pure-sklearn "lite" builds where
-   *  torch/tensorflow/jax are not installed). */
+  /** Hide the deep-learning operators that need a framework (torch/tensorflow/jax)
+   *  when none is installed. A registry node that declares no package (the
+   *  scikit-learn MLP) needs none and stays listed. */
   hideDeepLearning?: boolean;
+  /** Keep PyTorch operators listed while deep learning is hidden: Studio can
+   *  install PyTorch when one of them is picked. */
+  pyTorchInstallable?: boolean;
 }
 
 const REGISTRY_LEGACY_ALIAS_FALLBACKS: Partial<Record<StepType, Record<string, string[]>>> = {
@@ -133,6 +139,7 @@ export function nodeDefinitionToStepOption(
     classPath: node.classPath,
     category: node.category,
     isDeepLearning: node.isDeepLearning,
+    requires: node.requires,
     isAdvanced: node.isAdvanced,
     tags: node.tags,
     tier: node.tier,
@@ -148,6 +155,9 @@ export function createStepMetadataCatalog(
   options: StepMetadataCatalogOptions = {},
 ): StepMetadataCatalog {
   const optionCache = new Map<StepType, StepOption[]>();
+  // Options built from registry nodes: their `requires` is the node's complete
+  // declaration, unlike the static fallback options, which declare nothing.
+  const registryBacked = new WeakSet<StepOption>();
   const metadataCache = new Map<string, StepMetadata>();
 
   const getMergedStepOptions = (type: StepType): StepOption[] => {
@@ -162,6 +172,8 @@ export function createStepMetadataCatalog(
           nodeDefinitionToStepOption(node, getRegistryDefaultParams(registry, type, node)),
         )
       : [];
+
+    registryOptions.forEach((option) => registryBacked.add(option));
 
     const seenNames = new Set(registryOptions.map((option) => normalizeOptionName(option.name)));
     const quarantinedLegacyNames = getQuarantinedLegacyNames(type, registryNodes);
@@ -186,7 +198,12 @@ export function createStepMetadataCatalog(
       result = result.filter((option) => matchesTierLevel(option, tierLevel));
     }
     if (hideDeepLearning) {
-      result = result.filter((option) => option.isDeepLearning !== true);
+      const pyTorchInstallable = queryOptions.pyTorchInstallable ?? options.pyTorchInstallable ?? false;
+      result = result.filter((option) => (
+        option.isDeepLearning !== true
+        || (registryBacked.has(option) && !option.requires?.length)
+        || (pyTorchInstallable && requiresPyTorch(option.requires))
+      ));
     }
     return result;
   };
@@ -256,9 +273,11 @@ export function useStepMetadataCatalog(
   const tierLevel = options.tierLevel ?? prefs?.tierLevel;
   const deepLearningAvailable = useDeepLearningAvailable();
   const hideDeepLearning = options.hideDeepLearning ?? !deepLearningAvailable;
+  const { canInstall } = usePyTorchInstallPrompt();
+  const pyTorchInstallable = options.pyTorchInstallable ?? canInstall;
 
   return useMemo(
-    () => createStepMetadataCatalog(registry, { tierLevel, hideDeepLearning }),
-    [registry, tierLevel, hideDeepLearning],
+    () => createStepMetadataCatalog(registry, { tierLevel, hideDeepLearning, pyTorchInstallable }),
+    [registry, tierLevel, hideDeepLearning, pyTorchInstallable],
   );
 }

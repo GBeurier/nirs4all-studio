@@ -17,8 +17,8 @@ or the one Studio created for them. The selection is one persisted value:
 Installers ship no Python. They ship the tools Studio needs to create and
 maintain that environment: `uv`, the document adapters and the wheels of the
 required packages (see [PACKAGING.md](../PACKAGING.md)). The macOS application
-(Apple Silicon only) embeds no wheels: it carries `wheelhouse.json`, which
-names the release asset that holds them.
+(Apple Silicon only) embeds no wheels: Studio installs its required packages
+from the package index.
 
 The state of the environment is derived from a package listing (distribution
 metadata). Studio never imports a package to decide whether an environment is
@@ -31,8 +31,8 @@ versions for the Electron main process, the build scripts and the Rust sidecar.
 
 | Block | Entry shape | Meaning |
 |---|---|---|
-| `required` | `{ name, range, install }` | Packages Studio cannot run without: `nirs4all`, `nirs4all-core`, `dag-ml`, `dag-ml-data`, `nirs4all-io`, `nirs4all-methods`, `nirs4all-formats`. `range` is the accepted version specifier (may be empty); `install` is the exact version Studio installs. |
-| `optional` | `min`, `recommended`, `category`, `description`, `default_install`, optional `python` | The recommended catalogue. Each package is a per-package choice; `default_install` preselects it when Studio creates an environment. |
+| `required` | `{ name, range, install }` | Packages Studio cannot run without: `nirs4all`, `nirs4all-core`, `dag-ml`, `dag-ml-data`, `nirs4all-io`, `nirs4all-methods`. `range` is the accepted version specifier (may be empty); `install` is the exact version Studio installs. |
+| `optional` | `min`, `recommended`, `category`, `description`, `default_install`, optional `python`, optional `offline_payload` | The recommended catalogue. Each package is a per-package choice; `default_install` preselects it when Studio creates an environment. PyTorch is not preselected: Studio offers it when the user selects a neural-network model. `offline_payload` keeps a package that is not installed by default in the offline installers (PyTorch), so that it can be installed later without network access. |
 
 Two rules follow from the `required` shape:
 
@@ -60,8 +60,7 @@ mechanics live in `electron/env/`:
 | `env-detection.ts` | One inventory per candidate (four at a time), sorted and de-duplicated by environment root, cached in memory for 30 seconds. |
 | `inventory.ts` | One subprocess per interpreter (`python -I -B -c <probe>`) that lists distributions, editable installs, the PEP 668 marker and whether the package directory is writable; `evaluateInventory` turns the listing into a `PythonEnvReport`. |
 | `inventory-cache.ts` | `<userData>/python-inventory.json`: the inventory of the selected environment, keyed by interpreter, required catalogue and environment fingerprint, so an ordinary launch spawns no Python. |
-| `uv.ts` | Locates `uv` and the required wheels (shipped, or the downloaded wheelhouse); runs `uv venv` and `uv pip install`. |
-| `wheelhouse.ts` | macOS: downloads, verifies and caches the wheel archive named by `wheelhouse.json`. |
+| `uv.ts` | Locates `uv` and the shipped wheels; runs `uv venv` and `uv pip install`. |
 | `provisioning.ts` | Creates a Studio environment. |
 | `python-runtime-installer.ts` | Downloads, extracts and un-quarantines the python-build-standalone archive. |
 | `runtime-paths.ts` | Layout of a Studio environment and classification of an environment root (`studio`, `conda`, `venv`, `system`). |
@@ -78,20 +77,17 @@ target interpreter with `--python`, sets `UV_LINK_MODE=copy` and
 `UV_NATIVE_TLS=1` (system certificate store), and streams its output to the
 install log.
 
-`resources/backend/wheels/` is passed as `--find-links`. Where the application
-carries `resources/backend/wheelhouse.json` instead (macOS), `wheelhouse.ts`
-downloads the archive it names on first use, verifies its SHA-256, extracts it
-to `userData/wheelhouse/<sha256>/wheels` and passes that directory; without
-that archive Studio does not fall back to the package index alone, because
-some required packages publish no macOS wheel there.
-`NIRS4ALL_WHEELHOUSE_ARCHIVE` names a local copy of the archive, verified the
-same way. When the installation
+`resources/backend/wheels/` is passed as `--find-links`. A macOS application
+has no such directory: the same exact versions of the required packages are
+then resolved from the package index, where each of them publishes a macOS
+arm64 wheel. When the installation
 carries the offline payload (`resources/backend/offline/`), its `wheels/`
 directory is a second `--find-links` source and installs are first attempted
 with `--offline --no-index`; what the shipped wheels cannot satisfy is then
-requested from the package index. `torch` is installed with
-`--torch-backend auto` when it comes from the package index; offline wheels
-are used as shipped.
+requested from the package index. `torch` is the exception, because the
+payload carries its CPU build only: it is resolved on its own, from the
+package index first with `--torch-backend auto`, and from the offline wheels,
+used as shipped, when that attempt fails.
 
 ### Rust sidecar
 
@@ -236,7 +232,7 @@ or creates an environment once.
 | Deployment | Environment | Managed by |
 |---|---|---|
 | Desktop installer | Selected or created by the user | Electron (`PythonEnvApi`) |
-| Desktop offline installer (Windows, Linux) | Same; creation, required installs and the default recommended packages work without network | Electron (`PythonEnvApi`) |
-| Desktop installer on macOS | Same; the first required install downloads the wheels of the release | Electron (`PythonEnvApi`) |
+| Desktop offline installer (Windows, Linux) | Same; creation, required installs, the default recommended packages and PyTorch (CPU) work without network | Electron (`PythonEnvApi`) |
+| Desktop installer on macOS | Same; required packages are installed from the package index | Electron (`PythonEnvApi`) |
 | Docker image | `/opt/nirs4all/python-env/{python,venv}`, built at image build time by `scripts/provision-environment.cjs` | The image |
 | Browser development (`npm run dev`) | None owned by the renderer | The server it is pointed at |

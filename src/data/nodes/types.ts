@@ -334,6 +334,8 @@ export interface NodeDefinition {
   };
   /** Shorthand implementation references for multi-backend operators. */
   implementationRefs?: OperatorImplementationRef[];
+  /** Optional Python distributions the operator imports, e.g. ["torch"]. */
+  requires?: string[];
 
   // === Display ===
   /** Short description for tooltips */

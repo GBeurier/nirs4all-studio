@@ -81,14 +81,13 @@ transport, and registered read/cancel aliases for native jobs:
 - `GET /ws`, `GET /ws/job/:job_id`, and `GET /ws/training/:job_id` accept
   bounded RFC 6455 upgrades on the sidecar port. Electron does not select them
   yet; the two job-specific aliases auto-subscribe to `job:<job_id>`.
-- `GET /api/training/:job_id`, `GET /api/automl/:job_id`, and
-  `GET /api/updates/webapp/download-status/:job_id` read authoritative native
-  job state in the frozen legacy response shapes.
+- `GET /api/training/:job_id` and `GET /api/automl/:job_id` read
+  authoritative native job state in the frozen legacy response shapes.
 - `POST /api/training/:job_id/stop`, `POST /api/automl/:job_id/stop`,
-  `POST /api/runs/execution-job-records/:job_id/cancel`,
-  `POST /api/runs/:run_id/stop`, and
-  `POST /api/updates/webapp/download-cancel/:job_id` share the same native
-  cooperative-cancellation state and event stream.
+  `POST /api/runs/execution-job-records/:job_id/cancel`, and
+  `POST /api/runs/:run_id/stop` share the same native cooperative-cancellation
+  state and event stream. Studio creates no update download job, so the frozen
+  `download-status` and `download-cancel` paths are not served.
 - `GET /api/runs/execution-job-records/:job_id` and
   `GET /api/runs/:run_id/execution-job-record` read the active workspace's
   bounded immutable `execution_job_record.json` snapshot and enrich known runs
@@ -209,7 +208,7 @@ durable run-record reads. `GET /api/runs/execution-job-records/:job_id` and
 `GET /api/runs/:run_id/execution-job-record` use the dedicated
 `studio_execution_job_record_v1` bounded reader plus Store v5 run identity.
 The tested mapping table in `job_http.rs` prevents those reads from being
-confused with the three polling and five cancellation aliases. Jobs accepted
+confused with the two polling and four cancellation aliases. Jobs accepted
 through the explicit run-group transport are the narrow exception: the same
 Rust runtime persists their state transitions through the dedicated writer,
 and the reader remains the authoritative bounded projection.
@@ -415,11 +414,10 @@ must already exist, the redirect is stored at the platform-default path, and
 the response always declares `requires_restart: true`. The sidecar never reads
 or writes workspace or dataset contents.
 
-Update preferences remain in the legacy `update_settings.yaml` location. Until
-the network update routes are native, the legacy update manager detects the
-sidecar's atomic replacement of that file and invalidates its cached GitHub
-release when the prerelease setting changed; no restart or Python HTTP fallback
-is required for a native settings update to take effect.
+Update preferences are stored in `update_settings.yaml`. The native update
+routes read them on every call and drop the cached GitHub release when the
+repository or the prerelease setting changed; no restart is required for a
+settings update to take effect.
 
 `GET /api/workspaces` reads the linked-workspace records already stored in
 `app_settings.json`. It repairs only absent or duplicate record IDs to retain
@@ -479,7 +477,7 @@ Defined codes are `invalid_request` (false), `route_not_found` (false),
 (false), `request_timeout` (false), and `websocket_upgrade_required` (false).
 `details` is an object reserved for machine-readable context. Known routes
 return `405` with an `Allow` header when the method is wrong.
-The eight frozen `/api/*` job aliases retain the legacy FastAPI `detail`
+The six frozen `/api/*` job aliases retain the legacy FastAPI `detail`
 error shape so existing renderer error handling does not change.
 
 Job IDs are opaque `job-r1-*` identifiers. R1 records are control-plane
@@ -523,7 +521,7 @@ contract. The bounded registry, HTTP state/cancellation adapters, and real RFC
 terminal immediately and emits one `job_failed`; running cancellation stays
 cooperative until the selected worker acknowledges it. Scientific submission
 transport remains fail-closed until an executor is selected. Product renderer
-transport selection is mandatory and Rust-owned. Once one of these eight
+transport selection is mandatory and Rust-owned. Once one of these six
 requests is selected native, neither Uvicorn nor FastAPI may be retried.
 
 ## Coverage and rollback
@@ -534,7 +532,7 @@ idempotent cancellation, bounded Python plugin-host admission, the
 Rust-owned Python-bridge system routes plus native network state, native app preferences/favorites
 and config-path selection, native system-status catalogue state, plus the linked-workspace catalogue and its native
 activation/unlink mutations,
-all-in-one binary packaging, and Electron's explicit loopback-only lifecycle
+installer packaging of the sidecar binary, and Electron's explicit loopback-only lifecycle
 management, plus bounded RFC 6455 upgrades, three native job-state reads, five
 cancellation aliases, and two immutable durable execution-record reads on the
 sidecar port. Missing: every other legacy `/api/*` route, all

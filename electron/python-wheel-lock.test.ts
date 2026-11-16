@@ -10,7 +10,7 @@ interface Lock {
   target: string;
   python: string;
   rules: { platform: string; source_builds: string[]; macos_deployment_target?: string };
-  requirements: { required: string[]; recommended?: string[]; image_extras?: string[] };
+  requirements: { required: string[]; recommended?: string[]; offline_extras?: string[]; image_extras?: string[] };
   packages: LockEntry[];
   image_packages?: LockEntry[];
 }
@@ -18,13 +18,12 @@ interface Lock {
 const require = createRequire(import.meta.url);
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const locks = require("../scripts/python-wheel-lock.cjs") as {
-  TARGETS: Record<string, { offlineInstaller?: boolean; imageExtras?: string[]; remoteWheelhouse?: string }>;
+  TARGETS: Record<string, { embeddedWheels?: boolean; imageExtras?: string[] }>;
   lockPath(key: string, root?: string): string;
+  lockedOfflineNames(lock: Lock, set: "recommended" | "offline_extras"): string[];
   lockedPackages(lock: Lock, set: "required" | "offline" | "image"): LockEntry[];
-  lockedRecommendedNames(lock: Lock): string[];
   parseCompiledRequirements(text: string): Array<{ name: string; version: string; hashes: Set<string>; index: string | null }>;
   readLock(key: string, root?: string): Lock;
-  remoteWheelhouseAssetName(key: string, version: string): string;
   targetKey(platform: string, arch: string): string;
   wheelRank(filename: string, key: string): number;
 };
@@ -35,11 +34,15 @@ const uv = require("../scripts/fetch-uv.cjs") as {
 const runtime = require("../scripts/python-runtime-config.cjs") as { PYTHON_VERSION: string };
 const catalogue = require("../recommended-config.json") as {
   required: Array<{ name: string; install: string }>;
-  optional: Record<string, { recommended: string; default_install?: boolean }>;
+  optional: Record<string, { recommended: string; default_install?: boolean; offline_payload?: boolean }>;
 };
 const targets = Object.keys(locks.TARGETS);
 const defaultRecommended = Object.entries(catalogue.optional)
   .filter(([, spec]) => spec.default_install === true)
+  .map(([name, spec]) => `${name}==${spec.recommended}`);
+// Carried by the offline installers although Studio installs them on request only.
+const offlineExtras = Object.entries(catalogue.optional)
+  .filter(([, spec]) => spec.offline_payload === true && spec.default_install !== true)
   .map(([name, spec]) => `${name}==${spec.recommended}`);
 const temporary: string[] = [];
 
@@ -82,7 +85,8 @@ describe("python wheel locks", () => {
     const target = locks.TARGETS[key];
     expect(lock.python).toBe(runtime.PYTHON_VERSION.split(".").slice(0, 2).join("."));
     expect(lock.requirements.required).toEqual(catalogue.required.map((spec) => `${spec.name}==${spec.install}`));
-    expect(lock.requirements.recommended).toEqual(target.offlineInstaller ? defaultRecommended : undefined);
+    expect(lock.requirements.recommended).toEqual(target.embeddedWheels ? defaultRecommended : undefined);
+    expect(lock.requirements.offline_extras).toEqual(target.embeddedWheels ? offlineExtras : undefined);
     expect(lock.requirements.image_extras).toEqual(target.imageExtras?.map((name) => `${name}==${catalogue.optional[name].recommended}`));
 
     const required = locks.lockedPackages(lock, "required");
@@ -99,9 +103,13 @@ describe("python wheel locks", () => {
         else expect(lock.rules.source_builds, entry.filename).toContain(entry.name);
       }
     }
-    if (target.offlineInstaller) {
+    if (target.embeddedWheels) {
       expect(locks.lockedPackages(lock, "offline")).toHaveLength(lock.packages.length - required.length);
-      expect(locks.lockedRecommendedNames(lock)).toEqual(defaultRecommended.map((spec) => spec.split("==")[0]));
+      expect(locks.lockedOfflineNames(lock, "recommended")).toEqual(defaultRecommended.map((spec) => spec.split("==")[0]));
+      expect(locks.lockedOfflineNames(lock, "offline_extras")).toEqual(["torch"]);
+      // PyTorch is not installed by default, yet its CPU wheel stays in the offline payload.
+      expect(defaultRecommended.some((spec) => spec.startsWith("torch=="))).toBe(false);
+      expect(locks.lockedPackages(lock, "offline").find((entry) => entry.name === "torch")?.version).toBe(`${catalogue.optional.torch.recommended}+cpu`);
     } else {
       // No offline installer: only the required cohort itself is shipped.
       expect(lock.packages).toHaveLength(required.length);
@@ -119,12 +127,16 @@ describe("python wheel locks", () => {
     expect(() => locks.lockedPackages(locks.readLock("win32-x64"), "image")).toThrow("has no image closure");
   });
 
-  it("names the release asset of the only target that downloads its required wheels", () => {
-    expect(locks.remoteWheelhouseAssetName("darwin-arm64", "1.2.3")).toBe("nirs4all.Studio-1.2.3-mac-arm64-wheels.tar.gz");
-    expect(() => locks.remoteWheelhouseAssetName("linux-x64", "1.2.3")).toThrow("ships its wheels");
-    expect(locks.readLock("darwin-arm64").rules).toEqual({
-      platform: "aarch64-apple-darwin", macos_deployment_target: "12.0", source_builds: ["pyopls", "nirs4all-formats"],
-    });
+  it("proves that every required package publishes a wheel for the target that installs them from the package index", () => {
+    // The macOS application embeds no wheels: nothing is built from source and nothing is staged for it.
+    expect(locks.TARGETS["darwin-arm64"].embeddedWheels).toBeUndefined();
+    const lock = locks.readLock("darwin-arm64");
+    expect(lock.rules).toEqual({ platform: "aarch64-apple-darwin", macos_deployment_target: "12.0", source_builds: ["pyopls"] });
+    expect(lock.packages.map((entry) => entry.name).sort()).toEqual(catalogue.required.map((spec) => spec.name).sort());
+    for (const entry of lock.packages) {
+      expect(entry.filename, entry.name).toMatch(/-(?:any|macosx_\d+_\d+_(?:arm64|universal2))\.whl$/);
+    }
+    expect(catalogue.required.map((spec) => spec.name)).not.toContain("nirs4all-formats");
   });
 
   it("refuses a lock that no longer matches the catalogue, the pinned Python or the target's rules", () => {
@@ -137,6 +149,7 @@ describe("python wheel locks", () => {
       (lock: Lock) => { lock.rules.platform = "x86_64-manylinux_2_28"; },
       (lock: Lock) => { lock.rules.source_builds = []; },
       (lock: Lock) => { lock.requirements.image_extras = ["shap==0.1"]; },
+      (lock: Lock) => { lock.requirements.offline_extras = []; },
     ]) {
       const lock = JSON.parse(original) as Lock;
       change(lock);

@@ -166,7 +166,7 @@ describe("macOS attested packaged runtime", () => {
       expect(() => macRuntime.prepareMacosAttestedRuntime({
         backendRoot,
         artifactBoundaryRoot: root,
-        arch: "x64",
+        arch: "arm64",
         signingIdentity: "DEVELOPER-ID-HASH",
         signMachOImpl: () => {
           throw new Error("codesign rejected member");
@@ -265,7 +265,7 @@ describe("macOS attested packaged runtime", () => {
 
   it("uses builder's identity and fails closed when requested signing cannot resolve it", async () => {
     const baseContext = {
-      arch: "x64",
+      arch: "arm64",
       packager: {
         platformSpecificBuildOptions: {},
         codeSigningInfo: { value: Promise.resolve({ keychainFile: "/tmp/release.keychain" }) },
@@ -293,5 +293,9 @@ describe("macOS attested packaged runtime", () => {
       },
       async () => null,
     )).rejects.toThrow("no identity can pre-sign");
+    // Without an identity an Apple Silicon build is signed ad hoc; an Intel build does not exist.
+    await expect(macRuntime.resolveElectronBuilderSigningIdentity(baseContext, async () => null)).resolves.toBe("-");
+    await expect(macRuntime.resolveElectronBuilderSigningIdentity({ ...baseContext, arch: "x64" }, async () => null))
+      .rejects.toThrow("Unsupported macOS attested runtime architecture: x64");
   });
 });

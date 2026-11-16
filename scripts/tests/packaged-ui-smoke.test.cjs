@@ -18,21 +18,20 @@ async function run(change = {}) {
   fs.writeFileSync(wheel, 'fingerprinted public SDK wheel');
   const cohort = { sdk: { version: '1.4.13', wheel_sha256: finalize.sha256File(wheel) } };
   if (change.sdk) fs.writeFileSync(wheel, 'another SDK wheel');
-  if (change.remote) {
-    fs.rmSync(path.dirname(wheel), { recursive: true });
-    fs.writeFileSync(path.join(backendRoot, 'wheelhouse.json'), JSON.stringify({ filename: 'wheels.tar.gz' }));
-  }
+  // A macOS application embeds no wheels: Studio installs them from the package index.
+  const platform = change.macos ? 'darwin' : 'linux';
+  if (change.macos && !change.embedded) fs.rmSync(path.dirname(wheel), { recursive: true });
   const calls = [], module = { exports: {} };
   const env = { RELEASE_SOURCE_SHA: 'a'.repeat(40), RELEASE_VERSION: '0.15.1', NIRS4ALL_LIBRARY_REF: 'b'.repeat(40),
     GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY: 'github-observational' };
   const mocks = {
     '@electron/asar': { extractFile: () => Buffer.from(JSON.stringify({ version: '0.15.1', commit: change.source || env.RELEASE_SOURCE_SHA })) },
-    './smoke-archive-standalone.cjs': { parseArgs: () => ({ platform: 'linux', extractedRoot: root }), assertValidConfig: value => value,
+    './smoke-archive-standalone.cjs': { parseArgs: () => ({ platform, extractedRoot: root }), assertValidConfig: value => value,
       resolveLaunchLayout: () => ({ backendRoot }),
       verifyLaunchRuntimeContract: () => { calls.push('contract'); if (change.contract) throw new Error('tampered contract'); return {}; } },
     './qualification-performance.cjs': { resolvePerformancePolicy }, './finalize-release-assets.cjs': finalize,
     './verify-runtime-cohort.cjs': { verifyRuntimeCohort: () => cohort },
-    './qualify-local-packaged.cjs': { withOwnedProfile: (_profile, action) => action(),
+    './smoke-owned-profile.cjs': { withOwnedProfile: (_profile, action) => action(),
       bootstrapOwnedWorkspace: async () => { calls.push('bootstrap'); }, assertOwnedWorkspace: async () => true },
     './smoke-shap-journey.cjs': { shapJourney: async () => {
       calls.push('shap'); if (change.shap) throw new Error('SHAP regression failed');
@@ -46,7 +45,7 @@ async function run(change = {}) {
     } },
   };
   vm.runInNewContext(source, { module, exports: module.exports, require: name => Object.hasOwn(mocks, name) ? mocks[name] : require(name),
-    process: { platform: 'linux', arch: 'x64' }, console, Buffer });
+    process: { platform, arch: 'x64' }, console, Buffer });
   let error;
   try { await module.exports.main(['--output', output, '--installer', installer, '--extracted-root', root], env); }
   catch (caught) { error = caught; }
@@ -70,10 +69,12 @@ test('wrong embedded SDK refuses UI despite a valid native contract', async () =
   const result = await run({ sdk: true }); assert.match(result.error.message, /Embedded SDK wheel mismatch/);
   assert.equal(result.proof.success, false); assert.deepEqual(result.calls, ['contract']);
 });
-test('a macOS application is qualified through the wheelhouse it names instead of embedded wheels', async () => {
-  const result = await run({ remote: true }); assert.equal(result.error, undefined);
-  assert.deepEqual(result.proof.shipped_sdk, { wheelhouse: { filename: 'wheels.tar.gz' } });
+test('a macOS application embeds no wheels and is qualified on packages from the package index', async () => {
+  const result = await run({ macos: true }); assert.equal(result.error, undefined);
+  assert.deepEqual(result.proof.shipped_sdk, { source: 'package-index', version: '1.4.13' });
   assert.deepEqual(result.calls, ['contract', 'bootstrap', 'ui', 'shap']);
+  const embedded = await run({ macos: true, embedded: true });
+  assert.match(embedded.error.message, /must not embed wheels/); assert.deepEqual(embedded.calls, ['contract']);
 });
 test('contract failure remains blocking for hosted builds', async () => {
   const result = await run({ contract: true }); assert.match(result.error.message, /tampered contract/);

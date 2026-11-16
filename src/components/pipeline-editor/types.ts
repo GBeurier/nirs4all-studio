@@ -357,6 +357,7 @@ export interface StepOption {
   framework?: string;
   category?: string;        // Subcategory for palette organization
   isDeepLearning?: boolean; // Flag for DL models (show training config)
+  requires?: string[];      // Optional Python distributions the operator imports
   isAdvanced?: boolean;     // Flag for advanced/expert options
   tags?: string[];          // Searchable tags
   tier?: "core" | "standard" | "advanced"; // Visibility tier for filtering

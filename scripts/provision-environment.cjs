@@ -1,18 +1,17 @@
 /**
  * Create a Python environment the way Studio does on first launch: the pinned
  * Python runtime, a virtual environment made by the shipped uv, and the
- * required packages installed from the shipped wheels. With an offline payload
- * nothing is fetched from the network. The packaged-application smokes and the
- * Docker image use it.
+ * required packages installed from the shipped wheels (on macOS, which ships
+ * none, from the package index). With an offline payload nothing is fetched
+ * from the network. The packaged-application smokes and the Docker image use
+ * it.
  *
  * Usage:
  *   node scripts/provision-environment.cjs --backend-root <directory> --env-dir <directory> [--recommended <name,...>]
  *
  * `--backend-root` is the application's `resources/backend` (or backend-dist/):
- * it holds tools/uv, wheels/ and, for the offline variant, offline/. A macOS
- * application holds wheelhouse.json instead of wheels/: the archive it names
- * is taken from `NIRS4ALL_WHEELHOUSE_ARCHIVE` (a local copy, for a release
- * that is not published yet) or downloaded, and verified either way.
+ * it holds tools/uv, on Windows and Linux wheels/ and, for the offline
+ * variant, offline/.
  */
 
 const { spawnSync } = require("node:child_process");
@@ -21,7 +20,7 @@ const path = require("node:path");
 const catalogue = require("../recommended-config.json");
 const { uvExecutableName } = require("./fetch-uv.cjs");
 const { getArchiveFilename, getArchiveSha256, getDownloadUrl } = require("./python-runtime-config.cjs");
-const { downloadVerified, sha256File } = require("./verified-download.cjs");
+const { downloadVerified } = require("./verified-download.cjs");
 
 const COMMAND_TIMEOUT_MS = 20 * 60_000;
 
@@ -40,22 +39,6 @@ function extractTarball(archive, destination) {
   run("tar", gnuTarOnWindows ? [...args, "--force-local"] : args);
 }
 
-/** The required wheels: shipped in `wheels/`, or the verified archive named by `wheelhouse.json`. */
-async function requiredWheelhouse(backendRoot, workDir) {
-  const shipped = path.join(backendRoot, "wheels");
-  if (fs.existsSync(shipped)) return shipped;
-  const manifestPath = path.join(backendRoot, "wheelhouse.json");
-  if (!fs.existsSync(manifestPath)) throw new Error(`Missing ${shipped} and ${manifestPath}`);
-  const { url, sha256, filename } = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  const local = process.env.NIRS4ALL_WHEELHOUSE_ARCHIVE?.trim();
-  const extracted = path.join(workDir, ".wheelhouse");
-  fs.mkdirSync(extracted, { recursive: true });
-  const archive = local || await downloadVerified(url, path.join(extracted, filename), sha256);
-  if (sha256File(archive) !== sha256) throw new Error(`${archive} is not the wheelhouse named by ${manifestPath}`);
-  extractTarball(archive, extracted);
-  return path.join(extracted, "wheels");
-}
-
 function recommendedSpecs(names) {
   return names.map((name) => {
     const spec = catalogue.optional[name];
@@ -67,7 +50,9 @@ function recommendedSpecs(names) {
 /**
  * Create `<envDir>/python` and `<envDir>/venv`, install the required cohort at
  * its catalogue versions and the `recommended` catalogue packages at their
- * recommended versions, and return the environment's interpreter.
+ * recommended versions, and return the environment's interpreter. `onRequest`
+ * names catalogue packages installed afterwards in a resolver call of their
+ * own, the way Studio adds a package to an existing environment.
  */
 async function provisionEnvironment({
   backendRoot,
@@ -75,13 +60,16 @@ async function provisionEnvironment({
   platform = process.platform,
   arch = process.arch,
   recommended = [],
+  onRequest = [],
 }) {
   const uv = path.join(backendRoot, "tools", uvExecutableName(platform));
   const offlineRoot = path.join(backendRoot, "offline");
   const offline = fs.existsSync(offlineRoot);
   if (!fs.existsSync(uv)) throw new Error(`Missing ${uv}`);
   fs.mkdirSync(envDir, { recursive: true });
-  const wheelhouse = await requiredWheelhouse(backendRoot, envDir);
+  const wheelhouse = path.join(backendRoot, "wheels");
+  // Only a macOS application ships no wheels: its required packages come from the package index.
+  if (!fs.existsSync(wheelhouse) && platform !== "darwin") throw new Error(`Missing ${wheelhouse}`);
   const archiveName = getArchiveFilename(platform, arch);
   const archive = offline
     ? path.join(offlineRoot, archiveName)
@@ -95,7 +83,7 @@ async function provisionEnvironment({
   const pythonPath = windows ? path.join(venvDir, "Scripts", "python.exe") : path.join(venvDir, "bin", "python");
   // Studio's own uv settings, with a private cache so that an offline install proves the payload is complete.
   const uvEnvironment = { ...process.env, UV_LINK_MODE: "copy", UV_NATIVE_TLS: "1", UV_CACHE_DIR: path.join(envDir, ".uv-cache") };
-  const wheelDirectories = [wheelhouse, ...(offline ? [path.join(offlineRoot, "wheels")] : [])];
+  const wheelDirectories = [wheelhouse, ...(offline ? [path.join(offlineRoot, "wheels")] : [])].filter((directory) => fs.existsSync(directory));
   const install = (specs) => run(uv, [
     "pip", "install", "--python", pythonPath,
     ...(offline ? ["--offline", "--no-index"] : []),
@@ -106,9 +94,8 @@ async function provisionEnvironment({
   run(uv, ["venv", venvDir, "--python", basePython, ...(offline ? ["--offline"] : [])], uvEnvironment);
   install(catalogue.required.map((spec) => `${spec.name}==${spec.install}`));
   if (recommended.length > 0) install(recommendedSpecs(recommended));
-  for (const temporary of [uvEnvironment.UV_CACHE_DIR, path.join(envDir, ".wheelhouse")]) {
-    fs.rmSync(temporary, { recursive: true, force: true });
-  }
+  if (onRequest.length > 0) install(recommendedSpecs(onRequest));
+  fs.rmSync(uvEnvironment.UV_CACHE_DIR, { recursive: true, force: true });
   return { pythonPath, offline };
 }
 

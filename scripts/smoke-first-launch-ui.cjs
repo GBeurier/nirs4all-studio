@@ -217,6 +217,12 @@ async function main(options = {}) {
       // Studio restarts its sidecar on the new environment: wait for the scientific host.
       await archive.waitForReady(env.NIRS4ALL_NATIVE_SIDECAR_PORT, config.timeoutMs, app.process(),
         diagnostics, env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN);
+      // On a computer where it finds no Python, the page preselects "create a new environment". The
+      // environment above was created through the API the page calls, not through its button, so that
+      // choice would still be shown: pick the environment Studio now uses, as the page does itself
+      // after its own action.
+      await page.getByRole("radiogroup", { name: "Environments on this computer", exact: true })
+        .locator("label", { hasText: "Current" }).getByRole("radio").check();
       await page.getByRole("button", { name: "Open Studio", exact: true }).click();
       await expect.poll(() => page.url(), { timeout: config.timeoutMs }).toMatch(/\/datasets(?:[?#]|$)/);
       console.log(`Studio created ${state.selectedPythonPath} from its setup page and opened the datasets page.`);

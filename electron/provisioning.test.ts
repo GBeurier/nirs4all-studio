@@ -21,7 +21,6 @@ import { createVenv, installRecommendedPackages, installRequiredPackages, resolv
 const { getArchiveFilename } = createRequire(import.meta.url)("../scripts/python-runtime-config.cjs") as {
   getArchiveFilename(platform: string, arch: string): string;
 };
-const WHEELHOUSE_CACHE = path.join(os.tmpdir(), "studio-user-data", "wheelhouse");
 const roots: string[] = [];
 const steps: string[] = [];
 
@@ -65,25 +64,21 @@ describe("Studio environment creation", () => {
     const baseDir = baseDirectory();
     const progress = vi.fn();
 
-    const pythonPath = await createStudioEnvironment(baseDir, ["torch"], progress, WHEELHOUSE_CACHE);
+    const pythonPath = await createStudioEnvironment(baseDir, ["torch"], progress);
 
     expect(pythonPath).toBe(getVenvPythonPath(baseDir));
     expect(steps).toEqual(["download", "extract", "venv", "required", "recommended"]);
     expect(vi.mocked(downloadFile).mock.calls[0][0]).toMatch(/^https:\/\/github\.com\/astral-sh\/python-build-standalone\/releases\/download\/\d+\/cpython-3\.11\./);
     expect(createVenv).toHaveBeenCalledWith(path.join(baseDir, "venv"), getStandalonePythonPath(baseDir));
-    const [, wheelhouse] = vi.mocked(installRequiredPackages).mock.calls[0];
-    expect(wheelhouse.directory).toBe(WHEELHOUSE_CACHE);
+    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath);
     // Resolved together with the exact cohort that was just installed.
     expect(installRecommendedPackages).toHaveBeenCalledWith(pythonPath, ["torch"], [
       "nirs4all==1.4.16", "nirs4all-core==0.5.0", "dag-ml==0.4.0", "dag-ml-data==0.2.16",
-      "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15", "nirs4all-formats==0.2.16",
-    ], wheelhouse);
+      "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15",
+    ]);
     const percents = progress.mock.calls.map(([percent]) => percent as number);
     expect(percents).toEqual([...percents].sort((left, right) => left - right));
     expect(percents.at(-1)).toBe(100);
-    // Wheels that the installer does not embed are downloaded during the required step, under its progress.
-    wheelhouse.onProgress("Downloading the required packages… 40%");
-    expect(progress).toHaveBeenLastCalledWith(45, "Downloading the required packages… 40%");
     // Only the runtime and the environment remain.
     expect(fs.readdirSync(baseDir).sort()).toEqual(["python", "venv"]);
   });
@@ -93,11 +88,11 @@ describe("Studio environment creation", () => {
     const offline = path.join(path.dirname(baseDir), "offline");
     fs.mkdirSync(offline);
     vi.mocked(resolveUvPayload).mockReturnValue({ wheelhouse: null, offline });
-    await expect(createStudioEnvironment(baseDir, [], vi.fn(), WHEELHOUSE_CACHE)).rejects.toThrow("offline installer does not contain the Python runtime");
+    await expect(createStudioEnvironment(baseDir, [], vi.fn())).rejects.toThrow("offline installer does not contain the Python runtime");
 
     const archive = path.join(offline, getArchiveFilename(process.platform, process.arch));
     fs.writeFileSync(archive, "archive");
-    await createStudioEnvironment(baseDir, [], vi.fn(), WHEELHOUSE_CACHE);
+    await createStudioEnvironment(baseDir, [], vi.fn());
 
     expect(downloadFile).not.toHaveBeenCalled();
     expect(vi.mocked(extractTarball).mock.calls[0][0]).toBe(archive);
@@ -112,7 +107,7 @@ describe("Studio environment creation", () => {
     fs.mkdirSync(path.dirname(existing), { recursive: true });
     fs.writeFileSync(existing, "user environment");
 
-    await expect(createStudioEnvironment(baseDir, [], vi.fn(), WHEELHOUSE_CACHE)).rejects.toThrow("already exists in this folder");
+    await expect(createStudioEnvironment(baseDir, [], vi.fn())).rejects.toThrow("already exists in this folder");
 
     expect(fs.readFileSync(existing, "utf8")).toBe("user environment");
     expect(downloadFile).not.toHaveBeenCalled();
@@ -122,11 +117,11 @@ describe("Studio environment creation", () => {
     const baseDir = baseDirectory();
     vi.mocked(installRequiredPackages).mockRejectedValueOnce(new Error("resolver conflict"));
 
-    await expect(createStudioEnvironment(baseDir, [], vi.fn(), WHEELHOUSE_CACHE)).rejects.toThrow("resolver conflict");
+    await expect(createStudioEnvironment(baseDir, [], vi.fn())).rejects.toThrow("resolver conflict");
     expect(fs.existsSync(path.join(baseDir, "venv"))).toBe(false);
     expect(fs.existsSync(path.join(baseDir, "python"))).toBe(false);
 
-    await createStudioEnvironment(baseDir, [], vi.fn(), WHEELHOUSE_CACHE);
+    await createStudioEnvironment(baseDir, [], vi.fn());
     expect(downloadFile).toHaveBeenCalledTimes(1);
   });
 
@@ -134,7 +129,7 @@ describe("Studio environment creation", () => {
     const baseDir = baseDirectory();
     vi.mocked(verifySha256).mockRejectedValueOnce(new Error("corrupt"));
 
-    await expect(createStudioEnvironment(baseDir, [], vi.fn(), WHEELHOUSE_CACHE)).rejects.toThrow("corrupt");
+    await expect(createStudioEnvironment(baseDir, [], vi.fn())).rejects.toThrow("corrupt");
 
     expect(verifySha256).toHaveBeenCalledWith(expect.stringContaining(baseDir), expect.stringMatching(/^[0-9a-f]{64}$/));
     expect(extractTarball).not.toHaveBeenCalled();
@@ -144,8 +139,8 @@ describe("Studio environment creation", () => {
     const baseDir = baseDirectory();
     vi.mocked(extractTarball).mockRejectedValue(new Error("truncated tarball"));
 
-    await expect(createStudioEnvironment(baseDir, [], vi.fn(), WHEELHOUSE_CACHE)).rejects.toThrow("truncated tarball");
-    await expect(createStudioEnvironment(baseDir, [], vi.fn(), WHEELHOUSE_CACHE)).rejects.toThrow("truncated tarball");
+    await expect(createStudioEnvironment(baseDir, [], vi.fn())).rejects.toThrow("truncated tarball");
+    await expect(createStudioEnvironment(baseDir, [], vi.fn())).rejects.toThrow("truncated tarball");
 
     expect(downloadFile).toHaveBeenCalledTimes(2);
     expect(createVenv).not.toHaveBeenCalled();

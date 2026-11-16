@@ -71,14 +71,6 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["POST /updates/check", { name: "updates-status", capability: "updates_status_route" }],
   ["GET /updates/settings", { name: "updates-settings", capability: "updates_settings_routes" }],
   ["PUT /updates/settings", { name: "updates-settings", capability: "updates_settings_routes" }],
-  ["GET /updates/webapp/download-info", { name: "webapp-update", capability: "native_webapp_update_routes" }],
-  ["POST /updates/webapp/download-start", { name: "webapp-update", capability: "native_webapp_update_routes" }],
-  ["POST /updates/webapp/apply", { name: "webapp-update", capability: "native_webapp_update_routes" }],
-  ["GET /updates/webapp/staged-update", { name: "webapp-update", capability: "native_webapp_update_routes" }],
-  ["DELETE /updates/webapp/staged-update", { name: "webapp-update", capability: "native_webapp_update_routes" }],
-  ["POST /updates/webapp/cleanup", { name: "webapp-update", capability: "native_webapp_update_routes" }],
-  ["GET /updates/webapp/last-apply-result", { name: "webapp-update", capability: "native_webapp_update_routes" }],
-  ["DELETE /updates/webapp/last-apply-result", { name: "webapp-update", capability: "native_webapp_update_routes" }],
   ["POST /updates/webapp/restart", { name: "webapp-update", capability: "native_webapp_update_routes" }],
   ["POST /runs/run-groups", { name: "scientific-submission", capability: "scientific_submission_transport" }],
   ["GET /runs/execution-backends", { name: "execution-backends", capability: "workspace_run_management_routes" }],
@@ -296,9 +288,6 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
     if (identifierPath("/automl/").test(path) && !path.endsWith("/jobs")) {
       return { name: "job-status", capability: "native_job_status_routes" };
     }
-    if (identifierPath("/updates/webapp/download-status/").test(path)) {
-      return { name: "webapp-update", capability: "native_webapp_update_routes" };
-    }
     if (identifierPath("/runs/execution-job-records/").test(path) || identifierPath("/runs/", "/execution-job-record").test(path)) {
       return { name: "durable-job-record", capability: "durable_execution_job_record_reads" };
     }
@@ -308,12 +297,9 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
       identifierPath("/training/", "/stop").test(path) ||
       identifierPath("/automl/", "/stop").test(path) ||
       identifierPath("/runs/execution-job-records/", "/cancel").test(path) ||
-      identifierPath("/runs/", "/stop").test(path) ||
-      identifierPath("/updates/webapp/download-cancel/").test(path)
+      identifierPath("/runs/", "/stop").test(path)
     ) {
-      return path.startsWith("/updates/webapp/")
-        ? { name: "webapp-update", capability: "native_webapp_update_routes" }
-        : { name: "job-cancellation", capability: "native_job_cancellation_routes" };
+      return { name: "job-cancellation", capability: "native_job_cancellation_routes" };
     }
   }
   return null;
@@ -473,7 +459,6 @@ function isNativeShapedCandidate(request: RendererTransportRequest): boolean {
     /^\/workspaces\/[^/]+\/(?:activate|archive-v2|runs|results(?:\/summary)?)\/?$/.test(pathname) ||
     /^\/training\/(?!start$|jobs$)[^/]+(?:\/stop)?$/.test(pathname) ||
     /^\/automl\/(?!jobs$)[^/]+(?:\/stop)?$/.test(pathname) ||
-    /^\/updates\/webapp\/(?:download-status|download-cancel)\/[^/]*$/.test(pathname) ||
     /^\/runs\/run-groups\/?$/.test(pathname) ||
     /^\/runs\/execution-job-records\/[^/]+(?:\/cancel)?$/.test(pathname) ||
     /^\/runs\/[^/]+\/(?:execution-job-record|stop)$/.test(pathname);

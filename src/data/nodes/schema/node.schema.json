@@ -41,6 +41,11 @@
       "items": { "$ref": "#/definitions/OperatorImplementationRef" },
       "description": "Optional shorthand implementation references for multi-backend operators."
     },
+    "requires": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional Python distributions the operator imports, e.g. ['torch']"
+    },
     "aliases": {
       "type": "array",
       "items": { "type": "string" },

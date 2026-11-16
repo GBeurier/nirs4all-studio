@@ -10,8 +10,6 @@ import path from "node:path";
 import { normalizePackageName, recommendedInstallSpecs, requiredInstallSpecs } from "./catalogue";
 import { appendInstallLog } from "./install-log";
 import { runCommand } from "./process-utils";
-import { cachedWheelhouse, ensureWheelhouse, readWheelhouseManifest } from "./wheelhouse";
-import type { WheelhouseCache } from "./wheelhouse";
 
 const UV_EXECUTABLE = process.platform === "win32" ? "uv.exe" : "uv";
 /** A GPU build of torch is several gigabytes; slow links need the time. */
@@ -25,7 +23,7 @@ const UV_ENVIRONMENT: NodeJS.ProcessEnv = {
 };
 
 export interface UvPayload {
-  /** Wheels of the required packages: embedded in the installer, or downloaded once where they cannot be. */
+  /** Embedded wheels of the required packages (`wheels/`): Windows and Linux installers carry them, the macOS application does not. */
   wheelhouse: string | null;
   /** Offline installer payload: `wheels/` and the Python archive. */
   offline: string | null;
@@ -64,26 +62,12 @@ export function resolveUvPath(): string {
   return process.env.NIRS4ALL_UV?.trim() || findShipped("tools", UV_EXECUTABLE) || "uv";
 }
 
-/** What the application itself carries. Reads the disk only: nothing is ever downloaded here. */
+/**
+ * What the application itself carries. Without embedded wheels (macOS,
+ * development) the package index alone supplies the required packages.
+ */
 export function resolveUvPayload(): UvPayload {
   return { wheelhouse: findShipped("wheels"), offline: findShipped("offline") };
-}
-
-/**
- * The payload for an installation. Embedded wheels are used as they are.
- * Without them, an application that carries `wheelhouse.json` uses the
- * downloaded wheelhouse: `download` obtains it when it is not cached yet,
- * which the required packages need and other installations do not.
- */
-async function resolveInstallPayload(cache: WheelhouseCache, download: boolean): Promise<UvPayload> {
-  const payload = resolveUvPayload();
-  const manifestPath = payload.wheelhouse ? null : findShipped("wheelhouse.json");
-  if (!manifestPath) return payload;
-  const manifest = readWheelhouseManifest(manifestPath);
-  return {
-    ...payload,
-    wheelhouse: download ? await ensureWheelhouse(manifest, cache) : cachedWheelhouse(manifest, cache.directory),
-  };
 }
 
 function wheelDirectories(payload: UvPayload): string[] {
@@ -91,9 +75,13 @@ function wheelDirectories(payload: UvPayload): string[] {
   return [payload.wheelhouse, offlineWheels].filter((directory): directory is string => directory !== null);
 }
 
+function isTorchSpec(spec: string): boolean {
+  return normalizePackageName(spec.split("==")[0]) === "torch";
+}
+
 /** `uv pip install` arguments. `offline` restricts resolution to the shipped wheels. */
 export function pipInstallArgs(pythonPath: string, specs: readonly string[], payload: UvPayload, offline: boolean): string[] {
-  const installsTorch = specs.some((spec) => normalizePackageName(spec.split("==")[0]) === "torch");
+  const installsTorch = specs.some(isTorchSpec);
   return [
     "pip", "install", "--python", pythonPath,
     ...(offline ? ["--offline", "--no-index"] : []),
@@ -137,36 +125,42 @@ export function createVenv(venvDir: string, basePython: string): Promise<void> {
 
 /**
  * One resolver call for `specs`. With an offline payload the shipped wheels
- * are tried first; what they cannot satisfy then needs the package index.
+ * are tried first and what they cannot satisfy then needs the package index;
+ * `indexFirst` asks the index first and keeps the shipped wheels as the
+ * fallback.
  */
-async function install(pythonPath: string, specs: readonly string[], payload: UvPayload): Promise<void> {
-  let offlineFailure: Error | null = null;
-  if (payload.offline) {
-    try {
-      await runUv(pipInstallArgs(pythonPath, specs, payload, true), UV_INSTALL_TIMEOUT_MS, 0);
-      return;
-    } catch (error) {
-      offlineFailure = error as Error;
-      appendInstallLog("Not available in the offline package set; trying the package index.");
-    }
+async function install(pythonPath: string, specs: readonly string[], payload: UvPayload, indexFirst = false): Promise<void> {
+  const fromIndex = (retries: number) => runUv(pipInstallArgs(pythonPath, specs, payload, false), UV_INSTALL_TIMEOUT_MS, retries);
+  const fromOfflineSet = () => runUv(pipInstallArgs(pythonPath, specs, payload, true), UV_INSTALL_TIMEOUT_MS, 0);
+  if (!payload.offline) return fromIndex(1);
+
+  let firstFailure: Error;
+  try {
+    // An index that cannot be reached is not asked twice when the shipped wheels can still answer.
+    await (indexFirst ? fromIndex(0) : fromOfflineSet());
+    return;
+  } catch (error) {
+    firstFailure = error as Error;
+    appendInstallLog(indexFirst
+      ? "Not available from the package index; trying the offline package set."
+      : "Not available in the offline package set; trying the package index.");
   }
   try {
-    await runUv(pipInstallArgs(pythonPath, specs, payload, false), UV_INSTALL_TIMEOUT_MS, 1);
+    await (indexFirst ? fromOfflineSet() : fromIndex(1));
   } catch (error) {
-    const message = (error as Error).message;
+    const [indexFailure, offlineFailure] = indexFirst ? [firstFailure, error as Error] : [error as Error, firstFailure];
     // A conflict is the same from both sources; a missing wheel and a network failure are two reasons.
-    if (!offlineFailure || offlineFailure.message === message) throw error;
-    throw new Error(`${message} (Offline package set: ${offlineFailure.message})`, { cause: error });
+    if (indexFailure.message === offlineFailure.message) throw error;
+    throw new Error(`${indexFailure.message} (Offline package set: ${offlineFailure.message})`, { cause: error });
   }
 }
 
 /**
  * Install the required cohort at its exact versions in one resolver call, so
- * the packages stay mutually coherent. Where the wheels are not embedded they
- * are downloaded first; without them the installation is not attempted.
+ * the packages stay mutually coherent.
  */
-export async function installRequiredPackages(pythonPath: string, wheelhouse: WheelhouseCache): Promise<void> {
-  await install(pythonPath, requiredInstallSpecs(), await resolveInstallPayload(wheelhouse, true));
+export async function installRequiredPackages(pythonPath: string): Promise<void> {
+  await install(pythonPath, requiredInstallSpecs(), resolveUvPayload());
 }
 
 /**
@@ -174,13 +168,17 @@ export async function installRequiredPackages(pythonPath: string, wheelhouse: Wh
  * (`name==installed version` of the required packages already present) join
  * the same resolver call: a recommended package that conflicts with them
  * fails the resolution instead of silently changing nirs4all or its owners.
+ *
+ * The offline payload carries the CPU build of PyTorch only. With that payload
+ * PyTorch is therefore resolved on its own, from the package index first, so
+ * that a machine with a network gets the build for its hardware as it does
+ * from the standard installer; the shipped CPU build is the fallback.
  */
-export async function installRecommendedPackages(
-  pythonPath: string,
-  names: readonly string[],
-  requiredPins: readonly string[],
-  wheelhouse: WheelhouseCache,
-): Promise<void> {
+export async function installRecommendedPackages(pythonPath: string, names: readonly string[], requiredPins: readonly string[]): Promise<void> {
+  const payload = resolveUvPayload();
   const specs = recommendedInstallSpecs(names);
-  if (specs.length > 0) await install(pythonPath, [...specs, ...requiredPins], await resolveInstallPayload(wheelhouse, false));
+  const torch = payload.offline ? specs.filter(isTorchSpec) : [];
+  const others = specs.filter((spec) => !torch.includes(spec));
+  if (torch.length > 0) await install(pythonPath, [...torch, ...requiredPins], payload, true);
+  if (others.length > 0) await install(pythonPath, [...others, ...requiredPins], payload);
 }

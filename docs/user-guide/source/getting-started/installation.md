@@ -1,36 +1,56 @@
 # Installation
 
-nirs4all Studio is a desktop product with an Electron interface and a
-Rust-owned control-plane sidecar. A packaged build includes the exact runtime
-declared by its release manifest: users do not install or start a Python HTTP
-backend.
+nirs4all Studio is a desktop application. It is distributed as installers,
+attached to each release.
 
-```{important}
-The final R4 candidate is locally prepared but not published. Do not infer
-platform availability from examples, source configuration, or old releases.
-Only platforms and files listed in a signed release manifest and attached to
-the matching release are available.
-```
-
-## Install a published desktop release
+## Install Studio
 
 1. Open the [nirs4all Studio releases
    page](https://github.com/GBeurier/nirs4all-studio/releases/latest).
-2. Verify that the release contains a signed manifest for your operating system
-   and architecture.
-3. Download the exact installer or portable archive named by that manifest and
-   verify its checksum.
-4. Follow the operating system's normal installation flow and launch Studio.
+2. Download the installer for your platform.
+3. Run it and launch Studio.
 
-The package contains the Rust HTTP/WebSocket, job, scheduler, persistence, and
-workspace owner. Its bounded, content-addressed CPython runtime is only a stdio
-library/plugin host for explicitly supported scientific calls. It cannot own a
-product port, discover a user Python environment, install packages at runtime,
-or serve as a fallback.
+| Platform | Installer | Offline installer |
+|----------|-----------|-------------------|
+| Windows x64 | `nirs4all.Studio-<version>-win-x64.exe` | `nirs4all.Studio-<version>-win-x64-offline.exe` |
+| macOS (Apple Silicon) | `nirs4all.Studio-<version>-mac-arm64.dmg` | none |
+| Linux x64 | `nirs4all.Studio-<version>-linux-amd64.deb` | `nirs4all.Studio-<version>-linux-amd64-offline.deb` |
 
-If no signed artifact matches your platform, that platform is not available
-for the release. Building configuration in the repository is not evidence of a
-qualified downloadable artifact.
+The installer contains no Python, and you do not need Python on your machine.
+
+On Windows and Linux, the **offline installer** (file name ending in
+`-offline`) is for machines without network access: it also carries the
+Python runtime and the packages Studio installs by default, so nothing is
+downloaded at first launch.
+
+```{note}
+macOS is supported on Apple Silicon only and needs an internet connection at
+first launch. If macOS blocks the first opening of the application, open
+**System Settings > Privacy & Security** and choose **Open Anyway**.
+```
+
+## First launch: the Python environment
+
+Studio runs its analyses in one Python environment. On first launch it lists
+the Python environments found on your machine; pick one, or let Studio create
+one for you. Studio then installs `nirs4all` and its companion packages
+automatically and keeps them up to date at each launch.
+
+Other packages are optional and installed on request. PyTorch is one of them:
+Studio offers to install it when you select a neural-network model, in the
+build that matches your machine (CPU, CUDA or Apple Metal). The offline
+installer does the same when the machine has network access; without it,
+PyTorch is installed from the installer's own files, as the CPU build.
+
+You can switch environment or add packages at any time in **Settings >
+Python**.
+
+## Update Studio
+
+**Settings > Updates** shows the installed version and checks for a newer
+release. To update, download the installer of the newer version from there,
+close Studio and run it. An update replaces the application only: your Python
+environment, workspaces and settings stay in place.
 
 ## Develop from source
 
@@ -53,18 +73,9 @@ The separate [nirs4all Web application](https://web.nirs4all.org/) is a
 client-side browser/WASM product. It does not turn Studio's historical Python
 server into a deployment mode.
 
-## GPU and optional Python libraries
-
-Native Methods training, including the bounded PLS product path, is CPU-based.
-An optional Python library/plugin capability may have different hardware and
-dependency requirements, but it is usable only when the packaged capability
-manifest and preflight report it as available. Studio never modifies the
-embedded runtime to add a backend after installation.
-
 ## After installation
 
-Once the application is installed, launch it and you will see the initial
-screen.
+Once the Python environment is ready, Studio shows its welcome screen.
 
 ```{figure} /_images/getting-started/gs-first-launch.png
 :alt: nirs4all Studio first launch screen

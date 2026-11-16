@@ -2,8 +2,8 @@
  * Updates Section — presentation shell
  *
  * Pure presentation/composition for the Updates settings card:
- * loading/error cards, the header, the alert banner, the application update
- * row and the settings collapsible.
+ * loading/error cards, the header, the application update row and the
+ * settings collapsible.
  *
  * All hooks, mutations, dialog state, and API side effects stay in
  * `UpdatesSection.tsx` — this file only renders props and forwards callbacks.
@@ -12,10 +12,8 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
-  AlertCircle,
   ChevronDown,
   Download,
-  ExternalLink,
   RefreshCw,
   Settings2,
 } from "lucide-react";
@@ -28,7 +26,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,7 +37,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 
-import type { LastApplyResult, UpdateSettings } from "@/api/updates";
+import type { UpdateSettings } from "@/api/updates";
 
 import { WebappUpdateRow } from "./UpdatesSectionRows";
 import type { WebappUpdateRowState } from "./UpdatesSectionLogic";
@@ -103,13 +100,6 @@ interface UpdatesSectionShellProps {
   isChecking: boolean;
   onCheckNow: () => void;
 
-  // Alert banner
-  lastApplyResult: LastApplyResult | undefined;
-  installerUrl: string | null;
-  onOpenInstaller: () => void;
-  onDismissApplyResult: () => void;
-  isDismissApplyResultPending: boolean;
-
   // Update row
   webappRow: WebappUpdateRowState;
   onOpenWebappDialog: () => void;
@@ -126,18 +116,13 @@ interface UpdatesSectionShellProps {
   onOfflineModeChange: (value: "auto" | "on" | "off") => void;
   isSettingsPending: boolean;
 
-  // Dialogs (rendered inside the card; own their state in UpdatesSection)
+  // Dialog (rendered inside the card; owns its state in UpdatesSection)
   children: ReactNode;
 }
 
 export function UpdatesSectionShell({
   isChecking,
   onCheckNow,
-  lastApplyResult,
-  installerUrl,
-  onOpenInstaller,
-  onDismissApplyResult,
-  isDismissApplyResultPending,
   webappRow,
   onOpenWebappDialog,
   lastCheck,
@@ -181,42 +166,7 @@ export function UpdatesSectionShell({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Previous update silently failed — surface it and offer the installer */}
-        {lastApplyResult?.status === "failed" && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="space-y-2">
-              <div>
-                {lastApplyResult.to_version
-                  ? t("settings.updates.lastApplyFailedExpected", { from: lastApplyResult.from_version, to: lastApplyResult.to_version })
-                  : t("settings.updates.lastApplyFailed", { from: lastApplyResult.from_version })}
-              </div>
-              <div className="flex gap-2">
-                {installerUrl && (
-                  <Button size="sm" variant="outline" onClick={onOpenInstaller}>
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    {t("settings.updates.getInstaller")}
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={onDismissApplyResult}
-                  disabled={isDismissApplyResultPending}
-                >
-                  {t("settings.updates.dismiss")}
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Webapp Update */}
-        <WebappUpdateRow
-          row={webappRow}
-          onOpenDialog={onOpenWebappDialog}
-          onOpenInstaller={onOpenInstaller}
-        />
+        <WebappUpdateRow row={webappRow} onOpenDialog={onOpenWebappDialog} />
 
         <p className="text-sm text-muted-foreground">
           {t("settings.updates.pythonHint")}{" "}

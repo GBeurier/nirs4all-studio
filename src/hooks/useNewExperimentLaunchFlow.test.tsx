@@ -41,6 +41,7 @@ vi.mock("sonner", () => ({
   toast: toastMocks,
 }));
 
+import { PyTorchInstallPromptContext } from "@/context/usePyTorchInstallPrompt";
 import { useNewExperimentLaunchFlow, type UseNewExperimentLaunchFlowInput } from "./useNewExperimentLaunchFlow";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -61,7 +62,11 @@ function createQueryClient() {
   });
 }
 
-async function renderHook<T>(hook: () => T, client = createQueryClient()) {
+async function renderHook<T>(
+  hook: () => T,
+  client = createQueryClient(),
+  wrap: (children: ReactNode) => ReactNode = (children) => children,
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -75,7 +80,7 @@ async function renderHook<T>(hook: () => T, client = createQueryClient()) {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <TestComponent />
+        {wrap(<TestComponent />)}
       </QueryClientProvider>,
     );
   });
@@ -602,5 +607,134 @@ describe("useNewExperimentLaunchFlow", () => {
     }));
 
     await mounted.unmount();
+  });
+
+  describe("pipelines with PyTorch models", () => {
+    const deepPipelineConfigs: SelectedPipelineConfig[] = [
+      selectedPipelineConfigs[0],
+      {
+        id: "p2",
+        name: "Deep pipeline",
+        steps: [
+          { id: "pre", type: "preprocessing", name: "SNV", params: {} },
+          {
+            id: "branch",
+            type: "flow",
+            name: "Branch",
+            params: {},
+            branches: [[{ id: "nicon", type: "model", name: "NICoN", classPath: "nirs4all.operators.models.pytorch.nicon.nicon", params: {} }]],
+          },
+        ],
+      },
+    ];
+    const request = vi.fn<(need: unknown, proceed: () => void) => void>();
+
+    const renderLaunchFlow = (canInstall: boolean, overrides: Partial<UseNewExperimentLaunchFlowInput> = {}) => renderHook(
+      () => useNewExperimentLaunchFlow(launchFlowInput({ selectedPipelineConfigs: deepPipelineConfigs, ...overrides })),
+      undefined,
+      (children) => (
+        <PyTorchInstallPromptContext.Provider value={{ canInstall, request }}>{children}</PyTorchInstallPromptContext.Provider>
+      ),
+    );
+
+    afterEach(() => {
+      request.mockReset();
+    });
+
+    it("asks for PyTorch once before checking and submitting, then launches after the installation", async () => {
+      apiMocks.runPreflight.mockResolvedValue({ ready: true, issues: [] } satisfies PreflightResult);
+      apiMocks.createRun.mockResolvedValue(run());
+      const mounted = await renderLaunchFlow(true);
+
+      await act(async () => {
+        await mounted.result.current!.handleLaunch();
+      });
+      await flushMutation();
+
+      expect(request).toHaveBeenCalledTimes(1);
+      // Only the pipeline that needs PyTorch is named; the whole launch waits for the answer.
+      expect(request).toHaveBeenCalledWith({ kind: "experiment", pipelines: ["Deep pipeline"] }, expect.any(Function));
+      expect(apiMocks.runPreflight).not.toHaveBeenCalled();
+      expect(apiMocks.createRun).not.toHaveBeenCalled();
+
+      // The installation succeeded.
+      await act(async () => {
+        request.mock.calls[0][1]();
+      });
+      await flushMutation();
+
+      expect(apiMocks.createRun).toHaveBeenCalledWith(expect.objectContaining({ pipeline_ids: ["p1", "p2"] }));
+
+      await mounted.unmount();
+    });
+
+    it("reports a grouping problem before asking for PyTorch", async () => {
+      const onGroupingBlockingError = vi.fn();
+      const mounted = await renderLaunchFlow(true, { hasGroupingBlockingError: true, onGroupingBlockingError });
+
+      await act(async () => {
+        await mounted.result.current!.handleLaunch();
+      });
+
+      expect(onGroupingBlockingError).toHaveBeenCalledTimes(1);
+      expect(request).not.toHaveBeenCalled();
+
+      await mounted.unmount();
+    });
+
+    it.each<[string, boolean, Partial<UseNewExperimentLaunchFlowInput>]>([
+      ["Studio cannot install PyTorch", false, {}],
+      ["no selected pipeline has a PyTorch model", true, { selectedPipelineConfigs }],
+      ["the PyTorch model is disabled", true, {
+        selectedPipelineConfigs: [{
+          id: "p3",
+          name: "Disabled deep model",
+          steps: [{ id: "nicon", type: "model", name: "NICoN", classPath: "nirs4all.operators.models.pytorch.nicon.nicon", enabled: false }],
+        }],
+      }],
+    ])("launches without asking when %s", async (_label, canInstall, overrides) => {
+      apiMocks.runPreflight.mockResolvedValue({ ready: true, issues: [] } satisfies PreflightResult);
+      apiMocks.createRun.mockResolvedValue(run());
+      const mounted = await renderLaunchFlow(canInstall, overrides);
+
+      await act(async () => {
+        await mounted.result.current!.handleLaunch();
+      });
+      await flushMutation();
+
+      expect(request).not.toHaveBeenCalled();
+      expect(apiMocks.createRun).toHaveBeenCalledTimes(1);
+
+      await mounted.unmount();
+    });
+
+    it("launches without asking when the experiment runs on a compute server", async () => {
+      const submitClusterRun: SubmitClusterRun = vi.fn(async () => run({ id: "cluster-run-1" }));
+      const mounted = await renderLaunchFlow(true, {
+        executionAdapter: {
+          id: "cluster",
+          label: "Compute server",
+          nativeBackends: ["cluster"],
+          buildLaunchSubmission: (config, nativePayload) => ({
+            kind: "cluster-run" as const,
+            requestedBackend: "cluster" as const,
+            config,
+            nativePayload,
+          }),
+        },
+        launchSubmitters: { submitClusterRun },
+        singlePairSplitSpecResult,
+      });
+
+      await act(async () => {
+        await mounted.result.current!.handleLaunch();
+      });
+      await flushMutation();
+
+      expect(request).not.toHaveBeenCalled();
+      expect(submitClusterRun).toHaveBeenCalledTimes(1);
+
+      await mounted.unmount();
+    });
   });
 });

@@ -4,9 +4,10 @@
  * closure. The required cohort itself stays in backend-dist/wheels/.
  *
  * Without `--image` the closure is the one of the offline installer
- * (dependencies of the required cohort and the recommended packages installed
- * by default). With `--image` it is the one of the Docker image, whose
- * environment is then created from pinned files only.
+ * (dependencies of the required cohort, the recommended packages installed by
+ * default and those the catalogue keeps in the payload although they are
+ * installed on request only). With `--image` it is the one of the Docker
+ * image, whose environment is then created from pinned files only.
  *
  * Usage:
  *   node scripts/build-offline-payload.cjs [--platform <win32|linux>] [--arch x64] [--image]

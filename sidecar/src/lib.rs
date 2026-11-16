@@ -700,12 +700,6 @@ impl Default for SidecarState {
 }
 
 impl SidecarState {
-    /// Share the native job runtime with execution adapters and tests.
-    #[must_use]
-    pub fn native_jobs(&self) -> Arc<NativeJobRuntime> {
-        Arc::clone(&self.native_jobs)
-    }
-
     /// Install an explicit native job runtime for a controlled launch.
     #[must_use]
     pub fn with_native_jobs(native_jobs: Arc<NativeJobRuntime>) -> Self {
@@ -1037,7 +1031,7 @@ pub fn route_request_with_body(
     if let Some(response) = error_logs::ERROR_LOGS.route(method, journal_path, journal_query) {
         return response;
     }
-    if let Some(response) = native_updates::route(state, method, path, body) {
+    if let Some(response) = native_updates::route(state, method, path) {
         return response;
     }
     if let Some(response) = document_cpython::route(
@@ -2692,77 +2686,6 @@ impl UpdateSettingsStore {
 
 fn update_settings_response(state: &SidecarState) -> HttpResponse {
     HttpResponse::json(200, state.update_settings.load().to_string())
-}
-
-fn native_update_status_response(state: &SidecarState) -> HttpResponse {
-    let settings = state.update_settings.load();
-    let executable = state
-        .python_plugin_host
-        .as_deref()
-        .and_then(Path::to_str)
-        .map(str::to_owned);
-    let runtime_path = state
-        .python_plugin_host
-        .as_deref()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .and_then(Path::to_str)
-        .map(str::to_owned);
-    let runtime_ready = state
-        .scientific_host
-        .as_deref()
-        .is_some_and(scientific_cpython::CpythonScientificJobExecutor::library_facades_available);
-    let runtime = json!({
-        "path": runtime_path.clone().unwrap_or_default(),
-        "exists": runtime_path.as_deref().is_some_and(|path| Path::new(path).is_dir()),
-        "is_valid": runtime_ready,
-        "python_executable": executable,
-        "python_version": null,
-        "pip_version": null,
-        "created_at": null,
-        "last_updated": null,
-        "size_bytes": 0,
-    });
-    let nirs4all_version = state
-        .scientific_host
-        .as_deref()
-        .filter(|_| runtime_ready)
-        .and_then(scientific_cpython::CpythonScientificJobExecutor::distribution_version)
-        .map(str::to_owned);
-    HttpResponse::json(
-        200,
-        json!({
-            "webapp": {
-                "current_version": native_app_version(),
-                "latest_version": null,
-                "update_available": false,
-                "release_url": null,
-                "release_notes": null,
-                "published_at": null,
-                "download_size_bytes": null,
-                "download_url": null,
-                "asset_name": null,
-                "checksum_sha256": null,
-                "is_prerelease": false,
-                "installer_download_url": null,
-                "installer_asset_name": null,
-            },
-            "nirs4all": {
-                "current_version": nirs4all_version,
-                "latest_version": null,
-                "update_available": false,
-                "pypi_url": null,
-                "release_notes": null,
-                "requires_restart": false,
-            },
-            "runtime": runtime,
-            "venv": runtime,
-            "update_capability": null,
-            "last_check": null,
-            "check_interval_hours": settings["check_interval_hours"],
-        })
-        .to_string(),
-    )
 }
 
 fn save_update_settings_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
@@ -6761,10 +6684,9 @@ mod tests {
         assert!(body["webapp"]["current_version"].is_string());
         assert_eq!(body["webapp"]["latest_version"], Value::Null);
         assert_eq!(body["webapp"]["update_available"], false);
-        assert_eq!(body["nirs4all"]["current_version"], Value::Null);
-        assert_eq!(body["nirs4all"]["latest_version"], Value::Null);
-        assert_eq!(body["nirs4all"]["update_available"], false);
-        assert_eq!(body["runtime"]["is_valid"], false);
+        for removed in ["nirs4all", "runtime", "venv"] {
+            assert!(body.get(removed).is_none(), "{removed}");
+        }
         assert_eq!(body["last_check"], Value::Null);
         assert!(body["check_interval_hours"].is_i64());
 
@@ -7077,7 +6999,6 @@ mod tests {
         for target in [
             "/api/training/opaque?refresh=true",
             "/api/automl/opaque?wait=true",
-            "/api/updates/webapp/download-status/opaque?poll=1",
             "/api/training/opaque/stop?force=true",
             "/api/runs/execution-job-records/opaque?refresh=true",
             "/api/runs/run-1/execution-job-record?refresh=true",

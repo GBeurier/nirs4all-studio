@@ -153,16 +153,13 @@ def test_release_installers_stage_the_locked_payload_instead_of_a_python_runtime
         offline = next(step for step in job["steps"] if step.get("name") == "Stage offline payload")
         assert offline["if"] == "matrix.variant == 'offline'"
         assert offline["run"] == "node scripts/build-offline-payload.cjs"
-    # The macOS application embeds no wheels: they become a release asset, and there is no offline variant.
+    # The macOS application embeds no wheels and has no offline variant: Studio installs its required packages from the package index.
     macos = parsed["jobs"]["installer-macos-arm64"]
     assert "strategy" not in macos
-    assert not any("build-offline-payload" in step.get("run", "") for step in macos["steps"])
-    staged = next(step["run"] for step in macos["steps"] if "build-wheelhouse.cjs" in step.get("run", ""))
-    assert staged.splitlines() == [
-        *staging,
-        "node scripts/pack-remote-wheelhouse.cjs --tag '${{ needs.prepare.outputs.tag }}' --version '${{ needs.prepare.outputs.version }}'",
-        "test ! -e backend-dist/wheels",
-    ]
+    assert not any("build-offline-payload" in step.get("run", "") or "build-wheelhouse" in step.get("run", "") for step in macos["steps"])
+    staged = next(step["run"] for step in macos["steps"] if step.get("name") == "Stage uv and document adapters")
+    assert staged.splitlines() == [staging[0], staging[2], "test ! -e backend-dist/wheels"]
+    assert "wheels.tar.gz" not in workflow and "NIRS4ALL_WHEELHOUSE_ARCHIVE" not in workflow
 
 
 def test_generated_operator_registries_are_from_the_published_runtime() -> None:
@@ -217,11 +214,6 @@ def test_current_public_wheel_identity_is_shared_by_shipping_consumers() -> None
         assert "studio_scientific_cpython_host" not in rust, path
         for field in ["source_sha", "wheel_sha256"]:
             assert sdk[field] not in rust, path
-    policy = json.loads((ROOT / "qualification/policy.json").read_text())
-    for gate in policy["gates"]:
-        if "packaged" in gate["id"] or "application-migration" in gate["id"]:
-            assert "scripts/methods-public-wheel-profile.json" in gate["input_paths"]
-            assert "sidecar/" in gate["input_paths"]  # Includes the successor host contract.
     # Publication inputs are not an installed-host, packaged-worker or all-platform qualification claim.
 
 

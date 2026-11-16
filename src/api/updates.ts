@@ -1,6 +1,7 @@
 /**
- * Updates API client — application update status, update settings, changelog
- * and the staged auto-update flow.
+ * Updates API client — application update status, update settings and
+ * changelog. Studio is updated by running a newer installer; nothing is
+ * downloaded or applied from inside the application.
  */
 
 import { api } from "./transport";
@@ -28,32 +29,15 @@ export interface WebappUpdateInfo {
   asset_name: string | null;
   checksum_sha256: string | null;
   is_prerelease: boolean;
-  /** Native installer asset for builds that can't update in place. */
+  /** Installer of the newer release for this platform. */
   installer_download_url?: string | null;
   installer_asset_name?: string | null;
 }
 
-/** Whether this build can apply a webapp update in place, or must use its installer. */
-export interface UpdateCapability {
-  can_apply_in_place: boolean;
-  channel: "in_place" | "installer";
-  reason: string;
-  install_kind: string;
-}
-
 export interface UpdateStatus {
   webapp: WebappUpdateInfo;
-  update_capability?: UpdateCapability | null;
   last_check: string | null;
   check_interval_hours: number;
-}
-
-export interface VersionInfo {
-  webapp_version: string;
-  nirs4all_version: string | null;
-  python_version: string;
-  platform: string;
-  machine: string;
 }
 
 /**
@@ -105,100 +89,6 @@ export async function getWebappChangelog(currentVersion?: string): Promise<{
   return api.get(`/updates/webapp/changelog${params}`);
 }
 
-export interface DownloadJobResponse {
-  job_id: string;
-  status: string;
-  version: string;
-  asset_name: string;
-  message: string;
-}
-
-export interface DownloadStatusResponse {
-  job_id: string;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  progress: number;
-  message: string;
-  result?: {
-    staging_path: string;
-    version: string;
-    ready_to_apply: boolean;
-  };
-  error?: string;
-}
-
-export interface StagedUpdateInfo {
-  has_staged_update: boolean;
-  staging_path?: string;
-  version?: string;
-}
-
-export interface ApplyUpdateResponse {
-  success: boolean;
-  message: string;
-  restart_required?: boolean;
-}
-
-/**
- * Start downloading the webapp update in the background
- */
-export async function startWebappDownload(): Promise<DownloadJobResponse> {
-  return api.post("/updates/webapp/download-start");
-}
-
-/**
- * Get download job status
- */
-export async function getDownloadStatus(
-  jobId: string
-): Promise<DownloadStatusResponse> {
-  return api.get(`/updates/webapp/download-status/${jobId}`);
-}
-
-/**
- * Cancel an in-progress download
- */
-export async function cancelDownload(
-  jobId: string
-): Promise<{ success: boolean; message: string }> {
-  return api.post(`/updates/webapp/download-cancel/${jobId}`);
-}
-
-/**
- * Get information about any staged update
- */
-export async function getStagedUpdateInfo(): Promise<StagedUpdateInfo> {
-  return api.get("/updates/webapp/staged-update");
-}
-
-/**
- * Apply the staged update
- */
-export async function applyWebappUpdate(
-  confirm: boolean = true
-): Promise<ApplyUpdateResponse> {
-  return api.post("/updates/webapp/apply", { confirm });
-}
-
-/**
- * Cancel/remove a staged update
- */
-export async function cancelStagedUpdate(): Promise<{
-  success: boolean;
-  message: string;
-}> {
-  return api.delete("/updates/webapp/staged-update");
-}
-
-/**
- * Clean up old update artifacts
- */
-export async function cleanupUpdates(): Promise<{
-  success: boolean;
-  message: string;
-}> {
-  return api.post("/updates/webapp/cleanup");
-}
-
 /**
  * Request webapp restart
  */
@@ -208,37 +98,4 @@ export async function requestRestart(): Promise<{
   restart_required: boolean;
 }> {
   return api.post("/updates/webapp/restart");
-}
-
-/**
- * Get current version information
- */
-export async function getVersionInfo(): Promise<VersionInfo> {
-  return api.get("/updates/version");
-}
-
-/** Reconciled result of the last update apply (detects silent failures). */
-export interface LastApplyResult {
-  status: "none" | "success" | "failed";
-  from_version?: string | null;
-  to_version?: string | null;
-  current_version?: string | null;
-  update_mode?: string | null;
-  attempted_at?: string | null;
-  reconciled_at?: string | null;
-  log_tail?: string;
-}
-
-/**
- * Get the reconciled result of the last update apply, if any
- */
-export async function getLastApplyResult(): Promise<LastApplyResult> {
-  return api.get("/updates/webapp/last-apply-result");
-}
-
-/**
- * Dismiss the stored apply-result banner
- */
-export async function dismissLastApplyResult(): Promise<{ success: boolean }> {
-  return api.delete("/updates/webapp/last-apply-result");
 }

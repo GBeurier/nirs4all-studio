@@ -16,7 +16,6 @@ The source of truth is:
 - `scripts/fetch-uv.cjs`
 - `scripts/python-wheel-lock.cjs`
 - `scripts/build-wheelhouse.cjs`
-- `scripts/pack-remote-wheelhouse.cjs`
 - `scripts/build-offline-payload.cjs`
 - `scripts/studio-document-adapters.cjs`
 - `scripts/build-native-sidecar.cjs`
@@ -28,19 +27,18 @@ The source of truth is:
 
 | Product | Target platforms | Asset patterns | Runtime model |
 |---|---|---|---|
-| Installer | Windows x64, macOS arm64 (Apple Silicon), Linux x64 | `.exe` (NSIS), `.dmg`, `.deb` | Electron + Rust `native/studio-sidecar` + `uv`, the document adapters and the required packages: embedded wheels on Windows and Linux, a release asset downloaded on first use on macOS. The Python environment is created or selected at first launch. |
-| Offline installer | Windows x64, Linux x64 | `.exe`, `.deb` with the `-offline` suffix | The installer plus the offline payload: the pinned Python runtime archive and the wheels of the default package set, so the environment is created without network access. |
-| macOS required wheels | macOS arm64 | `-mac-arm64-wheels.tar.gz` | The required cohort of the macOS application, fetched by Studio itself; not a user download. |
+| Installer | Windows x64, macOS arm64 (Apple Silicon), Linux x64 | `.exe` (NSIS), `.dmg`, `.deb` | Electron + Rust `native/studio-sidecar` + `uv`, the document adapters and, on Windows and Linux, the wheels of the required packages; on macOS the required packages come from the package index. The Python environment is created or selected at first launch. |
+| Offline installer | Windows x64, Linux x64 | `.exe`, `.deb` with the `-offline` suffix | The installer plus the offline payload: the pinned Python runtime archive and the wheels of the default package set and of PyTorch, so the environment is created, and PyTorch added later, without network access. |
 | Docker | Linux x64 | `ghcr.io/gbeurier/nirs4all-studio:*` | nginx static UI + loopback Rust sidecar + a Python environment built at image build time from the same catalogue; no Python HTTP backend. |
 
 macOS is supported on Apple Silicon only. A macOS application embeds no wheels,
 because wheels are archives that contain unsigned binaries and such archives
-fail Apple notarisation; it therefore needs an internet connection at first
-launch and has no offline installer.
+fail Apple notarisation. Studio installs its required packages from the
+package index there, so a macOS application needs an internet connection at
+first launch and has no offline installer.
 
-The all-in-one archive lane (`scripts/build-archive-standalone.cjs`,
-`electron-builder.archive.yml`, `scripts/smoke-self-update.cjs`) is not part
-of the published release and has not been converted to this model.
+Installers are the only desktop product: there is no portable executable and
+no all-in-one archive.
 
 ## Terminology
 
@@ -50,15 +48,18 @@ of the published release and has not been converted to this model.
   payload; its file name ends in `-offline`.
 - `Required cohort`: the packages listed under `required` in
   `recommended-config.json` (`nirs4all`, `nirs4all-core`, `dag-ml`,
-  `dag-ml-data`, `nirs4all-io`, `nirs4all-methods`, `nirs4all-formats`) at
-  their `install` versions.
+  `dag-ml-data`, `nirs4all-io`, `nirs4all-methods`) at their `install`
+  versions. Every one of them publishes a wheel for each of the three targets.
 - `Recommended packages`: the packages listed under `optional`. Those with
   `default_install: true` are preselected when Studio creates an environment.
+  PyTorch is not one of them: Studio offers to install it when the user
+  selects a neural-network model.
+- `offline_payload: true` on a recommended package keeps its wheels in the
+  offline installers although it is not installed by default. PyTorch carries
+  it, so that it can be added on a machine without network access.
 - `Wheelhouse`: one wheel per package of the required cohort. Windows and
-  Linux installers embed it as `resources/backend/wheels/`.
-- `Remote wheelhouse`: the same wheels for macOS, published as the release
-  asset `nirs4all.Studio-<version>-mac-arm64-wheels.tar.gz` and described by
-  `resources/backend/wheelhouse.json` in the application.
+  Linux installers embed it as `resources/backend/wheels/`; a macOS
+  application has none.
 - `Offline payload`: `resources/backend/offline/`.
 
 ## Packaged Layouts
@@ -76,7 +77,6 @@ resources/
     │   └── uv[.exe]
     ├── wheels/                 (Windows and Linux)
     │   └── one wheel per package of the required cohort
-    ├── wheelhouse.json         (macOS)
     └── adapters/
         └── studio_document_adapters/
 ```
@@ -89,13 +89,8 @@ resources/
 - `wheels/` holds exactly the required cohort for the target. Studio installs
   the required packages from it; their dependencies and every recommended
   package come from the package index.
-- `wheelhouse.json` replaces `wheels/` in the macOS application:
-  `{ "url", "sha256", "filename" }` of the release asset that carries the same
-  wheels. The first time Studio installs the required packages it downloads
-  that archive, verifies its SHA-256 and keeps the wheels under
-  `userData/wheelhouse/`. `NIRS4ALL_WHEELHOUSE_ARCHIVE` names a local copy of
-  the archive (verified against the same SHA-256) for a build whose release is
-  not published yet.
+- A macOS application has no `wheels/` directory: Studio installs the
+  required packages at the same exact versions from the package index.
 - `adapters/studio_document_adapters/` is Studio's own document-translation
   package. The sidecar adds this directory to the scientific host's import
   path; it is never copied into the user's environment.
@@ -124,16 +119,28 @@ resources/
 - The archive is the pinned python-build-standalone runtime declared in
   `scripts/python-runtime-config.cjs`.
 - `offline/wheels/` holds the rest of the locked closure: the dependencies of
-  the required cohort, and the `default_install` recommended packages with
-  their dependencies. `torch` is locked as CPU wheels.
+  the required cohort, the `default_install` recommended packages and the
+  `offline_payload` ones (`torch`, locked as CPU wheels), with their
+  dependencies.
 
 With this payload Studio creates the environment and installs the required
-packages and every default recommended package without network access: the
-payload is the closure that `uv` resolved for exactly that set, and the release
-workflow installs it with `--offline --no-index` on each platform before
-publication. Studio tries the payload first for every installation; a package
-that is not in it (any recommended package outside the default set) is then
-requested from the package index.
+packages and every default recommended package without network access, and
+later installs PyTorch the same way when the user asks for it: the payload is
+the closure that `uv` resolved for exactly that set, and the release workflow
+installs it with `--offline --no-index` on each platform before publication,
+the default packages first and PyTorch afterwards into the same environment.
+Studio tries the payload first for every installation except PyTorch; a
+package that is not in it (any other recommended package) is then requested
+from the package index.
+
+PyTorch is the exception because the payload carries its CPU build only.
+Studio asks the package index first, with `--torch-backend auto` as on the
+standard installer, so that `uv` selects the CPU or CUDA build for the
+machine; when the index cannot be reached, or cannot satisfy the request,
+Studio installs the CPU build from the payload instead. Both attempts keep the
+installed required packages pinned. When PyTorch is requested together with
+other packages it is resolved first and on its own, and the other packages
+then follow the payload-first order.
 
 It is built with `electron-builder.offline.yml`, which `extends`
 `electron-builder.installer.yml` and adds `offline/**/*` to the packaged
@@ -154,8 +161,8 @@ one content-addressed native Methods library at ABI 2.22
 (`nirs4all-methods` 1.3.15). Every release gate invokes
 `native-runtime-contract.cjs` with `--require-python-payload` and
 `--require-bundled-methods`, so an installer cannot be published without `uv`,
-the required wheels (on macOS: a well-formed `wheelhouse.json` and no embedded
-wheels), the attested adapters and the native Methods library.
+the required wheels (on macOS: no embedded wheels), the attested adapters and
+the native Methods library.
 
 The `nirs4all-methods` wheel in `wheels/` is installed into the user's
 environment; it is not the native dispatch library of the sidecar. That
@@ -185,9 +192,9 @@ strict order that differs from the default recursive Electron signing pass:
 1. Electron Builder copies the packaged part of `backend-dist/` into the
    unsigned `.app`.
 2. `scripts/macos-attested-runtime.cjs`, registered as `afterPack`, verifies the
-   copied runtime contract, including the Python payload (`uv`,
-   `wheelhouse.json` and the adapters, and the absence of embedded wheels), and
-   selects `native/libn4m.dylib`.
+   copied runtime contract, including the Python payload (`uv` and the
+   adapters, and the absence of embedded wheels), and selects
+   `native/libn4m.dylib`.
 3. When Electron Builder has selected a signing identity, the hook signs that
    library first with the same identity, hardened-runtime options, inherited
    entitlements, keychain, and timestamp policy. Any unresolved requested
@@ -215,23 +222,42 @@ Measured on disk on Linux x64 on 2026-11-16:
 | Part | Size |
 |---|---|
 | `tools/uv` | 53 MB |
-| `wheels/` (required cohort) | 50 MB |
+| `wheels/` (required cohort) | 45 MB |
 | `adapters/` | 1.5 MB |
 | `native/libn4m.so` | 6.6 MB |
 | `native/studio-sidecar` (release build) | about 40 MB |
 | `resources/backend/` of the installer | about 150 MB |
-| `offline/` | about 1.1 GB: wheels 1.05 GB, of which `xgboost` and `nvidia-nccl-cu12` about 590 MB and CPU `torch` about 180 MB; Python archive 46 MB |
+| `offline/` | 1.10 GB: 54 wheels, 1.05 GB, of which `xgboost` and `nvidia-nccl-cu12` 590 MB and CPU `torch` with its own dependencies 188 MB; Python archive 46 MB |
+
+PyTorch is no longer installed by default but stays in the offline payload, so
+the payload has the size it had when PyTorch was a default package.
+
+Time to create the default environment (Python runtime, required cohort and
+default recommended packages), measured the same day on the same machine with
+an empty `uv` cache:
+
+| Source | Default environment | Adding PyTorch afterwards |
+|---|---|---|
+| Offline installer, no network | 7 s, 2.0 GB on disk | 2 s, CPU build from the payload, 0.7 GB more |
+| Standard installer, package index | 4 min 22 s, 2.0 GB on disk | 6 min 22 s on a machine with an NVIDIA GPU (CUDA build), 4.5 GB more |
+
+The second row is download time on that machine's connection (about 1 GB,
+then about 2.5 GB); it varies with the network. An offline installer on a
+machine with a network installs PyTorch like the second row.
 
 A `resources/backend/` that carries a complete Python runtime weighs about
 1.5 GB.
 
-Not measured on their platforms: the following are the download sizes of the
-locked files, summed from the locks.
+The Windows and macOS payloads were not measured on their platforms. The
+following are download sizes: the sum of the sizes that the package index and
+the python-build-standalone release report for the files named in the wheel
+locks and in `scripts/python-runtime-config.cjs`, queried on 2026-11-16. The
+locks record names, URLs and hashes, not sizes.
 
 | Target | Required cohort | Offline wheels | Python archive |
 |---|---|---|---|
-| Windows x64 | 42 MB | about 580 MB | 45 MB |
-| macOS arm64 | about 60 MB (remote wheelhouse; one wheel is built from source) | no offline installer | 18 MB (downloaded at first launch) |
+| Windows x64 | 38 MB | about 580 MB | 45 MB |
+| macOS arm64 | 61 MB (downloaded from the package index at first launch) | no offline installer | 18 MB (downloaded at first launch) |
 
 ## Build Entry Points
 
@@ -246,8 +272,7 @@ npm run release -- --clean --platform linux
 npm run release -- --clean --platform linux --offline
 ```
 
-On macOS the script also packs the remote wheelhouse (see
-[Build inputs](#build-inputs)) and refuses `--offline`.
+On macOS the script stages no wheels and refuses `--offline`.
 
 The script stages the build inputs below into `backend-dist/`, verifies the
 runtime contract with the Python payload and the native Methods library, builds
@@ -263,7 +288,6 @@ Notes:
   `--skip-frontend` reuses `dist/` and `dist-electron/`
 - without `--offline`, `backend-dist/offline/` is removed so that a light
   installer cannot pick up a payload left by an offline build
-- `--mode standalone` is rejected; portable and all-in-one releases are disabled
 
 ### Build inputs
 
@@ -273,18 +297,14 @@ to `resources/backend/`:
 | Command | Output | Target options |
 |---|---|---|
 | `node scripts/fetch-uv.cjs` | `tools/uv[.exe]` (pinned `uv` 0.10.4, SHA-256 verified) | `--platform`, `--arch` |
-| `node scripts/build-wheelhouse.cjs` | `wheels/` (required cohort) | `--platform`, `--arch` |
-| `node scripts/pack-remote-wheelhouse.cjs --tag <tag> --version <version>` | macOS only: moves `wheels/` into `release/nirs4all.Studio-<version>-mac-arm64-wheels.tar.gz` (with its `.sha256`) and writes `wheelhouse.json` | `--platform`, `--arch` |
+| `node scripts/build-wheelhouse.cjs` | `wheels/` (required cohort; Windows and Linux, the macOS target is refused) | `--platform`, `--arch` |
 | `node scripts/studio-document-adapters.cjs --install backend-dist/adapters` | `adapters/studio_document_adapters/` | none |
 | `node scripts/build-native-sidecar.cjs` | `native/` and `STUDIO_RUNTIME_CONTRACT.json` | `--target <rust-target-triple>` |
 | `node scripts/build-offline-payload.cjs` | `offline/` (offline variant, Windows and Linux) | `--platform`, `--arch` |
 | `node scripts/build-offline-payload.cjs --image` | `offline/` with the closure of the Docker image instead | `--platform`, `--arch` |
 
 `--platform` and `--arch` name one of the three targets (`win32` `x64`,
-`linux` `x64`, `darwin` `arm64`) and default to the host. The `url` in
-`wheelhouse.json` is
-`https://github.com/GBeurier/nirs4all-studio/releases/download/<tag>/<filename>`;
-the release tag is the version, without a `v` prefix.
+`linux` `x64`, `darwin` `arm64`) and default to the host.
 
 ### Wheel locks
 
@@ -295,8 +315,12 @@ pinned in `scripts/python-runtime-config.cjs` on that target, it names the
 exact file of every package Studio ships:
 
 - `packages`: the required cohort and, for the targets that have an offline
-  installer, the `default_install` recommended packages and all their
-  dependencies. The macOS lock holds the required cohort only.
+  installer, the `default_install` and the `offline_payload` recommended
+  packages and all their dependencies. The lock names the two groups
+  separately (`requirements.recommended`, `requirements.offline_extras`). The
+  macOS lock holds the required cohort only: nothing is staged from it, it
+  proves that every required package publishes a macOS arm64 wheel, which is
+  what lets Studio install them from the package index.
 - `image_packages` (Linux only): the closure of the Docker image, that is the
   required cohort and the image extras (`shap`, `matplotlib`, `lightgbm`) with
   all their dependencies, at the same versions as `packages` wherever both
@@ -309,11 +333,11 @@ verify their SHA-256.
 
 A lock also records what it was resolved from: the catalogue's exact
 requirements, the Python version, and the rules of its target (resolution
-platform, macOS deployment target, packages built from source). The build
-scripts refuse a lock when any of these no longer matches.
+platform, macOS deployment target, packages locked as source distributions).
+The build scripts refuse a lock when any of these no longer matches.
 
 Regenerate every lock after any change of `required`, or of a
-`default_install` package, in `recommended-config.json`:
+`default_install` or `offline_payload` package, in `recommended-config.json`:
 
 ```bash
 node scripts/python-wheel-lock.cjs
@@ -321,23 +345,15 @@ node scripts/python-wheel-lock.cjs
 
 This needs `uv` (on `PATH`, or named by `NIRS4ALL_UV`) and network access.
 
-Packages that publish no wheel for a target are locked as source distributions
-and built into wheels when the payload is built:
-
-| Package | Targets | Build requirement |
-|---|---|---|
-| `pyopls` | all (offline and image closures) | none (pure Python) |
-| `nirs4all-formats` | macOS arm64 | Rust toolchain on the macOS build host |
-
-Source builds use a `uv`-managed Python and, on macOS, the deployment target
-recorded in the lock (12.0), so the wheel's tags do not depend on the build
-machine. Native packages only build on their target host.
+`pyopls` publishes no wheel: it is pure Python, is locked as a source
+distribution in the offline and image closures, and is built into a wheel with
+a `uv`-managed Python when the payload is built. Every other locked file is a
+wheel, and no required package is built from source on any target.
 
 ### Supported release formats
 
 Publish NSIS for Windows and DEB for Linux, each with its offline variant, DMG
-for macOS arm64 with its remote wheelhouse, and Docker. Portable and all-in-one archives are
-excluded from the release workflow and npm release commands.
+for macOS arm64, and Docker. Nothing else is built or published.
 
 ### Verification
 
@@ -353,8 +369,8 @@ node scripts/native-runtime-contract.cjs \
 It checks the sidecar and `libn4m` against the contract and, with
 `--require-python-payload`, the presence of `uv`, exactly one wheel per
 required package at its `install` version with no other wheel (for
-`--platform darwin`: a well-formed `wheelhouse.json` and no `wheels/`
-directory), and the adapters against their attested manifest
+`--platform darwin`: no `wheels/` directory), and the adapters against their
+attested manifest
 (`sidecar/contracts/studio_document_adapters_v1.json`).
 
 Two smokes run on an unpacked application, and both are release gates:
@@ -368,9 +384,10 @@ node scripts/smoke-packaged-ui.cjs --extracted-root <unpacked app> --platform <p
 - `smoke-archive-standalone.cjs` checks the payload. A script
   (`provision-environment.cjs`) creates an environment with the shipped `uv`
   from the shipped wheels in a private profile; when the application carries
-  `offline/`, nothing comes from the network (`--offline --no-index`) and the
-  default recommended packages are installed too, which proves that the
-  payload is complete on that platform. The packaged application is then
+  `offline/`, nothing comes from the network (`--offline --no-index`), the
+  default recommended packages are installed too and PyTorch is then added to
+  that environment, which proves that the payload is complete on that
+  platform. The packaged application is then
   launched on that environment: the smoke waits for `/api/system/readiness` to
   report `ml_ready`, checks `/api/system/env-coherence`, and exercises the
   Playground and dataset routes through the Rust sidecar.
@@ -384,8 +401,7 @@ node scripts/smoke-packaged-ui.cjs --extracted-root <unpacked app> --platform <p
   the release workflow. `scripts/smoke-first-launch-ui.cjs` is the same run
   without the release identity checks and the SHAP journey.
 
-On macOS both take the freshly built wheel archive through
-`NIRS4ALL_WHEELHOUSE_ARCHIVE`.
+On macOS both install the required packages from the package index.
 
 The provisioning step is available on its own, and is also what the Docker
 image uses:
@@ -413,7 +429,9 @@ The release workflow is `.github/workflows/release-unified.yml`.
 
 - `tag`
 - `publish_existing_tag`
-- `macos_arm64_only`
+- `macos_arm64_only`: builds and smokes the macOS installer only. It
+  publishes nothing: the `release` job needs the quality, Linux and Windows
+  jobs, which this input skips.
 - `skip_docker`
 
 ### Jobs
@@ -424,7 +442,7 @@ The release workflow is `.github/workflows/release-unified.yml`.
 | `quality` | Qualify the release commit |
 | `installer-linux` | Linux DEB installer and its offline variant |
 | `installer-windows` | Windows NSIS installer and its offline variant |
-| `installer-macos-arm64` | macOS Apple Silicon DMG and its remote wheelhouse; the DMG is signed/notarized when secrets are available |
+| `installer-macos-arm64` | macOS Apple Silicon DMG; signed/notarized when secrets are available |
 | `docker` | Native container image with nginx, the Rust sidecar and its Python environment |
 | `release` | Consolidates the `installer-*` artifacts into the GitHub Release |
 
@@ -450,17 +468,12 @@ published set.
 | macOS Apple Silicon | `nirs4all.Studio-{version}-mac-arm64.dmg` | none |
 | Linux x64 | `nirs4all.Studio-{version}-linux-amd64.deb` | `nirs4all.Studio-{version}-linux-amd64-offline.deb` |
 
-The macOS release also carries
-`nirs4all.Studio-{version}-mac-arm64-wheels.tar.gz`, the remote wheelhouse of
-the macOS application.
-
-`expectedPublishedNames` in `scripts/finalize-release-assets.cjs` takes an
-explicit flag for the offline installers and the macOS wheels: the release
-workflow passes it, and the lanes that republish a release made before them do
-not.
+`expectedPublishedNames` in `scripts/finalize-release-assets.cjs` is that
+exact set of five files; a release directory with a missing or an additional
+payload is refused.
 
 The in-app update check always selects the installer, never an `-offline`
-asset or the wheel archive. See [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md#asset-selection-rules).
+asset. See [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md#asset-selection-rules).
 
 ### Docker asset
 
@@ -558,7 +571,7 @@ contains no unsigned binary inside an archive.
 
 The update contract uses GitHub Releases. An application update is the
 installer of the newer version: the update check selects the installer asset
-for the platform, never an `-offline` asset or the macOS wheel archive, and
+for the platform, never an `-offline` asset, and
 Studio offers its download.
 Running it replaces the application; the user's Python environment and
 settings under `userData` are kept. See [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md).
@@ -582,8 +595,8 @@ removes every file that is not in the lock.
 
 Expected on the first launch: no Python environment is selected yet. With the
 offline installer (Windows, Linux), creating the environment needs no network
-access. On macOS it needs one: Studio downloads the Python runtime and the
-remote wheelhouse.
+access. On macOS it needs one: Studio downloads the Python runtime and
+installs its required packages from the package index.
 
 ## Files Reference
 
@@ -596,7 +609,6 @@ remote wheelhouse.
 | `scripts/fetch-uv.cjs` | Stages the pinned `uv` release |
 | `scripts/python-wheel-lock.cjs` | Generates and reads the hash-pinned wheel locks |
 | `scripts/build-wheelhouse.cjs` | Stages the wheels of the required cohort |
-| `scripts/pack-remote-wheelhouse.cjs` | macOS: packs the required wheels as a release asset and writes `wheelhouse.json` |
 | `scripts/build-offline-payload.cjs` | Stages the offline payload, or the Docker image closure with `--image` |
 | `scripts/studio-document-adapters.cjs` | Attests and installs the document adapters |
 | `scripts/build-native-sidecar.cjs` | Builds the Rust sidecar and writes the runtime contract |

@@ -122,14 +122,10 @@ describe("electron-builder config", () => {
   it("packages the Python runtime pin, the catalogue and the trust helper required by the Electron main process", () => {
     const expectedFiles = ["scripts/python-runtime-config.cjs", "scripts/tls-trust.cjs", "recommended-config.json"];
 
-    expect(configNames).toEqual(["electron-builder.archive.yml", "electron-builder.installer.yml", "electron-builder.offline.yml"]);
-    for (const configName of ["electron-builder.archive.yml", "electron-builder.installer.yml"]) {
-      const packagedFiles = getTopLevelYamlList(path.join(projectRoot, configName), "files");
-
-      expect(packagedFiles, `${configName} files list`).toEqual(
-        expect.arrayContaining(expectedFiles),
-      );
-    }
+    // Only installers are built: the standard one and the offline variant derived from it.
+    expect(configNames).toEqual(["electron-builder.installer.yml", "electron-builder.offline.yml"]);
+    const packagedFiles = getTopLevelYamlList(path.join(projectRoot, "electron-builder.installer.yml"), "files");
+    expect(packagedFiles).toEqual(expect.arrayContaining(expectedFiles));
   });
 
   it("leaves mac architecture selection to the CLI so release jobs do not cross-build both arches", () => {
@@ -157,13 +153,7 @@ describe("electron-builder config", () => {
         path.join(projectRoot, "electron-builder.installer.yml"),
         "backend-dist/",
       ),
-    ).toEqual(["native/**/*", "tools/**/*", "wheels/**/*", "wheelhouse.json", "adapters/**/*"]);
-    expect(
-      getExtraResourceFilter(
-        path.join(projectRoot, "electron-builder.archive.yml"),
-        "backend-dist/",
-      ),
-    ).toEqual(["**/*"]);
+    ).toEqual(["native/**/*", "tools/**/*", "wheels/**/*", "adapters/**/*"]);
   });
 
   it("derives the offline installer from the standard one, adding only the payload and the artifact suffix", () => {
@@ -184,39 +174,12 @@ describe("electron-builder config", () => {
     expect(getTopLevelYamlSection(path.join(projectRoot, "electron-builder.installer.yml"), "nsis")).toContain("include: build/installer.nsh");
   });
 
-  it("attests install-tree ownership only in standalone archives", () => {
-    const marker = fs.readFileSync(
-      path.join(projectRoot, "build", "all-in-one-runtime.json"),
-      "utf8",
-    );
-    expect(JSON.parse(marker)).toEqual({
-      schema_id: "nirs4all.studio-all-in-one-runtime.v1",
-      owns_install_tree: true,
-    });
-    const archive = fs.readFileSync(
-      path.join(projectRoot, "electron-builder.archive.yml"),
-      "utf8",
-    );
-    const installer = fs.readFileSync(
-      path.join(projectRoot, "electron-builder.installer.yml"),
-      "utf8",
-    );
-    expect(archive).toContain("from: build/all-in-one-runtime.json");
-    expect(archive).toContain("to: all-in-one-runtime.json");
-    expect(installer).not.toContain("all-in-one-runtime.json");
-  });
-
   it("publishes every desktop artifact to the canonical Studio repository", () => {
-    for (const configName of ["electron-builder.archive.yml", "electron-builder.installer.yml"]) {
-      const publishSection = getTopLevelYamlSection(
-        path.join(projectRoot, configName),
-        "publish",
-      );
-      expect(publishSection, configName).toContain("provider: github");
-      expect(publishSection, configName).toContain("owner: GBeurier");
-      expect(publishSection, configName).toContain("repo: nirs4all-studio");
-      expect(publishSection, configName).not.toContain("repo: nirs4all-webapp");
-    }
+    const publishSection = getTopLevelYamlSection(path.join(projectRoot, "electron-builder.installer.yml"), "publish");
+    expect(publishSection).toContain("provider: github");
+    expect(publishSection).toContain("owner: GBeurier");
+    expect(publishSection).toContain("repo: nirs4all-studio");
+    expect(publishSection).not.toContain("repo: nirs4all-webapp");
   });
 
   it("never selects Python backend source or a Python runtime for installers", () => {

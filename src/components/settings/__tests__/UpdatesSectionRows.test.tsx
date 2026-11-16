@@ -47,15 +47,9 @@ function createWebappRow(
   overrides: Partial<WebappUpdateRowState> = {},
 ): WebappUpdateRowState {
   return {
-    action: "update",
-    canApplyInPlace: true,
     currentVersion: "1.0.0",
-    downloadProgressPercent: 0,
-    hasStagedUpdate: false,
     hasUpdate: true,
-    installerUrl: "https://example.test/installer",
     isPrerelease: false,
-    showTargetVersion: true,
     targetVersion: "1.1.0",
     ...overrides,
   };
@@ -72,54 +66,31 @@ afterEach(async () => {
 });
 
 describe("WebappUpdateRow", () => {
-  it("renders the prepared version state and opens the update dialog CTA", async () => {
+  it("shows the newer version and one action that opens the installer dialog", async () => {
     const onOpenDialog = vi.fn();
     const container = await render(
-      <WebappUpdateRow
-        row={createWebappRow({ isPrerelease: true })}
-        onOpenDialog={onOpenDialog}
-        onOpenInstaller={vi.fn()}
-      />,
+      <WebappUpdateRow row={createWebappRow({ isPrerelease: true })} onOpenDialog={onOpenDialog} />,
     );
 
     expect(container.textContent).toContain("nirs4all Studio");
     expect(container.textContent).toContain("Current: 1.0.0 → 1.1.0");
     expect(container.textContent).toContain("pre-release");
-    expect(container.textContent).toContain("Update");
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    expect(container.querySelector("button")?.textContent).toContain("Get installer");
 
     await click(container.querySelector("button"));
 
     expect(onOpenDialog).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the installer CTA from the prepared installer state", async () => {
-    const onOpenInstaller = vi.fn();
+  it("shows only the installed version when Studio is up to date", async () => {
     const container = await render(
-      <WebappUpdateRow
-        row={createWebappRow({ action: "installer" })}
-        onOpenDialog={vi.fn()}
-        onOpenInstaller={onOpenInstaller}
-      />,
+      <WebappUpdateRow row={createWebappRow({ hasUpdate: false, targetVersion: "1.0.0" })} onOpenDialog={vi.fn()} />,
     );
 
-    const button = container.querySelector("button");
-    expect(button?.textContent).toContain("Get installer");
-    expect(button?.disabled).toBe(false);
-
-    await click(button);
-
-    expect(onOpenInstaller).toHaveBeenCalledTimes(1);
-  });
-
-  it("disables the installer CTA when no installer URL is prepared", async () => {
-    const container = await render(
-      <WebappUpdateRow
-        row={createWebappRow({ action: "installer", installerUrl: null })}
-        onOpenDialog={vi.fn()}
-        onOpenInstaller={vi.fn()}
-      />,
-    );
-
-    expect(container.querySelector("button")?.disabled).toBe(true);
+    expect(container.textContent).toContain("Current: 1.0.0");
+    expect(container.textContent).not.toContain("→");
+    expect(container.textContent).toContain("Up to date");
+    expect(container.querySelector("button")).toBeNull();
   });
 });

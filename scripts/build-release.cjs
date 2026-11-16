@@ -8,7 +8,6 @@
  *
  * Options:
  *   --flavor cpu          Build flavor (only supported release profile)
- *   --mode installer      Installer mode (the only supported distribution)
  *   --offline             Build the offline installer (Windows and Linux; adds the offline payload)
  *   --clean               Clean all build artifacts before building
  *   --skip-backend        Reuse the installer payload already in backend-dist/
@@ -31,7 +30,6 @@ process.chdir(projectRoot);
 // Parse arguments
 const args = process.argv.slice(2);
 let flavor = "cpu";
-let mode = "installer";
 let offline = false;
 let clean = false;
 let skipBackend = false;
@@ -50,14 +48,6 @@ for (let i = 0; i < args.length; i++) {
     offline = true;
   } else if (args[i] === "--clean") {
     clean = true;
-  } else if (args[i] === "--mode") {
-    if (!args[i + 1] || args[i + 1].startsWith("--")) {
-      argumentError = "--mode requires a value";
-      break;
-    }
-    mode = args[++i];
-  } else if (args[i] === "--standalone") {
-    mode = "standalone";
   } else if (args[i] === "--skip-backend") {
     skipBackend = true;
   } else if (args[i] === "--skip-frontend") {
@@ -91,12 +81,6 @@ if (flavor !== "cpu") {
   process.exit(1);
 }
 
-if (mode !== "installer") {
-  console.error(
-    `Error: Release mode '${mode}' is not supported. Only installers are enabled; portable and all-in-one releases are disabled.`,
-  );
-  process.exit(1);
-}
 
 const hostPlatform = { win32: "win", darwin: "mac", linux: "linux" }[process.platform];
 if (!hostPlatform) {
@@ -181,7 +165,7 @@ console.log("  nirs4all Release Build");
 console.log("========================================");
 console.log("");
 console.log("Build configuration:");
-console.log(`  Mode: ${mode}${offline ? " (offline)" : ""}`);
+console.log(`  Installer: ${offline ? "offline" : "standard"}`);
 console.log(`  Flavor: ${flavor.toUpperCase()}`);
 console.log(`  Platform: ${platform || "current"}`);
 console.log("");
@@ -234,11 +218,11 @@ async function main() {
     if (!skipBackend) {
       console.log("=== Step 1: Staging uv, required wheels, adapters and the native sidecar ===");
       await runCommand("node", ["scripts/fetch-uv.cjs"]);
-      await runCommand("node", ["scripts/build-wheelhouse.cjs"]);
       if (process.platform === "darwin") {
-        // The macOS application names its required wheels instead of embedding them.
-        const { version } = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"));
-        await runCommand("node", ["scripts/pack-remote-wheelhouse.cjs", "--tag", version, "--version", version]);
+        // A macOS application embeds no wheels: Studio installs its required packages from the package index.
+        rmrf("backend-dist/wheels");
+      } else {
+        await runCommand("node", ["scripts/build-wheelhouse.cjs"]);
       }
       await runCommand("node", ["scripts/studio-document-adapters.cjs", "--install", path.join(backendRoot, "adapters")]);
       await runCommand("node", ["scripts/build-native-sidecar.cjs"]);

@@ -6,10 +6,15 @@
  * file of every package Studio ships: the required cohort of
  * recommended-config.json (`required`, at its `install` versions) and, for
  * the targets that have an offline installer, the recommended packages
- * installed by default (`default_install`) with every dependency. The Linux
+ * installed by default (`default_install`) and those that must stay
+ * installable without a network although Studio installs them on request
+ * only (`offline_payload`), with every dependency. The Linux
  * lock also carries the closure of the Docker image (`image_packages`: the
  * required cohort and the image extras). The build scripts only download the
  * locked files and verify their SHA-256; nothing is resolved at build time.
+ * The macOS application embeds no wheels and installs its required packages
+ * from the package index: its lock names the wheel of each required package,
+ * which proves that all of them can be installed on that target.
  *
  * Regenerate every lock after changing the catalogue (needs `uv` and network):
  *   node scripts/python-wheel-lock.cjs
@@ -36,12 +41,11 @@ const SOURCE_ONLY_PACKAGES = Object.freeze(["pyopls"]);
 /**
  * `uvPlatform` drives the resolution; `platformRank` accepts a wheel platform
  * tag for the same baseline (glibc 2.35, macOS 12) and ranks the best match.
- * `sourceBuilds` names the packages that publish no wheel for the target:
- * their locked source distribution is built into a wheel on that host when
- * the payload is built. `offlineInstaller` marks the targets whose offline
- * installer ships the whole closure. `remoteWheelhouse` is the asset-name
- * label of a target whose application ships no wheels and downloads the
- * required cohort from its release instead. `imageExtras` names the catalogue
+ * `embeddedWheels` marks the targets whose installer embeds the wheels of the
+ * required cohort and has an offline variant that ships the whole closure.
+ * The macOS application embeds none: Studio installs its required packages
+ * from the package index, and the macOS lock only proves that every one of
+ * them publishes a wheel for that target. `imageExtras` names the catalogue
  * packages that the Docker image adds to the required cohort, at their
  * recommended versions.
  */
@@ -54,13 +58,13 @@ const TARGETS = Object.freeze({
       const legacy = { manylinux2014_x86_64: 117, manylinux2010_x86_64: 112, manylinux1_x86_64: 105, linux_x86_64: 1 };
       return legacy[tag] ?? -1;
     },
-    offlineInstaller: true,
+    embeddedWheels: true,
     imageExtras: ["shap", "matplotlib", "lightgbm"],
   },
   "win32-x64": {
     uvPlatform: "x86_64-pc-windows-msvc",
     platformRank: (tag) => (tag === "win_amd64" ? 1 : -1),
-    offlineInstaller: true,
+    embeddedWheels: true,
   },
   "darwin-arm64": {
     uvPlatform: "aarch64-apple-darwin",
@@ -71,11 +75,9 @@ const TARGETS = Object.freeze({
       if (major > MACOS_DEPLOYMENT_TARGET || (major === MACOS_DEPLOYMENT_TARGET && minor > 0)) return -1;
       return major * 100 + minor + (match[3] === "arm64" ? 0.5 : 0);
     },
-    sourceBuilds: ["nirs4all-formats"],
-    remoteWheelhouse: "mac-arm64",
   },
 });
-// Oldest supported macOS: resolution, wheel selection and source builds all use it.
+// Oldest supported macOS: resolution and wheel selection use it.
 const MACOS_DEPLOYMENT_TARGET = 12;
 const MACOS_ENVIRONMENT = Object.freeze({ MACOSX_DEPLOYMENT_TARGET: `${MACOS_DEPLOYMENT_TARGET}.0` });
 
@@ -87,17 +89,6 @@ function targetKey(platform, arch) {
   const key = `${platform}-${arch}`;
   if (!TARGETS[key]) throw new Error(`Unsupported target '${key}'. Supported: ${Object.keys(TARGETS).join(", ")}`);
   return key;
-}
-
-function sourcePackages(key) {
-  return [...SOURCE_ONLY_PACKAGES, ...(TARGETS[key].sourceBuilds ?? [])];
-}
-
-/** Release asset that carries the required wheels of a target without embedded wheels. */
-function remoteWheelhouseAssetName(key, version) {
-  const label = TARGETS[key].remoteWheelhouse;
-  if (!label) throw new Error(`The ${key} application ships its wheels; it has no remote wheelhouse`);
-  return `nirs4all.Studio-${version}-${label}-wheels.tar.gz`;
 }
 
 function lockPath(key, root = projectRoot) {
@@ -116,13 +107,16 @@ function lockInputs(key, catalogue = require("../recommended-config.json")) {
     rules: {
       platform: target.uvPlatform,
       ...(key.startsWith("darwin-") ? { macos_deployment_target: MACOS_ENVIRONMENT.MACOSX_DEPLOYMENT_TARGET } : {}),
-      source_builds: sourcePackages(key),
+      source_builds: [...SOURCE_ONLY_PACKAGES],
     },
     requirements: {
       required: catalogue.required.map((spec) => `${spec.name}==${spec.install}`),
-      ...(target.offlineInstaller ? {
+      ...(target.embeddedWheels ? {
         recommended: Object.entries(catalogue.optional)
           .filter(([, spec]) => spec.default_install === true)
+          .map(([name]) => recommended(name)),
+        offline_extras: Object.entries(catalogue.optional)
+          .filter(([, spec]) => spec.offline_payload === true && spec.default_install !== true)
           .map(([name]) => recommended(name)),
       } : {}),
       ...(target.imageExtras ? { image_extras: target.imageExtras.map(recommended) } : {}),
@@ -176,7 +170,7 @@ async function lockPackage(resolved, key) {
     .map((file) => ({ file, rank: wheelRank(file.filename, key) }))
     .filter((candidate) => candidate.rank >= 0)
     .sort((left, right) => right.rank - left.rank || left.file.filename.localeCompare(right.file.filename))[0]?.file;
-  const sdist = sourcePackages(key).includes(resolved.name) ? files.find((file) => file.filename.endsWith(".tar.gz")) : undefined;
+  const sdist = SOURCE_ONLY_PACKAGES.includes(resolved.name) ? files.find((file) => file.filename.endsWith(".tar.gz")) : undefined;
   const selected = wheel ?? sdist;
   if (!selected) throw new Error(`No installable file for ${resolved.name}==${resolved.version} on ${key}`);
   return { name: resolved.name, version: resolved.version, ...selected };
@@ -196,7 +190,7 @@ async function resolveClosure(key, specs, { constraints = [], closure = true }, 
     const result = spawnSync(uv, [
       "pip", "compile", input, "--constraint", pins, ...(closure ? [] : ["--no-deps"]),
       "--python-version", PYTHON, "--python-platform", TARGETS[key].uvPlatform,
-      "--only-binary", ":all:", ...sourcePackages(key).flatMap((name) => ["--no-binary", name]),
+      "--only-binary", ":all:", ...SOURCE_ONLY_PACKAGES.flatMap((name) => ["--no-binary", name]),
       // CPU builds of torch keep the offline payload small.
       "--torch-backend", "cpu",
       "--generate-hashes", "--emit-index-annotation", "--no-annotate", "--no-header", "--quiet",
@@ -217,9 +211,11 @@ async function resolveClosure(key, specs, { constraints = [], closure = true }, 
 
 async function generateLock(key, uv = process.env[UV_ENV]?.trim() || "uv") {
   const inputs = lockInputs(key);
-  const { required, recommended, image_extras: imageExtras } = inputs.requirements;
-  // Without an offline installer only the required cohort itself is shipped.
-  const packages = await resolveClosure(key, [...required, ...(recommended ?? [])], { closure: recommended !== undefined }, uv);
+  const { required, recommended, offline_extras: offlineExtras, image_extras: imageExtras } = inputs.requirements;
+  // Without embedded wheels only the required cohort itself is locked.
+  const packages = await resolveClosure(
+    key, [...required, ...(recommended ?? []), ...(offlineExtras ?? [])], { closure: recommended !== undefined }, uv,
+  );
   const lock = { schema: LOCK_SCHEMA, target: key, ...inputs, packages };
   if (imageExtras) {
     // The image shares the versions of the offline closure wherever both need a package.
@@ -253,9 +249,13 @@ function lockedPackages(lock, set) {
   return closure.filter((entry) => !requiredNames.has(entry.name));
 }
 
-/** Catalogue names of the recommended packages that the offline closure of a lock covers. */
-function lockedRecommendedNames(lock) {
-  return lock.requirements.recommended.map((spec) => spec.split("==")[0]);
+/**
+ * Catalogue names that the offline closure of a lock covers: the recommended
+ * packages installed by default (`recommended`) or those installed on request
+ * only (`offline_extras`).
+ */
+function lockedOfflineNames(lock, set) {
+  return lock.requirements[set].map((spec) => spec.split("==")[0]);
 }
 
 /** uv for build steps: `NIRS4ALL_UV`, the binary staged for this host, else `uv` on PATH. */
@@ -266,9 +266,8 @@ function buildUv(key, backendRoot) {
 }
 
 /**
- * Build the wheel of a locked source distribution; native packages only build
- * on their target host. A uv-managed Python and the deployment target of the
- * locks keep the wheel's tags independent of the build machine.
+ * Build the wheel of a locked source distribution (pure Python). A uv-managed
+ * Python keeps the wheel's tags independent of the build machine.
  */
 async function buildLockedWheel(entry, destination, key, uv) {
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-wheel-build-"));
@@ -276,7 +275,7 @@ async function buildLockedWheel(entry, destination, key, uv) {
     const sdist = await downloadVerified(entry.url, path.join(workDir, entry.filename), entry.sha256);
     const outDir = path.join(workDir, "dist");
     const result = spawnSync(uv, ["build", "--wheel", "--managed-python", "--python", PYTHON, "--out-dir", outDir, sdist], {
-      stdio: "inherit", windowsHide: true, env: { ...process.env, ...MACOS_ENVIRONMENT },
+      stdio: "inherit", windowsHide: true,
     });
     const wheels = result.status === 0 ? fs.readdirSync(outDir).filter((name) => name.endsWith(".whl")) : [];
     if (wheels.length !== 1 || wheelRank(wheels[0], key) < 0) {
@@ -327,11 +326,10 @@ if (require.main === module) {
 module.exports = {
   TARGETS,
   lockPath,
+  lockedOfflineNames,
   lockedPackages,
-  lockedRecommendedNames,
   parseCompiledRequirements,
   readLock,
-  remoteWheelhouseAssetName,
   stageLockedPackages,
   targetKey,
   wheelRank,

@@ -139,7 +139,6 @@ def test_macos_installer_resolves_dmg_for_arch(monkeypatch):
     manager = UpdateManager()
     asset = manager._find_installer_asset(
         [
-            _asset("nirs4all Studio-1.0.0-mac-x64.dmg"),
             _asset("nirs4all Studio-1.0.0-all-in-one-mac-arm64.zip"),
             _asset("nirs4all Studio-1.0.0-mac-arm64.dmg"),
         ]

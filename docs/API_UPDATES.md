@@ -75,80 +75,16 @@ without a Python host.
 
 ### Application Update
 
-#### GET /webapp/download-info
-Resolve the release asset for this platform and the update channel of this
-installation.
-
-**Response**:
-```json
-{
-  "update_available": true,
-  "current_version": "0.15.11",
-  "latest_version": "0.16.0",
-  "download_url": "https://github.com/.../nirs4all.Studio-0.16.0-linux-amd64.deb",
-  "asset_name": "nirs4all.Studio-0.16.0-linux-amd64.deb",
-  "download_size_bytes": 185000000,
-  "release_notes": "### What's New...",
-  "release_url": "https://github.com/.../releases/tag/0.16.0",
-  "installer_download_url": "https://github.com/.../nirs4all.Studio-0.16.0-linux-amd64.deb",
-  "installer_asset_name": "nirs4all.Studio-0.16.0-linux-amd64.deb",
-  "can_apply_in_place": false,
-  "update_channel": "installer",
-  "install_kind": "deb"
-}
-```
-
-The selected asset is always the installer of the platform; an asset whose
-name contains `-offline` is never selected, nor is the macOS wheel archive
-(`-mac-arm64-wheels.tar.gz`). Version numbers and sizes in this
-document are illustrative.
+The installer of a newer version is described by the `webapp` block of
+`GET /status` and `POST /check` (`installer_download_url`,
+`installer_asset_name`, `checksum_sha256`). The selected asset is always the
+installer of the platform; an asset whose name contains `-offline` is never
+selected. The sidecar has no route that downloads, stages or applies an
+update: Studio opens the installer URL in the system browser.
 
 #### GET /webapp/changelog
 Release notes of the discovered release. Optional query:
 `current_version=<version>`.
-
-#### POST /webapp/download-start
-Start an in-place download job. An installed application updates through its
-installer, so this route answers `400`:
-
-```json
-{
-  "detail": "This build updates through its installer and cannot apply an archive in place"
-}
-```
-
-#### GET /webapp/download-status/{job_id}
-Poll the progress of a download job.
-
-#### POST /webapp/download-cancel/{job_id}
-Request cancellation of a download job.
-
-#### GET /webapp/staged-update
-Get information about the currently staged update, if any.
-
-**Response**:
-```json
-{
-  "has_staged_update": false
-}
-```
-
-#### DELETE /webapp/staged-update
-Remove the staged update without applying it.
-
-#### POST /webapp/apply
-Apply a staged update. Accepts only `{"confirm": true}`. Answers `400` on an
-installed application (`"This build cannot apply updates in place"`).
-
-#### POST /webapp/cleanup
-Remove stale update artifacts.
-
-#### GET /webapp/last-apply-result
-Result of the last apply attempt; `{"status": "none"}` when there is nothing
-to report.
-
-#### DELETE /webapp/last-apply-result
-Dismiss the stored result.
 
 #### POST /webapp/restart
 Request application restart.
@@ -201,15 +137,15 @@ interface WebappUpdateInfo {
 
 ```typescript
 interface UpdateCapability {
-  can_apply_in_place: boolean;
-  channel: "in_place" | "installer";
-  reason: string;
-  install_kind: string;
+  can_apply_in_place: false;
+  channel: "installer";
+  reason: "managed_install";
+  install_kind: "windows-installer" | "dmg" | "deb";
 }
 ```
 
-An installed application reports `can_apply_in_place: false` and
-`channel: "installer"`.
+Every installation is updated through its installer, so only `install_kind`
+varies.
 
 ### UpdateSettings
 
@@ -368,10 +304,9 @@ Update routes report errors as:
 
 | Status Code | Description |
 |-------------|-------------|
-| 400 | Bad request (e.g., no update available, offline mode, in-place update not available) |
+| 400 | Bad request (e.g., offline mode, no installer for the platform, invalid changelog query) |
 | 404 | Unknown update route |
 | 405 | Method not allowed |
-| 409 | Conflicting update operation in progress |
 
 System routes that need the Python host report its absence or failure as
 `503` with a typed error envelope (`error.code`, `error.details.reason`).

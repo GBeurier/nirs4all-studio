@@ -258,26 +258,19 @@ describe("packaged runtime contract", () => {
     ).toThrow(message);
   });
 
-  it("requires a well-formed wheelhouse description instead of wheels in a macOS package", () => {
+  it("accepts a macOS package only without embedded wheels and without wheelhouse.json", () => {
     const fixture = makeResources();
     const backendRoot = path.join(fixture.resourcesPath, "backend");
     const contractPath = path.join(backendRoot, "native", "STUDIO_RUNTIME_CONTRACT.json");
     const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
     fs.writeFileSync(contractPath, JSON.stringify({ ...contract, platform: "darwin" }));
-    fs.rmSync(path.join(backendRoot, "wheels"), { recursive: true });
     const verify = () => verifyPackagedRuntimeContract({ resourcesPath: fixture.resourcesPath, platform: "darwin" });
-    const manifest = {
-      url: "https://github.com/GBeurier/nirs4all-studio/releases/download/1.2.3/nirs4all.Studio-1.2.3-mac-arm64-wheels.tar.gz",
-      sha256: "a".repeat(64),
-      filename: "nirs4all.Studio-1.2.3-mac-arm64-wheels.tar.gz",
-    };
-    expect(verify).toThrow("Packaged wheelhouse description is missing or invalid");
-    for (const invalid of [{ ...manifest, sha256: "abc" }, { ...manifest, url: "file:///tmp/wheels.tar.gz" }, { url: manifest.url }]) {
-      fs.writeFileSync(path.join(backendRoot, "wheelhouse.json"), JSON.stringify(invalid));
-      expect(verify).toThrow("Packaged wheelhouse description is missing or invalid");
-    }
-    fs.writeFileSync(path.join(backendRoot, "wheelhouse.json"), JSON.stringify(manifest));
+
+    expect(verify).toThrow(`A macOS package carries no required wheels; unexpected: ${path.join(backendRoot, "wheels")}`);
+    fs.rmSync(path.join(backendRoot, "wheels"), { recursive: true });
     expect(verify().sidecarPath).toBe(fixture.sidecarPath);
+    fs.writeFileSync(path.join(backendRoot, "wheelhouse.json"), "{}");
+    expect(verify).toThrow(`A macOS package carries no required wheels; unexpected: ${path.join(backendRoot, "wheelhouse.json")}`);
   });
 
   it("expects uv.exe in a Windows package", () => {

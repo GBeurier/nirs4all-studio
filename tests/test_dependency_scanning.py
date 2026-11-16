@@ -390,4 +390,7 @@ class TestDependencyScanningOptionalMetadata:
         assert torch_pkg is not None
         assert torch_pkg["is_installed"] is True
         assert torch_pkg["managed_by_profile"] is True
-        assert torch_pkg["default_install"] is True
+        # PyTorch is installed on request, not by default; a default package keeps its flag.
+        assert torch_pkg["default_install"] is False
+        boosting = next(c for c in data["categories"] if c["id"] == "boosting")
+        assert next(p for p in boosting["packages"] if p["name"] == "xgboost")["default_install"] is True

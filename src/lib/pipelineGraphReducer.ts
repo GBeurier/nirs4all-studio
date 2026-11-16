@@ -154,6 +154,29 @@ export function findPipelineStepById(
   return null;
 }
 
+/**
+ * Inserts `step` at `index` of the container at `path`.
+ *
+ * The position may have been chosen before the pipeline last changed: an index
+ * past the end of the container is clamped to its length, and when the
+ * container no longer exists the step is appended to the pipeline root.
+ */
+export function insertPipelineStepAtPath(
+  steps: readonly PipelineStep[],
+  path: readonly string[],
+  index: number,
+  step: PipelineStep,
+): PipelineStep[] {
+  let resolved = false;
+  const inserted = updatePipelineStepsAtPath(steps, path, (targetSteps) => {
+    resolved = true;
+    const result = [...targetSteps];
+    result.splice(Math.min(Math.max(index, 0), result.length), 0, step);
+    return result;
+  });
+  return resolved ? inserted : [...steps, step];
+}
+
 export function removePipelineStepById(
   steps: readonly PipelineStep[],
   id: string,

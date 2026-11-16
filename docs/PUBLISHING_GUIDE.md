@@ -8,7 +8,7 @@ Step-by-step checklist for publishing a new nirs4all-webapp release.
 
 - Push access to `GBeurier/nirs4all-studio`
 - The `release-unified.yml` GitHub Actions workflow is in place
-- The installer/archive electron-builder configs have their publish metadata configured
+- The installer electron-builder configuration (`electron-builder.installer.yml`) has its publish metadata configured
 
 ## Steps
 
@@ -64,14 +64,13 @@ Typical build time: ~15-25 minutes.
 After CI completes:
 
 1. Go to `https://github.com/GBeurier/nirs4all-studio/releases/latest`
-2. Confirm all expected assets are present:
-   - Windows x64 NSIS and portable executables + `.sha256`
-   - Linux x64 AppImage and deb + `.sha256`
-   - macOS x64 and arm64 DMGs + `.sha256`
-   - all-in-one archives for each enabled platform/architecture
+2. Confirm all expected assets are present, each with its `.sha256`:
+   - Windows x64 installer and offline installer (`-win-x64.exe`, `-win-x64-offline.exe`)
+   - Linux x64 installer and offline installer (`-linux-amd64.deb`, `-linux-amd64-offline.deb`)
+   - macOS arm64 installer (`-mac-arm64.dmg`)
 3. Verify checksums: download an asset and its `.sha256` file, then:
    ```bash
-   sha256sum -c nirs4all-Studio-1.1.0-win-x64.exe.sha256
+   sha256sum -c nirs4all.Studio-1.1.0-win-x64.exe.sha256
    ```
 
 ### 5. Edit release notes (optional)
@@ -89,11 +88,11 @@ The webapp's update dialog will display these notes to users via the changelog v
 
 On a machine running the **previous** version:
 
-1. Open the app, go to **Settings > Advanced > Updates**
+1. Open the app, go to **Settings > Updates**
 2. Click **Check Now** — the new version should appear
-3. Click **Update** — download should start with progress
-4. Verify the "What's New" changelog shows correctly
-5. Click **Apply Update** to test the full restart cycle
+3. Verify the "What's New" changelog shows correctly
+4. Use the installer download action — the browser downloads the installer of the new version
+5. Close the app, run the installer, and check that the app starts on the same Python environment
 
 ---
 
@@ -103,7 +102,7 @@ If you need to rebuild without pushing a new tag:
 
 1. Go to **Actions > Electron Build & Release**
 2. Click **Run workflow**
-3. Enter the tag (e.g., `1.1.0`) and choose whether to skip all-in-one archives or Docker images
+3. Enter the tag (e.g., `1.1.0`) and choose whether to skip the Docker image
 
 ---
 
@@ -123,8 +122,7 @@ If you need to rebuild without pushing a new tag:
 
 | Issue | Resolution |
 |-------|-----------|
-| Plugin-runtime packaging fails | Check the pinned plugin wheel/closure identity and the native runtime contract gate |
+| Payload staging or the runtime contract gate fails | Check the wheel locks against `recommended-config.json` (`node scripts/python-wheel-lock.cjs`) and the native runtime contract; see [PACKAGING.md](PACKAGING.md#troubleshooting) |
 | No assets on the release | Check the CI logs for electron-builder errors; ensure `GH_TOKEN` secret is set |
 | Update check returns "Up to date" | Verify the tag version is higher than the installed version; check `version.json` |
 | Checksum verification fails | Re-run the CI — the `.sha256` file may have been generated from a different build |
-| Download resumes but fails checksum | Delete the partial download in `~/.nirs4all-webapp/update_cache/` and retry |
