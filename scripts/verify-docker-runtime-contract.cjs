@@ -120,7 +120,7 @@ requireText(
 );
 requireText(
   dockerfile,
-  "COPY vendor/npm/nirs4all-ui-0.2.1.tgz vendor/npm/",
+  "COPY vendor/npm/nirs4all-ui-0.2.6-shap-explainer.3.tgz vendor/npm/",
   "pinned nirs4all-ui package before npm ci",
 );
 requireText(dockerfile, "cargo build --locked --release", "locked Rust build");

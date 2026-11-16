@@ -2,16 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import type { FeatureContribution, SampleExplanationResponse } from '@/types/shap';
 import {
-  buildShapWaterfallBars,
-  getShapWaterfallBarStyle,
+  buildShapWaterfallContributions,
+  formatShapWaterfallValue,
   getShapWaterfallNextSample,
   getShapWaterfallPreviousSample,
   parseShapWaterfallSampleInput,
-  sortShapWaterfallContributions,
 } from './shapWaterfallData';
-import i18n from '@/lib/i18n';
-
-const t = i18n.getFixedT('en');
 
 function contribution(overrides: Partial<FeatureContribution> = {}): FeatureContribution {
   return {
@@ -40,72 +36,21 @@ function sampleExplanation(overrides: Partial<SampleExplanationResponse> = {}): 
 }
 
 describe('shapWaterfallData', () => {
-  it('sorts contributions by sign first, then absolute magnitude', () => {
-    expect(sortShapWaterfallContributions(sampleExplanation().contributions).map(item => item.feature_name)).toEqual([
-      'pos-large',
-      'pos-small',
-      'neg-large',
-      'neg-small',
+  it('keeps the backend contribution order and signed values so the walk reaches the prediction', () => {
+    const data = sampleExplanation({
+      contributions: [
+        contribution({ feature_name: '1400–1450', shap_value: 0.5 }),
+        contribution({ feature_name: '1100–1150', shap_value: -0.4 }),
+        contribution({ feature_name: 'Other features', shap_value: 0.5 }),
+      ],
+    });
+    const contributions = buildShapWaterfallContributions(data);
+    expect(contributions).toEqual([
+      { label: '1400–1450', value: 0.5 },
+      { label: '1100–1150', value: -0.4 },
+      { label: 'Other features', value: 0.5 },
     ]);
-  });
-
-  it('builds cumulative waterfall bars with base and final markers', () => {
-    expect(buildShapWaterfallBars(sampleExplanation(), t)).toEqual([
-      {
-        name: 'Base Value',
-        start: 0,
-        end: 1,
-        value: 1,
-        isPositive: true,
-        isBase: true,
-        isFinal: false,
-      },
-      {
-        name: 'pos-large',
-        start: 1,
-        end: 1.5,
-        value: 0.5,
-        isPositive: true,
-        isBase: false,
-        isFinal: false,
-      },
-      {
-        name: 'pos-small',
-        start: 1.5,
-        end: 1.7,
-        value: 0.2,
-        isPositive: true,
-        isBase: false,
-        isFinal: false,
-      },
-      {
-        name: 'neg-large',
-        start: 1.7,
-        end: 1.2999999999999998,
-        value: -0.4,
-        isPositive: false,
-        isBase: false,
-        isFinal: false,
-      },
-      {
-        name: 'neg-small',
-        start: 1.2999999999999998,
-        end: 1.1999999999999997,
-        value: -0.1,
-        isPositive: false,
-        isBase: false,
-        isFinal: false,
-      },
-      {
-        name: 'Prediction',
-        start: 0,
-        end: 1.6,
-        value: 1.6,
-        isPositive: true,
-        isBase: false,
-        isFinal: true,
-      },
-    ]);
+    expect(data.base_value + contributions.reduce((sum, item) => sum + item.value, 0)).toBeCloseTo(data.predicted_value);
   });
 
   it('resolves previous and next sample navigation bounds', () => {
@@ -124,22 +69,9 @@ describe('shapWaterfallData', () => {
     expect(parseShapWaterfallSampleInput('abc', 5)).toBeNull();
   });
 
-  it('maps waterfall bars to the existing fill styles', () => {
-    expect(getShapWaterfallBarStyle({ isBase: true, isFinal: false, isPositive: true })).toEqual({
-      fill: 'hsl(var(--muted-foreground))',
-      fillOpacity: 0.8,
-    });
-    expect(getShapWaterfallBarStyle({ isBase: false, isFinal: true, isPositive: true })).toEqual({
-      fill: 'hsl(var(--primary))',
-      fillOpacity: 0.8,
-    });
-    expect(getShapWaterfallBarStyle({ isBase: false, isFinal: false, isPositive: true })).toEqual({
-      fill: '#22c55e',
-      fillOpacity: 0.7,
-    });
-    expect(getShapWaterfallBarStyle({ isBase: false, isFinal: false, isPositive: false })).toEqual({
-      fill: '#ef4444',
-      fillOpacity: 0.7,
-    });
+  it('keeps model outputs distinguishable and small contributions compact', () => {
+    expect(formatShapWaterfallValue(12.41763)).toBe('12.4176');
+    expect(formatShapWaterfallValue(-0.00661)).toBe('-0.00661');
+    expect(formatShapWaterfallValue(0.000724)).toBe('7.24e-4');
   });
 });

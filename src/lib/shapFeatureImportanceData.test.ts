@@ -5,7 +5,6 @@ import {
   buildShapFeatureImportanceCsv,
   buildShapFeatureImportanceExportRows,
   buildShapFeatureImportanceRows,
-  getShapFeatureImportanceFill,
 } from './shapFeatureImportanceData';
 import i18n from '@/lib/i18n';
 
@@ -89,7 +88,12 @@ describe('shapFeatureImportanceData', () => {
     expect(buildShapFeatureImportanceCsv(binnedImportance(), 'index', t).split('\n')[0]).toBe('Rank,Feature index range,Center,Importance');
   });
 
-  it('builds the existing normalized teal fill', () => {
-    expect(getShapFeatureImportanceFill(0.5)).toBe('rgba(13, 148, 136, 0.7)');
+  it('ranks signed aggregations by magnitude so strong negative regions are kept', () => {
+    const signed = binnedImportance({ bin_values: [0.2, -0.9, 0.4] });
+    expect(buildShapFeatureImportanceRows(signed, 2).map((row) => [row.label, row.importance, row.normalized])).toEqual([
+      ['1200-1210', -0.9, 1],
+      ['1300-1310', 0.4, 0.4 / 0.9],
+    ]);
+    expect(buildShapFeatureImportanceExportRows(signed).map((row) => row.importance)).toEqual([-0.9, 0.4, 0.2]);
   });
 });

@@ -1,0 +1,7 @@
+/* Keep the spectral chart's HTML alternatives within the visible viewport as
+   its wider SVG scrolls. Tables retain their own contained overflow region. */
+.shap-chart-scroll :is(.n4viz-summary, .n4viz-readout, .n4viz-legend-row, .n4viz-datatable) {
+  position: sticky;
+  inset-inline-start: 0;
+  max-inline-size: var(--shap-chart-text-width);
+}

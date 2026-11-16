@@ -87,6 +87,51 @@ def test_real_csv_shap_axis_uses_owner_nanometers(tmp_path):
 
 
 @pytest.mark.integration_full
+def test_csv_shap_computation_and_views_keep_selected_rows_and_additivity(tmp_path, monkeypatch):
+    """Exercise real SHAP and IO; isolate only captured-model resolution/replay."""
+    from types import SimpleNamespace
+
+    import nirs4all
+    from nirs4all.api import general_explain
+    from sklearn.linear_model import Ridge
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    from api.library_analysis import shap_compute
+
+    pytest.importorskip("shap")
+    X = np.random.default_rng(71).normal(size=(24, 4)).astype(np.float32)
+    predictor = Pipeline([("scale", StandardScaler()), ("model", Ridge())]).fit(X, 3 * X[:, 0] - X[:, 2])
+    path = tmp_path / "X.csv"
+    np.savetxt(path, X[:6], delimiter=";", header="1100;1200;1300;1400", comments="")
+    loaded = {"artifact": {"estimator": predictor}, "model_name": "Ridge", "manifest": {}}
+    monkeypatch.setattr(general_explain, "_load_captured_source", lambda *args: loaded)
+    monkeypatch.setattr(nirs4all, "predict", lambda **kwargs: SimpleNamespace(y_pred=predictor.predict(kwargs["data"])))
+    monkeypatch.setattr(Pipeline, "fit", lambda *args, **kwargs: pytest.fail("SHAP must not refit the predictor"))
+
+    result = shap_compute({
+        "job_id": "shap-real", "model_id": "captured-chain", "model_source": "chain",
+        "workspace_path": str(tmp_path), "dataset_id": "csv", "partition": "train",
+        "config": {"train_x": str(path), "global_params": {"delimiter": ";", "has_header": True, "header_unit": "nm"}},
+        "n_samples": 3, "n_background": 4, "bin_size": 2, "bin_stride": 1,
+    })
+    selected = result["sample_indices"]
+    assert len(selected) == result["n_samples"] == 3
+    assert result["axis_unit"] == "nm"
+    assert result["wavelengths"] == [1100., 1200., 1300., 1400.]
+    np.testing.assert_allclose(result["_raw_X"], X[selected])
+    expected = predictor.predict(X[selected])
+    np.testing.assert_allclose(np.sum(result["_raw_shap_values"], axis=1) + result["base_value"], expected, atol=1e-5)
+    np.testing.assert_allclose(result["_y_pred"], expected)
+    for row in range(3):
+        waterfall = shap_view({"result": result, "view": "sample", "sample_idx": row, "top_n": 1})
+        assert waterfall["predicted_value"] == pytest.approx(expected[row], abs=1e-5)
+        assert waterfall["contributions"][-1]["cumulative"] == pytest.approx(expected[row], abs=1e-5)
+    assert shap_view({"result": result, "view": "spectral-detail", "sample_indices": [1]})["n_samples"] == 1
+    assert "_raw_shap_values" not in shap_view({"result": result})
+
+
+@pytest.mark.integration_full
 def test_real_features_preview_keeps_full_requested_count_and_owner_axes():
     pytest.importorskip("nirs4all.synthesis")
     config = {"name": "test_preview", "n_samples": 120, "random_state": 42,

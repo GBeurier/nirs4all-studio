@@ -1,0 +1,26 @@
+{
+  "schema_version": "nirs4all.ui-release-artifact/v1",
+  "package": {
+    "name": "nirs4all-ui",
+    "version": "0.2.6-shap-explainer.3",
+    "repository": "git+https://github.com/GBeurier/nirs4all-ui.git"
+  },
+  "source": {
+    "commit_sha": "bcbcb85e2034d0fc45a35398b4369e83e42b82fc",
+    "dirty": false
+  },
+  "artifact": {
+    "filename": "nirs4all-ui-0.2.6-shap-explainer.3.tgz",
+    "size": 3920215,
+    "sha256": "bb200fafcb5652e03de00d31b1c72844d48e6ab2eaaf54171e93189a5db3c00f",
+    "npm_integrity": "sha512-vYPLPLapu7Sv9VVN8WVzRNmLjUFqWoWhB/gspkzxSvUXRQrr+qLfPmZTRtFioLJozYzh9+wrsdbDDmlqkCh/Rw==",
+    "npm_shasum": "77d517ea9f29df6aab6efb33f3344ba26204e46a",
+    "entry_count": 1227,
+    "required_files": [
+      "LICENSE",
+      "dist/index.d.ts",
+      "dist/index.js",
+      "package.json"
+    ]
+  }
+}

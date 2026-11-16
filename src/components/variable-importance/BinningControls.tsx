@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, memo } from 'react';
+import { useState, useCallback, useEffect, useId, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
@@ -39,6 +39,7 @@ export const BinningControls = memo(function BinningControls({
   onBinnedDataUpdate,
 }: BinningControlsProps) {
   const { t } = useTranslation();
+  const controlId = useId();
 
   const [binSize, setBinSize] = useState(initialBinSize);
   const [binStride, setBinStride] = useState(initialBinStride);
@@ -90,10 +91,11 @@ export const BinningControls = memo(function BinningControls({
   return (
     <div className="flex items-end gap-3 flex-wrap">
       <div className="space-y-1">
-        <Label className="text-xs text-muted-foreground">
+        <Label htmlFor={`${controlId}-size`} className="text-xs text-muted-foreground">
           {t('shap.binning.size')}
         </Label>
         <Input
+          id={`${controlId}-size`}
           type="number"
           value={binSize}
           onChange={(e) => {
@@ -107,10 +109,11 @@ export const BinningControls = memo(function BinningControls({
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs text-muted-foreground">
+        <Label htmlFor={`${controlId}-stride`} className="text-xs text-muted-foreground">
           {t('shap.binning.stride')}
         </Label>
         <Input
+          id={`${controlId}-stride`}
           type="number"
           value={binStride}
           onChange={(e) => {
@@ -124,14 +127,14 @@ export const BinningControls = memo(function BinningControls({
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs text-muted-foreground">
+        <Label htmlFor={`${controlId}-aggregation`} className="text-xs text-muted-foreground">
           {t('shap.binning.aggregation')}
         </Label>
         <Select
           value={binAggregation}
           onValueChange={(v) => setBinAggregation(v as BinAggregation)}
         >
-          <SelectTrigger className="w-28 h-8 text-sm">
+          <SelectTrigger id={`${controlId}-aggregation`} className="w-32 h-8 text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -145,7 +148,7 @@ export const BinningControls = memo(function BinningControls({
       </div>
 
       {isRebinning && (
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mb-1" />
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mb-1" role="status" aria-label={t('common.loading')} />
       )}
       {rebinError && (
         <span className="flex items-center gap-1 text-xs text-destructive mb-1" title={rebinError}>

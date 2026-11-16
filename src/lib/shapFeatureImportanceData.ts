@@ -17,21 +17,26 @@ export interface ShapFeatureImportanceExportRow {
   importance: number;
 }
 
+/** Rank by magnitude so signed aggregations (sum/mean SHAP) keep strong negative regions. */
+function byMagnitude(left: { importance: number }, right: { importance: number }): number {
+  return Math.abs(right.importance) - Math.abs(left.importance);
+}
+
 export function buildShapFeatureImportanceRows(
   binnedImportance: BinnedImportanceData,
   limit = 15,
 ): ShapFeatureImportanceRow[] {
-  const maxImportance = Math.max(...binnedImportance.bin_values);
+  const maxMagnitude = Math.max(0, ...binnedImportance.bin_values.map((value) => Math.abs(value)));
 
   return binnedImportance.bin_centers
     .map((center, index) => ({
       label: `${binnedImportance.bin_ranges[index][0].toFixed(0)}-${binnedImportance.bin_ranges[index][1].toFixed(0)}`,
       center,
       importance: binnedImportance.bin_values[index],
-      normalized: maxImportance === 0 ? 0 : binnedImportance.bin_values[index] / maxImportance,
+      normalized: maxMagnitude === 0 ? 0 : Math.abs(binnedImportance.bin_values[index]) / maxMagnitude,
       rank: 0,
     }))
-    .sort((left, right) => right.importance - left.importance)
+    .sort(byMagnitude)
     .slice(0, limit)
     .map((item, index) => ({ ...item, rank: index + 1 }));
 }
@@ -46,7 +51,7 @@ export function buildShapFeatureImportanceExportRows(
       center,
       importance: binnedImportance.bin_values[index],
     }))
-    .sort((left, right) => right.importance - left.importance);
+    .sort(byMagnitude);
 }
 
 export function buildShapFeatureImportanceCsv(binnedImportance: BinnedImportanceData, axisUnit: string | null | undefined, t: TFunction): string {
@@ -67,8 +72,4 @@ export function buildShapFeatureImportanceCsv(binnedImportance: BinnedImportance
       row.importance.toFixed(6),
     ].join(',')),
   ].join('\n');
-}
-
-export function getShapFeatureImportanceFill(normalizedImportance: number): string {
-  return `rgba(13, 148, 136, ${0.4 + 0.6 * normalizedImportance})`;
 }

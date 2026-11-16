@@ -1,26 +1,17 @@
-import { useMemo, useEffect, useState, useRef, memo } from 'react';
+import { useMemo, useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  ComposedChart,
-  Line,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceArea,
-} from 'recharts';
 import { Loader2 } from 'lucide-react';
+import { SpectralImportanceChart as SpectralImportanceView } from 'nirs4all-ui/viz';
 import { getSpectralDetail } from '@/api/shap';
+import { ChartScrollRegion } from './ChartScrollRegion';
 import { getShapAxisDisplay } from '@/lib/shapAxisDisplay';
+import { formatWavelengthUnit } from '@/components/playground/visualizations/chartConfig';
 import {
-  buildShapSpectralBinnedBarData,
-  buildShapSpectralChartData,
-  buildShapSpectralHighlightRegions,
-  getShapSpectralImportanceColor,
+  buildShapSpectralRegions,
+  getShapBinValueKind,
   hasShapSpectralAbsorbance,
 } from '@/lib/shapSpectralImportanceData';
+import { normalizeShapBinAggregation } from '@/lib/shapBinningControlsData';
 import type { ShapResultsResponse, BinnedImportanceData } from '@/types/shap';
 
 interface SpectralImportanceChartProps {
@@ -38,216 +29,92 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
 }: SpectralImportanceChartProps) {
   const { t } = useTranslation();
   const axis = getShapAxisDisplay(results.axis_unit, t);
+  const axisUnit = formatWavelengthUnit(results.axis_unit) || undefined;
   const [filteredShap, setFilteredShap] = useState<number[] | null>(null);
   const [filteredSpectrum, setFilteredSpectrum] = useState<number[] | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const fetchTimer = useRef<ReturnType<typeof setTimeout>>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   // Debounced fetch of sample-filtered spectral detail (300ms)
   useEffect(() => {
+    let cancelled = false;
+    setFilteredShap(null);
+    setFilteredSpectrum(null);
+    setDetailError(null);
     if (!selectedSamples || selectedSamples.length === 0) {
-      setFilteredShap(null);
-      setFilteredSpectrum(null);
+      setLoadingDetail(false);
       return;
     }
 
-    if (fetchTimer.current) clearTimeout(fetchTimer.current);
-    fetchTimer.current = setTimeout(() => {
-      setLoadingDetail(true);
+    setLoadingDetail(true);
+    const timer = setTimeout(() => {
       getSpectralDetail(jobId, selectedSamples)
         .then((detail) => {
+          if (cancelled) return;
           setFilteredShap(detail.mean_abs_shap);
           setFilteredSpectrum(detail.mean_spectrum);
         })
-        .catch(() => {
-          setFilteredShap(null);
-          setFilteredSpectrum(null);
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setDetailError(error instanceof Error ? error.message : t('results.variableImportance.job.fetchFailed'));
         })
-        .finally(() => setLoadingDetail(false));
+        .finally(() => { if (!cancelled) setLoadingDetail(false); });
     }, 300);
 
     return () => {
-      if (fetchTimer.current) clearTimeout(fetchTimer.current);
+      cancelled = true;
+      clearTimeout(timer);
     };
-  }, [jobId, selectedSamples]);
+  }, [jobId, selectedSamples, t]);
 
   const activeBinned = binnedData || results.binned_importance;
+  const isFiltered = Boolean(filteredShap);
   const activeShap = filteredShap || results.mean_abs_shap;
   const activeSpectrum = filteredSpectrum || results.mean_spectrum;
+  const aggregation = normalizeShapBinAggregation(activeBinned.aggregation);
+  const regionLabel = t(`results.variableImportance.spectral.region.${aggregation}`);
 
-  // Build full data, then downsample for display
-  const chartData = useMemo(() => {
-    return buildShapSpectralChartData(results.wavelengths, activeShap, activeSpectrum);
-  }, [results.wavelengths, activeShap, activeSpectrum]);
-
-  // Binned regions for highlighting (use abs for normalization since signed aggregations can be negative)
-  const significantRegions = useMemo(() => {
-    return buildShapSpectralHighlightRegions(activeBinned, results.wavelengths, activeShap);
-  }, [activeBinned, activeShap, results.wavelengths]);
-
-  // Binned bar chart data
-  const binnedBarData = useMemo(() => {
-    return buildShapSpectralBinnedBarData(activeBinned);
-  }, [activeBinned]);
-
+  const regions = useMemo(() => buildShapSpectralRegions(activeBinned), [activeBinned]);
   const hasSpectrum = hasShapSpectralAbsorbance(activeSpectrum);
 
   return (
-    <div className="h-full flex flex-col gap-2">
-      {(loadingDetail || (selectedSamples && selectedSamples.length > 0)) && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-          {loadingDetail && <Loader2 className="h-3 w-3 animate-spin" />}
-          {selectedSamples && selectedSamples.length > 0 && !loadingDetail && (
-            <span>{t('results.variableImportance.spectral.showing', { count: selectedSamples.length })}</span>
+    <div className="flex flex-col gap-2">
+      {(loadingDetail || isFiltered) && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+          {loadingDetail && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
+          {isFiltered && !loadingDetail && (
+            <span>{t('results.variableImportance.spectral.showing', { count: selectedSamples?.length ?? 0 })}</span>
           )}
           {loadingDetail && <span>{t('results.variableImportance.spectral.loadingDetail')}</span>}
         </div>
       )}
+      {detailError && <p className="text-xs text-destructive" role="alert">{detailError}</p>}
 
-      {/* Top chart: Importance line + mean spectrum + highlighted regions */}
-      <div className="flex-1 min-h-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart
-            data={chartData}
-            margin={{ top: 10, right: hasSpectrum ? 60 : 30, left: 10, bottom: 30 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-            <XAxis
-              dataKey="wavelength"
-              type="number"
-              domain={['dataMin', 'dataMax']}
-              tickFormatter={(value: number) => value.toFixed(0)}
-              label={{ value: axis.label, position: 'bottom', offset: 15, className: 'fill-muted-foreground text-xs' }}
-              className="text-xs"
-            />
-            <YAxis
-              yAxisId="importance"
-              width={70}
-              label={{ value: t('results.variableImportance.spectral.importance'), angle: -90, position: 'insideLeft', offset: 10, className: 'fill-muted-foreground text-xs' }}
-              className="text-xs"
-              tickFormatter={(value: number) => value.toFixed(3)}
-            />
-            {hasSpectrum && (
-              <YAxis
-                yAxisId="absorbance"
-                orientation="right"
-                width={60}
-                label={{ value: t('results.variableImportance.spectral.absorbance'), angle: 90, position: 'insideRight', offset: 10, className: 'fill-muted-foreground text-xs' }}
-                className="text-xs"
-                tickFormatter={(value: number) => value.toFixed(2)}
-              />
-            )}
-
-            {significantRegions.map((region, idx) => (
-              <ReferenceArea
-                key={idx}
-                yAxisId="importance"
-                x1={region.start}
-                x2={region.end}
-                fill={getShapSpectralImportanceColor(region.normalized)}
-                fillOpacity={1}
-              />
-            ))}
-
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload || !payload.length) return null;
-                const d = payload[0].payload;
-                return (
-                  <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
-                    <p className="font-medium">{axis.name}: {d.wavelength.toFixed(1)}{axis.suffix}</p>
-                    <p className="text-muted-foreground">{t('results.variableImportance.ranking.importanceValue', { value: d.importance.toFixed(4) })}</p>
-                    {hasSpectrum && <p className="text-muted-foreground">{t('results.variableImportance.spectral.absorbanceValue', { value: d.absorbance.toFixed(4) })}</p>}
-                  </div>
-                );
-              }}
-            />
-
-            {hasSpectrum && (
-              <Line
-                yAxisId="absorbance"
-                type="monotone"
-                dataKey="absorbance"
-                stroke="hsl(var(--muted-foreground))"
-                strokeWidth={1.5}
-                strokeDasharray="6 3"
-                dot={false}
-                opacity={0.5}
-                isAnimationActive={false}
-              />
-            )}
-
-            <Line
-              yAxisId="importance"
-              type="monotone"
-              dataKey="importance"
-              stroke="hsl(var(--primary))"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Bottom chart: Binned importance bars */}
-      <div className="h-[160px] shrink-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart
-            data={binnedBarData}
-            margin={{ top: 5, right: hasSpectrum ? 60 : 30, left: 10, bottom: 35 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-            <XAxis
-              dataKey="center"
-              type="number"
-              domain={['dataMin', 'dataMax']}
-              tickFormatter={(value: number) => value.toFixed(0)}
-              label={{ value: axis.label, position: 'bottom', offset: 18, className: 'fill-muted-foreground text-xs' }}
-              className="text-xs"
-            />
-            <YAxis
-              yAxisId="binned"
-              width={70}
-              label={{ value: t('results.variableImportance.spectral.binned'), angle: -90, position: 'insideLeft', offset: 10, className: 'fill-muted-foreground text-xs' }}
-              className="text-xs"
-              tickFormatter={(value: number) => value.toFixed(3)}
-            />
-            {hasSpectrum && (
-              <YAxis
-                yAxisId="binned-right-spacer"
-                orientation="right"
-                width={60}
-                tick={false}
-                axisLine={false}
-                tickLine={false}
-              />
-            )}
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload || !payload.length) return null;
-                const d = payload[0].payload;
-                return (
-                  <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
-                    <p className="font-medium">{d.label}{axis.suffix}</p>
-                    <p className="text-muted-foreground">{t('results.variableImportance.ranking.importanceValue', { value: d.importance.toFixed(4) })}</p>
-                  </div>
-                );
-              }}
-            />
-            <Bar yAxisId="binned" dataKey="importance" fill="hsl(var(--primary))" fillOpacity={0.8} radius={[2, 2, 0, 0]} isAnimationActive={false} />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Compact legend */}
-      <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground shrink-0">
-        <span className="flex items-center gap-1"><span className="inline-block w-6 h-0.5 bg-primary" />{t('results.variableImportance.spectral.shap')}</span>
-        {hasSpectrum && <span className="flex items-center gap-1"><span className="inline-block w-6 h-0.5 border-t-2 border-dashed border-muted-foreground" />{t('results.variableImportance.spectral.spectrum')}</span>}
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(13, 148, 136, 0.7)' }} />{t('results.variableImportance.spectral.high')}</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(45, 212, 191, 0.35)' }} />{t('results.variableImportance.spectral.med')}</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(153, 246, 228, 0.15)' }} />{t('results.variableImportance.spectral.low')}</span>
-      </div>
+      <ChartScrollRegion label={t('results.variableImportance.spectral.title')}>
+        {(width) => (
+          <SpectralImportanceView
+            axis={results.wavelengths}
+            importance={activeShap}
+            spectrum={hasSpectrum ? activeSpectrum : undefined}
+            regions={regions}
+            regionValueKind={getShapBinValueKind(aggregation)}
+            axisLabel={axis.label}
+            axisUnit={axisUnit}
+            importanceLabel={t(isFiltered ? 'results.variableImportance.spectral.curveSelected' : 'results.variableImportance.spectral.curve')}
+            spectrumLabel={t(isFiltered ? 'results.variableImportance.spectral.meanSpectrumSelected' : 'results.variableImportance.spectral.meanSpectrum')}
+            regionLabel={regionLabel}
+            positiveLabel={t('results.variableImportance.spectral.raises')}
+            negativeLabel={t('results.variableImportance.spectral.lowers')}
+            instructions={t('results.variableImportance.spectral.instructions')}
+            title={t('results.variableImportance.spectral.title')}
+            width={width}
+            height={Math.round(Math.min(480, Math.max(340, width * 0.52)))}
+          />
+        )}
+      </ChartScrollRegion>
+      <p className="text-xs text-muted-foreground">
+        {t('results.variableImportance.spectral.note', { region: regionLabel })}
+      </p>
     </div>
   );
 });

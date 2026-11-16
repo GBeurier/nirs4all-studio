@@ -1,15 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts';
+import { FeatureImportanceBar as FeatureImportanceView, compactNumber, signedNumber } from 'nirs4all-ui/viz';
 import {
   Table,
   TableBody,
@@ -20,12 +11,14 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
+import { ChartScrollRegion } from './ChartScrollRegion';
 import { getShapAxisDisplay } from '@/lib/shapAxisDisplay';
+import { normalizeShapBinAggregation } from '@/lib/shapBinningControlsData';
 import {
   buildShapFeatureImportanceCsv,
   buildShapFeatureImportanceRows,
-  getShapFeatureImportanceFill,
 } from '@/lib/shapFeatureImportanceData';
+import { getShapBinValueKind } from '@/lib/shapSpectralImportanceData';
 import type { ShapResultsResponse, BinnedImportanceData } from '@/types/shap';
 
 interface FeatureImportanceBarProps {
@@ -38,10 +31,16 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
   const axis = getShapAxisDisplay(results.axis_unit, t);
   // Use rebinned data if available, otherwise from results
   const activeBinned = binnedData || results.binned_importance;
+  const aggregation = normalizeShapBinAggregation(activeBinned.aggregation);
+  const signed = getShapBinValueKind(aggregation) === 'signed';
+  const regionLabel = t(`results.variableImportance.spectral.region.${aggregation}`);
+  const formatValue = (value: number) => (signed ? signedNumber(value) : compactNumber(value));
 
-  const chartData = useMemo(() => {
-    return buildShapFeatureImportanceRows(activeBinned);
-  }, [activeBinned]);
+  const rows = useMemo(() => buildShapFeatureImportanceRows(activeBinned), [activeBinned]);
+  const items = useMemo(
+    () => rows.map((row) => ({ label: `${row.label}${axis.suffix}`, value: row.importance })),
+    [rows, axis.suffix],
+  );
 
   // Export to CSV
   const handleExport = () => {
@@ -58,61 +57,24 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
   };
 
   return (
-    <div className="h-full flex flex-col gap-4">
-      {/* Bar chart */}
-      <div className="flex-1 min-h-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={chartData}
-            layout="vertical"
-            margin={{ top: 10, right: 30, left: 100, bottom: 10 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={false} />
-            <XAxis
-              type="number"
-              domain={[0, 'auto']}
-              tickFormatter={(value) => value.toFixed(3)}
-              label={{
-                value: t('results.variableImportance.ranking.importanceAxis'),
-                position: 'bottom',
-                offset: 0,
-                className: 'fill-muted-foreground text-xs',
-              }}
-              className="text-xs"
-            />
-            <YAxis
-              type="category"
-              dataKey="label"
-              width={90}
-              tick={{ fontSize: 11 }}
-              className="text-xs"
-            />
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload || !payload.length) return null;
-                const data = payload[0].payload;
-                return (
-                  <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
-                    <p className="font-medium">#{data.rank}: {data.label}{axis.suffix}</p>
-                    <p>{t('results.variableImportance.ranking.importanceValue', { value: data.importance.toFixed(4) })}</p>
-                    <p className="text-muted-foreground">
-                      {t('results.variableImportance.ranking.centerValue', { value: `${data.center.toFixed(1)}${axis.suffix}` })}
-                    </p>
-                  </div>
-                );
-              }}
-            />
-            <Bar dataKey="importance" radius={[0, 4, 4, 0]}>
-              {chartData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={getShapFeatureImportanceFill(entry.normalized)}
-                />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+    <div className="flex flex-col gap-4">
+      <ChartScrollRegion label={t('results.variableImportance.ranking.title')}>
+        {(width) => (
+          <FeatureImportanceView
+            items={items}
+            topN={rows.length}
+            signed={signed}
+            showRank
+            xLabel={regionLabel}
+            valueFormat={compactNumber}
+            title={t('results.variableImportance.ranking.title')}
+            width={width}
+          />
+        )}
+      </ChartScrollRegion>
+      {signed && (
+        <p className="text-xs text-muted-foreground">{t('results.variableImportance.ranking.signedNote')}</p>
+      )}
 
       {/* Table with export button */}
       <div className="space-y-2">
@@ -123,22 +85,22 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
             {t('results.variableImportance.ranking.exportCsv')}
           </Button>
         </div>
-        <div className="border rounded-lg max-h-[200px] overflow-auto">
+        <div className="border rounded-lg max-h-[240px] overflow-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-16">{t('results.variableImportance.ranking.rank')}</TableHead>
                 <TableHead>{t('results.variableImportance.axis.range', { axis: axis.label })}</TableHead>
-                <TableHead className="text-right">{t('results.variableImportance.ranking.importance')}</TableHead>
+                <TableHead className="text-right">{regionLabel}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {chartData.slice(0, 10).map((row) => (
+              {rows.map((row) => (
                 <TableRow key={row.label}>
                   <TableCell className="font-medium">#{row.rank}</TableCell>
                   <TableCell>{row.label}{axis.suffix}</TableCell>
                   <TableCell className="text-right font-mono">
-                    {row.importance.toFixed(4)}
+                    {formatValue(row.importance)}
                   </TableCell>
                 </TableRow>
               ))}

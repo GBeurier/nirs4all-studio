@@ -1,43 +1,40 @@
-import { useEffect, useState, useMemo, memo } from 'react';
+import { useEffect, useId, useState, useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
-import {
-  ScatterChart,
-  Scatter,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  ReferenceLine,
-} from 'recharts';
+import { Loader2, X } from 'lucide-react';
+import { ShapBeeswarm } from 'nirs4all-ui/viz';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { getBeeswarmData } from '@/api/shap';
+import { ChartScrollRegion } from './ChartScrollRegion';
 import { getShapAxisDisplay } from '@/lib/shapAxisDisplay';
-import {
-  buildShapBeeswarmPoints,
-  buildShapBeeswarmYTicks,
-  getShapBeeswarmPointStyle,
-} from '@/lib/shapBeeswarmData';
+import { buildShapBeeswarmFeatures, SHAP_BEESWARM_DEFAULT_ROWS } from '@/lib/shapBeeswarmData';
+import { parseShapWaterfallSampleInput } from '@/lib/shapWaterfallData';
 import type { BeeswarmDataResponse } from '@/types/shap';
 
 interface BeeswarmChartProps {
   jobId: string;
+  totalSamples: number;
   onSampleSelect?: (sampleIdx: number) => void;
+  onClearSelection?: () => void;
   selectedSamples?: number[];
 }
 
 export const BeeswarmChart = memo(function BeeswarmChart({
   jobId,
+  totalSamples,
   onSampleSelect,
+  onClearSelection,
   selectedSamples = [],
 }: BeeswarmChartProps) {
   const { t } = useTranslation();
-  const selectedSet = useMemo(() => new Set(selectedSamples), [selectedSamples]);
+  const inputId = useId();
   const [data, setData] = useState<BeeswarmDataResponse | null>(null);
   const axis = getShapAxisDisplay(data?.axis_unit, t);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [sampleInput, setSampleInput] = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -53,27 +50,23 @@ export const BeeswarmChart = memo(function BeeswarmChart({
       });
   }, [jobId, t]);
 
-  const chartData = useMemo(() => {
+  const totalRows = data?.bins.length ?? 0;
+  const features = useMemo(() => {
     if (!data) return [];
-    return buildShapBeeswarmPoints(data.bins);
-  }, [data]);
-
-  const yTickLabels = useMemo(() => {
-    if (!data) return [];
-    return buildShapBeeswarmYTicks(data.bins);
-  }, [data]);
+    return buildShapBeeswarmFeatures(data.bins, showAll ? undefined : SHAP_BEESWARM_DEFAULT_ROWS);
+  }, [data, showAll]);
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="h-[360px] flex items-center justify-center" role="status">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-label={t('common.loading')} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="h-full flex items-center justify-center text-destructive">
+      <div className="h-[360px] flex items-center justify-center text-destructive" role="alert">
         {error}
       </div>
     );
@@ -81,87 +74,86 @@ export const BeeswarmChart = memo(function BeeswarmChart({
 
   if (!data || data.bins.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-muted-foreground">
+      <div className="h-[360px] flex items-center justify-center text-muted-foreground">
         {t('results.variableImportance.beeswarm.noData')}
       </div>
     );
   }
 
-  return (
-    <div className="h-full flex flex-col">
-      <ResponsiveContainer width="100%" height="100%">
-        <ScatterChart margin={{ top: 20, right: 30, left: 100, bottom: 40 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-          <XAxis
-            type="number"
-            dataKey="x"
-            domain={['auto', 'auto']}
-            label={{ value: t('results.variableImportance.beeswarm.shapAxis'), position: 'bottom', offset: 20, className: 'fill-muted-foreground text-xs' }}
-            className="text-xs"
-          />
-          <YAxis
-            type="number"
-            dataKey="y"
-            domain={[-0.5, data.bins.length - 0.5]}
-            ticks={yTickLabels.map((tick) => tick.value)}
-            tickFormatter={(value: number) => {
-              const tick = yTickLabels.find((candidate) => candidate.value === value);
-              return tick?.label || '';
-            }}
-            label={{ value: t('results.variableImportance.axis.region', { axis: axis.label }), angle: -90, position: 'insideLeft', offset: -80, className: 'fill-muted-foreground text-xs' }}
-            className="text-xs"
-            width={90}
-          />
-          <ReferenceLine x={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-          <Tooltip
-            content={({ active, payload }) => {
-              if (!active || !payload || !payload.length) return null;
-              const point = payload[0].payload;
-              return (
-                <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
-                  <p className="font-medium">{point.binLabel}{axis.suffix}</p>
-                  <p>{t('results.variableImportance.beeswarm.shapValue', { value: point.x.toFixed(4) })}</p>
-                  <p className="text-muted-foreground">{t('results.variableImportance.beeswarm.featureValue', { percent: (point.color * 100).toFixed(0) })}</p>
-                  <p className="text-xs text-muted-foreground">{t('results.variableImportance.sample', { index: point.sampleIdx })}</p>
-                </div>
-              );
-            }}
-          />
-          <Scatter
-            data={chartData}
-            isAnimationActive={false}
-            onClick={(data) => {
-              if (onSampleSelect && data?.sampleIdx !== undefined) {
-                onSampleSelect(data.sampleIdx);
-              }
-            }}
-          >
-            {chartData.map((entry, index) => {
-              const isSelected = selectedSet.has(entry.sampleIdx);
-              const style = getShapBeeswarmPointStyle(entry.color, isSelected);
-              return (
-                <Cell
-                  key={index}
-                  fill={style.fill}
-                  fillOpacity={style.fillOpacity}
-                  stroke={style.stroke}
-                  strokeWidth={style.strokeWidth}
-                  cursor="pointer"
-                />
-              );
-            })}
-          </Scatter>
-        </ScatterChart>
-      </ResponsiveContainer>
+  const toggleTyped = () => {
+    const sample = parseShapWaterfallSampleInput(sampleInput, totalSamples);
+    if (sample != null && onSampleSelect) onSampleSelect(sample);
+  };
 
-      <div className="flex items-center justify-center gap-6 py-2 text-xs text-muted-foreground shrink-0">
-        <span>{t('results.variableImportance.beeswarm.featureValueLabel')}</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-blue-500" />{t('results.variableImportance.beeswarm.low')}</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-green-500" />{t('results.variableImportance.beeswarm.medLow')}</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-yellow-500" />{t('results.variableImportance.beeswarm.med')}</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-orange-500" />{t('results.variableImportance.beeswarm.medHigh')}</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-red-500" />{t('results.variableImportance.beeswarm.high')}</span>
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>
+          {axis.label} · {t('results.variableImportance.beeswarm.rowsShown', { shown: features.length, total: totalRows })}
+        </span>
+        {totalRows > SHAP_BEESWARM_DEFAULT_ROWS && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowAll((value) => !value)}>
+            {showAll
+              ? t('results.variableImportance.beeswarm.showTop', { count: SHAP_BEESWARM_DEFAULT_ROWS })
+              : t('results.variableImportance.beeswarm.showAll', { count: totalRows })}
+          </Button>
+        )}
       </div>
+
+      <ChartScrollRegion label={t('results.variableImportance.beeswarm.title')}>
+        {(width) => (
+          <ShapBeeswarm
+            features={features}
+            width={width}
+            title={t('results.variableImportance.beeswarm.title')}
+            xLabel={t('results.variableImportance.beeswarm.shapAxis')}
+            colorLabel={t('results.variableImportance.beeswarm.colorLabel')}
+            selectedSampleIds={selectedSamples}
+            onPointActivate={onSampleSelect ? (sampleId) => onSampleSelect(Number(sampleId)) : undefined}
+            sampleLabel={(sampleId) => t('results.variableImportance.sample', { index: sampleId })}
+          />
+        )}
+      </ChartScrollRegion>
+
+      <p className="text-xs text-muted-foreground">
+        {t('results.variableImportance.beeswarm.note')}
+      </p>
+
+      {onSampleSelect && (
+        <div className="flex flex-wrap items-end gap-2 border-t pt-3">
+          <div className="space-y-1">
+            <Label htmlFor={inputId} className="text-xs text-muted-foreground">
+              {t('results.variableImportance.beeswarm.toggleSample')}
+            </Label>
+            <Input
+              id={inputId}
+              type="number"
+              min={0}
+              max={Math.max(0, totalSamples - 1)}
+              value={sampleInput}
+              onChange={(event) => setSampleInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') toggleTyped();
+              }}
+              className="h-8 w-24 text-sm"
+            />
+          </div>
+          <Button variant="outline" size="sm" className="h-8" onClick={toggleTyped}>
+            {t('results.variableImportance.beeswarm.toggle')}
+          </Button>
+          <span className="text-xs text-muted-foreground min-w-0 flex-1" role="status">
+            {selectedSamples.length > 0
+              ? t('results.variableImportance.beeswarm.selectedList', { list: selectedSamples.join(', ') })
+              : t('results.variableImportance.beeswarm.noneSelected')}
+          </span>
+          {selectedSamples.length > 0 && onClearSelection && (
+            <Button variant="ghost" size="sm" className="h-8" onClick={onClearSelection}>
+              <X className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+              {t('results.variableImportance.beeswarm.clearSelection')}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 });

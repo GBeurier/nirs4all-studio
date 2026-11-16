@@ -1,29 +1,19 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  ReferenceLine,
-} from 'recharts';
+import { WaterfallChart as WaterfallView, signedNumber } from 'nirs4all-ui/viz';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getSampleExplanation } from '@/api/shap';
+import { ChartScrollRegion } from './ChartScrollRegion';
 import {
-  buildShapWaterfallBars,
-  getShapWaterfallBarStyle,
+  buildShapWaterfallContributions,
+  formatShapWaterfallValue,
   getShapWaterfallNextSample,
   getShapWaterfallPreviousSample,
   parseShapWaterfallSampleInput,
 } from '@/lib/shapWaterfallData';
-import type { ShapWaterfallBarData } from '@/lib/shapWaterfallData';
 import type { SampleExplanationResponse } from '@/types/shap';
 
 interface WaterfallChartProps {
@@ -45,24 +35,32 @@ export function WaterfallChart({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError(null);
 
     getSampleExplanation(jobId, sampleIdx, 12)
       .then((response) => {
+        if (cancelled) return;
         setData(response);
         setLoading(false);
       })
       .catch((err) => {
+        if (cancelled) return;
         setError(err.message || t('results.variableImportance.waterfall.loadFailed'));
         setLoading(false);
       });
+    return () => { cancelled = true; };
   }, [jobId, sampleIdx, t]);
 
-  const chartData = useMemo(() => {
-    if (!data) return [];
-    return buildShapWaterfallBars(data, t);
-  }, [data, t]);
+  const contributions = useMemo(() => (data ? buildShapWaterfallContributions(data) : []), [data]);
+  const rows = useMemo(() => {
+    let running = data?.base_value ?? 0;
+    return contributions.map((contribution) => {
+      running += contribution.value;
+      return { ...contribution, runningTotal: running };
+    });
+  }, [contributions, data]);
 
   const handlePrevSample = () => {
     const previousSample = getShapWaterfallPreviousSample(sampleIdx);
@@ -74,157 +72,120 @@ export function WaterfallChart({
     if (nextSample != null) onSampleChange(nextSample);
   };
 
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center text-destructive">
-        {error}
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="h-full flex items-center justify-center text-muted-foreground">
-        {t('results.variableImportance.waterfall.noData')}
-      </div>
-    );
-  }
+  const sampleSelector = (
+    <div className="flex items-center gap-2">
+      <Label htmlFor="shap-waterfall-sample" className="text-sm">{t('results.variableImportance.waterfall.sampleLabel')}</Label>
+      <Button
+        variant="outline"
+        size="icon"
+        className="h-8 w-8"
+        onClick={handlePrevSample}
+        disabled={sampleIdx === 0}
+        aria-label={t('results.variableImportance.waterfall.previousSample')}
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <Input
+        id="shap-waterfall-sample"
+        type="number"
+        value={sampleIdx}
+        onChange={(e) => {
+          const nextSample = parseShapWaterfallSampleInput(e.target.value, totalSamples);
+          if (nextSample != null) onSampleChange(nextSample);
+        }}
+        className="w-20 h-8 text-center"
+        min={0}
+        max={totalSamples - 1}
+      />
+      <Button
+        variant="outline"
+        size="icon"
+        className="h-8 w-8"
+        onClick={handleNextSample}
+        disabled={sampleIdx === totalSamples - 1}
+        aria-label={t('results.variableImportance.waterfall.nextSample')}
+      >
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+      <span className="text-sm text-muted-foreground">{t('results.variableImportance.waterfall.ofTotal', { total: totalSamples })}</span>
+    </div>
+  );
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Sample selector */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Label className="text-sm">{t('results.variableImportance.waterfall.sampleLabel')}</Label>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={handlePrevSample}
-            disabled={sampleIdx === 0}
-            aria-label={t('results.variableImportance.waterfall.previousSample')}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Input
-            type="number"
-            value={sampleIdx}
-            onChange={(e) => {
-              const nextSample = parseShapWaterfallSampleInput(e.target.value, totalSamples);
-              if (nextSample != null) onSampleChange(nextSample);
-            }}
-            className="w-20 h-8 text-center"
-            aria-label={t('results.variableImportance.waterfall.sampleLabel')}
-            min={0}
-            max={totalSamples - 1}
-          />
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={handleNextSample}
-            disabled={sampleIdx === totalSamples - 1}
-            aria-label={t('results.variableImportance.waterfall.nextSample')}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <span className="text-sm text-muted-foreground">{t('results.variableImportance.waterfall.ofTotal', { total: totalSamples })}</span>
-        </div>
-        <div className="text-sm">
-          <span className="text-muted-foreground">{t('results.variableImportance.waterfall.predicted')} </span>
-          <span className="font-medium">{data.predicted_value.toFixed(4)}</span>
-        </div>
+    <div className="flex flex-col gap-3">
+      {/* The selector stays mounted while a sample loads so keyboard focus is kept during navigation. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {sampleSelector}
+        {data && !loading && !error && (
+          <div className="text-sm">
+            <span className="text-muted-foreground">{t('results.variableImportance.waterfall.predicted')} </span>
+            <span className="font-mono font-medium">{formatShapWaterfallValue(data.predicted_value)}</span>
+          </div>
+        )}
       </div>
 
-      {/* Waterfall chart */}
-      <div className="flex-1 min-h-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={chartData}
-            layout="vertical"
-            margin={{ top: 10, right: 30, left: 120, bottom: 10 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={false} />
-            <XAxis
-              type="number"
-              domain={['auto', 'auto']}
-              tickFormatter={(value) => value.toFixed(2)}
-              className="text-xs"
-            />
-            <YAxis
-              type="category"
-              dataKey="name"
-              width={110}
-              tick={{ fontSize: 11 }}
-              className="text-xs"
-            />
-            <ReferenceLine x={data.base_value} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload || !payload.length) return null;
-                const bar = payload[0].payload as ShapWaterfallBarData;
-                return (
-                  <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
-                    <p className="font-medium">{bar.name}</p>
-                    {bar.isBase ? (
-                      <p>{t('results.variableImportance.waterfall.expectedValue', { value: bar.value.toFixed(4) })}</p>
-                    ) : bar.isFinal ? (
-                      <p>{t('results.variableImportance.waterfall.finalPredictionValue', { value: bar.value.toFixed(4) })}</p>
-                    ) : (
-                      <p>
-                        {t('results.variableImportance.waterfall.contributionValue', { value: `${bar.value >= 0 ? '+' : ''}${bar.value.toFixed(4)}` })}
-                      </p>
-                    )}
-                  </div>
-                );
-              }}
-            />
-            {/* Invisible bars for positioning */}
-            <Bar dataKey="start" stackId="stack" fill="transparent" />
-            {/* Visible contribution bars */}
-            <Bar dataKey="value" stackId="stack" radius={[0, 4, 4, 0]}>
-              {chartData.map((entry, index) => {
-                const style = getShapWaterfallBarStyle(entry);
-                return (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={style.fill}
-                    fillOpacity={style.fillOpacity}
-                  />
-                );
-              })}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Legend */}
-      <div className="flex items-center justify-center gap-6 py-2 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-gray-400" />
-          <span>{t('results.variableImportance.waterfall.baseValue')}</span>
+      {loading ? (
+        <div className="h-[360px] flex items-center justify-center" role="status">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-label={t('common.loading')} />
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-green-500" />
-          <span>{t('results.variableImportance.waterfall.increases')}</span>
+      ) : error ? (
+        <div className="h-[360px] flex items-center justify-center text-destructive" role="alert">
+          {error}
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-red-500" />
-          <span>{t('results.variableImportance.waterfall.decreases')}</span>
+      ) : !data ? (
+        <div className="h-[360px] flex items-center justify-center text-muted-foreground">
+          {t('results.variableImportance.waterfall.noData')}
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded" style={{ backgroundColor: 'hsl(var(--primary))' }} />
-          <span>{t('results.variableImportance.waterfall.finalPrediction')}</span>
-        </div>
-      </div>
+      ) : (
+        <>
+          <ChartScrollRegion label={t('results.variableImportance.waterfall.title')}>
+            {(width) => (
+              <WaterfallView
+                baseValue={data.base_value}
+                predicted={data.predicted_value}
+                contributions={contributions}
+                topN={contributions.length}
+                valueFormat={formatShapWaterfallValue}
+                title={t('results.variableImportance.waterfall.title')}
+                xLabel={t('results.variableImportance.waterfall.modelOutput')}
+                width={width}
+              />
+            )}
+          </ChartScrollRegion>
+          <p className="text-xs text-muted-foreground">{t('results.variableImportance.waterfall.note')}</p>
+          <details className="text-sm">
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+              {t('results.variableImportance.waterfall.tableSummary')}
+            </summary>
+            <div className="mt-2 max-h-[220px] overflow-auto rounded-md border" role="region" tabIndex={0} aria-label={t('results.variableImportance.waterfall.tableSummary')}>
+              <table className="w-full text-xs">
+                <caption className="sr-only">{t('results.variableImportance.waterfall.tableSummary')}</caption>
+                <thead>
+                  <tr className="border-b text-muted-foreground">
+                    <th scope="col" className="px-2 py-1 text-left font-medium">{t('results.variableImportance.waterfall.region')}</th>
+                    <th scope="col" className="px-2 py-1 text-right font-medium">{t('results.variableImportance.waterfall.contribution')}</th>
+                    <th scope="col" className="px-2 py-1 text-right font-medium">{t('results.variableImportance.waterfall.runningTotal')}</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  <tr className="border-b">
+                    <th scope="row" className="px-2 py-1 text-left font-normal">{t('results.variableImportance.waterfall.baseValue')}</th>
+                    <td className="px-2 py-1 text-right">—</td>
+                    <td className="px-2 py-1 text-right">{formatShapWaterfallValue(data.base_value)}</td>
+                  </tr>
+                  {rows.map((row) => (
+                    <tr key={row.label} className="border-b last:border-0">
+                      <th scope="row" className="px-2 py-1 text-left font-normal">{row.label}</th>
+                      <td className="px-2 py-1 text-right">{signedNumber(row.value, formatShapWaterfallValue)}</td>
+                      <td className="px-2 py-1 text-right">{formatShapWaterfallValue(row.runningTotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </>
+      )}
     </div>
   );
 }

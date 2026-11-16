@@ -1,72 +1,28 @@
-import type { TFunction } from 'i18next';
-import type { FeatureContribution, SampleExplanationResponse } from '@/types/shap';
+import { compactNumber, type WaterfallContribution } from 'nirs4all-ui/viz';
+import type { SampleExplanationResponse } from '@/types/shap';
 
-export interface ShapWaterfallBarData {
-  name: string;
-  start: number;
-  end: number;
-  value: number;
-  isPositive: boolean;
-  isBase: boolean;
-  isFinal: boolean;
+/**
+ * Project a sample explanation onto the shared waterfall contract. The backend
+ * order (largest |SHAP| first, aggregated remainder last) is preserved so the
+ * walk from the base value reaches the prediction.
+ */
+export function buildShapWaterfallContributions(
+  data: Pick<SampleExplanationResponse, 'contributions'>,
+): WaterfallContribution[] {
+  return data.contributions.map((contribution) => ({
+    label: contribution.feature_name,
+    value: contribution.shap_value,
+  }));
 }
 
-export interface ShapWaterfallBarStyle {
-  fill: string;
-  fillOpacity: number;
-}
-
-export function sortShapWaterfallContributions(
-  contributions: FeatureContribution[],
-): FeatureContribution[] {
-  return [...contributions].sort((left, right) => {
-    if (left.shap_value >= 0 && right.shap_value < 0) return -1;
-    if (left.shap_value < 0 && right.shap_value >= 0) return 1;
-    return Math.abs(right.shap_value) - Math.abs(left.shap_value);
-  });
-}
-
-export function buildShapWaterfallBars(
-  data: Pick<SampleExplanationResponse, 'base_value' | 'predicted_value' | 'contributions'>,
-  t: TFunction,
-): ShapWaterfallBarData[] {
-  const bars: ShapWaterfallBarData[] = [{
-    name: t('results.variableImportance.waterfall.baseValueBar'),
-    start: 0,
-    end: data.base_value,
-    value: data.base_value,
-    isPositive: true,
-    isBase: true,
-    isFinal: false,
-  }];
-
-  let cumulative = data.base_value;
-  sortShapWaterfallContributions(data.contributions).forEach((contribution) => {
-    const start = cumulative;
-    const end = cumulative + contribution.shap_value;
-    bars.push({
-      name: contribution.feature_name,
-      start,
-      end,
-      value: contribution.shap_value,
-      isPositive: contribution.shap_value >= 0,
-      isBase: false,
-      isFinal: false,
-    });
-    cumulative = end;
-  });
-
-  bars.push({
-    name: t('results.variableImportance.waterfall.predictionBar'),
-    start: 0,
-    end: data.predicted_value,
-    value: data.predicted_value,
-    isPositive: true,
-    isBase: false,
-    isFinal: true,
-  });
-
-  return bars;
+/**
+ * Model outputs (base value, prediction, running totals) often differ by
+ * thousandths around a large value: keep four decimals there and the compact
+ * scientific format for small contributions.
+ */
+export function formatShapWaterfallValue(value: number): string {
+  const magnitude = Math.abs(value);
+  return Number.isFinite(value) && magnitude >= 1 && magnitude < 1e4 ? value.toFixed(4) : compactNumber(value);
 }
 
 export function getShapWaterfallPreviousSample(sampleIndex: number): number | null {
@@ -81,25 +37,4 @@ export function parseShapWaterfallSampleInput(value: string, totalSamples: numbe
   const parsed = parseInt(value, 10);
   if (Number.isNaN(parsed) || parsed < 0 || parsed >= totalSamples) return null;
   return parsed;
-}
-
-export function getShapWaterfallBarStyle(bar: Pick<ShapWaterfallBarData, 'isBase' | 'isFinal' | 'isPositive'>): ShapWaterfallBarStyle {
-  if (bar.isBase) {
-    return {
-      fill: 'hsl(var(--muted-foreground))',
-      fillOpacity: 0.8,
-    };
-  }
-
-  if (bar.isFinal) {
-    return {
-      fill: 'hsl(var(--primary))',
-      fillOpacity: 0.8,
-    };
-  }
-
-  return {
-    fill: bar.isPositive ? '#22c55e' : '#ef4444',
-    fillOpacity: 0.7,
-  };
 }
