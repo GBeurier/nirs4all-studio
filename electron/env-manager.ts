@@ -42,6 +42,7 @@ import {
 } from "./env/python-discovery";
 import { getStudioEnvDir, getVenvPythonPath } from "./env/runtime-paths";
 import { installRecommendedPackages, installRequiredPackages, resolveUvPayload } from "./env/uv";
+import type { WheelhouseCache } from "./env/wheelhouse";
 
 export interface EnvManagerOptions {
   /** Electron's `userData` directory: settings, inventory cache and Studio's own environment. */
@@ -131,6 +132,8 @@ export class EnvManager {
   private readonly settingsPath: string;
   private readonly offlineInstall = resolveUvPayload().offline !== null;
   private readonly listeners = new Set<(state: PythonEnvState) => void>();
+  /** Required wheels are downloaded on first use where the installer cannot embed them; see `env/wheelhouse.ts`. */
+  private readonly wheelhouse: WheelhouseCache;
   private current: Selection;
   private activity: PythonEnvActivity | undefined;
   /** The sidecar was stopped or restarted during the running operation. */
@@ -141,6 +144,10 @@ export class EnvManager {
   constructor(private readonly options: EnvManagerOptions) {
     this.studioEnvDir = getStudioEnvDir(options.userDataDir);
     this.settingsPath = path.join(options.userDataDir, SETTINGS_FILE);
+    this.wheelhouse = {
+      directory: path.join(options.userDataDir, "wheelhouse"),
+      onProgress: (detail) => { if (this.activity) this.setActivity({ ...this.activity, detail }); },
+    };
     const persisted = readSelectedPythonPath(this.settingsPath);
     // The phase is settled by `startupCheck()`, which runs before any window exists.
     this.current = { pythonPath: persisted && normalizePythonPath(persisted), phase: "unconfigured", evaluation: null };
@@ -233,13 +240,13 @@ export class EnvManager {
       if (installsRequired) {
         this.setActivity({ kind: "installing", percent: null, detail: "Installing the required packages…" });
         await this.stopHostBeforeInstalling(pythonPath);
-        await installRequiredPackages(pythonPath);
+        await installRequiredPackages(pythonPath, this.wheelhouse);
         evaluation = await this.evaluate(pythonPath, false);
       }
       if (request.packages.length > 0) {
         this.setActivity({ kind: "installing", percent: null, detail: "Installing the selected packages…" });
         await this.stopHostBeforeInstalling(pythonPath);
-        await installRecommendedPackages(pythonPath, request.packages, installedRequiredPins(evaluation.inventory));
+        await installRecommendedPackages(pythonPath, request.packages, installedRequiredPins(evaluation.inventory), this.wheelhouse);
         evaluation = await this.evaluate(pythonPath, false);
       }
       await this.switchTo(pythonPath, evaluation);
@@ -252,7 +259,7 @@ export class EnvManager {
       const baseDir = request.directory ? path.join(request.directory, "python-env") : this.studioEnvDir;
       const pythonPath = this.canonical(await createStudioEnvironment(baseDir, request.packages, (percent, detail) => {
         this.setActivity({ kind: "creating", percent, detail });
-      }));
+      }, this.wheelhouse.directory));
       await this.switchTo(pythonPath, await this.evaluate(pythonPath, false));
     });
   }
@@ -266,7 +273,7 @@ export class EnvManager {
       const { inventory, report } = await this.evaluate(pythonPath, false);
       if (!report.writable) throw new Error(NOT_WRITABLE);
       await this.stopHostBeforeInstalling(pythonPath);
-      await installRecommendedPackages(pythonPath, packages, installedRequiredPins(inventory));
+      await installRecommendedPackages(pythonPath, packages, installedRequiredPins(inventory), this.wheelhouse);
       await this.checkAndActivate();
     });
   }
@@ -396,7 +403,7 @@ export class EnvManager {
       this.setActivity({ kind: "updating_required", percent: null, detail: "Updating the required Python packages…" });
       try {
         await this.stopHostBeforeInstalling(pythonPath);
-        await installRequiredPackages(pythonPath);
+        await installRequiredPackages(pythonPath, this.wheelhouse);
         evaluation = await this.evaluate(pythonPath, false);
         if (!evaluation.report.usable) throw new Error(`Still not satisfied after installation: ${unmetRequirements(evaluation.report)}.`);
       } catch (error) {

@@ -10,6 +10,8 @@ import path from "node:path";
 import { normalizePackageName, recommendedInstallSpecs, requiredInstallSpecs } from "./catalogue";
 import { appendInstallLog } from "./install-log";
 import { runCommand } from "./process-utils";
+import { cachedWheelhouse, ensureWheelhouse, readWheelhouseManifest } from "./wheelhouse";
+import type { WheelhouseCache } from "./wheelhouse";
 
 const UV_EXECUTABLE = process.platform === "win32" ? "uv.exe" : "uv";
 /** A GPU build of torch is several gigabytes; slow links need the time. */
@@ -23,18 +25,31 @@ const UV_ENVIRONMENT: NodeJS.ProcessEnv = {
 };
 
 export interface UvPayload {
-  /** Wheels of the required packages shipped with every installer. */
+  /** Wheels of the required packages: embedded in the installer, or downloaded once where they cannot be. */
   wheelhouse: string | null;
   /** Offline installer payload: `wheels/` and the Python archive. */
   offline: string | null;
 }
 
-/** Packaged resources first, then the development build output. */
+/**
+ * An installed application: the Electron runtime was not started as
+ * `electron <app>` (`process.defaultApp` is only set then). Plain Node, which
+ * runs the tests and build tools, counts as development.
+ */
+function isPackagedApplication(): boolean {
+  return process.versions.electron !== undefined && !(process as NodeJS.Process & { defaultApp?: boolean }).defaultApp;
+}
+
+/**
+ * Packaged resources first, then the development build output. A packaged
+ * application never reads the working directory: it is wherever the user
+ * launched it from, and a `backend-dist/` there is a developer's payload.
+ */
 function findShipped(...segments: string[]): string | null {
   const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
   const roots = [
     resourcesPath ? path.join(resourcesPath, "backend") : null,
-    path.join(process.cwd(), "backend-dist"),
+    isPackagedApplication() ? null : path.join(process.cwd(), "backend-dist"),
   ];
   for (const root of roots) {
     if (!root) continue;
@@ -49,8 +64,26 @@ export function resolveUvPath(): string {
   return process.env.NIRS4ALL_UV?.trim() || findShipped("tools", UV_EXECUTABLE) || "uv";
 }
 
+/** What the application itself carries. Reads the disk only: nothing is ever downloaded here. */
 export function resolveUvPayload(): UvPayload {
   return { wheelhouse: findShipped("wheels"), offline: findShipped("offline") };
+}
+
+/**
+ * The payload for an installation. Embedded wheels are used as they are.
+ * Without them, an application that carries `wheelhouse.json` uses the
+ * downloaded wheelhouse: `download` obtains it when it is not cached yet,
+ * which the required packages need and other installations do not.
+ */
+async function resolveInstallPayload(cache: WheelhouseCache, download: boolean): Promise<UvPayload> {
+  const payload = resolveUvPayload();
+  const manifestPath = payload.wheelhouse ? null : findShipped("wheelhouse.json");
+  if (!manifestPath) return payload;
+  const manifest = readWheelhouseManifest(manifestPath);
+  return {
+    ...payload,
+    wheelhouse: download ? await ensureWheelhouse(manifest, cache) : cachedWheelhouse(manifest, cache.directory),
+  };
 }
 
 function wheelDirectories(payload: UvPayload): string[] {
@@ -106,8 +139,7 @@ export function createVenv(venvDir: string, basePython: string): Promise<void> {
  * One resolver call for `specs`. With an offline payload the shipped wheels
  * are tried first; what they cannot satisfy then needs the package index.
  */
-async function install(pythonPath: string, specs: readonly string[]): Promise<void> {
-  const payload = resolveUvPayload();
+async function install(pythonPath: string, specs: readonly string[], payload: UvPayload): Promise<void> {
   let offlineFailure: Error | null = null;
   if (payload.offline) {
     try {
@@ -130,10 +162,11 @@ async function install(pythonPath: string, specs: readonly string[]): Promise<vo
 
 /**
  * Install the required cohort at its exact versions in one resolver call, so
- * the packages stay mutually coherent.
+ * the packages stay mutually coherent. Where the wheels are not embedded they
+ * are downloaded first; without them the installation is not attempted.
  */
-export function installRequiredPackages(pythonPath: string): Promise<void> {
-  return install(pythonPath, requiredInstallSpecs());
+export async function installRequiredPackages(pythonPath: string, wheelhouse: WheelhouseCache): Promise<void> {
+  await install(pythonPath, requiredInstallSpecs(), await resolveInstallPayload(wheelhouse, true));
 }
 
 /**
@@ -146,7 +179,8 @@ export async function installRecommendedPackages(
   pythonPath: string,
   names: readonly string[],
   requiredPins: readonly string[],
+  wheelhouse: WheelhouseCache,
 ): Promise<void> {
   const specs = recommendedInstallSpecs(names);
-  if (specs.length > 0) await install(pythonPath, [...specs, ...requiredPins]);
+  if (specs.length > 0) await install(pythonPath, [...specs, ...requiredPins], await resolveInstallPayload(wheelhouse, false));
 }

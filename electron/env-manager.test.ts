@@ -71,6 +71,11 @@ function persistedSelection(): unknown {
   return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
 }
 
+/** The cache Studio hands to every installation: wheels the installer does not embed are downloaded there. */
+function wheelhouse() {
+  return { directory: path.join(userDataDir, "wheelhouse"), onProgress: expect.any(Function) };
+}
+
 function manager(): EnvManager {
   return new EnvManager({ userDataDir, restartHost, stopHost, describeActiveRuns });
 }
@@ -203,7 +208,7 @@ describe("startup check", () => {
     const state = await env.startupCheck();
 
     expect(installRequiredPackages).toHaveBeenCalledTimes(1);
-    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath);
+    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath, wheelhouse());
     expect(states.some((item) => item.phase === "busy" && item.activity?.kind === "updating_required" && item.activity.percent === null)).toBe(true);
     expect(state).toMatchObject({ phase: "ready", selected: { usable: true } });
     expect(state.activity).toBeUndefined();
@@ -329,6 +334,90 @@ describe("startup check", () => {
   });
 });
 
+describe("required packages that must be downloaded first", () => {
+  const DOWNLOAD_FAILED = "Studio could not download its required packages. Check the internet connection and try again.";
+
+  it("shows the download in the running operation", async () => {
+    const pythonPath = environment("work", { distributions: {} });
+    select(pythonPath);
+    const env = manager();
+    const details: Array<string | undefined> = [];
+    env.onStateChange((state) => details.push(state.activity?.detail));
+    vi.mocked(installRequiredPackages).mockImplementationOnce(async (target, cache) => {
+      cache.onProgress("Downloading the required packages… 40%");
+      setDistributions(target, { ...COHORT });
+    });
+
+    expect((await env.startupCheck()).phase).toBe("ready");
+
+    expect(details).toContain("Updating the required Python packages…");
+    expect(details).toContain("Downloading the required packages… 40%");
+  });
+
+  it("needs attention with a failed update when the required packages cannot be downloaded at startup or on retry", async () => {
+    const pythonPath = environment("work", { distributions: {} });
+    select(pythonPath);
+    vi.mocked(installRequiredPackages).mockRejectedValue(new Error(DOWNLOAD_FAILED));
+    const env = manager();
+
+    const state = await env.startupCheck();
+
+    expect(state).toMatchObject({
+      phase: "needs_attention",
+      selectedPythonPath: pythonPath,
+      problem: { code: "required_update_failed", message: expect.stringContaining(DOWNLOAD_FAILED) },
+    });
+    expect(env.getHost()).toBeNull();
+    expect(await env.retry()).toMatchObject({
+      success: false,
+      message: expect.stringContaining(DOWNLOAD_FAILED),
+      state: { phase: "needs_attention", problem: { code: "required_update_failed" } },
+    });
+  });
+
+  it("fails a switch and keeps the current environment when the required packages cannot be downloaded", async () => {
+    const previous = environment("previous");
+    const target = environment("target", { distributions: {} });
+    const env = await startedOn(previous);
+    vi.mocked(installRequiredPackages).mockRejectedValueOnce(new Error(DOWNLOAD_FAILED));
+
+    const result = await env.apply({ pythonPath: target, packages: ["torch"] });
+
+    expect(result).toMatchObject({
+      success: false,
+      message: DOWNLOAD_FAILED,
+      hostRestarted: false,
+      state: { phase: "ready", selectedPythonPath: previous },
+    });
+    expect(installRecommendedPackages).not.toHaveBeenCalled();
+    expect(persistedSelection()).toEqual({ pythonPath: previous });
+  });
+
+  it("fails a creation and keeps the current environment when the required packages cannot be downloaded", async () => {
+    const previous = environment("previous");
+    const env = await startedOn(previous);
+    vi.mocked(createStudioEnvironment).mockRejectedValue(new Error(DOWNLOAD_FAILED));
+
+    expect(await env.create({ packages: [] })).toMatchObject({
+      success: false,
+      message: DOWNLOAD_FAILED,
+      state: { phase: "ready", selectedPythonPath: previous },
+    });
+  });
+
+  it("asks for no package source when the selected environment already has what it needs", async () => {
+    const pythonPath = environment("work");
+    select(pythonPath);
+
+    expect((await manager().startupCheck()).phase).toBe("ready");
+    await manager().detect();
+    await manager().inspect(pythonPath);
+
+    expect(installRequiredPackages).not.toHaveBeenCalled();
+    expect(installRecommendedPackages).not.toHaveBeenCalled();
+  });
+});
+
 describe("switching environment", () => {
   it("installs what is needed, selects the environment and restarts the sidecar on it", async () => {
     const previous = environment("previous");
@@ -341,9 +430,9 @@ describe("switching environment", () => {
 
     expect(result).toMatchObject({ success: true, state: { phase: "ready", selectedPythonPath: target, selected: { usable: true } } });
     expect(result.message).toBeUndefined();
-    expect(installRequiredPackages).toHaveBeenCalledWith(target);
+    expect(installRequiredPackages).toHaveBeenCalledWith(target, wheelhouse());
     // The recommended packages are resolved together with the required cohort just installed.
-    expect(installRecommendedPackages).toHaveBeenCalledWith(target, ["torch", "xgboost"], REQUIRED_PACKAGES.map((spec) => `${spec.name}==${spec.install}`));
+    expect(installRecommendedPackages).toHaveBeenCalledWith(target, ["torch", "xgboost"], REQUIRED_PACKAGES.map((spec) => `${spec.name}==${spec.install}`), wheelhouse());
     // The running sidecar uses another environment: it is only restarted, on the new one.
     expect(calls).toEqual(["install required", "install recommended"]);
     expect(stopHost).not.toHaveBeenCalled();
@@ -468,7 +557,7 @@ describe("creating an environment", () => {
 
     const result = await env.create({ packages: ["torch"] });
 
-    expect(createStudioEnvironment).toHaveBeenCalledWith(path.join(userDataDir, "python-env"), ["torch"], expect.any(Function));
+    expect(createStudioEnvironment).toHaveBeenCalledWith(path.join(userDataDir, "python-env"), ["torch"], expect.any(Function), path.join(userDataDir, "wheelhouse"));
     expect(activities).toContainEqual(["creating", 0]);
     expect(activities).toContainEqual(["creating", 30]);
     expect(result).toMatchObject({ success: true, state: { phase: "ready", selectedPythonPath: created, selected: { kind: "studio" } } });
@@ -485,7 +574,7 @@ describe("creating an environment", () => {
 
     const result = await env.create({ directory: parent, packages: [] });
 
-    expect(createStudioEnvironment).toHaveBeenCalledWith(path.join(parent, "python-env"), [], expect.any(Function));
+    expect(createStudioEnvironment).toHaveBeenCalledWith(path.join(parent, "python-env"), [], expect.any(Function), path.join(userDataDir, "wheelhouse"));
     expect(result).toMatchObject({ success: true, state: { selectedPythonPath: created } });
   });
 
@@ -532,7 +621,7 @@ describe("installing recommended packages", () => {
 
     expect(installRecommendedPackages).toHaveBeenCalledWith(pythonPath, ["xgboost"], [
       "nirs4all==1.4.18", "nirs4all-core==0.5.0", "dag-ml-data==0.2.16", "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15", "nirs4all-formats==0.2.16",
-    ]);
+    ], wheelhouse());
   });
 
   it("keeps a host failure after a successful installation instead of reporting the environment ready", async () => {
@@ -580,7 +669,7 @@ describe("installing recommended packages", () => {
 
     const result = await env.installPackages(["autogluon"]);
 
-    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath);
+    expect(installRequiredPackages).toHaveBeenCalledWith(pythonPath, wheelhouse());
     expect(result).toMatchObject({ success: false, message: "interrupted", hostRestarted: true, state: { phase: "ready" } });
     // Stopped once for the whole operation.
     expect(stopHost).toHaveBeenCalledTimes(1);

@@ -79,6 +79,7 @@ export async function createStudioEnvironment(
   baseDir: string,
   recommendedPackages: readonly string[],
   progress: CreateProgress,
+  wheelhouseCacheDir: string,
 ): Promise<string> {
   const venvDir = path.join(baseDir, "venv");
   if (fs.existsSync(venvDir)) {
@@ -100,11 +101,12 @@ export async function createStudioEnvironment(
     await createVenv(venvDir, getStandalonePythonPath(baseDir));
     const pythonPath = getVenvPythonPath(baseDir);
 
+    const wheelhouse = { directory: wheelhouseCacheDir, onProgress: (detail: string) => progress(45, detail) };
     progress(45, "Installing the required packages…");
-    await installRequiredPackages(pythonPath);
+    await installRequiredPackages(pythonPath, wheelhouse);
     if (recommendedPackages.length > 0) {
       progress(70, "Installing the selected packages…");
-      await installRecommendedPackages(pythonPath, recommendedPackages, requiredInstallSpecs());
+      await installRecommendedPackages(pythonPath, recommendedPackages, requiredInstallSpecs(), wheelhouse);
     }
     if (archive.downloaded) fs.rmSync(archive.path, { force: true });
     progress(100, "The environment is ready.");
