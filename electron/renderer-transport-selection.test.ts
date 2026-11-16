@@ -314,38 +314,47 @@ describe("renderer transport preselection", () => {
     }
   });
 
-  it("selects the complete native desktop-update lifecycle only with its capability", async () => {
+  it("selects the remaining native application-update routes only with their capability", async () => {
     const request = async () => capabilityResponse({ native_webapp_update_routes: true });
     const info = () => ({ ...running(), pythonPluginHostConfigured: false });
     for (const [method, path] of [
-      ["GET", "/updates/webapp/download-info"],
       ["GET", "/updates/webapp/changelog?current_version=0.11.1"],
-      ["POST", "/updates/webapp/download-start"],
       ["GET", "/updates/webapp/download-status/update-1"],
       ["POST", "/updates/webapp/download-cancel/update-1"],
-      ["POST", "/updates/webapp/apply"],
-      ["GET", "/updates/webapp/staged-update"],
-      ["DELETE", "/updates/webapp/staged-update"],
-      ["POST", "/updates/webapp/cleanup"],
-      ["GET", "/updates/webapp/last-apply-result"],
-      ["DELETE", "/updates/webapp/last-apply-result"],
       ["POST", "/updates/webapp/restart"],
     ]) {
       await expect(preselectRendererTransport({ kind: "http", method, path }, info, request))
         .resolves.toMatchObject({ target: "native-sidecar", surface: "webapp-update" });
     }
     await expect(preselectRendererTransport(
-      { kind: "http", method: "GET", path: "/updates/webapp/download-info" },
+      { kind: "http", method: "POST", path: "/updates/webapp/restart" },
       info,
       async () => capabilityResponse(),
     )).resolves.toMatchObject({ target: "reject", reason: "native_capability_mismatch" });
     for (const path of [
-      "/updates/webapp/download-info?url=http://evil",
       "/updates/webapp/changelog?current_version=0.11.1&extra=true",
       "/updates/webapp/download-status/../escape",
       "/updates/webapp/download-cancel/%2e%2e",
     ]) {
       await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, info, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+  });
+
+  it("rejects the removed in-place application-update routes", async () => {
+    const request = async () => capabilityResponse({ native_webapp_update_routes: true });
+    const info = () => ({ ...running(), pythonPluginHostConfigured: false });
+    for (const [method, path] of [
+      ["GET", "/updates/webapp/download-info"],
+      ["POST", "/updates/webapp/download-start"],
+      ["POST", "/updates/webapp/apply"],
+      ["GET", "/updates/webapp/staged-update"],
+      ["DELETE", "/updates/webapp/staged-update"],
+      ["POST", "/updates/webapp/cleanup"],
+      ["GET", "/updates/webapp/last-apply-result"],
+      ["DELETE", "/updates/webapp/last-apply-result"],
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, info, request))
         .resolves.toMatchObject({ target: "reject" });
     }
   });

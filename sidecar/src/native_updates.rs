@@ -1,59 +1,30 @@
-//! Bounded, native desktop self-update orchestration.
+//! Application update discovery for the desktop product.
 //!
-//! Rust owns release discovery, archive verification/staging and the detached
-//! replacement helper.  This module never starts a Python HTTP backend and it
-//! deliberately enables in-place replacement only for an explicitly attested
-//! all-in-one/portable tree.
+//! Studio is published as platform installers only. This module asks GitHub
+//! for the newest release of the configured repository, selects the installer
+//! published for the running platform, reads the SHA-256 checksum file
+//! published next to it and reports the result, so that the application can
+//! offer the user a link to download that installer. It never downloads or
+//! installs the application itself.
 
 use std::{
-    collections::HashSet,
     env,
-    fs::{self, File, OpenOptions},
-    io::{self, Read, Write},
-    path::{Component, Path, PathBuf},
-    process::{Command, Stdio},
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc, Mutex,
-    },
-    thread,
-    time::{Duration, Instant},
+    io::Read,
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 
-use atomicwrites::replace_atomic;
-use flate2::read::GzDecoder;
 use reqwest::blocking::{Client, Response};
 use reqwest::redirect::Policy;
 use semver::Version;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-use tar::Archive;
 use url::Url;
-use zip::ZipArchive;
 
-use crate::{
-    job_http::NativeJobRuntime,
-    job_lifecycle::{JobStatus, JobType},
-    websocket_transport::rfc3339_now,
-    HttpResponse, SidecarState,
-};
+use crate::{websocket_transport::rfc3339_now, HttpResponse, SidecarState};
 
-pub const MAX_UPDATE_ARCHIVE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
-const MAX_EXTRACTED_BYTES: u64 = 12 * 1024 * 1024 * 1024;
-const MAX_ARCHIVE_ENTRIES: usize = 100_000;
+const MAX_INSTALLER_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const MAX_RELEASE_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(30);
-const HELPER_WAIT_TIMEOUT: Duration = Duration::from_secs(90);
-#[cfg(windows)]
-const WINDOWS_APP_UNLOCK_TIMEOUT: Duration = Duration::from_secs(15);
-#[cfg(windows)]
-const WINDOWS_APP_UNLOCK_RETRY_DELAY: Duration = Duration::from_millis(100);
-const STAGING_DIR: &str = "update_staging";
-const DOWNLOAD_FILE: &str = "update_download.part";
-const STAGED_METADATA: &str = ".nirs4all-staged-update.json";
-const APPLY_ATTEMPT: &str = "update_apply_attempt.json";
-const APPLY_RESULT: &str = "update_apply_result.json";
-const APPLY_PLAN: &str = "update_apply_plan.json";
 
 #[derive(Clone, Debug)]
 pub struct NativeUpdater {
@@ -61,26 +32,12 @@ pub struct NativeUpdater {
     release: Arc<Mutex<Option<ReleaseInfo>>>,
     last_check: Arc<Mutex<Option<String>>>,
     preferences: Arc<Mutex<UpdatePreferences>>,
-    next_job: Arc<AtomicU64>,
-    lifecycle: Arc<Mutex<UpdateLifecycle>>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum UpdateLifecycle {
-    Idle,
-    Downloading(String),
-    Applying,
 }
 
 #[derive(Debug)]
 struct UpdateConfig {
-    state_dir: PathBuf,
-    app_dir: Option<PathBuf>,
-    executable_relative: Option<PathBuf>,
     current_version: String,
     api_base: String,
-    all_in_one: bool,
-    electron_pid: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -115,106 +72,38 @@ struct ReleaseInfo {
     prerelease: bool,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct ApplyPlan {
-    app_dir: PathBuf,
-    staged_content: PathBuf,
-    executable_relative: PathBuf,
-    state_dir: PathBuf,
-    parent_pid: u32,
-    from_version: String,
-    to_version: String,
-    staged_tree_sha256: String,
-}
-
 impl Default for NativeUpdater {
     fn default() -> Self {
-        Self::from_environment_inner(false)
+        Self::from_environment()
     }
 }
 
 impl NativeUpdater {
     #[must_use]
     pub fn from_environment() -> Self {
-        Self::from_environment_inner(true)
+        Self::new(
+            env::var("NIRS4ALL_APP_VERSION")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "unknown".into()),
+            (env::var("CI").as_deref() == Ok("1"))
+                .then(|| env::var("NIRS4ALL_UPDATE_API_BASE").ok())
+                .flatten()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "https://api.github.com".into()),
+        )
     }
 
-    fn from_environment_inner(reconcile: bool) -> Self {
-        let state_dir = update_state_dir();
-        let raw_app_dir = env::var_os("NIRS4ALL_APP_DIR").map(PathBuf::from);
-        let app_exe = env::var_os("NIRS4ALL_APP_EXE").map(PathBuf::from);
-        let (app_dir, executable_relative) = resolve_app_layout(raw_app_dir, app_exe);
-        let archive_owned_tree = env_truthy("NIRS4ALL_ALL_IN_ONE")
-            || env::var_os("NIRS4ALL_PORTABLE_EXE").is_some()
-            || env::var_os("NIRS4ALL_PORTABLE_ROOT").is_some();
-        let all_in_one = qualifies_in_place_archive(
-            archive_owned_tree,
-            env_truthy("NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE"),
-        );
-        let updater = Self {
+    fn new(current_version: String, api_base: String) -> Self {
+        Self {
             config: Arc::new(UpdateConfig {
-                state_dir,
-                app_dir,
-                executable_relative,
-                current_version: env::var("NIRS4ALL_APP_VERSION")
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-                    .unwrap_or_else(|| "unknown".into()),
-                api_base: (env::var("CI").as_deref() == Ok("1"))
-                    .then(|| env::var("NIRS4ALL_UPDATE_API_BASE").ok())
-                    .flatten()
-                    .filter(|value| !value.trim().is_empty())
-                    .unwrap_or_else(|| "https://api.github.com".into()),
-                all_in_one,
-                electron_pid: env::var("NIRS4ALL_ELECTRON_PID")
-                    .ok()
-                    .and_then(|value| value.parse::<u32>().ok())
-                    .filter(|pid| *pid > 0),
+                current_version,
+                api_base,
             }),
             release: Arc::new(Mutex::new(None)),
             last_check: Arc::new(Mutex::new(None)),
             preferences: Arc::new(Mutex::new(UpdatePreferences::default())),
-            next_job: Arc::new(AtomicU64::new(1)),
-            lifecycle: Arc::new(Mutex::new(UpdateLifecycle::Idle)),
-        };
-        if reconcile {
-            updater.reconcile_apply_attempt();
         }
-        updater
-    }
-
-    #[cfg(test)]
-    fn test_config(
-        state_dir: PathBuf,
-        app_dir: Option<PathBuf>,
-        executable_relative: Option<PathBuf>,
-        current_version: &str,
-        api_base: String,
-        all_in_one: bool,
-    ) -> Self {
-        Self {
-            config: Arc::new(UpdateConfig {
-                state_dir,
-                app_dir,
-                executable_relative,
-                current_version: current_version.into(),
-                api_base,
-                all_in_one,
-                electron_pid: Some(u32::MAX),
-            }),
-            release: Arc::new(Mutex::new(None)),
-            last_check: Arc::new(Mutex::new(None)),
-            preferences: Arc::new(Mutex::new(UpdatePreferences {
-                github_repo: "fixture/repo".into(),
-                ..UpdatePreferences::default()
-            })),
-            next_job: Arc::new(AtomicU64::new(1)),
-            lifecycle: Arc::new(Mutex::new(UpdateLifecycle::Idle)),
-        }
-    }
-
-    fn staging_dir(&self) -> PathBuf {
-        self.config.state_dir.join(STAGING_DIR)
     }
 
     fn sync_preferences(&self, settings: &Value) {
@@ -249,68 +138,6 @@ impl NativeUpdater {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
         }
-    }
-
-    fn capability(&self) -> Value {
-        let install_kind = if env::var_os("APPIMAGE").is_some() {
-            "appimage"
-        } else if env::var_os("NIRS4ALL_PORTABLE_EXE").is_some()
-            || env::var_os("NIRS4ALL_PORTABLE_ROOT").is_some()
-        {
-            "portable"
-        } else if self.config.all_in_one {
-            "all-in-one"
-        } else if cfg!(target_os = "macos") {
-            "dmg"
-        } else if cfg!(target_os = "windows") {
-            "windows-installer"
-        } else {
-            "deb"
-        };
-        let installer_release = self
-            .release
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-            .is_some_and(|release| is_installer_asset(&release.asset_name));
-        let (can_apply, reason) = if installer_release {
-            (false, "installer_release")
-        } else if env::var_os("APPIMAGE").is_some() {
-            (false, "appimage")
-        } else if !self.config.all_in_one {
-            (false, "managed_install")
-        } else if self.config.electron_pid.is_none() {
-            (false, "electron_process_unavailable")
-        } else if self.write_probe() {
-            (true, "all_in_one")
-        } else {
-            (false, "read_only_location")
-        };
-        json!({
-            "can_apply_in_place": can_apply,
-            "channel": if can_apply { "in_place" } else { "installer" },
-            "reason": reason,
-            "install_kind": install_kind,
-        })
-    }
-
-    fn write_probe(&self) -> bool {
-        let Some(app_dir) = &self.config.app_dir else {
-            return false;
-        };
-        let Some(parent) = app_dir.parent() else {
-            return false;
-        };
-        let probe = parent.join(format!(
-            ".nirs4all-update-write-probe-{}",
-            std::process::id()
-        ));
-        OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&probe)
-            .and_then(|_| fs::remove_file(&probe))
-            .is_ok()
     }
 
     fn check(&self) -> Result<ReleaseInfo, String> {
@@ -373,15 +200,6 @@ impl NativeUpdater {
         Ok(release)
     }
 
-    fn cached_or_check(&self) -> Result<ReleaseInfo, String> {
-        let cached = self
-            .release
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        cached.map_or_else(|| self.check(), Ok)
-    }
-
     fn update_available(&self, version: &str) -> bool {
         strictly_newer(version, &self.config.current_version).unwrap_or(false)
     }
@@ -395,7 +213,6 @@ impl NativeUpdater {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .clone()
         };
-        let capability = self.capability();
         Ok(json!({
             "webapp": release.as_ref().map_or_else(
                 || json!({
@@ -425,7 +242,7 @@ impl NativeUpdater {
             },
             "runtime": empty_runtime(),
             "venv": empty_runtime(),
-            "update_capability": capability,
+            "update_capability": update_capability(),
             "last_check": self.last_check.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone(),
             "check_interval_hours": self.preferences.lock().unwrap_or_else(std::sync::PoisonError::into_inner).check_interval_hours,
         }))
@@ -444,29 +261,9 @@ impl NativeUpdater {
             "asset_name": release.asset_name,
             "checksum_sha256": release.sha256,
             "is_prerelease": release.prerelease,
-            "installer_download_url": is_installer_asset(&release.asset_name).then_some(&release.download_url),
-            "installer_asset_name": is_installer_asset(&release.asset_name).then_some(&release.asset_name),
+            "installer_download_url": release.download_url,
+            "installer_asset_name": release.asset_name,
         })
-    }
-
-    fn download_info(&self) -> Result<Value, String> {
-        let release = self.check()?;
-        let capability = self.capability();
-        Ok(json!({
-            "update_available": self.update_available(&release.version),
-            "current_version": self.config.current_version,
-            "latest_version": release.version,
-            "download_url": release.download_url,
-            "asset_name": release.asset_name,
-            "download_size_bytes": release.size,
-            "release_notes": release.notes,
-            "release_url": release.release_url,
-            "installer_download_url": is_installer_asset(&release.asset_name).then_some(&release.download_url),
-            "installer_asset_name": is_installer_asset(&release.asset_name).then_some(&release.asset_name),
-            "can_apply_in_place": capability["can_apply_in_place"],
-            "update_channel": capability["channel"],
-            "install_kind": capability["install_kind"],
-        }))
     }
 
     fn changelog(&self, current_version: Option<&str>) -> Value {
@@ -488,538 +285,15 @@ impl NativeUpdater {
             "current_version": current_version.unwrap_or(&self.config.current_version),
         })
     }
-
-    fn start_download(&self, jobs: &Arc<NativeJobRuntime>) -> Result<Value, String> {
-        let preferences = self
-            .preferences
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        if effective_offline(&preferences) {
-            return Err("Update download is disabled by offline mode".into());
-        }
-        let release = self.cached_or_check()?;
-        if !self.update_available(&release.version) {
-            return Err("No update available".into());
-        }
-        if self.capability()["can_apply_in_place"] != true {
-            return Err(
-                "This build updates through its installer and cannot apply an archive in place"
-                    .into(),
-            );
-        }
-        let mut lifecycle = self
-            .lifecycle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        match &*lifecycle {
-            UpdateLifecycle::Idle => {}
-            UpdateLifecycle::Downloading(_) => {
-                return Err("CONFLICT:An update download is already active".into());
-            }
-            UpdateLifecycle::Applying => {
-                return Err("CONFLICT:An update is already being applied".into());
-            }
-        }
-        let id = format!(
-            "update-download-{}-{}",
-            std::process::id(),
-            self.next_job.fetch_add(1, Ordering::Relaxed)
-        );
-        jobs.register_local_control_at(
-            id.clone(),
-            JobType::UpdateDownload,
-            json!({
-                "version": release.version,
-                "download_url": release.download_url,
-                "asset_name": release.asset_name,
-                "expected_size": release.size,
-                "checksum": release.sha256,
-            }),
-            &rfc3339_now(),
-            Instant::now(),
-        )
-        .map_err(|error| format!("Could not register update download: {error:?}"))?;
-        *lifecycle = UpdateLifecycle::Downloading(id.clone());
-        drop(lifecycle);
-        let updater = self.clone();
-        let worker_jobs = Arc::clone(jobs);
-        let worker_id = id.clone();
-        let worker_release = release.clone();
-        thread::spawn(move || updater.download_worker(&worker_jobs, &worker_id, &worker_release));
-        Ok(json!({
-            "job_id": id,
-            "status": "started",
-            "version": release.version,
-            "asset_name": release.asset_name,
-            "message": format!("Downloading {}...", release.asset_name),
-        }))
-    }
-
-    fn download_worker(&self, jobs: &NativeJobRuntime, job_id: &str, release: &ReleaseInfo) {
-        let now = Instant::now();
-        if jobs.start_at(job_id, &rfc3339_now(), now).is_err() {
-            self.finish_download(job_id);
-            return;
-        }
-        let result = self.download_and_stage(jobs, job_id, release);
-        match result {
-            Ok(content) => {
-                if self
-                    .complete_or_invalidate_staging(jobs, job_id, release, &content)
-                    .is_err()
-                {
-                    // Keeping the lifecycle busy is safer than exposing a
-                    // staging tree whose cancellation could not be enforced.
-                    return;
-                }
-            }
-            Err(_error) if job_cancelled(jobs, job_id) => {
-                let _ = jobs.acknowledge_cancel_at(job_id, &rfc3339_now(), Instant::now());
-            }
-            Err(error) => {
-                let _ = jobs.fail_at(job_id, error, None, &rfc3339_now(), Instant::now());
-            }
-        }
-        self.finish_download(job_id);
-    }
-
-    fn complete_or_invalidate_staging(
-        &self,
-        jobs: &NativeJobRuntime,
-        job_id: &str,
-        release: &ReleaseInfo,
-        content: &Path,
-    ) -> Result<(), String> {
-        let completion = jobs.complete_at(
-            job_id,
-            json!({
-                "staging_path": content,
-                "version": release.version,
-                "ready_to_apply": true,
-            }),
-            &rfc3339_now(),
-            Instant::now(),
-        );
-        if matches!(completion, Ok(snapshot) if snapshot.status == JobStatus::Completed) {
-            return Ok(());
-        }
-        // complete_at deliberately turns a late cancellation request into
-        // Cancelled. Invalidate already-published metadata before returning to
-        // Idle, otherwise a cancelled update would remain applicable.
-        remove_known_tree(&self.staging_dir())
-    }
-
-    fn finish_download(&self, job_id: &str) {
-        let mut lifecycle = self
-            .lifecycle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if matches!(&*lifecycle, UpdateLifecycle::Downloading(id) if id == job_id) {
-            *lifecycle = UpdateLifecycle::Idle;
-        }
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn download_and_stage(
-        &self,
-        jobs: &NativeJobRuntime,
-        job_id: &str,
-        release: &ReleaseInfo,
-    ) -> Result<PathBuf, String> {
-        let preferences = self
-            .preferences
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        if effective_offline(&preferences) {
-            return Err("Update download is disabled by offline mode".into());
-        }
-        fs::create_dir_all(&self.config.state_dir)
-            .map_err(|error| format!("Could not create update state directory: {error}"))?;
-        let download = self.config.state_dir.join(DOWNLOAD_FILE);
-        let staging = self.staging_dir();
-        remove_known_tree(&staging)?;
-        let _ = fs::remove_file(&download);
-        let api_base = validate_network_url(&self.config.api_base, true)?;
-        validate_download_url(&release.download_url, &api_base)?;
-        let url = Url::parse(&release.download_url)
-            .map_err(|error| format!("Invalid update URL: {error}"))?;
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10 * 60))
-            .redirect(update_redirect_policy(api_base.scheme() == "http"))
-            .build()
-            .map_err(|error| format!("Could not create update HTTP client: {error}"))?;
-        let mut response = client
-            .get(url)
-            .send()
-            .and_then(Response::error_for_status)
-            .map_err(|error| format!("Update download failed: {error}"))?;
-        if response
-            .content_length()
-            .is_some_and(|size| size != release.size || size > MAX_UPDATE_ARCHIVE_BYTES)
-        {
-            return Err("Update download Content-Length does not match release metadata".into());
-        }
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&download)
-            .map_err(|error| format!("Could not create update download: {error}"))?;
-        let mut digest = Sha256::new();
-        let mut total = 0_u64;
-        let mut last_progress_bucket = 0_u8;
-        let mut buffer = vec![0_u8; 64 * 1024].into_boxed_slice();
-        loop {
-            let preferences = self
-                .preferences
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone();
-            if effective_offline(&preferences) {
-                let _ = fs::remove_file(&download);
-                return Err("Update download stopped because offline mode was enabled".into());
-            }
-            if job_cancelled(jobs, job_id) {
-                let _ = fs::remove_file(&download);
-                return Err("Update download cancelled".into());
-            }
-            let read = response
-                .read(&mut buffer)
-                .map_err(|error| format!("Update download read failed: {error}"))?;
-            if read == 0 {
-                break;
-            }
-            total = total
-                .checked_add(u64::try_from(read).unwrap_or(u64::MAX))
-                .ok_or("Update download size overflow")?;
-            if total > release.size || total > MAX_UPDATE_ARCHIVE_BYTES {
-                let _ = fs::remove_file(&download);
-                return Err("Update download exceeded its declared size".into());
-            }
-            file.write_all(&buffer[..read])
-                .map_err(|error| format!("Could not write update download: {error}"))?;
-            digest.update(&buffer[..read]);
-            let progress_bucket = download_progress_bucket(total, release.size);
-            if progress_bucket > last_progress_bucket {
-                last_progress_bucket = progress_bucket;
-                let _ = jobs.progress_at(
-                    job_id,
-                    f64::from(progress_bucket),
-                    "Downloading update",
-                    &rfc3339_now(),
-                    Instant::now(),
-                );
-            }
-        }
-        drop(file);
-        if total != release.size {
-            let _ = fs::remove_file(&download);
-            return Err(format!(
-                "Update download size mismatch: expected {}, received {total}",
-                release.size
-            ));
-        }
-        let actual = format!("{:x}", digest.finalize());
-        if !actual.eq_ignore_ascii_case(&release.sha256) {
-            let _ = fs::remove_file(&download);
-            return Err("Update download SHA-256 mismatch".into());
-        }
-        fs::create_dir_all(&staging)
-            .map_err(|error| format!("Could not create update staging directory: {error}"))?;
-        extract_archive(&download, &release.asset_name, &staging)?;
-        if job_cancelled(jobs, job_id) {
-            let _ = remove_known_tree(&staging);
-            return Err("Update download cancelled".into());
-        }
-        let content = resolve_staged_content(&staging)?;
-        validate_staged_layout(&content, self.config.executable_relative.as_deref())?;
-        let staged_tree_sha256 = hash_tree(&content)?;
-        if job_cancelled(jobs, job_id) {
-            let _ = remove_known_tree(&staging);
-            return Err("Update download cancelled".into());
-        }
-        atomic_json(
-            &staging.join(STAGED_METADATA),
-            &json!({
-                "version": release.version,
-                "asset_name": release.asset_name,
-                "sha256": release.sha256,
-                "size": release.size,
-                "staged_at": rfc3339_now(),
-                "staged_tree_sha256": staged_tree_sha256,
-            }),
-        )?;
-        let _ = fs::remove_file(download);
-        let _ = jobs.progress_at(
-            job_id,
-            100.0,
-            "Update staged",
-            &rfc3339_now(),
-            Instant::now(),
-        );
-        Ok(content)
-    }
-
-    fn staged_info(&self) -> Value {
-        let staging = self.staging_dir();
-        let metadata = read_json(&staging.join(STAGED_METADATA)).ok();
-        if !staging.is_dir() || metadata.is_none() {
-            return json!({"has_staged_update": false});
-        }
-        let metadata = metadata.unwrap_or_default();
-        json!({
-            "has_staged_update": true,
-            "staging_path": staging,
-            "version": metadata.get("version"),
-            "asset_name": metadata.get("asset_name"),
-            "update_mode": "directory",
-        })
-    }
-
-    // The guard deliberately covers the filesystem mutation: dropping it after
-    // the check would let apply/download race staged-tree deletion.
-    #[allow(clippy::significant_drop_tightening)]
-    fn delete_staged(&self) -> Result<Value, String> {
-        let lifecycle = self
-            .lifecycle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if *lifecycle != UpdateLifecycle::Idle {
-            return Err("CONFLICT:An update operation is active".into());
-        }
-        remove_known_tree(&self.staging_dir())?;
-        Ok(json!({"success": true, "message": "Staged update removed"}))
-    }
-
-    // See delete_staged: this is a transaction guard, not an incidental read.
-    #[allow(clippy::significant_drop_tightening)]
-    fn cleanup(&self) -> Result<Value, String> {
-        let lifecycle = self
-            .lifecycle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if *lifecycle != UpdateLifecycle::Idle {
-            return Err("CONFLICT:An update operation is active".into());
-        }
-        remove_known_file(&self.config.state_dir.join(DOWNLOAD_FILE))?;
-        remove_known_file(&self.config.state_dir.join(APPLY_PLAN))?;
-        remove_known_file(&self.config.state_dir.join(if cfg!(windows) {
-            "studio-update-helper.exe"
-        } else {
-            "studio-update-helper"
-        }))?;
-        remove_known_tree(&self.staging_dir())?;
-        if let (Some(app_dir), Ok(result)) = (
-            self.config.app_dir.as_deref(),
-            read_json(&self.config.state_dir.join(APPLY_RESULT)),
-        ) {
-            if let Some(backup) = result
-                .get("backup_path")
-                .and_then(Value::as_str)
-                .map(PathBuf::from)
-            {
-                let expected_prefix = format!(
-                    ".{}.nirs4all-backup-",
-                    app_dir
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or_default()
-                );
-                if backup.parent() == app_dir.parent()
-                    && backup
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .is_some_and(|name| name.starts_with(&expected_prefix))
-                {
-                    fs::remove_dir_all(&backup).map_err(|error| {
-                        format!(
-                            "Could not remove update backup {}: {error}",
-                            backup.display()
-                        )
-                    })?;
-                }
-            }
-        }
-        Ok(json!({"success": true, "message": "Cleanup complete"}))
-    }
-
-    // The lifecycle guard must span validation, plan publication and helper
-    // spawn so cleanup cannot invalidate an in-flight apply transaction.
-    #[allow(clippy::significant_drop_tightening, clippy::too_many_lines)]
-    fn apply(&self, body: &[u8]) -> Result<Value, String> {
-        let request: Value = serde_json::from_slice(body)
-            .map_err(|_| "Apply request must be a JSON object".to_owned())?;
-        let object = request
-            .as_object()
-            .ok_or("Apply request must be a JSON object")?;
-        if object.len() != 1 || !object.contains_key("confirm") {
-            return Err("Apply request accepts only {\"confirm\": true}".into());
-        }
-        if request.get("confirm").and_then(Value::as_bool) != Some(true) {
-            return Err("Update not confirmed".into());
-        }
-        if self.capability()["can_apply_in_place"] != true {
-            return Err("This build cannot apply updates in place".into());
-        }
-        let mut lifecycle = self
-            .lifecycle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if *lifecycle != UpdateLifecycle::Idle {
-            return Err("CONFLICT:An update operation is active".into());
-        }
-        let metadata = read_json(&self.staging_dir().join(STAGED_METADATA))?;
-        let staged_version = metadata
-            .get("version")
-            .and_then(Value::as_str)
-            .ok_or("Staged update metadata has no version")?;
-        if !strictly_newer(staged_version, &self.config.current_version)? {
-            return Err(format!(
-                "The staged update ({staged_version}) is not newer than the running version ({})",
-                self.config.current_version
-            ));
-        }
-        let staged_tree_sha256 = metadata
-            .get("staged_tree_sha256")
-            .and_then(Value::as_str)
-            .filter(|value| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
-            .ok_or("Staged update metadata has no valid tree digest")?;
-        let content = resolve_staged_content(&self.staging_dir())?;
-        let app_dir = self
-            .config
-            .app_dir
-            .clone()
-            .ok_or("Desktop application directory is unavailable")?;
-        let executable_relative = self
-            .config
-            .executable_relative
-            .clone()
-            .ok_or("Desktop application executable is unavailable")?;
-        validate_staged_layout(&content, Some(&executable_relative))?;
-        if hash_tree(&content)? != staged_tree_sha256 {
-            return Err("Staged update changed after checksum verification".into());
-        }
-        fs::create_dir_all(&self.config.state_dir)
-            .map_err(|error| format!("Could not create update state directory: {error}"))?;
-        let plan = ApplyPlan {
-            app_dir,
-            staged_content: content,
-            executable_relative,
-            state_dir: self.config.state_dir.clone(),
-            parent_pid: self
-                .config
-                .electron_pid
-                .ok_or("Electron process identity is unavailable for safe update apply")?,
-            from_version: self.config.current_version.clone(),
-            to_version: staged_version.into(),
-            staged_tree_sha256: staged_tree_sha256.into(),
-        };
-        atomic_json(
-            &self.config.state_dir.join(APPLY_ATTEMPT),
-            &serde_json::to_value(&plan).map_err(|error| error.to_string())?,
-        )?;
-        atomic_json(
-            &self.config.state_dir.join(APPLY_PLAN),
-            &serde_json::to_value(&plan).map_err(|error| error.to_string())?,
-        )?;
-        let current_exe = env::current_exe()
-            .map_err(|error| format!("Could not locate update helper executable: {error}"))?;
-        let helper = self.config.state_dir.join(if cfg!(windows) {
-            "studio-update-helper.exe"
-        } else {
-            "studio-update-helper"
-        });
-        fs::copy(&current_exe, &helper)
-            .map_err(|error| format!("Could not stage update helper: {error}"))?;
-        let mut command = Command::new(&helper);
-        configure_helper_working_directory(
-            &mut command,
-            &self.config.state_dir,
-            plan.app_dir.as_path(),
-        )?;
-        command
-            .arg("--apply-update-plan")
-            .arg(self.config.state_dir.join(APPLY_PLAN))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x0000_0008 | 0x0000_0200);
-        }
-        command
-            .spawn()
-            .map_err(|error| format!("Could not launch update helper: {error}"))?;
-        *lifecycle = UpdateLifecycle::Applying;
-        Ok(json!({
-            "success": true,
-            "message": "Update will be applied after the application exits",
-            "restart_required": true,
-        }))
-    }
-
-    fn reconcile_apply_attempt(&self) {
-        let path = self.config.state_dir.join(APPLY_ATTEMPT);
-        let result_path = self.config.state_dir.join(APPLY_RESULT);
-        let Ok(prior_result) = read_json(&result_path) else {
-            return;
-        };
-        if !matches!(
-            prior_result.get("status").and_then(Value::as_str),
-            Some("applied" | "launched")
-        ) {
-            return;
-        }
-        let Ok(attempt) = read_json(&path) else {
-            return;
-        };
-        let target = attempt.get("to_version").and_then(Value::as_str);
-        let status = if target == Some(self.config.current_version.as_str()) {
-            "success"
-        } else {
-            "failed"
-        };
-        let _ = atomic_json(
-            &result_path,
-            &json!({
-                "status": status,
-                "from_version": attempt.get("from_version"),
-                "to_version": target,
-                "current_version": self.config.current_version,
-                "reconciled_at": rfc3339_now(),
-                "relaunch_pid": prior_result.get("relaunch_pid"),
-                "backup_path": prior_result.get("backup_path"),
-            }),
-        );
-        let _ = fs::remove_file(path);
-    }
 }
 
-/// Convert downloaded bytes to one of 80 monotonic progress buckets.
+/// Serve the application-update routes.
 ///
-/// The download loop still checks cancellation and validates every input chunk,
-/// but publishing one registry/websocket event per 64 KiB chunk can starve the
-/// HTTP status route for large all-in-one archives. Integer arithmetic keeps
-/// this bounded and deterministic without losing user-visible percentage
-/// progress.
-fn download_progress_bucket(downloaded: u64, expected: u64) -> u8 {
-    if expected == 0 {
-        return 0;
-    }
-    let scaled = u128::from(downloaded.min(expected)) * 80 / u128::from(expected);
-    u8::try_from(scaled).unwrap_or(80)
-}
-
-/// Route the complete legacy desktop-update surface to the native owner.
+/// The download status and cancellation paths are answered by the job
+/// lifecycle routes, so they fall through here. Any other path below
+/// `/api/updates/webapp/` that is not listed is refused with 404.
 #[must_use]
-pub fn route(
-    state: &mut SidecarState,
-    method: &str,
-    path: &str,
-    body: &[u8],
-) -> Option<HttpResponse> {
+pub fn route(state: &SidecarState, method: &str, path: &str) -> Option<HttpResponse> {
     if method == "GET" && path.starts_with("/api/updates/webapp/changelog") {
         let current_version = match parse_changelog_query(path) {
             Ok(version) => version,
@@ -1039,56 +313,21 @@ pub fn route(
         return None;
     }
     let expected = match path {
-        "/api/updates/status" | "/api/updates/webapp/download-info" => "GET",
-        "/api/updates/webapp/staged-update" | "/api/updates/webapp/last-apply-result" => {
-            "GET, DELETE"
-        }
-        "/api/updates/check"
-        | "/api/updates/webapp/download-start"
-        | "/api/updates/webapp/apply"
-        | "/api/updates/webapp/cleanup"
-        | "/api/updates/webapp/restart" => "POST",
+        "/api/updates/status" => "GET",
+        "/api/updates/check" | "/api/updates/webapp/restart" => "POST",
         _ if path.starts_with("/api/updates/webapp/download-status/") => "GET",
         _ if path.starts_with("/api/updates/webapp/download-cancel/") => "POST",
         _ => return Some(detail(404, "Update route not found")),
     };
-    let method_allowed = expected.split(", ").any(|candidate| candidate == method);
-    if !method_allowed {
+    if method != expected {
         return Some(detail(405, "Method Not Allowed").with_header("Allow", expected));
     }
     let updater = state.native_updater.clone();
     updater.sync_preferences(&state.update_settings.load());
-    let result = match (method, path) {
-        ("GET", "/api/updates/status") => status_with_runtime(state, &updater, false),
-        ("POST", "/api/updates/check") => status_with_runtime(state, &updater, true),
-        ("GET", "/api/updates/webapp/download-info") => updater.download_info(),
-        ("POST", "/api/updates/webapp/download-start") => {
-            let jobs = state.native_jobs();
-            updater.start_download(&jobs)
-        }
-        ("POST", "/api/updates/webapp/apply") => updater.apply(body),
-        ("GET", "/api/updates/webapp/staged-update") => Ok(updater.staged_info()),
-        ("DELETE", "/api/updates/webapp/staged-update") => updater.delete_staged(),
-        ("POST", "/api/updates/webapp/cleanup") => updater.cleanup(),
-        ("GET", "/api/updates/webapp/last-apply-result") => {
-            let result = read_json(&updater.config.state_dir.join(APPLY_RESULT))
-                .unwrap_or_else(|_| json!({"status": "none"}));
-            Ok(
-                if matches!(
-                    result.get("status").and_then(Value::as_str),
-                    Some("applied" | "launched")
-                ) {
-                    json!({"status": "none"})
-                } else {
-                    result
-                },
-            )
-        }
-        ("DELETE", "/api/updates/webapp/last-apply-result") => {
-            remove_known_file(&updater.config.state_dir.join(APPLY_RESULT))
-                .map(|()| json!({"success": true}))
-        }
-        ("POST", "/api/updates/webapp/restart") => Ok(json!({
+    let result = match path {
+        "/api/updates/status" => status_with_runtime(state, &updater, false),
+        "/api/updates/check" => status_with_runtime(state, &updater, true),
+        "/api/updates/webapp/restart" => Ok(json!({
             "success": true,
             "message": "Restart requested; Electron will restart the native backend",
             "restart_required": true,
@@ -1096,13 +335,7 @@ pub fn route(
         _ => return None,
     };
     Some(result.map_or_else(
-        |error| {
-            if error.starts_with("CONFLICT:") {
-                detail(409, error.trim_start_matches("CONFLICT:"))
-            } else {
-                detail(400, error)
-            }
-        },
+        |error| detail(400, error),
         |value| HttpResponse::json(200, value.to_string()),
     ))
 }
@@ -1151,131 +384,6 @@ fn status_with_runtime(
     Ok(status)
 }
 
-/// Execute a detached, already-validated replacement plan.
-///
-/// # Errors
-///
-/// Returns an error when the plan is unconfined, its verified tree changed,
-/// replacement cannot complete atomically, or the updated app cannot relaunch.
-pub fn run_apply_plan(path: &Path) -> Result<(), String> {
-    let plan: ApplyPlan = serde_json::from_value(read_json(path)?)
-        .map_err(|error| format!("Invalid update apply plan: {error}"))?;
-    match run_apply_plan_inner(path, &plan) {
-        Ok(()) => Ok(()),
-        Err(error) => {
-            let _ = atomic_json(
-                &plan.state_dir.join(APPLY_RESULT),
-                &json!({
-                    "status": "failed",
-                    "from_version": plan.from_version,
-                    "to_version": plan.to_version,
-                    "error": error,
-                    "failed_at": rfc3339_now(),
-                }),
-            );
-            Err(error)
-        }
-    }
-}
-
-fn run_apply_plan_inner(path: &Path, plan: &ApplyPlan) -> Result<(), String> {
-    validate_apply_plan(plan)?;
-    let actual_plan = path
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve update apply plan: {error}"))?;
-    let expected_plan = plan
-        .state_dir
-        .canonicalize()
-        .map_err(|error| error.to_string())?
-        .join(APPLY_PLAN);
-    if actual_plan != expected_plan {
-        return Err("Update apply plan is outside the confined state directory".into());
-    }
-    if hash_tree(&plan.staged_content)? != plan.staged_tree_sha256 {
-        return Err("Staged update tree digest changed before apply".into());
-    }
-    let parent = plan
-        .app_dir
-        .parent()
-        .ok_or("Application directory has no parent")?;
-    let name = plan
-        .app_dir
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or("Application directory name is invalid")?;
-    let prepared = parent.join(format!(".{name}.nirs4all-new-{}", std::process::id()));
-    let backup = parent.join(format!(".{name}.nirs4all-backup-{}", std::process::id()));
-    remove_known_tree(&prepared)?;
-    remove_known_tree(&backup)?;
-    copy_tree(&plan.staged_content, &prepared)?;
-    if hash_tree(&prepared)? != plan.staged_tree_sha256 {
-        let _ = remove_known_tree(&prepared);
-        return Err("Prepared update tree does not match the verified staged tree".into());
-    }
-    wait_for_process_exit(plan.parent_pid, HELPER_WAIT_TIMEOUT)?;
-    rename_current_application_to_backup(&plan.app_dir, &backup)?;
-    if let Err(error) = fs::rename(&prepared, &plan.app_dir) {
-        let _ = fs::rename(&backup, &plan.app_dir);
-        return Err(format!(
-            "Could not atomically install staged application: {error}"
-        ));
-    }
-    let executable = plan.app_dir.join(&plan.executable_relative);
-    if !executable.is_file() {
-        let _ = fs::rename(&plan.app_dir, &prepared);
-        let _ = fs::rename(&backup, &plan.app_dir);
-        return Err("Updated application executable is missing; rollback completed".into());
-    }
-    atomic_json(
-        &plan.state_dir.join(APPLY_RESULT),
-        &json!({
-            "status": "applied",
-            "from_version": plan.from_version,
-            "to_version": plan.to_version,
-            "applied_at": rfc3339_now(),
-            "backup_path": backup,
-        }),
-    )?;
-    let mut relaunch = Command::new(&executable);
-    relaunch
-        .current_dir(&plan.app_dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    // The external release smoke starts Electron with a one-shot credential.
-    // NativeSidecarManager converts it into the ordinary private credential and
-    // removes the override before spawning us. Reconstruct the override only
-    // inside CI so the helper-launched Electron can be probed by that same
-    // harness; ordinary production sessions never export it.
-    if env::var("CI").as_deref() == Ok("1") {
-        if let Ok(token) = env::var("NIRS4ALL_STUDIO_SESSION_TOKEN") {
-            if token.len() >= 32
-                && token.len() <= 256
-                && token.bytes().all(|byte| byte.is_ascii_alphanumeric())
-            {
-                relaunch.env("NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN", token);
-            }
-        }
-    }
-    let child = match relaunch.spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            let _ = fs::rename(&plan.app_dir, &prepared);
-            let _ = fs::rename(&backup, &plan.app_dir);
-            return Err(format!(
-                "Could not relaunch updated application; rollback completed: {error}"
-            ));
-        }
-    };
-    let mut result = read_json(&plan.state_dir.join(APPLY_RESULT))
-        .unwrap_or_else(|_| json!({"status": "applied"}));
-    result["relaunch_pid"] = json!(child.id());
-    result["backup_path"] = json!(backup);
-    atomic_json(&plan.state_dir.join(APPLY_RESULT), &result)?;
-    let _ = fs::remove_file(path);
-    Ok(())
-}
-
 fn parse_release(
     client: &Client,
     api_base: &Url,
@@ -1300,7 +408,7 @@ fn parse_release(
         .and_then(Value::as_array)
         .ok_or("GitHub release assets are missing")?;
     let asset = select_platform_asset(assets)
-        .ok_or("No matching installer or legacy archive for this platform and architecture")?;
+        .ok_or("No matching installer for this platform and architecture")?;
     let name = asset
         .get("name")
         .and_then(Value::as_str)
@@ -1313,7 +421,7 @@ fn parse_release(
     let size = asset
         .get("size")
         .and_then(Value::as_u64)
-        .filter(|size| *size > 0 && *size <= MAX_UPDATE_ARCHIVE_BYTES)
+        .filter(|size| *size > 0 && *size <= MAX_INSTALLER_BYTES)
         .ok_or("Update asset size is missing or exceeds the limit")?;
     let sidecar_name = format!("{name}.sha256");
     let checksum_asset = assets
@@ -1365,72 +473,59 @@ fn parse_release(
 }
 
 fn select_platform_asset(assets: &[Value]) -> Option<&Value> {
-    let os = if cfg!(target_os = "windows") {
-        "win"
-    } else if cfg!(target_os = "macos") {
-        "mac"
-    } else {
-        "linux"
-    };
-    let arch = if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else {
-        "x64"
-    };
-    let extension = if cfg!(target_os = "linux") {
-        "tar.gz"
-    } else {
-        "zip"
-    };
-    // The offline installer variant (`-offline` in its name) carries a Python
-    // payload an installed application does not need: an update never uses it.
-    let candidate = |asset: &&Value| {
-        asset
-            .get("name")
-            .and_then(Value::as_str)
-            .is_some_and(|name| !name.to_ascii_lowercase().contains("-offline"))
-    };
-    // Prefer the native installer. Releases no longer need to manufacture an
-    // all-in-one archive merely for discovery by installed desktop clients.
-    let installer_suffix = match os {
-        "win" => format!("-win-{arch}.exe"),
-        "mac" => format!("-mac-{arch}.dmg"),
-        _ => format!("-linux-{}.deb", if arch == "x64" { "amd64" } else { arch }),
-    };
-    if let Some(installer) = assets.iter().filter(candidate).find(|asset| {
+    select_installer_asset(assets, env::consts::OS, env::consts::ARCH)
+}
+
+/// Pick the installer published for `os`/`arch` among the release assets.
+///
+/// The offline installer variant (`-offline` in its name) carries a Python
+/// payload an installed application does not need: an update never uses it.
+fn select_installer_asset<'a>(assets: &'a [Value], os: &str, arch: &str) -> Option<&'a Value> {
+    let suffixes = installer_suffixes(os, arch);
+    assets.iter().find(|asset| {
         let name = asset
             .get("name")
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_ascii_lowercase();
-        name.ends_with(&installer_suffix)
-            || (os == "linux" && name.ends_with(&format!("-linux-{arch}.deb")))
-            || (os == "mac" && name.ends_with("-mac-universal.dmg"))
-    }) {
-        return Some(installer);
-    }
-    // Retain discovery for already-published portable installations only.
-    let suffix = format!("-all-in-one-{os}-{arch}.{extension}");
-    assets.iter().filter(candidate).find(|asset| {
-        let name = asset
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        name.ends_with(&suffix)
+        !name.contains("-offline") && suffixes.iter().any(|suffix| name.ends_with(suffix))
     })
 }
 
-fn is_installer_asset(name: &str) -> bool {
-    let name = name.to_ascii_lowercase();
-    match std::path::Path::new(&name)
-        .extension()
-        .and_then(std::ffi::OsStr::to_str)
-    {
-        Some("exe") => !name.ends_with("-portable.exe"),
-        Some("dmg" | "deb") => true,
-        _ => false,
+/// File-name endings of the installer published for `os`/`arch`.
+///
+/// `os` and `arch` use the `std::env::consts` spelling. macOS is published
+/// for Apple Silicon only, so an Intel Mac has no installer.
+fn installer_suffixes(os: &str, arch: &str) -> Vec<String> {
+    let arch = if arch == "aarch64" { "arm64" } else { "x64" };
+    match os {
+        "windows" => vec![format!("-win-{arch}.exe")],
+        "macos" if arch == "arm64" => vec!["-mac-arm64.dmg".to_owned()],
+        "macos" => Vec::new(),
+        _ => vec![
+            format!("-linux-{}.deb", if arch == "x64" { "amd64" } else { arch }),
+            format!("-linux-{arch}.deb"),
+        ],
     }
+}
+
+/// How this installation receives application updates.
+///
+/// Every published build is a platform installer, so an update is always a
+/// link to the newer installer and is never applied in place.
+fn update_capability() -> Value {
+    json!({
+        "can_apply_in_place": false,
+        "channel": "installer",
+        "reason": "managed_install",
+        "install_kind": if cfg!(target_os = "macos") {
+            "dmg"
+        } else if cfg!(target_os = "windows") {
+            "windows-installer"
+        } else {
+            "deb"
+        },
+    })
 }
 
 fn update_redirect_policy(fixture: bool) -> Policy {
@@ -1512,13 +607,6 @@ fn valid_github_repo(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
-const fn qualifies_in_place_archive(
-    owns_install_tree: bool,
-    bundled_runtime_available: bool,
-) -> bool {
-    owns_install_tree && bundled_runtime_available
-}
-
 fn parse_checksum_sidecar(checksum_text: &str, asset_name: &str) -> Result<String, String> {
     let mut lines = checksum_text.lines();
     let line = lines
@@ -1575,736 +663,12 @@ fn read_bounded_response(response: Response, limit: u64) -> Result<Vec<u8>, Stri
     Ok(bytes)
 }
 
-fn extract_archive(archive: &Path, name: &str, destination: &Path) -> Result<(), String> {
-    if name.to_ascii_lowercase().ends_with(".zip") {
-        extract_zip(archive, destination)
-    } else if name.to_ascii_lowercase().ends_with(".tar.gz")
-        || name.to_ascii_lowercase().ends_with(".tgz")
-    {
-        extract_tar_gz(archive, destination)
-    } else {
-        Err("Unsupported update archive format".into())
-    }
-}
-
-fn preflight_zip(archive: &Path) -> Result<(), String> {
-    let file =
-        File::open(archive).map_err(|error| format!("Could not open ZIP update: {error}"))?;
-    let mut archive =
-        ZipArchive::new(file).map_err(|error| format!("Invalid ZIP update: {error}"))?;
-    if archive.len() > MAX_ARCHIVE_ENTRIES {
-        return Err("Update archive has too many entries".into());
-    }
-    let mut expanded = 0_u64;
-    // Electron's macOS archives are extracted on the commonly case-insensitive
-    // APFS/HFS+ filesystems.  Use a portable ASCII/case-folded identity here so
-    // `A` and `a` cannot bypass the symlink-ancestor check before ditto runs.
-    // Non-ASCII paths are refused because std does not provide the target
-    // filesystem's Unicode normalization/case-folding semantics.
-    let mut paths = HashSet::new();
-    let mut symlinks = HashSet::new();
-    let mut relative_paths = Vec::new();
-    for index in 0..archive.len() {
-        let mut entry = archive
-            .by_index(index)
-            .map_err(|error| format!("Invalid ZIP entry: {error}"))?;
-        let name = entry
-            .name()
-            .map_err(|error| format!("Invalid ZIP entry name: {error}"))?;
-        let relative = safe_relative_path(Path::new(name.as_ref()))?;
-        let portable_key = portable_zip_path_key(&relative)?;
-        if !paths.insert(portable_key.clone()) {
-            return Err("ZIP update contains duplicate or case-colliding paths".into());
-        }
-        relative_paths.push(relative.clone());
-        expanded = expanded
-            .checked_add(entry.size())
-            .ok_or("Expanded update size overflow")?;
-        if expanded > MAX_EXTRACTED_BYTES {
-            return Err("Expanded update exceeds the size limit".into());
-        }
-        let mode = entry.unix_mode().unwrap_or(0);
-        let file_type = mode & 0o170_000;
-        if file_type == 0o120_000 {
-            symlinks.insert(portable_key);
-            let mut link = String::new();
-            entry
-                .read_to_string(&mut link)
-                .map_err(|error| format!("Invalid ZIP symlink: {error}"))?;
-            let root = Path::new("/nirs4all-update-root");
-            let target = root.join(&relative);
-            safe_link_destination(
-                root,
-                target.parent().ok_or("ZIP symlink has no parent")?,
-                Path::new(&link),
-            )?;
-        } else if file_type != 0 && file_type != 0o100_000 && !entry.is_dir() {
-            return Err("ZIP update contains a special file".into());
-        }
-    }
-    for path in &relative_paths {
-        let mut parent = path.parent();
-        while let Some(candidate) = parent.filter(|candidate| !candidate.as_os_str().is_empty()) {
-            if symlinks.contains(&portable_zip_path_key(candidate)?) {
-                return Err("ZIP update contains an entry below a symlink".into());
-            }
-            parent = candidate.parent();
-        }
-    }
-    Ok(())
-}
-
-fn portable_zip_path_key(path: &Path) -> Result<String, String> {
-    let value = path
-        .to_str()
-        .filter(|value| value.is_ascii() && !value.bytes().any(|byte| byte.is_ascii_control()))
-        .ok_or("ZIP update paths must use printable ASCII for portable confinement")?;
-    Ok(value.to_ascii_lowercase())
-}
-
-fn extract_zip(archive: &Path, destination: &Path) -> Result<(), String> {
-    preflight_zip(archive)?;
-    #[cfg(target_os = "macos")]
-    {
-        let status = Command::new("/usr/bin/ditto")
-            .args(["-x", "-k", "--rsrc"])
-            .arg(archive)
-            .arg(destination)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map_err(|error| format!("Could not launch macOS ditto extractor: {error}"))?;
-        return status
-            .success()
-            .then_some(())
-            .ok_or_else(|| "macOS ditto rejected the update archive".into());
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let file =
-            File::open(archive).map_err(|error| format!("Could not open ZIP update: {error}"))?;
-        let mut archive =
-            ZipArchive::new(file).map_err(|error| format!("Invalid ZIP update: {error}"))?;
-        for index in 0..archive.len() {
-            let mut entry = archive
-                .by_index(index)
-                .map_err(|error| format!("Invalid ZIP entry: {error}"))?;
-            let name = entry
-                .name()
-                .map_err(|error| format!("Invalid ZIP entry name: {error}"))?;
-            let relative = safe_relative_path(Path::new(name.as_ref()))?;
-            let target = destination.join(&relative);
-            ensure_no_symlink_parent(destination, &target)?;
-            let mode = entry.unix_mode().unwrap_or(0);
-            let file_type = mode & 0o170_000;
-            if file_type == 0o120_000 {
-                #[cfg(unix)]
-                {
-                    let mut link = String::new();
-                    entry
-                        .read_to_string(&mut link)
-                        .map_err(|error| format!("Invalid ZIP symlink: {error}"))?;
-                    create_safe_symlink(destination, &target, Path::new(&link))?;
-                    continue;
-                }
-                #[cfg(not(unix))]
-                return Err("Update archive symlinks are unsupported on this platform".into());
-            }
-            if entry.is_dir() {
-                fs::create_dir_all(&target)
-                    .map_err(|error| format!("Could not create staged directory: {error}"))?;
-            } else {
-                if let Some(parent) = target.parent() {
-                    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-                }
-                let mut output = OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&target)
-                    .map_err(|error| format!("Could not create staged file: {error}"))?;
-                io::copy(&mut entry, &mut output)
-                    .map_err(|error| format!("Could not extract staged file: {error}"))?;
-                #[cfg(unix)]
-                if mode != 0 {
-                    use std::os::unix::fs::PermissionsExt;
-                    fs::set_permissions(&target, fs::Permissions::from_mode(mode & 0o777))
-                        .map_err(|error| error.to_string())?;
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-fn extract_tar_gz(archive: &Path, destination: &Path) -> Result<(), String> {
-    let file =
-        File::open(archive).map_err(|error| format!("Could not open tar update: {error}"))?;
-    let mut archive = Archive::new(GzDecoder::new(file));
-    let mut count = 0_usize;
-    let mut expanded = 0_u64;
-    for entry in archive
-        .entries()
-        .map_err(|error| format!("Invalid tar update: {error}"))?
-    {
-        count += 1;
-        if count > MAX_ARCHIVE_ENTRIES {
-            return Err("Update archive has too many entries".into());
-        }
-        let mut entry = entry.map_err(|error| format!("Invalid tar entry: {error}"))?;
-        let relative = safe_relative_path(&entry.path().map_err(|error| error.to_string())?)?;
-        expanded = expanded
-            .checked_add(entry.size())
-            .ok_or("Expanded update size overflow")?;
-        if expanded > MAX_EXTRACTED_BYTES {
-            return Err("Expanded update exceeds the size limit".into());
-        }
-        let target = destination.join(relative);
-        ensure_no_symlink_parent(destination, &target)?;
-        let kind = entry.header().entry_type();
-        if kind.is_dir() {
-            fs::create_dir_all(&target).map_err(|error| error.to_string())?;
-        } else if kind.is_file() {
-            if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-            }
-            let mut output = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&target)
-                .map_err(|error| error.to_string())?;
-            io::copy(&mut entry, &mut output).map_err(|error| error.to_string())?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mode = entry.header().mode().unwrap_or(0o644) & 0o777;
-                fs::set_permissions(&target, fs::Permissions::from_mode(mode))
-                    .map_err(|error| error.to_string())?;
-            }
-        } else if kind.is_symlink() {
-            #[cfg(unix)]
-            {
-                let link = entry
-                    .link_name()
-                    .map_err(|error| error.to_string())?
-                    .ok_or("Tar symlink has no target")?;
-                create_safe_symlink(destination, &target, &link)?;
-            }
-            #[cfg(not(unix))]
-            return Err("Update archive symlinks are unsupported on this platform".into());
-        } else {
-            return Err("Tar update contains a hard link or special file".into());
-        }
-    }
-    Ok(())
-}
-
-fn ensure_no_symlink_parent(root: &Path, target: &Path) -> Result<(), String> {
-    let relative = target
-        .strip_prefix(root)
-        .map_err(|_| "Update archive target is outside the staging root")?;
-    let mut current = root.to_path_buf();
-    let Some(parent) = relative.parent() else {
-        return Ok(());
-    };
-    for component in parent.components() {
-        let Component::Normal(part) = component else {
-            return Err("Update archive target has an unsafe parent".into());
-        };
-        current.push(part);
-        match fs::symlink_metadata(&current) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
-                return Err("Update archive entry traverses a symlink parent".into());
-            }
-            Ok(metadata) if !metadata.is_dir() => {
-                return Err("Update archive entry parent is not a directory".into());
-            }
-            Ok(_) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(format!(
-                    "Could not inspect update archive parent {}: {error}",
-                    current.display()
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn safe_relative_path(path: &Path) -> Result<PathBuf, String> {
-    let mut clean = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::Normal(part) if !part.is_empty() => clean.push(part),
-            Component::CurDir => {}
-            _ => return Err("Update archive contains an unsafe path".into()),
-        }
-    }
-    if clean.as_os_str().is_empty() {
-        return Err("Update archive contains an empty path".into());
-    }
-    Ok(clean)
-}
-
-#[cfg(unix)]
-fn create_safe_symlink(root: &Path, target: &Path, link: &Path) -> Result<(), String> {
-    use std::os::unix::fs::symlink;
-    let parent = target.parent().ok_or("Symlink has no parent")?;
-    safe_link_destination(root, parent, link)?;
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    symlink(link, target).map_err(|error| format!("Could not create staged symlink: {error}"))
-}
-
-fn safe_link_destination(root: &Path, parent: &Path, link: &Path) -> Result<PathBuf, String> {
-    if link.is_absolute() {
-        return Err("Update symlink target is absolute".into());
-    }
-    let base = parent
-        .strip_prefix(root)
-        .map_err(|_| "Symlink parent is outside the update root")?;
-    let mut parts: Vec<std::ffi::OsString> = base
-        .components()
-        .filter_map(|component| match component {
-            Component::Normal(part) => Some(part.to_os_string()),
-            _ => None,
-        })
-        .collect();
-    for component in link.components() {
-        match component {
-            Component::Normal(part) => parts.push(part.to_os_string()),
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if parts.pop().is_none() {
-                    return Err("Update symlink escapes the staging root".into());
-                }
-            }
-            _ => return Err("Update symlink target is unsafe".into()),
-        }
-    }
-    Ok(parts
-        .into_iter()
-        .fold(root.to_path_buf(), |path, part| path.join(part)))
-}
-
-fn resolve_staged_content(staging: &Path) -> Result<PathBuf, String> {
-    let entries: Vec<PathBuf> = fs::read_dir(staging)
-        .map_err(|error| format!("Could not read update staging directory: {error}"))?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.file_name().and_then(|name| name.to_str()) != Some(STAGED_METADATA))
-        .collect();
-    let mac_bundles: Vec<&PathBuf> = entries
-        .iter()
-        .filter(|path| {
-            path.is_dir()
-                && path.extension().and_then(|extension| extension.to_str()) == Some("app")
-                && path.join("Contents/Resources").is_dir()
-        })
-        .collect();
-    if let [bundle] = mac_bundles.as_slice() {
-        // `ditto --sequesterRsrc --keepParent` may also materialize a top-level
-        // `__MACOSX` AppleDouble directory. The signed `.app` remains the sole
-        // application tree and must be selected without flattening it.
-        return Ok(PathBuf::from(bundle.as_path()));
-    }
-    match entries.as_slice() {
-        [single] if single.is_dir() => Ok(single.clone()),
-        [] => Err("No staged update found".into()),
-        _ => Err("Staged update must contain exactly one top-level application directory".into()),
-    }
-}
-
-fn validate_staged_layout(
-    content: &Path,
-    executable_relative: Option<&Path>,
-) -> Result<(), String> {
-    let executable = executable_relative.ok_or("Desktop executable layout is unavailable")?;
-    if !content.join(executable).is_file() {
-        return Err("Staged update does not contain the desktop executable".into());
-    }
-    if cfg!(target_os = "macos") {
-        if content.extension().and_then(|value| value.to_str()) != Some("app")
-            || !content.join("Contents/Resources").is_dir()
-        {
-            return Err("Staged update is not a valid macOS app bundle".into());
-        }
-    } else if !content.join("resources").is_dir() {
-        return Err("Staged update does not contain the desktop resources directory".into());
-    }
-    Ok(())
-}
-
-fn resolve_app_layout(
-    raw_dir: Option<PathBuf>,
-    executable: Option<PathBuf>,
-) -> (Option<PathBuf>, Option<PathBuf>) {
-    let (Some(mut directory), Some(executable)) = (raw_dir, executable) else {
-        return (None, None);
-    };
-    let executable = executable.file_name().map(PathBuf::from);
-    if cfg!(target_os = "macos")
-        && directory.file_name().and_then(|name| name.to_str()) == Some("MacOS")
-        && directory
-            .parent()
-            .and_then(Path::file_name)
-            .and_then(|name| name.to_str())
-            == Some("Contents")
-    {
-        let Some(bundle) = directory
-            .parent()
-            .and_then(Path::parent)
-            .map(Path::to_path_buf)
-        else {
-            return (None, None);
-        };
-        let relative = executable.map(|name| PathBuf::from("Contents/MacOS").join(name));
-        return (Some(bundle), relative);
-    }
-    if let Ok(canonical) = directory.canonicalize() {
-        directory = canonical;
-    }
-    (Some(directory), executable)
-}
-
-fn validate_apply_plan(plan: &ApplyPlan) -> Result<(), String> {
-    if !plan.app_dir.is_absolute()
-        || !plan.staged_content.is_absolute()
-        || !plan.state_dir.is_absolute()
-    {
-        return Err("Update apply paths must be absolute".into());
-    }
-    safe_relative_path(&plan.executable_relative)?;
-    let state = plan
-        .state_dir
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve update state directory: {error}"))?;
-    let staging = state
-        .join(STAGING_DIR)
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve update staging directory: {error}"))?;
-    let content = plan
-        .staged_content
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve staged content: {error}"))?;
-    if content == staging || !content.starts_with(&staging) {
-        return Err("Staged content is outside the confined update directory".into());
-    }
-    let expected_plan = state.join(APPLY_PLAN);
-    if !expected_plan.is_file() {
-        return Err("Update apply plan is outside the confined state directory".into());
-    }
-    validate_staged_layout(&plan.staged_content, Some(&plan.executable_relative))
-}
-
-fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        if destination.exists() {
-            return Err("Prepared replacement directory already exists".into());
-        }
-        let status = Command::new("/usr/bin/ditto")
-            .args(["--rsrc", "--extattr"])
-            .arg(source)
-            .arg(destination)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map_err(|error| format!("Could not launch macOS ditto copier: {error}"))?;
-        return status
-            .success()
-            .then_some(())
-            .ok_or_else(|| "macOS ditto could not preserve the signed application tree".into());
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        copy_tree_portable(source, destination)
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn copy_tree_portable(source: &Path, destination: &Path) -> Result<(), String> {
-    fs::create_dir(destination)
-        .map_err(|error| format!("Could not prepare replacement directory: {error}"))?;
-    #[cfg(unix)]
-    #[cfg(unix)]
-    let root = source.canonicalize().map_err(|error| error.to_string())?;
-    let mut pending = vec![(source.to_path_buf(), destination.to_path_buf())];
-    while let Some((from, to)) = pending.pop() {
-        for entry in fs::read_dir(&from).map_err(|error| error.to_string())? {
-            let entry = entry.map_err(|error| error.to_string())?;
-            let target = to.join(entry.file_name());
-            let metadata = fs::symlink_metadata(entry.path()).map_err(|error| error.to_string())?;
-            if metadata.file_type().is_symlink() {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::symlink;
-                    let link = fs::read_link(entry.path()).map_err(|error| error.to_string())?;
-                    let resolved = entry
-                        .path()
-                        .parent()
-                        .unwrap_or(&from)
-                        .join(&link)
-                        .canonicalize()
-                        .map_err(|_| "Staged symlink target is missing or unsafe")?;
-                    if link.is_absolute() || !resolved.starts_with(&root) {
-                        return Err("Staged symlink escapes the update root".into());
-                    }
-                    symlink(link, target).map_err(|error| error.to_string())?;
-                }
-                #[cfg(not(unix))]
-                return Err("Staged symlinks are unsupported on this platform".into());
-            } else if metadata.is_dir() {
-                fs::create_dir(&target).map_err(|error| error.to_string())?;
-                pending.push((entry.path(), target));
-            } else if metadata.is_file() {
-                fs::copy(entry.path(), &target).map_err(|error| error.to_string())?;
-                fs::set_permissions(&target, metadata.permissions())
-                    .map_err(|error| error.to_string())?;
-            } else {
-                return Err("Staged update contains a special file".into());
-            }
-        }
-    }
-    Ok(())
-}
-
-fn hash_tree(root: &Path) -> Result<String, String> {
-    let root = root
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve staged tree: {error}"))?;
-    let mut paths = Vec::new();
-    let mut pending = vec![root.clone()];
-    let mut total = 0_u64;
-    while let Some(directory) = pending.pop() {
-        for entry in fs::read_dir(&directory).map_err(|error| error.to_string())? {
-            let entry = entry.map_err(|error| error.to_string())?;
-            let path = entry.path();
-            let metadata = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
-            if metadata.is_dir() {
-                pending.push(path.clone());
-            }
-            paths.push((path, metadata));
-            if paths.len() > MAX_ARCHIVE_ENTRIES {
-                return Err("Staged update has too many entries".into());
-            }
-        }
-    }
-    paths.sort_by(|(left, _), (right, _)| left.cmp(right));
-    let mut digest = Sha256::new();
-    for (path, metadata) in paths {
-        let relative = path
-            .strip_prefix(&root)
-            .map_err(|_| "Staged path escaped its root")?;
-        let name = relative.to_str().ok_or("Staged path is not valid UTF-8")?;
-        digest.update(name.as_bytes());
-        digest.update([0]);
-        if metadata.file_type().is_symlink() {
-            let link = fs::read_link(&path).map_err(|error| error.to_string())?;
-            let resolved = path
-                .parent()
-                .unwrap_or(&root)
-                .join(&link)
-                .canonicalize()
-                .map_err(|_| "Staged symlink target is missing")?;
-            if link.is_absolute() || !resolved.starts_with(&root) {
-                return Err("Staged symlink escapes the update root".into());
-            }
-            digest.update(b"link\0");
-            digest.update(link.to_string_lossy().as_bytes());
-        } else if metadata.is_dir() {
-            digest.update(b"dir\0");
-        } else if metadata.is_file() {
-            total = total
-                .checked_add(metadata.len())
-                .ok_or("Staged tree size overflow")?;
-            if total > MAX_EXTRACTED_BYTES {
-                return Err("Staged tree exceeds the size limit".into());
-            }
-            digest.update(b"file\0");
-            digest.update(metadata.len().to_le_bytes());
-            let mut file = File::open(&path).map_err(|error| error.to_string())?;
-            let mut buffer = vec![0_u8; 64 * 1024].into_boxed_slice();
-            loop {
-                let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
-                if read == 0 {
-                    break;
-                }
-                digest.update(&buffer[..read]);
-            }
-        } else {
-            return Err("Staged update contains a special file".into());
-        }
-        digest.update([0xff]);
-    }
-    Ok(format!("{:x}", digest.finalize()))
-}
-
-fn wait_for_process_exit(pid: u32, timeout: Duration) -> Result<(), String> {
-    let deadline = Instant::now() + timeout;
-    while process_alive(pid) {
-        if Instant::now() >= deadline {
-            return Err("Timed out waiting for the application to exit".into());
-        }
-        thread::sleep(Duration::from_millis(250));
-    }
-    Ok(())
-}
-
-fn configure_helper_working_directory(
-    command: &mut Command,
-    state_dir: &Path,
-    app_dir: &Path,
-) -> Result<(), String> {
-    let state = state_dir
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve update helper directory: {error}"))?;
-    let app = app_dir
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve application directory: {error}"))?;
-    if state == app || state.starts_with(&app) {
-        return Err("Update helper directory must be outside the application tree".into());
-    }
-    // The sidecar inherits Electron's application-directory cwd. On Windows a
-    // process cwd prevents that directory from being renamed, so the detached
-    // helper must start from its separate, canonical state tree.
-    command.current_dir(state);
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn rename_current_application_to_backup(source: &Path, destination: &Path) -> Result<(), String> {
-    fs::rename(source, destination).map_err(|error| {
-        format!("Could not atomically move current application to backup: {error}")
-    })
-}
-
-/// Windows can keep executable or DLL handles alive briefly after Electron's
-/// parent PID exits. Retry only the two lock errors emitted by that transition;
-/// permission, path and filesystem failures remain immediate and fail closed.
-#[cfg(windows)]
-fn rename_current_application_to_backup(source: &Path, destination: &Path) -> Result<(), String> {
-    let started = Instant::now();
-    let deadline = started + WINDOWS_APP_UNLOCK_TIMEOUT;
-    let mut attempts = 0_u32;
-    loop {
-        attempts += 1;
-        match fs::rename(source, destination) {
-            Ok(()) => return Ok(()),
-            Err(error) if windows_transient_rename_lock(&error) && Instant::now() < deadline => {
-                thread::sleep(WINDOWS_APP_UNLOCK_RETRY_DELAY);
-            }
-            Err(error) => {
-                return Err(format!(
-                    "Could not atomically move current application to backup after {attempts} attempt(s) over {} ms: {error}",
-                    started.elapsed().as_millis()
-                ));
-            }
-        }
-    }
-}
-
-#[cfg(any(windows, test))]
-fn windows_transient_rename_lock(error: &io::Error) -> bool {
-    // ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION. In particular, do not
-    // turn ERROR_ACCESS_DENIED into a retry: a permissions failure is not proof
-    // of an exiting-process lock and must remain immediately visible.
-    matches!(error.raw_os_error(), Some(32 | 33))
-}
-
-#[cfg(unix)]
-fn process_alive(pid: u32) -> bool {
-    nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(i32::try_from(pid).unwrap_or(i32::MAX)),
-        None,
-    )
-    .is_ok()
-}
-
-#[cfg(windows)]
-fn process_alive(pid: u32) -> bool {
-    Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
-        .output()
-        .is_ok_and(|output| String::from_utf8_lossy(&output.stdout).contains(&pid.to_string()))
-}
-
-fn atomic_json(path: &Path, value: &Value) -> Result<(), String> {
-    let parent = path.parent().ok_or("State file has no parent")?;
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    let temporary = parent.join(format!(
-        ".{}.{}.tmp",
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("state"),
-        std::process::id()
-    ));
-    let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
-    fs::write(&temporary, bytes).map_err(|error| error.to_string())?;
-    replace_atomic(&temporary, path).map_err(|error| error.to_string())
-}
-
-fn read_json(path: &Path) -> Result<Value, String> {
-    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
-    if metadata.len() > 64 * 1024 {
-        return Err("Update state file exceeds its size limit".into());
-    }
-    let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    serde_json::from_slice(&bytes).map_err(|error| error.to_string())
-}
-
-fn remove_known_tree(path: &Path) -> Result<(), String> {
-    if path.exists() {
-        fs::remove_dir_all(path)
-            .map_err(|error| format!("Could not remove update directory: {error}"))?;
-    }
-    Ok(())
-}
-
-fn remove_known_file(path: &Path) -> Result<(), String> {
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!(
-            "Could not remove update file {}: {error}",
-            path.display()
-        )),
-    }
-}
-
 fn strictly_newer(candidate: &str, current: &str) -> Result<bool, String> {
     let candidate =
         Version::parse(candidate).map_err(|_| "Update version is not valid semantic versioning")?;
     let current =
         Version::parse(current).map_err(|_| "Running version is not valid semantic versioning")?;
     Ok(candidate > current)
-}
-
-fn job_cancelled(jobs: &NativeJobRuntime, id: &str) -> bool {
-    jobs.get_at(id, Instant::now())
-        .is_some_and(|job| job.status == JobStatus::Cancelled || job.cancellation_requested())
-}
-
-fn update_state_dir() -> PathBuf {
-    if let Some(path) = env::var_os("NIRS4ALL_BACKEND_DATA_DIR").filter(|value| !value.is_empty()) {
-        return PathBuf::from(path);
-    }
-    if cfg!(windows) {
-        env::var_os("LOCALAPPDATA")
-            .map_or_else(env::temp_dir, PathBuf::from)
-            .join("nirs4all-webapp")
-    } else if cfg!(target_os = "macos") {
-        env::var_os("HOME")
-            .map_or_else(env::temp_dir, PathBuf::from)
-            .join("Library/Application Support/nirs4all-webapp")
-    } else {
-        env::var_os("XDG_DATA_HOME")
-            .map(PathBuf::from)
-            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
-            .unwrap_or_else(env::temp_dir)
-            .join("nirs4all-webapp")
-    }
 }
 
 fn env_truthy(name: &str) -> bool {
@@ -2327,64 +691,73 @@ fn detail(status: u16, message: impl Into<String>) -> HttpResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{io::Cursor, net::TcpListener};
+    use std::{io::Write, net::TcpListener, thread};
     use tempfile::TempDir;
-    use zip::{write::SimpleFileOptions, ZipWriter};
 
-    #[cfg(all(unix, not(target_os = "macos")))]
-    fn linux_update_tar() -> Vec<u8> {
-        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-        let mut builder = tar::Builder::new(encoder);
-        for (name, bytes, mode) in [
-            ("app/studio", b"#!/bin/sh\nexit 0\n".as_slice(), 0o755),
-            ("app/resources/sentinel", b"new".as_slice(), 0o644),
-        ] {
-            let mut header = tar::Header::new_gnu();
-            header.set_size(bytes.len() as u64);
-            header.set_mode(mode);
-            header.set_cksum();
-            builder.append_data(&mut header, name, bytes).unwrap();
-        }
-        builder.into_inner().unwrap().finish().unwrap()
+    const PLATFORMS: [(&str, &str, &str); 3] = [
+        ("windows", "x86_64", "nirs4all.Studio-0.16.0-win-x64.exe"),
+        ("linux", "x86_64", "nirs4all.Studio-0.16.0-linux-amd64.deb"),
+        ("macos", "aarch64", "nirs4all.Studio-0.16.0-mac-arm64.dmg"),
+    ];
+
+    fn named(names: &[&str]) -> Vec<Value> {
+        names.iter().map(|name| json!({"name": name})).collect()
     }
 
-    #[cfg(unix)]
-    fn chained_symlink_escape_tar() -> Vec<u8> {
-        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-        let mut builder = tar::Builder::new(encoder);
-        for (name, link) in [("a", "."), ("a/escape", "..")] {
-            let mut header = tar::Header::new_gnu();
-            header.set_entry_type(tar::EntryType::Symlink);
-            header.set_size(0);
-            header.set_mode(0o777);
-            header.set_link_name(link).unwrap();
-            header.set_cksum();
-            builder.append_data(&mut header, name, io::empty()).unwrap();
-        }
-        let payload = b"escaped";
-        let mut header = tar::Header::new_gnu();
-        header.set_size(payload.len() as u64);
-        header.set_mode(0o644);
-        header.set_cksum();
-        builder
-            .append_data(&mut header, "escape/payload", payload.as_slice())
-            .unwrap();
-        builder.into_inner().unwrap().finish().unwrap()
+    /// Everything a release publishes, with each decoy listed before the
+    /// installer it could be mistaken for.
+    fn published_assets() -> Vec<Value> {
+        named(&[
+            "nirs4all.Studio-0.16.0-win-x64-offline.exe",
+            "nirs4all.Studio-0.16.0-win-x64-offline.exe.sha256",
+            "nirs4all.Studio-0.16.0-win-x64.exe.sha256",
+            "nirs4all.Studio-0.16.0-win-x64.exe",
+            "nirs4all.Studio-0.16.0-linux-amd64-offline.deb",
+            "nirs4all.Studio-0.16.0-linux-amd64-offline.deb.sha256",
+            "nirs4all.Studio-0.16.0-linux-amd64.deb.sha256",
+            "nirs4all.Studio-0.16.0-linux-amd64.deb",
+            "nirs4all.Studio-0.16.0-mac-arm64.dmg.sha256",
+            "nirs4all.Studio-0.16.0-mac-arm64.dmg",
+        ])
     }
 
-    fn case_colliding_symlink_escape_zip() -> Vec<u8> {
-        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
-        let options = SimpleFileOptions::default().unix_permissions(0o777);
-        writer.add_symlink("A", ".", options).unwrap();
-        writer.add_symlink("a/escape", "..", options).unwrap();
-        writer
-            .start_file(
-                "escape/payload",
-                SimpleFileOptions::default().unix_permissions(0o644),
-            )
-            .unwrap();
-        writer.write_all(b"escaped").unwrap();
-        writer.finish().unwrap().into_inner()
+    fn host_installer_name(version: &str) -> String {
+        let suffix = installer_suffixes(env::consts::OS, env::consts::ARCH)
+            .into_iter()
+            .next()
+            .expect("the test host has a published installer");
+        format!("nirs4all.Studio-{version}{suffix}")
+    }
+
+    fn installer_release(version: &str) -> ReleaseInfo {
+        let asset_name = host_installer_name(version);
+        ReleaseInfo {
+            version: version.into(),
+            release_url: Some(format!(
+                "https://github.com/GBeurier/nirs4all-studio/releases/tag/{version}"
+            )),
+            notes: "fixed release".into(),
+            published_at: Some("2026-11-16T00:00:00Z".into()),
+            download_url: format!(
+                "https://github.com/GBeurier/nirs4all-studio/releases/download/{version}/{asset_name}"
+            ),
+            asset_name,
+            size: 1,
+            sha256: "0".repeat(64),
+            prerelease: false,
+        }
+    }
+
+    fn updater(current_version: &str, api_base: &str) -> NativeUpdater {
+        NativeUpdater::new(current_version.into(), api_base.into())
+    }
+
+    fn state_with(temp: &TempDir, native_updater: NativeUpdater) -> SidecarState {
+        SidecarState {
+            native_updater,
+            update_settings: crate::UpdateSettingsStore::new(temp.path().join("settings.yaml")),
+            ..SidecarState::default()
+        }
     }
 
     #[test]
@@ -2396,175 +769,130 @@ mod tests {
     }
 
     #[test]
-    fn in_place_archive_requires_owned_tree_and_verified_bundled_runtime() {
-        assert!(!qualifies_in_place_archive(false, false));
-        assert!(!qualifies_in_place_archive(true, false));
-        assert!(!qualifies_in_place_archive(false, true));
-        assert!(qualifies_in_place_archive(true, true));
+    fn each_platform_selects_only_its_own_installer() {
+        let assets = published_assets();
+        for (os, arch, expected) in PLATFORMS {
+            assert_eq!(
+                select_installer_asset(&assets, os, arch).unwrap()["name"],
+                expected,
+                "{os} {arch}"
+            );
+        }
+        // macOS is published for Apple Silicon only.
+        assert!(select_installer_asset(&assets, "macos", "x86_64").is_none());
+        assert_eq!(
+            select_platform_asset(&assets).unwrap()["name"],
+            host_installer_name("0.16.0")
+        );
     }
 
     #[test]
-    fn large_download_progress_is_monotonic_and_bounded_to_eighty_events() {
-        const ARCHIVE_SIZE: u64 = 336_369_242;
-        const CHUNK_SIZE: u64 = 64 * 1024;
-        let mut downloaded = 0_u64;
-        let mut last = 0_u8;
-        let mut published = Vec::new();
-        while downloaded < ARCHIVE_SIZE {
-            downloaded = downloaded.saturating_add(CHUNK_SIZE).min(ARCHIVE_SIZE);
-            let bucket = download_progress_bucket(downloaded, ARCHIVE_SIZE);
-            if bucket > last {
-                published.push(bucket);
-                last = bucket;
+    fn offline_installers_are_never_selected() {
+        for (os, arch, installer) in PLATFORMS {
+            let (stem, extension) = installer.rsplit_once('.').unwrap();
+            // Wherever the marker sits in the name, the offline variant alone
+            // is not an update candidate.
+            let offline = [
+                format!("{stem}-offline.{extension}"),
+                installer.replacen("-0.16.0-", "-0.16.0-offline-", 1),
+            ];
+            for name in &offline {
+                let assets = named(&[name, &format!("{name}.sha256")]);
+                assert!(
+                    select_installer_asset(&assets, os, arch).is_none(),
+                    "{name}"
+                );
             }
         }
-        assert_ne!(published, Vec::<u8>::new());
-        assert_eq!(published.last(), Some(&80));
-        assert!(published.windows(2).all(|pair| pair[0] < pair[1]));
-        assert!(
-            published.len() <= 80,
-            "published {} events",
-            published.len()
-        );
-        assert_eq!(download_progress_bucket(1, 0), 0);
-        assert_eq!(download_progress_bucket(u64::MAX, 1), 80);
     }
 
     #[test]
-    fn installer_only_release_is_discoverable_and_preferred_to_legacy_archives() {
-        let arch = if cfg!(target_arch = "aarch64") {
-            "arm64"
-        } else {
-            "x64"
-        };
-        let name = if cfg!(windows) {
-            format!("nirs4all.Studio-0.11.8-win-{arch}.exe")
-        } else if cfg!(target_os = "macos") {
-            format!("nirs4all.Studio-0.11.8-mac-{arch}.dmg")
-        } else {
-            format!(
-                "nirs4all.Studio-0.11.8-linux-{}.deb",
-                if arch == "x64" { "amd64" } else { arch }
-            )
-        };
-        let assets = vec![
-            json!({"name": name}),
-            json!({"name": format!("{name}.sha256")}),
-        ];
-        assert_eq!(select_platform_asset(&assets).unwrap()["name"], name);
-        // The offline variant is never selected, wherever the suffix sits and
-        // whatever the asset order; alone, it is not an update candidate.
-        let (stem, extension) = name.rsplit_once('.').unwrap();
-        let offline = [
-            format!("{stem}-offline.{extension}"),
-            name.replacen("-0.11.8-", "-0.11.8-offline-", 1),
-        ];
-        for offline_name in &offline {
-            let published = vec![
-                json!({"name": offline_name}),
-                json!({"name": format!("{offline_name}.sha256")}),
-                json!({"name": name}),
-            ];
-            assert_eq!(select_platform_asset(&published).unwrap()["name"], name);
-            assert!(select_platform_asset(&published[..2]).is_none());
+    fn archives_and_portable_builds_are_never_selected() {
+        let assets = named(&[
+            "nirs4all.Studio-0.15.0-all-in-one-win-x64.zip",
+            "nirs4all.Studio-0.15.0-win-x64-portable.exe",
+            "nirs4all.Studio-0.15.0-all-in-one-linux-x64.tar.gz",
+            "nirs4all.Studio-0.15.0-linux-x86_64.AppImage",
+            "nirs4all.Studio-0.15.0-all-in-one-mac-arm64.zip",
+        ]);
+        for (os, arch, _) in PLATFORMS {
+            assert!(
+                select_installer_asset(&assets, os, arch).is_none(),
+                "{os} {arch}"
+            );
         }
-        assert!(is_installer_asset(&name));
-        assert!(!is_installer_asset("studio-win-x64-portable.exe"));
-        assert!(!is_installer_asset("studio-all-in-one-win-x64.zip"));
+    }
+
+    #[test]
+    fn release_without_an_installer_for_this_platform_yields_no_update() {
+        let name = if cfg!(target_os = "linux") {
+            "nirs4all.Studio-2.0.0-all-in-one-linux-x64.tar.gz"
+        } else if cfg!(target_os = "macos") {
+            "nirs4all.Studio-2.0.0-all-in-one-mac-arm64.zip"
+        } else {
+            "nirs4all.Studio-2.0.0-all-in-one-win-x64.zip"
+        };
+        let base = "https://github.com/GBeurier/nirs4all-studio/releases/download/2.0.0";
+        let release = json!({"tag_name": "2.0.0", "prerelease": false, "assets": [
+            {"name": name, "browser_download_url": format!("{base}/{name}"), "size": 1},
+            {"name": format!("{name}.sha256"), "browser_download_url": format!("{base}/{name}.sha256"), "size": 80},
+        ]});
+        let error = parse_release(
+            &Client::new(),
+            &Url::parse("https://api.github.com").unwrap(),
+            &release,
+            false,
+        )
+        .unwrap_err();
+        assert!(error.contains("No matching installer"), "{error}");
+    }
+
+    #[test]
+    fn platform_asset_matching_does_not_confuse_windows_with_darwin() {
+        // The first name is not a published asset: it merely ends in
+        // `win-arm64.exe`, which a Windows match must not accept.
+        let assets = named(&[
+            "nirs4all.Studio-2.0.0-darwin-arm64.exe",
+            "nirs4all.Studio-2.0.0-win-arm64.exe",
+        ]);
+        assert_eq!(
+            select_installer_asset(&assets, "windows", "aarch64").unwrap()["name"],
+            "nirs4all.Studio-2.0.0-win-arm64.exe"
+        );
+        assert!(select_installer_asset(&assets[..1], "windows", "aarch64").is_none());
     }
 
     #[test]
     fn checksum_sidecar_is_bound_exactly_to_the_selected_asset() {
         let digest = "a".repeat(64);
         assert_eq!(
-            parse_checksum_sidecar(&format!("{digest}  studio.zip\n"), "studio.zip").unwrap(),
+            parse_checksum_sidecar(&format!("{digest}  studio.deb\n"), "studio.deb").unwrap(),
             digest
         );
-        assert!(parse_checksum_sidecar(&format!("{digest}\n"), "studio.zip").is_err());
+        assert!(parse_checksum_sidecar(&format!("{digest}\n"), "studio.deb").is_err());
         assert!(
-            parse_checksum_sidecar(&format!("{digest}  different.zip\n"), "studio.zip").is_err()
+            parse_checksum_sidecar(&format!("{digest}  different.deb\n"), "studio.deb").is_err()
         );
         assert!(
-            parse_checksum_sidecar(&format!("{digest}  studio.zip extra\n"), "studio.zip").is_err()
+            parse_checksum_sidecar(&format!("{digest}  studio.deb extra\n"), "studio.deb").is_err()
         );
         assert_eq!(
             parse_checksum_sidecar(
                 &format!(
-                    "{digest}  /home/runner/work/nirs4all-studio/release/nirs4all Studio-0.11.0-all-in-one-linux-x64.tar.gz\n"
+                    "{digest}  /home/runner/work/nirs4all-studio/release/nirs4all Studio-0.16.0-linux-amd64.deb\n"
                 ),
-                "nirs4all.Studio-0.11.0-all-in-one-linux-x64.tar.gz",
+                "nirs4all.Studio-0.16.0-linux-amd64.deb",
             )
             .unwrap(),
             digest
         );
         assert!(parse_checksum_sidecar(
-            &format!("{digest}  C:\\release\\nirs4all Studio-0.11.0-all-in-one-win-x64.zip\n{digest}  second.zip\n"),
-            "nirs4all.Studio-0.11.0-all-in-one-win-x64.zip",
+            &format!(
+                "{digest}  C:\\release\\nirs4all Studio-0.16.0-win-x64.exe\n{digest}  second.exe\n"
+            ),
+            "nirs4all.Studio-0.16.0-win-x64.exe",
         )
         .is_err());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn archive_extraction_rejects_chained_symlink_escape_before_writing_outside() {
-        let temp = TempDir::new().unwrap();
-        let archive = temp.path().join("malicious.tar.gz");
-        let staging = temp.path().join("staging");
-        fs::write(&archive, chained_symlink_escape_tar()).unwrap();
-        fs::create_dir(&staging).unwrap();
-
-        let error = extract_tar_gz(&archive, &staging).unwrap_err();
-
-        assert!(error.contains("symlink parent"), "{error}");
-        assert!(!temp.path().join("escape").exists());
-        assert!(!temp.path().join("payload").exists());
-    }
-
-    #[test]
-    fn zip_preflight_rejects_case_aliased_symlink_ancestors_before_ditto() {
-        let temp = TempDir::new().unwrap();
-        let archive = temp.path().join("malicious.zip");
-        fs::write(&archive, case_colliding_symlink_escape_zip()).unwrap();
-
-        let error = preflight_zip(&archive).unwrap_err();
-
-        assert!(error.contains("below a symlink"), "{error}");
-    }
-
-    #[test]
-    fn zip_preflight_rejects_invalid_utf8_member_names_before_extraction() {
-        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
-        writer
-            .start_file("bad.txt", SimpleFileOptions::default())
-            .unwrap();
-        writer.write_all(b"payload").unwrap();
-        let mut bytes = writer.finish().unwrap().into_inner();
-        let central = bytes
-            .windows(4)
-            .position(|value| value == b"PK\x01\x02")
-            .unwrap();
-        // Declare UTF-8 in both headers, then supply an invalid name byte.
-        bytes[7] |= 0x08;
-        bytes[central + 9] |= 0x08;
-        bytes[30] = 0xff;
-        bytes[central + 46] = 0xff;
-        let temp = TempDir::new().unwrap();
-        let archive = temp.path().join("malformed.zip");
-        fs::write(&archive, bytes).unwrap();
-        let error = preflight_zip(&archive).unwrap_err();
-        // ZIP may expose a decoded replacement character; confinement must still
-        // refuse the malformed member instead of creating a lossy path.
-        assert!(error.contains("printable ASCII"), "{error}");
-        assert!(!temp.path().join("bad.txt").exists());
-    }
-
-    #[test]
-    fn zip_preflight_rejects_non_ascii_paths_with_ambiguous_macos_identity() {
-        assert!(portable_zip_path_key(Path::new("app/café")).is_err());
-        assert_eq!(
-            portable_zip_path_key(Path::new("App/Resources")).unwrap(),
-            "app/resources"
-        );
     }
 
     #[test]
@@ -2582,26 +910,8 @@ mod tests {
         )
         .is_err());
 
-        let temp = TempDir::new().unwrap();
-        let updater = NativeUpdater::test_config(
-            temp.path().join("state"),
-            None,
-            None,
-            "0.11.1",
-            "http://127.0.0.1:9".into(),
-            false,
-        );
-        *updater.release.lock().unwrap() = Some(ReleaseInfo {
-            version: "0.11.2".into(),
-            release_url: Some("https://github.com/GBeurier/nirs4all-studio/releases/tag/0.11.2".into()),
-            notes: "fixed release".into(),
-            published_at: Some("2026-09-06T00:00:00Z".into()),
-            asset_name: "nirs4all Studio-0.11.2-all-in-one-linux-x64.tar.gz".into(),
-            download_url: "https://github.com/GBeurier/nirs4all-studio/releases/download/0.11.2/archive.tar.gz".into(),
-            size: 1,
-            sha256: "0".repeat(64),
-            prerelease: false,
-        });
+        let updater = updater("0.11.1", "http://127.0.0.1:9");
+        *updater.release.lock().unwrap() = Some(installer_release("0.11.2"));
         let response = updater.changelog(Some("0.11.1"));
         assert_eq!(response["current_version"], "0.11.1");
         assert_eq!(response["entries"][0]["version"], "0.11.2");
@@ -2617,125 +927,40 @@ mod tests {
         assert!(validate_network_url("https://user@example.com", true).is_err());
         let production = Url::parse("https://api.github.com").unwrap();
         assert!(
-            validate_download_url("https://github.com/o/r/releases/a.zip", &production).is_ok()
+            validate_download_url("https://github.com/o/r/releases/a.exe", &production).is_ok()
         );
         assert!(
-            validate_download_url("https://objects.githubusercontent.com/a.zip", &production)
+            validate_download_url("https://objects.githubusercontent.com/a.exe", &production)
                 .is_ok()
         );
-        assert!(validate_download_url("https://example.com/a.zip", &production).is_err());
+        assert!(validate_download_url("https://example.com/a.exe", &production).is_err());
     }
 
     #[test]
-    fn archive_paths_reject_traversal_absolute_and_prefixes() {
-        for path in ["../escape", "/absolute", "a/../../escape"] {
-            assert!(safe_relative_path(Path::new(path)).is_err(), "{path}");
-        }
-        assert_eq!(
-            safe_relative_path(Path::new("app/resources/a")).unwrap(),
-            Path::new("app/resources/a")
-        );
-    }
-
-    #[test]
-    fn staged_content_selects_the_signed_app_beside_ditto_appledouble_metadata() {
-        let temp = TempDir::new().unwrap();
-        let staging = temp.path().join(STAGING_DIR);
-        let bundle = staging.join("nirs4all Studio.app");
-        fs::create_dir_all(bundle.join("Contents/Resources")).unwrap();
-        fs::create_dir_all(staging.join("__MACOSX")).unwrap();
-
-        assert_eq!(resolve_staged_content(&staging).unwrap(), bundle);
-    }
-
-    #[test]
-    fn managed_install_never_becomes_in_place_capable_just_because_it_is_writable() {
-        let temp = TempDir::new().unwrap();
-        let app = temp.path().join("app");
-        fs::create_dir(&app).unwrap();
-        let updater = NativeUpdater::test_config(
-            temp.path().join("state"),
-            Some(app),
-            Some("studio".into()),
-            "1.0.0",
-            "https://api.github.com".into(),
-            false,
-        );
-        assert_eq!(updater.capability()["can_apply_in_place"], false);
-        assert_eq!(updater.capability()["reason"], "managed_install");
-    }
-
-    #[test]
-    fn all_in_one_capability_requires_a_writable_parent() {
-        let temp = TempDir::new().unwrap();
-        let app = temp.path().join("app");
-        fs::create_dir(&app).unwrap();
-        let updater = NativeUpdater::test_config(
-            temp.path().join("state"),
-            Some(app),
-            Some("studio".into()),
-            "1.0.0",
-            "https://api.github.com".into(),
-            true,
-        );
-        assert_eq!(updater.capability()["can_apply_in_place"], true);
-    }
-
-    #[test]
-    fn tar_extraction_rejects_traversal_and_special_entries() {
-        let temp = TempDir::new().unwrap();
-        let archive_path = temp.path().join("bad.tar.gz");
-        let file = File::create(&archive_path).unwrap();
-        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-        let mut builder = tar::Builder::new(encoder);
-        let mut header = tar::Header::new_gnu();
-        header.set_size(1);
-        header.set_mode(0o644);
-        header.set_cksum();
-        // tar itself rejects `..`, proving the extractor also never receives a
-        // normalized escape from a well-formed builder.
-        assert!(builder
-            .append_data(&mut header, "../escape", &b"x"[..])
-            .is_err());
-    }
-
-    #[test]
-    fn release_fixture_selects_exact_platform_asset_and_checksum() {
-        let temp = TempDir::new().unwrap();
-        let archive_bytes = b"fixture archive".to_vec();
-        let digest = format!("{:x}", Sha256::digest(&archive_bytes));
+    fn release_fixture_selects_the_platform_installer_and_its_checksum() {
+        let digest = "ab".repeat(32);
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        let asset_name = if cfg!(target_os = "linux") {
-            if cfg!(target_arch = "aarch64") {
-                "nirs4all-studio-2.0.0-all-in-one-linux-arm64.tar.gz"
-            } else {
-                "nirs4all-studio-2.0.0-all-in-one-linux-x64.tar.gz"
-            }
-        } else if cfg!(target_os = "macos") {
-            if cfg!(target_arch = "aarch64") {
-                "nirs4all-studio-2.0.0-all-in-one-mac-arm64.zip"
-            } else {
-                "nirs4all-studio-2.0.0-all-in-one-mac-x64.zip"
-            }
-        } else if cfg!(target_arch = "aarch64") {
-            "nirs4all-studio-2.0.0-all-in-one-win-arm64.zip"
-        } else {
-            "nirs4all-studio-2.0.0-all-in-one-win-x64.zip"
-        };
-        let base = format!("http://{address}");
-        let body = json!({"tag_name":"2.0.0","prerelease":false,"assets":[
-            {"name":asset_name,"browser_download_url":format!("{base}/{asset_name}"),"size":archive_bytes.len()},
-            {"name":format!("{asset_name}.sha256"),"browser_download_url":format!("{base}/{asset_name}.sha256"),"size":80}
-        ]}).to_string();
-        let checksum = format!("{digest}  {asset_name}\n");
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let installer = host_installer_name("2.0.0");
+        let (stem, extension) = installer.rsplit_once('.').unwrap();
+        let offline = format!("{stem}-offline.{extension}");
+        let asset = |name: &str, size: u64| json!({"name": name, "browser_download_url": format!("{base}/{name}"), "size": size});
+        let body = json!({"tag_name": "2.0.0", "prerelease": false, "assets": [
+            asset(&offline, 900),
+            asset(&format!("{offline}.sha256"), 80),
+            asset(&installer, 300),
+            asset(&format!("{installer}.sha256"), 80),
+        ]})
+        .to_string();
+        let checksum = format!("{digest}  {installer}\n");
+        let checksum_request = format!("/{installer}.sha256 ");
         thread::spawn(move || {
             for stream in listener.incoming().take(2) {
                 let mut stream = stream.unwrap();
                 let mut request = [0_u8; 4096];
                 let read = stream.read(&mut request).unwrap();
                 let request = String::from_utf8_lossy(&request[..read]);
-                let payload = if request.contains(".sha256 ") {
+                let payload = if request.contains(&checksum_request) {
                     checksum.as_bytes()
                 } else {
                     body.as_bytes()
@@ -2749,13 +974,20 @@ mod tests {
                 stream.write_all(payload).unwrap();
             }
         });
-        let updater =
-            NativeUpdater::test_config(temp.path().join("state"), None, None, "1.0.0", base, false);
-        let release = updater.cached_or_check().unwrap();
-        assert_eq!(release.version, "2.0.0");
-        assert_eq!(release.sha256, digest);
-        assert_eq!(release.asset_name, asset_name);
-        let first = updater.status_json(false).unwrap();
+        let updater = updater("1.0.0", &base);
+        let first = updater.status_json(true).unwrap();
+        let webapp = &first["webapp"];
+        assert_eq!(webapp["latest_version"], "2.0.0");
+        assert_eq!(webapp["update_available"], true);
+        assert_eq!(webapp["asset_name"], installer);
+        assert_eq!(webapp["installer_asset_name"], installer);
+        assert_eq!(webapp["download_size_bytes"], 300);
+        assert_eq!(webapp["checksum_sha256"], digest);
+        assert_eq!(
+            webapp["installer_download_url"],
+            format!("{base}/{installer}")
+        );
+        assert_eq!(webapp["download_url"], webapp["installer_download_url"]);
         thread::sleep(Duration::from_millis(2));
         let second = updater.status_json(false).unwrap();
         assert!(first["last_check"].is_string());
@@ -2763,561 +995,125 @@ mod tests {
     }
 
     #[test]
-    fn platform_asset_matching_does_not_confuse_windows_with_darwin() {
-        let expected_os = if cfg!(target_os = "windows") {
-            "win"
-        } else if cfg!(target_os = "macos") {
-            "mac"
-        } else {
-            "linux"
-        };
-        let expected_arch = if cfg!(target_arch = "aarch64") {
-            "arm64"
-        } else {
-            "x64"
-        };
-        let extension = if cfg!(target_os = "linux") {
-            "tar.gz"
-        } else {
-            "zip"
-        };
-        let assets = vec![
-            json!({"name": format!("studio-2.0.0-all-in-one-darwin-{expected_arch}.{extension}")}),
-            json!({"name": format!("studio-2.0.0-all-in-one-{expected_os}-{expected_arch}.{extension}")}),
-        ];
-        assert_eq!(
-            select_platform_asset(&assets).unwrap()["name"],
-            format!("studio-2.0.0-all-in-one-{expected_os}-{expected_arch}.{extension}")
-        );
-    }
-
-    #[cfg(all(unix, not(target_os = "macos")))]
-    #[test]
-    fn real_http_route_downloads_verifies_and_stages_through_the_shared_job_registry() {
-        let temp = TempDir::new().unwrap();
-        let state_dir = temp.path().join("state");
-        let app_dir = temp.path().join("installed");
-        fs::create_dir(&app_dir).unwrap();
-        let archive = linux_update_tar();
-        let digest = format!("{:x}", Sha256::digest(&archive));
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let name = "nirs4all-studio-2.0.0-all-in-one-linux-x64.tar.gz";
-        let release = json!({"tag_name":"2.0.0","prerelease":false,"assets":[
-            {"name":name,"browser_download_url":format!("{base}/{name}"),"size":archive.len()},
-            {"name":format!("{name}.sha256"),"browser_download_url":format!("{base}/{name}.sha256"),"size":80}
-        ]}).to_string();
-        let checksum = format!("{digest}  {name}\n");
-        thread::spawn(move || {
-            for stream in listener.incoming().take(3) {
-                let mut stream = stream.unwrap();
-                let mut request = [0_u8; 4096];
-                let read = stream.read(&mut request).unwrap();
-                let request = String::from_utf8_lossy(&request[..read]);
-                let payload: &[u8] = if request.contains(".sha256 ") {
-                    checksum.as_bytes()
-                } else if request.contains(".tar.gz ") {
-                    &archive
-                } else {
-                    release.as_bytes()
-                };
-                write!(
-                    stream,
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                    payload.len()
-                )
-                .unwrap();
-                stream.write_all(payload).unwrap();
-            }
-        });
-        let updater = NativeUpdater::test_config(
-            state_dir,
-            Some(app_dir),
-            Some("studio".into()),
-            "1.0.0",
-            base,
-            true,
-        );
-        let mut state = SidecarState {
-            native_updater: updater,
-            update_settings: crate::UpdateSettingsStore::new(temp.path().join("settings.yaml")),
-            ..SidecarState::default()
-        };
-        let started = route(
-            &mut state,
-            "POST",
-            "/api/updates/webapp/download-start",
-            b"",
-        )
-        .unwrap();
-        assert_eq!(started.status, 200, "{}", started.body);
-        let id = serde_json::from_str::<Value>(&started.body).unwrap()["job_id"]
-            .as_str()
-            .unwrap()
-            .to_owned();
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            let job = state.native_jobs.get_at(&id, Instant::now()).unwrap();
-            if job.status.is_terminal() {
-                assert_eq!(job.status, JobStatus::Completed, "{:?}", job.error);
-                break;
-            }
-            assert!(Instant::now() < deadline, "download job timed out");
-            thread::sleep(Duration::from_millis(20));
-        }
-        assert!(state
-            .native_updater
-            .staging_dir()
-            .join("app/resources/sentinel")
-            .is_file());
-    }
-
-    #[cfg(all(unix, not(target_os = "macos")))]
-    #[test]
-    fn detached_helper_atomically_replaces_the_tree_and_relaunches() {
-        use std::os::unix::fs::PermissionsExt;
-        let temp = TempDir::new().unwrap();
-        let state = temp.path().join("state");
-        let app = temp.path().join("app");
-        let staged = state.join(STAGING_DIR).join("content");
-        fs::create_dir_all(app.join("resources")).unwrap();
-        fs::create_dir_all(staged.join("resources")).unwrap();
-        fs::write(app.join("studio"), b"#!/bin/sh\nexit 0\n").unwrap();
-        fs::write(app.join("resources/stale"), b"old").unwrap();
-        fs::write(staged.join("studio"), b"#!/bin/sh\nexit 0\n").unwrap();
-        fs::write(staged.join("resources/sentinel"), b"new").unwrap();
-        fs::set_permissions(staged.join("studio"), fs::Permissions::from_mode(0o755)).unwrap();
-        let plan = ApplyPlan {
-            app_dir: app.clone(),
-            staged_content: staged,
-            executable_relative: "studio".into(),
-            state_dir: state.clone(),
-            parent_pid: u32::MAX,
-            from_version: "1.0.0".into(),
-            to_version: "2.0.0".into(),
-            staged_tree_sha256: hash_tree(&state.join(STAGING_DIR).join("content")).unwrap(),
-        };
-        let plan_path = state.join(APPLY_PLAN);
-        atomic_json(&plan_path, &serde_json::to_value(&plan).unwrap()).unwrap();
-        run_apply_plan(&plan_path).unwrap();
-        assert!(app.join("resources/sentinel").is_file());
-        assert!(!app.join("resources/stale").exists());
-        assert_eq!(
-            read_json(&state.join(APPLY_RESULT)).unwrap()["status"],
-            "applied"
-        );
-    }
-
-    #[test]
-    fn atomic_state_replacement_overwrites_an_existing_result() {
-        let temp = TempDir::new().unwrap();
-        let path = temp.path().join(APPLY_RESULT);
-        atomic_json(&path, &json!({"status":"applied"})).unwrap();
-        atomic_json(&path, &json!({"status":"success"})).unwrap();
-        assert_eq!(read_json(&path).unwrap()["status"], "success");
-    }
-
-    #[test]
-    fn windows_rename_retry_accepts_only_file_lock_errors() {
-        assert!(windows_transient_rename_lock(
-            &io::Error::from_raw_os_error(32)
-        ));
-        assert!(windows_transient_rename_lock(
-            &io::Error::from_raw_os_error(33)
-        ));
-        assert!(!windows_transient_rename_lock(
-            &io::Error::from_raw_os_error(5)
-        ));
-        assert!(!windows_transient_rename_lock(&io::Error::new(
-            io::ErrorKind::NotFound,
-            "missing"
-        )));
-    }
-
-    #[test]
-    fn helper_working_directory_is_canonical_and_outside_the_application_tree() {
-        let temp = TempDir::new().unwrap();
-        let app = temp.path().join("app");
-        let state = temp.path().join("state");
-        let nested_state = app.join("state");
-        fs::create_dir(&app).unwrap();
-        fs::create_dir(&state).unwrap();
-        fs::create_dir(&nested_state).unwrap();
-
-        let mut command = Command::new("helper");
-        configure_helper_working_directory(&mut command, &state, &app).unwrap();
-        assert_eq!(
-            command.get_current_dir(),
-            Some(state.canonicalize().unwrap().as_path())
-        );
-
-        let mut nested = Command::new("helper");
-        assert!(
-            configure_helper_working_directory(&mut nested, &nested_state, &app)
-                .unwrap_err()
-                .contains("outside the application tree")
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn windows_helper_does_not_inherit_the_application_locking_working_directory() {
-        let temp = TempDir::new().unwrap();
-        let app = temp.path().join("app");
-        let backup = temp.path().join("backup");
-        let state = temp.path().join("state");
-        fs::create_dir(&app).unwrap();
-        fs::create_dir(&state).unwrap();
-        fs::write(app.join("studio.exe"), b"application tree").unwrap();
-
-        let mut inherited = Command::new("powershell.exe");
-        inherited
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                "Start-Sleep -Seconds 10",
-            ])
-            .current_dir(&app)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let mut inherited = inherited.spawn().unwrap();
-        thread::sleep(Duration::from_millis(250));
-        let inherited_error = fs::rename(&app, &backup).unwrap_err();
-        inherited.kill().unwrap();
-        inherited.wait().unwrap();
-        assert!(
-            windows_transient_rename_lock(&inherited_error),
-            "unexpected inherited-cwd error: {inherited_error}"
-        );
-
-        let mut helper = Command::new("powershell.exe");
-        helper
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                "Start-Sleep -Seconds 10",
-            ])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        configure_helper_working_directory(&mut helper, &state, &app).unwrap();
-        let mut helper = helper.spawn().unwrap();
-        thread::sleep(Duration::from_millis(250));
-        fs::rename(&app, &backup).unwrap();
-        helper.kill().unwrap();
-        helper.wait().unwrap();
-        assert!(backup.join("studio.exe").is_file());
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn windows_helper_waits_for_a_transient_application_directory_lock() {
-        use std::os::windows::fs::OpenOptionsExt;
-
-        const FILE_SHARE_READ: u32 = 0x0000_0001;
-        const FILE_SHARE_WRITE: u32 = 0x0000_0002;
-        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
-
-        let temp = TempDir::new().unwrap();
-        let app = temp.path().join("app");
-        let backup = temp.path().join("backup");
-        fs::create_dir(&app).unwrap();
-        fs::write(app.join("studio.exe"), b"locked tree").unwrap();
-
-        // Omit FILE_SHARE_DELETE exactly as a just-exiting Windows process can.
-        let directory_lock = OpenOptions::new()
-            .read(true)
-            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
-            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-            .open(&app)
-            .unwrap();
-        let initial = fs::rename(&app, &backup).unwrap_err();
-        assert!(
-            windows_transient_rename_lock(&initial),
-            "unexpected Windows directory-lock error: {initial}"
-        );
-
-        let release = thread::spawn(move || {
-            thread::sleep(Duration::from_millis(350));
-            drop(directory_lock);
-        });
-        rename_current_application_to_backup(&app, &backup).unwrap();
-        release.join().unwrap();
-        assert!(backup.join("studio.exe").is_file());
-        assert!(!app.exists());
-    }
-
-    #[test]
-    fn cleanup_removes_owned_artifacts_and_never_masks_a_removal_failure() {
-        let temp = TempDir::new().unwrap();
-        let state = temp.path().join("state");
-        fs::create_dir_all(state.join(STAGING_DIR)).unwrap();
-        fs::write(state.join(DOWNLOAD_FILE), b"partial").unwrap();
-        fs::write(state.join(APPLY_PLAN), b"plan").unwrap();
-        let helper_name = if cfg!(windows) {
-            "studio-update-helper.exe"
-        } else {
-            "studio-update-helper"
-        };
-        fs::write(state.join(helper_name), b"helper").unwrap();
-        let updater = NativeUpdater::test_config(
-            state.clone(),
-            None,
-            None,
-            "1.0.0",
-            "https://api.github.com".into(),
-            false,
-        );
-
-        assert_eq!(updater.cleanup().unwrap()["success"], true);
-        for artifact in [DOWNLOAD_FILE, APPLY_PLAN, helper_name] {
-            assert!(!state.join(artifact).exists(), "{artifact}");
-        }
-        assert!(!state.join(STAGING_DIR).exists());
-
-        fs::create_dir_all(state.join(DOWNLOAD_FILE)).unwrap();
+    fn offline_mode_disables_the_release_check_even_with_a_cached_release() {
+        let updater = updater("1.0.0", "http://127.0.0.1:9");
+        *updater.release.lock().unwrap() = Some(installer_release("2.0.0"));
+        updater.sync_preferences(&json!({"offline_mode": "on"}));
+        assert!(updater.check().unwrap_err().contains("offline mode"));
         assert!(updater
-            .cleanup()
-            .unwrap_err()
-            .contains("Could not remove update file"));
-    }
-
-    #[test]
-    fn helper_refuses_a_staged_tree_changed_after_plan_creation() {
-        let temp = TempDir::new().unwrap();
-        let state = temp.path().join("state");
-        let app = temp.path().join("app");
-        let staged = state.join(STAGING_DIR).join("content");
-        fs::create_dir_all(app.join("resources")).unwrap();
-        fs::create_dir_all(staged.join("resources")).unwrap();
-        fs::write(app.join("studio"), b"old").unwrap();
-        fs::write(staged.join("studio"), b"verified").unwrap();
-        fs::write(staged.join("resources/sentinel"), b"verified").unwrap();
-        let plan = ApplyPlan {
-            app_dir: app.clone(),
-            staged_content: staged.clone(),
-            executable_relative: "studio".into(),
-            state_dir: state.clone(),
-            parent_pid: u32::MAX,
-            from_version: "1.0.0".into(),
-            to_version: "2.0.0".into(),
-            staged_tree_sha256: hash_tree(&staged).unwrap(),
-        };
-        let plan_path = state.join(APPLY_PLAN);
-        atomic_json(&plan_path, &serde_json::to_value(&plan).unwrap()).unwrap();
-        fs::write(staged.join("studio"), b"tampered").unwrap();
-
-        assert!(run_apply_plan(&plan_path)
-            .unwrap_err()
-            .contains("digest changed"));
-        assert_eq!(fs::read(app.join("studio")).unwrap(), b"old");
-        let result = read_json(&state.join(APPLY_RESULT)).unwrap();
-        assert_eq!(result["status"], "failed");
-    }
-
-    #[test]
-    fn cached_release_cannot_bypass_newly_enabled_offline_mode() {
-        let temp = TempDir::new().unwrap();
-        let app = temp.path().join("app");
-        fs::create_dir(&app).unwrap();
-        let updater = NativeUpdater::test_config(
-            temp.path().join("state"),
-            Some(app),
-            Some("studio".into()),
-            "1.0.0",
-            "http://127.0.0.1:9".into(),
-            true,
-        );
-        *updater.release.lock().unwrap() = Some(ReleaseInfo {
-            version: "2.0.0".into(),
-            release_url: None,
-            notes: String::new(),
-            published_at: None,
-            asset_name: "nirs4all-studio-2.0.0-all-in-one-linux-x64.tar.gz".into(),
-            download_url: "http://127.0.0.1:9/update.tar.gz".into(),
-            size: 1,
-            sha256: "0".repeat(64),
-            prerelease: false,
-        });
-        updater.preferences.lock().unwrap().offline_mode = "on".into();
-        let jobs = Arc::new(NativeJobRuntime::default());
-        assert!(updater
-            .start_download(&jobs)
+            .status_json(true)
             .unwrap_err()
             .contains("offline mode"));
     }
 
     #[test]
-    fn reconciled_apply_result_uses_the_legacy_current_version_field() {
+    fn status_keeps_the_renderer_shape_and_the_constant_installer_capability() {
+        const WEBAPP_KEYS: [&str; 13] = [
+            "current_version",
+            "latest_version",
+            "update_available",
+            "release_url",
+            "release_notes",
+            "published_at",
+            "download_size_bytes",
+            "download_url",
+            "asset_name",
+            "checksum_sha256",
+            "is_prerelease",
+            "installer_download_url",
+            "installer_asset_name",
+        ];
         let temp = TempDir::new().unwrap();
-        let state = temp.path().join("state");
-        fs::create_dir_all(&state).unwrap();
-        let updater = NativeUpdater::test_config(
-            state.clone(),
-            None,
-            None,
-            "2.0.0",
-            "https://api.github.com".into(),
-            false,
-        );
-        atomic_json(
-            &state.join(APPLY_ATTEMPT),
-            &json!({"from_version":"1.0.0","to_version":"2.0.0"}),
-        )
-        .unwrap();
-        atomic_json(
-            &state.join(APPLY_RESULT),
-            &json!({"status":"applied","relaunch_pid":123}),
-        )
-        .unwrap();
-        updater.reconcile_apply_attempt();
-        let result = read_json(&state.join(APPLY_RESULT)).unwrap();
-        assert_eq!(result["status"], "success");
-        assert_eq!(result["current_version"], "2.0.0");
-        assert!(result.get("running_version").is_none());
-    }
-
-    #[test]
-    fn staged_metadata_is_confined_and_stale_versions_are_refused() {
-        let temp = TempDir::new().unwrap();
-        let state = temp.path().join("state");
-        let app = temp.path().join("app");
-        let staging_content = state.join(STAGING_DIR).join("app");
-        fs::create_dir_all(staging_content.join("resources")).unwrap();
-        fs::create_dir_all(&app).unwrap();
-        fs::write(staging_content.join("studio"), b"binary").unwrap();
-        atomic_json(
-            &state.join(STAGING_DIR).join(STAGED_METADATA),
-            &json!({"version":"1.0.0"}),
-        )
-        .unwrap();
-        let updater = NativeUpdater::test_config(
-            state,
-            Some(app),
-            Some("studio".into()),
-            "1.0.0",
-            "https://api.github.com".into(),
-            true,
-        );
-        assert!(updater
-            .apply(br#"{"confirm":true}"#)
-            .unwrap_err()
-            .contains("not newer"));
-    }
-
-    #[test]
-    fn cancellation_between_staging_and_completion_invalidates_the_update() {
-        let temp = TempDir::new().unwrap();
-        let state = temp.path().join("state");
-        let staging = state.join(STAGING_DIR);
-        let content = staging.join("app");
-        fs::create_dir_all(&content).unwrap();
-        atomic_json(
-            &staging.join(STAGED_METADATA),
-            &json!({"version":"2.0.0","staged_tree_sha256":"0".repeat(64)}),
-        )
-        .unwrap();
-        let updater = NativeUpdater::test_config(
-            state,
-            None,
-            None,
-            "1.0.0",
-            "https://api.github.com".into(),
-            false,
-        );
-        let jobs = NativeJobRuntime::default();
-        let now = Instant::now();
-        jobs.register_local_control_at(
-            "late-cancel",
-            JobType::UpdateDownload,
-            json!({}),
-            &rfc3339_now(),
-            now,
-        )
-        .unwrap();
-        jobs.start_at("late-cancel", &rfc3339_now(), now).unwrap();
-        jobs.request_local_cancel_at("late-cancel", &rfc3339_now(), now)
-            .unwrap();
-        let release = ReleaseInfo {
-            version: "2.0.0".into(),
-            release_url: None,
-            notes: String::new(),
-            published_at: None,
-            asset_name: "studio.zip".into(),
-            download_url: "https://github.com/fixture/studio.zip".into(),
-            size: 1,
-            sha256: "0".repeat(64),
-            prerelease: false,
+        let state = state_with(&temp, updater("1.0.0", "http://127.0.0.1:9"));
+        let install_kind = if cfg!(target_os = "macos") {
+            "dmg"
+        } else if cfg!(target_os = "windows") {
+            "windows-installer"
+        } else {
+            "deb"
         };
-
-        updater
-            .complete_or_invalidate_staging(&jobs, "late-cancel", &release, &content)
-            .unwrap();
-
-        assert_eq!(
-            jobs.get_at("late-cancel", Instant::now()).unwrap().status,
-            JobStatus::Cancelled
-        );
-        assert_eq!(updater.staged_info()["has_staged_update"], false);
-        assert!(!updater.staging_dir().exists());
+        for release in [None, Some(installer_release("2.0.0"))] {
+            let update_available = release.is_some();
+            *state.native_updater.release.lock().unwrap() = release;
+            let response = route(&state, "GET", "/api/updates/status").unwrap();
+            assert_eq!(response.status, 200, "{}", response.body);
+            let status: Value = serde_json::from_str(&response.body).unwrap();
+            let webapp = status["webapp"].as_object().unwrap();
+            assert_eq!(webapp.len(), WEBAPP_KEYS.len());
+            for key in WEBAPP_KEYS {
+                assert!(webapp.contains_key(key), "{key}");
+            }
+            assert_eq!(webapp["update_available"], update_available);
+            for block in ["nirs4all", "runtime", "venv"] {
+                assert!(status[block].is_object(), "{block}");
+            }
+            assert!(status.get("last_check").is_some());
+            assert_eq!(status["check_interval_hours"], 24);
+            assert_eq!(
+                status["update_capability"],
+                json!({
+                    "can_apply_in_place": false,
+                    "channel": "installer",
+                    "reason": "managed_install",
+                    "install_kind": install_kind,
+                })
+            );
+        }
     }
 
     #[test]
-    fn a_second_download_is_refused_while_the_shared_staging_tree_is_active() {
+    fn in_place_update_routes_answer_like_any_unknown_update_route() {
         let temp = TempDir::new().unwrap();
-        let app = temp.path().join("app");
-        fs::create_dir(&app).unwrap();
-        let updater = NativeUpdater::test_config(
-            temp.path().join("state"),
-            Some(app),
-            Some("studio".into()),
-            "1.0.0",
-            "http://127.0.0.1:9".into(),
-            true,
-        );
-        *updater.release.lock().unwrap() = Some(ReleaseInfo {
-            version: "2.0.0".into(),
-            release_url: None,
-            notes: String::new(),
-            published_at: None,
-            asset_name: "nirs4all-studio-2.0.0-all-in-one-linux-x64.tar.gz".into(),
-            download_url: "http://127.0.0.1:9/update.tar.gz".into(),
-            size: 1,
-            sha256: "0".repeat(64),
-            prerelease: false,
-        });
-        let jobs = Arc::new(NativeJobRuntime::default());
-        jobs.register_local_control_at(
-            "active",
-            JobType::UpdateDownload,
-            json!({}),
-            &rfc3339_now(),
-            Instant::now(),
-        )
-        .unwrap();
-        *updater.lifecycle.lock().unwrap() = UpdateLifecycle::Downloading("active".into());
-        assert!(updater
-            .start_download(&jobs)
-            .unwrap_err()
-            .starts_with("CONFLICT:"));
-        assert!(updater.cleanup().unwrap_err().starts_with("CONFLICT:"));
-        assert!(updater
-            .delete_staged()
-            .unwrap_err()
-            .starts_with("CONFLICT:"));
-        assert!(updater
-            .apply(br#"{"confirm":true}"#)
-            .unwrap_err()
-            .starts_with("CONFLICT:"));
+        let state = state_with(&temp, updater("1.0.0", "http://127.0.0.1:9"));
+        for (method, path) in [
+            ("GET", "/api/updates/webapp/download-info"),
+            ("POST", "/api/updates/webapp/download-start"),
+            ("POST", "/api/updates/webapp/apply"),
+            ("GET", "/api/updates/webapp/staged-update"),
+            ("DELETE", "/api/updates/webapp/staged-update"),
+            ("POST", "/api/updates/webapp/cleanup"),
+            ("GET", "/api/updates/webapp/last-apply-result"),
+            ("DELETE", "/api/updates/webapp/last-apply-result"),
+            ("GET", "/api/updates/webapp/unknown"),
+        ] {
+            let response = route(&state, method, path).unwrap();
+            assert_eq!(response.status, 404, "{method} {path}");
+            assert_eq!(
+                serde_json::from_str::<Value>(&response.body).unwrap()["detail"],
+                "Update route not found",
+                "{method} {path}"
+            );
+        }
+    }
 
-        *updater.lifecycle.lock().unwrap() = UpdateLifecycle::Applying;
-        assert!(updater.cleanup().unwrap_err().starts_with("CONFLICT:"));
-        assert!(updater
-            .start_download(&jobs)
-            .unwrap_err()
-            .starts_with("CONFLICT:"));
+    #[test]
+    fn restart_is_served_and_download_job_paths_fall_through() {
+        let temp = TempDir::new().unwrap();
+        let state = state_with(&temp, updater("1.0.0", "http://127.0.0.1:9"));
+        let restart = route(&state, "POST", "/api/updates/webapp/restart").unwrap();
+        assert_eq!(restart.status, 200, "{}", restart.body);
+        assert_eq!(
+            serde_json::from_str::<Value>(&restart.body).unwrap()["restart_required"],
+            true
+        );
+        assert_eq!(
+            route(&state, "GET", "/api/updates/webapp/restart")
+                .unwrap()
+                .status,
+            405
+        );
+        assert!(route(
+            &state,
+            "GET",
+            "/api/updates/webapp/download-status/update-1"
+        )
+        .is_none());
+        assert!(route(
+            &state,
+            "POST",
+            "/api/updates/webapp/download-cancel/update-1"
+        )
+        .is_none());
+        assert!(route(&state, "GET", "/api/updates/settings").is_none());
     }
 }

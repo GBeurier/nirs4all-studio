@@ -64,26 +64,6 @@ describe("CI release protection graph", () => {
     );
   });
 
-  it("anchors every local gate to existing runtime paths and the actual compiler configuration", () => {
-    const policy = JSON.parse(fs.readFileSync("qualification/policy.json", "utf8")) as {
-      gates: Array<{ id: string; input_paths: string[] }>;
-    };
-    const compilerInputs = fs.readdirSync(".").filter(name =>
-      /^(tsconfig.*\.json$|(?:vite|tailwind|postcss)\.config\.(?:js|ts)$)/.test(name));
-    expect(compilerInputs.length).toBeGreaterThan(1);
-    for (const gate of policy.gates) {
-      for (const input of gate.input_paths) {
-        expect(fs.existsSync(input), `${gate.id}: missing runtime scope ${input}`).toBe(true);
-      }
-      const applicableCompilerInputs = gate.id === "web-e2e"
-        ? compilerInputs.filter(name => !["tsconfig.electron.json", "tsconfig.nirs4all-ui-package-smoke.json"].includes(name))
-        : compilerInputs;
-      for (const input of applicableCompilerInputs) {
-        expect(gate.input_paths, `${gate.id}: omitted compiler input ${input}`).toContain(input);
-      }
-    }
-  });
-
   it("keeps full E2E local while smoking the payload, the first launch and a SHAP journey of every built installer", () => {
     expect(fs.existsSync(".github/workflows/playwright.yml")).toBe(false);
     for (const name of ["installer-linux", "installer-windows", "installer-macos-arm64"]) {
@@ -99,23 +79,23 @@ describe("CI release protection graph", () => {
       expect(smoke[0].env?.RELEASE_SOURCE_SHA).toBe("${{ needs.prepare.outputs.checkout_ref }}");
       expect(smoke[0].env?.RELEASE_VERSION).toBe("${{ needs.prepare.outputs.version }}");
       expect(smoke[0].env?.NIRS4ALL_QUALIFICATION_PERFORMANCE_POLICY).toBe("github-observational");
-      const staged = steps.findIndex(step => step.run?.includes("scripts/build-wheelhouse.cjs"));
+      const staged = steps.findIndex(step => step.run?.includes("scripts/fetch-uv.cjs"));
       const packaged = steps.findIndex(step => step.run?.includes("npx electron-builder --config"));
       expect(staged, name).toBeGreaterThan(0);
-      expect(steps[staged].run).toContain("scripts/fetch-uv.cjs");
       expect(steps[staged].run).toContain("scripts/studio-document-adapters.cjs --install backend-dist/adapters");
       expect(packaged, name).toBeGreaterThan(staged);
       expect(steps.indexOf(smoke[0]), name).toBeGreaterThan(packaged);
       const offline = steps.findIndex(step => step.run?.includes("scripts/build-offline-payload.cjs"));
       if (name === "installer-macos-arm64") {
-        // A macOS application embeds no wheels: no offline leg, and its required wheels become a release asset.
+        // A macOS application embeds no wheels and has no offline leg: its required packages come from the package index.
         expect(offline, name).toBe(-1);
         expect(release.jobs[name].strategy, name).toBeUndefined();
-        expect(steps[staged].run).toContain("scripts/pack-remote-wheelhouse.cjs --tag '${{ needs.prepare.outputs.tag }}' --version '${{ needs.prepare.outputs.version }}'");
+        expect(steps[staged].run).not.toContain("scripts/build-wheelhouse.cjs");
+        expect(steps[staged].run).toContain("test ! -e backend-dist/wheels");
         expect(steps[packaged].run).toContain("--config electron-builder.installer.yml --mac --arm64");
-        expect(smoke[0].run).toContain('NIRS4ALL_WHEELHOUSE_ARCHIVE="$PWD/release/nirs4all.Studio-${RELEASE_VERSION}-mac-arm64-wheels.tar.gz"');
-        expect(steps.find(step => step.name === "Upload artifacts")!.with?.path).toContain("release/*-wheels.tar.gz");
+        expect(steps.find(step => step.name === "Upload artifacts")!.with?.path).not.toContain("wheels");
       } else {
+        expect(steps[staged].run).toContain("scripts/build-wheelhouse.cjs");
         expect(steps[offline].if, name).toBe("matrix.variant == 'offline'");
         expect(offline, name).toBeGreaterThan(staged);
         expect(packaged, name).toBeGreaterThan(offline);
@@ -123,10 +103,10 @@ describe("CI release protection graph", () => {
       }
     }
     const assets = release.jobs.release.steps!.find(step => step.name === "Prepare release assets")!.run!;
-    expect(assets).toContain('-o -name "*-wheels.tar.gz"');
-    expect(assets).toMatch(/finalize-release-assets\.cjs \\\n\s+release \\\n\s+'\$\{\{ needs\.prepare\.outputs\.version \}\}' \\\n\s+false \\\n\s+false \\\n\s+true\n/);
+    expect(assets).not.toContain("wheels.tar.gz");
+    expect(assets).toMatch(/finalize-release-assets\.cjs \\\n\s+release \\\n\s+'\$\{\{ needs\.prepare\.outputs\.version \}\}'\n/);
     const remoteCommands = Object.values(release.jobs).flatMap(job => job.steps ?? []).map(step => step.run ?? "").join("\n");
-    for (const fullJourney of ["scripts/qualify-installer.cjs", "installed_multimodal_provider.py", "test:native-archive-v2", "npx playwright test"]) {
+    for (const fullJourney of ["installed_multimodal_provider.py", "test:native-archive-v2", "npx playwright test"]) {
       expect(remoteCommands).not.toContain(fullJourney);
     }
   });

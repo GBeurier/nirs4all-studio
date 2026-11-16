@@ -201,18 +201,7 @@ describe("build-native-sidecar", () => {
       const verify = () => runtimeContract.verifyRuntimeContract({
         backendRoot, artifactBoundaryRoot: backendRoot, platform: "darwin", arch: "arm64", requirePythonPayload: true,
       });
-      const filename = "nirs4all.Studio-1.2.3-mac-arm64-wheels.tar.gz";
-      const manifest = { url: `https://github.com/GBeurier/nirs4all-studio/releases/download/1.2.3/${filename}`, sha256: "a".repeat(64), filename };
-      const manifestPath = path.join(backendRoot, "wheelhouse.json");
-      expect(verify).toThrow(/Packaged wheelhouse description not found/);
-      for (const invalid of [
-        { ...manifest, sha256: "A".repeat(64) }, { ...manifest, filename: "wheels.tar.gz" },
-        { ...manifest, url: `https://example.org/${filename}` }, { ...manifest, extra: true },
-      ]) {
-        fs.writeFileSync(manifestPath, JSON.stringify(invalid));
-        expect(verify).toThrow(/Invalid packaged wheelhouse description/);
-      }
-      fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+      // Nothing stands for the required packages on macOS: Studio installs them from the package index.
       expect(verify().sidecarPath).toBe(path.join(backendRoot, "native", "studio-sidecar"));
       fs.mkdirSync(path.join(backendRoot, "wheels"));
       expect(verify).toThrow(/must not embed wheels/);

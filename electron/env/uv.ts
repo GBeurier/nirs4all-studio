@@ -10,8 +10,6 @@ import path from "node:path";
 import { normalizePackageName, recommendedInstallSpecs, requiredInstallSpecs } from "./catalogue";
 import { appendInstallLog } from "./install-log";
 import { runCommand } from "./process-utils";
-import { cachedWheelhouse, ensureWheelhouse, readWheelhouseManifest } from "./wheelhouse";
-import type { WheelhouseCache } from "./wheelhouse";
 
 const UV_EXECUTABLE = process.platform === "win32" ? "uv.exe" : "uv";
 /** A GPU build of torch is several gigabytes; slow links need the time. */
@@ -25,7 +23,7 @@ const UV_ENVIRONMENT: NodeJS.ProcessEnv = {
 };
 
 export interface UvPayload {
-  /** Wheels of the required packages: embedded in the installer, or downloaded once where they cannot be. */
+  /** Embedded wheels of the required packages (`wheels/`): Windows and Linux installers carry them, the macOS application does not. */
   wheelhouse: string | null;
   /** Offline installer payload: `wheels/` and the Python archive. */
   offline: string | null;
@@ -64,26 +62,12 @@ export function resolveUvPath(): string {
   return process.env.NIRS4ALL_UV?.trim() || findShipped("tools", UV_EXECUTABLE) || "uv";
 }
 
-/** What the application itself carries. Reads the disk only: nothing is ever downloaded here. */
+/**
+ * What the application itself carries. Without embedded wheels (macOS,
+ * development) the package index alone supplies the required packages.
+ */
 export function resolveUvPayload(): UvPayload {
   return { wheelhouse: findShipped("wheels"), offline: findShipped("offline") };
-}
-
-/**
- * The payload for an installation. Embedded wheels are used as they are.
- * Without them, an application that carries `wheelhouse.json` uses the
- * downloaded wheelhouse: `download` obtains it when it is not cached yet,
- * which the required packages need and other installations do not.
- */
-async function resolveInstallPayload(cache: WheelhouseCache, download: boolean): Promise<UvPayload> {
-  const payload = resolveUvPayload();
-  const manifestPath = payload.wheelhouse ? null : findShipped("wheelhouse.json");
-  if (!manifestPath) return payload;
-  const manifest = readWheelhouseManifest(manifestPath);
-  return {
-    ...payload,
-    wheelhouse: download ? await ensureWheelhouse(manifest, cache) : cachedWheelhouse(manifest, cache.directory),
-  };
 }
 
 function wheelDirectories(payload: UvPayload): string[] {
@@ -162,11 +146,10 @@ async function install(pythonPath: string, specs: readonly string[], payload: Uv
 
 /**
  * Install the required cohort at its exact versions in one resolver call, so
- * the packages stay mutually coherent. Where the wheels are not embedded they
- * are downloaded first; without them the installation is not attempted.
+ * the packages stay mutually coherent.
  */
-export async function installRequiredPackages(pythonPath: string, wheelhouse: WheelhouseCache): Promise<void> {
-  await install(pythonPath, requiredInstallSpecs(), await resolveInstallPayload(wheelhouse, true));
+export async function installRequiredPackages(pythonPath: string): Promise<void> {
+  await install(pythonPath, requiredInstallSpecs(), resolveUvPayload());
 }
 
 /**
@@ -175,12 +158,7 @@ export async function installRequiredPackages(pythonPath: string, wheelhouse: Wh
  * the same resolver call: a recommended package that conflicts with them
  * fails the resolution instead of silently changing nirs4all or its owners.
  */
-export async function installRecommendedPackages(
-  pythonPath: string,
-  names: readonly string[],
-  requiredPins: readonly string[],
-  wheelhouse: WheelhouseCache,
-): Promise<void> {
+export async function installRecommendedPackages(pythonPath: string, names: readonly string[], requiredPins: readonly string[]): Promise<void> {
   const specs = recommendedInstallSpecs(names);
-  if (specs.length > 0) await install(pythonPath, [...specs, ...requiredPins], await resolveInstallPayload(wheelhouse, false));
+  if (specs.length > 0) await install(pythonPath, [...specs, ...requiredPins], resolveUvPayload());
 }

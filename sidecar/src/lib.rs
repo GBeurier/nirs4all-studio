@@ -1037,7 +1037,7 @@ pub fn route_request_with_body(
     if let Some(response) = error_logs::ERROR_LOGS.route(method, journal_path, journal_query) {
         return response;
     }
-    if let Some(response) = native_updates::route(state, method, path, body) {
+    if let Some(response) = native_updates::route(state, method, path) {
         return response;
     }
     if let Some(response) = document_cpython::route(

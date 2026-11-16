@@ -415,11 +415,10 @@ must already exist, the redirect is stored at the platform-default path, and
 the response always declares `requires_restart: true`. The sidecar never reads
 or writes workspace or dataset contents.
 
-Update preferences remain in the legacy `update_settings.yaml` location. Until
-the network update routes are native, the legacy update manager detects the
-sidecar's atomic replacement of that file and invalidates its cached GitHub
-release when the prerelease setting changed; no restart or Python HTTP fallback
-is required for a native settings update to take effect.
+Update preferences are stored in `update_settings.yaml`. The native update
+routes read them on every call and drop the cached GitHub release when the
+repository or the prerelease setting changed; no restart is required for a
+settings update to take effect.
 
 `GET /api/workspaces` reads the linked-workspace records already stored in
 `app_settings.json`. It repairs only absent or duplicate record IDs to retain
@@ -534,7 +533,7 @@ idempotent cancellation, bounded Python plugin-host admission, the
 Rust-owned Python-bridge system routes plus native network state, native app preferences/favorites
 and config-path selection, native system-status catalogue state, plus the linked-workspace catalogue and its native
 activation/unlink mutations,
-all-in-one binary packaging, and Electron's explicit loopback-only lifecycle
+installer packaging of the sidecar binary, and Electron's explicit loopback-only lifecycle
 management, plus bounded RFC 6455 upgrades, three native job-state reads, five
 cancellation aliases, and two immutable durable execution-record reads on the
 sidecar port. Missing: every other legacy `/api/*` route, all

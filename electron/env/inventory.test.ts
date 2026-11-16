@@ -86,7 +86,7 @@ describe("inventory evaluation", () => {
     );
     expect(editableRequiredPackages(value)).toEqual(["dag-ml"]);
     expect(installedRequiredPins(value)).toEqual([
-      "nirs4all==1.4.18", "dag-ml-data==0.2.16", "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15", "nirs4all-formats==0.2.16",
+      "nirs4all==1.4.18", "dag-ml-data==0.2.16", "nirs4all-io==0.3.1", "nirs4all-methods==1.3.15",
     ]);
   });
 
@@ -101,10 +101,10 @@ describe("inventory evaluation", () => {
     const byName = Object.fromEntries(report.recommended.map((item) => [item.name, item]));
     expect(byName.torch).toMatchObject({
       installedVersion: "2.5.1", minimum: ">=2.1.0", recommendedVersion: "2.6.0",
-      status: "older", belowMinimum: false, defaultInstall: true, category: "deep_learning",
+      status: "older", belowMinimum: false, defaultInstall: false, category: "deep_learning",
     });
     expect(byName.shap).toMatchObject({ status: "older", belowMinimum: true });
-    expect(byName.xgboost).toMatchObject({ status: "ok", belowMinimum: false });
+    expect(byName.xgboost).toMatchObject({ status: "ok", belowMinimum: false, defaultInstall: true });
     expect(byName.lightgbm).toMatchObject({ status: "ok", belowMinimum: false });
     expect(byName.catboost).toMatchObject({ installedVersion: null, status: "missing", belowMinimum: false });
     expect(report.outdatedRecommendedCount).toBe(2);

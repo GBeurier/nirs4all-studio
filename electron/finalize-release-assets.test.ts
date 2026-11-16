@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const finalizer = require(path.resolve("scripts/finalize-release-assets.cjs")) as {
   canonicalPublishedName(name: string): string;
-  expectedPublishedNames(version: string, includeAllInOne?: boolean, includeMacosX64?: boolean, includePythonPayloads?: boolean): string[];
+  expectedPublishedNames(version: string): string[];
   finalizeReleaseAssets(root: string, expectedNames?: string[] | null): Array<{
     publishedName: string;
     digest: string;
@@ -126,31 +126,28 @@ describe("finalize release assets", () => {
     ).toThrow("Release asset inventory mismatch");
   });
 
-  it("publishes the offline installers and the macOS wheels only for releases that have them", () => {
+  it("publishes the installers and the offline installers, and nothing else", () => {
     const root = temporaryRoot();
-    const historical = [
-      "nirs4all.Studio-0.11.2-linux-amd64.deb",
-      "nirs4all.Studio-0.11.2-mac-arm64.dmg",
-      "nirs4all.Studio-0.11.2-win-x64.exe",
-    ];
-    expect(finalizer.expectedPublishedNames("0.11.2")).toEqual(historical);
-    expect(finalizer.expectedPublishedNames("0.11.2", false, false)).toEqual(historical);
-    const expectedNames = finalizer.expectedPublishedNames("0.11.2", false, false, true);
+    const expectedNames = finalizer.expectedPublishedNames("0.11.2");
     expect(expectedNames).toEqual([
       "nirs4all.Studio-0.11.2-linux-amd64-offline.deb",
       "nirs4all.Studio-0.11.2-linux-amd64.deb",
-      "nirs4all.Studio-0.11.2-mac-arm64-wheels.tar.gz",
       "nirs4all.Studio-0.11.2-mac-arm64.dmg",
       "nirs4all.Studio-0.11.2-win-x64-offline.exe",
       "nirs4all.Studio-0.11.2-win-x64.exe",
     ]);
-    expect(() => finalizer.expectedPublishedNames("0.11.2", false, true)).toThrow("Apple Silicon only");
     for (const publishedName of expectedNames) {
       writePair(
         root,
         publishedName.replace(/^nirs4all\.Studio-/, "nirs4all Studio-"),
         publishedName,
       );
+    }
+    // An archive or an AppImage is not a release payload.
+    for (const stray of ["nirs4all Studio-0.11.2-all-in-one-linux-x64.zip", "nirs4all Studio-0.11.2-linux-x64.AppImage", "nirs4all Studio-0.11.2-mac-arm64-wheels.tar.gz"]) {
+      fs.writeFileSync(path.join(root, stray), "stray");
+      expect(() => finalizer.finalizeReleaseAssets(root, expectedNames)).toThrow(`Unexpected release assets: ${stray}`);
+      fs.rmSync(path.join(root, stray));
     }
     expect(
       finalizer.finalizeReleaseAssets(root, expectedNames)

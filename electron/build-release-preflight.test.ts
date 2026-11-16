@@ -23,15 +23,14 @@ describe("build-release fail-closed preflight", () => {
   const hostPlatform = hostPlatforms[process.platform];
 
   it.each([
-    [["--mode", "standalone"], "Only installers are enabled"],
-    [["--standalone"], "Only installers are enabled"],
+    // Installers are the only product: there is no mode to select.
+    [["--mode", "standalone"], "Unknown argument: --mode"],
+    [["--standalone"], "Unknown argument: --standalone"],
     [["--flavor", "gpu"], "--flavor cpu"],
     [["--flavor", "cpu-lite"], "--flavor cpu"],
     [["--platform", "all"], "not attested"],
     [["--platform", hostPlatform === "linux" ? "win" : "linux"], "not attested"],
     [["--platform", "windows"], "not attested"],
-    [["--mode", "invalid"], "Only installers are enabled"],
-    [["--mode"], "requires a value"],
     [["--platform"], "requires a value"],
     [["--flavor"], "requires a value"],
     [["--unknown"], "Unknown argument"],
