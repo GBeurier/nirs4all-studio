@@ -189,16 +189,16 @@ def test_wheel_locks_select_the_public_sdk_and_owner_cohort() -> None:
     assert cohort["sdk_selection"]["requirement"] == _required_nirs4all()["range"]
     assert cohort["sdk_selection"]["publication_status"] == "published-registry"
     assert cohort["packaged_methods_identity"] == {
-        "commit": "41b5d4e02e2574a94cd9dad6fcfa6269573b5eed",
-        "tree": "61406cd2cf11204273a9972e4f268acfde7eb424",
-        "project_version": "1.3.15",
+        "commit": "50b307dd2fc76c0a04ff06e83c316d408c19fc68",
+        "tree": "8ad3ff8dfe80b2419833f3a32e190c5d9300b3a5",
+        "project_version": "1.3.18",
     }
 
 
 def test_current_public_wheel_identity_is_shared_by_shipping_consumers() -> None:
     sdk = json.loads((ROOT / "build/runtime-cohort.json").read_text())["sdk"]
-    assert sdk["source_sha"] == "28c51162fc4d31d674c6606d608367a5f4b32b0e"
-    assert sdk["wheel_sha256"] == "17130bf786ff2363dbd556bd023aa92d52fc25b849099e4edd3437795ec5ccd4"
+    assert sdk["source_sha"] == "615875790460cd4133f345d9fee7b38c9064fff4"
+    assert sdk["wheel_sha256"] == "200d89f95ce0a77a73c20f65b3d2c714908e6568bbb29052bf75ca72fe880ea1"
     assert sdk["version"] == _required_nirs4all()["install"]
     assert sdk["publication_status"] == "published-registry"
     assert sdk["wheel_url"].endswith(f"/nirs4all-{sdk['version']}-py3-none-any.whl")

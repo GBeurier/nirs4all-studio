@@ -160,8 +160,8 @@ pre-signing byte hash; tampering then invalidates that platform signature and
 remains fail-closed.
 
 The sidecar builder refuses to emit a product tree unless the build supplies
-one content-addressed native Methods library at ABI 2.22
-(`nirs4all-methods` 1.3.15). Every release gate invokes
+one content-addressed native Methods library at ABI 2.23
+(`nirs4all-methods` 1.3.18). Every release gate invokes
 `native-runtime-contract.cjs` with `--require-python-payload` and
 `--require-bundled-methods`, so an installer cannot be published without `uv`,
 the required wheels (on macOS: no embedded wheels), the attested adapters and
@@ -566,7 +566,7 @@ The image contains no FastAPI, Uvicorn, `main.py` or `websocket/` sources, and
 no `python` command on `PATH`. The sidecar invokes the interpreter only through
 the bounded stdio protocol; it never owns a port, scheduler, store, or fallback
 route.
-The image also embeds the exact `nirs4all-methods` ABI 2.22 library and its
+The image also embeds the exact `nirs4all-methods` ABI 2.23 library and its
 `STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
 independent of the Python host. CI supplies that library through the local
 BuildKit context `methods-runtime`, never from an unverified URL. The image

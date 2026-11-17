@@ -4,16 +4,19 @@
 separate Cargo package, not a Tauri application and not an Electron switch.
 The only executable is `studio-sidecar`.
 
-## Public backend owner cohort (2026-11-09)
+## Public backend owner cohort (2026-11-18)
 
 `contracts/studio_native_source_cohort_v2.json` selects Core 0.5.0, DAG 0.4.0,
 DMD 0.2.16, IO 0.3.1, Formats 0.2.16 and Rust n4m 0.4.2 from crates.io.
 Core requires Rust IO 0.3.1 exactly; Studio uses the same version. Use the
-ordinary registry lock without candidate source overrides. Browser npm and
+ordinary registry lock without candidate source overrides. The Python
+environment follows `recommended-config.json` (`required`) and may carry newer
+owner releases than this Rust graph: the Rust crates move only with a Core
+crate release that pins them. Browser npm and
 owner-built browser artifacts have separate provenance and are not this graph.
 
-Packaged Methods has two explicit identity paths at ABI 2.22. The default
-`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.15
+Packaged Methods has two explicit identity paths at ABI 2.23. The default
+`public-wheel` profile accepts only the Linux x64 nirs4all-methods 1.3.18
 artifact declared in `scripts/methods-public-wheel-profile.json`: its exact
 installed library size/hash, wheel reference and unknown source. It does not
 infer a source commit from the package version, ABI, public tag or Rust crate.
@@ -35,8 +38,8 @@ The retained injected HTTP test alone does not qualify that startup path.
 The ignored `public_methods_wheel_startup` integration test launches the real
 binary and replays the same owner-produced fixture, then checks typed refusal
 for absent, incompatible or altered selections without acquiring Python.
-SDK 1.4.16 is public, confirmed by Root publication run 42612130615 and the
-recorded public wheel hash. Studio host installation and current-closure
+SDK 1.4.18 is public on PyPI; `build/runtime-cohort.json` records its wheel
+hash and source commit. Studio host installation and current-closure
 qualification remain separate; historical SDK shipping receipts do not qualify
 that closure. The retained SDK host-cohort status is owned by that integration
 lane and is not a claim that the SDK is absent from the public registry.

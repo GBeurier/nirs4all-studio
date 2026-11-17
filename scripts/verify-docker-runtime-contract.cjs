@@ -119,7 +119,7 @@ requireText(
   "pinned nirs4all-ui package before npm ci",
 );
 requireText(dockerfile, "cargo build --locked --release", "locked Rust build");
-requireText(dockerfile, "COPY --from=methods-runtime /libn4m.so.2.22.0", "native Methods named context");
+requireText(dockerfile, "COPY --from=methods-runtime /libn4m.so.2.23.0", "native Methods named context");
 requireText(dockerfile, "NIRS4ALL_METHODS_SHA256", "native Methods content identity");
 requireText(dockerfile, "COPY scripts/methods-public-wheel-profile.json scripts/methods-public-wheel-profile.json", "Rust compiled public Methods selection");
 requireText(dockerfile, "ARG NIRS4ALL_METHODS_IDENTITY_PROFILE=public-wheel", "public artifact identity default");
