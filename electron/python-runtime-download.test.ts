@@ -32,7 +32,9 @@ afterEach(async () => {
 });
 
 describe("Python runtime downloads", () => {
-  const fast: DownloadOptions = { retries: 0, timeoutMs: 100, maxDurationMs: 2000, retryDelayMs: 0 };
+  // Generous bounds: only the stall and deadline cases below set short ones,
+  // so a loaded machine cannot time out a response that is being served.
+  const fast: DownloadOptions = { retries: 0, timeoutMs: 10_000, maxDurationMs: 30_000, retryDelayMs: 0 };
 
   it("follows relative redirects and publishes a complete closed file atomically", async () => {
     fs.writeFileSync(destination, "old cache");
