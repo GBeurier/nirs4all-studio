@@ -215,6 +215,8 @@ export interface DatasetConfig {
  * Dataset information returned from the API
  */
 export interface Dataset {
+  /** Missing spectral values the dataset keeps as loaded, and the samples holding them; counted at the last inspection */
+  missing_spectra?: { values: number; samples: number } | null;
   id: string;
   name: string;
   path: string;

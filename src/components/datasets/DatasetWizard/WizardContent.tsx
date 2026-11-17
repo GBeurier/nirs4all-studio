@@ -102,10 +102,9 @@ function StepIndicator() {
   );
 }
 
-/** Spectra with missing values are refused at load until the user chooses an NA handling. */
+/** Spectra with missing values are refused at load only when the user chose to abort on them. */
 function spectraNeedNaChoice(file: { path: string; type: string }, configuredFiles: DatasetFile[]): boolean {
-  const policy = configuredFiles.find(configured => configured.path === file.path)?.overrides?.na_policy;
-  return file.type === "X" && (policy === undefined || policy === "auto" || policy === "abort");
+  return file.type === "X" && configuredFiles.find(configured => configured.path === file.path)?.overrides?.na_policy === "abort";
 }
 
 export function DataStats() {

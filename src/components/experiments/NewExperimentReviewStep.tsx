@@ -1,3 +1,5 @@
+import type { MissingSpectraReview } from "@/lib/experimentMissingSpectra";
+import { NewExperimentReviewMissingSpectraField } from "./NewExperimentReviewMissingSpectraField";
 import type { CampaignPlanPreview } from "@/lib/campaignPlanPreviewTypes";
 import type { ExperimentDatasetOption } from "@/lib/experimentDatasetOptions";
 import type { NewExperimentExecutionEnvironmentDiagnostics } from "@/hooks/useNewExperimentExecutionEnvironment";
@@ -28,6 +30,7 @@ export interface NewExperimentReviewStepProps {
   missingTargetCounts: MissingTargetCount[];
   missingTargetPolicy: MissingTargetPolicy;
   missingTargetRemovalAvailable: boolean;
+  missingSpectra: MissingSpectraReview;
   selectedDatasetIds: string[];
   targetOptions: ExperimentTargetOption[];
   onExperimentDescriptionChange: (value: string) => void;
@@ -48,6 +51,7 @@ export function NewExperimentReviewStep({
   missingTargetCounts,
   missingTargetPolicy,
   missingTargetRemovalAvailable,
+  missingSpectra,
   selectedDatasetIds,
   targetOptions,
   onExperimentDescriptionChange,
@@ -75,6 +79,7 @@ export function NewExperimentReviewStep({
         removalAvailable={missingTargetRemovalAvailable}
         onMissingTargetPolicyChange={onMissingTargetPolicyChange}
       />
+      <NewExperimentReviewMissingSpectraField {...missingSpectra} />
       <NewExperimentReviewDescriptionField
         experimentDescription={experimentDescription}
         onExperimentDescriptionChange={onExperimentDescriptionChange}

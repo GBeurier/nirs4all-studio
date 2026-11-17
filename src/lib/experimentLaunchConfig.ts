@@ -1,7 +1,7 @@
 import i18n from "i18next";
 
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
-import type { ExperimentConfig, MissingTargetPolicy, RunExecutionBackend } from "@/types/runs";
+import type { ExperimentConfig, MissingSpectraPolicy, MissingTargetPolicy, RunExecutionBackend } from "@/types/runs";
 import { STRICT_NATIVE_RUNTIME_ENGINE } from "./runtimeBackendPreference";
 
 import {
@@ -21,6 +21,7 @@ export interface BuildExperimentLaunchConfigInput {
   selectedGroupingPayload: Record<string, string | null>;
   missingTargetPolicy: MissingTargetPolicy;
   targetByDataset?: Record<string, string>;
+  missingSpectraPolicy?: MissingSpectraPolicy | null;
   missingIssues?: MissingOperatorIssue[];
   executionBackend?: RunExecutionBackend;
 }
@@ -33,6 +34,7 @@ export function buildExperimentLaunchConfig({
   selectedGroupingPayload,
   missingTargetPolicy,
   targetByDataset = {},
+  missingSpectraPolicy = null,
   missingIssues = [],
   executionBackend = "local-python",
 }: BuildExperimentLaunchConfigInput): ExperimentConfig {
@@ -103,6 +105,9 @@ export function buildExperimentLaunchConfig({
 
   if (Object.keys(targetByDataset).length > 0) {
     config.target_by_dataset = targetByDataset;
+  }
+  if (missingSpectraPolicy) {
+    config.missing_spectra_policy = missingSpectraPolicy;
   }
   if (executionBackend !== "local-python") {
     config.execution_backend = executionBackend;

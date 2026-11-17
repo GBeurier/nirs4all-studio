@@ -621,7 +621,7 @@ notFound: {
         description: "How to handle missing or invalid values",
         policy: "NA policy",
         policies: {
-          auto: "Auto (abort on NA)",
+          auto: "Auto (keep missing values)",
           abort: "Abort on NA",
           remove_sample: "Remove samples with NA",
           remove_feature: "Remove features with NA",
@@ -2085,8 +2085,8 @@ notFound: {
         },
       },
       parsing: {
-        autoNaPolicy: "Auto (check X, preserve Y and metadata)",
-        autoNaHint: "Missing targets and metadata are preserved with a report. Choose their treatment explicitly before training; no rows are removed by default.",
+        autoNaPolicy: "Auto (keep missing values)",
+        autoNaHint: "Missing values in spectra, targets and metadata are kept and counted. No row or column is removed or filled at load; you choose their treatment when you launch an experiment.",
         delimiters: {
           semicolon: "Semicolon (;)",
           comma: "Comma (,)",
@@ -2192,7 +2192,7 @@ notFound: {
       },
       stats: {
         missingCells: "{{file}}: {{count}} missing values preserved. X, Y and metadata keep their row alignment.",
-        missingSpectralCells: "{{file}}: {{count}} missing values in the spectra. No row is removed, but with this NA handling the dataset cannot be loaded: choose in Parsing Options whether to remove these samples, remove these features, replace the values or keep them.",
+        missingSpectralCells: "{{file}}: {{count}} missing values in the spectra. This NA handling refuses them: choose another one in Parsing Options (Auto keeps them).",
         detectingFiles: "Detecting files...",
         loadingFiles: "Loading files...",
         noXFiles: "No X files mapped - select file roles below",
@@ -6788,6 +6788,8 @@ notFound: {
         },
         footer: {
           variance: "Var: {{x}}, {{y}}",
+          leftOut_one: "{{count}} sample left out: missing values",
+          leftOut_other: "{{count}} samples left out: missing values",
           selected_one: "• {{count}} selected",
           selected_other: "• {{count}} selected",
         },
@@ -9395,6 +9397,26 @@ transferAnalysis: {
         removeUnavailable: "Not available for multimodal datasets, nor when one target column of several is selected: these samples are always predicted.",
         count: "{{datasetName}} — {{target}}: {{missing}} samples without a value",
         countOfSamples: "{{datasetName}} — {{target}}: {{missing}} of {{samples}} samples without a value",
+      },
+      missingSpectra: {
+        title: "Missing values in spectra",
+        description: "Some spectra of the selected datasets have missing values. Choose what this run does with them; the saved datasets are not changed.",
+        count: "{{datasetName}}: {{values}} missing values in {{samples}} samples",
+        countOfSamples: "{{datasetName}}: {{values}} missing values in {{samples}} of {{totalSamples}} samples",
+        required: "Choose one of the options to continue.",
+        remove: "Remove the affected samples",
+        removeHint: "Samples whose spectrum has a missing value are left out of this run, with their target and metadata.",
+        replace: "Replace the missing values",
+        replaceHint: "The values are filled when the data is loaded for this run.",
+        keep: "Leave as is",
+        keepHint: "The pipeline receives the missing values: it must contain a step or a model that handles them, otherwise the run fails with the model's own message.",
+        fillMethod: "Replacement method",
+        fillValue: "Replacement value",
+        fill: {
+          value: "A constant value",
+          forward_fill: "The previous wavelength's value of the same spectrum (a gap at the start stays missing)",
+          backward_fill: "The next wavelength's value of the same spectrum (a gap at the end stays missing)",
+        },
       },
       targets: {
         title: "Target to model",

@@ -1,3 +1,4 @@
+import type { MissingSpectraReview } from "@/lib/experimentMissingSpectra";
 import { NewExperimentDatasetSelectionStep } from "@/components/experiments/NewExperimentDatasetSelectionStep";
 import { NewExperimentLaunchStep } from "@/components/experiments/NewExperimentLaunchStep";
 import { NewExperimentPipelineSelectionStep } from "@/components/experiments/NewExperimentPipelineSelectionStep";
@@ -96,6 +97,7 @@ export interface NewExperimentReviewStepPanelProps {
   missingTargetCounts: MissingTargetCount[];
   missingTargetPolicy: MissingTargetPolicy;
   missingTargetRemovalAvailable: boolean;
+  missingSpectra: MissingSpectraReview;
   planFlow: UseNewExperimentPlanFlowResult;
   selectionFlow: UseNewExperimentSelectionFlowResult;
   onExperimentDescriptionChange: (value: string) => void;
@@ -112,6 +114,7 @@ export function NewExperimentReviewStepPanel({
   missingTargetCounts,
   missingTargetPolicy,
   missingTargetRemovalAvailable,
+  missingSpectra,
   planFlow,
   selectionFlow,
   onExperimentDescriptionChange,
@@ -133,6 +136,7 @@ export function NewExperimentReviewStepPanel({
       missingTargetCounts={missingTargetCounts}
       missingTargetPolicy={missingTargetPolicy}
       missingTargetRemovalAvailable={missingTargetRemovalAvailable}
+      missingSpectra={missingSpectra}
       selectedDatasetIds={selectionFlow.selectedDatasetIds}
       onExperimentDescriptionChange={onExperimentDescriptionChange}
       onExperimentNameChange={onExperimentNameChange}

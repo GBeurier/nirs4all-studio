@@ -194,6 +194,7 @@ function propsForStep(currentStep: NewExperimentWizardStep) {
     launchFlow,
     missingTargetPolicy: "remove" as const,
     missingTargetRemovalAvailable: true,
+    missingSpectra: { counts: [], choice: null, onChange: vi.fn() },
     planFlow,
     selectionFlow,
     onExperimentDescriptionChange: vi.fn(),

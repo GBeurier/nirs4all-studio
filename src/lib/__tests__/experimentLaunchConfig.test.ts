@@ -101,6 +101,22 @@ describe("experimentLaunchConfig", () => {
     expect(buildExperimentLaunchConfig(base)).not.toHaveProperty("target_by_dataset");
   });
 
+  it("carries the answer about missing spectral values only when one was given", () => {
+    const base = {
+      name: "Spectra",
+      selectedDatasetIds: ["d1"],
+      selectedPipelineConfigs: [{ id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps }],
+      selectedGroupingPayload: { d1: null },
+      missingTargetPolicy: "predict" as const,
+    };
+    const replace = { policy: "replace" as const, fill: { method: "value" as const, fill_value: 0 } };
+    expect(buildExperimentLaunchConfig({ ...base, missingSpectraPolicy: replace })).toMatchObject({ missing_spectra_policy: replace });
+    expect(buildExperimentLaunchConfig({ ...base, missingSpectraPolicy: { policy: "remove" } }))
+      .toMatchObject({ missing_spectra_policy: { policy: "remove" }, missing_target_policy: "predict" });
+    expect(buildExperimentLaunchConfig({ ...base, missingSpectraPolicy: null })).not.toHaveProperty("missing_spectra_policy");
+    expect(buildExperimentLaunchConfig(base)).not.toHaveProperty("missing_spectra_policy");
+  });
+
   it("always includes the strict native runtime contract", () => {
     expect(buildExperimentLaunchConfig({
       name: "Runtime",

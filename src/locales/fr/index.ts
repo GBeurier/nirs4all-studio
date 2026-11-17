@@ -621,7 +621,7 @@ notFound: {
         description: "Comment gérer les valeurs manquantes ou invalides",
         policy: "Politique NA",
         policies: {
-          auto: "Auto (erreur sur NA)",
+          auto: "Auto (conserver les valeurs manquantes)",
           abort: "Erreur sur NA",
           remove_sample: "Supprimer les échantillons avec NA",
           remove_feature: "Supprimer les variables avec NA",
@@ -2085,8 +2085,8 @@ notFound: {
         },
       },
       parsing: {
-        autoNaPolicy: "Auto (vérifier X, conserver Y et les métadonnées)",
-        autoNaHint: "Les cibles et métadonnées manquantes sont conservées et signalées. Choisissez leur traitement avant l’entraînement ; aucune ligne n’est supprimée par défaut.",
+        autoNaPolicy: "Auto (conserver les valeurs manquantes)",
+        autoNaHint: "Les valeurs manquantes des spectres, des cibles et des métadonnées sont conservées et comptées. Aucune ligne ni colonne n’est supprimée ou remplie au chargement ; vous choisissez leur traitement au lancement d’une expérience.",
         delimiters: {
           semicolon: "Point-virgule (;)",
           comma: "Virgule (,)",
@@ -2192,7 +2192,7 @@ notFound: {
       },
       stats: {
         missingCells: "{{file}} : {{count}} valeurs manquantes conservées. X, Y et les métadonnées restent alignés.",
-        missingSpectralCells: "{{file}} : {{count}} valeurs manquantes dans les spectres. Aucune ligne n'est supprimée, mais avec ce traitement des NA le jeu de données ne peut pas être chargé : choisissez dans les options d'analyse de supprimer ces échantillons, de supprimer ces variables, de remplacer les valeurs ou de les conserver.",
+        missingSpectralCells: "{{file}} : {{count}} valeurs manquantes dans les spectres. Ce traitement des NA les refuse : choisissez-en un autre dans les options d'analyse (Auto les conserve).",
         detectingFiles: "Détection des fichiers…",
         loadingFiles: "Chargement des fichiers…",
         noXFiles: "Aucun fichier X associé - sélectionnez les rôles des fichiers ci-dessous",
@@ -6788,6 +6788,8 @@ notFound: {
         },
         footer: {
           variance: "Var. : {{x}}, {{y}}",
+          leftOut_one: "{{count}} échantillon écarté : valeurs manquantes",
+          leftOut_other: "{{count}} échantillons écartés : valeurs manquantes",
           selected_one: "• {{count}} sélectionné",
           selected_other: "• {{count}} sélectionnés",
         },
@@ -9395,6 +9397,26 @@ transferAnalysis: {
         removeUnavailable: "Indisponible pour les jeux de données multimodaux, et lorsqu'une colonne cible parmi plusieurs est sélectionnée : ces échantillons sont toujours prédits.",
         count: "{{datasetName}} — {{target}} : {{missing}} échantillons sans valeur",
         countOfSamples: "{{datasetName}} — {{target}} : {{missing}} échantillons sur {{samples}} sans valeur",
+      },
+      missingSpectra: {
+        title: "Valeurs manquantes dans les spectres",
+        description: "Certains spectres des jeux de données sélectionnés ont des valeurs manquantes. Choisissez ce que cette exécution en fait ; les jeux de données enregistrés ne sont pas modifiés.",
+        count: "{{datasetName}} : {{values}} valeurs manquantes dans {{samples}} échantillons",
+        countOfSamples: "{{datasetName}} : {{values}} valeurs manquantes dans {{samples}} échantillons sur {{totalSamples}}",
+        required: "Choisissez l'une des options pour continuer.",
+        remove: "Supprimer les échantillons concernés",
+        removeHint: "Les échantillons dont le spectre a une valeur manquante sont écartés de cette exécution, avec leur cible et leurs métadonnées.",
+        replace: "Remplacer les valeurs manquantes",
+        replaceHint: "Les valeurs sont remplies au chargement des données pour cette exécution.",
+        keep: "Laisser tel quel",
+        keepHint: "Le pipeline reçoit les valeurs manquantes : il doit contenir une étape ou un modèle qui les gère, sinon l'exécution échoue avec le message du modèle.",
+        fillMethod: "Méthode de remplacement",
+        fillValue: "Valeur de remplacement",
+        fill: {
+          value: "Une valeur constante",
+          forward_fill: "La valeur de la longueur d'onde précédente du même spectre (un manque en début de spectre reste manquant)",
+          backward_fill: "La valeur de la longueur d'onde suivante du même spectre (un manque en fin de spectre reste manquant)",
+        },
       },
       targets: {
         title: "Cible à modéliser",

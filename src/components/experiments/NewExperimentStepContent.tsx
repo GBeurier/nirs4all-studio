@@ -1,3 +1,4 @@
+import type { MissingSpectraReview } from "@/lib/experimentMissingSpectra";
 import type {
   NewExperimentInputData,
   UseNewExperimentFilteredInputsResult,
@@ -35,6 +36,7 @@ export interface NewExperimentStepContentProps {
   missingTargetCounts: MissingTargetCount[];
   missingTargetPolicy: MissingTargetPolicy;
   missingTargetRemovalAvailable: boolean;
+  missingSpectra: MissingSpectraReview;
   planFlow: UseNewExperimentPlanFlowResult;
   selectionFlow: UseNewExperimentSelectionFlowResult;
   onExperimentDescriptionChange: (value: string) => void;
@@ -55,6 +57,7 @@ export function NewExperimentStepContent({
   missingTargetCounts,
   missingTargetPolicy,
   missingTargetRemovalAvailable,
+  missingSpectra,
   planFlow,
   selectionFlow,
   onExperimentDescriptionChange,
@@ -101,6 +104,7 @@ export function NewExperimentStepContent({
         missingTargetCounts={missingTargetCounts}
         missingTargetPolicy={missingTargetPolicy}
         missingTargetRemovalAvailable={missingTargetRemovalAvailable}
+        missingSpectra={missingSpectra}
         planFlow={planFlow}
         selectionFlow={selectionFlow}
         onExperimentDescriptionChange={onExperimentDescriptionChange}
