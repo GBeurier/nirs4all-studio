@@ -3511,7 +3511,7 @@ notFound: {
       extendedLoadFailed: "Échec du chargement du registre étendu",
       extendedHttpError: "Échec du chargement du registre étendu : {{status}} {{statusText}}",
       availabilityLoadFailed: "Échec du chargement de la disponibilité des opérateurs",
-      pipelineIssueInstall: "Pipeline « {{pipeline}} » : {{reason}}. Installez-le via Paramètres > Avancé > Dépendances.",
+      pipelineIssueInstall: "Pipeline « {{pipeline}} » : {{reason}}. Installez-le via Paramètres > Python.",
       pipelineIssueUnavailable: "Pipeline « {{pipeline}} » : {{name}} n'est pas disponible.",
       notExecutable: "{{name}} n'est pas exécutable dans le moteur sélectionné.",
       pipelineIssue: "Pipeline « {{pipeline}} » : {{reason}}",
