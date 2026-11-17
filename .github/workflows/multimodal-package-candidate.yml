@@ -288,9 +288,13 @@ jobs:
       run:
         shell: bash
     steps:
-      # dag-ml fixtures exceed the 260-character path limit below this workspace.
-      - name: Allow long paths in the candidate checkouts
-        run: git config --system core.longpaths true
+      # dag-ml fixtures exceed the 260-character path limit below this
+      # workspace, and its release metadata check hashes source files: the
+      # candidates are built from their exact bytes, without CRLF conversion.
+      - name: Check out long paths and exact source bytes
+        run: |
+          git config --system core.longpaths true
+          git config --system core.autocrlf false
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
