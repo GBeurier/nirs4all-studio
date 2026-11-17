@@ -399,10 +399,10 @@ impl DatasetInspection {
     ) -> Result<Value, String> {
         let mut record = json!({"path":self.root,"config":value});
         ScientificRequestResolver::confine_dataset_config(&mut record, &self.root)
-            .map_err(|error| format!("{error:?}"))?;
+            .map_err(|error| error.to_string())?;
         let mut config = adapt("dataset.configure", &json!({"record":record}))?;
         ScientificRequestResolver::confine_dataset_config(&mut config, &self.root)
-            .map_err(|error| format!("{error:?}"))?;
+            .map_err(|error| error.to_string())?;
         if !config.is_object() {
             return Err("Dataset adapter returned no explicit config".into());
         }
@@ -441,7 +441,7 @@ impl DatasetInspection {
         }
         let mut config = config.clone();
         ScientificRequestResolver::confine_dataset_config(&mut config, &self.root)
-            .map_err(|error| format!("{error:?}"))?;
+            .map_err(|error| error.to_string())?;
         adapt(
             "dataset.preview",
             &json!({"config":config,"max_samples":max_samples,

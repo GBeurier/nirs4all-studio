@@ -211,7 +211,7 @@ fn inspect(
 ) -> Result<Value, String> {
     let mut config = config.clone();
     ScientificRequestResolver::confine_dataset_config(&mut config, root)
-        .map_err(|error| format!("{error:?}"))?;
+        .map_err(|error| error.to_string())?;
     let result = DatasetInspection::new(
         root,
         LoadLimits {

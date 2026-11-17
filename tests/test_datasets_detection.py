@@ -407,6 +407,47 @@ def test_missing_target_choice_is_validated_and_limited_to_scientific_runs(tmp_p
         configure_dataset({"record": record, "missing_target_policy": "remove"})
 
 
+def test_scientific_run_selects_one_target_column_for_this_run_only(tmp_path: Path):
+    from api.library_documents import configure_dataset
+
+    for name in ("Xtrain.csv", "Ytrain.csv", "Xtest.csv", "Ytest.csv"):
+        (tmp_path / name).write_text("placeholder\n")
+    record = {"path": str(tmp_path), "name": "Several targets", "config": {
+        "files": [
+            {"path": "Xtrain.csv", "type": "X", "split": "train"},
+            {"path": "Ytrain.csv", "type": "Y", "split": "train"},
+            {"path": "Xtest.csv", "type": "X", "split": "test"},
+            {"path": "Ytest.csv", "type": "Y", "split": "test"},
+        ],
+        "task_type": "regression", "delimiter": ";",
+    }}
+    saved = configure_dataset({"record": record, "scientific_run": True})
+    assert "train_y_filter" not in saved and "test_y_filter" not in saved
+    selected = configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "predict",
+                                  "target": {"column": "grade", "index": 2, "task_type": "multiclass_classification"}})
+    # The library's column filter of every target file, and the column's own task type.
+    assert selected["train_y_filter"] == [2] and selected["test_y_filter"] == [2]
+    assert selected["task_type"] == "multiclass"
+    assert selected["train_y_params"]["na"]["policy"] == "ignore"
+    assert {key: value for key, value in selected.items() if key not in ("train_y_filter", "test_y_filter", "task_type")} == \
+        {key: value for key, value in configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "predict"}).items() if key != "task_type"}
+    assert "target" not in record["config"] and "train_y_filter" not in record["config"]
+
+    for target in ({"column": "grade"}, {"column": "grade", "index": -1}, {"column": "grade", "index": True},
+                   {"column": 2, "index": 2}, {"column": "grade", "index": 2, "task_type": "ranking"}, {"column": "grade", "index": 2, "extra": 1}, "grade"):
+        with pytest.raises(ValueError, match="target must name a column"):
+            configure_dataset({"record": record, "scientific_run": True, "target": target})
+    with pytest.raises(ValueError, match="only for scientific runs"):
+        configure_dataset({"record": record, "target": {"column": "grade", "index": 2}})
+    # Removal at load drops whole rows of the target file, whatever the column.
+    with pytest.raises(ValueError, match="one target column of several is selected"):
+        configure_dataset({"record": record, "scientific_run": True, "missing_target_policy": "remove", "target": {"column": "grade", "index": 2}})
+    descriptor = {"schema": "nirs4all.studio-multimodal-dataset.v1", "cohort": {"samples": []}}
+    with pytest.raises(ValueError, match="not supported for multimodal datasets"):
+        configure_dataset({"record": {"path": str(tmp_path), "config": {"dataset_document": descriptor}}, "scientific_run": True,
+                           "target": {"column": "grade", "index": 2}})
+
+
 def test_scientific_run_preserves_saved_multimodal_dataset_document(tmp_path: Path):
     from api.library_documents import configure_dataset
 

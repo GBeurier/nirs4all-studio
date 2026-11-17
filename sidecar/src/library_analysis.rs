@@ -121,7 +121,7 @@ impl ScientificJobExecutor for AnalysisExecutor {
         result_dir(&request.workspace_path, true).map_err(|_| {
             JobExecutorError::PreflightRefused {
                 code: "analysis_result_directory_unavailable",
-                detail: "the workspace analysis result directory cannot be prepared",
+                detail: "the workspace analysis result directory cannot be prepared".into(),
             }
         })?;
         Ok(ScientificExecutorSelection {

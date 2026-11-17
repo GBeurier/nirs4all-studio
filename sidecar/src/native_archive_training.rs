@@ -52,7 +52,9 @@ const MAX_CELLS: usize = 20_000_000;
 const MAX_TARGETS: usize = 64;
 const PREFLIGHT_REFUSED: JobExecutorError = JobExecutorError::PreflightRefused {
     code: "native_archive_training_request_invalid",
-    detail: "the Archive V2 training request, workspace or linked dataset is not valid",
+    detail: std::borrow::Cow::Borrowed(
+        "the Archive V2 training request, workspace or linked dataset is not valid",
+    ),
 };
 const MAX_FOLDS: usize = 50;
 

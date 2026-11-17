@@ -127,6 +127,7 @@ fn validate_legacy_config(
             "project_id",
             "split_group_by_by_dataset",
             "missing_target_policy",
+            "target_by_dataset",
         ],
         "legacyConfig",
     )?;
@@ -176,6 +177,7 @@ fn validate_legacy_config(
             "legacyConfig must select at least one pipeline",
         ));
     }
+    validate_target_map(object.get("target_by_dataset"), &dataset_ids)?;
     Ok((
         name,
         requested_backend.to_owned(),
@@ -221,6 +223,33 @@ fn validate_legacy_runtime_options(
         ));
     }
     validate_grouping_map(object.get("split_group_by_by_dataset"))
+}
+
+/// The target column each selected dataset is trained on. A dataset absent
+/// from the map is trained on all its target columns together.
+fn validate_target_map(
+    value: Option<&Value>,
+    dataset_ids: &[&str],
+) -> Result<(), ScientificSubmissionValidationError> {
+    let Some(value) = value else { return Ok(()) };
+    let object = value
+        .as_object()
+        .ok_or(ScientificSubmissionValidationError::InvalidShape(
+            "legacyConfig.target_by_dataset must be an object",
+        ))?;
+    for (dataset, column) in object {
+        if !dataset_ids.contains(&dataset.as_str()) {
+            return Err(ScientificSubmissionValidationError::InvalidShape(
+                "legacyConfig.target_by_dataset names a dataset that is not selected",
+            ));
+        }
+        if text(column, "target column")?.len() > 256 {
+            return Err(ScientificSubmissionValidationError::InvalidShape(
+                "target column",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_legacy_inline_pipelines(
@@ -1076,6 +1105,27 @@ mod tests {
             assert!(matches!(
                 validate_scientific_submission(&serde_json::to_vec(&refused).unwrap()),
                 Err(ScientificSubmissionValidationError::Unsupported(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn accepts_a_target_column_only_for_a_selected_dataset() {
+        let mut accepted = payload();
+        accepted["legacyConfig"]["target_by_dataset"] = json!({"dataset-a": "protein"});
+        assert!(validate_scientific_submission(&serde_json::to_vec(&accepted).unwrap()).is_ok());
+        for targets in [
+            json!({"dataset-b": "protein"}),
+            json!({"dataset-a": ""}),
+            json!({"dataset-a": null}),
+            json!({"dataset-a": 2}),
+            json!(["protein"]),
+        ] {
+            let mut refused = payload();
+            refused["legacyConfig"]["target_by_dataset"] = targets;
+            assert!(matches!(
+                validate_scientific_submission(&serde_json::to_vec(&refused).unwrap()),
+                Err(ScientificSubmissionValidationError::InvalidShape(_))
             ));
         }
     }

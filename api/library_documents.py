@@ -143,11 +143,27 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
     if missing_target_policy is not None and document.get("scientific_run") is not True:
         raise ValueError("missing_target_policy applies only to scientific runs")
     target_na_policy = MISSING_TARGET_NA_POLICIES.get(missing_target_policy) if missing_target_policy else None
+    # A run on a dataset with several target columns names the one it trains
+    # on. Rust resolves the column to its position among the dataset's targets.
+    target = document.get("target")
+    if target is not None:
+        if document.get("scientific_run") is not True:
+            raise ValueError("A target column is selected only for scientific runs")
+        if (not isinstance(target, dict) or not {"column", "index"} <= set(target) <= {"column", "index", "task_type"}
+                or not isinstance(target["column"], str) or type(target["index"]) is not int or target["index"] < 0
+                or target.get("task_type") not in (None, "regression", "binary_classification", "multiclass_classification")):
+            raise ValueError("target must name a column, its position among the dataset's target columns and optionally its task type")
+        # The library's removal drops every row of the target file that has a
+        # missing cell, in any column: not only the samples missing this target.
+        if missing_target_policy == "remove":
+            raise ValueError("Removing samples without a target is not supported when one target column of several is selected; keep them to have them predicted")
 
     def finish(config: dict[str, Any]) -> dict[str, Any]:
         if document.get("scientific_run") is not True:
             return config
-        return for_dataset_configs(config, native_io=True, target_na_policy=target_na_policy)
+        return for_dataset_configs(config, native_io=True, target_na_policy=target_na_policy,
+                                   target_index=target["index"] if target is not None else None,
+                                   target_task_type=target.get("task_type") if target is not None else None)
 
     if "record" in document:
         record = document["record"]
@@ -164,6 +180,8 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("Invalid multimodal dataset descriptor")
             if missing_target_policy == "remove":
                 raise ValueError("Removing samples with a missing target is not supported for multimodal datasets; keep them to have them predicted")
+            if target is not None:
+                raise ValueError("Selecting one target column is not supported for multimodal datasets")
             return descriptor
         if not config:
             path = record.get("path")
@@ -307,7 +325,7 @@ def read_stored_run(operation: str, document: dict[str, Any]) -> Any:
 
     if operation == "runs.preflight":
         if document:
-            raise ValueError("Run owner preflight does not accept fields")
+            raise ValueError("The run readiness check does not accept fields")
         if not callable(studio_run_detail_http_inputs_v1):
             raise TypeError("Run owner materializer is not callable")
         return {"callable": "nirs4all.pipeline.storage.studio_run_detail_http_inputs_v1", "ready": True}

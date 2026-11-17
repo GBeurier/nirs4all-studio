@@ -10,7 +10,7 @@ use std::{
 };
 
 use atomicwrites::{AllowOverwrite, AtomicFile, DisallowOverwrite};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::{settings::AppSettingsStore, websocket_transport::rfc3339_now, HttpResponse};
 
@@ -275,6 +275,81 @@ fn link_dataset_with_inspection(
     Ok(json!({"success": true, "dataset": dataset}))
 }
 
+/// Project the inspected target columns onto the catalogue record: their
+/// declared names and task types, their missing-value counts and the default.
+fn apply_inspected_targets(dataset: &mut Value, distributions: &Map<String, Value>) {
+    // The library reports target columns by position; the import wizard
+    // declares their names in the same order.
+    let declared = dataset["config"]["targets"]
+        .as_array()
+        .filter(|targets| targets.len() == distributions.len())
+        .cloned();
+    let mut ordered = distributions.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|(name, _)| {
+        name.strip_prefix("target_")
+            .and_then(|index| index.parse::<usize>().ok())
+            .unwrap_or(usize::MAX)
+    });
+    let mut targets = ordered
+        .iter()
+        .enumerate()
+        .map(|(index, (name, distribution))| {
+            let mut target = declared
+                .as_ref()
+                .and_then(|targets| targets.get(index))
+                .filter(|target| target["column"].is_string())
+                .cloned()
+                .unwrap_or_else(|| {
+                    let classes = distribution["classes"].as_array();
+                    let task = distribution["task_type"]
+                        .as_str()
+                        .filter(|task| {
+                            matches!(
+                                *task,
+                                "regression"
+                                    | "binary_classification"
+                                    | "multiclass_classification"
+                            )
+                        })
+                        .unwrap_or_else(|| {
+                            if distribution["type"] == "classification" {
+                                if classes.is_some_and(|classes| classes.len() == 2) {
+                                    "binary_classification"
+                                } else {
+                                    "multiclass_classification"
+                                }
+                            } else {
+                                "regression"
+                            }
+                        });
+                    json!({"column":name,"type":task})
+                });
+            // Missing target values are counted and kept, never refused.
+            if let Some(missing) = distribution["missing_count"].as_u64() {
+                target["missing_count"] = json!(missing);
+            }
+            target
+        })
+        .collect::<Vec<_>>();
+    // The default target chosen in the import wizard or the edit dialog
+    // wins when it names a target column; else the first column.
+    let default = [
+        &dataset["config"]["default_target"],
+        &dataset["default_target"],
+    ]
+    .into_iter()
+    .filter_map(Value::as_str)
+    .find(|name| targets.iter().any(|target| target["column"] == *name))
+    .or_else(|| targets.first().and_then(|target| target["column"].as_str()))
+    .map(str::to_owned);
+    for target in &mut targets {
+        target["is_default"] =
+            json!(default.is_some() && target["column"].as_str() == default.as_deref());
+    }
+    dataset["default_target"] = default.map_or(Value::Null, Value::from);
+    dataset["targets"] = json!(targets);
+}
+
 fn apply_inspection(dataset: &mut Value, inspection: &Value) -> DocumentResult<()> {
     let summary = inspection["summary"]
         .as_object()
@@ -305,52 +380,7 @@ fn apply_inspection(dataset: &mut Value, inspection: &Value) -> DocumentResult<(
         dataset["content_hash"] = summary["content_hash"].clone();
     }
     if let Some(distributions) = inspection["target_distributions"].as_object() {
-        let declared = dataset["config"]["targets"].as_array();
-        let mut ordered = distributions.iter().collect::<Vec<_>>();
-        ordered.sort_by_key(|(name, _)| {
-            name.strip_prefix("target_")
-                .and_then(|index| index.parse::<usize>().ok())
-                .unwrap_or(usize::MAX)
-        });
-        let targets = ordered
-            .iter()
-            .enumerate()
-            .map(|(index, (name, distribution))| {
-                if let Some(target) = declared
-                    .filter(|targets| targets.len() == ordered.len())
-                    .and_then(|targets| targets.get(index))
-                {
-                    return target.clone();
-                }
-                let classes = distribution["classes"].as_array();
-                let task = distribution["task_type"]
-                    .as_str()
-                    .filter(|task| {
-                        matches!(
-                            *task,
-                            "regression" | "binary_classification" | "multiclass_classification"
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        if distribution["type"] == "classification" {
-                            if classes.is_some_and(|classes| classes.len() == 2) {
-                                "binary_classification"
-                            } else {
-                                "multiclass_classification"
-                            }
-                        } else {
-                            "regression"
-                        }
-                    });
-                json!({"column":name,"type":task,"is_default":index == 0})
-            })
-            .collect::<Vec<_>>();
-        if dataset["default_target"].is_null() {
-            dataset["default_target"] = targets
-                .first()
-                .map_or(Value::Null, |target| target["column"].clone());
-        }
-        dataset["targets"] = json!(targets);
+        apply_inspected_targets(dataset, distributions);
     }
     dataset["task_type"] = Value::Null;
     dataset["num_classes"] = Value::Null;
@@ -865,12 +895,57 @@ mod tests {
         assert_eq!(dataset["targets"].as_array().unwrap().len(), 2);
         assert_eq!(dataset["targets"][1]["type"], "binary_classification");
         assert_eq!(dataset["default_target"], "target_0");
-        let declared = json!([{"column":"protein","type":"regression"},{"column":"grade","type":"binary_classification"}]);
-        dataset["config"]["targets"] = declared.clone();
+        dataset["config"]["targets"] = json!([{"column":"protein","type":"regression"},{"column":"grade","type":"binary_classification"}]);
         dataset["default_target"] = json!("grade");
         apply_inspection(&mut dataset, &inspection).unwrap();
-        assert_eq!(dataset["targets"], declared);
+        assert_eq!(
+            dataset["targets"],
+            json!([{"column":"protein","type":"regression","is_default":false},
+                {"column":"grade","type":"binary_classification","is_default":true}])
+        );
         assert_eq!(dataset["default_target"], "grade");
+    }
+
+    #[test]
+    fn inspection_keeps_the_chosen_default_target_and_counts_missing_values() {
+        // Ten target columns, as the library reports them: by position.
+        let distributions = (0..10)
+            .map(|index| {
+                (
+                    format!("target_{index}"),
+                    json!({"type":"regression","missing_count": index * 3,"n_samples":40}),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        let inspection = json!({"summary":{"num_samples":40,"num_features":3,"train_samples":40,"test_samples":0,"n_sources":1,"has_targets":true},
+            "target_distributions": distributions});
+        let declared = (0..10)
+            .map(|index| json!({"column":format!("trait_{index}"),"type":"regression","is_default":index == 0}))
+            .collect::<Vec<_>>();
+        let mut dataset = json!({"config":{"targets":declared,"default_target":"trait_7"},
+            "targets":[],"default_target":null});
+        apply_inspection(&mut dataset, &inspection).unwrap();
+        let targets = dataset["targets"].as_array().unwrap();
+        // Positional order, not the lexical order of target_10 before target_2.
+        assert_eq!(targets.len(), 10);
+        assert_eq!(targets[9]["column"], "trait_9");
+        assert_eq!(targets[9]["missing_count"], 27);
+        assert_eq!(targets[0]["missing_count"], 0);
+        assert_eq!(dataset["default_target"], "trait_7");
+        assert_eq!(
+            targets
+                .iter()
+                .filter(|target| target["is_default"] == true)
+                .map(|target| target["column"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["trait_7"]
+        );
+        // A default that names no column falls back to the first one.
+        dataset["config"]["default_target"] = json!("removed_column");
+        dataset["default_target"] = Value::Null;
+        apply_inspection(&mut dataset, &inspection).unwrap();
+        assert_eq!(dataset["default_target"], "trait_0");
+        assert_eq!(dataset["targets"][0]["is_default"], true);
     }
 
     #[test]

@@ -33,9 +33,10 @@ fn validation_params(
             params[key] = value.clone();
         }
     }
-    if matches!(file["type"].as_str(), Some("metadata" | "Y"))
-        && matches!(params["na_policy"].as_str(), None | Some("auto"))
-    {
+    // Validation reports each file's shape and missing cells. Under "auto" it
+    // counts them without refusing the file, spectra included: the load
+    // itself still applies the library's policy for each role.
+    if matches!(params["na_policy"].as_str(), None | Some("auto")) {
         params["na_policy"] = json!("ignore");
     }
     Ok(params)
@@ -229,7 +230,7 @@ fn linked_projection(
         config = json!({"train_x":path});
     }
     ScientificRequestResolver::confine_dataset_config(&mut config, &root)
-        .map_err(|error| format!("{error:?}"))?;
+        .map_err(|error| error.to_string())?;
     // A stored empty config resolves only the selected folder through
     // the library owner, then every returned reference is confined.
     let mut result = if operation == "preview" {
@@ -406,10 +407,10 @@ fn handle(
                 // Authorization is repeated after the library converts the
                 // wizard's declarative roles into the canonical dataset config.
                 ScientificRequestResolver::confine_dataset_config(&mut document, &root)
-                    .map_err(|error| format!("{error:?}"))?;
+                    .map_err(|error| error.to_string())?;
                 let mut config = adapt("dataset.configure", &document)?;
                 ScientificRequestResolver::confine_dataset_config(&mut config, &root)
-                    .map_err(|error| format!("{error:?}"))?;
+                    .map_err(|error| error.to_string())?;
                 service.preview_configured(&config, count(&body, "max_samples", 100)?, adapt)
             }
             _ => Err("Unknown dataset inspection operation".into()),
@@ -516,6 +517,41 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn missing_spectral_values_are_counted_and_only_an_explicit_abort_refuses_them() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path().join("config"));
+        std::fs::write(
+            root.path().join("Xcal.csv"),
+            "1000;1100;1200\n0.1;;0.3\n0.2;NA;NaN\n0.3;0.4;0.5\n",
+        )
+        .unwrap();
+        for policy in ["auto", "abort"] {
+            let response = handle(
+                &settings,
+                &request(
+                    "validate-files",
+                    &json!({
+                        "path":root.path(),"files":[{"path":"Xcal.csv","type":"X"}],
+                        "parsing":{"has_header":true,"delimiter":";","na_policy":policy}
+                    }),
+                ),
+                &|_, _| panic!("Native CSV only"),
+            );
+            assert_eq!(response.status, 200);
+            let body: Value = serde_json::from_str(&response.body).unwrap();
+            let shape = &body["shapes"]["Xcal.csv"];
+            if policy == "auto" {
+                // No row is dropped and the gaps are reported.
+                assert_eq!(shape["num_rows"], 3, "{shape}");
+                assert_eq!(shape["num_columns"], 3);
+                assert_eq!(shape["missing_count"], 3);
+            } else {
+                assert!(shape["error"].is_string());
+            }
+        }
+    }
+
     #[test]
     fn metadata_validation_allows_missing_cells_by_default_and_returns_columns() {
         let root = tempfile::tempdir().unwrap();
