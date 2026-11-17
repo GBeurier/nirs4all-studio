@@ -250,7 +250,8 @@
       "recommended": "3.0.0",
       "description": "XGBoost gradient boosting framework",
       "category": "boosting",
-      "default_install": true
+      "default_install": false,
+      "offline_payload": true
     },
     "catboost": {
       "min": ">=1.2.0",

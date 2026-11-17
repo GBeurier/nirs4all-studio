@@ -106,9 +106,10 @@ describe("python wheel locks", () => {
     if (target.embeddedWheels) {
       expect(locks.lockedPackages(lock, "offline")).toHaveLength(lock.packages.length - required.length);
       expect(locks.lockedOfflineNames(lock, "recommended")).toEqual(defaultRecommended.map((spec) => spec.split("==")[0]));
-      expect(locks.lockedOfflineNames(lock, "offline_extras")).toEqual(["torch"]);
-      // PyTorch is not installed by default, yet its CPU wheel stays in the offline payload.
-      expect(defaultRecommended.some((spec) => spec.startsWith("torch=="))).toBe(false);
+      expect(locks.lockedOfflineNames(lock, "offline_extras")).toEqual(["xgboost", "torch"]);
+      // XGBoost and PyTorch are not installed by default, yet their wheels (PyTorch: the CPU build) stay in the offline payload.
+      expect(defaultRecommended.some((spec) => /^(?:xgboost|torch)==/.test(spec))).toBe(false);
+      expect(locks.lockedPackages(lock, "offline").find((entry) => entry.name === "xgboost")?.version).toBe(catalogue.optional.xgboost.recommended);
       expect(locks.lockedPackages(lock, "offline").find((entry) => entry.name === "torch")?.version).toBe(`${catalogue.optional.torch.recommended}+cpu`);
     } else {
       // No offline installer: only the required cohort itself is shipped.

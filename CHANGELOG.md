@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- XGBoost is no longer installed when Studio creates its Python environment.
+  The first setup is faster and the environment smaller: on Linux, XGBoost and
+  the NVIDIA library its wheel depends on were a download of about 590 MB and
+  0.8 GB on disk, and creating the default environment from the package index
+  took 57 s instead of 2 min 6 s on the same connection (1.2 GB on disk instead
+  of 2.0 GB). Install XGBoost in Settings > Python to use the XGBoost models;
+  until then the pipeline editor marks them as unavailable.
+- The offline installers (Windows and Linux) still carry XGBoost: on a machine
+  without network access it is installed on request from the installer's own
+  files, like PyTorch.
+
 ## [0.17.0] — 2026-11-16
 
 ### Changed

@@ -2,15 +2,15 @@
 # One installer format per OS: NSIS (Windows x64), DMG (macOS arm64), DEB
 # (Linux x64). Windows and Linux are built twice: the standard installer and
 # its offline variant (`-offline`), which also carries the Python runtime,
-# the default package set and PyTorch (CPU). The macOS application embeds no
+# the default package set, XGBoost and PyTorch (CPU). The macOS application embeds no
 # wheels: Studio installs its required packages from the package index, and
 # there is no macOS offline installer.
 # Full E2E and application migration qualify locally. Each hosted installer
 # leg runs two smokes on the unpacked application:
 #   1. scripts/smoke-archive-standalone.cjs checks the payload: a script
 #      creates an environment with the shipped uv from the shipped wheels
-#      (offline leg: with the default recommended packages, then PyTorch,
-#      and nothing from the network; macOS: from the package index), then
+#      (offline leg: with the default recommended packages, then XGBoost
+#      and PyTorch, and nothing from the network; macOS: from the package index), then
 #      the application starts on it and serves its
 #      Playground and dataset routes.
 #   2. scripts/smoke-packaged-ui.cjs checks the application: on a fresh
@@ -960,12 +960,13 @@ jobs:
           Privacy & Security > Open Anyway.
 
           PyTorch is not installed when the environment is created: Studio offers
-          to install it when you select a neural-network model.
+          to install it when you select a neural-network model. XGBoost is not
+          installed either: add it in Settings > Python to use the XGBoost models.
 
           ### Offline installers (Windows and Linux)
 
-          The same application with the Python runtime, the default package set
-          and PyTorch (CPU build) included, for computers without network access.
+          The same application with the Python runtime, the default package set,
+          XGBoost and PyTorch (CPU build) included, for computers without network access.
 
           | Platform | Architecture | File | Status |
           |----------|-------------|------|--------|

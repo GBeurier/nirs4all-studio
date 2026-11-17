@@ -6,7 +6,7 @@
  *   - create the Python environment with the shipped uv from the shipped
  *     wheels. With the offline payload nothing comes from the network, the
  *     default recommended packages are installed too, and then the packages
- *     the payload carries for installation on request (PyTorch): the payload
+ *     the payload carries for installation on request (XGBoost, PyTorch): the payload
  *     must be complete on this platform
  *   - launch the packaged Electron app on that environment in a private profile
  *   - force a deterministic Rust control-plane port

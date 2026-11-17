@@ -390,7 +390,9 @@ class TestDependencyScanningOptionalMetadata:
         assert torch_pkg is not None
         assert torch_pkg["is_installed"] is True
         assert torch_pkg["managed_by_profile"] is True
-        # PyTorch is installed on request, not by default; a default package keeps its flag.
+        # PyTorch and XGBoost are installed on request, not by default; a default package keeps its flag.
         assert torch_pkg["default_install"] is False
         boosting = next(c for c in data["categories"] if c["id"] == "boosting")
-        assert next(p for p in boosting["packages"] if p["name"] == "xgboost")["default_install"] is True
+        assert next(p for p in boosting["packages"] if p["name"] == "xgboost")["default_install"] is False
+        dimensionality = next(c for c in data["categories"] if c["id"] == "dimensionality")
+        assert next(p for p in dimensionality["packages"] if p["name"] == "umap-learn")["default_install"] is True

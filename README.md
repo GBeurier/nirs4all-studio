@@ -75,10 +75,11 @@ you either pick one or let Studio create one for you.
   package index) and kept up to date at each launch.
 - **Recommended packages are your choice.** Deep-learning, boosting,
   explainability and other optional packages are installed one by one, on
-  request. PyTorch is not installed when the environment is created, which
-  keeps the first setup short: Studio offers to install it when you select a
-  neural-network model, in the build that matches your machine (CPU, CUDA or
-  Apple Metal).
+  request. PyTorch and XGBoost are not installed when the environment is
+  created, which keeps the first setup short: Studio offers to install PyTorch
+  when you select a neural-network model, in the build that matches your
+  machine (CPU, CUDA or Apple Metal), and XGBoost is installed from
+  **Settings > Python**.
 - **Application updates are small.** To update, download the installer of the
   newer version (**Settings > Updates** offers it), close Studio and run it.
   It replaces the application only; your environment stays in place.
@@ -86,9 +87,9 @@ you either pick one or let Studio create one for you.
 On Windows and Linux, pick the **offline installer** (file name ending in
 `-offline`) for machines without network access: it also carries the Python
 runtime and the wheels of the default package set, so the environment is
-created without downloading anything, and the CPU build of PyTorch, which can
-then be installed on request without network access too. Updates always use
-the standard installer.
+created without downloading anything, and XGBoost and the CPU build of
+PyTorch, which can then be installed on request without network access too.
+Updates always use the standard installer.
 
 macOS is supported on Apple Silicon only and needs an internet connection at
 first launch: Studio downloads the Python runtime and its required packages.
@@ -550,7 +551,7 @@ nothing. There are two profiles of the same application:
 | Profile | Command | Contents beside the application |
 |---------|---------|---------------------------------|
 | Installer | `npm run release -- --platform linux` | Rust sidecar, native Methods library, `uv`, Studio's document adapters, and, on Windows and Linux, the wheels of the required packages (a macOS application embeds none and installs them from the package index) |
-| Offline installer (Windows, Linux) | `npm run release -- --platform linux --offline` | The same, plus the pinned Python runtime archive and the wheels of the default package set and of PyTorch (CPU); artifact name ends in `-offline` |
+| Offline installer (Windows, Linux) | `npm run release -- --platform linux --offline` | The same, plus the pinned Python runtime archive and the wheels of the default package set, of XGBoost and of PyTorch (CPU); artifact name ends in `-offline` |
 
 Neither profile installs a Python runtime with the application: Studio
 creates or selects the user's environment at first launch. The offline

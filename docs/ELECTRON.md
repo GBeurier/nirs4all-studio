@@ -229,9 +229,9 @@ it is given. Detailed model:
 - **uv.** Environments are created and packages installed with the shipped
   `uv` (`resources/backend/tools/uv[.exe]`), with the required wheels as a
   `--find-links` source on Windows and Linux (`resources/backend/wheels/`);
-  on macOS the required packages come from the package index. PyTorch is not
-  part of a new environment: it is installed on request, with
-  `--torch-backend auto`.
+  on macOS the required packages come from the package index. PyTorch and
+  XGBoost are not part of a new environment: they are installed on request,
+  PyTorch with `--torch-backend auto`.
 - **First launch.** The phase is `unconfigured`; the renderer shows one page
   that lists detected environments. The user picks one or creates a new one
   (`userData/python-env/python` and `userData/python-env/venv`; the pinned

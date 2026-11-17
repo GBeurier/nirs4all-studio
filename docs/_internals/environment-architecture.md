@@ -32,7 +32,7 @@ versions for the Electron main process, the build scripts and the Rust sidecar.
 | Block | Entry shape | Meaning |
 |---|---|---|
 | `required` | `{ name, range, install }` | Packages Studio cannot run without: `nirs4all`, `nirs4all-core`, `dag-ml`, `dag-ml-data`, `nirs4all-io`, `nirs4all-methods`. `range` is the accepted version specifier (may be empty); `install` is the exact version Studio installs. |
-| `optional` | `min`, `recommended`, `category`, `description`, `default_install`, optional `python`, optional `offline_payload` | The recommended catalogue. Each package is a per-package choice; `default_install` preselects it when Studio creates an environment. PyTorch is not preselected: Studio offers it when the user selects a neural-network model. `offline_payload` keeps a package that is not installed by default in the offline installers (PyTorch), so that it can be installed later without network access. |
+| `optional` | `min`, `recommended`, `category`, `description`, `default_install`, optional `python`, optional `offline_payload` | The recommended catalogue. Each package is a per-package choice; `default_install` preselects it when Studio creates an environment. PyTorch and XGBoost are not preselected: Studio offers PyTorch when the user selects a neural-network model, and XGBoost is installed from Settings > Python. `offline_payload` keeps a package that is not installed by default in the offline installers (PyTorch, XGBoost), so that it can be installed later without network access. |
 
 Two rules follow from the `required` shape:
 
@@ -232,7 +232,7 @@ or creates an environment once.
 | Deployment | Environment | Managed by |
 |---|---|---|
 | Desktop installer | Selected or created by the user | Electron (`PythonEnvApi`) |
-| Desktop offline installer (Windows, Linux) | Same; creation, required installs, the default recommended packages and PyTorch (CPU) work without network | Electron (`PythonEnvApi`) |
+| Desktop offline installer (Windows, Linux) | Same; creation, required installs, the default recommended packages, XGBoost and PyTorch (CPU) work without network | Electron (`PythonEnvApi`) |
 | Desktop installer on macOS | Same; required packages are installed from the package index | Electron (`PythonEnvApi`) |
 | Docker image | `/opt/nirs4all/python-env/{python,venv}`, built at image build time by `scripts/provision-environment.cjs` | The image |
 | Browser development (`npm run dev`) | None owned by the renderer | The server it is pointed at |

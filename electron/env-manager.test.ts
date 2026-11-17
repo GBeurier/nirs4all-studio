@@ -828,7 +828,9 @@ describe("new environment plan", () => {
     expect(plan.recommended.length).toBeGreaterThan(10);
     expect(plan.recommended.every((item) => item.installedVersion === null && item.status === "missing" && !item.belowMinimum)).toBe(true);
     expect(plan.recommended.find((item) => item.name === "torch")).toMatchObject({ defaultInstall: false, recommendedVersion: "2.6.0" });
-    expect(plan.recommended.find((item) => item.name === "xgboost")).toMatchObject({ defaultInstall: true, recommendedVersion: "3.0.0" });
+    expect(plan.recommended.find((item) => item.name === "xgboost")).toMatchObject({ defaultInstall: false, recommendedVersion: "3.0.0" });
+    // What the setup page preselects for a new environment.
+    expect(plan.recommended.filter((item) => item.defaultInstall).map((item) => item.name)).toEqual(["pyopls", "trendfitter", "umap-learn"]);
     expect(Object.keys(plan).sort()).toEqual(["pythonVersion", "recommended", "required"]);
     expect(takeInventory).not.toHaveBeenCalled();
   });
