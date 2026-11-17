@@ -31,13 +31,13 @@
     },
     {
       "path": "api/library_dataset_inspection.py",
-      "size": 2712,
-      "sha256": "90029537c96e4eb23c76863bdc0e366950205d46ceadbc1aa498f8d96048dc1b"
+      "size": 4353,
+      "sha256": "27d78d449f3527c4ba1cff4f1f69e5a8d85d131427123a2801169462dd47c4a7"
     },
     {
       "path": "api/library_documents.py",
-      "size": 24049,
-      "sha256": "978468cdac2a4a8e809925b602f14d4564790c0b0e42b6d731b069cd3db59b28"
+      "size": 24884,
+      "sha256": "8b0dbbb0bba658476b796efd9a5aba08aa9d422378db221b415c7fdd80a279a7"
     },
     {
       "path": "api/library_inspector.py",
@@ -111,8 +111,8 @@
     },
     {
       "path": "api/shared/dataset_config.py",
-      "size": 17811,
-      "sha256": "268d3fe53eb4958da66870ed0faee134b4914b9c9c3158bc51289a69a9602f26"
+      "size": 19645,
+      "sha256": "6a75800546eb61b210bad07cc0bd51517fc5dccb093721d601795158b7487c91"
     },
     {
       "path": "api/shared/decimation.py",

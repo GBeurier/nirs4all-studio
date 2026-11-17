@@ -127,6 +127,7 @@ fn validate_legacy_config(
             "project_id",
             "split_group_by_by_dataset",
             "missing_target_policy",
+            "missing_spectra_policy",
             "target_by_dataset",
         ],
         "legacyConfig",
@@ -222,7 +223,48 @@ fn validate_legacy_runtime_options(
             "legacyConfig.missing_target_policy must be predict or remove",
         ));
     }
+    validate_missing_spectra_policy(object.get("missing_spectra_policy"))?;
     validate_grouping_map(object.get("split_group_by_by_dataset"))
+}
+
+/// The run's answer for missing spectral values: remove the affected samples,
+/// replace the values with one of the library's fill methods, or keep them.
+fn validate_missing_spectra_policy(
+    value: Option<&Value>,
+) -> Result<(), ScientificSubmissionValidationError> {
+    let Some(value) = value else { return Ok(()) };
+    let refused = ScientificSubmissionValidationError::Unsupported(
+        "legacyConfig.missing_spectra_policy must be {policy: remove | keep} or {policy: replace, fill: {method: value, fill_value} | {method: forward_fill | backward_fill}}",
+    );
+    let Some(object) = value.as_object() else {
+        return Err(refused);
+    };
+    let fill = object.get("fill");
+    let valid = match object.get("policy").and_then(Value::as_str) {
+        Some("remove" | "keep") => object.len() == 1,
+        Some("replace") => {
+            object.len() == 2
+                && fill.and_then(Value::as_object).is_some_and(|fill| {
+                    match fill.get("method").and_then(Value::as_str) {
+                        Some("value") => {
+                            fill.len() == 2
+                                && fill
+                                    .get("fill_value")
+                                    .and_then(Value::as_f64)
+                                    .is_some_and(f64::is_finite)
+                        }
+                        Some("forward_fill" | "backward_fill") => fill.len() == 1,
+                        _ => false,
+                    }
+                })
+        }
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(refused)
+    }
 }
 
 /// The target column each selected dataset is trained on. A dataset absent
@@ -1088,6 +1130,41 @@ mod tests {
             validate_scientific_submission(&serde_json::to_vec(&payload).unwrap()).unwrap();
         assert_eq!(validated.run_name(), "Native campaign");
         assert_eq!(validated.requested_backend(), "cluster");
+    }
+
+    #[test]
+    fn accepts_only_the_closed_missing_spectra_choices() {
+        for policy in [
+            json!({"policy":"remove"}),
+            json!({"policy":"keep"}),
+            json!({"policy":"replace","fill":{"method":"value","fill_value":0}}),
+            json!({"policy":"replace","fill":{"method":"forward_fill"}}),
+            json!({"policy":"replace","fill":{"method":"backward_fill"}}),
+        ] {
+            let mut accepted = payload();
+            accepted["legacyConfig"]["missing_spectra_policy"] = policy;
+            assert!(
+                validate_scientific_submission(&serde_json::to_vec(&accepted).unwrap()).is_ok()
+            );
+        }
+        for policy in [
+            json!("remove"),
+            json!({"policy":"remove_sample"}),
+            json!({"policy":"remove","fill":{"method":"forward_fill"}}),
+            json!({"policy":"replace"}),
+            json!({"policy":"replace","fill":{"method":"mean"}}),
+            json!({"policy":"replace","fill":{"method":"value"}}),
+            json!({"policy":"replace","fill":{"method":"value","fill_value":"0"}}),
+            json!({"policy":"replace","fill":{"method":"forward_fill","fill_value":0}}),
+            json!(null),
+        ] {
+            let mut refused = payload();
+            refused["legacyConfig"]["missing_spectra_policy"] = policy;
+            assert!(matches!(
+                validate_scientific_submission(&serde_json::to_vec(&refused).unwrap()),
+                Err(ScientificSubmissionValidationError::Unsupported(_))
+            ));
+        }
     }
 
     #[test]

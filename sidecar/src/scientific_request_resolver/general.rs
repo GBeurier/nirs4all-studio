@@ -110,6 +110,7 @@ fn dataset_request(
     id: &str,
     target: Option<&str>,
     missing_target_policy: Option<&Value>,
+    missing_spectra_policy: Option<&Value>,
 ) -> Result<(Value, DatasetCheck), ScientificResolveError> {
     let mut record = resolver.read_dataset(id)?;
     let label = dataset_label(id, record.get("name"));
@@ -159,6 +160,9 @@ fn dataset_request(
     if let Some(policy) = missing_target_policy {
         payload["missing_target_policy"] = policy.clone();
     }
+    if let Some(policy) = missing_spectra_policy {
+        payload["missing_spectra_policy"] = policy.clone();
+    }
     if let Some(target) = target {
         payload["target"] = target;
     }
@@ -186,13 +190,21 @@ fn normalize_documents(
         .payload
         .pointer("/legacyConfig/missing_target_policy")
         .cloned();
+    let missing_spectra_policy = preflight
+        .payload
+        .pointer("/legacyConfig/missing_spectra_policy");
     let targets = preflight.payload.pointer("/legacyConfig/target_by_dataset");
     for id in &selection.datasets {
         let target = targets
             .and_then(|targets| targets.get(id))
             .and_then(Value::as_str);
-        let (payload, check) =
-            dataset_request(resolver, id, target, missing_target_policy.as_ref())?;
+        let (payload, check) = dataset_request(
+            resolver,
+            id,
+            target,
+            missing_target_policy.as_ref(),
+            missing_spectra_policy,
+        )?;
         dataset_checks.push(check);
         requests.push(json!({"operation":"dataset.configure", "payload":payload}));
     }
@@ -1053,6 +1065,42 @@ mod tests {
             for (operation, carried) in seen.into_inner() {
                 let expected = if operation == "dataset.configure" {
                     policy.map(|policy| json!(policy))
+                } else {
+                    None
+                };
+                assert_eq!(carried, expected, "{operation}");
+            }
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn run_missing_spectra_choice_reaches_only_the_dataset_configuration() {
+        use std::cell::RefCell;
+        let (root, config, workspace) = fixture("general-missing-spectra-policy");
+        let resolver = ScientificRequestResolver::new(config);
+        for policy in [
+            None,
+            Some(json!({"policy":"remove"})),
+            Some(json!({"policy":"replace","fill":{"method":"forward_fill"}})),
+        ] {
+            let mut input = submission(&workspace, "local-python");
+            if let Some(policy) = &policy {
+                input.payload["legacyConfig"]["missing_spectra_policy"] = policy.clone();
+            }
+            let seen = RefCell::new(Vec::new());
+            resolver
+                .resolve_general(&input, |operation, payload| {
+                    seen.borrow_mut().push((
+                        operation.to_owned(),
+                        payload.get("missing_spectra_policy").cloned(),
+                    ));
+                    adapter(operation, payload)
+                })
+                .unwrap();
+            for (operation, carried) in seen.into_inner() {
+                let expected = if operation == "dataset.configure" {
+                    policy.clone()
                 } else {
                     None
                 };

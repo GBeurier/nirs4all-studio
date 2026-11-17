@@ -19,7 +19,7 @@ from .pipeline_canonical import (
     hydrate_editor_steps,
     validate_canonical,
 )
-from .shared.dataset_config import MISSING_TARGET_NA_POLICIES, build_nirs4all_config, build_nirs4all_config_from_stored, for_dataset_configs
+from .shared.dataset_config import MISSING_TARGET_NA_POLICIES, build_nirs4all_config, build_nirs4all_config_from_stored, feature_na_params, for_dataset_configs
 
 
 def normalize_pipeline(document: dict[str, Any]) -> dict[str, Any]:
@@ -158,10 +158,20 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         if missing_target_policy == "remove":
             raise ValueError("Removing samples without a target is not supported when one target column of several is selected; keep them to have them predicted")
 
+    # A run on a dataset whose spectra have missing values states what happens
+    # to them: the affected samples are removed, the values are replaced by one
+    # of the library's fill methods, or they are kept for the pipeline.
+    missing_spectra_policy = document.get("missing_spectra_policy")
+    feature_na = None
+    if missing_spectra_policy is not None:
+        if document.get("scientific_run") is not True:
+            raise ValueError("missing_spectra_policy applies only to scientific runs")
+        feature_na = feature_na_params(missing_spectra_policy)
+
     def finish(config: dict[str, Any]) -> dict[str, Any]:
         if document.get("scientific_run") is not True:
             return config
-        return for_dataset_configs(config, native_io=True, target_na_policy=target_na_policy,
+        return for_dataset_configs(config, native_io=True, target_na_policy=target_na_policy, feature_na=feature_na,
                                    target_index=target["index"] if target is not None else None,
                                    target_task_type=target.get("task_type") if target is not None else None)
 
@@ -182,6 +192,8 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("Removing samples with a missing target is not supported for multimodal datasets; keep them to have them predicted")
             if target is not None:
                 raise ValueError("Selecting one target column is not supported for multimodal datasets")
+            if missing_spectra_policy is not None and missing_spectra_policy != {"policy": "keep"}:
+                raise ValueError("Removing or replacing missing spectral values is not supported for multimodal datasets")
             return descriptor
         if not config:
             path = record.get("path")

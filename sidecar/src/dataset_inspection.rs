@@ -424,6 +424,27 @@ impl DatasetInspection {
         self.preview_configured(&config, max_samples, adapt)
     }
 
+    /// The preview recorded in the dataset catalogue: it also counts the
+    /// missing spectral values the dataset keeps.
+    /// # Errors
+    /// Propagates confinement, reader and projection errors without fallback.
+    pub fn catalogue_preview(
+        &self,
+        config: &Value,
+        max_samples: usize,
+        adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    ) -> Result<Value, String> {
+        if max_samples == 0 {
+            return Err("max_samples must be positive".into());
+        }
+        let config = self.config(config, adapt)?;
+        adapt(
+            "dataset.preview",
+            &json!({"config":config,"max_samples":max_samples,
+            "max_input_bytes":self.limits.max_total_bytes,"count_missing_spectra":true}),
+        )
+    }
+
     /// Preview an already normalized config without invoking the normalizer again.
     /// # Errors
     /// Rejects non-object configs, escaping paths and invalid sample limits.

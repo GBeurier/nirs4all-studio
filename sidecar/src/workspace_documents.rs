@@ -382,6 +382,13 @@ fn apply_inspection(dataset: &mut Value, inspection: &Value) -> DocumentResult<(
     if let Some(distributions) = inspection["target_distributions"].as_object() {
         apply_inspected_targets(dataset, distributions);
     }
+    // Missing spectral values the dataset keeps as loaded: how many, in how
+    // many samples. A run on this dataset asks what to do with them.
+    dataset["missing_spectra"] = summary
+        .get("missing_spectra")
+        .filter(|missing| missing["values"].is_u64() && missing["samples"].is_u64())
+        .cloned()
+        .unwrap_or(Value::Null);
     dataset["task_type"] = Value::Null;
     dataset["num_classes"] = Value::Null;
     if let Some(task) = inspection["target_distribution"]["type"].as_str() {
@@ -946,6 +953,12 @@ mod tests {
         apply_inspection(&mut dataset, &inspection).unwrap();
         assert_eq!(dataset["default_target"], "trait_0");
         assert_eq!(dataset["targets"][0]["is_default"], true);
+        // Missing spectral values are recorded when the inspection counted them.
+        assert_eq!(dataset["missing_spectra"], Value::Null);
+        let mut counted = inspection.clone();
+        counted["summary"]["missing_spectra"] = json!({"values":25,"samples":5});
+        apply_inspection(&mut dataset, &counted).unwrap();
+        assert_eq!(dataset["missing_spectra"], json!({"values":25,"samples":5}));
     }
 
     #[test]

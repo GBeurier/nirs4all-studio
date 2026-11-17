@@ -220,7 +220,7 @@ fn inspect(
             ..LoadLimits::default()
         },
     )?
-    .preview(&config, max_samples, adapt)?;
+    .catalogue_preview(&config, max_samples, adapt)?;
     if result["success"] != true {
         return Err(result["error"]
             .as_str()
