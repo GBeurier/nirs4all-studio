@@ -16,6 +16,11 @@ import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useSpectralData } from '@/hooks/useSpectralData';
+import { useDatasetsQuery } from '@/hooks/useDatasetQueries';
+import { buildDatasetSchemaRef } from '@/lib/datasetSchema';
+import { buildPlaygroundTargetChoices } from '@/lib/playground/datasetSelectionOptions';
+import { formatApiErrorDetail } from '@/api/transport';
+import type { Dataset, PartitionKey } from '@/types/datasets';
 import { usePlaygroundPipeline } from '@/hooks/usePlaygroundPipeline';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
 import { buildPlaygroundDataView } from '@/lib/playground/dataView';
@@ -57,6 +62,7 @@ export default function Playground() {
   const {
     rawData,
     isLoading: dataLoading,
+    isSwitchingView,
     error: dataError,
     dataSource,
     currentDatasetInfo,
@@ -79,21 +85,82 @@ export default function Playground() {
     setChartVisibility(prev => ({ ...prev, [chart]: !prev[chart] }));
   }, []);
 
-  const [selectedSourceIndex, setSelectedSourceIndex] = useState<number | null>(null);
-  const [selectedTargetIndex, setSelectedTargetIndex] = useState<number | null>(null);
-  const datasetSelectionKey = currentDatasetInfo
-    ? `${currentDatasetInfo.datasetId}:${currentDatasetInfo.partition}`
-    : dataSource;
-  const previousDatasetSelectionKeyRef = useRef<string | null>(null);
+  // The workspace catalogue (shared, persisted cache) describes every dataset's
+  // targets, whatever route opened the Playground: its own picker, a dataset's
+  // detail page, or a restored session.
+  const datasetsQuery = useDatasetsQuery();
+  const catalogueDatasets = datasetsQuery.data?.datasets;
+  const catalogueSettled = datasetsQuery.data !== undefined || !datasetsQuery.isLoading;
+  const currentCatalogueDataset = useMemo<Dataset | null>(
+    () => (currentDatasetInfo && dataSource === 'workspace'
+      ? catalogueDatasets?.find(dataset => dataset.id === currentDatasetInfo.datasetId) ?? null
+      : null),
+    [catalogueDatasets, currentDatasetInfo, dataSource],
+  );
+  const targetChoices = useMemo(
+    () => (currentCatalogueDataset ? buildPlaygroundTargetChoices(currentCatalogueDataset) : null),
+    [currentCatalogueDataset],
+  );
+  const currentSchemaRef = useMemo(
+    () => (currentCatalogueDataset ? buildDatasetSchemaRef(currentCatalogueDataset) : currentDatasetInfo?.schemaRef),
+    [currentCatalogueDataset, currentDatasetInfo?.schemaRef],
+  );
 
-  useEffect(() => {
-    if (previousDatasetSelectionKeyRef.current === datasetSelectionKey) {
-      return;
+  /** Open a workspace dataset on its saved default target. */
+  const openWorkspaceDataset = useCallback((
+    datasetId: string,
+    datasetName: string,
+    partition: PartitionKey = 'all',
+  ) => {
+    const dataset = catalogueDatasets?.find(candidate => candidate.id === datasetId);
+    const choices = dataset ? buildPlaygroundTargetChoices(dataset) : null;
+    void loadFromWorkspace(
+      datasetId,
+      dataset?.name ?? datasetName,
+      partition,
+      dataset
+        ? { trainSamples: dataset.train_samples, testSamples: dataset.test_samples, schemaRef: buildDatasetSchemaRef(dataset) }
+        : undefined,
+      { targetIndex: choices && choices.choices.length > 0 ? choices.defaultIndex : undefined },
+    );
+  }, [catalogueDatasets, loadFromWorkspace]);
+
+  // Switching the target (or source) keeps the current view on screen until the
+  // dataset's values for the new selection arrive; every target-dependent view
+  // (colours, histograms, legends, folds, metrics) follows the new values.
+  const [pendingTargetIndex, setPendingTargetIndex] = useState<number | null>(null);
+  const switchWorkspaceView = useCallback(async (selection: { sourceIndex?: number; targetIndex?: number }) => {
+    if (!currentDatasetInfo) return;
+    const targetIndex = selection.targetIndex ?? currentDatasetInfo.targetIndex;
+    if (selection.targetIndex !== undefined) setPendingTargetIndex(selection.targetIndex);
+    try {
+      await loadFromWorkspace(
+        currentDatasetInfo.datasetId,
+        currentDatasetInfo.datasetName,
+        currentDatasetInfo.partition,
+        {
+          trainSamples: currentDatasetInfo.trainSamples,
+          testSamples: currentDatasetInfo.testSamples,
+          schemaRef: currentDatasetInfo.schemaRef,
+        },
+        {
+          sourceIndex: selection.sourceIndex ?? currentDatasetInfo.sourceIndex,
+          targetIndex,
+          keepCurrentData: true,
+        },
+      );
+    } catch (error) {
+      const target = targetChoices?.choices[targetIndex ?? 0]?.label;
+      toast.error(
+        selection.targetIndex !== undefined && target
+          ? t('playground.upload.targetSwitchFailed', { target })
+          : t('playground.upload.viewSwitchFailed'),
+        { description: error instanceof Error ? error.message : formatApiErrorDetail((error as { detail?: unknown })?.detail) },
+      );
+    } finally {
+      setPendingTargetIndex(null);
     }
-    previousDatasetSelectionKeyRef.current = datasetSelectionKey;
-    setSelectedSourceIndex(null);
-    setSelectedTargetIndex(null);
-  }, [datasetSelectionKey]);
+  }, [currentDatasetInfo, loadFromWorkspace, targetChoices, t]);
 
   const playgroundDatasetInfo = useMemo(() => {
     if (!currentDatasetInfo) {
@@ -102,51 +169,19 @@ export default function Playground() {
 
     return {
       ...currentDatasetInfo,
-      selectedSourceIndex,
-      selectedTargetIndex,
-      onSelectedSourceIndexChange: setSelectedSourceIndex,
-      onSelectedTargetIndexChange: setSelectedTargetIndex,
-    };
-  }, [currentDatasetInfo, selectedSourceIndex, selectedTargetIndex]);
-  const loadedDatasetViewKeyRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!currentDatasetInfo || dataSource !== 'workspace') {
-      loadedDatasetViewKeyRef.current = null;
-      return;
-    }
-
-    const sourceIndex = selectedSourceIndex ?? 0;
-    const targetIndex = selectedTargetIndex ?? 0;
-    const viewKey = `${currentDatasetInfo.datasetId}:${currentDatasetInfo.partition}:${sourceIndex}:${targetIndex}`;
-
-    if (selectedSourceIndex === null && selectedTargetIndex === null) {
-      loadedDatasetViewKeyRef.current = viewKey;
-      return;
-    }
-    if (loadedDatasetViewKeyRef.current === viewKey) {
-      return;
-    }
-
-    loadedDatasetViewKeyRef.current = viewKey;
-    void loadFromWorkspace(
-      currentDatasetInfo.datasetId,
-      currentDatasetInfo.datasetName,
-      currentDatasetInfo.partition,
-      {
-        trainSamples: currentDatasetInfo.trainSamples,
-        testSamples: currentDatasetInfo.testSamples,
-        schemaRef: currentDatasetInfo.schemaRef,
+      schemaRef: currentSchemaRef,
+      targetChoices: targetChoices?.choices,
+      isSwitchingView,
+      selectedSourceIndex: currentDatasetInfo.sourceIndex ?? null,
+      selectedTargetIndex: pendingTargetIndex ?? currentDatasetInfo.targetIndex ?? (targetChoices ? 0 : null),
+      onSelectedSourceIndexChange: (index: number | null) => {
+        if (index !== null) void switchWorkspaceView({ sourceIndex: index });
       },
-      { sourceIndex, targetIndex },
-    );
-  }, [
-    currentDatasetInfo,
-    dataSource,
-    loadFromWorkspace,
-    selectedSourceIndex,
-    selectedTargetIndex,
-  ]);
+      onSelectedTargetIndexChange: (index: number | null) => {
+        if (index !== null) void switchWorkspaceView({ targetIndex: index });
+      },
+    };
+  }, [currentDatasetInfo, currentSchemaRef, targetChoices, isSwitchingView, pendingTargetIndex, switchWorkspaceView]);
 
   // Derive execute options from chart visibility — skip PCA/repetitions when hidden
   const { pca: pcaChartVisible, repetitions: repetitionsChartVisible } = chartVisibility;
@@ -202,8 +237,8 @@ export default function Playground() {
   }, [addOperator]);
 
   const dataView = useMemo(
-    () => buildPlaygroundDataView(rawData, result, currentDatasetInfo?.schemaRef),
-    [currentDatasetInfo?.schemaRef, rawData, result]
+    () => buildPlaygroundDataView(rawData, result, currentSchemaRef),
+    [currentSchemaRef, rawData, result]
   );
 
   // ============= Export Handlers =============
@@ -333,9 +368,12 @@ export default function Playground() {
     const routeAction = parsePlaygroundRouteAction(searchParams);
 
     if (routeAction.type === 'load-workspace-dataset') {
-      // URL-provided dataset wins over any persisted session state.
+      // URL-provided dataset wins over any persisted session state. Wait for
+      // the catalogue so the dataset opens on its saved default target.
       sessionRestoredRef.current = true;
-      loadFromWorkspace(routeAction.datasetId, routeAction.datasetName);
+      sessionRestoreAttemptedRef.current = true;
+      if (!catalogueSettled) return;
+      openWorkspaceDataset(routeAction.datasetId, routeAction.datasetName);
       navigate('/playground', { replace: true });
       return;
     }
@@ -345,7 +383,7 @@ export default function Playground() {
       // Clean up URL
       navigate('/playground', { replace: true });
     }
-  }, [searchParams, handleImportFromPipelineEditor, navigate, loadFromWorkspace]);
+  }, [searchParams, handleImportFromPipelineEditor, navigate, openWorkspaceDataset, catalogueSettled]);
 
   // ============= Keyboard Shortcuts (Phase 6) =============
 
@@ -380,10 +418,14 @@ export default function Playground() {
   // ============= Session Persistence =============
 
   const sessionRestoredRef = useRef(false);
+  // The stored session is read once the catalogue is known; until then the
+  // empty initial state must not overwrite it.
+  const sessionRestoreAttemptedRef = useRef(false);
 
   // Restore session on mount
   useEffect(() => {
-    if (sessionRestoredRef.current) return;
+    if (sessionRestoredRef.current || !catalogueSettled) return;
+    sessionRestoreAttemptedRef.current = true;
 
     const stored = readClientStorageString(clientStorageKeys.playgroundSessionState);
     const restoreResult = parseStoredPlaygroundSessionState(stored);
@@ -413,14 +455,15 @@ export default function Playground() {
     }
     // Restore dataset
     if (session.datasetId && session.datasetName && session.dataSource === 'workspace') {
-      loadFromWorkspace(session.datasetId, session.datasetName);
+      openWorkspaceDataset(session.datasetId, session.datasetName);
     } else if (session.dataSource === 'demo') {
       loadDemoData();
     }
-  }, [loadFromWorkspace, loadDemoData]);
+  }, [openWorkspaceDataset, loadDemoData, catalogueSettled]);
 
   // Persist session on state changes
   useEffect(() => {
+    if (!sessionRestoreAttemptedRef.current) return;
     const timeout = setTimeout(() => {
       const session = buildPlaygroundSessionStatePayload({
         datasetId: currentDatasetInfo?.datasetId || null,
@@ -477,7 +520,7 @@ export default function Playground() {
           currentDatasetInfo={playgroundDatasetInfo}
           // Data handlers
           loadDemoData={loadDemoData}
-          loadFromWorkspace={loadFromWorkspace}
+          loadFromWorkspace={openWorkspaceDataset}
           clearData={clearData}
           // Dataset selector
           showDatasetSelector={showDatasetSelector}

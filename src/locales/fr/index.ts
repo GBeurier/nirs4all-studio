@@ -5549,6 +5549,10 @@ notFound: {
       or: "ou",
       loadDemo: "Charger les données de démonstration",
       sourceDefault: "Source 1",
+      targetWithMissing: "{{target}} — {{count}} sans valeur",
+      targetLoading: "Chargement des valeurs de la cible",
+      targetSwitchFailed: "Impossible d’afficher {{target}}",
+      viewSwitchFailed: "Impossible d’afficher cette vue du jeu de données",
     },
     operators: {
       parameters: "Paramètres",

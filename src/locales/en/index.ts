@@ -5549,6 +5549,10 @@ notFound: {
       or: "or",
       loadDemo: "Load Demo Data",
       sourceDefault: "Source 1",
+      targetWithMissing: "{{target}} — {{count}} without a value",
+      targetLoading: "Loading the target values",
+      targetSwitchFailed: "Could not show {{target}}",
+      viewSwitchFailed: "Could not show this view of the dataset",
     },
     operators: {
       parameters: "Parameters",

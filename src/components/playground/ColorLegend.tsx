@@ -186,13 +186,13 @@ const GradientLegend = memo(function GradientLegend({
   );
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-24 flex-col gap-1">
       <div
         className="h-3 w-full rounded-sm"
         style={{ background: gradient }}
       />
       {range && (
-        <div className="flex justify-between text-[9px] text-muted-foreground">
+        <div className="flex justify-between gap-2 text-[9px] text-muted-foreground">
           <span>{range.min}</span>
           <span>{range.max}</span>
         </div>

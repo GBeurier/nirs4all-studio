@@ -26,7 +26,7 @@ import { useDatasetsQuery } from '@/hooks/useDatasetQueries';
 import { buildDatasetSchemaRef } from '@/lib/datasetSchema';
 import {
   buildDatasetSourceOptions,
-  buildDatasetTargetOptions,
+  type PlaygroundTargetChoice,
 } from '@/lib/playground/datasetSelectionOptions';
 import { cn } from '@/lib/utils';
 import { formatApiErrorDetail } from '@/api/transport';
@@ -34,6 +34,10 @@ import { formatWavelengthUnit } from '@/components/playground/visualizations/cha
 import { useTranslation } from 'react-i18next';
 
 export type PlaygroundDatasetInfo = WorkspaceDatasetInfo & {
+  /** The dataset's targets from the workspace catalogue, whatever opened the Playground. */
+  targetChoices?: PlaygroundTargetChoice[];
+  /** A target or source switch is loading; the current view stays on screen. */
+  isSwitchingView?: boolean;
   selectedSourceIndex?: number | null;
   selectedTargetIndex?: number | null;
   onSelectedSourceIndexChange?: (index: number | null) => void;
@@ -103,16 +107,18 @@ export function DataUpload({
     () => buildDatasetSourceOptions(schemaRef?.sourceCount),
     [schemaRef?.sourceCount],
   );
-  const targetOptions = useMemo(
-    () => buildDatasetTargetOptions(schemaRef),
-    [schemaRef],
-  );
+  const targetChoices = dataSource === 'workspace' ? currentDatasetInfo?.targetChoices ?? [] : [];
   const selectedSourceValue = String(currentDatasetInfo?.selectedSourceIndex ?? 0);
   const selectedTargetValue = String(currentDatasetInfo?.selectedTargetIndex ?? 0);
   const selectedSourceLabel = sourceOptions.find(option => option.value === selectedSourceValue)?.label ?? t('playground.upload.sourceDefault');
-  const selectedTargetLabel = targetOptions.find(option => option.value === selectedTargetValue)?.label ?? targetOptions[0]?.label;
+  const targetChoiceLabel = (choice: PlaygroundTargetChoice) => (choice.missing
+    ? t('playground.upload.targetWithMissing', { target: choice.label, count: choice.missing })
+    : choice.label);
   const showSourceSelector = dataSource === 'workspace' && sourceOptions.length > 1;
-  const showTargetSelector = dataSource === 'workspace' && targetOptions.length > 1;
+  const showTargetSelector = targetChoices.length > 1;
+  // One target: name it, without a pointless control.
+  const singleTarget = targetChoices.length === 1 ? targetChoices[0] : null;
+  const isSwitchingView = currentDatasetInfo?.isSwitchingView === true;
 
   const handleDatasetSelect = useCallback((dataset: Dataset, partition: PartitionKey = 'all') => {
     onLoadFromWorkspace(dataset.id, dataset.name, partition, {
@@ -214,19 +220,24 @@ export function DataUpload({
             )}
             {showTargetSelector && (
               <div className="space-y-1">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t('playground.upload.target')}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p id="playground-target-label" className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t('playground.upload.target')}</p>
+                  {isSwitchingView && (
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" aria-label={t('playground.upload.targetLoading')} />
+                  )}
+                </div>
                 <Select
                   value={selectedTargetValue}
                   onValueChange={(value) => currentDatasetInfo.onSelectedTargetIndexChange?.(Number(value))}
-                  disabled={!currentDatasetInfo.onSelectedTargetIndexChange}
+                  disabled={!currentDatasetInfo.onSelectedTargetIndexChange || isSwitchingView}
                 >
-                  <SelectTrigger className="h-8 text-xs">
+                  <SelectTrigger className="h-8 text-xs" aria-labelledby="playground-target-label" aria-busy={isSwitchingView}>
                     <SelectValue placeholder={t('playground.upload.target')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {targetOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                    {targetChoices.map(choice => (
+                      <SelectItem key={choice.index} value={String(choice.index)}>
+                        {targetChoiceLabel(choice)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -262,11 +273,11 @@ export function DataUpload({
                 <span className="font-mono text-xs text-foreground">{selectedSourceLabel}</span>
              </div>
            )}
-           {showTargetSelector && selectedTargetLabel && (
+           {singleTarget && (
              <div className="p-2 px-3 flex items-center justify-between gap-2">
                 <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{t('playground.upload.target')}</span>
-                <span className="font-mono text-xs text-foreground truncate max-w-[9rem]" title={selectedTargetLabel}>
-                  {selectedTargetLabel}
+                <span className="font-mono text-xs text-foreground truncate max-w-[9rem]" title={targetChoiceLabel(singleTarget)}>
+                  {targetChoiceLabel(singleTarget)}
                 </span>
              </div>
            )}
